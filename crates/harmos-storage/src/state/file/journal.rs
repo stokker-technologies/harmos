@@ -11,6 +11,9 @@
 
 /* === Modules === */
 
+#[cfg(feature = "testing")]
+pub(super) mod testing;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -19,8 +22,10 @@
 use std::fs::File;
 use std::io::{BufReader, Read as _, Seek, SeekFrom, Write};
 use std::path::Path;
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use super::files::{Files, JournalOpener};
 use super::format::{self, Read, corrupt, invalid, io};
@@ -32,8 +37,10 @@ use crate::{BackendFailure, Error, Result};
 
 // The Development Format Has One Baseline.
 const VERSION: u32 = 1;
+
 // Headers Hold Only A Position, So Their Bound Is Harmos-Owned.
 const HEADER_BYTES: usize = 4096;
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -45,8 +52,10 @@ pub(super) struct StateLog {
     file: File,
     offsets: File,
     first: u64,
-    #[cfg(test)]
+
+    #[cfg(feature = "testing")]
     decoded: usize,
+
     poisoned: bool,
     history: StoreHistory,
     saved: u64,
@@ -140,7 +149,7 @@ impl StateLog {
             file,
             offsets,
             first,
-            #[cfg(test)]
+            #[cfg(feature = "testing")]
             decoded: 0,
             poisoned: false,
             history,
@@ -195,7 +204,7 @@ impl StateLog {
             if last == through.sequence {
                 break;
             }
-            #[cfg(test)]
+            #[cfg(feature = "testing")]
             {
                 self.decoded += 1;
             }
@@ -438,134 +447,3 @@ fn conflict(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{Identifier, StorageCursor};
-    use std::{fs::OpenOptions, num::NonZeroUsize, sync::Arc};
-
-    fn settings() -> StorageStateSettings {
-        StorageStateSettings {
-            max_entry_bytes: NonZeroUsize::new(4096).unwrap(),
-            max_checkpoint_bytes: NonZeroUsize::new(4096).unwrap(),
-        }
-    }
-
-    fn open(path: &Path, history: &StoreHistory) -> StateLog {
-        StateLog::open(
-            path,
-            history.clone(),
-            settings(),
-            Arc::new(|path| OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)),
-            &mut || Ok(()),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn seven_day_recovery_seeks_and_compacts_without_rescanning_prefixes() {
-        let root = tempfile::tempdir().unwrap();
-        let history = StoreHistory {
-            store: Identifier::new("journal.test").unwrap(),
-            epoch: Identifier::new("one").unwrap(),
-        };
-        let mut journal = open(root.path(), &history);
-        let per_day = 24 * 60;
-        for day in 0..7 {
-            let entries = (0..per_day)
-                .map(|minute| {
-                    let sequence = (day * per_day + minute + 1) as u64;
-                    RecoveryEntry {
-                        position: RecoveryPosition { history: history.clone(), sequence },
-                        required_data: StorageCursor { history: history.clone(), sequence: 0 },
-                        payload: sequence.to_le_bytes().to_vec(),
-                    }
-                })
-                .collect::<Vec<_>>();
-            journal.append(&entries).unwrap();
-        }
-        let through = journal.position();
-        drop(journal);
-        let mut journal = open(root.path(), &history);
-        assert_eq!(journal.offsets.metadata().unwrap().len(), through.sequence * 8);
-        let limits = ReadLimits {
-            rows: NonZeroUsize::new(31).unwrap(),
-            bytes: NonZeroUsize::new(16 * 1024).unwrap(),
-        };
-        let mut after = RecoveryPosition { history: history.clone(), sequence: 0 };
-        let mut pages = 0;
-        while after.sequence < through.sequence {
-            let page = journal.page(&after, &through, limits).unwrap();
-            for (index, entry) in page.entries.iter().enumerate() {
-                assert_eq!(entry.position.sequence, after.sequence + index as u64 + 1);
-                assert_eq!(entry.payload, entry.position.sequence.to_le_bytes());
-            }
-            after = page.entries.last().unwrap().position.clone();
-            pages += 1;
-        }
-        assert!(journal.decoded <= through.sequence as usize + pages);
-        // Arbitrary Retry Pages Also Seek Directly Rather Than Replaying History.
-        journal.decoded = 0;
-        let retry_after = RecoveryPosition {
-            history: history.clone(),
-            sequence: through.sequence - 3,
-        };
-        assert_eq!(journal.page(&retry_after, &through, limits).unwrap().entries.len(), 3);
-        assert_eq!(journal.decoded, 3);
-        let old_journal = std::fs::read(root.path().join("state.jsonl")).unwrap();
-        let checkpoint = RecoveryPosition {
-            history: history.clone(),
-            sequence: through.sequence - 10,
-        };
-        let snapshot = RecoverySnapshot {
-            through: checkpoint.clone(),
-            required_data: StorageCursor { history: history.clone(), sequence: 0 },
-            payload: vec![7],
-        };
-        journal.checkpoint(&snapshot).unwrap();
-        assert_eq!(journal.offsets.metadata().unwrap().len(), 10 * 8);
-        assert_eq!(journal.page(&checkpoint, &through, limits).unwrap().entries.len(), 10);
-        drop(journal);
-        // A Crash After Snapshot Publication But Before Journal Replacement.
-        std::fs::write(root.path().join("state.jsonl"), old_journal).unwrap();
-        let mut journal = open(root.path(), &history);
-        assert_eq!(journal.snapshot(4096).unwrap(), Some(snapshot));
-        assert_eq!(journal.page(&checkpoint, &through, limits).unwrap().entries.len(), 10);
-        assert_eq!(journal.decoded, 10);
-        assert!(matches!(journal.page(&retry_after, &checkpoint, limits), Err(Error::InvalidInput { .. })));
-    }
-    #[test]
-    fn index_open_cancellation_preserves_the_durable_journal() {
-        let root = tempfile::tempdir().unwrap();
-        let history = StoreHistory {
-            store: Identifier::new("cancel.test").unwrap(),
-            epoch: Identifier::new("one").unwrap(),
-        };
-        let mut journal = open(root.path(), &history);
-        let entries = (1..=8)
-            .map(|sequence| RecoveryEntry {
-                position: RecoveryPosition { history: history.clone(), sequence },
-                required_data: StorageCursor { history: history.clone(), sequence: 0 },
-                payload: vec![sequence as u8],
-            })
-            .collect::<Vec<_>>();
-        journal.append(&entries).unwrap();
-        drop(journal);
-        let durable = std::fs::read(root.path().join("state.jsonl")).unwrap();
-        let mut polls = 0;
-        let cancelled = StateLog::open(
-            root.path(),
-            history.clone(),
-            settings(),
-            Arc::new(|path| OpenOptions::new().read(true).write(true).open(path)),
-            &mut || {
-                polls += 1;
-                if polls == 3 { Err(Error::Closing { domain: "test cancellation" }) } else { Ok(()) }
-            },
-        );
-        assert!(matches!(cancelled, Err(Error::Closing { .. })));
-        assert_eq!(std::fs::read(root.path().join("state.jsonl")).unwrap(), durable);
-        assert_eq!(open(root.path(), &history).position().sequence, 8);
-    }
-}

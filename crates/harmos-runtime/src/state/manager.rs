@@ -16,11 +16,13 @@
 // Standard Library Imports
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
+
 // Third Party Imports
 use futures_core::Stream;
 use tokio::sync::{RwLock, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::Instrument;
+
 // Local Imports
 use super::ManagedState;
 use super::transaction::TransactionError;
@@ -31,6 +33,7 @@ use super::{
     writer,
 };
 use crate::Application;
+use crate::supervision::executor::InContext;
 
 /* === Constants === */
 
@@ -137,7 +140,7 @@ impl<A: Application> StateManager<A> {
             reads,
             clock,
         });
-        let running = tokio::spawn(writer::run(receiver, Arc::clone(&tracked), durable, inverses, undos, capture));
+        let running = tokio::spawn(writer::run(receiver, Arc::clone(&tracked), durable, inverses, undos, capture).in_current_context());
 
         (
             Self {
@@ -170,22 +173,22 @@ impl<A: Application> StateManager<A> {
         self.request(Some(key), crate::operations::Response::new(transaction.into())).await
     }
 
-    /// Commits a transaction projected from an external owner without copying its payload.
-    ///
-    /// After queue acceptance, cancelling this caller does not release the owner:
-    /// writer, capture and history references retain it until their last transaction
-    /// handle drops. Allocations made while applying the transaction remain separate.
+    // Commits a transaction projected from an external owner without copying its payload.
+    //
+    // After queue acceptance, cancelling this caller does not release the owner:
+    // writer, capture and history references retain it until their last transaction
+    // handle drops. Allocations made while applying the transaction remain separate.
     pub async fn commit_owned(
         &self, transaction: crate::operations::Response<A::Transaction>,
     ) -> Result<Receipt, Error<<A::Transaction as Transaction<A::State>>::Error>> {
         self.request(None, transaction).await
     }
 
-    /// Commits an externally owned transaction with the existing request-key deduplication.
-    ///
-    /// Accepted work retains its owner through writer, capture and history references
-    /// despite caller cancellation. A duplicate key releases the unused supplied owner;
-    /// this does not account for allocations made while applying a transaction.
+    // Commits an externally owned transaction with the existing request-key deduplication.
+    //
+    // Accepted work retains its owner through writer, capture and history references
+    // despite caller cancellation. A duplicate key releases the unused supplied owner;
+    // this does not account for allocations made while applying a transaction.
     pub async fn commit_keyed_owned(
         &self, key: RequestKey, transaction: crate::operations::Response<A::Transaction>,
     ) -> Result<Receipt, Error<<A::Transaction as Transaction<A::State>>::Error>> {

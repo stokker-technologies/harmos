@@ -31,10 +31,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::task::Poll;
 use std::time::Duration;
+
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tracing::Instrument;
+
 // Local Imports
 use crate::services::{Once as DeclaredService, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
@@ -51,7 +53,6 @@ use crate::{
 /* === Constants === */
 
 const REQUESTS: usize = 64;
-
 const STOP_GRACE: Duration = Duration::from_millis(100);
 
 /* === Macros === */
@@ -204,7 +205,7 @@ pub enum Catalog<A: Application> {
 #[derive(Debug, thiserror::Error)]
 enum Cause {
     #[error("the stored history cannot be replayed by this build: {0}")]
-    Undeclared(DecodeError),
+    Undeclared(#[source] DecodeError),
 
     #[error("the stored history cannot be replayed by this build: {0}")]
     Unreadable(String),
@@ -482,7 +483,7 @@ impl<A: Application> Builder<A> {
         self.with_registration(C::batch().lane(lane))
     }
 
-    /// Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.
+    // Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.
     pub fn schema_settings(&mut self, settings: crate::config::SchemaSettings) -> &mut Self {
         self.schema_settings = Arc::new(settings);
         self
@@ -985,7 +986,7 @@ impl Incompatible {
         }
     }
 
-    fn of(cause: DecodeError) -> Self {
+    pub(crate) fn of(cause: DecodeError) -> Self {
         Self {
             cause: Cause::Undeclared(cause),
             cleanup: None,
@@ -1143,6 +1144,7 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
 }
 
 async fn deliver<A: Application>(consumers: &mut Consumers<A>, streams: &StreamManager<A>) {
+    let mut drained = u64::MAX;
     for recording in consumers.recordings() {
         let resume = recording.resume();
         let batch = streams.batch(resume);
@@ -1150,7 +1152,9 @@ async fn deliver<A: Application>(consumers: &mut Consumers<A>, streams: &StreamM
         if batch.reaches() > resume {
             recording.drain(batch).await;
         }
+        drained = drained.min(recording.resume().0);
     }
+    streams.drained(drained);
 }
 
 async fn stand_windows<A: Application>(streams: &StreamManager<A>, consumers: &mut Consumers<A>, booted: Position) {

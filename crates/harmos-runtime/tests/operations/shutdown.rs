@@ -128,7 +128,7 @@ async fn cancellation_observable_queued() {
     trace.started.notified().await;
     let queued = runtime.operation(WaitContractDeclaration { mode: Mode::Count }).start().await.unwrap();
     queued.request_cancel();
-    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
     trace.release.notify_one();
     first.await.unwrap();
@@ -137,7 +137,7 @@ async fn cancellation_observable_queued() {
     trace.started.notified().await;
 
     running.request_cancel();
-    assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
 
     // The cancelled queued instance was never constructed.
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
@@ -150,7 +150,7 @@ async fn shutdown_cancels_attempts() {
     let instance = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
     runtime.shutdown().await.unwrap();
-    assert!(matches!(instance.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(instance.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert!(matches!(runtime.operations.submit_resident("late").await, Err(Error::Closing { domain: "resident" })));
 }

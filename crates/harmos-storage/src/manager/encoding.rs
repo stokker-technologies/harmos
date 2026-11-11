@@ -128,12 +128,7 @@ pub(crate) fn recovery_encoded_bound(payload: usize, history: &crate::StoreHisto
             field: "managed recovery",
             reason: "encoded size overflow",
         })?;
-    let snapshot = RecoverySnapshot {
-        required_data: entry.required_data.clone(),
-        through: entry.position.clone(),
-        payload: Vec::new(),
-    };
-    let header = encoded_size(&entry)?.max(encoded_size(&snapshot)?);
+    let header = encoded_size(&entry)?;
     header.checked_add(encoded).ok_or(Error::InvalidInput {
         field: "managed recovery",
         reason: "encoded size overflow",

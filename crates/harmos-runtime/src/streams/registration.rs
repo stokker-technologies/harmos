@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex, Weak};
 // Third Party Imports
 
 // Local Imports
-use super::definition::{Table, Wired};
+use super::definition::{Contract, Table, Wired};
 use super::publications::{publication_definitions, validate_existing};
 use super::{PluginStream, PublicationLease, StreamAdmissionError, StreamManager, window};
 use crate::plugin::PluginScope;
@@ -65,12 +65,9 @@ impl<A: Application> StreamManager<A> {
         let validations = definitions
             .iter()
             .map(|definition| {
-                crate::schema::Validator::from_schema(
-                    definition.schema().expect("plugin definitions own a row schema"),
-                    &self.schema_settings,
-                )
-                .map_err(crate::schema::Error::from)
-                .map(Arc::new)
+                crate::schema::Validator::from_schema(definition.schema(), &self.schema_settings)
+                    .map_err(crate::schema::Error::from)
+                    .map(Arc::new)
             })
             .collect::<Result<Vec<_>, _>>()?;
         if scope.is_closed() || self.closed.load(std::sync::atomic::Ordering::Acquire) {
@@ -80,6 +77,7 @@ impl<A: Application> StreamManager<A> {
         let mut registration = {
             let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
             let mut windows = self.windows.windows.write().expect("stream registry poisoned");
+            self.windows.retire(&mut windows);
             validate_existing(&windows, &definitions, true)?;
             // A transport restart within an already committed activation may
             // renew its exact writers, but cannot mutate the admitted inventory.
@@ -87,12 +85,12 @@ impl<A: Application> StreamManager<A> {
                 for definition in &definitions {
                     let previous = windows
                         .get(definition.id())
-                        .and_then(|revisions| revisions.get(&definition.version()))
-                        .ok_or_else(|| StreamAdmissionError::Changed(definition.id().into()))?;
+                        .and_then(|revisions| revisions.wires.get(&definition.version()))
+                        .ok_or(StreamAdmissionError::Inventory)?;
                     if previous.definition.metadata() != definition.metadata()
                         || previous.definition.row_metadata() != definition.row_metadata()
                     {
-                        return Err(StreamAdmissionError::Changed(definition.id().into()));
+                        return Err(StreamAdmissionError::Inventory);
                     }
                 }
             }
@@ -101,7 +99,7 @@ impl<A: Application> StreamManager<A> {
                 let revisions = windows.entry(Arc::<str>::from(definition.id())).or_default();
                 // One settled snapshot avoids retaining a chain of generations.
                 // Existing readers independently own their immutable descriptors.
-                let previous = revisions.get(&definition.version()).map(|previous| {
+                let previous = revisions.wires.get(&definition.version()).map(|previous| {
                     Arc::new(Wired {
                         validation: previous.validation.clone(),
                         definition: previous.definition.clone(),
@@ -136,7 +134,8 @@ impl<A: Application> StreamManager<A> {
                         activation: Arc::downgrade(&activation),
                     }),
                 });
-                revisions.insert(wired.definition.version(), wired.clone());
+                revisions.definitions.insert(wired.definition.version(), Contract::of(&wired.definition));
+                revisions.wires.insert(wired.definition.version(), wired.clone());
                 leases.push(Arc::new(PublicationLease {
                     stream: PluginStream {
                         wired,
@@ -206,18 +205,18 @@ impl Drop for StreamRegistration {
             let Some(revisions) = windows.get_mut(wired.definition.id()) else {
                 continue;
             };
-            if !revisions.get(&wired.definition.version()).is_some_and(|current| Arc::ptr_eq(current, wired)) {
+            if !revisions.wires.get(&wired.definition.version()).is_some_and(|current| Arc::ptr_eq(current, wired)) {
                 continue;
             }
             match &wired.staged.as_ref().expect("staged inventory").previous {
                 Some(previous) => {
-                    revisions.insert(wired.definition.version(), previous.clone());
+                    revisions.wires.insert(wired.definition.version(), previous.clone());
                 }
                 None => {
-                    revisions.remove(&wired.definition.version());
+                    revisions.wires.remove(&wired.definition.version());
                 }
             }
-            if revisions.is_empty() {
+            if revisions.current.is_none() && revisions.wires.is_empty() {
                 windows.remove(wired.definition.id());
             }
         }

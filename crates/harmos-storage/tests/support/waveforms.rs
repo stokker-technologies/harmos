@@ -19,7 +19,7 @@ use std::num::NonZeroU32;
 use std::time::{Duration, UNIX_EPOCH};
 
 // Third Party Imports
-use harmos_domain::{DefinitionId, Identified, Identifier, Message};
+use harmos_domain::{Identified, Identifier, Message};
 use harmos_storage::*;
 
 // Local Imports
@@ -60,9 +60,7 @@ pub enum Objects {
 /* === Implementations === */
 
 impl Identified for Experiment {
-    fn definition() -> (DefinitionId, u32) {
-        (DefinitionId::new("storage.experiment"), 1)
-    }
+    const ID: &'static str = "storage.experiment";
 }
 impl StoredObject for Experiment {
     type Key = String;
@@ -85,6 +83,7 @@ pub fn definition() -> harmos_domain::schema::graph::Schema {
     use harmos_domain::schema::Cardinality;
     use harmos_domain::schema::graph::{Field, Kind};
     harmos_domain::schema::graph::Schema {
+        representations: Default::default(),
         root: 0,
         definitions: vec![vec![
             Field {

@@ -13,12 +13,14 @@ mod admission;
 pub mod config;
 pub mod file;
 mod reader;
+mod segments;
 
 /* === Re-Exports === */
 
 pub use admission::Permit;
 pub use config::StorageStateSettings;
 pub use reader::RecoveryReader;
+pub use segments::{Segment, SnapshotManifest, SnapshotPayload, SnapshotWriter};
 
 /* === Imports === */
 
@@ -26,6 +28,7 @@ pub use reader::RecoveryReader;
 
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use super::{ReadLimits, RecoveryPosition, StorageBatch, StorageFuture, StoreHistory};
 use crate::{Error, MemorySize, Result};
@@ -48,14 +51,11 @@ pub struct RecoveryEntry {
     pub payload: Vec<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecoverySnapshot {
     pub required_data: super::StorageCursor,
     pub through: RecoveryPosition,
-
-    #[serde(with = "payload")]
-    pub payload: Vec<u8>,
+    pub payload: SnapshotPayload,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,7 +97,7 @@ impl MemorySize for RecoverySnapshot {
         std::mem::size_of::<Self>()
             .saturating_add(self.required_data.memory_size().saturating_sub(std::mem::size_of::<super::StorageCursor>()))
             .saturating_add(self.through.history.memory_size().saturating_sub(std::mem::size_of::<StoreHistory>()))
-            .saturating_add(self.payload.capacity())
+            .saturating_add(self.payload.retained_bytes())
     }
 }
 
@@ -182,9 +182,36 @@ impl RecoveryPage {
 
 // Opaque Payloads Encode As Unpadded Base64, So Every Byte Changes The Encoded Size.
 mod payload {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD_NO_PAD;
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
 
     pub(super) fn serialize<S: Serializer>(payload: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&STANDARD_NO_PAD.encode(payload))
@@ -194,6 +221,10 @@ mod payload {
         let encoded = String::deserialize(deserializer)?;
         STANDARD_NO_PAD.decode(encoded.as_bytes()).map_err(D::Error::custom)
     }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

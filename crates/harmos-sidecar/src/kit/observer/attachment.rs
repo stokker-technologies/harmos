@@ -241,8 +241,10 @@ impl Running {
             };
             let resources = Arc::clone(attachment.resources.get().expect("observer attachment bound before activation"));
             // Binding Happens on the Activation's Own Thread
-            let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| H::bind(Arc::clone(&resources), host)));
-            let activated = bound.map_err(|_| ObserverError::BindingPanicked).and_then(|bound| instance.activate(resources, bound));
+            let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| H::bind(Arc::clone(&resources), host.clone())));
+            let activated = bound
+                .map_err(|_| ObserverError::BindingPanicked)
+                .and_then(|bound| instance.activate_reporting(resources, bound, Some(Arc::new(H::report_cadence)), Some(host)));
             // The Activity Owns The Activation Now. Release this thread's
             // extra attachment before waking either completion receiver.
             drop(attachment);

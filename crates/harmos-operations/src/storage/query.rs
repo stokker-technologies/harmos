@@ -28,8 +28,10 @@ use harmos_domain::model::storage::codec::{Nested, Repeated, product};
 use harmos_domain::model::storage::query::transform::Transform;
 use harmos_domain::model::storage::query::{QueryCompletion, QueryOutput, RowSlice, Source};
 use harmos_domain::operations::ReplaySafety;
+
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::access::GrantAccess;
+
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
@@ -91,21 +93,43 @@ impl MemorySize for Query {
     }
 }
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
+    /* === Modules === */
 
-    use crate::storage::IO_TIMEOUT;
-    use crate::{Error, Result};
-    use harmos_domain::plugin::Grant;
-    use harmos_sdk::operations::{Operation, OperationDeclaration};
-    use harmos_storage::query::QueryCompletion;
+    /* === Re-Exports === */
+
+    /* === Imports === */
 
     // Standard Library Imports
 
     // Third Party Imports
 
     // Local Imports
+    use super::*;
+    use crate::storage::IO_TIMEOUT;
+    use crate::{Error, Result};
+    use harmos_domain::plugin::Grant;
+    use harmos_sdk::operations::{Operation, OperationDeclaration};
+    use harmos_storage::query::QueryCompletion;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl Operation for super::Query {
         type Error = Error;
@@ -140,10 +164,12 @@ mod execution {
             crate::storage::classify(error)
         }
     }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

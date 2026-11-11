@@ -9,18 +9,6 @@
 
 /* === Modules === */
 
-mod payload {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_bytes(bytes)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<&'de [u8], D::Error> {
-        <&[u8]>::deserialize(deserializer)
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -29,6 +17,7 @@ mod payload {
 
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use super::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 
@@ -180,7 +169,7 @@ enum Envelope<'a> {
 /* === Implementations === */
 
 impl WireCommand {
-    /// Counts the versioned Prepare envelope without encoding or allocating its payload.
+    // Counts the versioned Prepare envelope without encoding or allocating its payload.
     pub fn prepare_encoded_len(
         invocation: u64, operation: &str, fingerprint: [u8; 32], generation: u64, payload: usize,
     ) -> Result<usize, WireCodecError> {
@@ -344,8 +333,8 @@ impl WireAnswer {
 }
 
 impl WireChildCall {
-    /// Counts a Child envelope with its actual portable values and payload length.
-    /// Context identifiers and the submit flag have fixed encoded widths.
+    // Counts a Child envelope with its actual portable values and payload length.
+    // Context identifiers and the submit flag have fixed encoded widths.
     pub fn payload_encoded_len(
         operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[super::super::CallValue],
         retry: Option<super::super::RetryPolicy>,
@@ -509,6 +498,49 @@ fn decode(bytes: &[u8]) -> Result<Envelope<'_>, WireCodecError> {
         return Err(WireCodecError::Trailing);
     }
     Ok(envelope)
+}
+
+mod payload {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bytes(bytes)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<&'de [u8], D::Error> {
+        <&[u8]>::deserialize(deserializer)
+    }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

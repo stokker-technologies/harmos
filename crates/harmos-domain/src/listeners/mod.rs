@@ -70,13 +70,13 @@ pub struct Declarations;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Source {
-    Record { id: Cow<'static, str>, version: u32, row: Schema },
-    Stream { id: Cow<'static, str>, schema_ordinal: u32, row: Schema },
+    Record { id: Cow<'static, str>, row: Schema },
+    Stream { id: Cow<'static, str>, row: Schema },
 }
 
 pub enum SourceDeclaration {
-    Record { id: &'static str, version: u32, row: SchemaDefinition },
-    Stream { id: &'static str, schema_ordinal: u32, row: SchemaDefinition },
+    Record { id: &'static str, row: SchemaDefinition },
+    Stream { id: &'static str, row: SchemaDefinition },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -129,19 +129,6 @@ impl Source {
                 reason: "source identities must be nonempty and contain no control characters",
             });
         }
-        match self {
-            Self::Record { version: 0, .. } => {
-                return Err(Error::Source {
-                    reason: "record semantic version must be positive",
-                });
-            }
-            Self::Stream { schema_ordinal: 0, .. } => {
-                return Err(Error::Source {
-                    reason: "stream schema ordinal must be positive",
-                });
-            }
-            _ => {}
-        }
         self.schema().prepare(&SchemaSettings::default()).map_err(schema::Error::from)?;
         Ok(())
     }
@@ -157,16 +144,8 @@ impl SourceDeclaration {
     pub fn source(&self) -> Result<Source, Error> {
         let row = Schema::from_declaration(self.row(), &SchemaSettings::default()).map_err(schema::Error::from)?;
         Ok(match self {
-            Self::Record { id, version, .. } => Source::Record {
-                id: Cow::Borrowed(id),
-                version: *version,
-                row,
-            },
-            Self::Stream { id, schema_ordinal, .. } => Source::Stream {
-                id: Cow::Borrowed(id),
-                schema_ordinal: *schema_ordinal,
-                row,
-            },
+            Self::Record { id, .. } => Source::Record { id: Cow::Borrowed(id), row },
+            Self::Stream { id, .. } => Source::Stream { id: Cow::Borrowed(id), row },
         })
     }
 }

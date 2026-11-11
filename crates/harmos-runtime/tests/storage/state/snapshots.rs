@@ -17,13 +17,15 @@
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::{Arc, atomic::Ordering};
 // Third Party Imports
+use tracing::instrument::WithSubscriber;
+use tracing_subscriber::prelude::*;
 
 // Local Imports
 use super::{CleanupCapture, closed};
 use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, schema};
 use harmos_runtime::state::SnapshotPolicy;
-use harmos_runtime::storage::state::RecoverySnapshot;
+use harmos_runtime::storage::state::{RecoverySnapshot, SnapshotPayload};
 use harmos_runtime::storage::{ReadLimits, StorageSettings};
 use harmos_runtime::{Runtime, state::Focus, state::Position, state::PrincipalId, state::RequestKey};
 
@@ -44,14 +46,24 @@ struct Store {
 
 struct Model;
 
+#[derive(Clone, Default)]
+struct Warnings(Arc<std::sync::Mutex<Vec<SnapshotWarning>>>);
+
+#[derive(Default, Debug)]
+struct SnapshotWarning {
+    size_bytes: u64,
+    segment_limit: u64,
+    replay_entries: u64,
+}
+
 #[harmos_runtime::transaction(id = "snapshot.add")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
 
 #[harmos_runtime::record(id = "snapshot.seen")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
 }
@@ -73,6 +85,28 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl tracing::field::Visit for SnapshotWarning {
+    fn record_debug(&mut self, _: &tracing::field::Field, _: &dyn std::fmt::Debug) {}
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        match field.name() {
+            "size_bytes" => self.size_bytes = value,
+            "segment_limit" => self.segment_limit = value,
+            "replay_entries" => self.replay_entries = value,
+            _ => {}
+        }
+    }
+}
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Warnings {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if event.metadata().fields().field("segment_limit").is_some() {
+            let mut warning = SnapshotWarning::default();
+            event.record(&mut warning);
+            self.0.lock().unwrap().push(warning);
+        }
+    }
+}
 
 impl Store {
     fn new() -> Self {
@@ -235,7 +269,7 @@ async fn snapshot_restores_at_payload_limit() {
     runtime.shutdown().await.unwrap();
     let snapshot = store.snapshot();
     assert_eq!(snapshot.payload.len(), exact.max_bytes.get());
-    assert!(serde_json::to_vec(&snapshot).unwrap().len() > exact.max_bytes.get());
+    assert_eq!(snapshot.payload.manifest().count, 1);
     store.recovery.entries.lock().unwrap().clear();
 
     let storage = store.manager(config());
@@ -247,7 +281,7 @@ async fn snapshot_restores_at_payload_limit() {
 }
 
 #[tokio::test]
-async fn snapshot_over_payload_limit_retains_journal() {
+async fn snapshot_over_payload_limit_segments() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = launch(policy(100), &storage).await;
@@ -260,7 +294,7 @@ async fn snapshot_over_payload_limit_retains_journal() {
     let storage = store.manager(config());
     let runtime = launch(small.clone(), &storage).await;
     runtime.shutdown().await.unwrap();
-    assert!(store.recovery.snapshot.lock().unwrap().is_none());
+    assert_eq!(store.snapshot().payload.manifest().count, 2);
     assert_eq!(storage.status().pending_bytes, 0);
 
     let storage = store.manager(config());
@@ -268,7 +302,7 @@ async fn snapshot_over_payload_limit_retains_journal() {
     assert_eq!(balance(&runtime).await, 4);
     assert_eq!(runtime.state.applied(), Position(1));
     runtime.shutdown().await.unwrap();
-    assert!(store.recovery.snapshot.lock().unwrap().is_none());
+    assert_eq!(store.snapshot().payload.manifest().count, 2);
 }
 
 #[tokio::test]
@@ -343,7 +377,8 @@ async fn journal_replays_alone() {
     .unwrap();
     assert_eq!(balance(&runtime).await, 9);
     runtime.shutdown().await.unwrap();
-    store.recovery.snapshot.lock().unwrap().as_mut().unwrap().payload = b"invalid snapshot".to_vec();
+    store.recovery.snapshot.lock().unwrap().as_mut().unwrap().payload =
+        SnapshotPayload::from_bytes(b"invalid snapshot", policy(100).max_bytes, Position(1)).unwrap();
     let storage = store.manager(config());
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
@@ -393,9 +428,9 @@ async fn snapshot_keeps_tail() {
     .unwrap();
     assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 3);
     runtime.shutdown().await.unwrap();
-    let snapshot: serde_json::Value = serde_json::from_slice(&store.snapshot().payload).unwrap();
+    let snapshot: serde_json::Value = serde_json::from_reader(store.snapshot().payload.reader().unwrap()).unwrap();
     assert_eq!(snapshot["tail"].as_array().unwrap().len(), 2);
-    assert_eq!(snapshot["tail"][0]["version"], 1);
+    assert_eq!(snapshot["tail"][0]["version"], <Add as harmos_runtime::Identified>::definition().1);
     store.recovery.entries.lock().unwrap().clear();
     let storage = store.manager(config());
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
@@ -521,7 +556,7 @@ async fn corrupt_snapshot_blocks() {
         {
             let mut snapshot = store.recovery.snapshot.lock().unwrap();
             let snapshot = snapshot.as_mut().unwrap();
-            let mut value: serde_json::Value = serde_json::from_slice(&snapshot.payload).unwrap();
+            let mut value: serde_json::Value = serde_json::from_reader(snapshot.payload.reader().unwrap()).unwrap();
             match field {
                 "schema" => value["schema"]["id"] = "other".into(),
                 "position" => value["position"] = 0.into(),
@@ -534,7 +569,12 @@ async fn corrupt_snapshot_blocks() {
                 "boundary" => snapshot.through.sequence += 1,
                 _ => unreachable!(),
             }
-            snapshot.payload = serde_json::to_vec(&value).unwrap();
+            snapshot.payload = SnapshotPayload::from_bytes(
+                &serde_json::to_vec(&value).unwrap(),
+                policy(100).max_bytes,
+                snapshot.payload.manifest().position.unwrap(),
+            )
+            .unwrap();
         }
         let storage = store.manager(config());
         assert!(
@@ -680,3 +720,137 @@ async fn snapshot_releases_unused() {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn segmented_snapshot_matches_full_replay() {
+    let store = Store::new();
+    let storage = store.manager(config());
+    let mut policy = policy(10000);
+    policy.max_bytes = NonZeroUsize::new(64 * 1024).unwrap();
+    let initial = Ledger::bulky(100_000);
+    let runtime = Runtime::<Bank>::launch_with(initial.clone(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: Some(policy.clone()),
+            journal_tail: 64,
+        });
+    })
+    .await
+    .unwrap();
+    let who = PrincipalId::new("editor");
+    let journal = runtime.state.as_principal(who.clone());
+    let key = RequestKey::new("first");
+    let receipt = journal.commit_keyed(key.clone(), deposit(1)).await.unwrap();
+    for _ in 1..666 {
+        journal.commit(deposit(1)).await.unwrap();
+    }
+    for _ in 0..64 {
+        harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(16 * 1024))).await.unwrap();
+    }
+    runtime.shutdown().await.unwrap();
+    let snapshot = store.snapshot();
+    assert_eq!(snapshot.payload.manifest().position, Some(Position(730)));
+    assert!(snapshot.payload.manifest().count > 3);
+    assert!(snapshot.payload.manifest().segments.iter().all(|segment| segment.bytes <= policy.max_bytes.get()));
+    let encoded: serde_json::Value = serde_json::from_reader(snapshot.payload.reader().unwrap()).unwrap();
+    println!(
+        "730 positions: total={} state={} undos={} tail={} segments={}",
+        snapshot.payload.len(),
+        serde_json::to_vec(&encoded["state"]).unwrap().len(),
+        serde_json::to_vec(&encoded["undos"]).unwrap().len(),
+        serde_json::to_vec(&encoded["tail"]).unwrap().len(),
+        snapshot.payload.manifest().count
+    );
+
+    // Retain The Full Journal For An Independent Replay And Add Work Beyond The Checkpoint.
+    let storage = store.manager(config());
+    let runtime = Runtime::<Bank>::launch_with(initial.clone(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: None,
+            journal_tail: 64,
+        });
+    })
+    .await
+    .unwrap();
+    runtime.state.as_principal(who.clone()).commit(deposit(7)).await.unwrap();
+    runtime.shutdown().await.unwrap();
+    let full = Store::new();
+    *full.recovery.entries.lock().unwrap() = store.recovery.entries.lock().unwrap().clone();
+    // The Fixture's Durable Frontier Is Reconstructed By Its Open Method.
+    full.recovery.saved.store(store.recovery.saved.load(Ordering::SeqCst), Ordering::SeqCst);
+
+    let mut results = Vec::new();
+    for (store, snapshots) in [(&store, Some(policy.clone())), (&full, None)] {
+        let storage = store.manager(config());
+        let runtime = Runtime::<Bank>::launch_with(initial.clone(), (), |setup| {
+            setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots,
+                journal_tail: 64,
+            });
+        })
+        .await
+        .unwrap();
+        assert_eq!(runtime.state.applied(), Position(731));
+        let restored = runtime.state.state().read(Clone::clone).await.unwrap().value;
+        let facts: Vec<_> = runtime.state.query::<Fact>(Position(667)).await.collect();
+        assert_eq!(facts.len(), 63);
+        assert!(facts.iter().all(Result::is_ok));
+        let journal = runtime.state.as_principal(who.clone());
+        assert_eq!(journal.commit_keyed(key.clone(), Change::Explode).await.unwrap(), receipt);
+        journal.undo(who.clone(), Focus::all()).await.unwrap();
+        let undone = runtime.state.state().read(Clone::clone).await.unwrap().value;
+        journal.redo(who.clone(), Focus::all()).await.unwrap();
+        let redone = runtime.state.state().read(Clone::clone).await.unwrap().value;
+        results.push((restored, undone, redone));
+        runtime.shutdown().await.unwrap();
+    }
+    assert_eq!(results[0], results[1]);
+}
+
+#[tokio::test]
+async fn oversized_entry_warns_and_preserves_recovery() {
+    // Register The Unobserved Dispatcher Too: Parallel Tests Register Callsites Without
+    // A Subscriber, Which Tracing's Single-Dispatcher Cache Otherwise Treats As Disabled.
+    let _unobserved = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+    let warnings = Warnings::default();
+    let subscriber = tracing_subscriber::registry().with(warnings.clone());
+    async {
+        let store = Store::new();
+        let storage = store.manager(config());
+        let mut policy = policy(10000);
+        policy.max_bytes = NonZeroUsize::new(1024).unwrap();
+        let runtime = launch(policy.clone(), &storage).await;
+        runtime.state.commit(deposit(4)).await.unwrap();
+        runtime.shutdown().await.unwrap();
+        let storage = store.manager(config());
+        let runtime = launch(policy.clone(), &storage).await;
+        let journal = runtime.state.as_principal(PrincipalId::new("editor"));
+        harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(2048))).await.unwrap();
+        runtime.shutdown().await.unwrap();
+        assert_eq!(store.snapshot().through.sequence, 1);
+        {
+            let captured = warnings.0.lock().unwrap();
+            assert!(!captured.is_empty());
+            for warning in captured.iter() {
+                assert!(warning.size_bytes > 2048, "{warning:?}");
+                assert_eq!(warning.segment_limit, policy.max_bytes.get() as u64);
+                assert_eq!(warning.replay_entries, 1);
+            }
+        }
+        let storage = store.manager(config());
+        let runtime = launch(policy, &storage).await;
+        assert_eq!(balance(&runtime).await, 4);
+        assert_eq!(runtime.state.applied(), Position(2));
+        let facts: Vec<_> = runtime.state.query::<Fact>(Position(1)).await.collect();
+        assert_eq!(facts.len(), 1);
+        assert!(facts[0].is_ok());
+        runtime.shutdown().await.unwrap();
+    }
+    .with_subscriber(subscriber)
+    .await;
+}

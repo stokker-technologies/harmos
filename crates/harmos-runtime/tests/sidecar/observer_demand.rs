@@ -377,7 +377,7 @@ async fn demand_survives_reload() {
 
     let second = demands.hold(&RECORD.name()).unwrap();
     let auxiliary = demands.hold(&AUXILIARY.name()).unwrap();
-    let stream = fixture.runtime.streams.publication("demand.row", 1).unwrap();
+    let stream = fixture.runtime.streams.current_publication("demand.row").unwrap();
     let rows = stream.watch();
     drop(first);
     let before = counts.observed[0].load(SeqCst);
@@ -697,7 +697,7 @@ async fn released_publication_interrupts_collect_and_retains_stopped_snapshot() 
     assert!(before.is_empty());
 
     // A Viewer Holds An Unpolled Publication Watch, Like Dokime's Stream Lease.
-    let publication = fixture.runtime.streams.publication("demand.row", 1).unwrap();
+    let publication = fixture.runtime.streams.current_publication("demand.row").unwrap();
     let watching = Box::pin(publication.watch());
     let collecting = || counts.collecting.load(SeqCst) == 1;
     tokio::time::timeout(LIFECYCLE.timeout, until(&counts, collecting)).await.expect("observer enters its collect call");

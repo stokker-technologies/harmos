@@ -23,6 +23,8 @@ mod files;
 mod managed;
 #[path = "state/reconcile.rs"]
 mod reconcile;
+#[path = "state/shape_versions.rs"]
+mod shape_versions;
 #[path = "state/snapshots.rs"]
 mod snapshots;
 

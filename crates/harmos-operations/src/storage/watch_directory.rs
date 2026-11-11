@@ -14,13 +14,16 @@
 /* === Imports === */
 
 // Standard Library Imports
+
 // Third Party Imports
+
 // Local Imports
 use super::IO_POLICY;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Flag, Nested, product};
 use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEvent, DirectorySelection};
 use harmos_domain::operations::ReplaySafety;
+
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
@@ -60,15 +63,40 @@ impl MemorySize for WatchDirectory {
     }
 }
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 #[cfg(feature = "runtime")]
 mod execution {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
 
     // Standard Library Imports
+
     // Third Party Imports
+
     // Local Imports
     use crate::{Error, Result};
     use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEvent};
     use harmos_sdk::operations::{Operation, Response};
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl Operation for super::WatchDirectory {
         type Error = Error;
@@ -96,10 +124,12 @@ mod execution {
             crate::storage::classify(error)
         }
     }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

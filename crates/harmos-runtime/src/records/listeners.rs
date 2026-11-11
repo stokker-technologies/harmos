@@ -192,10 +192,10 @@ impl<A: Application> PluginListenerBindings<'_, A> {
         }
         let mut selected = false;
         for (ordinal, listener) in self.scope.listeners().iter().enumerate() {
-            let Source::Record { id: source, version: revision, .. } = listener.source() else {
+            let Source::Record { id: source, .. } = listener.source() else {
                 continue;
             };
-            if source.as_ref() != id.as_str() || *revision != version {
+            if source.as_ref() != id.as_str() {
                 continue;
             }
             let graph = crate::schema::graph::Schema::from_declaration(R::DEFINITION, &self.records.schemas.settings)

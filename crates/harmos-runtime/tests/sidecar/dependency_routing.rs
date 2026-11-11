@@ -124,7 +124,7 @@ async fn initialization_rows_commit() {
         let row = (next).await.unwrap();
         assert!(matches!(row, harmos_runtime::streams::Item::Row(row) if row.value.sample == sample));
     }
-    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
+    let source = runtime.streams.current_publication("meter.pulse").unwrap();
     let rows: Vec<_> = source.query(..).await.unwrap().collect();
     assert_eq!(rows.len(), 2);
     for (row, sample) in rows.iter().zip([41, 42]) {
@@ -161,7 +161,7 @@ async fn notice_wire_order() {
     let retained = notices.values.lock().unwrap().clone();
     assert_eq!(retained.len(), 3);
     let expected_generation = lifecycle.previous_native.as_ref().unwrap().scope().unwrap().generation().get();
-    let source = runtime.streams.publication("meter.pulse", 1).unwrap();
+    let source = runtime.streams.current_publication("meter.pulse").unwrap();
     let rows: Vec<_> = source.query(..).await.unwrap().collect();
     assert_eq!(rows.len(), 3);
     for (index, (notice, sample)) in retained.iter().zip([41, 42, 43]).enumerate() {
@@ -170,7 +170,7 @@ async fn notice_wire_order() {
         let Notice::Published { publication: shared } = &cloned else { unreachable!() };
         assert_eq!(publication.stream(), "meter.pulse");
         assert_eq!(publication.owner(), "caller");
-        assert_eq!(publication.schema(), 1);
+        assert_eq!(publication.schema(), support::Pulse::definition().version());
         assert_eq!(publication.generation(), Some(expected_generation));
         assert_eq!(publication.sequence(), index as u64 + 1);
         assert_eq!(publication.wire_sequence(), index as u64 + 1);
@@ -221,7 +221,7 @@ async fn shutdown_delivery() {
         let Notice::Published { publication } = notice else { unreachable!() };
         assert_eq!(publication.owner(), "caller");
         assert_eq!(publication.generation(), Some(generation));
-        assert_eq!(publication.schema(), 1);
+        assert_eq!(publication.schema(), support::Pulse::definition().version());
         assert_eq!(publication.sequence(), index as u64 + 1);
         assert_eq!(publication.wire_sequence(), index as u64 + 1);
         assert_eq!(support::Pulse::decode(publication.payload()).unwrap().sample, sample);
@@ -243,7 +243,7 @@ async fn failed_activation_discards() {
     lifecycle.prepare_publication().await.unwrap();
     let mut manager = PluginManager::new(candidate(&lifecycle, true, false, true, false)).unwrap();
     assert!(manager.initialize(&mut lifecycle).await.is_err());
-    assert!(runtime.streams.publication("meter.pulse", 1).is_none());
+    assert!(runtime.streams.current_publication("meter.pulse").is_none());
     assert!(runtime.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
@@ -273,7 +273,7 @@ async fn cancelled_activation_discards() {
     })
     .await;
     drop(initialization);
-    assert!(runtime.streams.publication("meter.pulse", 1).is_none());
+    assert!(runtime.streams.current_publication("meter.pulse").is_none());
     assert!(runtime.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
     manager.shutdown(&mut lifecycle).await.unwrap();
     drop((manager, lifecycle));
@@ -375,7 +375,7 @@ async fn cancellation_settles_handlers() {
     let invocation = runtime.operations.submit::<Forward>(Forward { value: 0 }).await.unwrap();
     (provider.started.notified()).await;
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     (provider.dropped.notified()).await;
     assert_eq!(runtime.operations.operation::<Forward>(Forward { value: 9 }).await.unwrap().value, 9);
 
@@ -383,7 +383,7 @@ async fn cancellation_settles_handlers() {
     provider.started.notified().await;
     let timed = timed.await;
     assert!(
-        matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))),
+        matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))),
         "expected timeout: {timed:?}"
     );
     (provider.dropped.notified()).await;
@@ -457,13 +457,13 @@ async fn cancelled_dependency_capacity() {
         busy.as_ref().err()
     );
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     (provider.dropped.notified()).await;
     let bytes = runtime.operations.call_encoded(&format!("caller.{}", Forward::ID), Message::encode(&Forward { value: 9 })).await.unwrap();
     assert_eq!(Amplified::decode(bytes.as_slice()).unwrap().value, 9);
     let timed =
         runtime.operations.call_encoded(&format!("provider.{}", AmplifyDeclaration::ID), AmplifyDeclaration { value: 0 }.encode()).await;
-    assert!(matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(timed, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     (provider.dropped.notified()).await;
     let bytes = runtime
         .operations
@@ -598,7 +598,7 @@ async fn capacity_precedes_encoding() {
                 if matches!(source.downcast_ref::<NativeError>(), Some(NativeError::Capacity))));
         }
         invocation.request_cancel();
-        assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+        assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
         let bytes =
             target.submit_with(NonZeroUsize::new(64).unwrap(), |_| Ok(AmplifyDeclaration { value: 9 }.encode())).unwrap().await.unwrap();
         assert_eq!(Amplified::decode(&bytes).unwrap().value, 9);

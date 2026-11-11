@@ -12,7 +12,9 @@
 pub mod declaration;
 pub mod graph;
 pub mod identity;
+pub mod json;
 mod payload;
+pub mod wire;
 
 /* === Re-Exports === */
 
@@ -38,6 +40,8 @@ pub const MAX_NAME_BYTES: usize = 256;
 macro_rules! wrapper {
     ($($ty:ty => $kind:ident),* $(,)?) => {$(
         impl Described for $ty {
+            const SERDE_OBJECT: bool = false;
+            const SERDE: &'static str = "{\"form\":\"value\"}";
             const FIELD_KIND: graph::Kind<declaration::Definition> = graph::Kind::$kind;
             const NAME: &'static str = concat!("harmos::", stringify!($ty));
             const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
@@ -46,14 +50,33 @@ macro_rules! wrapper {
                 kind: graph::Kind::$kind,
                 cardinality: Cardinality::Required,
             }];
-            const MARKER: &'static [u8] = &declaration::encode::<{
-                declaration::encoded_len(Self::NAME, Self::FIELDS)
-            }>(Self::NAME, Self::FIELDS);
+            const MARKER: &'static [u8] = &declaration::encode_serde::<{
+                declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
+            }>(Self::NAME, Self::FIELDS, Self::SERDE);
         }
     )*};
 }
 
 wrapper!(bool => Bool, u32 => U32, u64 => U64, i32 => I32, i64 => I64, f32 => F32, f64 => F64, String => String, Vec<u8> => Bytes);
+
+macro_rules! stored_scalar {
+    ($($ty:ty => $kind:ident),* $(,)?) => {$(
+        impl Described for $ty {
+            const SERDE_OBJECT: bool = false;
+            const SERDE: &'static str = "{\"form\":\"value\"}";
+            const NAME: &'static str = concat!("harmos::", stringify!($ty));
+            const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
+                name: Cow::Borrowed(stringify!($ty)), tag: 1,
+                kind: graph::Kind::$kind, cardinality: Cardinality::Required,
+            }];
+            const MARKER: &'static [u8] = &declaration::encode_serde::<{
+                declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE)
+            }>(Self::NAME, Self::FIELDS, Self::SERDE);
+        }
+    )*};
+}
+
+stored_scalar!(u8 => U32, u16 => U32, i8 => I32, i16 => I32, usize => U64, isize => I64, u128 => Bytes, i128 => Bytes, char => String);
 
 /* === Type Aliases === */
 
@@ -81,10 +104,15 @@ pub enum Error {
 // A Static Message Shape, Independent Of Payload Encoding Or Construction.
 pub trait Described: 'static {
     const FIELD_KIND: graph::Kind<declaration::Definition> = graph::Kind::Message { definition: Self::DEFINITION };
+    const FIELD_CARDINALITY: Cardinality = Cardinality::Required;
 
     const NAME: &'static str;
     const FIELDS: &'static [graph::Field<declaration::Definition>];
     const MARKER: &'static [u8];
+
+    const SERDE: &'static str = "";
+    const SERDE_OBJECT: bool = true;
+    const SERDE_TAG: Option<&'static str> = None;
 
     const DEFAULT_VARIANT: Option<usize> = Some(0);
 
@@ -100,6 +128,8 @@ impl Described for () {
 }
 
 impl<T: Described> Described for Option<T> {
+    const SERDE_OBJECT: bool = false;
+    const SERDE: &'static str = "{\"form\":\"value\"}";
     const NAME: &'static str = declaration::Name::new("harmos::Optional", &[T::NAME]).as_str();
     const FIELDS: &'static [graph::Field<declaration::Definition>] = &[graph::Field {
         name: Cow::Borrowed("value"),
@@ -107,11 +137,25 @@ impl<T: Described> Described for Option<T> {
         kind: T::FIELD_KIND,
         cardinality: Cardinality::Optional,
     }];
-    const MARKER: &'static [u8] =
-        declaration::encode_buffer::<2048>(Self::NAME, Self::FIELDS).split_at(declaration::encoded_len(Self::NAME, Self::FIELDS)).0;
+    const MARKER: &'static [u8] = declaration::encode_serde_buffer::<2048>(Self::NAME, Self::FIELDS, Self::SERDE)
+        .split_at(declaration::encoded_serde_len(Self::NAME, Self::FIELDS, Self::SERDE))
+        .0;
 }
 
 /* === Public Functions === */
+
+// One Name-Derived Tag Rule For Rust Authoring And Runtime Language Bindings.
+pub const fn field_tag(name: &str) -> u32 {
+    let bytes = name.as_bytes();
+    let mut hash = 2_166_136_261_u32;
+    let mut index = 0;
+    while index < bytes.len() {
+        hash = (hash ^ bytes[index] as u32).wrapping_mul(16_777_619);
+        index += 1;
+    }
+    let tag = 1 + hash % (536_870_911 - 1_000);
+    if tag >= 19_000 { tag + 1_000 } else { tag }
+}
 
 /* === Private Functions === */
 

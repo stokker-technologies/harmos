@@ -279,7 +279,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 recovery: state_backend,
                 has_objects: C::definition_count() != 0,
                 object_definition: harmos_domain::model::storage::catalog::definition::<C>,
-                object_retention: |key| Ok(harmos_domain::model::storage::catalog::definition::<C>(key)?.retention()),
+                object_retention: harmos_domain::model::storage::catalog::retention::<C>,
                 state: Mutex::new(State {
                     execution,
                     prefer_measurement: false,

@@ -417,7 +417,7 @@ async fn input_failure_settles_attempt() {
     let error = bounded(harmos_runtime::grpc::input(instance, input, incoming)).await.unwrap_err();
     let harmos_runtime::grpc::InputError::Forward { source, settlement } = error else { panic!("input failure missing") };
     assert!(matches!(*source, Error::TaskFailed { domain: "gRPC input", .. }));
-    assert!(matches!(settlement.as_deref(), Some(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(settlement.as_deref(), Some(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.shutdown()).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -452,7 +452,7 @@ async fn deadline_settles_peer() {
         runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     let error = bounded(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending())).await.unwrap_err();
     assert!(
-        matches!(error, harmos_runtime::grpc::InputError::Operation(source) if matches!(*source, Error::OperationRefused(harmos_runtime::Refusal::TimedOut)))
+        matches!(error, harmos_runtime::grpc::InputError::Operation(source) if matches!(*source, Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. })))
     );
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.shutdown()).await.unwrap();
@@ -517,7 +517,7 @@ async fn exchange_failure_settles_attempt() {
         Ok(_) => panic!("expected forwarding failure"),
     };
     assert!(matches!(error, harmos_runtime::grpc::InputError::Forward { settlement: Some(ref settlement), .. }
-        if matches!(settlement.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+        if matches!(settlement.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(runtime.shutdown()).await.unwrap();
@@ -669,7 +669,7 @@ async fn stream_stall_expires_after_progress() {
     input.send_with(4, || Ok(7)).await.unwrap();
     assert_eq!(*output.recv().await.unwrap(), 8);
     tokio::time::advance(Duration::from_secs(4)).await;
-    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     runtime.shutdown().await.unwrap();
 }
 
@@ -692,7 +692,7 @@ async fn unary_keeps_total_deadline() {
     let instance = runtime.operations.submit::<Unary>(Unary).unwrap();
     instance.ready().await.unwrap();
     tokio::time::advance(Duration::from_secs(4)).await;
-    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     runtime.shutdown().await.unwrap();
 }
 
@@ -721,7 +721,7 @@ async fn stream_final_response_wait_is_idle_bounded() {
     tokio::time::advance(Duration::from_secs(2)).await;
     assert!(instance.status().outcome().is_none());
     tokio::time::advance(Duration::from_secs(2)).await;
-    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     runtime.shutdown().await.unwrap();
 }
 

@@ -101,7 +101,11 @@ mod tests {
         let mut definitions = Vec::with_capacity(8);
         definitions.push(Vec::with_capacity(16));
         let pointer = definitions.as_ptr();
-        let graph = Schema { root: 0, definitions };
+        let graph = Schema {
+            representations: ::std::collections::BTreeMap::new(),
+            root: 0,
+            definitions,
+        };
         let key = SchemaKey {
             id: Identifier::new("owned.schema").unwrap(),
             version: std::num::NonZeroU32::MIN,

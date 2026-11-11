@@ -107,7 +107,7 @@ envelope!(OutputEnvelope, Item, Response);
 
 /* === Structs === */
 
-/// An Already Encoded Complete gRPC Message, Retaining Its Actual Byte Owner.
+// An Already Encoded Complete gRPC Message, Retaining Its Actual Byte Owner.
 pub struct PreparedFrame {
     bytes: crate::operations::Response<Vec<u8>>,
 }
@@ -159,32 +159,32 @@ impl Encode<Transcoded> for PreparedFrame {
 
 /* === Public Functions === */
 
-/// Prepares The Complete Opening Frame Of A Typed Input Stream Once.
+// Prepares The Complete Opening Frame Of A Typed Input Stream Once.
 pub fn prepare_input_request<O: crate::operations::OperationDeclaration>(
     request: &O::Request, limit: usize,
 ) -> Result<PreparedFrame, tonic::Status> {
     prepare(1, request, limit)
 }
 
-/// Prepares The Complete Item Frame Of A Typed Input Stream Once.
-///
-/// Standalone Preparation Uses The Frame Limit Without Claiming An Aggregate Budget.
-/// Callers With Native Claims Can Encode Through The Admitted Wire Hook And Supply
-/// The Retained Byte Owner Through PreparedFrame::from_owner.
+// Prepares The Complete Item Frame Of A Typed Input Stream Once.
+//
+// Standalone Preparation Uses The Frame Limit Without Claiming An Aggregate Budget.
+// Callers With Native Claims Can Encode Through The Admitted Wire Hook And Supply
+// The Retained Byte Owner Through PreparedFrame::from_owner.
 pub fn prepare_input_item<O: crate::operations::OperationDeclaration>(
     item: &<O::Input as crate::operations::Direction>::Item, limit: usize,
 ) -> Result<PreparedFrame, tonic::Status> {
     prepare(2, item, limit)
 }
 
-/// Finds A Declared Input Item's Bytes Allowance Including Its Native Envelope.
+// Finds A Declared Input Item's Bytes Allowance Including Its Native Envelope.
 pub fn input_payload_limit<O: crate::operations::OperationDeclaration>(
     template: &<O::Input as crate::operations::Direction>::Item, path: &[&str], maximum_payload: usize, frame_limit: usize,
 ) -> Result<usize, MessageError> {
     input_payload_limit_admitted::<O>(template, path, maximum_payload, frame_limit, &mut |_| Ok(()))
 }
 
-/// Uses Existing Caller Admission For A Declared Input Item's Allowance Template.
+// Uses Existing Caller Admission For A Declared Input Item's Allowance Template.
 pub fn input_payload_limit_admitted<O: crate::operations::OperationDeclaration>(
     template: &<O::Input as crate::operations::Direction>::Item, path: &[&str], maximum_payload: usize, frame_limit: usize,
     admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
@@ -192,26 +192,26 @@ pub fn input_payload_limit_admitted<O: crate::operations::OperationDeclaration>(
     harmos_sdk::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(2, frame_limit), admit)
 }
 
-/// Finds An Output Item's Bytes Allowance Including Its Native Envelope.
+// Finds An Output Item's Bytes Allowance Including Its Native Envelope.
 pub fn output_payload_limit<T: Portable>(
     template: &T, path: &[&str], maximum_payload: usize, frame_limit: usize,
 ) -> Result<usize, MessageError> {
     output_payload_limit_admitted(template, path, maximum_payload, frame_limit, &mut |_| Ok(()))
 }
 
-/// Uses Existing Caller Admission For The Small Canonical Allowance Template.
+// Uses Existing Caller Admission For The Small Canonical Allowance Template.
 pub fn output_payload_limit_admitted<T: Portable>(
     template: &T, path: &[&str], maximum_payload: usize, frame_limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
     harmos_sdk::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(1, frame_limit), admit)
 }
 
-/// Counts The Complete Output Item Frame Without Allocating Its Wire Buffer.
+// Counts The Complete Output Item Frame Without Allocating Its Wire Buffer.
 pub fn output_item_len<T: Portable>(item: &T) -> Result<usize, MessageError> {
     output_item_len_admitted(item, &mut |_| Ok(()))
 }
 
-/// Counts A Complete Output Item Using Existing Caller Workspace Admission.
+// Counts A Complete Output Item Using Existing Caller Workspace Admission.
 pub fn output_item_len_admitted<T: Portable>(
     item: &T, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {

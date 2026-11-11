@@ -40,6 +40,16 @@ use crate::Fingerprint;
 
 /* === Public Functions === */
 
+// Derives An Opaque Schema-Only Revision From The Canonical Encoding.
+pub fn revision(schema: &super::graph::Schema) -> Result<u32, Error> {
+    let canonical = canonical(schema.root()?)?;
+    let mut hash = Sha256::new();
+    hash.update(b"harmos.record.v1\0");
+    hash.update(canonical);
+    let digest = hash.finalize();
+    Ok(u32::from_le_bytes(digest[..4].try_into().expect("four digest bytes")).max(1))
+}
+
 pub fn fingerprint(root: View<'_>, codec: &str) -> Result<Fingerprint, Error> {
     let canonical = canonical(root)?;
     let mut hash = Sha256::new();
@@ -112,7 +122,7 @@ pub fn canonical(root: View<'_>) -> Result<Vec<u8>, Error> {
 
     let mut bytes = Vec::new();
     bytes.extend_from_slice(&u32::try_from(order.len()).map_err(|_| Error::Budget)?.to_le_bytes());
-    for index in order {
+    for &index in &order {
         let fields = &schema.definitions[index];
         bytes.extend_from_slice(&u32::try_from(fields.len()).map_err(|_| Error::Budget)?.to_le_bytes());
         for field in fields {
@@ -142,6 +152,25 @@ pub fn canonical(root: View<'_>) -> Result<Vec<u8>, Error> {
             }
         }
     }
+    // Existing Graphs Retain Their Exact Encoding; Wire Forms Use Canonical Graph Indices.
+    if order
+        .iter()
+        .any(|index| schema.representations.get(index).is_some_and(|representation| !representation.is_value(&schema.definitions[*index])))
+    {
+        bytes.extend_from_slice(b"harmos.serde.v1\0");
+        for index in order {
+            let encoded = schema
+                .representations
+                .get(&index)
+                .filter(|representation| !representation.is_value(&schema.definitions[index]))
+                .map(serde_json::to_vec)
+                .transpose()
+                .map_err(|_| Error::Budget)?
+                .unwrap_or_default();
+            bytes.extend_from_slice(&u32::try_from(encoded.len()).map_err(|_| Error::Budget)?.to_le_bytes());
+            bytes.extend_from_slice(&encoded);
+        }
+    }
     Ok(bytes)
 }
 
@@ -154,6 +183,27 @@ mod tests {
     use super::*;
     use crate::Portable;
     use crate::schema::graph::{Field, Schema};
+
+    #[test]
+    fn canonical_record_revision_golden() {
+        let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
+            root: 0,
+            definitions: vec![vec![Field {
+                name: "value".into(),
+                tag: 1,
+                kind: Kind::U64,
+                cardinality: Cardinality::Required,
+            }]],
+        };
+        // Independently Encoded: Definition Count, Field Count, Name, Tag, Kind, Cardinality.
+        let canonical = b"\x01\0\0\0\x01\0\0\0\x05\0\0\0value\x01\0\0\0\x02\0";
+        assert_eq!(super::canonical(schema.root().unwrap()).unwrap(), canonical);
+        assert_eq!(revision(&schema).unwrap(), 2935116089);
+        let mut changed = schema.clone();
+        changed.definitions[0][0].kind = Kind::String;
+        assert_ne!(revision(&changed).unwrap(), revision(&schema).unwrap());
+    }
 
     #[test]
     fn recursive_graph_vector() {
@@ -178,6 +228,7 @@ mod tests {
             cardinality: Cardinality::Optional,
         }];
         let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
             root: 0,
             definitions: vec![first, second],
         };

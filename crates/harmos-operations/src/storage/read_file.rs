@@ -24,8 +24,10 @@ use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::FileSource;
 use harmos_domain::model::storage::{ByteRange, FileBatch, FileCompletion};
 use harmos_domain::operations::ReplaySafety;
+
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::access::GrantAccess;
+
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
@@ -82,17 +84,42 @@ impl MemorySize for ReadFile {
     }
 }
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
 
     // Standard Library Imports
+
     // Third Party Imports
+
     // Local Imports
+    use super::*;
     use crate::storage::IO_TIMEOUT;
     use crate::{Error, Result};
     use harmos_domain::model::storage::files::FileCompletion;
     use harmos_sdk::operations::{Operation, OperationDeclaration};
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl Operation for super::ReadFile {
         type Error = Error;
@@ -129,10 +156,12 @@ mod execution {
             crate::storage::classify(error)
         }
     }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */

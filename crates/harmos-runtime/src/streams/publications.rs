@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
-use super::definition::Windows;
+use super::definition::{Contract, Windows};
 use super::{Demand, Holding, Item, Query, StreamManager, Tier, Wired, window};
 use crate::{Application, state::Position, streams::Definition};
 use harmos_domain::StreamDeclaration;
@@ -77,16 +77,19 @@ pub enum StreamAdmissionError {
     #[error("stream `{0}` is already owned by a live publication lease")]
     Occupied(String),
 
-    #[error("stream `{0}` changes an admitted schema or retention contract without a new version")]
-    Changed(String),
+    #[error("stream `{0}` belongs to another plugin; use a stream id owned by this plugin")]
+    OwnerConflict(String),
 
-    #[error("stream `{0}` collides with a native catalog definition")]
+    #[error("stream `{0}` has a revision hash collision; rename the stream id and report this collision")]
+    Collision(String),
+
+    #[error("stream `{0}` collides with a native catalog definition; choose a different stream id")]
     Native(String),
 
     #[error("a plugin stream window exceeds the 65536 row limit")]
     WindowLimit,
 
-    #[error("stream bindings differ from the admitted plugin inventory")]
+    #[error("stream inventory cannot change during a transport restart; reload the plugin to activate a changed inventory")]
     Inventory,
 
     #[error("the stream facility has stopped")]
@@ -153,9 +156,21 @@ impl<A: Application> StreamManager<A> {
         })
     }
 
+    pub fn current_publication(&self, id: &str) -> Option<PluginStream> {
+        let wired = self.windows.current(id)?;
+        wired.definition.owner()?;
+        Some(PluginStream {
+            wired,
+            tier: self.tier.clone(),
+            closed: Arc::clone(&self.closed),
+            pool: self.windows.publications.clone(),
+            ingest: self.windows.ingest.clone(),
+        })
+    }
+
     pub fn definitions(&self) -> Vec<Definition> {
         let mut definitions: Vec<_> = self.windows.declared().into_iter().map(|wired| wired.definition.clone()).collect();
-        definitions.sort_by(|a, b| (a.id(), a.version()).cmp(&(b.id(), b.version())));
+        definitions.sort_by(|a, b| a.id().cmp(b.id()));
         definitions
     }
 }
@@ -438,8 +453,9 @@ pub(super) fn publication_definitions(
             if !ids.insert(declaration.id.clone()) {
                 return Err(publications::Error::DuplicateStream { id: declaration.id }.into());
             }
-            let definition = Definition::declared::<PublicationRow>(declaration.id, declaration.schema, declaration.window);
-            let definition = definition.presentation(declaration.metadata, declaration.row_metadata).publication(owner, declaration.row);
+            let definition = Definition::declared::<PublicationRow>(declaration.id, declaration.row, declaration.window)
+                .map_err(crate::schema::Error::from)?;
+            let definition = definition.presentation(declaration.metadata, declaration.row_metadata).publication(owner);
             Ok(definition)
         })
         .collect()
@@ -452,21 +468,21 @@ pub(super) fn validate_existing(
         let Some(revisions) = windows.get(definition.id()) else {
             continue;
         };
-        if revisions.values().any(|wired| wired.definition.owner().is_none()) {
+        if revisions.definitions.values().any(|defined| defined.owner.is_none()) {
             return Err(StreamAdmissionError::Native(definition.id().into()));
         }
-        if revisions.values().any(|wired| wired.definition.owner() != definition.owner()) {
-            return Err(StreamAdmissionError::Changed(definition.id().into()));
+        if revisions.definitions.values().any(|defined| defined.owner.as_deref() != definition.owner()) {
+            return Err(StreamAdmissionError::OwnerConflict(definition.id().into()));
         }
-        let Some(wired) = revisions.get(&definition.version()) else {
+        let Some(existing) = revisions.definitions.get(&definition.version()) else {
             continue;
         };
-        if wired.definition.owner() != definition.owner()
-            || wired.definition.schema() != definition.schema()
-            || wired.definition.window() != definition.window()
-        {
-            return Err(StreamAdmissionError::Changed(definition.id().into()));
+        if existing != &Contract::of(definition) {
+            return Err(StreamAdmissionError::Collision(definition.id().into()));
         }
+        let Some(wired) = revisions.wires.get(&definition.version()) else {
+            continue;
+        };
         #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
         if require_unoccupied && wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed()) {
             return Err(StreamAdmissionError::Occupied(definition.id().into()));
@@ -488,3 +504,47 @@ pub(super) fn validate_existing(
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::super::definition::Revisions;
+    use super::*;
+    use harmos_domain::schema::{
+        Cardinality,
+        graph::{Field, Kind, Schema},
+    };
+    use std::collections::HashMap;
+
+    #[test]
+    fn admission_rejects_native_other_owner_and_revision_collision() {
+        let schema = Schema {
+            representations: ::std::collections::BTreeMap::new(),
+            root: 0,
+            definitions: vec![vec![Field {
+                name: "value".into(),
+                tag: 1,
+                kind: Kind::U64,
+                cardinality: Cardinality::Required,
+            }]],
+        };
+        let revision = harmos_domain::streams::revision(&schema, 4).unwrap();
+        let proposed = Definition::declared::<PublicationRow>("samples", schema.clone(), 4).unwrap().publication("owner");
+        let mut revisions = Revisions::default();
+        revisions.definitions.insert(revision, Contract::of(&Definition::declared::<u64>("samples", schema.clone(), 4).unwrap()));
+        let mut windows = HashMap::from([(Arc::from("samples"), revisions)]);
+        assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::Native(_))));
+        windows.get_mut("samples").unwrap().definitions.insert(
+            revision,
+            Contract::of(&Definition::declared::<PublicationRow>("samples", schema.clone(), 4).unwrap().publication("another")),
+        );
+        assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::OwnerConflict(_))));
+        let mut changed = schema;
+        changed.definitions[0][0].kind = Kind::String;
+        windows
+            .get_mut("samples")
+            .unwrap()
+            .definitions
+            .insert(revision, Contract::of(&Definition::declared::<PublicationRow>("samples", changed, 4).unwrap().publication("owner")));
+        assert!(matches!(validate_existing(&windows, &[proposed], false), Err(StreamAdmissionError::Collision(_))));
+    }
+}

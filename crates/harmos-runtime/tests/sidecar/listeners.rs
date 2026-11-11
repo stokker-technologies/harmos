@@ -254,7 +254,7 @@ async fn callback_outcomes_cleanup() {
     assert_eq!(probe.total.load(Ordering::SeqCst), 7);
     assert!(matches!(
         fixture.call::<Observe>(delivered(0)).await,
-        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut))
+        Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))
     ));
     fixture.call::<Observe>(delivered(3)).await.unwrap();
     assert_eq!(probe.active.load(Ordering::SeqCst), 0);

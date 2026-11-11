@@ -9,26 +9,16 @@
 
 /* === Modules === */
 
-pub mod optional {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(value: &Option<Timestamp>, serializer: S) -> Result<S::Ok, S::Error> {
-        value.map(Wire::from).serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>, D::Error> {
-        Option::<Wire>::deserialize(deserializer)?.map(Wire::timestamp).transpose().map_err(serde::de::Error::custom)
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::time::{Duration, SystemTime as Timestamp, UNIX_EPOCH};
+
 // Third Party Imports
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 // Local Imports
 
 /* === Constants === */
@@ -95,6 +85,49 @@ impl Wire {
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+pub mod optional {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use super::*;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    pub fn serialize<S: Serializer>(value: &Option<Timestamp>, serializer: S) -> Result<S::Ok, S::Error> {
+        value.map(Wire::from).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>, D::Error> {
+        Option::<Wire>::deserialize(deserializer)?.map(Wire::timestamp).transpose().map_err(serde::de::Error::custom)
+    }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

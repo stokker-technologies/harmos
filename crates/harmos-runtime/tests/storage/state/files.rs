@@ -78,7 +78,12 @@ async fn checkpoint_survives_reopen() {
     let snapshot = RecoverySnapshot {
         through: at(2),
         required_data,
-        payload: b"checkpoint".to_vec(),
+        payload: harmos_storage::state::SnapshotPayload::from_bytes(
+            b"checkpoint",
+            std::num::NonZeroUsize::new(65536).unwrap(),
+            harmos_domain::state::Position::ORIGIN,
+        )
+        .unwrap(),
     };
     backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot.clone()])).await.unwrap();
     backend.close().await.unwrap();
@@ -195,7 +200,12 @@ async fn limits_bound_records() {
     let snapshot = |bytes: usize| RecoverySnapshot {
         through: at(1),
         required_data: StorageCursor { history: history.clone(), sequence: 0 },
-        payload: vec![9; bytes],
+        payload: harmos_storage::state::SnapshotPayload::from_bytes(
+            &vec![9; bytes],
+            std::num::NonZeroUsize::new(65536).unwrap(),
+            harmos_domain::state::Position::ORIGIN,
+        )
+        .unwrap(),
     };
 
     // Measure The Encoded Records Written For A Payload Of 3k Bytes.
@@ -209,7 +219,8 @@ async fn limits_bound_records() {
     let entry_bytes = std::fs::metadata(&journal).unwrap().len() - header;
     backend.write_snapshot(harmos_storage::StorageBatch::new(vec![snapshot(3000)])).await.unwrap();
     backend.close().await.unwrap();
-    let checkpoint_bytes = std::fs::metadata(measured.path().join("state.json")).unwrap().len();
+    let checkpoint = std::fs::read_to_string(measured.path().join("state.json")).unwrap();
+    let checkpoint_bytes = checkpoint.lines().nth(1).unwrap().len() + 1;
     // Base64 Text Plus Envelope, Far Below The Former Decimal Number Arrays.
     assert!(entry_bytes < 4500 && checkpoint_bytes < 4500);
 
@@ -231,7 +242,7 @@ async fn limits_bound_records() {
     assert_eq!(reopened.open().await.unwrap(), at(1));
     assert_eq!(reopened.read_snapshot(NonZeroUsize::new(checkpoint_bytes as usize).unwrap()).await.unwrap(), Some(snapshot(3000)));
     // A Caller Bound Covers The Snapshot Value, Not The Integrity Envelope.
-    let value_bytes = serde_json::to_vec(&snapshot(3000)).unwrap().len();
+    let value_bytes = checkpoint.lines().nth(1).unwrap().len() + 1;
     assert_eq!(reopened.read_snapshot(NonZeroUsize::new(value_bytes).unwrap()).await.unwrap(), Some(snapshot(3000)));
     reopened.close().await.unwrap();
 }

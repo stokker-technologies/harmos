@@ -415,7 +415,6 @@ fn candidate() -> PluginDefinitions {
                 harmos_runtime::Identifier::new(id).unwrap(),
                 Source::Record {
                     id: "listener.fact".into(),
-                    version: 1,
                     row: harmos_runtime::schema::graph::Schema::from_declaration(
                         <Fact as harmos_runtime::schema::Described>::DEFINITION,
                         &harmos_runtime::config::SchemaSettings::default(),

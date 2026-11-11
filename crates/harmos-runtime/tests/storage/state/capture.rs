@@ -39,13 +39,13 @@ type Refusal = std::convert::Infallible;
 struct Model;
 
 #[harmos_runtime::transaction(id = "capture.advance")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Advance {
     panic: bool,
 }
 
 #[harmos_runtime::record(id = "capture.observed")]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Observed {
     before: u64,
 }
@@ -208,7 +208,17 @@ impl Store {
         .unwrap()
     }
     async fn ready(&self, storage: &StorageManager) {
-        storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+        storage
+            .write_schema(
+                schema(),
+                harmos_runtime::schema::graph::Schema {
+                    representations: Default::default(),
+                    root: 0,
+                    definitions: vec![vec![]],
+                },
+            )
+            .await
+            .unwrap();
         storage.flush().await.unwrap();
     }
 }
@@ -414,7 +424,16 @@ async fn reconciliation_saves_capture() {
                 duplicate: false,
             })
             .reconcile(|_, storage| async move {
-                storage.write_schema(schema(), harmos_runtime::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await?;
+                storage
+                    .write_schema(
+                        schema(),
+                        harmos_runtime::schema::graph::Schema {
+                            representations: Default::default(),
+                            root: 0,
+                            definitions: vec![vec![]],
+                        },
+                    )
+                    .await?;
                 Ok(())
             })
             .service("producer", move |context: harmos_runtime::services::ServiceContext<Model>| {

@@ -10,22 +10,6 @@
 /* === Modules === */
 
 pub(crate) mod codec;
-pub(crate) mod optional_datetime {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(value: &Option<OffsetDateTime>, serializer: S) -> Result<S::Ok, S::Error> {
-        match value {
-            Some(value) => serializer.serialize_some(&datetime_text(*value).map_err(serde::ser::Error::custom)?),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<OffsetDateTime>, D::Error> {
-        Option::<String>::deserialize(deserializer)?
-            .map(|value| OffsetDateTime::parse(&value, &Rfc3339).map(|value| value.to_offset(UtcOffset::UTC)).map_err(D::Error::custom))
-            .transpose()
-    }
-}
 
 /* === Re-Exports === */
 
@@ -35,9 +19,11 @@ pub use codec::VALUE_DEPTH;
 
 // Standard Library Imports
 use std::{collections::BTreeMap, fmt};
+
 // Third Party Imports
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use time::{OffsetDateTime, UtcOffset, format_description::well_known::Rfc3339};
+
 // Local Imports
 use crate::MemorySize;
 
@@ -366,6 +352,54 @@ fn datetime_text(value: OffsetDateTime) -> Result<DatetimeText, time::error::For
 
 fn format_datetime(value: OffsetDateTime) -> Result<String, time::error::Format> {
     value.to_offset(UtcOffset::UTC).format(&Rfc3339)
+}
+
+pub(crate) mod optional_datetime {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use super::*;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    pub fn serialize<S: Serializer>(value: &Option<OffsetDateTime>, serializer: S) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(value) => serializer.serialize_some(&datetime_text(*value).map_err(serde::ser::Error::custom)?),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<OffsetDateTime>, D::Error> {
+        Option::<String>::deserialize(deserializer)?
+            .map(|value| OffsetDateTime::parse(&value, &Rfc3339).map(|value| value.to_offset(UtcOffset::UTC)).map_err(D::Error::custom))
+            .transpose()
+    }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

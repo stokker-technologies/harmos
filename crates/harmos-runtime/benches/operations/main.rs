@@ -157,7 +157,7 @@ async fn cancellation(load: u32) -> Cancellation {
         dispatched.push(stopped.duration_since(requested));
     }
     for instance in instances {
-        assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
+        assert!(matches!(instance.join().await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     }
     Cancellation { stopped: dispatched, settled }
 }

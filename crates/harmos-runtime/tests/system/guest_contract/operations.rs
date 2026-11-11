@@ -388,7 +388,7 @@ async fn cancel_final_response_guest() {
             assert_eq!(result.unwrap().value, "42");
             manager.shutdown(&mut lifecycle).await.unwrap();
         } else {
-            assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+            assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
             super::retire_failed_guest(&mut manager, &mut lifecycle).await;
         }
         drop((manager, lifecycle));

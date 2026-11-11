@@ -346,7 +346,9 @@ async fn queued_deadline_starts() {
     blocker_probe.started.notified().await;
     let queued = runtime.operation(failing::<Queued>(0)).start().await.unwrap();
     tokio::time::advance(Duration::from_millis(100)).await;
-    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(
+        matches!(queued.await, Err(Error::OperationRefused(Refusal::TimedOut { operation, attempt: 1, timeout, configured_by: "operation policy.timeout" })) if operation == Queued::ID && timeout == Duration::from_millis(50))
+    );
     // An Expired Queued Request Never Starts An Attempt.
     assert_eq!(queued_probe.attempts.load(Ordering::SeqCst), 0);
     gate.notify_one();
@@ -360,7 +362,7 @@ async fn attempt_limits_backoff() {
     let (runtime, probe) = bound::<Attempt>().await;
     let submitted = tokio::time::Instant::now();
     let result = runtime.operation(Attempt { behavior: Behavior::Pending }).await;
-    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
@@ -369,7 +371,7 @@ async fn attempt_limits_backoff() {
     let (runtime, probe) = bound::<Retrying>().await;
     let submitted = tokio::time::Instant::now();
     let result = runtime.operation(failing::<Retrying>(100)).await;
-    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
@@ -404,7 +406,7 @@ async fn cancellation_skips_backoff() {
     probe.started.notified().await;
     let cancelled = tokio::time::Instant::now();
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(cancelled.elapsed(), Duration::ZERO);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
@@ -415,14 +417,14 @@ async fn timeouts_require_replay() {
     scripted!(Unknown, 1000, 5, 1, 1, false);
     let (runtime, probe) = bound::<Unknown>().await;
     let result = runtime.operation(Unknown { behavior: Behavior::Pending }).await;
-    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 
     scripted!(Replayable, 1000, 5, 1, 1, true);
     let (runtime, probe) = bound::<Replayable>().await;
     let result = runtime.operation(Replayable { behavior: Behavior::Pending }).await;
-    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut))));
+    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 2);
     assert_eq!(waits(&probe), [6]);
     runtime.shutdown().await.unwrap();
@@ -449,10 +451,10 @@ async fn calls_settle_retry() {
     probe.started.notified().await;
     let second = runtime.operation(failing::<Queued>(0)).start().await.unwrap();
     second.request_cancel();
-    assert!(matches!(second.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(second.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     first.request_cancel();
-    assert!(matches!(first.await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(first.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     // A Cancelled Queued Request Never Starts An Attempt.
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();

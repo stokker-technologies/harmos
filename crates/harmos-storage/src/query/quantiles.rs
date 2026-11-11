@@ -35,7 +35,7 @@ use crate::{BackendFailure, Error, Result};
 
 /* === Structs === */
 
-/// Exact Linear Percentiles With Caller-Budgeted Numeric Storage And Rank Scratch.
+// Exact Linear Percentiles With Caller-Budgeted Numeric Storage And Rank Scratch.
 #[derive(Debug)]
 pub struct Quantiles {
     memory: Vec<u64>,
@@ -59,7 +59,7 @@ struct Rank {
 /* === Implementations === */
 
 impl Quantiles {
-    /// Bounds Numeric Payload Storage, Including The Spill Writer Buffer, In Bytes.
+    // Bounds Numeric Payload Storage, Including The Spill Writer Buffer, In Bytes.
     pub fn new(memory_bytes: usize) -> Self {
         let buffer_capacity = (memory_bytes / 2).min(65536);
         Self {
@@ -106,8 +106,8 @@ impl Quantiles {
         self.file.is_some()
     }
 
-    /// Consumes The Spool, Bounding Rank/Result Maps And Read Buffers By `scratch_bytes`.
-    /// The Caller Check Runs Before Work And At Most Every 1,024 Numeric Inputs.
+    // Consumes The Spool, Bounding Rank/Result Maps And Read Buffers By `scratch_bytes`.
+    // The Caller Check Runs Before Work And At Most Every 1,024 Numeric Inputs.
     pub fn values(mut self, percentiles: &[u8], scratch_bytes: usize, check: &mut impl FnMut() -> Result<()>) -> Result<BTreeMap<u8, f64>> {
         check()?;
         if percentiles.iter().any(|percentile| *percentile > 100) {

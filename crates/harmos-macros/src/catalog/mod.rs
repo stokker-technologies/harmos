@@ -145,7 +145,7 @@ fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], stat
         let variant = &member.name;
         let definition = &member.definition;
 
-        quote!(Self::#variant(_) => <#definition>::DEFINITION,)
+        quote!(Self::#variant(_) => <#definition as #harmos::Identified>::definition(),)
     });
     let encodings = members.iter().map(|member| {
         let variant = &member.name;
@@ -157,7 +157,7 @@ fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], stat
         #visibility fn restore<'de, D>(id: &#harmos::DefinitionId, version: u32, payload: D)
             -> ::core::result::Result<::core::option::Option<Self>, D::Error>
         where D: ::serde::Deserializer<'de> + ::core::marker::Copy {
-            #(if id.as_str() == <#named>::DEFINITION.1 {
+            #(if id.as_str() == <#named>::ID {
                 return Ok(<#named>::restore::<D>(version, payload)?.map(::core::convert::From::from));
             })*
             Ok(None)
@@ -183,9 +183,9 @@ fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], stat
         impl #name {
 
             #visibility fn identify(&self) -> (#harmos::DefinitionId, u32) {
-                let (_, id, version) = match self { #(#identities)* };
+                let (id, version) = match self { #(#identities)* };
 
-                (#harmos::DefinitionId::new(id), version)
+                (id, version)
             }
 
 
@@ -353,13 +353,14 @@ fn inverses(name: &Ident, members: &[Member], state: &Path, harmos: &HarmosPath)
 }
 
 fn registration(name: &Ident, visibility: &syn::Visibility, members: &[Member], state: Option<&Path>, harmos: &HarmosPath) -> TokenStream {
+    let kind = if state.is_some() { Sort::Transaction.kind(harmos) } else { Sort::Record.kind(harmos) };
     let declared = members.iter().map(|member| {
         let definition = &member.definition;
 
         quote! {
             {
-                let (kind, id, version) = <#definition>::DEFINITION;
-                catalogued.push((kind, #harmos::DefinitionId::new(id), version));
+                let (id, version) = <#definition as #harmos::Identified>::definition();
+                catalogued.push((#kind, id, version));
 
             }
         }

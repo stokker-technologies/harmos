@@ -11,10 +11,6 @@
 
 /* === Modules === */
 
-mod embedded {
-    include!(concat!(env!("OUT_DIR"), "/templates.rs"));
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -199,6 +195,42 @@ fn finalize_marker(text: &str) -> String {
     let digest = harmos_packaging::digest(body.as_bytes());
     let closing = if line.trim_end().ends_with("-->") { " -->" } else { "" };
     format!("{}{prefix}; sha256:{digest}{closing}\n{}", &text[..start], &text[end..])
+}
+
+mod embedded {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    include!(concat!(env!("OUT_DIR"), "/templates.rs"));
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

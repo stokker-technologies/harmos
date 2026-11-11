@@ -9,7 +9,11 @@
 
 /* === Modules === */
 
+mod revision;
+
 /* === Re-Exports === */
+
+pub use revision::revision;
 
 /* === Imports === */
 
@@ -79,7 +83,7 @@ pub struct Definition {
     row: TypeId,
     batch: Option<BatchDefinition>,
     owner: Option<Arc<str>>,
-    schema: Option<Arc<crate::schema::graph::Schema>>,
+    schema: Arc<crate::schema::graph::Schema>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -94,9 +98,8 @@ pub struct BatchDefinition {
 
 /* === Traits === */
 
-pub trait StreamRow: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
+pub trait StreamRow: crate::schema::Described + Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
     const ID: &'static str;
-    const VERSION: u32;
     const WINDOW: usize;
     fn metadata() -> crate::Metadata {
         crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)
@@ -153,15 +156,23 @@ impl Definition {
         self.batch
     }
 
-    pub fn publication(mut self, owner: impl Into<Arc<str>>, schema: impl Into<Arc<crate::schema::graph::Schema>>) -> Self {
+    pub fn publication(mut self, owner: impl Into<Arc<str>>) -> Self {
         self.owner = Some(owner.into());
-        self.schema = Some(schema.into());
         self
     }
 
-    pub fn declared<S: 'static>(id: impl Into<Arc<str>>, version: u32, window: usize) -> Self {
+    pub fn native<S: crate::schema::Described>(id: impl Into<Arc<str>>, window: usize) -> Self {
+        let schema = crate::schema::graph::Schema::from_declaration(S::DEFINITION, &crate::config::SchemaSettings::default())
+            .expect("valid native stream schema");
+        Self::declared::<S>(id, schema, window).expect("valid native stream revision")
+    }
+
+    pub fn declared<S: 'static>(
+        id: impl Into<Arc<str>>, schema: crate::schema::graph::Schema, window: usize,
+    ) -> Result<Self, crate::schema::graph::Error> {
+        let version = revision(&schema, window)?;
         let id = id.into();
-        Self {
+        Ok(Self {
             metadata: crate::Metadata::new(crate::Identifier::declared(id.as_ref(), "stream"), id.as_ref(), None),
             row_metadata: Vec::new(),
             id,
@@ -170,8 +181,8 @@ impl Definition {
             row: TypeId::of::<S>(),
             batch: None,
             owner: None,
-            schema: None,
-        }
+            schema: Arc::new(schema),
+        })
     }
 
     pub fn batching(mut self, batch: Option<BatchDefinition>) -> Self {
@@ -201,8 +212,8 @@ impl Definition {
         self.owner.as_deref()
     }
 
-    pub fn schema(&self) -> Option<&crate::schema::graph::Schema> {
-        self.schema.as_deref()
+    pub fn schema(&self) -> &crate::schema::graph::Schema {
+        &self.schema
     }
 
     pub fn version(&self) -> u32 {

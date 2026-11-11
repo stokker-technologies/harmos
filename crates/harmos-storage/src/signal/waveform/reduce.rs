@@ -134,7 +134,7 @@ pub fn decimate(length: usize, count: usize) -> Vec<usize> {
     decimate_indices(length, count).collect()
 }
 
-/// Iterates The Same Uniform Indices As [`decimate`] Without Allocating.
+// Iterates The Same Uniform Indices As [`decimate`] Without Allocating.
 pub fn decimate_indices(length: usize, count: usize) -> impl ExactSizeIterator<Item = usize> + DoubleEndedIterator + Clone {
     if length == 0 || count == 0 {
         return (0..0).step_by(1);
@@ -200,18 +200,23 @@ fn mean_of(x: &[f64], y: &[f64], range: std::ops::Range<usize>) -> Option<(f64, 
 
 /* === Tests === */
 
-#[test]
-fn decimation_indices_preserve_uniform_stride_and_empty_cases() {
-    for (length, count, expected) in
-        [(0, 4, vec![]), (8, 0, vec![]), (1, 1, vec![0]), (5, 8, vec![0, 1, 2, 3, 4]), (8, 3, vec![0, 3, 6]), (9, 3, vec![0, 3, 6])]
-    {
-        let mut indices = decimate_indices(length, count);
-        assert_eq!(indices.len(), expected.len());
-        assert_eq!(indices.clone().collect::<Vec<_>>(), expected);
-        assert_eq!(decimate(length, count), expected);
-        if let Some(last) = expected.last() {
-            assert_eq!(indices.next_back(), Some(*last));
-            assert_eq!(indices.len(), expected.len() - 1);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decimation_indices_preserve_uniform_stride_and_empty_cases() {
+        for (length, count, expected) in
+            [(0, 4, vec![]), (8, 0, vec![]), (1, 1, vec![0]), (5, 8, vec![0, 1, 2, 3, 4]), (8, 3, vec![0, 3, 6]), (9, 3, vec![0, 3, 6])]
+        {
+            let mut indices = decimate_indices(length, count);
+            assert_eq!(indices.len(), expected.len());
+            assert_eq!(indices.clone().collect::<Vec<_>>(), expected);
+            assert_eq!(decimate(length, count), expected);
+            if let Some(last) = expected.last() {
+                assert_eq!(indices.next_back(), Some(*last));
+                assert_eq!(indices.len(), expected.len() - 1);
+            }
         }
     }
 }

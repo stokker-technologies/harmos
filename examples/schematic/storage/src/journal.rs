@@ -9,171 +9,6 @@
 
 /* === Modules === */
 
-mod wire {
-    use std::fs::File;
-    use std::io::{self, BufRead, BufReader, Write};
-    use std::path::Path;
-    use std::time::{Duration, UNIX_EPOCH};
-
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    pub(super) struct Line<P> {
-        pub(super) position: u64,
-        pub(super) kind: Kind,
-        pub(super) id: String,
-        pub(super) version: u32,
-        pub(super) metadata: Stamp,
-        pub(super) payload: P,
-    }
-
-    #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-    pub(super) enum Kind {
-        Transaction,
-        Record,
-    }
-
-    impl Kind {
-        pub(super) fn of(kind: harmos::state::Kind) -> Self {
-            match kind {
-                harmos::state::Kind::Transaction => Self::Transaction,
-                harmos::state::Kind::Record => Self::Record,
-            }
-        }
-
-        pub(super) fn into_kind(self) -> harmos::state::Kind {
-            match self {
-                Self::Transaction => harmos::state::Kind::Transaction,
-                Self::Record => harmos::state::Kind::Record,
-            }
-        }
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    pub(super) struct Stamp {
-        pub(super) principal: Option<String>,
-        pub(super) correlation: u64,
-        pub(super) causation: Option<u64>,
-        pub(super) request: Option<String>,
-        pub(super) link: Option<Link>,
-        pub(super) at_us: i64,
-    }
-
-    #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-    pub(super) enum Link {
-        UndoOf(u64),
-        RedoOf(u64),
-    }
-
-    impl Link {
-        fn of(link: harmos::state::Link) -> Self {
-            match link {
-                harmos::state::Link::UndoOf(position) => Self::UndoOf(position.0),
-                harmos::state::Link::RedoOf(position) => Self::RedoOf(position.0),
-            }
-        }
-
-        fn into_link(self) -> harmos::state::Link {
-            match self {
-                Self::UndoOf(position) => harmos::state::Link::UndoOf(harmos::state::Position(position)),
-                Self::RedoOf(position) => harmos::state::Link::RedoOf(harmos::state::Position(position)),
-            }
-        }
-    }
-
-    impl Stamp {
-        pub(super) fn witnessing(metadata: &harmos::state::Metadata) -> Self {
-            let at_us = match metadata.at.duration_since(UNIX_EPOCH) {
-                Ok(since) => i64::try_from(since.as_micros()).unwrap_or(i64::MAX),
-                Err(before) => i64::try_from(before.duration().as_micros()).map_or(i64::MIN, |micros| -micros),
-            };
-
-            Self {
-                principal: metadata.principal.as_ref().map(|principal| principal.as_str().to_owned()),
-                correlation: metadata.correlation.0.0,
-                causation: metadata.causation.map(|causation| causation.0.0),
-                request: metadata.request.as_ref().map(|request| request.as_str().to_owned()),
-                link: metadata.link.map(Link::of),
-                at_us,
-            }
-        }
-
-        pub(super) fn witnessed(self) -> Result<harmos::state::Metadata, serde_json::Error> {
-            use serde::de::Error;
-
-            let at = if self.at_us >= 0 {
-                UNIX_EPOCH.checked_add(Duration::from_micros(self.at_us.unsigned_abs()))
-            } else {
-                UNIX_EPOCH.checked_sub(Duration::from_micros(self.at_us.unsigned_abs()))
-            }
-            .ok_or_else(|| serde_json::Error::custom("at_us lies outside this platform's clock"))?;
-
-            let mut metadata = harmos::state::Metadata::deserialize(serde_json::json!({
-                "principal": null,
-                "correlation": 0,
-                "causation": null,
-                "request": null,
-                "link": null,
-                "at": { "secs_since_epoch": 0, "nanos_since_epoch": 0 },
-            }))?;
-            metadata.principal = self.principal.map(harmos::state::PrincipalId::new);
-            metadata.correlation = harmos::state::CorrelationId(harmos::state::Position(self.correlation));
-            metadata.causation = self.causation.map(|causation| harmos::state::CausationId(harmos::state::Position(causation)));
-            metadata.request = self.request.map(harmos::state::RequestKey::new);
-            metadata.link = self.link.map(Link::into_link);
-            metadata.at = at;
-
-            Ok(metadata)
-        }
-    }
-
-    #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-    #[serde(deny_unknown_fields)]
-    pub(super) struct Header {
-        pub(super) schema: u32,
-        pub(super) generation: u64,
-        pub(super) origin: u64,
-    }
-
-    impl Header {
-        pub(super) fn read(path: &Path) -> io::Result<Option<Self>> {
-            let Ok(file) = File::open(path) else {
-                return Ok(None);
-            };
-            use std::io::Read;
-            let mut first = Vec::new();
-            BufReader::new(file).take((super::MAX_HEADER_BYTES + 2) as u64).read_until(b'\n', &mut first)?;
-            if first.is_empty() {
-                return Ok(None);
-            }
-            if first.len() > super::MAX_HEADER_BYTES + 1 {
-                return Err(io::Error::other("journal header exceeds byte limit"));
-            }
-            if first.last() == Some(&b'\n') {
-                first.pop();
-            }
-            let first = lf_only(first)?;
-
-            serde_json::from_str(&first).map(Some).map_err(io::Error::other)
-        }
-
-        pub(super) fn write(&self, file: &mut File) -> io::Result<()> {
-            let header = serde_json::to_string(self).map_err(io::Error::other)?;
-
-            writeln!(file, "{header}")
-        }
-    }
-
-    pub(super) fn lf_only(line: Vec<u8>) -> io::Result<String> {
-        if line.last() == Some(&b'\r') {
-            return Err(io::Error::other("the wire is LF-only: a stored line ends with a carriage return"));
-        }
-        String::from_utf8(line).map_err(io::Error::other)
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -185,8 +20,10 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
+
 // Third Party Imports
 use serde::{Deserialize, Deserializer, Serializer};
+
 // Local Imports
 use harmos::{
     Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope, state::Kind, state::Position, state::Recorded,
@@ -904,7 +741,7 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
             Ok(None) => {}
             Err(refusal) => {
                 return Err(Incompatible::unreadable(format!(
-                    "{} version {} at {}: {refusal}",
+                    "{} version {} at {}: {refusal}; choose a fresh storage root",
                     envelope.id, envelope.version, envelope.position
                 )));
             }
@@ -919,16 +756,15 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
     let read = A::decode(envelope.kind, &envelope.id, envelope.version, &envelope.payload);
     let mut payload = match (envelope.kind, read) {
         (_, Ok(Some(payload))) => payload,
-        (Kind::Record, _) => return Ok(None),
-        (Kind::Transaction, Ok(None)) => {
+        (_, Ok(None)) => {
             return Err(Incompatible::unreadable(format!(
-                "{} version {} at {}: this build declares no implementation for it",
+                "{} version {} at {}: this build declares no matching shape; choose a fresh storage root",
                 envelope.id, envelope.version, envelope.position
             )));
         }
-        (Kind::Transaction, Err(refusal)) => {
+        (_, Err(refusal)) => {
             return Err(Incompatible::unreadable(format!(
-                "{} version {} at {}: {refusal}",
+                "{} version {} at {}: {refusal}; choose a fresh storage root",
                 envelope.id, envelope.version, envelope.position
             )));
         }
@@ -943,6 +779,201 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
         metadata: envelope.metadata,
         payload,
     }))
+}
+
+mod wire {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+    use std::fs::File;
+    use std::io::{self, BufRead, BufReader, Write};
+    use std::path::Path;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    // Third Party Imports
+    use serde::{Deserialize, Serialize};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
+    pub(super) struct Line<P> {
+        pub(super) position: u64,
+        pub(super) kind: Kind,
+        pub(super) id: String,
+        pub(super) version: u32,
+        pub(super) metadata: Stamp,
+        pub(super) payload: P,
+    }
+
+    #[derive(Debug, Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
+    pub(super) struct Stamp {
+        pub(super) principal: Option<String>,
+        pub(super) correlation: u64,
+        pub(super) causation: Option<u64>,
+        pub(super) request: Option<String>,
+        pub(super) link: Option<Link>,
+        pub(super) at_us: i64,
+    }
+
+    #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+    #[serde(deny_unknown_fields)]
+    pub(super) struct Header {
+        pub(super) schema: u32,
+        pub(super) generation: u64,
+        pub(super) origin: u64,
+    }
+
+    /* === Enums === */
+
+    #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+    pub(super) enum Kind {
+        Transaction,
+        Record,
+    }
+
+    #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+    pub(super) enum Link {
+        UndoOf(u64),
+        RedoOf(u64),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    impl Kind {
+        pub(super) fn of(kind: harmos::state::Kind) -> Self {
+            match kind {
+                harmos::state::Kind::Transaction => Self::Transaction,
+                harmos::state::Kind::Record => Self::Record,
+            }
+        }
+
+        pub(super) fn into_kind(self) -> harmos::state::Kind {
+            match self {
+                Self::Transaction => harmos::state::Kind::Transaction,
+                Self::Record => harmos::state::Kind::Record,
+            }
+        }
+    }
+
+    impl Link {
+        fn of(link: harmos::state::Link) -> Self {
+            match link {
+                harmos::state::Link::UndoOf(position) => Self::UndoOf(position.0),
+                harmos::state::Link::RedoOf(position) => Self::RedoOf(position.0),
+            }
+        }
+
+        fn into_link(self) -> harmos::state::Link {
+            match self {
+                Self::UndoOf(position) => harmos::state::Link::UndoOf(harmos::state::Position(position)),
+                Self::RedoOf(position) => harmos::state::Link::RedoOf(harmos::state::Position(position)),
+            }
+        }
+    }
+
+    impl Stamp {
+        pub(super) fn witnessing(metadata: &harmos::state::Metadata) -> Self {
+            let at_us = match metadata.at.duration_since(UNIX_EPOCH) {
+                Ok(since) => i64::try_from(since.as_micros()).unwrap_or(i64::MAX),
+                Err(before) => i64::try_from(before.duration().as_micros()).map_or(i64::MIN, |micros| -micros),
+            };
+
+            Self {
+                principal: metadata.principal.as_ref().map(|principal| principal.as_str().to_owned()),
+                correlation: metadata.correlation.0.0,
+                causation: metadata.causation.map(|causation| causation.0.0),
+                request: metadata.request.as_ref().map(|request| request.as_str().to_owned()),
+                link: metadata.link.map(Link::of),
+                at_us,
+            }
+        }
+
+        pub(super) fn witnessed(self) -> Result<harmos::state::Metadata, serde_json::Error> {
+            use serde::de::Error;
+
+            let at = if self.at_us >= 0 {
+                UNIX_EPOCH.checked_add(Duration::from_micros(self.at_us.unsigned_abs()))
+            } else {
+                UNIX_EPOCH.checked_sub(Duration::from_micros(self.at_us.unsigned_abs()))
+            }
+            .ok_or_else(|| serde_json::Error::custom("at_us lies outside this platform's clock"))?;
+
+            let mut metadata = harmos::state::Metadata::deserialize(serde_json::json!({
+                "principal": null,
+                "correlation": 0,
+                "causation": null,
+                "request": null,
+                "link": null,
+                "at": { "secs_since_epoch": 0, "nanos_since_epoch": 0 },
+            }))?;
+            metadata.principal = self.principal.map(harmos::state::PrincipalId::new);
+            metadata.correlation = harmos::state::CorrelationId(harmos::state::Position(self.correlation));
+            metadata.causation = self.causation.map(|causation| harmos::state::CausationId(harmos::state::Position(causation)));
+            metadata.request = self.request.map(harmos::state::RequestKey::new);
+            metadata.link = self.link.map(Link::into_link);
+            metadata.at = at;
+
+            Ok(metadata)
+        }
+    }
+
+    impl Header {
+        pub(super) fn read(path: &Path) -> io::Result<Option<Self>> {
+            let Ok(file) = File::open(path) else {
+                return Ok(None);
+            };
+            use std::io::Read;
+            let mut first = Vec::new();
+            BufReader::new(file).take((super::MAX_HEADER_BYTES + 2) as u64).read_until(b'\n', &mut first)?;
+            if first.is_empty() {
+                return Ok(None);
+            }
+            if first.len() > super::MAX_HEADER_BYTES + 1 {
+                return Err(io::Error::other("journal header exceeds byte limit"));
+            }
+            if first.last() == Some(&b'\n') {
+                first.pop();
+            }
+            let first = lf_only(first)?;
+
+            serde_json::from_str(&first).map(Some).map_err(io::Error::other)
+        }
+
+        pub(super) fn write(&self, file: &mut File) -> io::Result<()> {
+            let header = serde_json::to_string(self).map_err(io::Error::other)?;
+
+            writeln!(file, "{header}")
+        }
+    }
+
+    /* === Public Functions === */
+
+    pub(super) fn lf_only(line: Vec<u8>) -> io::Result<String> {
+        if line.last() == Some(&b'\r') {
+            return Err(io::Error::other("the wire is LF-only: a stored line ends with a carriage return"));
+        }
+        String::from_utf8(line).map_err(io::Error::other)
+    }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

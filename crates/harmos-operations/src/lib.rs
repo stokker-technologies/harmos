@@ -15,17 +15,6 @@ pub mod host;
 pub mod lifecycle;
 pub mod storage;
 pub mod streams;
-pub mod operations {
-    pub use harmos_domain::operations::*;
-    #[cfg(feature = "lifecycle")]
-    pub use harmos_sdk::operations::{Catalog, Executable, OperationCatalog};
-}
-#[doc(hidden)]
-pub mod __private {
-    pub use harmos_domain::__private::*;
-    #[cfg(feature = "lifecycle")]
-    pub use harmos_sdk::__private::RegistrationBatch;
-}
 
 /* === Re-Exports === */
 
@@ -121,4 +110,105 @@ impl harmos_sdk::operations::OperationCatalog for Builtins {
 
 /* === Private Functions === */
 
+pub mod operations {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use harmos_domain::operations::*;
+
+    #[cfg(feature = "lifecycle")]
+    pub use harmos_sdk::operations::{Catalog, Executable, OperationCatalog};
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
+#[doc(hidden)]
+pub mod __private {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use harmos_domain::__private::*;
+
+    #[cfg(feature = "lifecycle")]
+    pub use harmos_sdk::__private::RegistrationBatch;
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn builtin_inventory() {
+        let definitions = crate::Builtins::catalog();
+        let ids: std::collections::BTreeSet<_> = definitions.iter().map(|definition| definition.id.as_str()).collect();
+        assert_eq!(definitions.len(), 30);
+        assert_eq!(ids.len(), definitions.len());
+        let mut dependencies = definitions.into_iter();
+        assert!(dependencies.all(|definition| definition.fingerprint.0 != [0; 32]));
+    }
+
+    #[test]
+    fn reserved_lifecycle_fingerprints() {
+        use crate::lifecycle::{Action, Descriptor, Initialize, POLICY, Shutdown};
+        for (action, definition) in [(Action::Initialize, Initialize::definition()), (Action::Shutdown, Shutdown::definition())] {
+            let descriptor = Descriptor::new(action, POLICY).unwrap();
+            assert_eq!(descriptor.contract().operation(), &definition);
+        }
+    }
+}

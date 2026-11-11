@@ -130,6 +130,7 @@ impl<T: Message> Prepared<T> {
 /* === Public Functions === */
 
 // These Read And Write `T`'s Message Bytes As Its Canonical Postcard Value; Host
+
 // Adapters Whose Message Bytes Are Opaque Payloads Forward Them Instead.
 
 #[tracing::instrument(target = "harmos::grpc", name = "grpc.protobuf.encode", level = "trace", skip_all)]
@@ -144,10 +145,10 @@ pub(crate) fn encode_bounded<T: Message + Described>(value: &T, bytes: &mut Vec<
     })
 }
 
-/// Encodes Once Through Canonical Workspace, Admitting Native Buffer Peaks Before Allocation.
-///
-/// The Callback Owns Admission And Must Retain It Through The Returned Output's Lifetime.
-/// Allocations Inside Handwritten Message Methods Remain The Encoder's Responsibility.
+// Encodes Once Through Canonical Workspace, Admitting Native Buffer Peaks Before Allocation.
+//
+// The Callback Owns Admission And Must Retain It Through The Returned Output's Lifetime.
+// Allocations Inside Handwritten Message Methods Remain The Encoder's Responsibility.
 pub fn encode_admitted<T: Message + Described>(
     value: &T, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<(), EncodeError> {
@@ -155,12 +156,12 @@ pub fn encode_admitted<T: Message + Described>(
     encoding.write(bytes, limit, admit)
 }
 
-/// Counts The Protobuf Projection Without Allocating Its Final Wire Buffer.
+// Counts The Protobuf Projection Without Allocating Its Final Wire Buffer.
 pub fn encoded_len<T: Message + Described>(value: &T) -> Result<usize, MessageError> {
     encoded_len_admitted(value, &mut |_| Ok(()))
 }
 
-/// Counts With The Caller's Existing Admission Until Canonical Workspace Drops.
+// Counts With The Caller's Existing Admission Until Canonical Workspace Drops.
 pub fn encoded_len_admitted<T: Message + Described>(
     value: &T, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
@@ -171,17 +172,17 @@ pub fn encoded_len_admitted<T: Message + Described>(
     Ok(length)
 }
 
-/// Finds The Largest Bytes-Field Payload Fitting A Message, Without Probe Payloads.
-///
-/// The Template Selects The Actual Variant And Metadata. The Named Path Must Select
-/// Exactly One Present Bytes Field Outside Repeated Containers.
+// Finds The Largest Bytes-Field Payload Fitting A Message, Without Probe Payloads.
+//
+// The Template Selects The Actual Variant And Metadata. The Named Path Must Select
+// Exactly One Present Bytes Field Outside Repeated Containers.
 pub fn bytes_field_limit<T: Message + Described>(
     template: &T, path: &[&str], maximum_payload: usize, message_limit: usize,
 ) -> Result<usize, MessageError> {
     bytes_field_limit_admitted(template, path, maximum_payload, message_limit, &mut |_| Ok(()))
 }
 
-/// Uses The Caller's Existing Workspace Admission While Counting A Payload Allowance.
+// Uses The Caller's Existing Workspace Admission While Counting A Payload Allowance.
 pub fn bytes_field_limit_admitted<T: Message + Described>(
     template: &T, path: &[&str], maximum_payload: usize, message_limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {

@@ -349,7 +349,7 @@ fn code(error: &Error) -> tonic::Code {
                 // Authored Application Failures Stay Internal Unless They Carry
                 // An Explicit Status Or A Known Runtime Authority/Lifecycle Denial.
                 return match error {
-                    Error::OperationRefused(Refusal::TimedOut | Refusal::Cancelled)
+                    Error::OperationRefused(Refusal::TimedOut { .. } | Refusal::Cancelled { .. })
                     | Error::Unauthenticated
                     | Error::PermissionDenied
                     | Error::OperationUnauthorized { .. } => leaf_code(error),
@@ -365,8 +365,8 @@ fn code(error: &Error) -> tonic::Code {
 
 fn leaf_code(error: &Error) -> tonic::Code {
     match error {
-        Error::OperationRefused(Refusal::TimedOut) => tonic::Code::DeadlineExceeded,
-        Error::OperationRefused(Refusal::Cancelled) => tonic::Code::Cancelled,
+        Error::OperationRefused(Refusal::TimedOut { .. }) => tonic::Code::DeadlineExceeded,
+        Error::OperationRefused(Refusal::Cancelled { .. }) => tonic::Code::Cancelled,
         Error::OperationRefused(Refusal::Unavailable) | Error::NotReady { .. } | Error::Closing { .. } => tonic::Code::Unavailable,
         Error::ResourceExhausted { .. } => tonic::Code::ResourceExhausted,
         Error::InvalidInput { .. } | Error::OperationPayload { .. } => tonic::Code::InvalidArgument,

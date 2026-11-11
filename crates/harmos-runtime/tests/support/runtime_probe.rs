@@ -24,9 +24,11 @@ use harmos_runtime::{Application, DefinitionId, state::Kind};
 
 /* === Constants === */
 
-pub(crate) const RENAME: (Kind, &str, u32) = (Kind::Transaction, "sheet.rename", 1);
+pub(crate) static RENAME: std::sync::LazyLock<(Kind, &str, u32)> =
+    std::sync::LazyLock::new(|| (Kind::Transaction, "sheet.rename", <Rename as harmos_runtime::Identified>::definition().1));
 
-pub(crate) const EXPORTED: (Kind, &str, u32) = (Kind::Record, "sheet.exported", 1);
+pub(crate) static EXPORTED: std::sync::LazyLock<(Kind, &str, u32)> =
+    std::sync::LazyLock::new(|| (Kind::Record, "sheet.exported", <() as harmos_runtime::Identified>::definition().1));
 
 /* === Macros === */
 
@@ -40,7 +42,7 @@ pub(crate) struct Sheet {
     pub(crate) sealed: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Rename {
     pub(crate) to: String,
 }
@@ -89,6 +91,10 @@ pub(crate) enum Note {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::Identified for Rename {
+    const ID: &'static str = "sheet.rename";
+}
 
 impl Transaction<Sheet> for Rename {
     type Error = Refusal;
@@ -159,14 +165,11 @@ impl harmos_runtime::state::TransactionCatalog<Sheet> for Change {}
 
 impl harmos_runtime::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
-        (
-            harmos_runtime::DefinitionId::new(match self {
-                Self::Rename(_) => "sheet.rename",
-                Self::Seal => "sheet.seal",
-                Self::Explode => "sheet.explode",
-            }),
-            1,
-        )
+        match self {
+            Self::Rename(_) => (DefinitionId::new(RENAME.1), RENAME.2),
+            Self::Seal => (DefinitionId::new("sheet.seal"), <() as harmos_runtime::Identified>::definition().1),
+            Self::Explode => (DefinitionId::new("sheet.explode"), <() as harmos_runtime::Identified>::definition().1),
+        }
     }
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
@@ -179,7 +182,7 @@ impl harmos_runtime::state::CatalogCodec for Change {
 
 impl harmos_runtime::state::CatalogCodec for Note {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
-        (harmos_runtime::DefinitionId::new("sheet.exported"), 1)
+        (DefinitionId::new(EXPORTED.1), EXPORTED.2)
     }
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_unit()
@@ -188,7 +191,7 @@ impl harmos_runtime::state::CatalogCodec for Note {
 
 impl harmos_runtime::state::RecordCatalog for Note {
     fn restore(id: &harmos_runtime::DefinitionId, version: u32, _payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        if id.as_str() != "sheet.exported" || version != 1 {
+        if id.as_str() != "sheet.exported" || version != EXPORTED.2 {
             return Ok(None);
         }
         Ok(Some(Self::Exported))

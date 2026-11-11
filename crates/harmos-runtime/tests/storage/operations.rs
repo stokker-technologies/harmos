@@ -9,20 +9,20 @@
 
 /* === Modules === */
 
-#[path = "operations/deletion.rs"]
+#[path = "operation_deletion.rs"]
 mod deletion;
-#[path = "operations/files.rs"]
+#[path = "operation_files.rs"]
 mod files;
-#[path = "operations/objects.rs"]
+#[path = "operation_objects.rs"]
 mod objects;
 #[cfg(feature = "plugin")]
-#[path = "operations/plugins.rs"]
+#[path = "operation_plugins.rs"]
 mod plugins;
-#[path = "operations/queries.rs"]
+#[path = "operation_queries.rs"]
 mod queries;
-#[path = "operations/schemas.rs"]
+#[path = "operation_schemas.rs"]
 mod schemas;
-#[path = "operations/writes.rs"]
+#[path = "operation_writes.rs"]
 mod writes;
 
 /* === Re-Exports === */

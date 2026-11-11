@@ -135,7 +135,7 @@ async fn cancel_final_response_in_process() {
             let Error::OperationFailed { source, .. } = result.unwrap_err() else { panic!("expected the operation's failure") };
             assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::Other);
         } else {
-            assert!(matches!(result, Err(Error::OperationRefused(Refusal::Cancelled))));
+            assert!(matches!(result, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
         }
         assert!(status.borrow().phase().is_terminal());
         assert_eq!(probe.dropped.load(Ordering::SeqCst), mode as usize + 1);

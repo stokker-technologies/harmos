@@ -51,9 +51,9 @@ async fn publications_survive_unload() {
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("publications").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let stream = runtime.streams.current_publication("progress").unwrap();
     assert_eq!(stream.definition().owner(), Some("sandbox_guest"));
-    assert_eq!(stream.definition().schema().unwrap().root().unwrap().fields()[0].name, "said");
+    assert_eq!(stream.definition().schema().root().unwrap().fields()[0].name, "said");
     runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "publish:route".into() }).await.unwrap();
     manager.shutdown(&mut lifecycle).await.unwrap();
     assert_eq!(values(&stream).await, ["initialize", "route"], "shutdown cannot admit another publication after the fence");
@@ -74,7 +74,7 @@ async fn replacement_preserves_owner() {
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let stream = runtime.streams.current_publication("progress").unwrap();
     let candidate = lifecycle.candidate("replacement").await;
     let plan = manager.plan_reload(candidate).unwrap();
     runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "publish:original".into() }).await.unwrap();
@@ -95,11 +95,11 @@ async fn initialization_aborts_staging() {
     let mut manager = Manager::new(lifecycle.candidate("failed-publications").await).unwrap();
     assert!(manager.initialize(&mut lifecycle).await.is_err());
     manager.shutdown(&mut lifecycle).await.unwrap();
-    if let Some(stream) = runtime.streams.publication("progress", 1) {
+    if let Some(stream) = runtime.streams.current_publication("progress") {
         assert!(values(&stream).await.is_empty(), "an aborted activation cannot expose its staged row");
     }
     manager.reload(lifecycle.candidate("idle").await, &mut lifecycle).await.unwrap();
-    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let stream = runtime.streams.current_publication("progress").unwrap();
     runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "publish:replacement".into() }).await.unwrap();
     assert_eq!(values(&stream).await, ["replacement"]);
     manager.shutdown(&mut lifecycle).await.unwrap();
@@ -114,7 +114,7 @@ async fn bounded_window_gaps() {
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let stream = runtime.streams.current_publication("progress").unwrap();
     let mut rows = stream.watch();
     runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "publish-many".into() }).await.unwrap();
     let gap = std::future::poll_fn(|cx| Pin::new(&mut rows).poll_next(cx)).await;
@@ -138,7 +138,7 @@ async fn saved_context_generation() {
     let mut lifecycle = Lifecycle::sandbox(&runtime).await;
     let mut manager = Manager::new(lifecycle.candidate("idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
-    let stream = runtime.streams.publication("progress", 1).unwrap();
+    let stream = runtime.streams.current_publication("progress").unwrap();
     let published =
         runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "saved-publish:original".into() }).await.unwrap();
     assert_eq!(published.said, "published original");

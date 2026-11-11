@@ -33,6 +33,8 @@ use harmos_domain::model::storage::files::FileEvent;
 
 /* === Type Aliases === */
 
+pub type FileReadEvent = ReadBatch<FileEvent>;
+
 /* === Structs === */
 
 #[derive(Clone)]
@@ -45,8 +47,6 @@ pub struct FileReadSlice {
     owner: FileReadBatch,
     range: Range<usize>,
 }
-
-pub type FileReadEvent = ReadBatch<FileEvent>;
 
 /* === Enums === */
 
@@ -79,8 +79,8 @@ impl FileReadBatch {
         Self { owner: ReadBatch::new(batch) }
     }
 
-    /// Moves a unique file batch through a fallible projection.
-    /// Shared batches or slices refuse, as with `ReadBatch::try_map`.
+    // Moves a unique file batch through a fallible projection.
+    // Shared batches or slices refuse, as with `ReadBatch::try_map`.
     #[tracing::instrument(name = "storage.file_batch.try_map", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn try_map<U, E>(self, map: impl FnOnce(FileBatch) -> std::result::Result<U, E>) -> std::result::Result<ReadBatch<U>, E>
     where

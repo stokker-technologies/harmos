@@ -17,6 +17,9 @@ mod journal;
 
 /* === Re-Exports === */
 
+#[cfg(feature = "testing")]
+pub use journal::testing::Journal;
+
 /* === Imports === */
 
 // Standard Library Imports

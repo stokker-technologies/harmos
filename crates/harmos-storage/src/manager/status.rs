@@ -35,11 +35,11 @@ use super::*;
 /* === Implementations === */
 
 impl<C> StorageManager<C> {
-    /// Waits passively for a strictly newer durable primary frontier.
-    ///
-    /// Intermediate frontiers may coalesce. This does not request persistence or
-    /// retry failed work. Cancellation only removes the notification waiter.
-    /// A newer saved cursor is returned before checking terminal storage state.
+    // Waits passively for a strictly newer durable primary frontier.
+    //
+    // Intermediate frontiers may coalesce. This does not request persistence or
+    // retry failed work. Cancellation only removes the notification waiter.
+    // A newer saved cursor is returned before checking terminal storage state.
     #[tracing::instrument(name = "storage.manager.status.wait_saved_after", level = "debug", skip_all, fields(after = cursor.sequence, saved = tracing::field::Empty, outcome = "cancelled"))]
     pub async fn wait_saved_after(&self, cursor: &StorageCursor) -> Result<StorageCursor> {
         let result = async {

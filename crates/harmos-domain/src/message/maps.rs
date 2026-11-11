@@ -103,7 +103,7 @@ impl<K: Key, V: Described> Described for Entry<K, V> {
             name: Cow::Borrowed("value"),
             tag: 2,
             kind: V::FIELD_KIND,
-            cardinality: Cardinality::Required,
+            cardinality: V::FIELD_CARDINALITY,
         },
     ];
     const MARKER: &'static [u8] = crate::schema::declaration::encode_buffer::<2048>(Self::NAME, Self::FIELDS)

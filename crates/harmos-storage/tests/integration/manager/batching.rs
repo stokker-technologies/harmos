@@ -399,7 +399,17 @@ async fn split_collectors_coalesce() {
 #[tokio::test(start_paused = true)]
 async fn typed_prefix_survives() {
     let f = Fixture::new(config()).await;
-    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage
+        .write_schema(
+            schema(),
+            harmos_storage::schema::graph::Schema {
+                representations: Default::default(),
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
     write(&f.storage, "one").await;
     write(&f.storage, "two").await;
     for sequence in 1..=2 {
@@ -412,7 +422,17 @@ async fn typed_prefix_survives() {
             .await
             .unwrap();
     }
-    f.storage.write_schema(schema(), harmos_storage::schema::graph::Schema { root: 0, definitions: vec![vec![]] }).await.unwrap();
+    f.storage
+        .write_schema(
+            schema(),
+            harmos_storage::schema::graph::Schema {
+                representations: Default::default(),
+                root: 0,
+                definitions: vec![vec![]],
+            },
+        )
+        .await
+        .unwrap();
     write(&f.storage, "three").await;
     write(&f.storage, "four").await;
     f.storage.write_recovery(vec![b"first".to_vec()]).await.unwrap();
@@ -644,7 +664,12 @@ async fn progress_preserves_cursor() {
     let snapshot = harmos_storage::state::RecoverySnapshot {
         required_data: f.storage.cursor_saved(),
         through: f.storage.status().recovery_accepted,
-        payload: vec![7],
+        payload: harmos_storage::state::SnapshotPayload::from_bytes(
+            &[7],
+            std::num::NonZeroUsize::new(65536).unwrap(),
+            harmos_domain::state::Position::ORIGIN,
+        )
+        .unwrap(),
     };
     f.storage.write_snapshot(snapshot.clone()).await.unwrap();
     write(&f.storage, "after").await;
@@ -718,7 +743,11 @@ async fn schema_decoding_bounded() {
             cardinality: Cardinality::Required,
         })
         .collect();
-    let graph = Arc::new(harmos_storage::schema::graph::Schema { root: 0, definitions: vec![fields] });
+    let graph = Arc::new(harmos_storage::schema::graph::Schema {
+        representations: Default::default(),
+        root: 0,
+        definitions: vec![fields],
+    });
     let mut policy = config();
     policy.request.max_pending_write_bytes = NonZeroUsize::new(16 * 1024).unwrap();
     let f = Fixture::new(policy.clone()).await;
@@ -789,7 +818,12 @@ async fn raw_reads_retained() {
         .write_snapshot(harmos_storage::state::RecoverySnapshot {
             required_data: f.storage.cursor_saved(),
             through,
-            payload: vec![8; 256],
+            payload: harmos_storage::state::SnapshotPayload::from_bytes(
+                &vec![8; 256],
+                std::num::NonZeroUsize::new(65536).unwrap(),
+                harmos_domain::state::Position::ORIGIN,
+            )
+            .unwrap(),
         })
         .await
         .unwrap();
@@ -827,7 +861,16 @@ async fn snapshot_payload_limit_survives_reopen() {
         super::fixture::start(&storage).await;
 
         let mut permit = storage.reserve_snapshot(maximum.get()).await.unwrap();
-        let error = permit.snapshot_payload(vec![7; maximum.get() + 1]).unwrap_err();
+        let error = permit
+            .snapshot_payload(
+                harmos_storage::state::SnapshotPayload::from_bytes(
+                    &vec![7; maximum.get() + 1],
+                    NonZeroUsize::new(maximum.get() + 1).unwrap(),
+                    Position::ORIGIN,
+                )
+                .unwrap(),
+            )
+            .unwrap_err();
         assert!(matches!(
             error,
             harmos_storage::Error::InvalidInput {
@@ -839,13 +882,13 @@ async fn snapshot_payload_limit_survives_reopen() {
         assert_eq!(storage.status().pending_bytes, 0);
         assert!(storage.read_snapshot(NonZeroUsize::new(8192).unwrap()).await.unwrap().is_none());
 
-        let payload = vec![7; length];
+        let payload = harmos_storage::state::SnapshotPayload::from_bytes(&vec![7; length], maximum, Position::ORIGIN).unwrap();
         let mut permit = storage.reserve_snapshot(maximum.get()).await.unwrap();
         permit.snapshot_payload(payload.clone()).unwrap();
         permit.commit(Position::ORIGIN);
         storage.flush_recovery().await.unwrap();
         let written = storage.read_snapshot(NonZeroUsize::new(8192).unwrap()).await.unwrap().unwrap();
-        assert!(serde_json::to_vec(&*written).unwrap().len() > maximum.get());
+        assert_eq!(written.payload, payload);
         drop(written);
         storage.close().await.unwrap();
 
@@ -870,7 +913,12 @@ async fn snapshot_recovery_enforces_payload_limit() {
         .write_snapshot(harmos_storage::state::RecoverySnapshot {
             required_data: f.storage.cursor_saved(),
             through: f.storage.status().recovery_saved,
-            payload: vec![7; maximum.get() + 1],
+            payload: harmos_storage::state::SnapshotPayload::from_bytes(
+                &vec![7; maximum.get() + 1],
+                std::num::NonZeroUsize::new(65536).unwrap(),
+                harmos_domain::state::Position::ORIGIN,
+            )
+            .unwrap(),
         })
         .await
         .unwrap();
@@ -916,7 +964,13 @@ async fn recovery_owner_retained() {
 
     let mut payload = Vec::with_capacity(2048);
     payload.extend_from_slice(b"snapshot");
-    let pointer = payload.as_ptr() as usize;
+    let payload = harmos_storage::state::SnapshotPayload::from_bytes(
+        &payload,
+        NonZeroUsize::new(2048).unwrap(),
+        harmos_domain::state::Position::ORIGIN,
+    )
+    .unwrap();
+    let expected = payload.clone();
     f.recovery.control.retain_snapshot.store(true, Ordering::SeqCst);
     let snapshot = harmos_storage::state::RecoverySnapshot {
         required_data: f.storage.cursor_saved(),
@@ -926,7 +980,8 @@ async fn recovery_owner_retained() {
     f.storage.write_snapshot(snapshot).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
     let detached = f.recovery.control.retained_snapshot.lock().unwrap().take().unwrap();
-    assert_eq!(detached.as_slice()[0].payload.as_ptr() as usize, pointer);
+    assert_eq!(detached.as_slice()[0].payload, expected);
+    detached.as_slice()[0].payload.verify(2048).unwrap();
     drop(detached);
     assert_eq!(f.storage.status().pending_bytes, 0);
     f.finish().await;

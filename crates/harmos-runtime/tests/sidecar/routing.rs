@@ -765,7 +765,7 @@ impl PluginLifecycle for Host {
             && let Some(start) = &self.publication_start
         {
             assert!(self.notices.values.lock().unwrap().is_empty());
-            assert!(self.streams.publication("meter.pulse", 1).is_none());
+            assert!(self.streams.current_publication("meter.pulse").is_none());
             assert!(self.streams.query::<support::Pulse>(..).await.unwrap().next().is_none());
             match start {
                 PublicationStart::Commit => {}

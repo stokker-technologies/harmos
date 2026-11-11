@@ -45,6 +45,25 @@ use identity::Sort;
 
 /* === Public Functions === */
 
+#[proc_macro_derive(Described, attributes(harmos_path, serde))]
+pub fn described(item: TokenStream) -> TokenStream {
+    let result = (|| {
+        let item: syn::Item = syn::parse(item)?;
+        let attributes = match &item {
+            syn::Item::Struct(item) => &item.attrs,
+            syn::Item::Enum(item) => &item.attrs,
+            _ => unreachable!(),
+        };
+        let explicit = attributes
+            .iter()
+            .find(|attribute| attribute.path().is_ident("harmos_path"))
+            .map(|attribute| attribute.parse_args::<syn::Path>())
+            .transpose()?;
+        message::shape(&item, &path::HarmosPath::resolve(explicit))
+    })();
+    result.unwrap_or_else(|error: syn::Error| error.to_compile_error()).into()
+}
+
 #[proc_macro_attribute]
 pub fn catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
     catalog::typed::declare(attribute.into(), item.into()).into()

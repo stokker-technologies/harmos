@@ -58,4 +58,36 @@ fn contract_scenario() {
     }
 }
 
+#[test]
+fn incompatible_records_refuse_without_rewriting_root() {
+    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+        use super::support::{Bank, Ledger, Noted, booted};
+        use harmos::Identified;
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("journal.jsonl");
+        let runtime = booted(Ledger::default(), |setup| {
+            setup.settings().recover(Jsonl::<Bank>::open(&path).unwrap());
+        })
+        .await;
+        runtime.records.publish(Noted("saved".into())).await.unwrap();
+        runtime.shutdown().await.unwrap();
+        let original = std::fs::read_to_string(&path).unwrap();
+        let revision = Noted::definition().1;
+        let changed = revision.wrapping_add(1).max(1);
+        for incompatible in [
+            original.replace("ledger.noted", "ledger.removed"),
+            original.replace(&format!("\"version\":{revision}"), &format!("\"version\":{changed}")),
+        ] {
+            std::fs::write(&path, &incompatible).unwrap();
+            let mut journal = Jsonl::<Bank>::open(&path).unwrap();
+            assert!(journal.load().await.is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), incompatible);
+        }
+        std::fs::write(&path, &original).unwrap();
+        let mut journal = Jsonl::<Bank>::open(&path).unwrap();
+        assert_eq!(journal.load().await.unwrap().entries.len(), 1);
+    });
+}
+
 /* === Tests === */
