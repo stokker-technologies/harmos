@@ -5,6 +5,7 @@ using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Harmos.Sdk;
 using Harmos.V1;
+using Graph = Harmos.Conformance.V1.Graph;
 using Value = Harmos.Conformance.V1.Value;
 using Plugin = Harmos.Sdk.Plugin;
 
@@ -23,11 +24,34 @@ internal sealed class ConformancePlugin
       .Operation(new Operation<Value, Value>("conformance.cancel", Visibility.Public), Cancel)
       .Operation(new Operation<Value, Value>("conformance.failure", Visibility.Public), Failure)
       .Operation(new Operation<Value, Value>("conformance.child_failure", Visibility.Public), ChildFailure)
+      .Operation(new Operation<Value, Value>("conformance.policy", Visibility.Public), Policy)
+      .Operation(new Operation<Graph, Graph.Types.Nested>("conformance.schema", Visibility.Public),
+          (context, request) => Task.FromResult(new Graph.Types.Nested { Count = request.Items.Count, Next = request }))
+      .Operation(new Operation<Graph.Types.Nested, Graph>("conformance.nested", Visibility.Public),
+          (context, request) => Task.FromResult(request.Next ?? new Graph()))
+      .Operation(new Operation<Graph, Value>("conformance.projected", Visibility.Public),
+          (context, request) => Task.FromResult(request.Tail?.Value ?? new Value()))
+      .Operation(new Operation<Value, Value>("conformance.clock", Visibility.Public), ClockCall)
       .Requires(hostEcho)
       .Requires(hostPending)
       .Requires(hostFail)
+      .Requires(new Operation<Graph, Value>("conformance.host.schema", Visibility.Public))
+      .Requires(Clock.Sleep)
+      .Requires(Clock.Now)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
-      .Stream<Value>("conformance.device", Device);
+      .Stream<Value>("conformance.device", Device)
+      .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "harmos.conformance.v1.Graph.interval")
+      .Section(new Graph { Interval = new Duration { Seconds = 2 } });
+
+  private async Task<Value> ClockCall(Context context, Value request)
+  {
+    var before = await context.NowAsync();
+    await context.SleepAsync(new Duration { Seconds = 3600 });
+    var after = await context.NowAsync();
+    var bytes = new byte[sizeof(long)];
+    BinaryPrimitives.WriteInt64LittleEndian(bytes, after.Seconds - before.Seconds);
+    return new Value { Value_ = ByteString.CopyFrom(bytes) };
+  }
 
   private Task<Value> Echo(Context context, Value request) => Task.FromResult(request);
 
@@ -38,6 +62,12 @@ internal sealed class ConformancePlugin
     var replies = await Task.WhenAll(first, second);
     var bytes = replies.SelectMany(reply => reply.Value_).ToArray();
     return new Value { Value_ = ByteString.CopyFrom(bytes) };
+  }
+
+  private async Task<Value> Policy(Context context, Value request)
+  {
+    var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Attempts = 3 });
+    return await context.CallAsync(hostEcho, first);
   }
 
   private Task<Value> Cancel(Context context, Value request) => context.CallAsync(hostPending, request);

@@ -38,7 +38,7 @@ class ManagedPlugin(unittest.TestCase):
         rows = [
             line for line in result.stdout.splitlines() if line.endswith("| PASS |")
         ]
-        self.assertEqual(len(rows), 16, result.stdout)
+        self.assertEqual(len(rows), 19, result.stdout)
 
 
 # === Public Functions === #

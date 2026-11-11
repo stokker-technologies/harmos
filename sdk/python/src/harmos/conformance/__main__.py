@@ -13,13 +13,14 @@
 # Standard Library Imports
 import argparse
 import asyncio
+import sys
 
 # Third Party Imports
 from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
-from harmos import Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
-from harmos.conformance.v1.fixture_pb2 import Value
+from harmos import NOW, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
+from harmos.conformance.v1.fixture_pb2 import Graph, Value
 from harmos.v1 import plugin_pb2 as wire
 
 # Type Checking Imports
@@ -31,6 +32,7 @@ from harmos.v1 import plugin_pb2 as wire
 HOST_ECHO = Operation("conformance.host.echo", Value, Value)
 HOST_PENDING = Operation("conformance.host.pending", Value, Value)
 HOST_FAIL = Operation("conformance.host.fail", Value, Value)
+HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value)
 
 # === Types === #
 
@@ -82,6 +84,30 @@ class Fixture:
     async def child_failure(self, ctx: Context, request: Value) -> Value:
         return await ctx.operation(HOST_FAIL, request)
 
+    @operation("conformance.policy", request=Value, response=Value)
+    async def policy(self, ctx: Context, request: Value) -> Value:
+        first = await ctx.operation(HOST_ECHO, request, policy=wire.OperationPolicy(attempts=3))
+        return await ctx.operation(HOST_ECHO, first)
+
+    @operation("conformance.schema", request=Graph, response=Graph.Nested)
+    async def schema(self, ctx: Context, request: Graph) -> Graph.Nested:
+        return Graph.Nested(count=len(request.items), next=request)
+
+    @operation("conformance.nested", request=Graph.Nested, response=Graph)
+    async def nested(self, ctx: Context, request: Graph.Nested) -> Graph:
+        return request.next
+
+    @operation("conformance.projected", request=Graph, response=Value)
+    async def projected(self, ctx: Context, request: Graph) -> Value:
+        return request.tail.value
+
+    @operation("conformance.clock", request=Value, response=Value)
+    async def clock(self, ctx: Context, request: Value) -> Value:
+        before = await ctx.now()
+        await ctx.sleep(Duration(seconds=3600))
+        after = await ctx.now()
+        return Value(value=(after.seconds - before.seconds).to_bytes(8, "little", signed=True))
+
     @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
     async def ticks(self, ctx: Context) -> Value:
         return Value(value=ctx.sequence.to_bytes(8, "little"))
@@ -91,12 +117,28 @@ class Fixture:
         await publisher.publish(Value(value=b"device"))
         await ctx.cancelled()
 
+    @observer("conformance.settings", row=Value, interval=Duration(seconds=1), interval_setting="harmos.conformance.v1.Graph.interval")
+    async def settings(self, ctx: Context) -> Value:
+        return Value(value=ctx.sequence.to_bytes(8, "little"))
+
+
+class ClockFixture:
+    """Reuse the Clock Journey Without External Device Demand."""
+
+    clock = Fixture.clock
+
 
 # === Public Functions === #
 
 
 def plugin() -> Plugin:
-    return Plugin(Fixture(), id="conformance", version="1.0.0", requires=[HOST_ECHO, HOST_PENDING, HOST_FAIL])
+    return Plugin(
+        Fixture(),
+        id="conformance",
+        version="1.0.0",
+        requires=[HOST_ECHO, HOST_PENDING, HOST_FAIL, HOST_SCHEMA, SLEEP, NOW],
+        sections=[Graph(interval=Duration(seconds=2))],
+    )
 
 
 # === Private Functions === #
@@ -105,11 +147,17 @@ def plugin() -> Plugin:
 async def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
+    parser.add_argument("--clock-only", action="store_true", help="Serve Only the Host Clock Journey")
+    parser.add_argument("--shutdown-on-stdin", action="store_true", help="Close When the Process Owner Closes Standard Input")
     options = parser.parse_args()
-    endpoint = await plugin().start(options.address)
+    selected = Plugin(ClockFixture(), id="conformance", version="1.0.0", requires=[SLEEP, NOW]) if options.clock_only else plugin()
+    endpoint = await selected.start(options.address)
     print(f"harmos listening {endpoint.address}", flush=True)
     try:
-        await endpoint.server.wait_for_termination()
+        if options.shutdown_on_stdin:
+            await asyncio.to_thread(sys.stdin.buffer.read)
+        else:
+            await endpoint.server.wait_for_termination()
     finally:
         await endpoint.close()
 

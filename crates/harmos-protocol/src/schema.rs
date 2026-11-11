@@ -125,6 +125,7 @@ pub fn message_types(types: &FileDescriptorSet, root: &str) -> Result<FileDescri
         file.message_type.sort_by(|left, right| left.name.cmp(&right.name));
         file.enum_type.sort_by(|left, right| left.name.cmp(&right.name));
         file.source_code_info = None;
+        file.options = None;
         file.service.clear();
         file.extension.clear();
         file.public_dependency.clear();

@@ -23,11 +23,29 @@ use prost::Message;
 use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
 
 // Local Imports
+use crate::schema_fixture;
 use harmos_protocol::v1::*;
 
 /* === Constants === */
 
-pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure"];
+pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure", "policy"];
+pub const CLOCK_FINGERPRINTS: [(&str, [u8; 32]); 2] = [
+    (
+        "harmos.clock.sleep",
+        [
+            225, 132, 164, 249, 80, 106, 186, 165, 169, 217, 165, 220, 137, 211, 126, 66, 239, 172, 93, 254, 210, 30, 29, 19, 96, 55, 253,
+            247, 27, 7, 156, 171,
+        ],
+    ),
+    (
+        "harmos.clock.now",
+        [
+            205, 13, 190, 24, 110, 229, 160, 96, 250, 199, 77, 136, 248, 239, 51, 52, 68, 167, 137, 155, 87, 218, 83, 236, 177, 253, 20,
+            211, 201, 42, 188, 129,
+        ],
+    ),
+];
+
 pub const ROW: &str = "harmos.conformance.v1.Value";
 
 /* === Macros === */
@@ -81,11 +99,14 @@ pub fn types() -> FileDescriptorSet {
 }
 
 pub fn fingerprint(id: &str) -> Vec<u8> {
+    if let Some((_, fingerprint)) = CLOCK_FINGERPRINTS.iter().find(|(operation, _)| *operation == id) {
+        return fingerprint.to_vec();
+    }
     harmos_protocol::schema::fingerprint(id, &types(), ROW, ROW).expect("the fixed fixture descriptor resolves Value")
 }
 
 pub fn catalog() -> Catalog {
-    let operations = OPERATIONS
+    let mut operations: Vec<_> = OPERATIONS
         .iter()
         .map(|name| {
             let id = format!("conformance.{name}");
@@ -99,14 +120,14 @@ pub fn catalog() -> Catalog {
             }
         })
         .collect();
-    let requires = ["conformance.host.echo", "conformance.host.pending", "conformance.host.fail"]
+    let mut requires: Vec<_> = ["conformance.host.echo", "conformance.host.pending", "conformance.host.fail"]
         .into_iter()
         .map(|id| Requirement {
             id: id.into(),
             fingerprint: fingerprint(id),
         })
         .collect();
-    let streams = ["ticks", "device"]
+    let mut streams: Vec<_> = ["ticks", "device"]
         .into_iter()
         .map(|name| StreamDeclaration {
             id: format!("conformance.{name}"),
@@ -115,11 +136,71 @@ pub fn catalog() -> Catalog {
             ..Default::default()
         })
         .collect();
+    for (id, request, response) in [
+        ("conformance.schema", "harmos.conformance.v1.Graph", "harmos.conformance.v1.Graph.Nested"),
+        ("conformance.nested", "harmos.conformance.v1.Graph.Nested", "harmos.conformance.v1.Graph"),
+        ("conformance.projected", "harmos.conformance.v1.Graph", ROW),
+    ] {
+        operations.push(OperationContract {
+            id: id.into(),
+            request: request.into(),
+            response: response.into(),
+            visibility: Visibility::Public as i32,
+            fingerprint: harmos_protocol::schema::fingerprint(id, &schema_fixture::types(), request, response)
+                .expect("fixture schema resolves"),
+            ..Default::default()
+        });
+    }
+    streams.push(StreamDeclaration {
+        id: "conformance.settings".into(),
+        row: ROW.into(),
+        interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+        interval_setting: "harmos.conformance.v1.Graph.interval".into(),
+        ..Default::default()
+    });
+    requires.push(Requirement {
+        id: "conformance.host.schema".into(),
+        fingerprint: harmos_protocol::schema::fingerprint(
+            "conformance.host.schema",
+            &schema_fixture::types(),
+            "harmos.conformance.v1.Graph",
+            ROW,
+        )
+        .expect("fixture requirement resolves"),
+    });
+    operations.push(OperationContract {
+        id: "conformance.clock".into(),
+        request: ROW.into(),
+        response: ROW.into(),
+        visibility: Visibility::Public as i32,
+        fingerprint: fingerprint("conformance.clock"),
+        ..Default::default()
+    });
+    for (id, fingerprint) in CLOCK_FINGERPRINTS {
+        requires.push(Requirement {
+            id: id.into(),
+            fingerprint: fingerprint.to_vec(),
+        });
+    }
+    let mut types = schema_fixture::types();
+    for file in harmos_protocol::clock::catalog_types().file {
+        if !types.file.iter().any(|existing| existing.name == file.name) {
+            types.file.push(file);
+        }
+    }
     let mut catalog = Catalog {
         operations,
         requires,
         streams,
-        types: Some(types()),
+        types: Some(types),
+        sections: vec![Section {
+            r#type: "harmos.conformance.v1.Graph".into(),
+            payload: schema_fixture::Graph {
+                interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                ..Default::default()
+            }
+            .encode_to_vec(),
+        }],
         ..Default::default()
     };
     catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);

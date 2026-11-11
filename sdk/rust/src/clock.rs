@@ -20,7 +20,8 @@ pub use harmos_protocol::v1::{Now, Sleep, SleepResponse, Time};
 // Standard Library Imports
 
 // Third Party Imports
-use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet};
+use harmos_protocol::clock::{time_types, types as clock_types};
+use prost_types::FileDescriptorSet;
 
 // Local Imports
 use crate::{Message, OperationRequest};
@@ -105,67 +106,5 @@ impl Message for prost_types::Timestamp {
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn clock_types(name: &str, field: Option<(&str, &str)>, mut dependencies: FileDescriptorSet) -> FileDescriptorSet {
-    let dependency = dependencies.file.iter().filter_map(|file| file.name.clone()).collect();
-    let field = field
-        .map(|(name, type_name)| FieldDescriptorProto {
-            name: Some(name.into()),
-            number: Some(1),
-            label: Some(1),
-            r#type: Some(11),
-            type_name: Some(type_name.into()),
-            ..Default::default()
-        })
-        .into_iter()
-        .collect();
-    dependencies.file.insert(
-        0,
-        FileDescriptorProto {
-            name: Some("harmos/v1/plugin.proto".into()),
-            package: Some("harmos.v1".into()),
-            syntax: Some("proto3".into()),
-            dependency,
-            message_type: vec![DescriptorProto {
-                name: Some(name.into()),
-                field,
-                ..Default::default()
-            }],
-            ..Default::default()
-        },
-    );
-    dependencies
-}
-
-fn time_types(name: &str, file: &str) -> FileDescriptorSet {
-    FileDescriptorSet {
-        file: vec![FileDescriptorProto {
-            name: Some(file.into()),
-            package: Some("google.protobuf".into()),
-            syntax: Some("proto3".into()),
-            message_type: vec![DescriptorProto {
-                name: Some(name.into()),
-                field: vec![
-                    FieldDescriptorProto {
-                        name: Some("seconds".into()),
-                        number: Some(1),
-                        label: Some(1),
-                        r#type: Some(3),
-                        ..Default::default()
-                    },
-                    FieldDescriptorProto {
-                        name: Some("nanos".into()),
-                        number: Some(2),
-                        label: Some(1),
-                        r#type: Some(5),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }],
-            ..Default::default()
-        }],
-    }
-}
 
 /* === Tests === */

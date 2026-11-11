@@ -63,8 +63,20 @@ fn fingerprints_follow_the_message_graph_instead_of_catalog_composition() {
     let mut merged = types.clone();
     merged.file[0].message_type.reverse();
     merged.file[0].source_code_info = Some(Default::default());
+    merged.file[0].options = Some(prost_types::FileOptions {
+        java_package: Some("compiler.generated".into()),
+        ..Default::default()
+    });
     merged.file[0].message_type[1].field[0].json_name = Some("value".into());
     assert_eq!(fingerprint, schema::fingerprint("fixture.echo", &merged, ".fixture.Value", "fixture.Value").unwrap());
+
+    // Preserve Message Options In The Fingerprint
+    merged.file[0].message_type[1].options = Some(prost_types::MessageOptions {
+        deprecated: Some(true),
+        ..Default::default()
+    });
+    assert_ne!(fingerprint, schema::fingerprint("fixture.echo", &merged, "fixture.Value", "fixture.Value").unwrap());
+    merged.file[0].message_type[1].options = None;
 
     // Detect A Changed Wire Definition Or Operation Identity
     merged.file[0].message_type[1].field[0].r#type = Some(9);

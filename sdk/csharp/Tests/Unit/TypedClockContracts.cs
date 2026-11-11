@@ -12,6 +12,24 @@ namespace Harmos.Sdk.Tests.Unit;
 public sealed class TypedClockContracts
 {
   [Fact]
+  public void ObserversPreserveSettingWithOrWithoutDefaultInterval()
+  {
+    var setting = new Sleep { Duration = new Duration { Seconds = 2 } };
+    var plugin = new Plugin("settings", "1.0.0")
+        .Observer("settings.only", null, context => Task.FromResult(new Now()), intervalSetting: "harmos.v1.Sleep.duration")
+        .Observer("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new Now()), intervalSetting: "harmos.v1.Sleep.duration")
+        .Section(setting);
+    var catalog = plugin.Catalog();
+    Assert.Null(catalog.Streams[0].Interval);
+    Assert.Equal(Sleep.Descriptor.FullName + ".duration", catalog.Streams[0].IntervalSetting);
+    Assert.NotNull(catalog.Streams[1].Interval);
+    Assert.Equal(catalog.Streams[0].IntervalSetting, catalog.Streams[1].IntervalSetting);
+    Assert.Equal(setting, Sleep.Parser.ParseFrom(Assert.Single(catalog.Sections).Payload));
+    Assert.Throws<ArgumentException>(() => new Plugin("invalid", "1.0.0")
+        .Observer("settings.missing", null, context => Task.FromResult(new Now())));
+  }
+
+  [Fact]
   public void ClockRequirementsMergeReachableTypesWithoutWireServiceMessages()
   {
     var plugin = new Plugin("clock_client", "1.0.0").Requires(Clock.Sleep).Requires(Clock.Now);
@@ -28,12 +46,12 @@ public sealed class TypedClockContracts
     Assert.Equal(".google.protobuf.Timestamp", Assert.Single(clock.MessageType[3].Field).TypeName);
     Assert.Equal(catalog, plugin.Catalog());
 
-    // Hash the Independently Constructed Minimal Clock Contract, Matching the Rust SDK.
+    // Hash the Independently Constructed Clock Projection in Canonical File Order.
     var request = new FileDescriptorSet
     {
       File =
       {
-        new FileDescriptorProto
+        duration, new FileDescriptorProto
         {
           Name = "harmos/v1/plugin.proto", Package = "harmos.v1", Syntax = "proto3", Dependency = { duration.Name },
           MessageType =
@@ -50,7 +68,7 @@ public sealed class TypedClockContracts
               }
             }
           }
-        }, duration
+        }
       }
     };
     var response = new FileDescriptorSet

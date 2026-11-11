@@ -24,6 +24,7 @@
 
 /* === Types === */
 
+using Graph = harmos::conformance::v1::Graph;
 using Value = harmos::conformance::v1::Value;
 using Operation = harmos::Operation<Value, Value>;
 using harmos::Context;
@@ -86,6 +87,40 @@ int main(int argc, char** argv) {
                 .visibility(harmos::wire::VISIBILITY_PUBLIC))
             .requires_operation(echo).requires_operation(pending).requires_operation(fail);
 
+        plugin.requires_operation(harmos::Operation<Graph, Value>("conformance.host.schema"));
+        plugin.operation(Operation("conformance.policy", [echo](Context& ctx, Value request) {
+            harmos::wire::OperationPolicy policy;
+            policy.set_attempts(3);
+            const auto first = ctx.operation(echo, request, policy);
+            return ctx.operation(echo, first);
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC));
+        plugin.operation(harmos::Operation<Graph, Graph::Nested>("conformance.schema", [](Context&, Graph request) {
+            Graph::Nested response;
+            response.set_count(request.items_size());
+            *response.mutable_next() = std::move(request);
+            return response;
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC));
+        plugin.operation(harmos::Operation<Graph::Nested, Graph>("conformance.nested", [](Context&, Graph::Nested request) {
+            return request.next();
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC));
+
+        plugin.operation(harmos::Operation<Graph, Value>("conformance.projected", [](Context&, Graph request) {
+            return request.tail().value();
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC));
+
+        plugin.requires_operation(harmos::SLEEP).requires_operation(harmos::NOW);
+        plugin.operation(Operation("conformance.clock", [](Context& ctx, Value) {
+            const auto before = ctx.now();
+            google::protobuf::Duration duration;
+            duration.set_seconds(3600);
+            ctx.sleep(duration);
+            const auto after = ctx.now();
+            const auto elapsed = static_cast<std::uint64_t>(after.seconds() - before.seconds());
+            std::string bytes(8, '\0');
+            for (unsigned index = 0; index < 8; ++index) bytes[index] = static_cast<char>(elapsed >> (8 * index));
+            return value(bytes);
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC));
+
         // Compose a Host-Ticked Observer and a Device-Driven Stream.
         harmos::Stream<Value> ticks("conformance.ticks");
         harmos::Observer<Value> observer(ticks, [](Context& ctx) {
@@ -101,7 +136,16 @@ int main(int argc, char** argv) {
             publisher.publish(value("device"));
             ctx.cancelled();
         });
-        plugin.stream(ticks).stream(device).observer(observer);
+        harmos::Stream<Value> settings("conformance.settings");
+        harmos::Observer<Value> configured(settings, [](Context& ctx) {
+            std::string bytes(8, '\0');
+            for (unsigned index = 0; index < 8; ++index) bytes[index] = static_cast<char>(ctx.sequence >> (8 * index));
+            return value(bytes);
+        });
+        configured.every(interval).interval_setting("harmos.conformance.v1.Graph.interval");
+        Graph section;
+        section.mutable_interval()->set_seconds(2);
+        plugin.stream(ticks).stream(device).stream(settings).observer(observer).observer(configured).section(section);
 
         // Serve as a Managed Executable or at an Explicit Remote Address.
         if (argc == 3 && std::string(argv[1]) == "--address") plugin.serve(argv[2]);
