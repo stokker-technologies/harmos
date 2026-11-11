@@ -25,7 +25,7 @@ pub mod streams;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use error::Error;
 pub use harmos_domain::*;
-pub use harmos_macros::Request;
+pub use harmos_sdk_derive::Request;
 
 #[cfg(feature = "lifecycle")]
 pub use crate::execution::{Context, ExecutionContext, Operation, Resource, ResourceError, Response};

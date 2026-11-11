@@ -37,7 +37,7 @@ TARGET = ROOT / "target"
 GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
-LIBRARIES = ("harmos", "harmos_runtime", "harmos_operations", "harmos_macros", "serde")
+LIBRARIES = ("harmos", "harmos_runtime", "harmos_operations", "harmos_sdk_derive", "serde")
 
 # === Types === #
 
@@ -411,7 +411,7 @@ def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple
     name = message["target"]["name"]
     if name not in LIBRARIES:
         return None
-    suffix = (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_macros" else ".rlib"
+    suffix = (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_sdk_derive" else ".rlib"
     if source.suffix != suffix:
         return None
     return name, destination.relative_to(fixtures).as_posix(), set(message["features"]), message["profile"]

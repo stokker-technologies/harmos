@@ -84,7 +84,7 @@ fn owner_ids_compile() {
     fs::create_dir_all(&output).unwrap();
     let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     let cases: Vec<(String, bool)> =
-        serde_json::from_str(include_str!("../../../harmos-domain/tests/fixtures/owner-identities.json")).unwrap();
+        serde_json::from_str(include_str!("../../../../../crates/harmos-domain/tests/fixtures/owner-identities.json")).unwrap();
     for (index, (owner, valid)) in cases.into_iter().enumerate() {
         let source = output.join(format!("owner_{index}.rs"));
         let literal = format!("{owner:?}");

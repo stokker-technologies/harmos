@@ -10,7 +10,8 @@
 
 [package]
 name = "harmos-sdk-derive"
-description = "Data-only protobuf message derive for Harmos plugins."
+autotests = false
+description = "Field-reading protobuf, stored-schema, request and row derives for Harmos."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -28,6 +29,9 @@ proc-macro = true
 # === Dependencies === #
 
 [dependencies]
+# Serialization
+serde_json = { workspace = true, default-features = true }
+
 # Parsing
 proc-macro-crate = { workspace = true }
 proc-macro2 = { workspace = true, default-features = true }
@@ -38,9 +42,24 @@ syn = { workspace = true, default-features = true }
 
 # === Dev Dependencies === #
 
+[dev-dependencies]
+# Utilities
+sha2 = { workspace = true, default-features = true }
+
+# Filesystem
+tempfile = { workspace = true }
+
 # === Target Dependencies === #
 
 # === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/artifact/main.rs"
+
+[[test]]
+name = "acceptance"
+path = "tests/acceptance/main.rs"
 
 # === Bench Targets === #
 

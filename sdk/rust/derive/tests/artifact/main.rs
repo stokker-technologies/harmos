@@ -9,7 +9,7 @@
 
 /* === Modules === */
 
-#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
+#[path = "../../../../../crates/harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
 
 /* === Re-Exports === */

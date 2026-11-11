@@ -29,7 +29,7 @@ streaming = []
 # Local
 harmos-protocol = { workspace = true }
 harmos-domain = { workspace = true, features = ["derive"] }
-harmos-macros = { workspace = true }
+harmos-sdk-derive = { workspace = true }
 
 # Git
 

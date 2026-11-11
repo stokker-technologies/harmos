@@ -66,7 +66,7 @@ pub use harmos_guest::guest;
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
 pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, schema};
-pub use harmos_macros::{Described, Request, Row};
+pub use harmos_sdk_derive::{Described, Request, Row};
 
 /* === Imports === */
 

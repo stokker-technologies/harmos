@@ -47,7 +47,7 @@ simulation = []
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
-harmos-macros = { workspace = true, default-features = true }
+harmos-sdk-derive = { workspace = true, default-features = true }
 harmos-operations = { workspace = true, features = ["lifecycle", "streaming", "grpc"] }
 harmos-packaging = { workspace = true, optional = true }
 harmos-protocol = { workspace = true }

@@ -525,7 +525,7 @@ dependencies = [
 name = "harmos-domain"
 version = "0.1.14"
 dependencies = [
- "harmos-macros",
+ "harmos-sdk-derive",
  "harmos-protocol",
  "memchr",
  "postcard",
@@ -546,7 +546,7 @@ version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-guest-macros",
- "harmos-macros",
+ "harmos-sdk-derive",
  "harmos-operations",
  "postcard",
  "serde",
@@ -568,10 +568,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-macros"
+name = "harmos-sdk-derive"
 version = "0.1.14"
 dependencies = [
- "heck",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
@@ -584,7 +583,7 @@ name = "harmos-operations"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
- "harmos-macros",
+ "harmos-sdk-derive",
  "harmos-protocol",
  "harmos-storage",
  "prost",

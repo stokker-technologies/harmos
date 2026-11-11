@@ -62,10 +62,10 @@ fn expand(item: TokenStream) -> Result<TokenStream, Error> {
         })
         .transpose()?;
     let harmos = HarmosPath::resolve(explicit);
-    if crate::message::portable(&parsed, &harmos) {
-        return crate::message::expand(quote!(harmos_path = #harmos), item);
+    if crate::stored_message::portable(&parsed, &harmos) {
+        return crate::stored_message::expand(quote!(harmos_path = #harmos), item);
     }
-    let schema = crate::message::shape(&parsed, &harmos)?;
+    let schema = crate::stored_message::shape(&parsed, &harmos)?;
     let (name, metadata) = match &mut parsed {
         Item::Struct(shape) => (&shape.ident, crate::presentation::fields(&mut shape.fields)?),
         Item::Enum(shape) => (&shape.ident, "[]".to_owned()),

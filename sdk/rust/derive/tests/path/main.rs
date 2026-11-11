@@ -73,7 +73,7 @@ fn crate_builds_against() {
     let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
     fs::create_dir_all(&output).expect("the compile-test output directory is available");
 
-    // Built once against Harmos and serde — never harmos-macros directly, since
+    // Built once against Harmos and serde — never harmos-sdk-derive directly, since
     // the facade re-exports the attributes through harmos, exactly as
     // a host embedding crate does.
     let compiled = fixtures::command(&rustc)

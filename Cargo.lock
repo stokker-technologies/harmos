@@ -1157,10 +1157,10 @@ dependencies = [
 name = "harmos-domain"
 version = "0.1.14"
 dependencies = [
- "harmos-macros",
  "harmos-operations",
  "harmos-packaging",
  "harmos-protocol",
+ "harmos-sdk-derive",
  "memchr",
  "postcard",
  "prost",
@@ -1180,9 +1180,9 @@ version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-guest-macros",
- "harmos-macros",
  "harmos-operations",
  "harmos-protocol",
+ "harmos-sdk-derive",
  "postcard",
  "prost",
  "schematic-operations",
@@ -1211,26 +1211,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-macros"
-version = "0.1.14"
-dependencies = [
- "heck",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "serde_json",
- "sha2 0.11.1",
- "syn 3.0.9",
- "tempfile",
-]
-
-[[package]]
 name = "harmos-operations"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
- "harmos-macros",
  "harmos-protocol",
+ "harmos-sdk-derive",
  "harmos-storage",
  "postcard",
  "prost",
@@ -1303,10 +1289,10 @@ dependencies = [
  "harmos",
  "harmos-domain",
  "harmos-guest",
- "harmos-macros",
  "harmos-operations",
  "harmos-packaging",
  "harmos-protocol",
+ "harmos-sdk-derive",
  "harmos-storage",
  "http-body",
  "http-body-util",
@@ -1348,7 +1334,10 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
+ "serde_json",
+ "sha2 0.11.1",
  "syn 3.0.9",
+ "tempfile",
 ]
 
 [[package]]

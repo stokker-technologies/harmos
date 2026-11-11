@@ -28,7 +28,7 @@ pub use operations::{
 pub use services::Service;
 pub use setup::Setup;
 
-pub use harmos_macros::Request;
+pub use harmos_sdk_derive::Request;
 
 /* === Imports === */
 
