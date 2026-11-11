@@ -3,7 +3,7 @@
 ## 1. Contract
 
 - [ ] 1.1 Settle the open points in `design.md` with the owner and record each outcome there.
-- [x] 1.2 Lock the source inventory: producers, consumers, tests, fixtures, examples and guidance.
+- [x] 1.2 Lock the source inventory: producers, consumers, tests, fixtures, examples and guidance. The indented list records the completed native cutover, including historical paths and feature names; remaining crate consolidation is owned by 4.7, 6.5, 6.8–6.12 and 7.1.
   - `docs/CONTRIBUTING.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
   - `Cargo.lock` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
   - `Cargo.toml` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
@@ -235,6 +235,8 @@
     - [x] 4.5.1.2 Finish the runtime guest host extraction: private `src/guest/host/envelope/` owns its codec and `src/guest/host/plugin/` owns guest lifecycle, child controls and scopes; native placement shares no guest table or generation scope.
 - [x] 4.6 Verify plugin and client SDK dependency closures contain no host crates; migrate example/build-script imports to protocol or runtime as appropriate, and update README/product guidance for the public entry point.
 
+- [ ] 4.7 Build the SDK client half over generated application contracts and protocol without host dependencies; add client examples and dependency-closure proof, updating README and product guidance. Task 4.6 proves the existing SDK boundary, not a completed client implementation.
+
 ## 5. Pilot SDKs
 
 - [x] 5.1 Python: `sdk/python` over `harmos.v1`, passing the conformance suite.
@@ -255,12 +257,25 @@
     - [x] 6.6.2.1 Retire the process graph and graph reload-plan stories, the framed plugin upload/download/exchange transport stories and their fixture registrations, and the C ABI prototype story, feature and guide.
   - [x] 6.6.3 Delete framed transport tests and benches in crates/harmos-sidecar and native transport benchmark branches in crates/harmos-runtime/benches, preserving guest-used support.
 - [x] 6.7 Update the product guide, README and authoring guidance.
-- [ ] 6.8 Replace domain wire mirrors with protocol types and delete dead conversions; retain only native state/recovery, schema/encoding and storage contracts listed in Crate Structure, moving dispatch/resource code to its engine owner.
-- [ ] 6.9 Redirect contract-only operations consumers to protocol/SDK, then remove the operations `runtime` feature without moving handlers out of their operation files; remove the superseded host SDK root after its consumers migrate.
+- [ ] 6.8 After authoritative host protobuf adoption (2.6, 3.10–3.12 and host 6.5), `authoring-without-macros` in its agreed order and derive consolidation (6.10), reduce domain to the native foundation in design.md, Crate Structure; delete replaced wire mirrors and dead conversions.
+  - [ ] 6.8.1 Retain `schema.rs`, `schema/`, `message/` stored encoding, canonical revisions, validation and allocation accounting; retain `identity.rs`, native `metadata*`, `state/` and `journal.rs` identities, preparation, restoration, inverse pairing and positions.
+  - [ ] 6.8.2 Retain `model/storage/`, including query selections/transforms, schema/object catalogs, revisions, history identity, mutation receipts and files; replace transport representations with protocol types without changing persisted semantics.
+  - [ ] 6.8.3 Split `operations/`, `model/operations/` and `model/services/`: metadata/visibility/transport descriptions to protocol; dispatch, call context, streaming and policy validation to operations with narrow runtime-supplied resources.
+  - [ ] 6.8.4 Split `listeners/`, `observers.rs` and `streams/`: portable declarations to protocol, listener activation and host behaviour to runtime, persisted row identity retained natively.
+  - [ ] 6.8.5 Delete legacy `inventory*`, `plugin/`, `artifacts.rs` and `registration.rs` inventories, grants and markers as replacements land; retain guest-required mechanisms only until 7.1. Split the remaining modules enumerated in Crate Structure by owner rather than retain mixed modules wholesale.
+  - [ ] 6.8.6 Migrate manifests/re-exports and all consumers, including lightweight application models; preserve the downward runtime → operations → storage → domain → protocol graph and SDK → protocol boundary. Account for focused stored-schema, recovery/inverse and storage-query proof and affected README/topic guidance.
+- [ ] 6.9 Redirect contract-only operations consumers to protocol/SDK, then remove the operations `runtime` feature without moving handlers out of their operation files. The superseded host SDK root and facade are already removed under 4.1/4.5.
+- [ ] 6.10 After the ordered `authoring-without-macros` replacements, merge `harmos-macros` into `sdk/rust/derive` as the single derive crate (`harmos-sdk-derive`), retaining only field-reading derives with distinct stored-schema, protobuf Message and row semantics. Coordinate that change's 4.3; migrate dependencies, re-exports, consumers and coverage, then delete the old package without adding host dependencies to the SDK.
+- [ ] 6.11 Move `harmos-conformance` to the tool package `tools/conformance` at any time, outside the six-library core; preserve binary names, CLI/release interfaces, all 19 protocol cases, managed/remote driving, reporting and Rust test integration. Keep its protocol-only product dependency; migrate SDK launchers, fixtures, tasks, docs, manifests and planned archive paths with `release-assets-layout`.
+- [ ] 6.12 Split `harmos-packaging` at any time: move build, watch/cancellation, componentization, inspection, bundle construction and proto/Python generation into `tools/packaging`; retain only required bundle reading in runtime. Remove normal runtime tooling dependencies and migrate build scripts, manifests, tasks, launchers, fixtures and README/topic guidance together.
 
 ## 7. Guests
 
-- [ ] 7.1 Move guest command and child envelopes to the `harmos.v1` messages and delete the Postcard envelope codec.
+- [ ] 7.1 After domain reduction, complete guest lifecycle/child-control design and migrate guest command/child envelopes to `harmos.v1`, deleting the Postcard envelope codec together with the guest SDK consolidation below; native cutover does not establish guest parity.
+  - [ ] 7.1.1 Specify replacements for lifecycle phases and child submit, status, join and release controls, preserving required behaviour and authority before removing private guest mechanisms.
+  - [ ] 7.1.2 Fold `harmos-guest` into optional SDK WebAssembly support; replace `harmos-guest-macros`' `plugin`/`harmos_guest::guest` declarations with builder values and one author-supplied registration function, then delete both old packages.
+  - [ ] 7.1.3 Keep generated component bindings, canonical ABI exports/resources, async lifting and WIT register/operate glue inside the SDK adapter; keep guest loading, fuel/memory limits and sandbox authority in runtime without SDK host dependencies.
+  - [ ] 7.1.4 Move sandbox fixtures and guest tests with the adapter; migrate example/host consumers, manifests, build/generation tooling, docs and re-exports. Remove replaced guest inventories/grants/markers and account for focused lifecycle, child-control, recovery and sandbox proof on Linux and Windows.
 
 ## 8. Final Validation
 

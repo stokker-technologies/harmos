@@ -9,12 +9,14 @@ Final validation waits for source closure; completed source does not close nativ
 
 | Wave | Implementation Waves | State and Next Work | Ownership |
 | --- | --- | --- | --- |
-| 1 | Protocol 2.x; `facility-trim`; `tooling-streamline`; `align-ci-release` | Source landed; tooling follow-ups and native proof remain | `proto/`, protocol/conformance crates; removed facilities; tooling and CI |
-| 2 | Host clock 3.5 | Landed | Runtime, storage and built-in operation time reads |
-| 3 | Host 3.1–3.4, 3.6, 3.8, 3.10–3.12; Rust SDK 4.x | Finish generated-protobuf declarations before consumer adoption; migrate host handlers and SDK boundaries | Protocol, domain, operations, runtime, SDK roots, derives and adapters |
-| 4 | Removal 6.x; virtual mode 3.7; pilot SDKs 5.x | Finish host engine relocation, dead conversions and contract-only surface removal | Operations/domain/runtime; removed transport paths; simulation; pilot SDKs |
-| 5 | `authoring-without-macros` | Inventory, then declaration steps in task order | One writer across the workspace |
-| 6 | `test-stories`; guests 7.1; guides | Inventory, stories and guest envelopes remain; consumer adoption is separate proof | Tests; guest/host adapters; docs |
+| 1 | Protocol 2.1–2.5; `facility-trim`; `tooling-streamline`; `align-ci-release` | Protocol source landed; tooling follow-ups and native proof remain | `proto/`, protocol and conformance; tooling and CI |
+| 2 | Host 3.1–3.9; Rust SDK 4.1–4.6; removal 6.1–6.4, 6.6–6.7; pilot SDKs 5.x | Native cutover, virtual clock, SDK rename, engine relocation and framed-path removal landed; cross-platform final proof remains open | Runtime, operations, SDKs, examples and retained tests |
+| 3 | Authoritative host protobuf: 2.6, 3.10–3.12, host portion of 6.5; 6.9 | In progress; finish generated-message declarations/codecs and built-in handlers before authoring migration | Protocol, operations, runtime; contract-only consumers |
+| 4 | `authoring-without-macros`; 6.10 | Agreed, implementation not started; follow its steps 1–11, migrate live aliases before deleting them, then consolidate surviving field-reading derives | Macro consumers, `crates/harmos-macros`, `sdk/rust/derive` |
+| 5 | Reduced domain: 6.8 | Pending wave 4; retain the native foundation and move or delete every other module by owner | Domain, protocol, operations, runtime and consumers |
+| 6 | Guests 7.1 and guest portion of 6.5 | Deferred until lifecycle/child-control design; after wave 5, fold guests into optional SDK Wasm support and delete guest macros together | SDK adapter, guest fixtures and runtime guest host |
+| Any | Conformance 6.11; packaging 6.12 | Low-risk placement work may run at any time; preserve executable/release interfaces and runtime bundle reading | `tools/conformance`, `tools/packaging`, runtime and tooling callers |
+| Final | `test-stories`; SDK client 4.7; guides; validation 8.x | Story work and client implementation remain; native Linux/Windows and hosted proof stay open | Tests, SDK client, documentation and CI |
 
 After the last gRPC wave in both products, `storage-interface` designs and implements the Harmos
 extensions first. Dokime consumes them and extracts storage in its own `storage-interface` change.
@@ -26,62 +28,139 @@ pass `--features` where required. Run `mise run format -- --language ...` and th
 A handoff is at most ten lines: task, owned paths, changes, focused proof, format/check result and remaining follow-ups.
 SDK system suites run in Nightly only. No full lane has been established for this candidate; native Linux proof remains open.
 
-Status: implementation is partial. The new `plugin-grpc` feature coexists with the framed path;
-`sdk/rust` supplies plugin authoring under its temporary package name; the former
-`crates/harmos-sdk` engine now lives in `crates/harmos-operations/src/execution/`.
-Guest-private dispatch extraction, the public SDK rename and facade removal remain open.
-The intended final contracts below do not imply that the remaining removal and migration tasks are complete.
+Status: implementation is partial. Native plugins now use gRPC placement; the framed path and
+`plugin-grpc` feature are gone. Runtime defaults to `grpc`; `plugin-guest` still selects the
+existing Wasm host path, and `generate-proto` selects contract generation. `sdk/rust` is the
+public package/library `harmos`, with native plugin builders and its Message derive landed.
+The client half is still to be built. The former `crates/harmos-sdk` engine lives in
+`crates/harmos-operations/src/execution/`; the old SDK root and `crates/harmos` facade are deleted.
+Guest-private dispatch and lifecycle extraction have landed in `harmos-guest` and the runtime
+guest host. Host protobuf adoption, macro replacement, domain reduction and guest protocol/SDK
+migration remain open. Target contracts below do not claim those migrations or final proof passed.
 
 ## Crate Structure
 
-Target layout (arrows below mean "depends on"; this is the target, not the current manifests):
+The owner-locked target is six library crates plus one derive crate. This is the target,
+not a claim that the current manifests already implement it:
+
+| Package / Path | Target Ownership |
+| --- | --- |
+| `harmos` at `sdk/rust` | Public plugin and client entry point; no host code; client half still to be built |
+| `harmos-protocol` at `crates/harmos-protocol` | Authoritative generated protobuf messages/services, descriptors and light helpers |
+| `harmos-domain` at `crates/harmos-domain` | Reduced native schema, identity, state/recovery and storage foundation |
+| `harmos-storage` at `crates/harmos-storage` | Generic persistence, query kernels, capture and backends |
+| `harmos-operations` at `crates/harmos-operations` | Built-in declarations and handlers, dispatch, call context and policy validation |
+| `harmos-runtime` at `crates/harmos-runtime` | Public host entry point, host composition/engine, clock, listener activation and guest sandbox |
+| `harmos-sdk-derive` at `sdk/rust/derive` | The single procedural-macro crate, retaining only field-reading derives |
+
+Arrows mean normal product-layer dependencies; direct downward edges are allowed, reverse
+edges are forbidden. Transport libraries and derive/build support are outside this product graph:
 
 ```text
-sdk/rust/                         harmos: public plugin authoring + client
-crates/harmos-protocol/            generated protobuf definitions + light helpers
-crates/harmos-domain/              native state/recovery and storage contracts only
-crates/harmos-storage/             generic persistence, queries, capture and backends
-crates/harmos-operations/          built-in declarations + handlers, one file per operation
-crates/harmos-runtime/             host engine, composition, plugins, clock and listeners
-crates/harmos-conformance/         cross-language protocol proof and reference host
-sdk/{python,csharp,cpp}/           language authoring + client implementations
-sdk/rust/ (Wasm module)            guest transport; no host engine
-crates/harmos-runtime/ (guest)     guest loading and sandbox ownership
-examples/*/ and guest fixtures/   consumers, outside the core crate graph
-
-runtime -> operations -> storage -> protocol
-runtime/operations/storage -> reduced domain -> protocol
-SDK harmos -> protocol
-conformance -> protocol; reference host -> runtime
-CLI / desktop host consumers -> runtime
+harmos-runtime [public host]             harmos [public plugin/client]
+  |                                       |
+  v                                       |
+harmos-operations                         |
+  |                                       |
+  v                                       |
+harmos-storage                           |
+  |                                       |
+  v                                       |
+harmos-domain                            |
+  |                                       |
+  v                                       v
+harmos-protocol <-------------------------+
 ```
 
-The host chain is linear: protocol, storage, operations, runtime, then shells. Direct downward
-edges are allowed; reverse edges are not. The reduced Harmos domain is a host-side foundation,
-not another wire model or an SDK dependency. Derive/build support is tooling, outside this
-runtime dependency chain. Public SDK runtime dependencies are protocol and transport/authoring
-support, never domain, storage, operations or runtime; the only product layer below it is protocol.
+The SDK's only product dependency is protocol; it never depends on domain, storage, operations
+or runtime. Native plugin authors compile SDK, protocol and transport/derive support. Clients
+will compile generated application contracts, protocol and the SDK client half. Host embedders
+use runtime explicitly and compile its downward closure. Component authors will compile the
+SDK's optional Wasm adapter and generated WIT bindings without host engine dependencies.
+Examples, guest fixtures and `sdk/{python,csharp,cpp}` remain outside the Rust core graph.
 
-`sdk/rust` is the `harmos` product crate itself. `use harmos::prelude::*;` exposes plugin
-authoring and the client without compiling host code. Host embedding uses `harmos-runtime`
-explicitly. Move the surviving engine from `crates/harmos-sdk` to its host owners; do not merge
-it into the public SDK. Fold client functionality into the SDK's client half and remove the
-old facade root at `crates/harmos`. Native serving and Wasm guest transport share this SDK;
-guest loading remains in runtime. Conformance is development-only, not an SDK dependency.
+### Reduced Domain Foundation
+
+Unlike the consuming application's layout, a generic library benefits from a small native
+foundation that lightweight application model crates can use without the storage stack
+(Arrow, filesystem and async support) or the host engine. Removing domain is possible only by
+moving its contracts into heavier owners; it is not the locked design. Storage already depends
+on domain schemas, catalogs and journal `Position` through
+`crates/harmos-storage/src/{objects.rs,schema_encoding.rs,state/reader.rs}`. Operations depends
+on storage, and runtime on operations/storage. Moving shared contracts unchanged into operations
+or runtime would introduce reverse edges and cycles.
+
+The inventory below is relative to `crates/harmos-domain/src/`. Split mixed modules by semantics;
+retention of a native contract does not retain its legacy transport representation.
+
+| Current Modules | Required Destination and Treatment |
+| --- | --- |
+| `schema.rs`, `schema/`, `message/` | Keep stored-schema encoding, canonical revisions, validation and allocation accounting in domain; protobuf descriptors do not replace stored encoding |
+| `identity.rs`, `metadata.rs`, `metadata/`, `state/`, `journal.rs` | Keep native identities, typed records/transactions, preparation, restoration, inverse pairing and journal positions; remove separable legacy plugin-name helpers |
+| `model/storage/`, including `query/` | Keep schema/object catalogs, revisions, history identity, mutation receipts, files, query selections and transforms; replace transport mirrors with protocol types |
+| `operations/`, `model/operations/`, `model/services/` | Move operation metadata, visibility and transport descriptions to protocol; typed dispatch, call context, native streaming and policy validation to operations; runtime supplies narrow resources |
+| `inventory.rs`, `inventory/`, `plugin/`, `artifacts.rs`, `registration.rs` | Replace portable declarations with protocol; delete legacy plugin inventories, grants and markers; retain guest-required mechanisms only until their replacement in 7.1 |
+| `listeners/`, `observers.rs`, `streams/` | Move portable declarations to protocol and listener activation/host behaviour to runtime; keep persisted row identity in the native foundation |
+| `aggregate.rs`, `value*`, `presentation.rs`, `catalog.rs`, `config.rs`, `failure.rs`, `refusal.rs`, `error.rs`, `answer.rs`, `lib.rs`, `model/mod.rs` | Split remaining native values/codecs, catalog machinery, validation and failure mirrors by the owners above; retain only foundation semantics, not whole mixed modules |
+
+Domain reduction follows declaration replacement, so obsolete catalog machinery is judged after
+its users migrate. Preserve stored schema/revision compatibility and recovery/inverse behaviour;
+delete superseded wire models and conversions rather than add another adapter layer. Further
+storage contract reshuffling waits for `storage-interface` to settle snapshots, durability,
+replay and capability semantics; this reduction preserves required storage behaviour.
+
+### Derives and Guest Consolidation
+
+After authoritative host protobuf adoption, implement `authoring-without-macros` in its agreed
+order: inventory and alias handling, listeners, stream lists, lanes, records, stream rows,
+operations, catalogs, record registries, messages, then transactions/state registries. The
+`domain_catalog`, `runtime_catalog`, `domain_operation` and `runtime_operation` aliases are live;
+migrate them with their catalog/operation families before deleting their exports. All catalog,
+operation, lanes, listener, stream, record and transaction declarations become values and plain
+functions. Request/message, stored-schema and row derives may read fields; they do not register
+operations or catalogs.
+
+Merge `harmos-macros` into `sdk/rust/derive` after those replacements, keeping only field-reading
+derives. Preserve the distinct semantics of stored-data `Described` and the protobuf Message
+derive; replace the old `message` attribute without conflating native stored encoding with wire
+encoding. Migrate re-exports, dependencies, consumers and derive coverage, then delete the old
+macro package. Keep the SDK free of host dependencies throughout.
+
+After domain reduction, fold `harmos-guest` into optional WebAssembly support in `harmos` and
+delete `harmos-guest-macros`, together with deferred task 7.1 and its guest lifecycle design.
+The guest `plugin` macro, re-exported as `harmos_guest::guest`, becomes builder values and one
+author-supplied registration function behind an SDK adapter. Generated component bindings stay
+inside that adapter: one registration function does not mean one canonical ABI export.
+Preserve WIT resources, async lifting, registration/operation glue and lifecycle/child controls
+(submit, status, join and release) until their replacements are designed and migrated. Move the
+sandbox fixture and guest tests with the adapter. Runtime retains guest loading, fuel/memory
+limits and sandbox authority; neither these nor host dispatch enter the SDK.
+
+### Tool Packages
+
+Move `harmos-conformance` from `crates/harmos-conformance` to `tools/conformance` as a tool
+package, preserving its `harmos-conformance` and `harmos-conformance-plugin` binaries, command interfaces
+and release interface. It is executable cross-language proof, not a core library; an internal
+library target used by Rust SDK tests may remain an implementation detail of the tool package.
+Its protocol driver and reference plugin retain their protocol-only product dependency. Preserve all 19 protocol cases, managed and
+remote driving, reporting and the Rust dev-dependency integration. Update non-Rust launchers,
+fixtures, tasks, docs and planned archive paths with `release-assets-layout`; the current
+example-host bundle is not evidence that a reference-host archive has landed.
+
+Split `harmos-packaging`: Cargo build orchestration, cancellation/watch support, componentization,
+inspection, archive construction and proto/Python generation move to a tool package under
+`tools/packaging`. Runtime keeps only bundle reading needed to load artifacts. Remove normal
+runtime dependencies on build/bundle/generation tooling; keep generation in build/tool callers.
+Migrate manifests, build scripts, tasks, launchers, fixtures and documentation in the same move.
+Conformance relocation and packaging separation are low risk and may happen at any time;
+neither changes the required host-protobuf → authoring/derives → domain → guests order.
+
+### Host Operations and Client Contracts
 
 `proto/` owns all language-neutral contracts. `harmos-protocol` holds generated messages,
 services and descriptors with light constructors, operators, `Display` and conversions for
 Harmos's own code. Behaviour needed by another language is specified in words beside the proto
 contract and implemented by each SDK; Rust helpers are not the cross-language specification.
-
-Keep in `harmos-domain` only non-wire native contracts: typed state/transaction catalogs,
-inverse pairing and undo/replay envelopes (`src/state/`, `src/journal.rs`), native schema and
-stored-value encoding/allocation contracts (`src/schema/`, `src/message/`), and storage catalog,
-object revision, snapshot, query-plan and durability contracts (`src/model/storage/`) needed by
-generic storage. These are Rust state/recovery/storage semantics, not parallel protobuf DTOs.
-Audit each retained type against its wire counterpart: replace wire mirrors with protocol types;
-move protocol helpers to protocol, dispatch/resources to their engine owners and operation
-policy to its callee. Delete obsolete plugin inventory, grant and envelope models after migration.
 
 Every host operation lives in `harmos-operations`, declaration and handler in one operation
 file, taking and returning protocol messages. Existing built-ins under
@@ -91,13 +170,14 @@ operations never depends on runtime. Keep deadlines and retries with the Rust ca
 call-site overrides for one call. Remove the operations `runtime` feature after all
 contract-only consumers use protocol/SDK; do not move handlers into runtime to keep that surface.
 
-Extend the client-facing gRPC declaration/codec integration before Dokime's Harmos-adoption
-wave (Dokime wave 2). Generated protobuf request/result types plus authoritative descriptors
+Extend the client-facing gRPC declaration/codec integration before the consuming product's
+Harmos-adoption wave. Generated protobuf request/result types plus authoritative descriptors
 must register directly, retaining decoding-memory admission, fingerprints, method paths,
 cancellation, backpressure and unary/client-stream/server-stream/bidirectional envelopes.
 The affected seam is `crates/harmos-runtime/src/grpc/{codec,routing,native,input,envelope}.rs`,
-operation registration and `crates/harmos-operations/src/execution/operations/serving/protobuf.rs`. A declaration owns its gRPC mapping; the host exposes that declaration without a
-per-service adapter or a duplicate native request/response model.
+operation registration and `crates/harmos-operations/src/execution/operations/serving/protobuf.rs`.
+A declaration owns its gRPC mapping; the host exposes that declaration without a per-service
+adapter or a duplicate native request/response model.
 
 ### Dokime Consumer Layout and Sequence
 
@@ -525,7 +605,7 @@ virtual time.
 | Frame model | `crates/harmos-sidecar/src/wire.rs` (frames and sizing) |
 | Binary carriers, control pipe | `crates/harmos-sidecar/src/kit/{connection,carrier}.rs`, `attach/{control,windows}.rs` |
 | Handshake and frame exchange | `crates/harmos-runtime/src/services/sidecar/{handshake,carrier,frames,exchange}.rs` |
-| Postcard operation envelopes | `crates/harmos-sdk/src/operations/serving/codec.rs`, after guests move |
+| Postcard operation envelopes | Guest-private `crates/harmos-guest/src/envelope/` and runtime `src/guest/host/envelope/`, replaced with 7.1; host payload migration is 6.5 |
 | Publication leases, admission, cadence reports | With the stream path they serve |
 | Plugin graph, start and stop ordering, reload plans | `crates/harmos-runtime/src/plugin/{mod,reload}.rs` and their use in `manager.rs` |
 | Grants between plugins, provider selection | Plugin paths of `crates/harmos-runtime/src/operations/manager/grants.rs`, `OperationProvider` |
@@ -539,16 +619,17 @@ Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new 
 
 ## Remaining Source Inventory
 
-Task 1.2 covers `proto/`, `crates/harmos`, `crates/harmos-domain`,
-`crates/harmos-protocol`, `crates/harmos-conformance`,
-`crates/harmos-sdk`, `crates/harmos-sdk-derive`, `sdk/{rust,python,csharp,cpp}`,
-`crates/harmos-runtime/src/{clock,plugin,operations,streams,observers,services,simulation}`,
-`crates/harmos-storage` timing consumers, `crates/harmos-operations`, `crates/harmos-macros`,
-`crates/harmos-sidecar`, `crates/harmos-guest` and `crates/harmos-ffi`.
-Migrate `examples/schematic`, guest sandbox and runtime/SDK fixtures, sidecar behaviour tests,
-transport benches, manifests/locks, `mise.toml`, `tools/python`, CI, README, product/topic guides
-and canonical/generated authoring guidance. Removal paths are enumerated above.
-Cross-cutting declarations and test consolidation follow their own change inventories.
+Task 1.2 records the native cutover inventory; its removed paths describe completed migration,
+not current packages or features. The remaining inventory is `proto/`, `crates/harmos-protocol`,
+`crates/harmos-domain`, `crates/harmos-storage`, `crates/harmos-operations`,
+`crates/harmos-runtime`, `sdk/rust` and `sdk/rust/derive`; remaining packages to relocate or
+remove are `crates/harmos-conformance`, `crates/harmos-packaging`, `crates/harmos-macros`,
+`crates/harmos-guest` and `crates/harmos-guest-macros`. Target owners and removal order are in
+Crate Structure and tasks 4.7, 6.5, 6.8–6.12 and 7.1. Include `sdk/{python,csharp,cpp}` launchers,
+`examples/schematic`, guest sandbox, runtime/SDK fixtures, manifests/locks, build scripts,
+`mise.toml`, `tools/project.toml`, `tools/python`, CI, README and product/topic guides for each
+placement change. Declaration migration follows `authoring-without-macros`; story consolidation
+follows `test-stories`. Update affected claims and links without rewriting unaffected guidance.
 
 The Crate Structure section defines this batch's boundary replacements. Storage extensions and
 Dokime storage extraction follow after the last wave as separate `storage-interface` changes.
