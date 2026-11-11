@@ -1143,8 +1143,10 @@ version = "0.1.14"
 dependencies = [
  "futures-core",
  "futures-util",
+ "harmos",
  "harmos-protocol",
  "prost",
+ "prost-reflect",
  "prost-types",
  "thiserror",
  "tokio",

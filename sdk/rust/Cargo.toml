@@ -12,33 +12,16 @@
 name = "harmos"
 description = "Rust plugin authoring over the Harmos v1 gRPC protocol."
 autotests = false
+autobins = false
+exclude = ["src/bin/**"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 # === Package Targets === #
-
-[[bin]]
-name = "harmos-sdk-conformance-plugin"
-path = "src/bin/conformance.rs"
-
-[[bin]]
-name = "harmos-sdk-diagnostics-plugin"
-path = "src/bin/diagnostics.rs"
-
-[[bin]]
-name = "harmos-sdk-host-fixture"
-path = "src/bin/host-fixture.rs"
-
-[[bin]]
-name = "harmos-sdk-invoke-fixture"
-path = "src/bin/invoke-fixture.rs"
-
-[[bin]]
-name = "harmos-stream-consumer-fixture"
-path = "../../crates/harmos-runtime/tests/fixtures/stream_consumer.rs"
 
 # === Features === #
 
@@ -78,7 +61,7 @@ tonic = { workspace = true, features = ["codegen", "router", "transport"] }
 
 [dev-dependencies]
 # Local
-harmos-conformance = { workspace = true }
+harmos-conformance = { path = "../../crates/harmos-conformance" }
 
 # Serialization
 serde_json = { workspace = true, features = ["std"] }

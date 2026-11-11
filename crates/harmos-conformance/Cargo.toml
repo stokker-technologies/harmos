@@ -24,12 +24,33 @@ publish = false
 name = "harmos-conformance-plugin"
 path = "src/bin/harmos-conformance-plugin.rs"
 
+[[bin]]
+name = "harmos-sdk-conformance-plugin"
+path = "../../sdk/rust/src/bin/conformance.rs"
+
+[[bin]]
+name = "harmos-sdk-diagnostics-plugin"
+path = "../../sdk/rust/src/bin/diagnostics.rs"
+
+[[bin]]
+name = "harmos-sdk-host-fixture"
+path = "../../sdk/rust/src/bin/host-fixture.rs"
+
+[[bin]]
+name = "harmos-sdk-invoke-fixture"
+path = "../../sdk/rust/src/bin/invoke-fixture.rs"
+
+[[bin]]
+name = "harmos-stream-consumer-fixture"
+path = "../harmos-runtime/tests/fixtures/stream_consumer.rs"
+
 # === Features === #
 
 # === Dependencies === #
 
 [dependencies]
 # Local
+harmos = { workspace = true }
 harmos-protocol = { workspace = true }
 
 # Git
@@ -42,6 +63,7 @@ thiserror = { workspace = true }
 # Utilities
 
 # Serialization
+prost-reflect = { workspace = true }
 prost = { workspace = true, features = ["derive", "std"] }
 prost-types = { workspace = true, features = ["std"] }
 

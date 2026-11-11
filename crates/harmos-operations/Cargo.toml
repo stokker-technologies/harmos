@@ -6,6 +6,7 @@ description = "Portable Harmos built-in operations and optional execution."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 autotests = false
 

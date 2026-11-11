@@ -6,6 +6,7 @@ description = "Harmos runtime: managed state, undo, recovery, background work an
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 autotests = false
 

@@ -12,15 +12,15 @@ version = "0.1.14"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
+repository = "https://github.com/stokker-technologies/harmos"
 publish = true
 
 # === Workspace Dependencies === #
 
 [workspace.dependencies]
 # Local
-harmos-conformance = { path = "crates/harmos-conformance", version = "=0.1.14" }
 harmos-domain = { path = "crates/harmos-domain", version = "=0.1.14", default-features = false }
-harmos-guest-macros = { path = "crates/harmos-guest-macros" }
+harmos-guest-macros = { path = "crates/harmos-guest-macros", version = "=0.1.14" }
 harmos-guest = { path = "crates/harmos-guest", version = "=0.1.14", default-features = false }
 harmos-macros = { path = "crates/harmos-macros", version = "=0.1.14" }
 harmos-operations = { path = "crates/harmos-operations", version = "=0.1.14", default-features = false }
