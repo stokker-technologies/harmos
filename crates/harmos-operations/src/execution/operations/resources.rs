@@ -147,10 +147,9 @@ impl AssignedOperation {
         };
         Ok(assignments.encode_to_vec())
     }
-}
 
-impl OperationAssignments {
-    pub fn install(&self, bytes: &[u8]) -> Result<(), super::ServingError> {
+    /// Decode and validate the shared protobuf assignment catalog.
+    pub fn decode(bytes: &[u8]) -> Result<Vec<Self>, super::ServingError> {
         use prost::Message;
         let assignments = harmos_protocol::host::OperationAssignments::decode(bytes).map_err(|_| super::ServingError::Catalog)?;
         let entries = assignments
@@ -172,6 +171,13 @@ impl OperationAssignments {
                 return Err(super::ServingError::Catalog);
             }
         }
+        Ok(entries)
+    }
+}
+
+impl OperationAssignments {
+    pub fn install(&self, bytes: &[u8]) -> Result<(), super::ServingError> {
+        let entries = AssignedOperation::decode(bytes)?;
         if let Some(original) = self.entries.get() {
             return if original == &entries { Ok(()) } else { Err(super::ServingError::Catalog) };
         }

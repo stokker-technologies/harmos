@@ -306,8 +306,7 @@ impl Table {
     }
 
     pub fn validate_callees(&self, assignments: &[u8]) -> Result<(), ServingError> {
-        let assignments: Vec<AssignedOperation> =
-            if assignments.is_empty() { Vec::new() } else { postcard::from_bytes(assignments).map_err(|_| ServingError::Catalog)? };
+        let assignments = AssignedOperation::decode(assignments)?;
         for route in self.handlers.values() {
             for callee in route.callees {
                 let id = callee.operation.id;
