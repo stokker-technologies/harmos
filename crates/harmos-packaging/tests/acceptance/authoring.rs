@@ -68,6 +68,7 @@ impl Project {
             .output()
             .unwrap();
         succeeded(&result);
+        assert!(root.join(".gitattributes").is_file());
         let project = Self { directory, root };
         // An Ancestor Cargo Configuration Pins The Vendored Closure; The Toolchain Manager Keeps Its Own Cargo Home
         let home = project.directory.path().join(".cargo");

@@ -9,40 +9,6 @@
 
 /* === Modules === */
 
-mod feeds {
-    use serde::{Deserialize, Serialize};
-
-    #[harmos_runtime::stream(description = "A row published into a small ring.", id = "narrow", window = 128)]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-    pub struct Narrow(pub u64);
-
-    #[harmos_runtime::stream(
-        description = "The same row shape published into a ring five hundred times as large.",
-        id = "wide",
-        window = 65_536
-    )]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-    pub struct Wide(pub u64);
-
-    #[harmos_runtime::stream(
-        description = "One waveform row whose own source clock is application-declared payload.",
-        id = "waveform",
-        window = 65_536
-    )]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-    pub struct Waveform {
-        pub captured_at_ns: u64,
-        pub sample: i16,
-    }
-
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Narrow(Narrow),
-        Wide(Wide),
-        Waveform(Waveform),
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -54,6 +20,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+
 // Third Party Imports
 
 // Local Imports
@@ -71,7 +38,6 @@ const PHASES: [(u64, Duration); 7] = [
     (4_096, Duration::from_millis(2)),
     (1_024, Duration::ZERO),
 ];
-
 const ROWS: u64 = 43_008;
 
 #[global_allocator]
@@ -313,6 +279,71 @@ async fn measured_runtime() -> Runtime<Probe> {
 
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
+}
+
+mod feeds {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Serialize};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[harmos_runtime::stream(description = "A row published into a small ring.", id = "narrow", window = 128)]
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    pub struct Narrow(pub u64);
+
+    #[harmos_runtime::stream(
+        description = "The same row shape published into a ring five hundred times as large.",
+        id = "wide",
+        window = 65_536
+    )]
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    pub struct Wide(pub u64);
+
+    #[harmos_runtime::stream(
+        description = "One waveform row whose own source clock is application-declared payload.",
+        id = "waveform",
+        window = 65_536
+    )]
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    pub struct Waveform {
+        pub captured_at_ns: u64,
+        pub sample: i16,
+    }
+
+    /* === Enums === */
+
+    #[harmos_runtime::streams]
+    pub enum Bank {
+        Narrow(Narrow),
+        Wide(Wide),
+        Waveform(Waveform),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

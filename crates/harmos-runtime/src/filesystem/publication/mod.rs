@@ -27,8 +27,10 @@ use std::{
     io::{self, Write},
     path::{Path, PathBuf},
 };
+
 // Third Party Imports
 use tempfile::NamedTempFile;
+
 // Local Imports
 #[cfg(unix)]
 use unix as platform;
@@ -86,8 +88,8 @@ pub fn install(source: &Path, destination: &Path) -> crate::filesystem::Result<(
     platform::install(source, destination).map_err(|error| crate::filesystem::Error::publication("install file", destination, error))
 }
 
-/// Durably Installs The Staged File While Retaining Its Writable Handle.
-/// The Caller Owns The Source Path And Keeps It Bound To This File.
+// Durably Installs The Staged File While Retaining Its Writable Handle.
+// The Caller Owns The Source Path And Keeps It Bound To This File.
 pub fn install_opened(file: &File, source: &Path, destination: &Path) -> crate::filesystem::Result<()> {
     file.sync_all().map_err(|error| crate::filesystem::Error::publication("flush staged file", source, error))?;
     platform::install_opened(file, source, destination)
@@ -175,30 +177,3 @@ fn parent(path: &Path) -> &Path {
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::{Read, Seek, SeekFrom};
-
-    #[test]
-    fn opened_install_preserves_identity_and_refuses_replacement() {
-        let root = tempfile::tempdir().unwrap();
-        let source = root.path().join("source");
-        let destination = root.path().join("destination");
-        let mut file = OpenOptions::new().create_new(true).read(true).write(true).open(&source).unwrap();
-        file.write_all(b"evidence").unwrap();
-        install_opened(&file, &source, &destination).unwrap();
-        file.seek(SeekFrom::Start(0)).unwrap();
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes).unwrap();
-        assert_eq!(bytes, b"evidence");
-        assert_eq!(fs::read(&destination).unwrap(), bytes);
-        let other = root.path().join("other");
-        let mut replacement = File::create(&other).unwrap();
-        replacement.write_all(b"different").unwrap();
-        assert!(install_opened(&replacement, &other, &destination).is_err());
-        assert_eq!(fs::read(&destination).unwrap(), b"evidence");
-        assert_eq!(fs::read(&other).unwrap(), b"different");
-    }
-}

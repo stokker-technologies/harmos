@@ -9,65 +9,6 @@
 
 /* === Modules === */
 
-mod streams {
-    use serde::{Deserialize, Deserializer, Serialize};
-
-    #[harmos_runtime::stream(description = "A waveform-shaped row.", id = "pulse", window = 4)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-    pub struct Pulse(pub u64);
-
-    impl<'de> Deserialize<'de> for Pulse {
-        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-            u64::deserialize(deserializer).map(Self)
-        }
-    }
-
-    #[harmos_runtime::stream(description = "A second vertical row proves dispatch and demand stay per-stream.", id = "reading", window = 2)]
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
-    pub struct Reading {
-        pub value: i64,
-    }
-
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Take(pub u64);
-
-    impl harmos_runtime::streams::Track for Take {
-        fn label(&self) -> String {
-            format!("take_{}", self.0)
-        }
-    }
-
-    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Lens(pub u64);
-
-    impl harmos_runtime::streams::Track for Lens {
-        fn label(&self) -> String {
-            format!("lens_{}", self.0)
-        }
-    }
-
-    #[harmos_runtime::stream(description = "A row declaring both optional coordinates.",
-        id = "capture",
-        window = 4,
-        track = (take, lens),
-        axis = ordinal
-    )]
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
-    pub struct Capture {
-        pub take: Take,
-        pub lens: Lens,
-        pub ordinal: u64,
-        pub value: i64,
-    }
-
-    #[harmos_runtime::streams]
-    pub enum Studio {
-        Pulse(Pulse),
-        Reading(Reading),
-        Capture(Capture),
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -75,7 +16,9 @@ mod streams {
 // Standard Library Imports
 use std::convert::Infallible;
 use std::pin::Pin;
+
 // Third Party Imports
+
 // Local Imports
 use harmos_runtime::{
     Application, Runtime, state::At, state::Position, state::Transaction, streams::Axial, streams::Item, streams::Prefix, streams::Stream,
@@ -107,6 +50,12 @@ struct PresentedSample {
 
 enum Change {}
 
+#[harmos_runtime::lanes]
+pub enum StudioLanes {
+    #[default]
+    Open,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -123,11 +72,6 @@ impl Transaction<State> for Change {
     }
 }
 
-#[harmos_runtime::lanes]
-pub enum StudioLanes {
-    #[default]
-    Open,
-}
 impl harmos_runtime::Lifecycle for Studio {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -214,17 +158,114 @@ async fn streams_publish_query() {
     runtime.shutdown().await.unwrap();
 }
 
+mod streams {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Deserializer, Serialize};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[harmos_runtime::stream(description = "A waveform-shaped row.", id = "pulse", window = 4)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+    pub struct Pulse(pub u64);
+
+    #[harmos_runtime::stream(description = "A second vertical row proves dispatch and demand stay per-stream.", id = "reading", window = 2)]
+    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    pub struct Reading {
+        pub value: i64,
+    }
+
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    pub struct Take(pub u64);
+
+    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    pub struct Lens(pub u64);
+
+    #[harmos_runtime::stream(description = "A row declaring both optional coordinates.",
+        id = "capture",
+        window = 4,
+        track = (take, lens),
+        axis = ordinal
+    )]
+    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    pub struct Capture {
+        pub take: Take,
+        pub lens: Lens,
+        pub ordinal: u64,
+        pub value: i64,
+    }
+
+    /* === Enums === */
+
+    #[harmos_runtime::streams]
+    pub enum Studio {
+        Pulse(Pulse),
+        Reading(Reading),
+        Capture(Capture),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    impl<'de> Deserialize<'de> for Pulse {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            u64::deserialize(deserializer).map(Self)
+        }
+    }
+
+    impl harmos_runtime::streams::Track for Take {
+        fn label(&self) -> String {
+            format!("take_{}", self.0)
+        }
+    }
+
+    impl harmos_runtime::streams::Track for Lens {
+        fn label(&self) -> String {
+            format!("lens_{}", self.0)
+        }
+    }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
+
+/* === Tests === */
+
 #[test]
 fn generated_catalog_registers() {
     let catalog = streams::Studio::catalog();
 
     assert_eq!(catalog.len(), 3, "one enum variant yields one definition");
     assert_eq!(catalog[0].id(), "pulse");
-    assert_eq!(catalog[0].version(), 1);
+    let graph = harmos_runtime::schema::graph::Schema::from_declaration(
+        <streams::Pulse as harmos_runtime::schema::Described>::DEFINITION,
+        &harmos_runtime::config::SchemaSettings::default(),
+    )
+    .unwrap();
+    assert_eq!(catalog[0].version(), harmos_domain::streams::revision(&graph, catalog[0].window()).unwrap());
     assert_eq!(catalog[0].window(), 4);
     assert_eq!(streams::Studio::definition("reading").expect("the id is in the catalog").window(), 2);
     assert!(streams::Studio::definition("outside").is_none());
-    assert_eq!(streams::Pulse::DEFINITION, ("pulse", 1, 4));
+    assert_eq!(streams::Pulse::definition().id(), "pulse");
     assert_eq!(<streams::Pulse as Stream<Studio>>::ID, "pulse");
 }
 
@@ -293,12 +334,4 @@ fn stream_attribute_carries() {
     assert_eq!(ENTRIES[0].metadata(), <PresentedSample as StreamSpec>::metadata());
     #[cfg(feature = "plugin")]
     assert_eq!(ENTRIES[0].row_metadata(), <PresentedSample as StreamSpec>::row_metadata());
-}
-
-/* === Tests === */
-
-#[test]
-fn current_row_restores() {
-    use serde::de::value::{Error as ValueError, U64Deserializer};
-    assert_eq!(streams::Pulse::restore(1, U64Deserializer::<ValueError>::new(9)).unwrap(), Some(streams::Pulse(9)));
 }

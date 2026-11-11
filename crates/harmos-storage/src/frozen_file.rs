@@ -37,7 +37,7 @@ use crate::{ByteRange, Result, StorageManager};
 
 /* === Structs === */
 
-/// A private immutable copy of an opened file range, retained independently of its source.
+// A private immutable copy of an opened file range, retained independently of its source.
 #[derive(Clone)]
 pub struct FrozenFile {
     pub(crate) backing: Arc<Backing>,
@@ -65,8 +65,8 @@ impl FrozenFile {
         &self.sha256
     }
 
-    /// Reads the immutable snapshot through its originating storage manager.
-    /// The reader owns its file handle and remains valid after this snapshot is dropped.
+    // Reads the immutable snapshot through its originating storage manager.
+    // The reader owns its file handle and remains valid after this snapshot is dropped.
     pub async fn read(&self, range: ByteRange) -> Result<crate::FileReader> {
         let (file, path) = self.opened_file()?;
         self.session.open_file_handle(file, range, Some(Arc::clone(&self.backing)), Some(path)).await
@@ -80,10 +80,10 @@ impl FrozenFile {
 }
 
 impl<C> StorageManager<C> {
-    /// Copies a stable opened range in native bounded batches. Cancellation drops
-    /// the partial copy only after any blocking writer releases its actual owners.
-    /// On Windows, exclusive handles are refused. A denied independent reopen falls
-    /// back to explicit-offset reads, which can move the OS cursor shared with clones.
+    // Copies a stable opened range in native bounded batches. Cancellation drops
+    // the partial copy only after any blocking writer releases its actual owners.
+    // On Windows, exclusive handles are refused. A denied independent reopen falls
+    // back to explicit-offset reads, which can move the OS cursor shared with clones.
     pub async fn freeze_opened_file(&self, source: File, range: ByteRange) -> Result<FrozenFile> {
         let backing = tokio::task::spawn_blocking(move || {
             // Keep The Name Until All Frozen Readers And Captures Release Their Owner.

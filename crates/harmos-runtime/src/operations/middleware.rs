@@ -45,10 +45,22 @@ pub struct Invocation {
 
 #[derive(Clone, Copy, Debug)]
 pub struct AttemptObservation {
-    /// Zero-Based Attempt Number, Shared With The Handler Context And Trace.
+    // Zero-Based Attempt Number, Shared With The Handler Context And Trace.
     pub attempt: usize,
+
     pub outcome: OperationOutcome,
+    pub started_at: AttemptStartedAt,
+    pub elapsed: std::time::Duration,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttemptStartedAt {
+    pub instant: tokio::time::Instant,
+    pub timestamp: crate::state::Timestamp,
+}
+
+#[derive(Clone)]
+pub struct AttemptClock(Arc<dyn Fn() -> AttemptStartedAt + Send + Sync>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct Observation {
@@ -67,11 +79,18 @@ struct State {
     entries: Vec<Arc<dyn Middleware>>,
     authorizer: Option<Arc<dyn super::authorization::Authorizer>>,
     authorization_frozen: bool,
+    clock: AttemptClock,
+}
+
+pub(super) struct Capture {
+    entries: Vec<Arc<dyn Middleware>>,
+    clock: AttemptClock,
 }
 
 pub(super) struct Session {
     call: Invocation,
     entries: Vec<Arc<dyn Middleware>>,
+    clock: AttemptClock,
     entered: usize,
     observed: bool,
     context: Arc<OnceLock<CallContext>>,
@@ -92,6 +111,25 @@ pub trait Middleware: Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
+impl Default for AttemptClock {
+    fn default() -> Self {
+        Self::new(|| AttemptStartedAt {
+            instant: crate::supervision::executor::now(),
+            timestamp: crate::state::Timestamp::now(),
+        })
+    }
+}
+
+impl AttemptClock {
+    pub fn new(clock: impl Fn() -> AttemptStartedAt + Send + Sync + 'static) -> Self {
+        Self(Arc::new(clock))
+    }
+
+    pub(super) fn now(&self) -> AttemptStartedAt {
+        (self.0)()
+    }
+}
 
 impl Invocation {
     pub fn is_host_call(&self) -> bool {
@@ -160,17 +198,37 @@ impl Configuration {
         state.authorizer.clone()
     }
 
-    pub(super) fn capture(&self) -> Vec<Arc<dyn Middleware>> {
+    pub(super) fn set_clock(&self, clock: AttemptClock) -> Result<()> {
+        let mut state = self.state.lock().expect("middleware configuration lock is healthy");
+        if state.frozen {
+            return Err(Error::Closing {
+                domain: "operation middleware configuration",
+            });
+        }
+        state.clock = clock;
+        Ok(())
+    }
+
+    pub(super) fn capture(&self) -> Capture {
         let mut state = self.state.lock().expect("middleware configuration lock is healthy");
         state.frozen = true;
-        state.entries.clone()
+        Capture {
+            entries: state.entries.clone(),
+            clock: state.clock.clone(),
+        }
+    }
+}
+
+impl Capture {
+    pub(super) fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 
 impl Session {
     pub(super) fn new(
-        entries: Vec<Arc<dyn Middleware>>, operation: OperationDefinition, id: OperationInstanceId, generation: OperationGeneration,
-        inherited: CallContext, context: Arc<OnceLock<CallContext>>, origin: super::caller::Origin,
+        capture: Capture, operation: OperationDefinition, id: OperationInstanceId, generation: OperationGeneration, inherited: CallContext,
+        context: Arc<OnceLock<CallContext>>, origin: super::caller::Origin,
     ) -> Self {
         Self {
             call: Invocation {
@@ -180,11 +238,16 @@ impl Session {
                 context: inherited,
                 origin,
             },
-            entries,
+            entries: capture.entries,
+            clock: capture.clock,
             entered: 0,
             observed: false,
             context,
         }
+    }
+
+    pub(super) fn now(&self) -> AttemptStartedAt {
+        self.clock.now()
     }
 
     pub(super) async fn enter(&mut self) -> Result<()> {

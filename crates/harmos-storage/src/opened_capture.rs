@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use crate::{ByteRange, CaptureConsistency, FileChunk, FileReader, FileReference, Result, StorageFile, StorageManager};
+// Standard Library Imports
 use std::{
     future::Future,
     pin::Pin,
@@ -25,11 +25,10 @@ use std::{
     },
 };
 
-// Standard Library Imports
-
 // Third Party Imports
 
 // Local Imports
+use crate::{ByteRange, CaptureConsistency, FileChunk, FileReader, FileReference, Result, StorageFile, StorageManager};
 
 /* === Constants === */
 
@@ -41,7 +40,7 @@ type Pending = Pin<Box<dyn Future<Output = (State, Result<Step>)> + Send>>;
 
 /* === Structs === */
 
-/// Retains the original opened source, producer and exact in-flight copy across cancellation.
+// Retains the original opened source, producer and exact in-flight copy across cancellation.
 pub struct OpenedCapture {
     state: Option<State>,
     pending: Mutex<Option<Pending>>,
@@ -169,8 +168,8 @@ impl OpenedCapture {
         }
     }
 
-    /// Admits the selected visible prefix without sealing the original producer.
-    /// False discards an unstable, unaccepted observation; accepted bytes remain retained.
+    // Admits the selected visible prefix without sealing the original producer.
+    // False discards an unstable, unaccepted observation; accepted bytes remain retained.
     pub async fn synchronize(&mut self, visible_length: u64) -> Result<bool> {
         match self.run(Request::Synchronize(visible_length)).await? {
             Step::Synchronized(stable) => Ok(stable),
@@ -178,7 +177,7 @@ impl OpenedCapture {
         }
     }
 
-    /// Verifies and seals one quiescent, range-relative visible prefix.
+    // Verifies and seals one quiescent, range-relative visible prefix.
     pub async fn finish_at(&mut self, visible_length: u64) -> Result<FileReference> {
         match self.run(Request::FinishAt(visible_length)).await? {
             Step::Finished => Ok(self.finished()),
@@ -186,7 +185,7 @@ impl OpenedCapture {
         }
     }
 
-    /// Settles an accepted append and seals that prefix without another source read.
+    // Settles an accepted append and seals that prefix without another source read.
     pub async fn interrupt(&mut self) -> Result<FileReference> {
         match self.run(Request::Interrupt).await? {
             Step::Finished => Ok(self.finished()),

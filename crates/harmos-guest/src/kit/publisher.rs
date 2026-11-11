@@ -83,13 +83,12 @@ impl<P: Declared> Publisher<P> {
     where
         S::Row: Message,
     {
-        if !P::STREAMS.iter().any(|entry| entry.id == S::ID && entry.schema == S::VERSION) {
+        if !P::STREAMS.iter().any(|entry| entry.id == S::ID) {
             return Err(PublishError::UndeclaredStream);
         }
         self.context.calling_context()?;
         let request = harmos_operations::streams::Publish {
             stream: S::ID.to_owned(),
-            schema: S::VERSION,
             sequence: None,
             published_unix_micros: None,
             context: None,

@@ -18,6 +18,7 @@ mod graph;
 mod host;
 mod maps;
 mod native;
+mod serde;
 
 /* === Re-Exports === */
 

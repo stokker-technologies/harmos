@@ -95,7 +95,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         let window = declared.window.as_ref().ok_or_else(|| Error::new(marker.span(), "a named stream requires id and window"))?;
         let name = &marker.ident;
         let harmos = &declared.harmos;
-        let version = 1u32;
         return Ok(quote! {
             #item
             const _: () = assert!(#harmos::__private::stream_identity(#id),
@@ -103,7 +102,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             impl #harmos::StreamSpec for #name {
                 type Row = #row;
                 const ID: &'static str = #id;
-                const VERSION: u32 = #version;
                 const WINDOW: usize = #window;
                 const METADATA_JSON: &'static str = #metadata;
                 const ROW_METADATA_JSON: &'static str = <#row as #harmos::RowMetadata>::ROW_METADATA_JSON;
@@ -192,6 +190,10 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     } else {
         item = presentation_shape.to_token_stream();
     }
+    if !portable {
+        let schema = crate::message::shape(&parsed, &declared.harmos)?;
+        item = quote!(#item #schema);
+    }
     let row_metadata = if portable {
         let harmos = &declared.harmos;
         quote!(<Self as #harmos::RowMetadata>::ROW_METADATA_JSON)
@@ -208,7 +210,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let Some(window) = &declared.window else {
         return Err(Error::new(id.span(), "a current stream row declares `id = \"…\"` and `window = …`"));
     };
-    let version = LitInt::new("1", parsed.span());
     let encoded_id: String = id.value().bytes().map(|byte| format!("{byte:02x}")).collect();
     let id_guard = format_ident!("__HARMOS_STREAM_ID_{}", encoded_id);
     let harmos = &declared.harmos;
@@ -268,7 +269,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         impl #harmos::StreamSpec for #name {
             type Row = Self;
             const ID: &'static str = #id;
-            const VERSION: u32 = #version;
             const WINDOW: usize = #window;
             const METADATA_JSON: &'static str = #metadata;
             const ROW_METADATA_JSON: &'static str = #row_metadata;
@@ -277,7 +277,6 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         #[automatically_derived]
         impl #harmos::__private::StreamRow for #name {
             const ID: &'static str = #id;
-            const VERSION: u32 = #version;
             const WINDOW: usize = #window;
             #batch_definition
             fn metadata() -> #harmos::Metadata { <Self as #harmos::StreamSpec>::metadata() }
@@ -285,37 +284,14 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         }
 
         impl #name {
-
-            pub const DEFINITION: (&'static str, u32, usize) = (#id, #version, #window);
-
-
             pub const ID: &'static str = #id;
-
-
-            pub const VERSION: u32 = #version;
 
 
             pub const WINDOW: usize = #window;
 
 
             pub fn definition() -> #harmos::streams::Definition {
-                #harmos::__private::stream_definition::<Self>(#id, #version, #window)
-            }
-
-
-
-
-
-
-            pub fn restore<'de, D>(
-                version: u32,
-                payload: D,
-            ) -> ::core::result::Result<::core::option::Option<Self>, D::Error>
-            where
-                D: #harmos::__private::serde::Deserializer<'de> + ::core::marker::Copy,
-            {
-                let _ = version;
-                Ok(Some(#harmos::__private::serde::Deserialize::deserialize(payload)?))
+                #harmos::__private::stream_definition::<Self>(#id, #window)
             }
         }
 

@@ -72,6 +72,11 @@ impl<A: Application> PluginHost<A> {
         let mut definition = PluginDefinition::sidecar(&executable, settings.plugin.configuration.clone())
             .map_err(|source| failed(executable.declaration().id.as_str(), source))?;
         definition.requires = settings.plugin.requires.clone();
+        self.shared
+            .handles
+            .streams
+            .validate_publications(&definition.id, definition.contributions.streams.clone())
+            .map_err(|source| failed(&definition.id, source))?;
         self.serve_publications(&definition, lane)?;
         let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
         harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {

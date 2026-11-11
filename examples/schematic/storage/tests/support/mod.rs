@@ -42,36 +42,36 @@ pub struct Ledger {
 }
 
 #[harmos::transaction(id = "ledger.deposit",  inverse = Withdraw)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Deposit {
     pub amount: i64,
 }
 
 #[harmos::transaction(id = "ledger.withdraw",  inverse = Deposit)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Withdraw {
     pub amount: i64,
 }
 
 #[harmos::transaction(id = "ledger.pay")]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pay {
     pub effect: u64,
     pub amount: i64,
 }
 
 #[harmos::transaction(id = "ledger.bonus")]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Bonus {
     pub amount: i64,
 }
 
 #[harmos::transaction(id = "ledger.explode")]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Explode;
 
 #[harmos::record(id = "ledger.noted")]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Noted(pub String);
 
 #[derive(Clone, Copy, Debug)]

@@ -9,13 +9,14 @@
 
 /* === Modules === */
 
-use crate::support;
-
 #[path = "../streams/allocation.rs"]
 mod allocation;
 
 #[path = "retention.rs"]
 mod retention;
+
+#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+mod revisions;
 
 #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
 #[path = "../streams/listeners.rs"]
@@ -31,19 +32,6 @@ pub mod stream_batches;
 #[path = "streams_macros.rs"]
 mod streams_macros;
 
-mod colliding {
-    use serde::{Deserialize, Serialize};
-
-    #[harmos_runtime::stream(id = "pulse", window = 1)]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-    pub struct Imposter;
-
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Imposter(Imposter),
-    }
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -52,14 +40,17 @@ mod colliding {
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
+
 // Local Imports
+use crate::support;
 use harmos_runtime::{
     Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
     streams::Definition, streams::Item, streams::Stream, streams::StreamManager,
 };
-use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 
 /* === Constants === */
 
@@ -382,12 +373,11 @@ async fn definitions_refuse_invalid() {
         assert!(refused.to_string().contains("pulse"), "the refusal names the colliding id: {refused}");
     }
     {
-        #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+        #[derive(harmos_runtime::Described, Clone, Copy, Debug, Serialize, Deserialize)]
         struct Hollow;
 
         impl Stream<Bank> for Hollow {
             const ID: &'static str = "hollow";
-            const VERSION: u32 = 1;
             const WINDOW: usize = 0;
         }
 
@@ -408,6 +398,50 @@ async fn definitions_refuse_invalid() {
 fn registration_takes_definitions(catalog: [Definition; 2], streams: &StreamManager<Bank>) {
     let _ = catalog;
     let _ = streams;
+}
+
+mod colliding {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    use serde::{Deserialize, Serialize};
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[harmos_runtime::stream(id = "pulse", window = 1)]
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    pub struct Imposter;
+
+    /* === Enums === */
+
+    #[harmos_runtime::streams]
+    pub enum Bank {
+        Imposter(Imposter),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

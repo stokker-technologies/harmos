@@ -1,17 +1,12 @@
 name: Release
 run-name: >-
   ${{ github.event_name == 'workflow_dispatch' && 'Release / Preparation' ||
-  github.event_name == 'push' && 'Release / Publication' || 'Release / Tagging' }}
+  startsWith(github.ref, 'refs/tags/v') && 'Release / Publication' || 'Release / Tagging' }}
 "on":
   workflow_dispatch: {}
-  pull_request:
-    types:
-    - closed
-    branches:
-    - dev
-    # Only Release Reviews Change The Version Policy; Ordinary Merges Start No Release Run.
-    paths:
-    - tools/project.toml
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   push:
     tags:
     - v*
@@ -28,6 +23,33 @@ env:
   pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 jobs:
+  mode:
+    name: Release / Mode
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+      sha: ${{ steps.mode.outputs.sha }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - id: mode
+      shell: python
+      run: |-
+        import os, runpy
+        from pathlib import Path
+        action = runpy.run_path('.github/actions/review-release/run.py')
+        result = action['github_release_mode']()
+        with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as stream:
+            stream.write(''.join(f'{key}={value}\n' for key, value in result.items()))
+      env:
+        GH_TOKEN: ${{ github.token }}
+    permissions:
+      contents: read
+      pull-requests: read
   prepare:
     name: Release / Prepare
     runs-on: ubuntu-24.04
@@ -60,22 +82,19 @@ jobs:
         harmos_tools.release.run review
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.mise-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.uv-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -91,7 +110,9 @@ jobs:
       RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       GH_TOKEN: ${{ github.token }}
       CRATES_BOOTSTRAP_AVAILABLE: ${{ secrets.CARGO_REGISTRY_TOKEN != '' }}
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev'
+    needs:
+    - mode
+    if: needs.mode.outputs.mode == 'prepare'
     environment: release
     permissions:
       contents: read
@@ -106,7 +127,7 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
-        ref: ${{ github.event.pull_request.merge_commit_sha }}
+        ref: ${{ needs.mode.outputs.sha }}
     - id: setup
       uses: ./.github/actions/setup
       with:
@@ -129,7 +150,7 @@ jobs:
         runpy.run_path('.github/actions/review-release/checks.py', run_name='__main__')
       env:
         GH_TOKEN: ${{ github.token }}
-        RELEASE_TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+        RELEASE_TARGET_SHA: ${{ needs.mode.outputs.sha }}
     - run: mise run release:tag
       env:
         RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
@@ -140,22 +161,19 @@ jobs:
           steps.crates.outputs.token }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.mise-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.uv-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -175,9 +193,7 @@ jobs:
       RELEASE_BUILD_VERSION: ${{ needs.validated.outputs.review_version }}
     if: >-
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
-      'cancelled') && (github.event_name == 'pull_request' && github.event.action ==
-      'closed' && github.event.pull_request.merged && github.event.pull_request.base.ref
-      == 'dev' && startsWith(github.event.pull_request.head.ref, 'release/v'))
+      'cancelled') && needs.mode.outputs.mode == 'tag'
     environment: release
     permissions:
       checks: read
@@ -189,6 +205,7 @@ jobs:
       cancel-in-progress: false
     needs:
     - validated
+    - mode
   publish:
     name: Release / Publish
     runs-on: ubuntu-24.04
@@ -205,8 +222,7 @@ jobs:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
         cache-backend: disk
         cache-mode: >-
-          ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
-          github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+          ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && 'READ_WRITE' || 'READ_ONLY' }}
         caches: "{\"cargo_downloads\":{\"key\":\"ci-v5-cargo-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/cargo/registry/\\n.cache/cargo/git/\"},\"mise\":{\"key\":\"ci-v5-mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-<CI_RUNNER_IMAGE_ID>-${{ env.JOB_IMAGE_ID }}-<MISE_ROOT_ID>-<WORKSPACE_ROOT_ID>-${{ hashFiles('mise.lock') }}\",\"path\":\"<MISE_DATA_DIR>\"},\"sccache\":{\"key\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('Cargo.lock') }}\",\"path\":\".cache/sccache/\",\"restore-keys\":\"ci-v5-sccache-${{ runner.os }}-${{ runner.arch }}-${{ env.PROFILE }}-${{ hashFiles('mise.lock') }}-\"},\"uv\":{\"key\":\"ci-v5-uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.lock') }}-${{ hashFiles('uv.lock', 'mise.lock') }}\",\"path\":\".cache/uv/\"}}"
         bootstrap: "[]"
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
@@ -236,7 +252,7 @@ jobs:
         runpy.run_path('.github/actions/review-release/checks.py', run_name='__main__')
       env:
         GH_TOKEN: ${{ github.token }}
-        RELEASE_TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+        RELEASE_TARGET_SHA: ${{ github.sha }}
     - name: Show Trusted Publishing Identity
       run: >-
         mise exec -- uv run --locked --project tools/python python -m
@@ -260,22 +276,19 @@ jobs:
         subject-checksums: target/release-assets/any/SHA256SUMS
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.cargo_downloads-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
         path: ${{ steps.setup.outputs.cargo_downloads-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.mise-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.mise-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup.outputs.mise-path }}
     - uses: ./.github/actions/save-caches
       if: >-
-        success() && (github.ref == 'refs/heads/dev' && github.event_name !=
-        'pull_request') && steps.setup.outputs.uv-cache-hit != 'true'
+        success() && (github.ref == 'refs/heads/dev') && steps.setup.outputs.uv-cache-hit != 'true'
       with:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
@@ -293,8 +306,7 @@ jobs:
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
       COMPILER_CACHE_MODE: >-
-        ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' &&
-        github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+        ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && 'READ_WRITE' || 'READ_ONLY' }}
       PROFILE: ${{ needs.validated.outputs.review_profile }}
       RELEASE_BUILD_RUN_ID: ${{ needs.validated.outputs.review_run }}
       RELEASE_BUILD_SHA: ${{ needs.validated.outputs.review_sha }}
@@ -325,8 +337,7 @@ jobs:
       with:
         fetch-depth: 0
         ref: >-
-          ${{ github.event_name == 'pull_request' &&
-          github.event.pull_request.merge_commit_sha || github.sha }}
+          ${{ needs.mode.outputs.sha || github.sha }}
     - id: setup
       uses: ./.github/actions/setup
       with:
@@ -358,10 +369,10 @@ jobs:
       review_version: ${{ steps.review.outputs.review_version }}
       stable_release: ${{ steps.review.outputs.stable_release }}
     if: >-
-      (github.event_name == 'pull_request' && github.event.action == 'closed' &&
-      github.event.pull_request.merged && github.event.pull_request.base.ref == 'dev' &&
-      startsWith(github.event.pull_request.head.ref, 'release/v')) ||
-      (startsWith(github.ref, 'refs/tags/v'))
+      always() && (needs.mode.outputs.mode == 'tag' ||
+      startsWith(github.ref, 'refs/tags/v'))
+    needs:
+    - mode
   verify_unix:
     name: Release / Verify (unix)
     runs-on: ubuntu-24.04
@@ -419,7 +430,7 @@ jobs:
       if: >-
         (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
         'cancelled') && (startsWith(github.ref, 'refs/tags/v'))) && (success() &&
-        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
+        (github.ref == 'refs/heads/dev') &&
         steps.setup_unix.outputs.cargo_downloads-cache-hit != 'true')
       with:
         key: ${{ steps.setup_unix.outputs.cargo_downloads-cache-primary-key }}
@@ -428,8 +439,8 @@ jobs:
       if: >-
         (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
         'cancelled') && (startsWith(github.ref, 'refs/tags/v'))) && (success() &&
-        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
-        steps.setup_unix.outputs.mise-cache-hit != 'true')
+        (github.ref == 'refs/heads/dev') && steps.setup_unix.outputs.mise-cache-hit !=
+        'true')
       with:
         key: ${{ steps.setup_unix.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.mise-path }}
@@ -437,8 +448,8 @@ jobs:
       if: >-
         (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
         'cancelled') && (startsWith(github.ref, 'refs/tags/v'))) && (success() &&
-        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
-        steps.setup_unix.outputs.uv-cache-hit != 'true')
+        (github.ref == 'refs/heads/dev') && steps.setup_unix.outputs.uv-cache-hit !=
+        'true')
       with:
         key: ${{ steps.setup_unix.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_unix.outputs.uv-path }}
@@ -525,7 +536,7 @@ jobs:
       if: >-
         (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
         'cancelled') && (startsWith(github.ref, 'refs/tags/v'))) && (success() &&
-        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
+        (github.ref == 'refs/heads/dev') &&
         steps.setup_windows.outputs.cargo_downloads-cache-hit != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.cargo_downloads-cache-primary-key }}
@@ -534,8 +545,8 @@ jobs:
       if: >-
         (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
         'cancelled') && (startsWith(github.ref, 'refs/tags/v'))) && (success() &&
-        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
-        steps.setup_windows.outputs.mise-cache-hit != 'true')
+        (github.ref == 'refs/heads/dev') && steps.setup_windows.outputs.mise-cache-hit
+        != 'true')
       with:
         key: ${{ steps.setup_windows.outputs.mise-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.mise-path }}
@@ -543,8 +554,8 @@ jobs:
       if: >-
         (always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result,
         'cancelled') && (startsWith(github.ref, 'refs/tags/v'))) && (success() &&
-        (github.ref == 'refs/heads/dev' && github.event_name != 'pull_request') &&
-        steps.setup_windows.outputs.uv-cache-hit != 'true')
+        (github.ref == 'refs/heads/dev') && steps.setup_windows.outputs.uv-cache-hit !=
+        'true')
       with:
         key: ${{ steps.setup_windows.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup_windows.outputs.uv-path }}

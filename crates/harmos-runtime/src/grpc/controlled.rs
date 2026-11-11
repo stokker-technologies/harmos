@@ -52,7 +52,7 @@ struct Endpoint<O> {
 
 /* === Enums === */
 
-/// Frames Of A Managed Call; Cancellation Keeps The Response Stream Open.
+// Frames Of A Managed Call; Cancellation Keeps The Response Stream Open.
 #[derive(Debug, PartialEq)]
 pub enum ControlEnvelope<R, I> {
     Request(R),

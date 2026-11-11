@@ -11,6 +11,7 @@
 
 mod codec;
 mod configuration;
+mod encoded;
 mod owned;
 #[cfg(feature = "grpc")]
 pub(crate) mod protobuf;

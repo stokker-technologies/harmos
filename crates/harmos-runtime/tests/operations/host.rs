@@ -236,7 +236,7 @@ async fn builtin_controls_instance() {
     let cancelled =
         operations.operation::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(id)).await.unwrap();
     assert!(cancelled.cancellation_requested);
-    assert!(matches!((&mut instance).await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!((&mut instance).await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     instance.settle().await.unwrap();
     // Settled Instances Leave The Index; Unknown Ids Stay Hidden
     let settled = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;

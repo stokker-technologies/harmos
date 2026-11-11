@@ -165,7 +165,7 @@ async fn queued_cancel_unbuilt() {
     assert_eq!(second.status().phase(), OperationPhase::Stopping);
     // A cancelled queued instance never initialized, so it owns
     // nothing to clean up and releases its queue slot at once.
-    assert!(matches!((&mut second).await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!((&mut second).await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(second.status().phase(), OperationPhase::Settled);
     assert_eq!(second.status().outcome(), Some(OperationOutcome::Cancelled));
     assert!(second.status().started_at().is_none());
@@ -175,9 +175,9 @@ async fn queued_cancel_unbuilt() {
     assert_eq!(counts.drops.load(Ordering::SeqCst), 0);
     let third = runtime.operation(request(false)).start().await.unwrap();
     third.request_cancel();
-    assert!(matches!(third.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(third.join().await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     first.request_cancel();
-    assert!(matches!(first.join().await, Err(Error::OperationRefused(Refusal::Cancelled))));
+    assert!(matches!(first.join().await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }

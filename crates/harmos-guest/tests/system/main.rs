@@ -118,7 +118,6 @@ impl Stub {
             }
             "host.host.publish" => {
                 let request = harmos_operations::streams::Publish::decode(&call.payload).map_err(Refusal::of)?;
-                assert_eq!(request.schema, 1);
                 assert_eq!(request.sequence, None, "the guest asks its original lease to derive the sequence");
                 assert_eq!(request.published_unix_micros, None);
                 assert_eq!(request.context, None);

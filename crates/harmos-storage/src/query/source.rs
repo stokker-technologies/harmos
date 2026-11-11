@@ -12,9 +12,8 @@
 /* === Modules === */
 
 mod columns;
-
-#[cfg(test)]
-mod tests;
+#[cfg(any(test, feature = "testing"))]
+pub(super) mod testing;
 
 /* === Re-Exports === */
 
@@ -26,9 +25,11 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+
 // Third Party Imports
 use arrow_array::{ArrayRef, BinaryArray, RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
+
 // Local Imports
 use super::transform::project::Project;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
@@ -283,24 +284,29 @@ fn cursor_columns<'a>(rows: impl Iterator<Item = &'a StorageCursor> + Clone) -> 
         (Field::new("position", DataType::UInt64, false), Arc::new(UInt64Array::from(rows.map(|row| row.sequence).collect::<Vec<_>>()))),
     ]
 }
+
 fn append_schema_columns(columns: &mut Vec<(Field, ArrayRef)>, key: &crate::storage::SchemaKey, rows: usize) -> Result<()> {
     columns.push((Field::new("schema_id", DataType::Utf8, false), strings((0..rows).map(|_| Some(key.id.as_str())))));
     columns.push((Field::new("schema_version", DataType::UInt32, false), Arc::new(UInt32Array::from(vec![key.version.get(); rows]))));
     columns.push((Field::new("payload_encoding", DataType::Utf8, false), strings((0..rows).map(|_| Some(encoding(key))))));
     Ok(())
 }
+
 fn encoding(key: &crate::storage::SchemaKey) -> &'static str {
     match key.payload_encoding {
         crate::storage::PayloadEncoding::PostcardV1 => "postcard_v1",
     }
 }
+
 fn strings<'a>(values: impl Iterator<Item = Option<&'a str>>) -> ArrayRef {
     Arc::new(StringArray::from_iter(values))
 }
+
 fn flat(columns: Vec<(Field, ArrayRef)>) -> Result<RecordBatch> {
     let (fields, arrays): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
     RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).map_err(|_| invalid("Arrow metadata batch mismatch"))
 }
+
 fn assemble(columns: Vec<(Field, ArrayRef)>, payload: ArrayRef) -> Result<RecordBatch> {
     let (fields, arrays): (Vec<_>, Vec<_>) = columns.into_iter().unzip();
     let fields: Fields = fields.into();
@@ -322,11 +328,171 @@ fn timestamp(value: SystemTime) -> Result<i64> {
     };
     i64::try_from(value).map_err(|_| invalid("timestamp outside Arrow nanosecond range"))
 }
+
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage Arrow source", reason }
 }
+
 fn exhausted() -> Error {
     Error::ResourceExhausted { resource: "storage Arrow construction" }
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+    use super::testing::PayloadDecoder;
+    use super::*;
+    use crate::{Identifier, Message};
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    #[harmos_domain::message]
+    struct Sample {
+        x: f64,
+        y: f64,
+    }
+
+    #[harmos_domain::message]
+    struct Nested {
+        scalar: Sample,
+        optional: Option<Sample>,
+        repeated: Vec<Sample>,
+        event: Choice,
+        label: Option<String>,
+        bytes: Vec<u8>,
+        flag: bool,
+        small: i32,
+        large: i64,
+        unsigned: u32,
+        wide: u64,
+        single: Option<f32>,
+    }
+
+    /* === Enums === */
+
+    #[harmos_domain::message]
+    enum Choice {
+        Empty,
+        Value(Sample),
+        Many(Vec<Sample>),
+    }
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+
+    #[test]
+    fn column_decoder_matches_previous_tree_for_seeded_nested_payloads() {
+        let mut seed = 19_u64;
+        let mut sample = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            Sample {
+                x: (seed >> 11) as f64,
+                y: -(seed as f64),
+            }
+        };
+        let payloads = (0..4099)
+            .map(|row| {
+                Nested {
+                    scalar: sample(),
+                    optional: (row % 3 == 0).then(&mut sample),
+                    repeated: (0..row % 7).map(|_| sample()).collect(),
+                    event: match row % 3 {
+                        0 => Choice::Empty,
+                        1 => Choice::Value(sample()),
+                        _ => Choice::Many(vec![sample(), sample()]),
+                    },
+                    label: (row % 2 == 0).then(|| format!("row-{row}")),
+                    bytes: vec![row as u8; row % 5],
+                    flag: row % 2 == 0,
+                    small: -(row as i32),
+                    large: i64::MIN + row as i64,
+                    unsigned: u32::MAX - row as u32,
+                    wide: u64::MAX - row as u64,
+                    single: (row % 2 == 0).then_some(-(row as f32)),
+                }
+                .encode()
+            })
+            .collect::<Vec<_>>();
+        let refs = payloads.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let decoder = PayloadDecoder::new::<Nested>();
+        let schema = &decoder.0;
+        let expected = decoder.reference(&refs).unwrap();
+        assert_eq!(decoder.decode(&refs).unwrap().to_data(), expected.to_data());
+        assert_eq!(decoder.decode(&[]).unwrap().to_data(), decoder.reference(&[]).unwrap().to_data());
+        assert!(decoder.decode(&[&[255]]).is_err());
+
+        use crate::query::transform::{
+            FieldPath, ProjectExecution,
+            project::{Project, Projection},
+        };
+        let input_schema = Schema::new(vec![Field::new("payload", expected.data_type().clone(), false)]);
+        let input = RecordBatch::try_new(Arc::new(input_schema), vec![expected]).unwrap();
+        let mut records = payloads
+            .into_iter()
+            .map(|payload| StoredRecord {
+                position: schema.position.clone(),
+                schema: schema.key.clone(),
+                scope: None,
+                item: Identifier::new("row").unwrap(),
+                source: None,
+                source_time: None,
+                payload,
+            })
+            .collect::<Vec<_>>();
+        for paths in [
+            vec!["payload.scalar.x", "payload.optional.y"],
+            vec!["payload.repeated", "payload.event", "payload.label"],
+            vec!["payload"],
+            vec!["payload.event.Empty"],
+            vec!["payload.event.__variant", "payload.event.Value"],
+        ] {
+            let fields = paths
+                .iter()
+                .enumerate()
+                .map(|(index, path)| Projection {
+                    field: FieldPath::from(*path),
+                    name: format!("column{index}"),
+                })
+                .collect();
+            let project = Project { fields };
+            let expected = project.apply(&input, &mut || Ok(())).unwrap();
+            let actual = projected(schema, records.iter(), &project, expected.schema()).unwrap();
+            assert_eq!(actual, expected);
+        }
+        // Corruption In An Unselected Field Must Still Be Rejected.
+        records[0].payload.pop();
+        let project = Project {
+            fields: vec![Projection {
+                field: FieldPath::from("payload.scalar.x"),
+                name: "x".into(),
+            }],
+        };
+        let output = Arc::new(project.output_schema(&input.schema()).unwrap());
+        assert!(projected(schema, records.iter(), &project, output).is_err());
+    }
+}

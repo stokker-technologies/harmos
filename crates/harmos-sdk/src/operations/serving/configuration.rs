@@ -83,6 +83,7 @@ impl WireTable {
     pub(crate) fn configuration(&self) -> Result<Self, ServingError> {
         let mut configuration = Self::new(&self.owner)?;
         configuration.capacity = self.capacity;
+        configuration.trusted_resources = self.trusted_resources.clone();
         configuration.provided.clone_from(&self.provided);
         #[cfg(feature = "streaming")]
         {

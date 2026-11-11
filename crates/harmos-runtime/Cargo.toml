@@ -32,6 +32,8 @@ bench = false
 # Core Runtime and Authoring Are Always Available
 [features]
 default = []
+# Explicitly Selected Native SDK Prototype Story; Excluded From Shipping Builds.
+cpp-prototype = ["plugin-sidecar"]
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
 plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
 plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
@@ -138,6 +140,7 @@ rcgen = { workspace = true, features = ["pem", "ring"] }
 
 # Serialization
 arrow-array = { workspace = true }
+arrow-ipc = { workspace = true }
 arrow-schema = { workspace = true }
 prost = { workspace = true, features = ["derive"] }
 
@@ -251,6 +254,11 @@ path = "tests/integration/main.rs"
 [[test]]
 name = "acceptance"
 path = "tests/acceptance/main.rs"
+
+[[test]]
+name = "cpp"
+path = "tests/system/cpp/main.rs"
+required-features = ["cpp-prototype"]
 
 [[test]]
 name = "system"

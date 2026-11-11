@@ -85,6 +85,7 @@ impl<A: Application> PluginHost<A> {
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
         settings.validate()?;
+        loaded.validate_publications().map_err(|source| failed(&loaded.declaration().id, source))?;
         let mut definition = PluginDefinition::guest(&loaded, settings.configuration.clone())
             .map_err(|source| failed(loaded.declaration().id.as_str(), source))?;
         definition.requires = settings.requires.clone();

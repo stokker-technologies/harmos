@@ -434,7 +434,6 @@ impl harmos_runtime::Lifecycle for Batches {
         let raw = |stream: &str, sequence: u64, published_unix_micros: Option<i64>, following: Vec<(Vec<u8>, Option<i64>)>| {
             harmos_operations::streams::Publish {
                 stream: stream.to_owned(),
-                schema: 1,
                 sequence: Some(sequence),
                 published_unix_micros,
                 context: None,

@@ -208,7 +208,7 @@ async fn cancelled_attempt_resources() {
     assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Running);
     invocation.request_cancel();
     let result = (&mut invocation).await;
-    assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Settled);
     assert_eq!(counts.runs.load(Ordering::SeqCst), 0);
     // Cancellation Drops The Attempt Before Returning Its Outcome.
@@ -283,9 +283,13 @@ async fn cancel_final_response_sidecar() {
         if mode == 0 {
             assert_eq!(u64::decode(&result.unwrap()).unwrap(), 42);
         } else if mode == 3 {
-            assert!(matches!(result, Err(harmos_runtime::Error::OperationFailed { .. })));
+            let error = result.unwrap_err();
+            assert!(matches!(error, harmos_runtime::Error::OperationFailed { .. }));
+            let failure = error.failure().unwrap();
+            assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent);
+            assert_eq!(failure.context().operation(), Some("cancel.finish"));
         } else {
-            assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+            assert!(matches!(result, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
         }
         assert_eq!(counts.cancellation.dropped.load(Ordering::SeqCst), mode as usize + 1);
     }

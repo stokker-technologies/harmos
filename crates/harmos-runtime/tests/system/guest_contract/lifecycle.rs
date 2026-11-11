@@ -194,7 +194,7 @@ impl harmos_runtime::Operation for Publish {
                     reason: "sequence, batch and publication metadata are host-derived",
                 });
             }
-            let lease = scope.publication(&row.stream, row.schema)?;
+            let lease = scope.publication(&row.stream)?;
             let row = harmos_runtime::streams::PublicationRow {
                 payload: std::mem::take(&mut row.payload),
                 published_unix_micros: None,

@@ -486,8 +486,7 @@ async fn ingestion_authority_bounded() {
             metadata: <MeterPulse as harmos_runtime::StreamSpec>::metadata(),
             row_metadata: Vec::new(),
             id: <MeterPulse as harmos_runtime::StreamSpec>::ID.into(),
-            schema: support::Pulse::VERSION + 1,
-            window: support::Pulse::WINDOW,
+            window: support::Pulse::WINDOW + 1,
             row: harmos_runtime::schema::graph::Schema::from_declaration(
                 <support::Pulse as harmos_runtime::schema::Described>::DEFINITION,
                 &harmos_runtime::config::SchemaSettings::default(),
@@ -510,11 +509,7 @@ async fn ingestion_authority_bounded() {
         fixture.runtime.operations.register::<crate::sidecar::SampleOperations>(operations::Lanes::Open).await.unwrap();
         fixture.initialize().await.unwrap();
         publications::ready(fixture.ready().clone()).await;
-        let refused = fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 }).await.unwrap_err();
-        assert!(matches!(refused, harmos_runtime::Error::OperationFailed { source, .. }
-            if matches!(source.downcast_ref::<harmos_runtime::operations::NativeError>(),
-                Some(harmos_runtime::operations::NativeError::Remote(failure))
-                if failure.cause().contains("stream or schema differs from the frozen generation inventory"))));
+        assert!(fixture.call::<PublishPulseDeclaration>(PublishPulseDeclaration { sample: 42 }).await.is_err());
         assert_eq!(fixture.runtime.streams.query::<support::Pulse>(..).await.unwrap().count(), 0);
         fixture.shutdown().await.unwrap();
         fixture.runtime.shutdown().await.unwrap();

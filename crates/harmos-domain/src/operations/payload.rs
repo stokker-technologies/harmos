@@ -12,13 +12,6 @@
 
 /* === Modules === */
 
-pub mod prelude {
-    pub use crate::MemorySize;
-    pub use crate::schema::declaration::{Field, Kind};
-    pub use crate::schema::{Cardinality, Described};
-    pub use std::borrow::Cow;
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -80,5 +73,44 @@ pub use builtin_payload as payload;
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+pub mod prelude {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use crate::MemorySize;
+    pub use crate::schema::declaration::{Field, Kind};
+    pub use crate::schema::{Cardinality, Described};
+    pub use std::borrow::Cow;
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */

@@ -77,7 +77,7 @@ pub struct PluginListenerRegistration {
 
 pub(super) struct Listening {
     delivery: Listener,
-    frontiers: Vec<(Arc<str>, u32, Arc<AtomicU64>)>,
+    frontiers: Vec<(Arc<str>, Arc<AtomicU64>)>,
     held: Arc<Mutex<Vec<Holding>>>,
 }
 
@@ -138,11 +138,8 @@ impl<A: Application> StreamManager<A> {
             });
         }
         let held = Arc::new(Mutex::new(Vec::new()));
-        let frontiers = bindings
-            .sources
-            .iter()
-            .map(|source| (Arc::<str>::from(source.wired.definition.id()), source.wired.definition.version(), Arc::clone(&source.frontier)))
-            .collect();
+        let frontiers =
+            bindings.sources.iter().map(|source| (Arc::<str>::from(source.wired.definition.id()), Arc::clone(&source.frontier))).collect();
         let delivery = Listener::spawn(scope, {
             let streams = self.clone();
             let scope = scope.clone();
@@ -214,7 +211,7 @@ impl<A: Application> StreamManager<A> {
 
 impl<A: Application> PluginListenerBindings<'_, A> {
     pub fn stream<S: Stream<A> + Message + Described>(&mut self, after: u64) -> Result<()> {
-        let wired = self.source(S::ID, S::VERSION)?;
+        let wired = self.source(S::ID)?;
         if wired.definition.row() != TypeId::of::<S>() || wired.definition.owner().is_some() {
             return Err(Error::InvalidInput {
                 field: "native listener stream",
@@ -226,28 +223,36 @@ impl<A: Application> PluginListenerBindings<'_, A> {
         self.bind(wired, &graph, after, submit_native::<S>, native_bytes::<S>)
     }
 
-    pub fn publication(&mut self, id: &str, schema_ordinal: u32, after: u64) -> Result<()> {
-        let wired = self.source(id, schema_ordinal)?;
+    pub fn publication(&mut self, id: &str, after: u64) -> Result<()> {
+        let wired = self.source(id)?;
         if wired.validation.is_none() || wired.staged.is_none() {
             return Err(Error::InvalidInput {
                 field: "managed listener stream",
                 reason: "source has no original validated generation owner",
             });
         }
-        let graph = wired.definition.schema().ok_or(Error::InvalidInput {
-            field: "managed listener stream",
-            reason: "source has no admitted row schema",
-        })?;
+        let graph = wired.definition.schema();
         self.bind(Arc::clone(&wired), graph, after, submit_publication, publication_bytes)
     }
 
-    fn source(&self, id: &str, version: u32) -> Result<Arc<Wired>> {
+    fn source(&self, id: &str) -> Result<Arc<Wired>> {
         let _visibility = self.streams.windows.visibility.read().expect("stream visibility poisoned");
         let windows = self.streams.windows.windows.read().expect("stream registry poisoned");
-        let wired = windows.get(id).and_then(|versions| versions.get(&version)).cloned().ok_or_else(|| Error::NotRegistered {
-            domain: "listener stream",
-            name: id.to_owned(),
-        })?;
+        let wired = windows
+            .get(id)
+            .and_then(|versions| {
+                // A Same-Activation Listener Binds Its Staged Source; Dependencies Use The Committed Current Source.
+                versions
+                    .wires
+                    .values()
+                    .find(|wired| wired.staged.as_ref().is_some_and(|staged| staged.scope.same_activation(self.scope)))
+                    .or_else(|| versions.current.and_then(|current| versions.wires.get(&current)))
+            })
+            .cloned()
+            .ok_or_else(|| Error::NotRegistered {
+                domain: "listener stream",
+                name: id.to_owned(),
+            })?;
         if let Some(owner) = wired.definition.owner() {
             if owner != self.scope.owner() && !self.scope.allows(owner) {
                 return Err(Error::InvalidInput {
@@ -283,10 +288,10 @@ impl<A: Application> PluginListenerBindings<'_, A> {
         let index = self.sources.len();
         let mut selected = false;
         for (ordinal, listener) in self.scope.listeners().iter().enumerate() {
-            let Source::Stream { id, schema_ordinal, .. } = listener.source() else {
+            let Source::Stream { id, .. } = listener.source() else {
                 continue;
             };
-            if id.as_ref() != wired.definition.id() || *schema_ordinal != wired.definition.version() {
+            if id.as_ref() != wired.definition.id() {
                 continue;
             }
             let source_graph = listener.source().schema();
@@ -323,13 +328,13 @@ impl<A: Application> PluginListenerBindings<'_, A> {
 }
 
 impl PluginListenerRegistration {
-    pub fn frontier(&self, id: &str, schema_ordinal: u32) -> Option<u64> {
+    pub fn frontier(&self, id: &str) -> Option<u64> {
         self.listening
             .as_ref()?
             .frontiers
             .iter()
-            .find(|(source, version, _)| source.as_ref() == id && *version == schema_ordinal)
-            .map(|(_, _, frontier)| frontier.load(Ordering::Acquire))
+            .find(|(source, _)| source.as_ref() == id)
+            .map(|(_, frontier)| frontier.load(Ordering::Acquire))
     }
 
     pub fn failure(&self) -> Option<Arc<Error>> {

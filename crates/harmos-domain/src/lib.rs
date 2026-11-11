@@ -34,39 +34,6 @@ pub mod state;
 pub mod streams;
 mod value;
 
-pub mod __private {
-    pub use crate::config::SchemaSettings;
-    pub use crate::identity::{dotted as operation_identity, segment as owner_segment, stream_subset as stream_identity};
-    pub use crate::plugin::schema_markers as PluginSchemaMarkers;
-    pub use crate::postcard_product;
-    pub extern crate serde;
-    pub extern crate serde_json;
-    pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};
-
-    pub fn stream_definition<S: StreamRow>(id: &'static str, version: u32, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::declared::<S>(id, version, window)
-            .batching(S::batch_definition())
-            .presentation(S::metadata(), S::row_metadata())
-    }
-
-    pub use crate::inventory as PluginInventory;
-    pub use crate::plugin::{
-        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
-        Requirements as PluginRequirements,
-    };
-    pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-
-    pub trait CarrierContext {
-        const FACILITY: &'static str;
-    }
-
-    pub use crate::answer::Answer;
-    pub use crate::message::allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
-    pub use crate::message::postcard::{Reader as PostcardReader, Value as PostcardValue};
-    pub use crate::message::{MapEntry, MessageError};
-    pub use crate::state::{Catalogued, Mutual, Paired};
-}
-
 /* === Re-Exports === */
 
 pub use aggregate::Aggregate;
@@ -86,8 +53,8 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    domain_catalog as catalog, domain_operation as operation, listener, message, observer, plugin, record, records, stream, streams,
-    transaction, transactions,
+    Described, domain_catalog as catalog, domain_operation as operation, listener, message, observer, plugin, record, records, stream,
+    streams, transaction, transactions,
 };
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
@@ -121,5 +88,66 @@ pub use streams::{Axial, Batched, Definition, Prefix, Track, Tracked};
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+pub mod __private {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    pub use crate::answer::Answer;
+    pub use crate::config::SchemaSettings;
+    pub use crate::identity::{dotted as operation_identity, segment as owner_segment, stream_subset as stream_identity};
+    pub use crate::inventory as PluginInventory;
+    pub use crate::message::allocation::{add as decoding_add, multiply as decoding_multiply, vector as decoding_vector};
+    pub use crate::message::postcard::{Reader as PostcardReader, Value as PostcardValue};
+    pub use crate::message::{MapEntry, MessageError};
+    pub use crate::plugin::schema_markers as PluginSchemaMarkers;
+    pub use crate::plugin::{
+        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
+        Requirements as PluginRequirements,
+    };
+    pub use crate::postcard_product;
+    pub use crate::state::{Catalogued, Mutual, Paired};
+    pub use crate::streams::{BatchDefinition, StreamCatalog, StreamRow};
+    pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+    pub extern crate serde;
+    pub extern crate serde_json;
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    pub trait CarrierContext {
+        const FACILITY: &'static str;
+    }
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
+        crate::streams::Definition::native::<S>(id, window).batching(S::batch_definition()).presentation(S::metadata(), S::row_metadata())
+    }
+
+    /* === Private Functions === */
+
+    /* === Tests === */
+}
 
 /* === Tests === */

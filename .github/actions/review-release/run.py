@@ -9,6 +9,7 @@ import os
 import re
 import runpy
 import subprocess
+import tomllib
 import urllib.parse
 import urllib.request
 import zipfile
@@ -122,6 +123,59 @@ def github_validation_run(runs, jobs_for):
     raise ValueError("review has no validation run")
 
 
+def github_merged_reviews(sha):
+    return [
+        review
+        for review in pages(f"commits/{sha}/pulls")
+        if review.get("merged_at") and review.get("merge_commit_sha") == sha and review.get("base", {}).get("ref") == "dev"
+    ]
+
+
+def github_release_mode():
+    sha = command("git", "rev-parse", "HEAD")
+    if sha != os.environ["GITHUB_SHA"]:
+        raise ValueError("release decision checkout differs from event revision")
+    fallback = {"mode": "prepare" if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" else "skip", "sha": ""}
+    with open("tools/project.toml", "rb") as stream:
+        version = tomllib.load(stream)["version"]["value"]
+    tag = f"v{version}"
+    if command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
+        return fallback
+    repository = os.environ["GITHUB_REPOSITORY"]
+    head = urllib.parse.quote(f"{repository.split('/')[0]}:release/{tag}", safe="")
+    reviews = [
+        review
+        for review in pages(f"pulls?state=closed&base=dev&head={head}")
+        if review.get("merged_at")
+        and review.get("base", {}).get("ref") == "dev"
+        and review.get("head", {}).get("ref") == f"release/{tag}"
+        and all(review.get(side, {}).get("repo", {}).get("full_name") == repository for side in ("base", "head"))
+    ]
+    if not reviews:
+        return fallback
+    review = max(reviews, key=lambda item: item["merged_at"])
+    target = review.get("merge_commit_sha", "")
+    if OID.fullmatch(target) is None:
+        return fallback
+    try:
+        command("git", "merge-base", "--is-ancestor", target, sha)
+    except subprocess.CalledProcessError:
+        return fallback
+    target_version = tomllib.loads(command("git", "show", f"{target}:tools/project.toml"))["version"]["value"]
+    if target_version != version:
+        return fallback
+    if os.environ["GITHUB_EVENT_NAME"] == "workflow_run":
+        with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as stream:
+            completed = json.load(stream)["workflow_run"]
+        if (
+            completed.get("head_sha") != review["head"]["sha"]
+            or completed.get("event") != "pull_request"
+            or completed.get("conclusion") != "success"
+        ):
+            return fallback
+    return {"mode": "tag", "sha": target}
+
+
 def lookup():
     sha = command("git", "rev-parse", "HEAD")
     tree = command("git", "rev-parse", "HEAD^{tree}")
@@ -129,11 +183,7 @@ def lookup():
         raise ValueError("invalid checkout tree")
     github = bool(os.environ.get("GITHUB_ACTIONS"))
     if github:
-        reviews = [
-            review
-            for review in pages(f"commits/{sha}/pulls")
-            if review.get("merged_at") and review.get("merge_commit_sha") == sha and review.get("base", {}).get("ref") == "dev"
-        ]
+        reviews = github_merged_reviews(sha)
     else:
         reviews = [
             review

@@ -35,7 +35,6 @@ pub struct PublicationAccess(pub Arc<dyn PublicationHost>);
 
 pub struct Publication<'a> {
     pub stream: &'a str,
-    pub schema: u32,
     pub sequence: Option<u64>,
     pub published_unix_micros: Option<i64>,
     pub context: &'a mut Option<String>,

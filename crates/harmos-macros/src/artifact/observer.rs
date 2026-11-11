@@ -22,6 +22,7 @@ use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Error, Expr, FnArg, GenericArgument, LitStr, Meta, Path, PathArguments, Token, Type};
+
 // Local Imports
 use super::contribution::{asynchronous, block, borrowed, declared, parameter, required, returned};
 use crate::path::{self, HarmosPath};
@@ -314,19 +315,24 @@ fn arguments(attribute: TokenStream) -> Result<(HarmosPath, Expr, Vec<Path>, Vec
 
 /* === Tests === */
 
-#[test]
-fn cadence_declaration_required() {
-    assert!(arguments(quote!()).is_err());
-    assert!(arguments(quote!(interval_ms = 10, interval_ms = 20)).is_err());
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn cadence_override_signature() {
-    let observer = quote! {
-        impl Watch {
-            async fn interval(_: &ExecutionContext) -> Result<Duration, Error> { todo!() }
-            async fn observe(&mut self, _: &ObserverContext<'_>) -> Result<(), Error> { todo!() }
-        }
-    };
-    assert!(expand(quote!(interval_ms = 10), &observer).is_err());
+    #[test]
+    fn cadence_declaration_required() {
+        assert!(arguments(quote!()).is_err());
+        assert!(arguments(quote!(interval_ms = 10, interval_ms = 20)).is_err());
+    }
+
+    #[test]
+    fn cadence_override_signature() {
+        let observer = quote! {
+            impl Watch {
+                async fn interval(_: &ExecutionContext) -> Result<Duration, Error> { todo!() }
+                async fn observe(&mut self, _: &ObserverContext<'_>) -> Result<(), Error> { todo!() }
+            }
+        };
+        assert!(expand(quote!(interval_ms = 10), &observer).is_err());
+    }
 }

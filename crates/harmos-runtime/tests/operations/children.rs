@@ -192,8 +192,8 @@ async fn parent_joins_child() {
         match outcome {
             Ok(_) => {}
             Err(Error::OperationFailed { source, .. }) => assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Attempt))),
-            Err(Error::OperationRefused(Refusal::TimedOut)) => assert!(!cancel),
-            Err(Error::OperationRefused(Refusal::Cancelled)) => assert!(cancel),
+            Err(Error::OperationRefused(Refusal::TimedOut { .. })) => assert!(!cancel),
+            Err(Error::OperationRefused(Refusal::Cancelled { .. })) => assert!(cancel),
             Err(error) => panic!("unexpected parent outcome: {error}"),
         }
         runtime.shutdown().await.unwrap();

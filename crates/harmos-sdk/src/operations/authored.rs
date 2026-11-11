@@ -47,6 +47,7 @@ pub trait EndpointSet: Send + Sized + 'static {
     fn transferred(&self) -> bool {
         Self::item_types() != (None, None)
     }
+
     #[cfg(feature = "streaming")]
     fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
         Vec::new()
@@ -63,11 +64,13 @@ pub trait InputEndpoint: Send + Sized + 'static {
     fn transferred(&self) -> bool {
         true
     }
+
     #[cfg(feature = "streaming")]
     fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
         Vec::new()
     }
 }
+
 pub trait OutputEndpoint: Send + Sized + 'static {
     #[cfg(feature = "streaming")]
     fn bind_wire(_limits: super::WireStreamLimits) -> Result<(Self, super::WireStreams), super::ServingError> {
@@ -78,6 +81,7 @@ pub trait OutputEndpoint: Send + Sized + 'static {
     fn transferred(&self) -> bool {
         true
     }
+
     #[cfg(feature = "streaming")]
     fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
         Vec::new()

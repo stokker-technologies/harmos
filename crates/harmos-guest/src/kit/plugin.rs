@@ -9,15 +9,6 @@
 
 /* === Modules === */
 
-pub mod __bindings {
-    wit_bindgen::generate!({
-        path: "wit",
-        world: "plugin",
-        pub_export_macro: true,
-        default_bindings_module: "$crate::kit::plugin::__bindings",
-    });
-}
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -27,6 +18,7 @@ use std::any::TypeId;
 use std::cell::RefCell;
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
+
 // Third Party Imports
 
 // Local Imports
@@ -185,6 +177,14 @@ where
     answer.encode().map_err(refusal)
 }
 
+pub fn refusal(error: impl std::fmt::Display) -> Refusal {
+    let refusal = harmos_domain::Refusal::new(harmos_domain::UNREADABLE, error);
+    Refusal {
+        code: refusal.code().to_string(),
+        failure: refusal.failure().encode(),
+    }
+}
+
 /* === Private Functions === */
 
 fn supported_observers<P: Declared>() -> Result<(), String> {
@@ -194,12 +194,45 @@ fn supported_observers<P: Declared>() -> Result<(), String> {
     Ok(())
 }
 
-pub fn refusal(error: impl std::fmt::Display) -> Refusal {
-    let refusal = harmos_domain::Refusal::new(harmos_domain::UNREADABLE, error);
-    Refusal {
-        code: refusal.code().to_string(),
-        failure: refusal.failure().encode(),
-    }
+pub mod __bindings {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
+
+    // Standard Library Imports
+
+    // Third Party Imports
+
+    // Local Imports
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    wit_bindgen::generate!({
+        path: "wit",
+        world: "plugin",
+        pub_export_macro: true,
+        default_bindings_module: "$crate::kit::plugin::__bindings",
+    });
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
 
 /* === Tests === */

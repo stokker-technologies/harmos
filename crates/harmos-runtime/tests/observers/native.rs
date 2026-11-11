@@ -68,7 +68,6 @@ struct ConfiguredWatch;
 impl harmos_runtime::sidecar::StreamSpec for ConfiguredRow {
     type Row = Self;
     const ID: &'static str = "schema_budget.row";
-    const VERSION: u32 = 1;
     const WINDOW: usize = 1;
 }
 

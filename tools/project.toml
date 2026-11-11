@@ -146,11 +146,6 @@ integration = 120
 system = 900
 unit = 120
 
-[conventions.testing.limits]
-acceptance = 128
-integration = 1024
-system = 64
-unit = 512
 
 [[conventions.testing.overrides]]
 category = "system"
@@ -540,4 +535,4 @@ targets = ["linux-x86_64", "windows-x86_64"]
 
 [version]
 files = ["Cargo.toml", "examples/schematic/Cargo.toml", "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"]
-value = "0.1.13"
+value = "0.1.14"

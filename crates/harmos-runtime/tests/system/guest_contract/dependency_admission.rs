@@ -86,7 +86,7 @@ async fn cancelled_dependency_admission() {
         runtime.operations.submit::<super::super::sandbox::EchoOperation>(EchoOperation { say: "dependency:cancel".into() }).await.unwrap();
     provider.started.notified().await;
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     provider.cancelled.notified().await;
     let after = runtime.operations.operation::<EchoOperation>(EchoOperation { say: "after cancellation".into() }).await.unwrap_err();
     assert!(matches!(component_error(&after), harmos_runtime::operations::ComponentError::Unavailable));

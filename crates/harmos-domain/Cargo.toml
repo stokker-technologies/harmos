@@ -68,14 +68,13 @@ memchr = { workspace = true, default-features = true }
 
 # === Dev Dependencies === #
 
-[dev-dependencies]
 # Downstream Crates Stay Path-Only So the Packaged Manifest Drops Them Instead of Forming a Publish Cycle
-harmos-operations = { path = "../harmos-operations", default-features = false }
-harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
-
+[dev-dependencies]
 # Local
 harmos-macros = { path = "../harmos-macros" }
+harmos-operations = { path = "../harmos-operations", default-features = false }
 harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"] }
+harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
 
 # Git
 

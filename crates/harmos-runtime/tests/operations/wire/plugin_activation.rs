@@ -137,7 +137,7 @@ async fn preparation_credit_held() {
     credit.cleanup.started.notified().await;
     credit.assert_held();
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     credit.settle().await;
 }
 
@@ -208,7 +208,7 @@ async fn unregister_cancel_retained() {
     }
     manager.shutdown(&mut original).await.unwrap();
     running.gate.notify_one();
-    assert!(matches!(running.invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(running.invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     let mut replacement = PluginManager::new(candidate()).unwrap();
     let mut next = host(runtime.operations.clone());
     assert_registration_conflict(replacement.initialize(&mut next).await);
@@ -275,7 +275,7 @@ async fn own_public_calls() {
     let invocation = own.submit::<Public>(gated_request).unwrap();
     opened.notified().await;
     invocation.request_cancel();
-    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled))));
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert_eq!(own.operation::<Public>(Public(request())).await.unwrap().value, 7);
 
     let mut replacement: Vec<_> = candidate.definitions().cloned().collect();
@@ -570,7 +570,7 @@ async fn preparation_credit_expired() {
     assert_eq!(credit.cleanup.attempted.load(Ordering::SeqCst), 1);
     credit.assert_held();
     tokio::time::advance(CleanupDeclaration::POLICY.timeout).await;
-    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut))));
+    assert!(matches!(invocation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
     credit.settle().await;
 }
 

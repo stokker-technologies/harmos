@@ -89,7 +89,9 @@ jobs:
         ci-${{ github.workflow }}-source-shared-${{ github.event_name == 'pull_request'
         && github.event.number || github.event_name == 'push' && github.ref ||
         github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   check_python:
     name: Check / Python
     runs-on: ubuntu-24.04
@@ -151,7 +153,9 @@ jobs:
         ci-${{ github.workflow }}-check_python-shared-${{ github.event_name ==
         'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
         github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   impact:
     name: Plan / Impact
     runs-on: ubuntu-24.04
@@ -181,7 +185,9 @@ jobs:
         ci-${{ github.workflow }}-impact-shared-${{ github.event_name == 'pull_request'
         && github.event.number || github.event_name == 'push' && github.ref ||
         github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   release_dry:
     name: Release / Dry
     runs-on: ubuntu-24.04
@@ -300,7 +306,9 @@ jobs:
         ci-${{ github.workflow }}-release_dry-shared-${{ github.event_name ==
         'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
         github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   release_rehearsal:
     name: Release / Rehearsal
     runs-on: ubuntu-24.04
@@ -383,7 +391,9 @@ jobs:
         ci-${{ github.workflow }}-release_rehearsal-shared-${{ github.event_name ==
         'pull_request' && github.event.number || github.event_name == 'push' && github.ref
         || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
     needs:
     - build_product_unix
     - build_product_windows
@@ -482,7 +492,9 @@ jobs:
         ci-${{ github.workflow }}-check_generated_python-shared-${{ github.event_name
         == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   build_product_unix:
     name: Build / Product (unix)
     runs-on: ubuntu-24.04
@@ -595,7 +607,9 @@ jobs:
         ci-${{ github.workflow }}-build_product-unix-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   build_product_windows:
     name: Build / Product (windows)
     runs-on: windows-2022
@@ -708,7 +722,9 @@ jobs:
         ci-${{ github.workflow }}-build_product-windows-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   build_tests_unix:
     name: Build / Tests (unix)
     runs-on: ubuntu-24.04
@@ -829,7 +845,9 @@ jobs:
         ci-${{ github.workflow }}-build_tests-unix-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   build_tests_windows:
     name: Build / Tests (windows)
     runs-on: windows-2022
@@ -950,7 +968,9 @@ jobs:
         ci-${{ github.workflow }}-build_tests-windows-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   check_rust_unix:
     name: Check / Rust (unix)
     runs-on: ubuntu-24.04
@@ -1038,7 +1058,9 @@ jobs:
         ci-${{ github.workflow }}-check_rust-unix-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   check_rust_windows:
     name: Check / Rust (windows)
     runs-on: windows-2022
@@ -1126,7 +1148,9 @@ jobs:
         ci-${{ github.workflow }}-check_rust-windows-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   package_rust_unix:
     name: Package / Rust (unix)
     runs-on: ubuntu-24.04
@@ -1261,7 +1285,9 @@ jobs:
         ci-${{ github.workflow }}-package_rust-unix-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   package_rust_windows:
     name: Package / Rust (windows)
     runs-on: windows-2022
@@ -1396,7 +1422,9 @@ jobs:
         ci-${{ github.workflow }}-package_rust-windows-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name == 'push' &&
         github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   prepare_test_fixtures_unix:
     name: Prepare / Test Fixtures (unix)
     runs-on: ubuntu-24.04
@@ -1533,7 +1561,9 @@ jobs:
         ci-${{ github.workflow }}-prepare_test_fixtures-unix-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name ==
         'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   prepare_test_fixtures_windows:
     name: Prepare / Test Fixtures (windows)
     runs-on: windows-2022
@@ -1671,7 +1701,9 @@ jobs:
         ci-${{ github.workflow }}-prepare_test_fixtures-windows-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name ==
         'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_acceptance_unix:
     name: Test / Rust / Acceptance (unix)
     runs-on: ubuntu-24.04
@@ -1806,7 +1838,9 @@ jobs:
       group: >-
         ci-${{ github.workflow }}-validate_test_rust_acceptance-unix-${{ github.event_name == 'pull_request' && github.event.number ||
         github.event_name == 'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_acceptance_windows:
     name: Test / Rust / Acceptance (windows)
     runs-on: windows-2022
@@ -1942,7 +1976,9 @@ jobs:
       group: >-
         ci-${{ github.workflow }}-validate_test_rust_acceptance-windows-${{ github.event_name == 'pull_request' && github.event.number ||
         github.event_name == 'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_integration_unix:
     name: Test / Rust / Integration (unix)
     runs-on: ubuntu-24.04
@@ -2062,7 +2098,9 @@ jobs:
       group: >-
         ci-${{ github.workflow }}-validate_test_rust_integration-unix-${{ github.event_name == 'pull_request' && github.event.number ||
         github.event_name == 'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_integration_windows:
     name: Test / Rust / Integration (windows)
     runs-on: windows-2022
@@ -2183,7 +2221,9 @@ jobs:
       group: >-
         ci-${{ github.workflow }}-validate_test_rust_integration-windows-${{ github.event_name == 'pull_request' && github.event.number ||
         github.event_name == 'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_system_unix:
     name: Test / Rust / System (unix)
     runs-on: ubuntu-24.04
@@ -2317,7 +2357,9 @@ jobs:
         ci-${{ github.workflow }}-validate_test_rust_system-unix-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name
         == 'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_system_windows:
     name: Test / Rust / System (windows)
     runs-on: windows-2022
@@ -2451,7 +2493,9 @@ jobs:
         ci-${{ github.workflow }}-validate_test_rust_system-windows-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name
         == 'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_unit_unix:
     name: Test / Rust / Unit (unix)
     runs-on: ubuntu-24.04
@@ -2555,7 +2599,9 @@ jobs:
         ci-${{ github.workflow }}-validate_test_rust_unit-unix-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name ==
         'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   validate_test_rust_unit_windows:
     name: Test / Rust / Unit (windows)
     runs-on: windows-2022
@@ -2659,7 +2705,9 @@ jobs:
         ci-${{ github.workflow }}-validate_test_rust_unit-windows-${{
         github.event_name == 'pull_request' && github.event.number || github.event_name ==
         'push' && github.ref || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   required:
     name: CI / Required
     runs-on: ubuntu-24.04
@@ -2707,10 +2755,14 @@ jobs:
         ci-${{ github.workflow }}-required-shared-${{ github.event_name ==
         'pull_request' && github.event.number || github.event_name == 'push' && github.ref ||
         github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: >-
+        ${{ github.event_name == 'pull_request' &&
+        !(github.event.action == 'closed' && github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')) }}
   cancel_closed:
     name: Cancel / Closed Review
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    if: >-
+      github.event_name == 'pull_request' && github.event.action == 'closed' &&
+      !(github.event.pull_request.merged && startsWith(github.head_ref, 'release/v'))
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:

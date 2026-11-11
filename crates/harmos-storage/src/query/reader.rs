@@ -82,19 +82,14 @@ pub struct QueryReader {
     inflight: bool,
 }
 
+struct CancelWork(Arc<AtomicBool>);
+
 /* === Enums === */
 
 #[derive(Clone, Debug)]
 pub enum QueryArrow {
     Schema(ArrowSchema),
     Batch(ArrowBatch),
-}
-struct CancelWork(Arc<AtomicBool>);
-
-impl Drop for CancelWork {
-    fn drop(&mut self) {
-        self.0.store(true, Ordering::Release);
-    }
 }
 
 enum Rows {
@@ -108,6 +103,12 @@ enum Rows {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Drop for CancelWork {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
 
 impl Query {
     pub fn validate(&self) -> harmos_domain::Result<()> {
@@ -130,7 +131,7 @@ impl MemorySize for Query {
 }
 
 impl QueryArrow {
-    /// Bounds The Transport Value Before IPC Conversion.
+    // Bounds The Transport Value Before IPC Conversion.
     pub fn output_memory_size(&self) -> usize {
         let capacity = match self {
             Self::Schema(schema) => schema.ipc_capacity(),
@@ -168,6 +169,7 @@ impl MemorySize for QueryArrow {
             }
     }
 }
+
 impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.manager.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn query(&self, query: Query) -> Result<QueryReader> {

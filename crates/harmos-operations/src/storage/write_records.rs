@@ -24,8 +24,10 @@ use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Id, Optional, product};
 use harmos_domain::model::storage::{DataBatch, WriteCompletion, WriteReceipt};
 use harmos_domain::operations::ReplaySafety;
+
 #[cfg(feature = "runtime")]
 use harmos_sdk::operations::access::GrantAccess;
+
 #[cfg(feature = "runtime")]
 use harmos_storage::{ErasedCatalog, StorageManager};
 
@@ -72,17 +74,42 @@ impl MemorySize for WriteRecords {
     }
 }
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 #[cfg(feature = "runtime")]
 mod execution {
-    use super::*;
-    use crate::storage::exchange::{WriteKind, exchange};
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    /* === Imports === */
 
     // Standard Library Imports
+
     // Third Party Imports
+
     // Local Imports
+    use super::*;
+    use crate::storage::exchange::{WriteKind, exchange};
     use crate::{Error, Result};
     use harmos_sdk::operations::{Operation, OperationDeclaration};
     use harmos_storage::writes::WriteCompletion;
+
+    /* === Constants === */
+
+    /* === Macros === */
+
+    /* === Type Aliases === */
+
+    /* === Structs === */
+
+    /* === Enums === */
+
+    /* === Traits === */
+
+    /* === Implementations === */
 
     impl Operation for super::WriteRecords {
         type Error = Error;
@@ -102,10 +129,12 @@ mod execution {
             crate::storage::classify(error)
         }
     }
+
+    /* === Public Functions === */
+
+    /* === Private Functions === */
+
+    /* === Tests === */
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
