@@ -22,8 +22,8 @@ use std::sync::OnceLock;
 use prost::Message as _;
 
 // Local Imports
+use harmos::{Context, Message, Operation, OperationRequest, Plugin, Result, Visibility};
 use harmos_protocol::v1;
-use harmos_sdk_grpc::{Context, Message, Operation, OperationRequest, Plugin, Result, Visibility};
 
 /* === Constants === */
 
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let mode = args.next().unwrap();
     let types = prost_types::FileDescriptorSet::decode(std::fs::read(args.next().unwrap())?.as_slice())
-        .map_err(|error| harmos_sdk_grpc::Error::Invalid(error.to_string()))?;
+        .map_err(|error| harmos::Error::Invalid(error.to_string()))?;
     let request = args.next().unwrap();
     let response = args.next().unwrap();
     let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(types.clone()).unwrap();
@@ -190,9 +190,8 @@ fn main() -> Result<()> {
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "interval" {
-        let stream = harmos_sdk_grpc::Stream::<Value>::new("fixture.ticks");
-        let observer =
-            harmos_sdk_grpc::Observer::new(&stream, observe).every_ms(60_000).interval_setting("harmos.plugin.v1.Settings.interval");
+        let stream = harmos::Stream::<Value>::new("fixture.ticks");
+        let observer = harmos::Observer::new(&stream, observe).every_ms(60_000).interval_setting("harmos.plugin.v1.Settings.interval");
         Plugin::new("observer", "1.0.0")
             .section(Settings {
                 interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
@@ -207,7 +206,7 @@ fn main() -> Result<()> {
             ..Default::default()
         }))
     } else if mode == "deadline" {
-        Plugin::new("deadline", "1.0.0").requires::<harmos_sdk_grpc::clock::Now>().requires::<harmos_sdk_grpc::clock::Sleep>().operation(
+        Plugin::new("deadline", "1.0.0").requires::<harmos::clock::Now>().requires::<harmos::clock::Sleep>().operation(
             Operation::new("fixture.clock", clock).policy(v1::OperationPolicy {
                 timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
                 attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
@@ -215,10 +214,10 @@ fn main() -> Result<()> {
             }),
         )
     } else if mode == "twins" {
-        let left = harmos_sdk_grpc::Stream::<Value>::new("fixture.left");
-        let right = harmos_sdk_grpc::Stream::<Value>::new("fixture.right");
-        let left_observer = harmos_sdk_grpc::Observer::new(&left, observe).every_ms(1000);
-        let right_observer = harmos_sdk_grpc::Observer::new(&right, observe).every_ms(2000);
+        let left = harmos::Stream::<Value>::new("fixture.left");
+        let right = harmos::Stream::<Value>::new("fixture.right");
+        let left_observer = harmos::Observer::new(&left, observe).every_ms(1000);
+        let right_observer = harmos::Observer::new(&right, observe).every_ms(2000);
         Plugin::new("twins", "1.0.0")
             .stream(left)
             .stream(right)
@@ -228,12 +227,12 @@ fn main() -> Result<()> {
     } else if mode == "stop-failure" {
         Plugin::new("stop_failure", "1.0.0")
             .operation(Operation::new("fixture.echo", echo))
-            .on_stop(|| Err(harmos_sdk_grpc::Error::Invalid("Cleanup Failed".into())))
+            .on_stop(|| Err(harmos::Error::Invalid("Cleanup Failed".into())))
     } else if mode == "device" {
-        let stream = harmos_sdk_grpc::Stream::<Value>::new("fixture.device").publish_on(device);
+        let stream = harmos::Stream::<Value>::new("fixture.device").publish_on(device);
         Plugin::new("device", "1.0.0").stream(stream).operation(Operation::new("fixture.echo", echo)).on_stop(|| {
             if DEVICE_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
-                return Err(harmos_sdk_grpc::Error::Invalid("Device Demand Still Active".into()));
+                return Err(harmos::Error::Invalid("Device Demand Still Active".into()));
             }
             Ok(())
         })
@@ -248,8 +247,8 @@ fn main() -> Result<()> {
     } else {
         Plugin::new("caller", "1.0.0")
             .requires::<HostInput>()
-            .requires::<harmos_sdk_grpc::clock::Sleep>()
-            .requires::<harmos_sdk_grpc::clock::Now>()
+            .requires::<harmos::clock::Sleep>()
+            .requires::<harmos::clock::Now>()
             .requires::<PublicInput>()
             .requires::<PrivateInput>()
             .requires::<MissingInput>()
@@ -271,7 +270,7 @@ async fn observe(context: &Context) -> Result<Value> {
     })
 }
 
-async fn device(context: &Context, publisher: harmos_sdk_grpc::Publisher<Value>) -> Result<()> {
+async fn device(context: &Context, publisher: harmos::Publisher<Value>) -> Result<()> {
     DEVICE_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
     let _demand = DeviceDemand;
     publisher.publish(Value { value: b"device".to_vec() }).await?;
@@ -299,7 +298,7 @@ async fn echo(_: &Context, input: Value) -> Result<Value> {
 
 async fn retry(context: &Context, input: Value) -> Result<Value> {
     if context.attempt < 3 {
-        return Err(harmos_sdk_grpc::Error::failure(v1::Classification::Transient, "retry", "Retry", "Try Again"));
+        return Err(harmos::Error::failure(v1::Classification::Transient, "retry", "Retry", "Try Again"));
     }
     Ok(input)
 }

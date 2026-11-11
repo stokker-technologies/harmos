@@ -21,11 +21,11 @@
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -34,12 +34,12 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(
+#[harmos_operations::operation(
     id = "schematic.route",
     response = Route,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
+    replay = harmos_operations::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "ProposeRoute"),
 )]
 #[derive(Clone, Debug, PartialEq)]
@@ -48,7 +48,7 @@ pub struct ProposeRoute {
     pub to: schematic_domain::model::Point,
 }
 
-#[harmos::message]
+#[harmos_operations::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Route {
     pub points: Vec<schematic_domain::model::Point>,
@@ -61,10 +61,10 @@ pub struct Route {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for ProposeRoute {
+impl harmos_operations::Operation for ProposeRoute {
     type Error = crate::Error;
 
-    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Route>, Self::Error> {
+    async fn run(self, _: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Route>, Self::Error> {
         let corner = schematic_domain::model::Point { x: self.to.x, y: self.from.y };
         let mut points = vec![self.from.clone(), corner, self.to.clone()];
         points.dedup();

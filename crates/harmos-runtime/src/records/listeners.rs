@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::watch;
 // Local Imports
 use super::{RecordManager, Registry};
+use crate::guest::host::plugin::PluginScope;
 use crate::operations::{EncodedInvocation, Manager, PluginCallback};
-use crate::plugin::PluginScope;
 use crate::schema::Described;
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{

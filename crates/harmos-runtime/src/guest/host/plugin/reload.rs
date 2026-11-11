@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 // Third Party Imports
 
 // Local Imports
-use super::{Error, PluginDefinition, PluginGraph};
+use super::{Error, GuestInventory, PluginDefinition};
 
 /* === Constants === */
 
@@ -40,7 +40,7 @@ pub(super) struct ReloadImpact {
 
 /* === Implementations === */
 
-impl PluginGraph {
+impl GuestInventory {
     pub(super) fn reload(&self, next: Self, changed: impl IntoIterator<Item = String>) -> Result<ReloadImpact, Error> {
         let before = by_id(self);
         let after = by_id(&next);
@@ -56,16 +56,6 @@ impl PluginGraph {
         for id in before.keys().chain(after.keys()) {
             if before.get(id) != after.get(id) {
                 affected.insert((*id).to_owned());
-            }
-        }
-
-        loop {
-            let previous = affected.len();
-            for graph in [self, &next] {
-                graph.topology.extend_dependents(&mut affected);
-            }
-            if affected.len() == previous {
-                break;
             }
         }
 
@@ -95,7 +85,7 @@ impl ReloadImpact {
 
 /* === Private Functions === */
 
-fn by_id(plan: &PluginGraph) -> BTreeMap<&str, &PluginDefinition> {
+fn by_id(plan: &GuestInventory) -> BTreeMap<&str, &PluginDefinition> {
     plan.ordered().iter().map(|artifact| (artifact.id.as_str(), artifact)).collect()
 }
 

@@ -1119,12 +1119,22 @@ dependencies = [
 name = "harmos"
 version = "0.1.14"
 dependencies = [
- "harmos-domain",
- "harmos-guest",
- "harmos-macros",
- "harmos-operations",
- "harmos-runtime",
- "harmos-sdk-grpc",
+ "bytes",
+ "futures-core",
+ "futures-util",
+ "harmos-conformance",
+ "harmos-protocol",
+ "harmos-sdk-derive",
+ "prost",
+ "prost-reflect",
+ "prost-types",
+ "semver",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tonic",
+ "tracing",
 ]
 
 [[package]]
@@ -1278,18 +1288,18 @@ dependencies = [
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
+ "harmos",
  "harmos-domain",
  "harmos-guest",
  "harmos-macros",
  "harmos-operations",
  "harmos-packaging",
  "harmos-protocol",
- "harmos-sdk-grpc",
  "harmos-storage",
  "http-body",
  "http-body-util",
  "hyper-util",
- "petgraph",
+ "postcard",
  "prost",
  "prost-reflect",
  "prost-types",
@@ -1324,28 +1334,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
-]
-
-[[package]]
-name = "harmos-sdk-grpc"
-version = "0.1.14"
-dependencies = [
- "bytes",
- "futures-core",
- "futures-util",
- "harmos-conformance",
- "harmos-protocol",
- "harmos-sdk-derive",
- "prost",
- "prost-reflect",
- "prost-types",
- "semver",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tonic",
- "tracing",
 ]
 
 [[package]]
@@ -1966,7 +1954,6 @@ dependencies = [
  "fixedbitset",
  "hashbrown 0.15.5",
  "indexmap",
- "serde",
 ]
 
 [[package]]
@@ -2465,7 +2452,7 @@ dependencies = [
 name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
- "harmos",
+ "harmos-operations",
  "schematic-domain",
 ]
 

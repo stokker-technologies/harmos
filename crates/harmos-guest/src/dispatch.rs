@@ -11,6 +11,8 @@
 
 mod configuration;
 mod encoded;
+#[cfg(test)]
+mod registration_tests;
 
 /* === Re-Exports === */
 
@@ -30,7 +32,7 @@ use std::task::{Poll, Waker};
 
 use tracing::Instrument;
 // Local Imports
-use crate::envelope::{WireAnswer, WireCommand};
+use crate::envelope::{WireAnswer, WireCommand, encode_prepared_grant};
 use harmos_operations::execution::__private::{RegistrationBatch, ResourceSet};
 use harmos_operations::execution::QualifiedId;
 use harmos_operations::execution::operations::*;
@@ -850,6 +852,10 @@ async fn guarded<T>(future: impl Future<Output = Result<T, ServingError>>) -> Re
     .await
 }
 
+fn is_stream_traffic(command: &WireCommand) -> bool {
+    matches!(command, WireCommand::StreamSend { .. } | WireCommand::StreamFinish { .. } | WireCommand::StreamReceive { .. })
+}
+
 /* === Tests === */
 
 #[cfg(test)]
@@ -878,8 +884,4 @@ mod tests {
         slot.request_cancel();
         assert!(matches!(active.as_mut().poll(&mut context), Poll::Ready(Err(ServingError::Closing))));
     }
-}
-
-fn is_stream_traffic(command: &WireCommand) -> bool {
-    matches!(command, WireCommand::StreamSend { .. } | WireCommand::StreamFinish { .. } | WireCommand::StreamReceive { .. })
 }

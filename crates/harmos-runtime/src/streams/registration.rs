@@ -20,8 +20,8 @@ use std::sync::{Arc, Mutex, Weak};
 // Local Imports
 use super::definition::{Contract, Table, Wired};
 use super::publications::{publication_definitions, validate_existing};
-use super::{PluginStream, PublicationLease, StreamAdmissionError, StreamManager, window};
-use crate::plugin::PluginScope;
+use super::{PublishedStream, StreamManager, StreamRegistrationError, StreamWriter, window};
+use crate::guest::host::plugin::PluginScope;
 use crate::{Application, state::Position};
 use harmos_domain::StreamDeclaration;
 
@@ -57,10 +57,10 @@ pub(super) struct Staged {
 impl<A: Application> StreamManager<A> {
     pub async fn stage_plugin(
         &self, scope: &PluginScope, declarations: impl IntoIterator<Item = StreamDeclaration>,
-    ) -> Result<StreamRegistration, StreamAdmissionError> {
+    ) -> Result<StreamRegistration, StreamRegistrationError> {
         let definitions = publication_definitions(scope.owner(), declarations)?;
         if !scope.matches_streams(&definitions) {
-            return Err(StreamAdmissionError::Inventory);
+            return Err(StreamRegistrationError::Inventory);
         }
         let validations = definitions
             .iter()
@@ -71,7 +71,7 @@ impl<A: Application> StreamManager<A> {
             })
             .collect::<Result<Vec<_>, _>>()?;
         if scope.is_closed() || self.closed.load(std::sync::atomic::Ordering::Acquire) {
-            return Err(StreamAdmissionError::Closed);
+            return Err(StreamRegistrationError::Closed);
         }
         let activation = Arc::new(super::Activation::new(&self.windows));
         let mut registration = {
@@ -86,11 +86,11 @@ impl<A: Application> StreamManager<A> {
                     let previous = windows
                         .get(definition.id())
                         .and_then(|revisions| revisions.wires.get(&definition.version()))
-                        .ok_or(StreamAdmissionError::Inventory)?;
+                        .ok_or(StreamRegistrationError::Inventory)?;
                     if previous.definition.metadata() != definition.metadata()
                         || previous.definition.row_metadata() != definition.row_metadata()
                     {
-                        return Err(StreamAdmissionError::Inventory);
+                        return Err(StreamRegistrationError::Inventory);
                     }
                 }
             }
@@ -136,8 +136,8 @@ impl<A: Application> StreamManager<A> {
                 });
                 revisions.definitions.insert(wired.definition.version(), Contract::of(&wired.definition));
                 revisions.wires.insert(wired.definition.version(), wired.clone());
-                leases.push(Arc::new(PublicationLease {
-                    stream: PluginStream {
+                leases.push(Arc::new(StreamWriter {
+                    stream: PublishedStream {
                         wired,
                         closed: self.closed.clone(),
                         pool: self.windows.publications.clone(),
@@ -158,11 +158,11 @@ impl<A: Application> StreamManager<A> {
         };
 
         if scope.is_closed() || self.closed.load(std::sync::atomic::Ordering::Acquire) {
-            return Err(StreamAdmissionError::Closed);
+            return Err(StreamRegistrationError::Closed);
         }
         scope.attach_streams(&registration.activation);
         if !scope.bind_streams() {
-            return Err(StreamAdmissionError::Closed);
+            return Err(StreamRegistrationError::Closed);
         }
         registration.bound = true;
         Ok(registration)
@@ -170,7 +170,7 @@ impl<A: Application> StreamManager<A> {
 }
 
 impl StreamRegistration {
-    pub fn leases(&self) -> &[Arc<PublicationLease>] {
+    pub fn leases(&self) -> &[Arc<StreamWriter>] {
         self.activation.leases()
     }
 }

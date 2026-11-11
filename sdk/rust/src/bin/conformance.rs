@@ -23,7 +23,7 @@ mod schema_fixture;
 // Third Party Imports
 
 // Local Imports
-use harmos_sdk_grpc::{
+use harmos::{
     Classification, Context, Failure, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility,
 };
 use schema_fixture::{Graph, Nested};
@@ -130,8 +130,8 @@ fn main() -> Result<()> {
         .requires::<HostPending>()
         .requires::<HostFail>()
         .requires::<Graph>()
-        .requires::<harmos_sdk_grpc::clock::Sleep>()
-        .requires::<harmos_sdk_grpc::clock::Now>()
+        .requires::<harmos::clock::Sleep>()
+        .requires::<harmos::clock::Now>()
         .stream(ticks)
         .stream(device)
         .stream(settings)

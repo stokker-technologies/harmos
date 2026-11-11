@@ -222,17 +222,15 @@ impl<P: Plugin> Owner<P> {
     }
 }
 
-impl<P: Plugin> harmos_operations::execution::operations::lifecycle::PluginLifecycle for Owner<P> {
-    fn begin(
-        self: Arc<Self>, action: lifecycle::Action,
-    ) -> Box<dyn harmos_operations::execution::operations::lifecycle::LifecycleInstance> {
+impl<P: Plugin> crate::lifecycle::access::PluginLifecycle for Owner<P> {
+    fn begin(self: Arc<Self>, action: lifecycle::Action) -> Box<dyn crate::lifecycle::access::LifecycleInstance> {
         Box::new(LifecycleInvocation { owner: self, state: None, action })
     }
 }
-impl<P: Plugin> harmos_operations::execution::operations::lifecycle::LifecycleInstance for LifecycleInvocation<P> {
+impl<P: Plugin> crate::lifecycle::access::LifecycleInstance for LifecycleInvocation<P> {
     fn run<'a>(
         &'a mut self, context: ExecutionContext, config: &'a [u8], generation: &'a [u8], assignments: &'a [u8],
-    ) -> harmos_operations::execution::operations::lifecycle::Transition<'a> {
+    ) -> crate::lifecycle::access::Transition<'a> {
         Box::pin(async move {
             let result: Result<(), Error<P>> = async {
                 match self.action {
@@ -263,7 +261,7 @@ impl<P: Plugin> harmos_operations::execution::operations::lifecycle::LifecycleIn
             result.map_err(Into::into)
         })
     }
-    fn cleanup(&mut self) -> harmos_operations::execution::operations::lifecycle::Transition<'_> {
+    fn cleanup(&mut self) -> crate::lifecycle::access::Transition<'_> {
         Box::pin(async {
             match self.state.as_mut() {
                 Some(state) => state.finalize().await.map_err(Into::into),

@@ -23,11 +23,11 @@
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -36,17 +36,17 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(operations = [harmos::builtins::storage::HashFile],
+#[harmos_operations::operation(operations = [harmos_operations::storage::HashFile],
     id = "benchmark.hash.file", response = FileHash,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
+    replay = harmos_operations::operations::ReplaySafety::Idempotent,
 )]
 pub struct Hash {
-    pub request: <harmos::builtins::storage::HashFile as harmos::OperationDeclaration>::Request,
+    pub request: <harmos_operations::storage::HashFile as harmos_operations::OperationDeclaration>::Request,
 }
 
-#[harmos::message]
+#[harmos_operations::message]
 pub struct FileHash {
     pub read_bytes: u64,
     pub sha256: Vec<u8>,
@@ -59,10 +59,10 @@ pub struct FileHash {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for Hash {
+impl harmos_operations::Operation for Hash {
     type Error = crate::Error;
 
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<FileHash>, Self::Error> {
+    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<FileHash>, Self::Error> {
         // Hash the File
         let request = self.request;
         let response = ctx.operation(request).await?;

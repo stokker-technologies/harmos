@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 // Third Party Imports
 
 // Local Imports
-use super::{PluginDefinition, PluginFailure, PluginGraph};
+use super::{GuestInventory, PluginDefinition, PluginFailure};
 use crate::Result;
 
 /* === Constants === */
@@ -31,7 +31,7 @@ use crate::Result;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PluginDefinitions {
-    pub(super) graph: PluginGraph,
+    pub(super) inventory: GuestInventory,
     pub(super) rebuilt: BTreeSet<String>,
 }
 
@@ -43,35 +43,28 @@ pub struct PluginDefinitions {
 
 impl PluginDefinitions {
     pub fn new(definitions: impl IntoIterator<Item = PluginDefinition>, rebuilt: impl IntoIterator<Item = String>) -> Result<Self> {
-        Self::new_with_providers(definitions, rebuilt, [])
-    }
-
-    pub fn new_with_providers(
-        definitions: impl IntoIterator<Item = PluginDefinition>, rebuilt: impl IntoIterator<Item = String>,
-        providers: impl IntoIterator<Item = super::OperationProvider>,
-    ) -> Result<Self> {
-        let graph = PluginGraph::resolve_with_providers(definitions, providers).map_err(PluginFailure::Plan)?;
+        let inventory = GuestInventory::resolve(definitions).map_err(PluginFailure::Plan)?;
         let rebuilt: BTreeSet<_> = rebuilt.into_iter().collect();
         for id in &rebuilt {
-            if !graph.ordered().iter().any(|definition| definition.id == *id) {
+            if !inventory.ordered().iter().any(|definition| definition.id == *id) {
                 return Err(PluginFailure::Plan(super::Error::Unknown { id: id.clone() }).into());
             }
         }
 
-        Ok(Self { graph, rebuilt })
+        Ok(Self { inventory, rebuilt })
     }
 
-    pub fn graph(&self) -> &PluginGraph {
-        &self.graph
+    pub fn inventory(&self) -> &GuestInventory {
+        &self.inventory
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = &PluginDefinition> {
-        self.graph.ordered().iter()
+        self.inventory.ordered().iter()
     }
 
     pub fn host_requirements(&self) -> impl Iterator<Item = (&PluginDefinition, &harmos_domain::inventory::contracts::Required)> {
         self.definitions().flat_map(move |definition| {
-            let selected = self.graph.required_providers(&definition.id);
+            let selected = self.inventory.required_providers(&definition.id);
             definition
                 .contributions
                 .required_contracts

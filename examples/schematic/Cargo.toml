@@ -17,10 +17,12 @@ publish = false
 
 [workspace.dependencies]
 # Local
-harmos = { path = "../../crates/harmos", default-features = false }
+harmos-runtime = { path = "../../crates/harmos-runtime", default-features = false }
+harmos-operations = { path = "../../crates/harmos-operations", default-features = false }
+harmos-guest = { path = "../../crates/harmos-guest", default-features = false }
 harmos-domain = { path = "../../crates/harmos-domain", default-features = false }
 harmos-packaging = { path = "../../crates/harmos-packaging", default-features = false }
-harmos-sdk-grpc = { path = "../../sdk/rust" }
+harmos = { path = "../../sdk/rust" }
 
 # Git
 

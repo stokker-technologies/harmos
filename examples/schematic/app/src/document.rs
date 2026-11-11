@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::{Origin, SchematicEditor};
 use crate::error::DocumentError;
 use crate::state::Schematic;
-use harmos::state::Position;
+use harmos_runtime::state::Position;
 use schematic_storage::{Jsonl, Sidecar};
 
 /* === Constants === */
@@ -82,7 +82,7 @@ impl Document {
         })
     }
 
-    pub fn save(path: &Path, snapshot: harmos::state::At<Schematic>, checkpoint: &Sidecar) -> Result<(), DocumentError> {
+    pub fn save(path: &Path, snapshot: harmos_runtime::state::At<Schematic>, checkpoint: &Sidecar) -> Result<(), DocumentError> {
         checkpoint.save(|generation, position| {
             if position != snapshot.position {
                 return Err(io::Error::other("snapshot and settled journal positions differ"));

@@ -31,9 +31,9 @@ use wasmtime::AsContextMut;
 // Local Imports
 use super::{Active, Error};
 use crate::Application;
+use crate::guest::host::plugin::PluginEndpoint;
 use crate::operations::children::Children;
 use crate::operations::{OperationDefinition, WireAnswer, WireChildCall, WireCommand};
-use crate::plugin::PluginEndpoint;
 use crate::supervision::executor;
 use crate::supervision::executor::InContext;
 
@@ -63,7 +63,7 @@ struct Loan {
 
 pub(crate) struct Endpoint {
     definitions: Vec<OperationDefinition>,
-    scope: Option<crate::plugin::PluginScope>,
+    scope: Option<crate::guest::host::plugin::PluginScope>,
     accepting: AtomicBool,
     requests: mpsc::Sender<Request>,
     ended: watch::Receiver<bool>,
@@ -133,7 +133,7 @@ impl Endpoint {
         self.accepting.load(Ordering::Acquire)
     }
 
-    pub(crate) fn scope(&self) -> Option<&crate::plugin::PluginScope> {
+    pub(crate) fn scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.scope.as_ref()
     }
 
@@ -364,7 +364,7 @@ impl<A: Application> Owned<A> {
                         // It Must Progress Even When Retained Background Debts Fill Admission.
                         let finalization = matches!(&request.call, Command::Operation(WireCommand::Finalize { .. } | WireCommand::Cancel { .. }));
                         if !finalization && finite + background_debts >= CALLS {
-                            let _ = request.answer.send(Err(crate::plugin::DispatchError::Busy.into()));
+                            let _ = request.answer.send(Err(crate::guest::host::plugin::DispatchError::Busy.into()));
                             continue;
                         }
                         if let Command::Background { call, submitted } = request.call {

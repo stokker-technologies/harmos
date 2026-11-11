@@ -39,10 +39,10 @@ use super::{Echoed, PROBE};
     policy = PROBE,
     visibility = Public,
 ))]
-#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(
-    harmos_path = ::harmos::guest,
-    resources = [crate::Owner, harmos::guest::kit::Context],
-    operations = [super::ProviderEchoOperation, harmos::guest::builtins::streams::Publish],
+#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(
+    harmos_path = ::harmos_guest,
+    resources = [crate::Owner, harmos_guest::kit::Context],
+    operations = [super::ProviderEchoOperation, harmos_guest::builtins::streams::Publish],
     id = "probe.echo",
     response = Echoed,
     policy = PROBE,
@@ -83,7 +83,7 @@ mod runtime {
     // Local Imports
     use super::super::ProviderEchoOperation;
     use super::{EchoOperation, Echoed};
-    use harmos::guest::{OperationHost, OperationRefusal};
+    use harmos_guest::{OperationHost, OperationRefusal};
 
     /* === Constants === */
 
@@ -99,12 +99,12 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos::guest::Operation for EchoOperation {
+    impl harmos_guest::Operation for EchoOperation {
         type Error = OperationRefusal;
 
-        async fn run(self, sdk: harmos::guest::Context<'_, Self>) -> Result<harmos::guest::operations::Response<Echoed>, OperationRefusal> {
+        async fn run(self, sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
             let owner = sdk.resource::<crate::Owner>();
-            let carrier = sdk.resource::<harmos::guest::kit::Context>();
+            let carrier = sdk.resource::<harmos_guest::kit::Context>();
             let context = carrier.as_ref();
             let result: Result<Echoed, OperationRefusal> = async move {
                 // Calls Through the Saved Initialization Context
@@ -128,7 +128,7 @@ mod runtime {
                     return saved
                         .operation::<super::super::ProviderEchoOperation>(ProviderEchoOperation { say: value.into() })
                         .await
-                        .map(harmos::guest::operations::Response::into_owned)
+                        .map(harmos_guest::operations::Response::into_owned)
                         .map_err(OperationRefusal::of);
                 }
 
@@ -139,7 +139,7 @@ mod runtime {
                         Some(settings) => invocation.retry(settings.policy()).await,
                         None => invocation.await,
                     };
-                    return response.map(harmos::guest::operations::Response::into_owned).map_err(OperationRefusal::from);
+                    return response.map(harmos_guest::operations::Response::into_owned).map_err(OperationRefusal::from);
                 }
                 if let Some(value) = self.say.strip_prefix("publish:") {
                     crate::progress(context, value).await.map_err(OperationRefusal::from)?;

@@ -18,7 +18,7 @@ pub mod contract;
 
 /* === Imports === */
 
-use harmos::guest::builtins::{lifecycle, streams};
+use harmos_guest::builtins::{lifecycle, streams};
 
 // Standard Library Imports
 use std::sync::atomic::AtomicUsize;
@@ -28,10 +28,10 @@ use std::time::Duration;
 
 // Local Imports
 use contract::{Echoed, ProviderEchoOperation};
-use harmos::guest::kit::Context;
-use harmos::operations::{OperationPolicy, RetryPolicy};
+use harmos_guest::kit::Context;
+use harmos_guest::operations::{OperationPolicy, RetryPolicy};
 
-use harmos::guest::{OperationHost, PublishError};
+use harmos_guest::{OperationHost, PublishError};
 
 /* === Constants === */
 
@@ -44,7 +44,7 @@ const LIFECYCLE: OperationPolicy = OperationPolicy {
 
 /* === Macros === */
 
-harmos::guest::export_plugin!(Sandbox, capacity = 2);
+harmos_guest::export_plugin!(Sandbox, capacity = 2);
 
 /* === Type Aliases === */
 
@@ -76,12 +76,12 @@ impl lifecycle::Policy for Sandbox {
     const SHUTDOWN_POLICY: OperationPolicy = LIFECYCLE;
 }
 
-impl harmos::Lifecycle for Sandbox {
+impl harmos_guest::Lifecycle for Sandbox {
     type Config = String;
     type Error = std::io::Error;
     type Context = Context;
 
-    async fn prepare(config: String, setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+    async fn prepare(config: String, setup: &mut harmos_guest::Setup<Self>) -> Result<Self, Self::Error> {
         let plugin = Self {
             config,
             check_publication_revocation: false,
@@ -92,7 +92,7 @@ impl harmos::Lifecycle for Sandbox {
             setup.resource::<Owner>(Arc::clone(&plugin.owner));
         }
         if plugin.config == "mismatch" {
-            let extra = harmos::guest::__private::RegistrationBatch::new()
+            let extra = harmos_guest::__private::RegistrationBatch::new()
                 .operation_named::<contract::EchoOperation>("unexpected")
                 .map_err(std::io::Error::other)?;
             setup.settings().register(extra).map_err(std::io::Error::other)?;
@@ -157,16 +157,16 @@ impl harmos::Lifecycle for Sandbox {
     }
 }
 
-#[harmos::guest(
+#[harmos_guest::guest(
     id = "sandbox_guest",
     description = "Answers the host harness's sandbox probes.",
     requires(contract::ProviderEchoOperation, streams::Publish),
     streams(Echoed)
 )]
-impl harmos::Plugin for Sandbox {
-    const CATALOGS: &'static [harmos::guest::operations::Catalog] = &[contract::Operations::CATALOG];
+impl harmos_guest::Plugin for Sandbox {
+    const CATALOGS: &'static [harmos_guest::operations::Catalog] = &[contract::Operations::CATALOG];
 
-    fn register(registrar: &mut harmos::guest::Registrar) -> Result<(), harmos::guest::RegistrationError> {
+    fn register(registrar: &mut harmos_guest::Registrar) -> Result<(), harmos_guest::RegistrationError> {
         registrar.register("zeta.catalog", 2, &"second")?;
         registrar.register("alpha.catalog", 1, &"first")
     }
@@ -182,8 +182,8 @@ async fn progress(context: &Context, value: &str) -> Result<(), PublishError> {
 
 // Drives Every Child Control Once: Status And Join, Cancel, Release By Drop, Detach
 async fn submitted(context: &Context) -> Result<(), std::io::Error> {
-    use harmos::guest::operations::Instance;
-    use harmos::guest::operations::instance::Phase;
+    use harmos_guest::operations::Instance;
+    use harmos_guest::operations::instance::Phase;
     let request = |say: &str| ProviderEchoOperation { say: say.into() };
 
     let joined = context.submit::<contract::ProviderEchoOperation>(request("joined")).await.map_err(std::io::Error::other)?;

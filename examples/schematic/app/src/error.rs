@@ -70,10 +70,10 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
-    Incompatible(#[from] harmos::runtime::Incompatible),
+    Incompatible(#[from] harmos_runtime::runtime::Incompatible),
 
     #[error(transparent)]
-    Startup(#[from] harmos::StartupError),
+    Startup(#[from] harmos_runtime::StartupError),
 }
 
 /* === Traits === */

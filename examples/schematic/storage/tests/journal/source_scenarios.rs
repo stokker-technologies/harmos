@@ -19,7 +19,7 @@
 
 // Local Imports
 use super::Model;
-use harmos::storage::Source;
+use harmos_runtime::storage::Source;
 use schematic_storage::Jsonl;
 
 /* === Constants === */
@@ -62,7 +62,7 @@ fn contract_scenario() {
 fn incompatible_records_refuse_without_rewriting_root() {
     tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
         use super::support::{Bank, Ledger, Noted, booted};
-        use harmos::Identified;
+        use harmos_runtime::Identified;
 
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("journal.jsonl");

@@ -22,7 +22,7 @@ pub mod records;
 pub mod state;
 pub mod storage;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "plugin"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugin;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "plugin-guest"))]
@@ -30,7 +30,6 @@ pub mod guest;
 pub mod operations;
 pub mod runtime;
 
-pub mod observers;
 pub mod services;
 #[cfg(feature = "simulation")]
 pub mod simulation;
@@ -65,15 +64,14 @@ pub use services::{ServiceContext, ServiceManager};
 
 #[cfg(feature = "plugin-guest")]
 pub use harmos_guest::guest;
-pub use harmos_operations::execution::plugin::Plugin;
 
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{artifacts, failure, listeners, message, schema};
 pub use harmos_macros::{
-    Described, lanes, listener, observer, plugin, record, records, runtime_catalog as catalog, runtime_operation as operation, stream,
-    streams, transaction, transactions,
+    Described, lanes, listener, record, records, runtime_catalog as catalog, runtime_operation as operation, stream, streams, transaction,
+    transactions,
 };
 
 /* === Imports === */
@@ -112,6 +110,8 @@ pub mod __private {
 
     /* === Re-Exports === */
 
+    pub use harmos_domain::plugin;
+
     pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
         MapEntry, MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, operation_identity,
@@ -120,12 +120,12 @@ pub mod __private {
     pub use harmos_domain::config::SchemaSettings;
     pub use harmos_domain::inventory as PluginInventory;
     pub use harmos_domain::plugin::schema_markers as PluginSchemaMarkers;
-    pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-    pub use harmos_operations::execution::__private::RegistrationBatch;
-    pub use harmos_operations::execution::plugin::{
+    pub use harmos_domain::plugin::{
         Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
         Requirements as PluginRequirements,
     };
+    pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
+    pub use harmos_operations::execution::__private::RegistrationBatch;
 
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that

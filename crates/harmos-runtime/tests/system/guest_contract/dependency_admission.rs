@@ -48,7 +48,7 @@ async fn dependencies_share_admission() {
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let runtime = runtime_with_provider(provider.clone()).await;
     let mut lifecycle = DependencyHost::new(&runtime).await;
-    let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "dependencies").await).unwrap();
+    let mut manager = harmos_runtime::guest::PluginManager::new(dependency_candidate(&mut lifecycle, "dependencies").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     assert_eq!(
         runtime.operations.operation::<EchoOperation>(EchoOperation { say: "dependency:normal".into() }).await.unwrap().said,
@@ -80,7 +80,7 @@ async fn cancelled_dependency_admission() {
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let runtime = runtime_with_provider(provider.clone()).await;
     let mut lifecycle = DependencyHost::new(&runtime).await;
-    let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await).unwrap();
+    let mut manager = harmos_runtime::guest::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let invocation =
         runtime.operations.submit::<super::super::sandbox::EchoOperation>(EchoOperation { say: "dependency:cancel".into() }).await.unwrap();
@@ -105,7 +105,7 @@ async fn missing_provider_refused() {
     let candidate = dependency_candidate(&mut lifecycle, "idle").await;
     let missing = candidate.definitions().filter(|definition| definition.id != "provider").cloned();
     // No Plugin Provides It, So Planning Routes It to the Host, Whose Preflight Refuses It
-    let planned = harmos_runtime::plugin::PluginDefinitions::new(missing, []).unwrap();
+    let planned = harmos_runtime::guest::PluginDefinitions::new(missing, []).unwrap();
     let routed = planned
         .host_requirements()
         .map(|(definition, required)| (definition.id.clone(), required.contract.operation().id.to_string()))
@@ -132,7 +132,7 @@ async fn shutdown_fences_callers() {
     let runtime = runtime_with_provider(provider.clone()).await;
     let mut lifecycle = DependencyHost::new(&runtime).await;
     let mut manager =
-        harmos_runtime::plugin::PluginManager::new(dependency_candidate_with_client(&mut lifecycle, "dependencies").await).unwrap();
+        harmos_runtime::guest::PluginManager::new(dependency_candidate_with_client(&mut lifecycle, "dependencies").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let stale = runtime.operations.caller(&manager.caller("client").unwrap()).unwrap();
     assert_eq!(

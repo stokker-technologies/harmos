@@ -56,7 +56,7 @@ pub enum Authority {
 
     Binding(crate::operations::GrpcBinding),
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     Plugin(crate::operations::Caller),
 }
 
@@ -69,7 +69,7 @@ impl Authority {
         match self {
             Self::TrustedHost(operations) => operations.clock(),
             Self::Binding(binding) => binding.operations.clock(),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             Self::Plugin(caller) => caller.operations.clock(),
         }
     }
@@ -82,7 +82,7 @@ impl Authority {
         match self {
             Self::TrustedHost(operations) => operations.preparation.clone(),
             Self::Binding(binding) => binding.operations.preparation.clone(),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             Self::Plugin(caller) => caller.operations.preparation.clone(),
         }
     }
@@ -94,7 +94,7 @@ impl Authority {
         match self {
             Self::Binding(binding) => Self::Binding(binding.with_context(context.0.clone())),
             Self::TrustedHost(operations) => Self::TrustedHost(operations.with_context(context.0.clone())),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             Self::Plugin(caller) => Self::Plugin(caller.with_context(context.0.clone())),
         }
     }
@@ -105,7 +105,7 @@ impl Authority {
         match self {
             Self::Binding(binding) => binding.submit(request, endpoints),
             Self::TrustedHost(operations) => operations.submit_external_charged::<O, P>(request, endpoints),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             Self::Plugin(caller) => caller.submit_external_charged::<O, P>(request, endpoints),
         }
     }
@@ -366,7 +366,7 @@ fn code(error: &Error) -> tonic::Code {
                     | Error::Unauthenticated
                     | Error::PermissionDenied
                     | Error::OperationUnauthorized { .. } => leaf_code(error),
-                    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+                    #[cfg(feature = "plugin-guest")]
                     Error::OperationCaller { .. } => leaf_code(error),
                     _ => tonic::Code::Internal,
                 };
@@ -385,7 +385,7 @@ fn leaf_code(error: &Error) -> tonic::Code {
         Error::InvalidInput { .. } | Error::OperationPayload { .. } => tonic::Code::InvalidArgument,
         Error::Unauthenticated => tonic::Code::Unauthenticated,
         Error::PermissionDenied | Error::OperationUnauthorized { .. } => tonic::Code::PermissionDenied,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         Error::OperationCaller { .. } => tonic::Code::Unauthenticated,
         _ => tonic::Code::Internal,
     }

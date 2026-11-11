@@ -13,16 +13,18 @@ mod definition;
 mod demand;
 mod ingest;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+mod connection;
+#[cfg(feature = "plugin-guest")]
 mod listeners;
 mod manager;
 mod publication;
 mod publications;
+pub(crate) use connection::ConnectionStreams;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 mod registration;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 mod staging;
 mod window;
 
@@ -31,20 +33,20 @@ mod window;
 pub use definition::Stream;
 pub use harmos_domain::streams::{Definition, StreamCatalog, StreamRow};
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 pub use listeners::{PluginListenerBindings, PluginListenerRegistration};
 pub use manager::{Query, StreamFeed, StreamManager};
 pub use publication::ManagedPublication;
 pub(crate) use publication::row_value;
-pub use publications::{PluginStream, PublicationLease, PublicationRow, StreamAdmissionError, StreamPublicationError};
+pub use publications::{PublicationRow, PublishedStream, StreamPublicationError, StreamRegistrationError, StreamWriter};
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 pub use registration::StreamRegistration;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) use staging::Activation;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 pub use staging::{StagedPublication, StagedRows};
 
 pub(crate) use definition::{Refused, Table, Wired};

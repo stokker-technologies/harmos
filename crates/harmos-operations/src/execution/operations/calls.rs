@@ -54,7 +54,7 @@ pub struct Target {
     pub response: fn() -> TypeId,
     pub encode: fn(&(dyn Any + Send)) -> Option<Vec<u8>>,
     pub decode: fn(&[u8]) -> Result<ErasedResponse, MessageError>,
-    pub grant: fn(&(dyn Any + Send)) -> Option<crate::execution::plugin::Grant>,
+    pub grant: fn(&(dyn Any + Send)) -> Option<harmos_domain::plugin::Grant>,
 }
 
 /* === Enums === */

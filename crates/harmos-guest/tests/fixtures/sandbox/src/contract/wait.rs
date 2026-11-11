@@ -37,7 +37,7 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
         cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }))]
-#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest,
+#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest,
     operations = [super::ProviderEchoOperation], id = "probe.wait", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_millis(5),
         attempt_timeout: Duration::from_millis(5),
@@ -77,7 +77,7 @@ mod runtime {
     // Local Imports
     use super::super::ProviderEchoOperation;
     use super::{Echoed, WaitOperation};
-    use harmos::guest::OperationRefusal;
+    use harmos_guest::OperationRefusal;
 
     /* === Constants === */
 
@@ -93,11 +93,11 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos::guest::Operation for WaitOperation {
+    impl harmos_guest::Operation for WaitOperation {
         type Error = OperationRefusal;
 
         // The Provider Answers Slowly; Nothing Here Burns Fuel While It Waits
-        async fn run(self, sdk: harmos::guest::Context<'_, Self>) -> Result<harmos::guest::operations::Response<Echoed>, OperationRefusal> {
+        async fn run(self, sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
             let result: Result<Echoed, OperationRefusal> = async move {
                 let _ = sdk.operation(ProviderEchoOperation { say: "slow".into() }).await;
                 // Resuming Reaches the Epoch Check a Suspended Guest Could Not

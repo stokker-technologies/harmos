@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 
 /* === Enums === */
 
-#[harmos::records]
+#[harmos_runtime::records]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Records {
     ExportCompleted(ExportCompleted),

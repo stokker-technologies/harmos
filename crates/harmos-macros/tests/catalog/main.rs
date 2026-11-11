@@ -78,7 +78,7 @@ fn feature_catalog_compiles() {
 
 #[test]
 fn owner_ids_compile() {
-    let harmos = fixtures::library("harmos");
+    let harmos = fixtures::library("harmos_runtime");
     let dependencies = fixtures::dependencies();
     let output = std::env::temp_dir().join(format!("harmos-owner-ui-{}", std::process::id()));
     fs::create_dir_all(&output).unwrap();
@@ -110,8 +110,8 @@ impl harmos::Lifecycle for Example {{
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {{ Ok(()) }}
     async fn cleanup(&mut self) -> Result<(), Self::Error> {{ Ok(()) }}
 }}
-#[harmos::guest(id = {literal}, requires = ())]
-impl harmos::Plugin for Example {{
+#[harmos::guest(harmos_path = ::harmos, id = {literal}, requires = ())]
+impl harmos::guest::Plugin for Example {{
     const CATALOGS: &'static [harmos::operations::Catalog] = &[];
 }}
 fn main() {{}}
@@ -158,7 +158,7 @@ fn main() {{}}
 
 #[test]
 fn authoring_refusals_compile() {
-    let harmos = fixtures::library("harmos");
+    let harmos = fixtures::library("harmos_runtime");
     let serde = fixtures::library("serde");
     let dependencies = fixtures::dependencies();
     let fixtures = fixtures::manifest().join("tests/fixtures");

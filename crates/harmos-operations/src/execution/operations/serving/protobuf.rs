@@ -31,6 +31,7 @@ use crate::execution::{MessageError, Portable};
 /* === Type Aliases === */
 
 type Decode = fn(&[u8], &mut dyn Any) -> Result<(), MessageError>;
+#[cfg(feature = "streaming")]
 type Encode = fn(&dyn Any) -> Result<Vec<u8>, MessageError>;
 
 #[cfg(feature = "streaming")]
@@ -41,7 +42,6 @@ type Prepare = fn(&[u8]) -> Result<(Vec<u8>, usize), MessageError>;
 #[derive(Clone, Copy)]
 pub(crate) struct Codec {
     pub(crate) decode: Decode,
-    pub(crate) encode: Encode,
 
     #[cfg(feature = "streaming")]
     pub(super) input: Option<ItemCodec>,
@@ -71,7 +71,6 @@ impl Codec {
     pub(crate) fn of<O: OperationDeclaration>() -> Self {
         Self {
             decode: decode::<O::Request>,
-            encode: encode::<O::Response>,
             #[cfg(feature = "streaming")]
             input: direction::<O::Input>(),
             #[cfg(feature = "streaming")]
@@ -119,10 +118,11 @@ fn decode_postcard<T: Portable>(payload: &[u8], target: &mut dyn Any) -> Result<
     Ok(())
 }
 
+#[cfg(feature = "streaming")]
 fn encode<T: Portable>(value: &dyn Any) -> Result<Vec<u8>, MessageError> {
     let value = value.downcast_ref::<T>().ok_or_else(|| MessageError::borrowed("protobuf response type differs from operation"))?;
     let mut bytes = Vec::new();
-    grpc::encode_bounded(value, &mut bytes, super::codec::LIMIT)?;
+    grpc::encode(value, &mut bytes)?;
     Ok(bytes)
 }
 

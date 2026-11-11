@@ -25,15 +25,15 @@ use schematic_domain::model::transfer::{Batch, Receipt};
 use super::store::Store;
 
 #[cfg(feature = "runtime")]
-use harmos::MemorySize;
+use harmos_operations::MemorySize;
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -42,11 +42,11 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(resources = [Store],
+#[harmos_operations::operation(resources = [Store],
     id = "benchmark.put", response = Receipt,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Unknown,
+    replay = harmos_operations::operations::ReplaySafety::Unknown,
 )]
 pub struct Put {
     pub transfer: u64,
@@ -61,10 +61,10 @@ pub struct Put {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for Put {
+impl harmos_operations::Operation for Put {
     type Error = crate::Error;
 
-    async fn run(mut self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<Receipt>, Self::Error> {
+    async fn run(mut self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Receipt>, Self::Error> {
         let store = ctx.resource::<Store>();
 
         let mut stores = store.batches.lock().unwrap();
@@ -74,7 +74,7 @@ impl harmos::Operation for Put {
         let retained_bytes: usize = stores.values().map(|stored| stored.bytes).sum();
         let bytes = retained_bytes.saturating_add(self.batch.memory_size());
         if bytes > 64 * 1024 * 1024 {
-            return Err(crate::Error::Stream(harmos::operations::StreamError::Capacity));
+            return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
         }
         let empty = Batch {
             records: Vec::new(),

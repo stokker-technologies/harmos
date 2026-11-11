@@ -56,7 +56,7 @@ pub(super) struct EncodedInput {
     pub(super) preparation: Option<OwnedSemaphorePermit>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone)]
 pub struct PluginCallback {
     operations: Manager,
@@ -156,7 +156,7 @@ impl Manager {
         self.submit_encoded_at_as(operation, payload, source, parent, self.clock().now(), EncodedOptions::default())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn submit_encoded_retry_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
@@ -169,7 +169,6 @@ impl Manager {
         options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
-        #[cfg(feature = "plugin-grpc")]
         if let Ok(entry) = self.capture_entry(operation)
             && entry.binding.is::<crate::plugin::grpc::invoke::Binding>()
         {
@@ -226,9 +225,11 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl Manager {
-    pub fn capture_callback(&self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract) -> Result<PluginCallback> {
+    pub fn capture_callback(
+        &self, scope: &crate::guest::host::plugin::PluginScope, contract: &crate::operations::Contract,
+    ) -> Result<PluginCallback> {
         if scope.is_closed() {
             return Err(Error::Closing { domain: "callback scope" });
         }
@@ -247,7 +248,7 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl PluginCallback {
     pub(super) fn from_entry(operations: Manager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
         if entry.declared() != contract.operation() || entry.contract.as_ref() != Some(contract) {
@@ -332,7 +333,7 @@ impl PluginCallback {
     }
 }
 
-#[cfg(any(feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
@@ -377,7 +378,7 @@ impl super::Context<'_> {
         )
     }
 
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
         values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
@@ -425,7 +426,6 @@ pub(super) fn dispatch_native(
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(operations.clock(), submission.entry.id(), 1, timeout, submitted)?;
-    #[cfg(feature = "plugin-grpc")]
     if let Some(binding) = submission.entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
         let prepared = harmos_operations::execution::__private::PreparedNative {
             instance: binding.prepare(input.payload),
@@ -446,7 +446,7 @@ pub(super) fn dispatch_native(
         if let Some(factory) = factory {
             return factory.decoding_memory(&input.payload);
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
             return binding.decoding_memory(&input.payload);
         }
@@ -467,7 +467,7 @@ pub(super) fn dispatch_native(
         if let Some(factory) = factory {
             return factory.prepare_encoded(resources, &input.payload);
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
             return binding.prepare(resources, &input.payload);
         }

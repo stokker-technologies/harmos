@@ -92,7 +92,7 @@ enum Envelope<'a> {
         payload: &'a [u8],
     },
     Failed {
-        failure: crate::execution::Failure,
+        failure: harmos_operations::execution::Failure,
     },
     Child {
         context: [u8; 32],
@@ -109,7 +109,7 @@ enum Envelope<'a> {
         payload: &'a [u8],
 
         submit: bool,
-        retry: Option<super::super::RetryPolicy>,
+        retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     },
     PrepareGrpc {
         invocation: u64,
@@ -336,8 +336,9 @@ impl WireChildCall {
     // Counts a Child envelope with its actual portable values and payload length.
     // Context identifiers and the submit flag have fixed encoded widths.
     pub fn payload_encoded_len(
-        operation: &str, generation: u64, payload: usize, generation_context: bool, values: &[super::super::CallValue],
-        retry: Option<super::super::RetryPolicy>,
+        operation: &str, generation: u64, payload: usize, generation_context: bool,
+        values: &[harmos_operations::execution::operations::CallValue],
+        retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> Result<usize, WireCodecError> {
         check_values(values)?;
         let envelope = Envelope::Child {
@@ -435,9 +436,11 @@ impl WireChild {
 
 /* === Private Functions === */
 
-fn check_values(values: &[super::super::CallValue]) -> Result<(), WireCodecError> {
+fn check_values(values: &[harmos_operations::execution::operations::CallValue]) -> Result<(), WireCodecError> {
     let bytes = values.iter().map(|value| value.key.len().saturating_add(value.payload.len())).fold(0usize, usize::saturating_add);
-    if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {
+    if values.len() > harmos_operations::execution::operations::PORTABLE_VALUES
+        || bytes > harmos_operations::execution::operations::PORTABLE_BYTES
+    {
         return Err(WireCodecError::Oversized);
     }
     for (index, value) in values.iter().enumerate() {
@@ -448,18 +451,20 @@ fn check_values(values: &[super::super::CallValue]) -> Result<(), WireCodecError
     Ok(())
 }
 
-fn borrowed(values: &[super::super::CallValue]) -> Vec<Value<'_>> {
+fn borrowed(values: &[harmos_operations::execution::operations::CallValue]) -> Vec<Value<'_>> {
     values.iter().map(|value| Value { key: &value.key, payload: &value.payload }).collect()
 }
 
-fn owned(values: Vec<Value<'_>>) -> Result<Vec<super::super::CallValue>, WireCodecError> {
+fn owned(values: Vec<Value<'_>>) -> Result<Vec<harmos_operations::execution::operations::CallValue>, WireCodecError> {
     let bytes = values.iter().map(|value| value.key.len() + value.payload.len()).sum::<usize>();
-    if values.len() > super::super::PORTABLE_VALUES || bytes > super::super::PORTABLE_BYTES {
+    if values.len() > harmos_operations::execution::operations::PORTABLE_VALUES
+        || bytes > harmos_operations::execution::operations::PORTABLE_BYTES
+    {
         return Err(WireCodecError::Oversized);
     }
     Ok(values
         .into_iter()
-        .map(|value| super::super::CallValue {
+        .map(|value| harmos_operations::execution::operations::CallValue {
             key: value.key.to_owned(),
             payload: value.payload.to_vec(),
         })
@@ -548,7 +553,7 @@ mod payload {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution::operations::{CallValue, PORTABLE_BYTES, PORTABLE_VALUES};
+    use harmos_operations::execution::operations::{CallValue, PORTABLE_BYTES, PORTABLE_VALUES};
 
     #[test]
     fn rejects_previous_envelope_before_decoding_changed_child_shape() {
@@ -559,13 +564,13 @@ mod tests {
     fn child_retry_roundtrip_and_exact_size() {
         let retries = [
             None,
-            Some(crate::execution::RetryPolicy::Never),
-            Some(crate::execution::RetryPolicy::OnTransient {
+            Some(harmos_operations::execution::RetryPolicy::Never),
+            Some(harmos_operations::execution::RetryPolicy::OnTransient {
                 max_retries: usize::MAX,
-                backoff: crate::execution::Backoff::Exponential {
+                backoff: harmos_operations::execution::Backoff::Exponential {
                     initial: std::time::Duration::from_millis(1),
                     maximum: std::time::Duration::from_secs(5),
-                    jitter: crate::execution::Jitter::Deterministic,
+                    jitter: harmos_operations::execution::Jitter::Deterministic,
                 },
             }),
         ];

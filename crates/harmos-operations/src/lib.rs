@@ -37,6 +37,7 @@ pub use streams::Streams;
 
 // Third Party Imports
 extern crate self as harmos;
+extern crate self as harmos_operations;
 
 // Local Imports
 #[cfg(feature = "runtime")]
@@ -45,13 +46,11 @@ use crate::execution::__private::RegistrationBatch;
 /* === Constants === */
 
 #[cfg(feature = "runtime")]
-static BUILTIN_DECLARATIONS: [catalog::Node<operations::WireDeclaration>; 6] = [
+static BUILTIN_DECLARATIONS: [catalog::Node<operations::WireDeclaration>; 4] = [
     catalog::Node::Nested(Host::CATALOG.declarations),
     catalog::Node::Nested(Lifecycle::CATALOG.declarations),
     catalog::Node::Nested(Storage::CATALOG.declarations),
     catalog::Node::Nested(Streams::CATALOG.declarations),
-    catalog::Node::Leaf(operations::WireDeclaration::of::<lifecycle::Initialize>()),
-    catalog::Node::Leaf(operations::WireDeclaration::of::<lifecycle::Shutdown>()),
 ];
 
 #[cfg(feature = "runtime")]
@@ -85,8 +84,6 @@ impl Builtins {
         definitions.extend(Lifecycle::catalog());
         definitions.extend(Storage::catalog());
         definitions.extend(Streams::catalog());
-        definitions.push(lifecycle::Initialize::definition());
-        definitions.push(lifecycle::Shutdown::definition());
         definitions
     }
 }
@@ -101,8 +98,6 @@ impl crate::execution::operations::OperationCatalog for Builtins {
         batch.operations.extend(Lifecycle::batch().operations);
         batch.operations.extend(Storage::batch().operations);
         batch.operations.extend(Streams::batch().operations);
-        batch.operations.extend(RegistrationBatch::new().operation::<lifecycle::Initialize>().operations);
-        batch.operations.extend(RegistrationBatch::new().operation::<lifecycle::Shutdown>().operations);
         batch
     }
 }
@@ -198,18 +193,8 @@ mod tests {
     fn builtin_inventory() {
         let definitions = crate::Builtins::catalog();
         let ids: std::collections::BTreeSet<_> = definitions.iter().map(|definition| definition.id.as_str()).collect();
-        assert_eq!(definitions.len(), 30);
         assert_eq!(ids.len(), definitions.len());
         let mut dependencies = definitions.into_iter();
         assert!(dependencies.all(|definition| definition.fingerprint.0 != [0; 32]));
-    }
-
-    #[test]
-    fn reserved_lifecycle_fingerprints() {
-        use crate::lifecycle::{Action, Descriptor, Initialize, POLICY, Shutdown};
-        for (action, definition) in [(Action::Initialize, Initialize::definition()), (Action::Shutdown, Shutdown::definition())] {
-            let descriptor = Descriptor::new(action, POLICY).unwrap();
-            assert_eq!(descriptor.contract().operation(), &definition);
-        }
     }
 }

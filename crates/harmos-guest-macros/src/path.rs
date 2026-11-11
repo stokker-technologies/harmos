@@ -42,9 +42,9 @@ pub(crate) struct HarmosPath(Path);
 
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
-        let package = "harmos";
+        let package = "harmos-guest";
         let Ok(found) = proc_macro_crate::crate_name(package) else {
-            return Self(syn::parse_quote!(::harmos));
+            return Self(syn::parse_quote!(::harmos_guest));
         };
         let name = match found {
             proc_macro_crate::FoundCrate::Itself => package.replace('-', "_"),

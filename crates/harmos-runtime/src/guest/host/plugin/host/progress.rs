@@ -23,7 +23,7 @@ use std::task::Context;
 // Third Party Imports
 
 // Local Imports
-use crate::plugin::PluginGeneration;
+use crate::guest::host::plugin::PluginGeneration;
 
 /* === Constants === */
 

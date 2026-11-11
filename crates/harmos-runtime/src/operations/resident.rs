@@ -33,7 +33,6 @@ use tokio::sync::watch;
 use super::caller::Identity;
 use super::instances::Instances;
 use super::{OperationGeneration, OperationInstanceId, OperationStatus};
-use crate::observers::ObserverDefinition;
 use crate::services::{ServiceDefinition, ServiceStatus};
 use crate::supervision::{self, Task, instance::Instance, instance::Phase};
 use crate::{Error, Result};
@@ -84,7 +83,7 @@ pub(crate) struct Registry {
     shared: Arc<Shared>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone)]
 pub(crate) struct WeakRegistry(Weak<Shared>);
 
@@ -117,8 +116,8 @@ pub(crate) struct Registration {
     internal: bool,
     published: Arc<AtomicBool>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    plugin: Option<crate::plugin::PluginScope>,
+    #[cfg(feature = "plugin-guest")]
+    plugin: Option<crate::guest::host::plugin::PluginScope>,
 }
 
 // Retains a retired scope's resources and instances until its caller has
@@ -170,7 +169,6 @@ pub(crate) struct Lease {
 
 struct State {
     closed: bool,
-    retired_failure: Option<Arc<Error>>,
     next: u64,
     reserved: BTreeSet<String>,
     definitions: BTreeMap<String, Arc<Registration>>,
@@ -191,13 +189,11 @@ struct Entry {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    Observer,
     Service,
 }
 
 #[derive(Clone, Debug)]
 pub enum Definition {
-    Observer(ObserverDefinition),
     Service(ServiceDefinition),
 }
 
@@ -264,28 +260,24 @@ impl Key {
 impl Kind {
     pub fn domain(self) -> &'static str {
         match self {
-            Self::Observer => "observer",
             Self::Service => "service",
         }
     }
 
     fn scope(self) -> &'static str {
         match self {
-            Self::Observer => "observer scope",
             Self::Service => "service scope",
         }
     }
 
     fn definition(self) -> &'static str {
         match self {
-            Self::Observer => "observer definition",
             Self::Service => "service definition",
         }
     }
 
     fn catalog(self) -> &'static str {
         match self {
-            Self::Observer => "observer catalog",
             Self::Service => "service catalog",
         }
     }
@@ -294,14 +286,12 @@ impl Kind {
 impl Definition {
     pub fn id(&self) -> &str {
         match self {
-            Self::Observer(definition) => &definition.id,
             Self::Service(definition) => &definition.id,
         }
     }
 
     pub fn kind(&self) -> Kind {
         match self {
-            Self::Observer(_) => Kind::Observer,
             Self::Service(_) => Kind::Service,
         }
     }
@@ -312,7 +302,7 @@ impl Registration {
         if !self.published.load(Ordering::Acquire) {
             return false;
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if self.plugin.as_ref().is_some_and(|scope| !scope.is_ready()) {
             return false;
         }
@@ -320,7 +310,7 @@ impl Registration {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl WeakRegistry {
     pub(crate) fn upgrade(&self) -> Option<Registry> {
         self.0.upgrade().map(|shared| Registry { shared })
@@ -328,7 +318,7 @@ impl WeakRegistry {
 }
 
 impl Registry {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(crate) fn downgrade(&self) -> WeakRegistry {
         WeakRegistry(Arc::downgrade(&self.shared))
     }
@@ -348,7 +338,6 @@ impl Registry {
         });
         let state = State {
             closed: false,
-            retired_failure: None,
             next: 0,
             reserved,
             definitions: BTreeMap::new(),
@@ -398,7 +387,7 @@ impl Registry {
             scope: scope.map(|scope| scope.id),
             internal,
             published: Arc::new(AtomicBool::new(true)),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             plugin: None,
         });
         let mut state = self.state();
@@ -418,10 +407,10 @@ impl Registry {
     // Reserve definitions bound to one scope; they become visible on commit.
     pub(crate) fn stage(
         &self, scope: &Arc<Scope>, entries: Vec<(Definition, Arc<dyn Runner>)>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))] plugin: Option<crate::plugin::PluginScope>,
+        #[cfg(feature = "plugin-guest")] plugin: Option<crate::guest::host::plugin::PluginScope>,
     ) -> Result<Staged> {
         self.check_scope(scope)?;
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
             return Err(Error::Closing { domain: "plugin scope" });
         }
@@ -444,7 +433,7 @@ impl Registry {
                 scope: Some(scope.id),
                 internal: false,
                 published: Arc::clone(&published),
-                #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+                #[cfg(feature = "plugin-guest")]
                 plugin: plugin.clone(),
             }));
         }
@@ -512,7 +501,7 @@ impl Registry {
         Ok(scope)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(crate) fn scope_of<R: Send + Sync + 'static>(&self, resources: &Arc<R>) -> Option<Arc<Scope>> {
         let address = Arc::as_ptr(resources) as *const () as usize;
         let state = self.state();
@@ -693,8 +682,8 @@ impl Registry {
     // the definitions bound to it. The first outcome is retained.
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.unregister", level = "debug", skip_all)]
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    pub(crate) fn close_plugin(&self, scope: &crate::plugin::PluginScope) {
+    #[cfg(feature = "plugin-guest")]
+    pub(crate) fn close_plugin(&self, scope: &crate::guest::host::plugin::PluginScope) {
         let mut state = self.state();
         let ids: std::collections::BTreeSet<_> = state
             .definitions
@@ -712,8 +701,8 @@ impl Registry {
         self.shared.publish(&state);
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    pub(crate) async fn shutdown_plugin(&self, scope: &crate::plugin::PluginScope) -> Result<()> {
+    #[cfg(feature = "plugin-guest")]
+    pub(crate) async fn shutdown_plugin(&self, scope: &crate::guest::host::plugin::PluginScope) -> Result<()> {
         let ids: Vec<_> = self
             .state()
             .definitions
@@ -778,51 +767,6 @@ impl Registry {
         drop(scopes);
     }
 
-    // Stop every instance of one kind and settle them; a failed cleanup stays
-    // retained and the next stop retries it.
-    #[tracing::instrument(target = "harmos::operations", name = "operations.stop_kind", level = "debug", skip_all)]
-    pub(crate) async fn stop_kind(&self, kind: Kind) -> Result<()> {
-        let running = {
-            let mut state = self.state();
-            let running = state.stop(|_, selected, _| selected == kind);
-            self.shared.publish(&state);
-            running
-        };
-        settle(running).await
-    }
-
-    pub(crate) async fn shutdown_observers(&self) -> Result<()> {
-        self.close_admission();
-        let running = self.select(|kind, _| kind == Kind::Observer);
-        let result = settle(running).await;
-        let (definitions, scopes, retired_failure) = {
-            let mut state = self.state();
-            let ids: Vec<_> = state
-                .definitions
-                .iter()
-                .filter(|(id, registration)| {
-                    registration.definition.kind() == Kind::Observer
-                        && state
-                            .instances
-                            .iter()
-                            .filter(|(key, _)| key.definition == **id)
-                            .all(|(_, entry)| entry.running.settlement.lifecycle().is_settled())
-                })
-                .map(|(id, _)| id.clone())
-                .collect();
-            let definitions: Vec<_> = ids.into_iter().filter_map(|id| state.definitions.remove(&id)).collect();
-            (definitions, state.release_scopes(), state.retired_failure.clone())
-        };
-        // Context factories may retain runtime handles. Drop them outside
-        // the registry lock after every active use has joined.
-        drop((definitions, scopes));
-        result?;
-        match retired_failure {
-            Some(source) => Err(Error::TaskFailed { domain: "retired observer", source }),
-            None => Ok(()),
-        }
-    }
-
     pub(crate) async fn shutdown_application(&self) -> Result<()> {
         let running = {
             let mut state = self.state();
@@ -861,15 +805,6 @@ impl Registry {
             scopes.values().flat_map(|scope| std::mem::take(&mut *scope.detached.lock().expect("resident scope is healthy"))).collect();
         drop((definitions, scopes, assembly, detached));
         result
-    }
-
-    fn select(&self, selected: impl Fn(Kind, bool) -> bool) -> Vec<Running> {
-        self.state()
-            .instances
-            .values()
-            .filter(|entry| selected(entry.snapshot.kind, entry.internal))
-            .map(|entry| entry.running.clone())
-            .collect()
     }
 
     fn check_scope(&self, scope: &Scope) -> Result<()> {
@@ -1014,10 +949,6 @@ impl Running {
 impl Report {
     pub(crate) fn id(&self) -> OperationInstanceId {
         self.id
-    }
-
-    pub(crate) fn key(&self) -> &Key {
-        &self.key
     }
 
     fn with_entry(&self, update: impl FnOnce(&mut Entry) -> bool) {
@@ -1214,7 +1145,7 @@ impl Staged {
             return Err(Error::Closing { domain: "resident scope" });
         }
         for entry in &self.entries {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             if entry.plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
                 return Err(Error::Closing { domain: "plugin scope" });
             }
@@ -1269,7 +1200,6 @@ pub(crate) async fn settle(running: Vec<Running>) -> Result<()> {
             Ok(outcome) => outcome.as_ref().clone().map_err(|source| Error::TaskFailed { domain, source }),
             Err(source) => Err(Error::TaskFailed {
                 domain: match running.report.kind {
-                    Kind::Observer => "observer supervisor",
                     Kind::Service => "service supervisor",
                 },
                 source,
@@ -1285,7 +1215,6 @@ fn address(resources: &Resources) -> usize {
 
 fn validate(definition: &Definition) -> Result<()> {
     match definition {
-        Definition::Observer(definition) => crate::observers::validate(definition),
         Definition::Service(definition) => crate::services::validate(definition),
     }
 }

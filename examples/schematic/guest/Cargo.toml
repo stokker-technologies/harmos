@@ -32,7 +32,7 @@ benchmark = []
 # The Guest Executes Shared Operations With Target-Compatible Resources.
 [dependencies]
 # Local
-harmos = { workspace = true, features = ["guest"] }
+harmos-guest = { workspace = true, features = ["kit", "derive", "grpc", "streaming"] }
 schematic-operations = { path = "../operations", features = ["runtime"] }
 
 # Git

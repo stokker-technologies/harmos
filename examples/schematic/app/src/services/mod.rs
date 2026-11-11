@@ -23,7 +23,7 @@ use std::path::Path;
 
 // Local Imports
 use crate::app::{Runtime, SchematicEditor};
-use harmos::guest::Loaded;
+use harmos_runtime::guest::Loaded;
 
 /* === Constants === */
 
@@ -36,8 +36,8 @@ use harmos::guest::Loaded;
 /* === Enums === */
 
 pub enum Plugin {
-    Guest { manager: harmos::plugin::PluginHost<SchematicEditor> },
-    Sidecar { attached: harmos::plugin::grpc::Attached },
+    Guest { manager: harmos_runtime::guest::PluginHost<SchematicEditor> },
+    Sidecar { attached: harmos_runtime::plugin::grpc::Attached },
 }
 
 /* === Traits === */
@@ -45,23 +45,23 @@ pub enum Plugin {
 /* === Implementations === */
 
 impl Plugin {
-    pub async fn guest(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos::Result<Self> {
+    pub async fn guest(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos_runtime::Result<Self> {
         guest::start(runtime, loaded).await?;
         Ok(Self::Guest { manager: runtime.plugin.clone() })
     }
 
-    pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> harmos::Result<Self> {
+    pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> harmos_runtime::Result<Self> {
         let attached = sidecar::start(runtime, path, directory).await?;
         Ok(Self::Sidecar { attached })
     }
 
-    pub async fn stop(self) -> harmos::Result<()> {
+    pub async fn stop(self) -> harmos_runtime::Result<()> {
         match self {
             Self::Guest { manager } => manager.stop(guest::NAME).await,
             Self::Sidecar { attached } => attached
                 .stop("Example Complete")
                 .await
-                .map_err(|source| harmos::Error::OperationFailed { operation: sidecar::NAME.into(), source }),
+                .map_err(|source| harmos_runtime::Error::OperationFailed { operation: sidecar::NAME.into(), source }),
         }
     }
 }

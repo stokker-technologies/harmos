@@ -14,7 +14,7 @@ version = { workspace = true }
 
 [features]
 default = []
-simulation = ["harmos/simulation"]
+simulation = ["harmos-runtime/simulation"]
 
 # === Dependencies === #
 
@@ -24,10 +24,10 @@ simulation = ["harmos/simulation"]
 # transaction it is decoded as.
 [dependencies]
 # Local
-harmos = { workspace = true, default-features = true, features = ["runtime", "guest", "plugin-grpc"] }
-harmos-sdk-grpc = { workspace = true }
+harmos-runtime = { workspace = true, default-features = true, features = ["plugin-guest"] }
+harmos = { workspace = true }
 schematic-domain = { path = "../domain" }
-schematic-operations = { path = "../operations", features = ["runtime", "plugin-grpc"] }
+schematic-operations = { path = "../operations", features = ["runtime", "authoring"] }
 schematic-storage = { path = "../storage" }
 
 # Git

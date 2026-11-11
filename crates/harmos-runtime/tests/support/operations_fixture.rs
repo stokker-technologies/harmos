@@ -302,7 +302,7 @@ pub(crate) async fn runtime_with(update: impl FnOnce(&mut harmos_runtime::Setup<
     .unwrap()
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) async fn runtime_with_preparation(bytes: std::num::NonZeroUsize) -> Runtime<Bank> {
     runtime_with(|setup| {
         setup.settings().operation_settings(harmos_runtime::operations::Settings {

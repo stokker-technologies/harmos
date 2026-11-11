@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 // Local Imports
-use harmos::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::Stream};
+use harmos_runtime::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::Stream};
 
 /* === Constants === */
 

@@ -9,8 +9,6 @@
 
 // Serve Benchmark Commands In A Separate Process Until The Parent Closes Stdin.
 
-extern crate harmos_runtime as harmos;
-
 /* === Modules === */
 
 #[path = "benchmark_protocol.rs"]

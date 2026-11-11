@@ -134,7 +134,7 @@ impl Context {
     }
 
     /// Every wait is a child call to the host. No SDK timer advances scenario time.
-    /// Declare `.requires::<harmos_sdk_grpc::clock::Sleep>()` when composing the plugin.
+    /// Declare `.requires::<harmos::clock::Sleep>()` when composing the plugin.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
         let duration = prost_types::Duration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
         let request = v1::Sleep { duration: Some(duration) };
@@ -143,7 +143,7 @@ impl Context {
         Ok(())
     }
 
-    /// Read evidence time from the host; declare `.requires::<harmos_sdk_grpc::clock::Now>()`.
+    /// Read evidence time from the host; declare `.requires::<harmos::clock::Now>()`.
     pub async fn now(&self) -> Result<prost_types::Timestamp> {
         let payload = self.clock_call("harmos.clock.now", v1::Now {}.encode_to_vec()).await?;
         v1::Time::decode(payload.as_slice())

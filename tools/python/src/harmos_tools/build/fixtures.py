@@ -37,7 +37,7 @@ TARGET = ROOT / "target"
 GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
-LIBRARIES = ("harmos", "harmos_operations", "harmos_sdk_grpc", "harmos_macros", "serde")
+LIBRARIES = ("harmos", "harmos_runtime", "harmos_operations", "harmos_macros", "serde")
 
 # === Types === #
 
@@ -382,8 +382,8 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
     for name, library, features, profile in filter(None, staged):
         found[name][library] = features, profile
 
-    shipping = _widest(found["harmos"])
-    profile = found["harmos"][shipping][1] if shipping is not None else None
+    shipping = _widest(found["harmos_runtime"])
+    profile = found["harmos_runtime"][shipping][1] if shipping is not None else None
     selected = {name: _widest(builds, profile) for name, builds in found.items()}
     if selected["serde"] is None and shipping is not None:
         selected["serde"] = _compatible_serde(found["serde"], fixtures / shipping, destination)

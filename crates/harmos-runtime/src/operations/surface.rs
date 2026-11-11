@@ -76,7 +76,7 @@ impl<L: Lane> RuntimeOperationHost<L> {
         match &self.operations {
             Some(operations) => Ok(operations.with_context(self.context.clone())),
             None => {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+                #[cfg(feature = "plugin-guest")]
                 if let Source::Scope(scope) = &self.source {
                     return Ok(scope.operation_manager()?.with_context(self.context.clone()));
                 }
@@ -130,8 +130,8 @@ pub(super) fn validate_endpoints<O: OperationDeclaration, E: EndpointSet>() -> R
     Ok(())
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-impl crate::plugin::PluginScope {
+#[cfg(feature = "plugin-guest")]
+impl crate::guest::host::plugin::PluginScope {
     pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(
         &self, request: O,
     ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<L>, O> {

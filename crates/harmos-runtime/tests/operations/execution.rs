@@ -293,7 +293,7 @@ async fn catalog_boot_atomic() {
     runtime.shutdown().await.unwrap();
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[tokio::test]
 async fn providers_route_explicitly() {
     let owner = Arc::new(Owner { bias: 10, ..Owner::default() });
@@ -305,10 +305,10 @@ async fn providers_route_explicitly() {
         runtime
             .plugin
             .register_embedded::<Operations, Lanes>(
-                harmos_runtime::plugin::PluginDefinition {
+                harmos_runtime::guest::PluginDefinition {
                     id: id.into(),
                     version: "1.0.0".parse().unwrap(),
-                    artifact: harmos_runtime::plugin::PluginArtifact::Embedded { revision: "fixture".into() },
+                    artifact: harmos_runtime::guest::PluginArtifact::Embedded { revision: "fixture".into() },
                     requires: vec![],
                     configuration: b"null".to_vec(),
                     contributions: Default::default(),

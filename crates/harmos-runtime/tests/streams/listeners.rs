@@ -23,11 +23,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
 use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Listener, Source};
-use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
-use harmos_runtime::plugin::{
+use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
 };
+use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
 use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::streams::PluginListenerRegistration;
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime};
@@ -93,7 +93,7 @@ struct Host {
     scope: Option<PluginScope>,
     fail_start: bool,
     managed: bool,
-    lease: Option<Arc<harmos_runtime::streams::PublicationLease>>,
+    lease: Option<Arc<harmos_runtime::streams::StreamWriter>>,
     skip_sources: bool,
     drop_before_commit: bool,
     original_drop: Arc<AtomicUsize>,
@@ -614,7 +614,7 @@ async fn listener_failure_fences() {
         observed(&host.owner, 1).await;
         fenced(&host).await;
         assert_eq!(host.owner.seen.lock().unwrap().len(), 1);
-        assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
+        assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::guest::PluginState::Failed);
         assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
         assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
         manager.shutdown(&mut host).await.unwrap();
@@ -627,7 +627,7 @@ async fn listener_failure_fences() {
         runtime.streams.publish(fact(u32::MAX));
         fenced(&host).await;
         assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationPanicked { .. })));
-        assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::plugin::PluginState::Failed);
+        assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::guest::PluginState::Failed);
         assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
         manager.shutdown(&mut host).await.unwrap();
         runtime.shutdown().await.unwrap();
@@ -636,30 +636,24 @@ async fn listener_failure_fences() {
 
 #[tokio::test]
 async fn runtime_signals_listener() {
-    struct BlockedObserver(Arc<Gates>);
+    struct BlockedService(Arc<Gates>);
     struct Gates {
         running: Notify,
         stopping: Notify,
         release: Notify,
     }
-    impl harmos_runtime::observers::ObserverBackend for BlockedObserver {
-        fn definition(&self) -> harmos_runtime::Result<harmos_runtime::observers::ObserverDefinition> {
-            Ok(harmos_runtime::observers::ObserverDefinition {
-                id: "blocked-cleanup".into(),
-
-                streams: vec![],
-                demand_keys: vec![],
-            })
-        }
-        async fn run(
-            &self, _: Arc<harmos_operations::execution::ExecutionContext>, mut activation: harmos_runtime::observers::ObserverActivation,
-        ) -> Result<()> {
+    impl harmos_runtime::services::Resident<Model> for BlockedService {
+        type Error = std::io::Error;
+        async fn run(&mut self, mut context: harmos_runtime::services::ServiceContext<Model>) -> std::result::Result<(), Self::Error> {
             let gates = &self.0;
-            activation.ready();
+            context.ready();
             gates.running.notify_one();
-            activation.stopping().await;
+            context.stopping().await;
             gates.stopping.notify_one();
             gates.release.notified().await;
+            Ok(())
+        }
+        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
             Ok(())
         }
     }
@@ -671,7 +665,19 @@ async fn runtime_signals_listener() {
         stopping: Notify::new(),
         release: Notify::new(),
     });
-    runtime.operations.register_observer(BlockedObserver(gates.clone())).unwrap();
+    runtime
+        .operations
+        .register_service::<Model, _, _>(
+            harmos_runtime::services::ServiceDefinition {
+                id: "blocked-cleanup".into(),
+                policy: harmos_runtime::services::POLICY,
+            },
+            {
+                let gates = gates.clone();
+                move |_| BlockedService(gates.clone())
+            },
+        )
+        .unwrap();
     let lease = runtime.operations.submit_resident("blocked-cleanup").await.unwrap();
     gates.running.notified().await;
     let mut stopping = Box::pin(runtime.shutdown());

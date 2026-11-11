@@ -23,8 +23,8 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos::guest::kit::Context;
-use harmos::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
+use harmos_guest::kit::Context;
+use harmos_guest::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
 #[cfg(not(feature = "benchmark"))]
 use schematic_operations::Operations;
 #[cfg(feature = "benchmark")]
@@ -36,12 +36,12 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_guest::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
 
-harmos::guest::export_plugin!(Plugin, capacity = 8);
+harmos_guest::export_plugin!(Plugin, capacity = 8);
 
 /* === Type Aliases === */
 
@@ -58,17 +58,17 @@ pub struct Plugin {
 
 /* === Implementations === */
 
-impl harmos::builtins::lifecycle::Policy for Plugin {
+impl harmos_guest::builtins::lifecycle::Policy for Plugin {
     const INITIALIZATION_POLICY: OperationPolicy = POLICY;
     const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
 }
 
-impl harmos::Lifecycle for Plugin {
+impl harmos_guest::Lifecycle for Plugin {
     type Config = ();
     type Error = Error;
     type Context = Context;
 
-    async fn prepare(_: (), setup: &mut harmos::Setup<Self>) -> Result<Self, Error> {
+    async fn prepare(_: (), setup: &mut harmos_guest::Setup<Self>) -> Result<Self, Error> {
         let plugin = Self {
             #[cfg(feature = "benchmark")]
             transfer: Arc::new(schematic_operations::transfer::Store::default()),
@@ -84,9 +84,9 @@ impl harmos::Lifecycle for Plugin {
     }
 }
 
-#[harmos::guest(id = "schematic_tools", requires = ())]
-impl harmos::Plugin for Plugin {
-    const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
+#[harmos_guest::guest(id = "schematic_tools", requires = ())]
+impl harmos_guest::Plugin for Plugin {
+    const CATALOGS: &'static [harmos_guest::Catalog] = &[Operations::CATALOG];
 }
 
 /* === Public Functions === */

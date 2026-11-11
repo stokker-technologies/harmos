@@ -70,11 +70,6 @@ pub fn catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn sidecar_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::typed::declare_runtime(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
 pub fn guest_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
     catalog::typed::declare_runtime(attribute.into(), item.into()).into()
 }
@@ -92,11 +87,6 @@ pub fn runtime_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream
 #[proc_macro_attribute]
 pub fn operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
     operation::declare(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn sidecar_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    operation::declare_runtime(attribute.into(), item.into()).into()
 }
 
 #[proc_macro_attribute]
@@ -147,16 +137,6 @@ pub fn records(attribute: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn streams(attribute: TokenStream, item: TokenStream) -> TokenStream {
     catalog::streams::close(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn plugin(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    artifact::plugin::declare(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn observer(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    artifact::observer::declare(attribute.into(), item.into()).into()
 }
 
 #[proc_macro_attribute]

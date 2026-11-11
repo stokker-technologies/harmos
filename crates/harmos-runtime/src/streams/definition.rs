@@ -15,7 +15,7 @@
 
 // Standard Library Imports
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
@@ -68,7 +68,7 @@ pub(crate) struct Wired {
     pub(super) validation: Option<Arc<crate::schema::Validator>>,
     pub(super) publisher: Mutex<Weak<Mutex<bool>>>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) staged: Option<super::registration::Staged>,
 }
 
@@ -82,7 +82,7 @@ pub(crate) struct Table {
     pub(super) publications: Arc<super::publication::Pool>,
     pub(super) ingest: Arc<super::ingest::Ingest>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -164,7 +164,7 @@ impl Table {
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
             ingest: Arc::new(super::ingest::Ingest::new()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             listeners: Mutex::new(BTreeMap::new()),
         };
 
@@ -194,7 +194,7 @@ impl Table {
             definition,
             window,
             publisher: Mutex::new(Weak::new()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             staged: None,
         });
         windows.insert(
@@ -239,7 +239,11 @@ impl Table {
         for revisions in windows.values_mut() {
             revisions.wires.retain(|revision, wired| {
                 let pending = {
-                    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+                    #[cfg(not(feature = "plugin-guest"))]
+                    {
+                        false
+                    }
+                    #[cfg(feature = "plugin-guest")]
                     {
                         wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed())
                     }
@@ -321,7 +325,7 @@ impl Table {
         Cursor(self.sequence.load(std::sync::atomic::Ordering::Acquire))
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn can_advance(&self, count: u64) -> bool {
         self.sequence.load(std::sync::atomic::Ordering::Relaxed).checked_add(count).is_some()
     }
@@ -336,7 +340,7 @@ impl Table {
 
 impl Wired {
     fn admitted(self: &Arc<Self>) -> Option<Arc<Self>> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some(staged) = &self.staged
             && !staged.scope.has_committed()
         {

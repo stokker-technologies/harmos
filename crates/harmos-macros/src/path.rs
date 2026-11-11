@@ -42,16 +42,18 @@ pub(crate) struct HarmosPath(Path, bool);
 
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
-        let package = "harmos";
-        let Ok(found) = proc_macro_crate::crate_name(package) else {
-            return Self(syn::parse_quote!(::harmos), true);
-        };
-        let name = match found {
-            proc_macro_crate::FoundCrate::Itself => package.replace('-', "_"),
-            proc_macro_crate::FoundCrate::Name(name) => name,
-        };
-        let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
-        Self(syn::parse_quote!(::#name), true)
+        for package in ["harmos-runtime", "harmos-guest", "harmos-operations", "harmos-domain", "harmos"] {
+            let Ok(found) = proc_macro_crate::crate_name(package) else {
+                continue;
+            };
+            let name = match found {
+                proc_macro_crate::FoundCrate::Itself => package.replace('-', "_"),
+                proc_macro_crate::FoundCrate::Name(name) => name,
+            };
+            let name = syn::Ident::new(&name, proc_macro2::Span::call_site());
+            return Self(syn::parse_quote!(::#name), true);
+        }
+        Self(syn::parse_quote!(::harmos), true)
     }
 
     pub(crate) fn resolve(explicit: Option<Path>) -> Self {

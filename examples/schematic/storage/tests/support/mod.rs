@@ -20,7 +20,7 @@ use std::path::PathBuf;
 // Third Party Imports
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
-use harmos::{
+use harmos_runtime::{
     Application, DefinitionId, Runtime, Setup, StartupError, runtime::Catalog, runtime::Registration, state::DecodeError,
     state::Invertible, state::Kind, state::PrincipalId, state::Recorded, state::Transaction, storage::Payload,
 };
@@ -41,37 +41,37 @@ pub struct Ledger {
     pub payouts: Vec<u64>,
 }
 
-#[harmos::transaction(id = "ledger.deposit",  inverse = Withdraw)]
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[harmos_runtime::transaction(id = "ledger.deposit",  inverse = Withdraw)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Deposit {
     pub amount: i64,
 }
 
-#[harmos::transaction(id = "ledger.withdraw",  inverse = Deposit)]
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[harmos_runtime::transaction(id = "ledger.withdraw",  inverse = Deposit)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Withdraw {
     pub amount: i64,
 }
 
-#[harmos::transaction(id = "ledger.pay")]
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[harmos_runtime::transaction(id = "ledger.pay")]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pay {
     pub effect: u64,
     pub amount: i64,
 }
 
-#[harmos::transaction(id = "ledger.bonus")]
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[harmos_runtime::transaction(id = "ledger.bonus")]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Bonus {
     pub amount: i64,
 }
 
-#[harmos::transaction(id = "ledger.explode")]
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[harmos_runtime::transaction(id = "ledger.explode")]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Explode;
 
-#[harmos::record(id = "ledger.noted")]
-#[derive(harmos::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[harmos_runtime::record(id = "ledger.noted")]
+#[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Noted(pub String);
 
 #[derive(Clone, Copy, Debug)]
@@ -82,7 +82,7 @@ struct Definitions(Vec<(Kind, DefinitionId, u32)>);
 
 /* === Enums === */
 
-#[harmos::lanes]
+#[harmos_runtime::lanes]
 pub enum TestLanes {
     #[default]
     Open,
@@ -94,7 +94,7 @@ pub enum Refusal {
     Overdrawn,
 }
 
-#[harmos::transactions(state = Ledger, error = Refusal)]
+#[harmos_runtime::transactions(state = Ledger, error = Refusal)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Change {
     Deposit(Deposit),
@@ -104,7 +104,7 @@ pub enum Change {
     Explode(Explode),
 }
 
-#[harmos::records]
+#[harmos_runtime::records]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Fact {
     Noted(Noted),
@@ -209,12 +209,12 @@ impl Transaction<Ledger> for Explode {
     }
 }
 
-impl harmos::Lifecycle for Bank {
+impl harmos_runtime::Lifecycle for Bank {
     type Config = ();
     type Error = std::convert::Infallible;
-    type Context = harmos::Startup<Self>;
+    type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _setup: &mut harmos::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
         Ok(Self)
     }
 }
@@ -252,7 +252,7 @@ impl Wire for Bank {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(harmos::operations::Response::new(change)),
+                value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
             }),
             Kind::Record => Fact::restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,

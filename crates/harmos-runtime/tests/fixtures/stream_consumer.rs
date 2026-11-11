@@ -38,7 +38,7 @@ mod plugin;
 
 /* === Public Functions === */
 
-fn main() -> harmos_sdk_grpc::Result<()> {
+fn main() -> harmos::Result<()> {
     plugin::plugin().serve()
 }
 

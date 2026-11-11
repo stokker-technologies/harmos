@@ -340,7 +340,7 @@ impl Context<'_> {
     }
 
     // Refuse a provider-prepared grant the admitted caller does not hold.
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(super) fn admit_grant(&self, grant: Option<&harmos_domain::plugin::Grant>) -> Result<()> {
         match (&self.origin.grants, grant) {
             (Some(authority), grant) => authority.admit(grant),
@@ -349,13 +349,13 @@ impl Context<'_> {
         }
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
+    #[cfg(feature = "plugin-guest")]
+    pub fn caller_scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
+    #[cfg(feature = "plugin-guest")]
+    pub(crate) fn retains_publication(&self, scope: &crate::guest::host::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
             (origin.has_lifecycle_loan() || origin.resident) && origin.scope.as_ref().is_some_and(|caller| caller.same_activation(scope))
         })

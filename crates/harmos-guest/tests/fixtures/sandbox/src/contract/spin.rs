@@ -36,7 +36,7 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
         cancellation_timeout: std::time::Duration::ZERO,
         retries: RetryPolicy::Never,
     }))]
-#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest, id = "probe.spin", response = Echoed, policy = OperationPolicy {
+#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest, id = "probe.spin", response = Echoed, policy = OperationPolicy {
         timeout: Duration::from_secs(600),
         attempt_timeout: Duration::from_secs(600),
         cancellation_timeout: std::time::Duration::ZERO,
@@ -74,7 +74,7 @@ mod runtime {
 
     // Local Imports
     use super::{Echoed, SpinOperation};
-    use harmos::guest::OperationRefusal;
+    use harmos_guest::OperationRefusal;
 
     /* === Constants === */
 
@@ -90,12 +90,10 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos::guest::Operation for SpinOperation {
+    impl harmos_guest::Operation for SpinOperation {
         type Error = OperationRefusal;
 
-        async fn run(
-            self, _sdk: harmos::guest::Context<'_, Self>,
-        ) -> Result<harmos::guest::operations::Response<Echoed>, OperationRefusal> {
+        async fn run(self, _sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
             let result: Result<Echoed, OperationRefusal> = async move {
                 let mut counted = 0u64;
                 loop {

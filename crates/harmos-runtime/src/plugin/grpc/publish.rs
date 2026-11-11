@@ -27,8 +27,7 @@ use super::{Activation, Error, PlacementSettings, rows::Row, v1};
 use crate::{
     Application,
     clock::Clock,
-    plugin::{PluginGeneration, PluginScope},
-    streams::{PublicationLease, PublicationRow, StreamManager, StreamRegistration},
+    streams::{ConnectionStreams, PublicationRow, StreamManager, StreamWriter},
 };
 
 /* === Constants === */
@@ -42,8 +41,7 @@ use crate::{
 pub(super) struct Publications {
     close: watch::Sender<bool>,
     jobs: tokio::task::JoinSet<()>,
-    registration: StreamRegistration,
-    scope: PluginScope,
+    registration: ConnectionStreams,
 }
 
 struct Demand {
@@ -51,7 +49,7 @@ struct Demand {
     input: tonic::Streaming<v1::Samples>,
     row: Row,
     interval: Option<Duration>,
-    lease: Arc<PublicationLease>,
+    lease: Arc<StreamWriter>,
     close: watch::Receiver<bool>,
     closed: watch::Receiver<bool>,
 }
@@ -83,17 +81,12 @@ impl Publications {
             });
             rows.push((stream, row, interval));
         }
-        let scope = PluginScope::new(&activation.description.id, PluginGeneration::fresh().map_err(invalid)?).with_streams(&declarations);
-        let registration = streams.stage_plugin(&scope, declarations).await.map_err(invalid)?;
-        if !scope.commit() {
-            return Err(invalid("Stream Activation Could Not Commit"));
-        }
+        let registration = streams.connect_publications(&activation.description.id, declarations).map_err(invalid)?;
         let close = watch::channel(false).0;
         let mut publications = Self {
             close,
             jobs: tokio::task::JoinSet::new(),
             registration,
-            scope,
         };
         for (stream, row, interval) in rows {
             let activity = clock.activity(format!("Publish {}", stream.id));
@@ -141,7 +134,6 @@ impl Publications {
         for lease in self.registration.leases() {
             lease.revoke();
         }
-        self.scope.close();
     }
 }
 
@@ -149,7 +141,6 @@ impl Drop for Publications {
     fn drop(&mut self) {
         self.close.send_replace(true);
         self.jobs.abort_all();
-        self.scope.close();
     }
 }
 

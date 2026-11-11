@@ -20,7 +20,7 @@ mod boot;
 #[path = "../runtime/lifecycle/mod.rs"]
 mod lifecycle;
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[path = "../runtime/plugin.rs"]
 mod plugin;
 

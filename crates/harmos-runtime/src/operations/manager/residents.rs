@@ -7,8 +7,7 @@
  * ***
  */
 
-// The resident kinds of the operation manager: registering observers and
-// services, activating them over shared resources, reporting their instances
+// The resident services of the operation manager: registering services, activating them over shared resources, reporting their instances
 // and retiring them in the runtime's shutdown order.
 
 /* === Modules === */
@@ -28,7 +27,6 @@ use super::super::handler::Outcome;
 use super::super::resident::{self, Activation, Definition, Key, Kind, Lease, Snapshot};
 use super::super::{OperationDeclaration, OperationInstanceId, Response, Running};
 use super::Manager;
-use crate::observers::{Backend, ObserverBackend, ObserverRegistration};
 use crate::services::{Resident, ServiceDefinition};
 use crate::{Application, Result};
 
@@ -49,7 +47,7 @@ use crate::{Application, Result};
 impl Manager {
     pub(crate) fn stage_services(
         &self, entries: Vec<(Definition, Arc<dyn resident::Runner>)>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))] plugin: Option<crate::plugin::PluginScope>,
+        #[cfg(feature = "plugin-guest")] plugin: Option<crate::guest::host::plugin::PluginScope>,
     ) -> Result<resident::Staged> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.closing || !self.instances.is_accepting() {
@@ -67,7 +65,7 @@ impl Manager {
         let staged = self.resident.stage(
             &self.resident.root(),
             entries,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             plugin,
         );
         drop(state);
@@ -78,7 +76,7 @@ impl Manager {
         let root = self.resident.root();
         let identity = match owner {
             crate::services::ServiceOwner::Host => Identity::Host,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             crate::services::ServiceOwner::Plugin(scope) => Identity::Plugin {
                 owner: scope.owner().into(),
                 generation: scope.generation(),
@@ -90,59 +88,6 @@ impl Manager {
             .await?;
         self.resident.hold(lease);
         Ok(())
-    }
-
-    // Register an observer visible at once, activated over any resources of
-    // its backend's resource type.
-    pub fn register_observer<B: ObserverBackend>(&self, backend: B) -> Result<()> {
-        let definition = backend.definition()?;
-        self.resident.register(Definition::Observer(definition), Arc::new(Backend(backend)), None, false, false)
-    }
-
-    // Reserve observers bound to these resources; they become visible when the
-    // registration commits.
-    pub fn stage_observers<B: ObserverBackend>(&self, backends: impl IntoIterator<Item = B>) -> Result<ObserverRegistration> {
-        self.stage_observers_in(&self.resident.root_resources(), backends)
-    }
-
-    pub(crate) fn stage_observers_in<B: ObserverBackend>(
-        &self, resources: &Arc<harmos_operations::execution::ExecutionContext>, backends: impl IntoIterator<Item = B>,
-    ) -> Result<ObserverRegistration> {
-        self.stage_scoped(
-            resources,
-            backends,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-            None,
-        )
-    }
-
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    pub fn stage_plugin_observers<B: ObserverBackend>(
-        &self, resources: &Arc<harmos_operations::execution::ExecutionContext>, plugin: &crate::plugin::PluginScope,
-        backends: impl IntoIterator<Item = B>,
-    ) -> Result<ObserverRegistration> {
-        self.stage_scoped(resources, backends, Some(plugin.clone()))
-    }
-
-    fn stage_scoped<B: ObserverBackend>(
-        &self, resources: &Arc<harmos_operations::execution::ExecutionContext>, backends: impl IntoIterator<Item = B>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))] plugin: Option<crate::plugin::PluginScope>,
-    ) -> Result<ObserverRegistration> {
-        let scope = self.resident.scope(Arc::clone(resources))?;
-        let entries = backends
-            .into_iter()
-            .map(|backend| {
-                let definition = backend.definition()?;
-                let runner: Arc<dyn resident::Runner> = Arc::new(Backend(backend));
-                Ok((Definition::Observer(definition), runner))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        self.resident.stage(
-            &scope,
-            entries,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-            plugin,
-        )
     }
 
     // Register a service whose resident each activation creates from the
@@ -197,7 +142,7 @@ impl Manager {
 
     // Activate the resident `id` over `resources`. Activations sharing the same
     // resources share its instance; each handle holds one lease.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub async fn submit_resident_in(
         &self, id: &str, resources: Arc<harmos_operations::execution::ExecutionContext>,
     ) -> Result<Running<Activation>> {
@@ -273,28 +218,14 @@ impl Manager {
         self.resident.close_admission();
     }
 
-    // Stop every observer instance and wait for each to settle. A cleanup that
-    // fails stays owned by its instance; stopping again retries it.
-    pub async fn stop_observers(&self) -> Result<()> {
-        self.resident.stop_kind(Kind::Observer).await
-    }
-
-    pub(crate) async fn shutdown_observers(&self) -> Result<()> {
-        self.resident.shutdown_observers().await
-    }
-
     pub(crate) async fn shutdown_application_services(&self) -> Result<()> {
         self.resident.shutdown_application().await
     }
 
-    // Close resident admission, stop every observer and service including
+    // Close resident admission, stop every service including
     // infrastructure, and forget their definitions once they settle.
     pub async fn shutdown_residents(&self) -> Result<()> {
         self.resident.shutdown().await
-    }
-
-    pub(crate) fn observer_cleanup_pending(&self) -> bool {
-        self.resident.cleanup_pending(|kind, _| kind == Kind::Observer)
     }
 
     pub(crate) fn service_cleanup_pending(&self, infrastructure: bool) -> bool {

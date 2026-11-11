@@ -47,7 +47,7 @@ impl GrantAuthority {
         if grant.is_some_and(|grant| grant.operation() != self.operation) {
             return Err(Error::PermissionDenied);
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some((caller, required)) = &self.plugin
             && !grant_allowed(required.as_ref(), grant)
         {

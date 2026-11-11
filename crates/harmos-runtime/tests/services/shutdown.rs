@@ -187,41 +187,18 @@ impl Drop for Dropped {
 /* === Private Functions === */
 
 #[tokio::test]
-async fn service_stop_observer() {
-    struct Blocked(Arc<Cleanup>);
-    impl harmos_runtime::observers::ObserverBackend for Blocked {
-        fn definition(&self) -> harmos_runtime::Result<harmos_runtime::observers::ObserverDefinition> {
-            Ok(harmos_runtime::observers::ObserverDefinition {
-                id: "blocked-observer".into(),
-
-                streams: vec![],
-                demand_keys: vec![],
-            })
-        }
-        async fn run(
-            &self, _: Arc<harmos_operations::execution::ExecutionContext>, mut activation: harmos_runtime::observers::ObserverActivation,
-        ) -> harmos_runtime::Result<()> {
-            activation.ready();
-            let gates = &self.0;
-            gates.running.notify_one();
-            activation.stopping().await;
-            gates.finalizing.notify_one();
-            gates.release.notified().await;
-            Ok(())
-        }
-    }
+async fn independent_services_stop_together() {
     let service = Arc::new(Cleanup::default());
-    let observer = Arc::new(Cleanup::default());
+    let peer = Arc::new(Cleanup::default());
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("independent", PhysicalStop(service.clone()));
+        setup.settings().service("second", PhysicalStop(peer.clone()));
     })
     .await
     .unwrap();
     service.running.notified().await;
-    runtime.operations.register_observer(Blocked(observer.clone())).unwrap();
-    let _lease = runtime.operations.submit_resident("blocked-observer").await.unwrap();
-    observer.running.notified().await;
+    peer.running.notified().await;
     {
         let stop = runtime.shutdown();
         tokio::pin!(stop);
@@ -229,7 +206,7 @@ async fn service_stop_observer() {
             tokio::select! {
                 result = &mut stop => panic!("cleanup remains held: {result:?}"),
                 _ = async {
-                    observer.finalizing.notified().await;
+                    peer.finalizing.notified().await;
                     service.finalizing.notified().await;
                 } => {}
             }
@@ -238,7 +215,7 @@ async fn service_stop_observer() {
     }
     assert_eq!(service.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(service.finalized.load(Ordering::SeqCst), 0);
-    observer.release.notify_one();
+    peer.release.notify_one();
     service.release.notify_one();
     runtime.shutdown().await.unwrap();
     assert_eq!(service.finalized.load(Ordering::SeqCst), 1);

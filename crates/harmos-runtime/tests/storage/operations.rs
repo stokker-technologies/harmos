@@ -15,7 +15,7 @@ mod deletion;
 mod files;
 #[path = "operation_objects.rs"]
 mod objects;
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[path = "operation_plugins.rs"]
 mod plugins;
 #[path = "operation_queries.rs"]

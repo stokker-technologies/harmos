@@ -27,11 +27,11 @@ use harmos_domain::plugin::Grant;
 use harmos_operations::storage::{Query, WriteRecords};
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
-use harmos_runtime::operations::{OperationDeclaration, OperationManager, WireDeclaration};
-use harmos_runtime::plugin::{
+use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
+use harmos_runtime::operations::{OperationDeclaration, OperationManager, WireDeclaration};
 use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::query::transform::{
     Transform,

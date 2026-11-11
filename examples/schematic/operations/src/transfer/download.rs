@@ -25,15 +25,15 @@ use schematic_domain::model::transfer::{Batch, Receipt};
 use super::store::Store;
 
 #[cfg(feature = "runtime")]
-use harmos::MemorySize;
+use harmos_operations::MemorySize;
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -42,11 +42,11 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(resources = [Store],
+#[harmos_operations::operation(resources = [Store],
     id = "benchmark.download", response = Receipt, output = Batch,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Unknown,
+    replay = harmos_operations::operations::ReplaySafety::Unknown,
 )]
 pub struct Download {
     pub transfer: u64,
@@ -59,10 +59,10 @@ pub struct Download {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for Download {
+impl harmos_operations::Operation for Download {
     type Error = crate::Error;
 
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<Receipt>, Self::Error> {
+    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Receipt>, Self::Error> {
         let store = ctx.resource::<Store>();
 
         let batches = store.batches.lock().unwrap().remove(&self.transfer).unwrap_or_default();

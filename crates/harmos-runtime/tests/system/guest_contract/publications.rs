@@ -40,7 +40,7 @@ use harmos_runtime::Message;
 
 /* === Private Functions === */
 
-async fn values(stream: &harmos_runtime::streams::PluginStream) -> Vec<String> {
+async fn values(stream: &harmos_runtime::streams::PublishedStream) -> Vec<String> {
     stream.query(..).await.unwrap().map(|row| wire::Echoed::decode(row.value.payload.as_slice()).unwrap().said).collect()
 }
 
@@ -76,10 +76,9 @@ async fn replacement_preserves_owner() {
     manager.initialize(&mut lifecycle).await.unwrap();
     let stream = runtime.streams.current_publication("progress").unwrap();
     let candidate = lifecycle.candidate("replacement").await;
-    let plan = manager.plan_reload(candidate).unwrap();
     runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "publish:original".into() }).await.unwrap();
     assert_eq!(values(&stream).await, ["original"]);
-    manager.apply_reload(plan, &mut lifecycle).await.unwrap();
+    manager.reload(candidate, &mut lifecycle).await.unwrap();
     runtime.operations.operation::<wire::EchoOperation>(wire::EchoOperation { say: "publish:replacement".into() }).await.unwrap();
     assert_eq!(values(&stream).await, ["original", "replacement"]);
     manager.shutdown(&mut lifecycle).await.unwrap();

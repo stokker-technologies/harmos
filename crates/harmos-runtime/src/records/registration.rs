@@ -50,7 +50,7 @@ pub(crate) struct Registry {
     pub(super) settings: Arc<crate::config::SchemaSettings>,
     state: Mutex<State>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -114,7 +114,7 @@ impl Registry {
             storage,
             settings,
             state: Mutex::new(State::default()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             listeners: Mutex::new(BTreeMap::new()),
         }
     }

@@ -173,7 +173,7 @@ impl PluginDefinition {
         Self::inspected(loaded.declaration(), PluginArtifact::Guest { sha256: loaded.sha256() }, configuration)
     }
 
-    #[cfg(any(feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     fn inspected(
         declaration: &harmos_domain::inventory::Declaration, artifact: PluginArtifact, configuration: Vec<u8>,
     ) -> Result<Self, PluginDefinitionError> {

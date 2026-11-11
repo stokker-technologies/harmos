@@ -19,15 +19,15 @@
 
 // Local Imports
 #[cfg(feature = "runtime")]
-use harmos::MemorySize;
+use harmos_operations::MemorySize;
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -36,19 +36,19 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::message]
+#[harmos_operations::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Finding {
     pub text: String,
 }
 
-#[harmos::operation(
+#[harmos_operations::operation(
     id = "schematic.analyze",
     response = Analysis,
     output = Finding,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
+    replay = harmos_operations::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
 )]
 #[derive(Clone, Debug, PartialEq)]
@@ -56,7 +56,7 @@ pub struct AnalyzeSchematic {
     pub schematic: schematic_domain::model::Snapshot,
 }
 
-#[harmos::message]
+#[harmos_operations::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Analysis {
     pub checked: u32,
@@ -69,10 +69,10 @@ pub struct Analysis {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for AnalyzeSchematic {
+impl harmos_operations::Operation for AnalyzeSchematic {
     type Error = crate::Error;
 
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<Analysis>, Self::Error> {
+    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Analysis>, Self::Error> {
         let findings = [
             format!("{} symbols", self.schematic.symbols.len()),
             format!("{} connections", self.schematic.connections.len()),

@@ -271,7 +271,7 @@ impl<I: crate::execution::Portable, T: crate::execution::Portable> Shape for (St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution::operations::{RegistrationBatch, ResourceSet};
+    use crate::execution::__private::{RegistrationBatch, ResourceSet};
 
     #[crate::execution::operation(harmos_path = crate::execution, resources = [u64], id = "test.increment", response = u64,
         policy = crate::execution::OperationPolicy {

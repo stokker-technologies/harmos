@@ -108,6 +108,12 @@ impl WireCommand {
 
 /* === Public Functions === */
 
+// A Prepare answer is empty when the request needs no grant, else the grant as JSON.
+#[cfg(feature = "kit")]
+pub fn encode_prepared_grant(grant: Option<&harmos_domain::plugin::Grant>) -> Vec<u8> {
+    grant.map_or_else(Vec::new, |grant| serde_json::to_vec(grant).expect("a grant serializes to JSON"))
+}
+
 /* === Private Functions === */
 
 /* === Tests === */

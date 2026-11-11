@@ -47,7 +47,7 @@ pub use upload::Upload;
 
 /* === Enums === */
 
-#[harmos::catalog]
+#[harmos_operations::catalog]
 pub enum Transfers {
     Upload(Upload),
     Download(Download),
@@ -56,7 +56,7 @@ pub enum Transfers {
     Hash(Hash),
 }
 
-#[harmos::catalog]
+#[harmos_operations::catalog]
 pub enum Guest {
     #[nested]
     Shared(crate::Operations),

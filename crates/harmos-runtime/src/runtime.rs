@@ -81,8 +81,8 @@ pub struct Runtime<A: Application> {
     pub streams: StreamManager<A>,
     pub operations: crate::operations::OperationManager<A::Lanes>,
 
-    #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
-    pub plugin: crate::plugin::PluginHost<A>,
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+    pub plugin: crate::guest::host::plugin::PluginHost<A>,
 
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
@@ -101,8 +101,8 @@ pub struct Handle<A: Application> {
     pub streams: StreamManager<A>,
     pub operations: crate::operations::OperationManager<A::Lanes>,
 
-    #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
-    pub plugin: crate::plugin::PluginHost<A>,
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+    pub plugin: crate::guest::host::plugin::PluginHost<A>,
 
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
@@ -350,7 +350,7 @@ impl<A: Application> Clone for Handle<A> {
             records: self.records.clone(),
             streams: self.streams.clone(),
             operations: self.operations.clone(),
-            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
@@ -441,7 +441,7 @@ impl<A: Application> Runtime<A> {
             records: self.records.clone(),
             streams: self.streams.clone(),
             operations: self.operations.clone(),
-            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             plugin: self.plugin.clone(),
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
@@ -897,8 +897,8 @@ impl<A: Application> Builder<A> {
         }));
         #[cfg(feature = "grpc")]
         let grpc = crate::grpc::GrpcManager::new::<A>(&operations);
-        #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
-        let plugin = crate::plugin::PluginHost::new(operations.clone()).map_err(Incompatible::work)?;
+        #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+        let plugin = crate::guest::host::plugin::PluginHost::new(operations.clone()).map_err(Incompatible::work)?;
         boot.runtime = Some(Runtime {
             #[cfg(feature = "simulation")]
             simulation,
@@ -907,7 +907,7 @@ impl<A: Application> Builder<A> {
             records,
             streams,
             operations: crate::operations::OperationManager::new(operations),
-            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             plugin,
             #[cfg(feature = "grpc")]
             grpc,

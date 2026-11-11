@@ -35,7 +35,7 @@ pub struct PluginScope {
     owner: Arc<str>,
     generation: PluginGeneration,
 
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     generation_context: Arc<OnceLock<[u8; 32]>>,
 
     phase: Arc<watch::Sender<Phase>>,
@@ -82,7 +82,7 @@ impl PluginScope {
         self.generation == other.generation && Arc::ptr_eq(&self.phase, &other.phase)
     }
 
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(crate) fn issue_generation_context(&self) -> Result<[u8; 32]> {
         if self.is_closed() {
             return Err(Error::Closing { domain: "plugin generation" });
@@ -105,7 +105,7 @@ impl PluginScope {
         Ok(*self.generation_context.get().expect("generation context issued once"))
     }
 
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(crate) fn accepts_generation_context(&self, context: &[u8]) -> bool {
         !self.is_closed() && self.generation_context.get().is_some_and(|original| original.as_slice() == context)
     }
@@ -114,7 +114,7 @@ impl PluginScope {
         Self {
             owner: Arc::from(owner),
             generation,
-            #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+            #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             generation_context: Arc::new(OnceLock::new()),
             phase: Arc::new(
                 watch::channel(Phase::Staged {
@@ -193,7 +193,7 @@ impl PluginScope {
         self
     }
 
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(crate) fn wire_contracts(&self) -> impl Iterator<Item = &crate::operations::Contract> {
         self.wire_contracts.values()
     }
@@ -342,14 +342,14 @@ impl PluginScope {
             })
     }
 
-    pub fn publication(&self, id: &str) -> crate::Result<Arc<crate::streams::PublicationLease>> {
+    pub fn publication(&self, id: &str) -> crate::Result<Arc<crate::streams::StreamWriter>> {
         if self.is_closed() {
             return Err(crate::Error::Closing { domain: "publication generation" });
         }
         self.selected_publication(id)
     }
 
-    fn selected_publication(&self, id: &str) -> crate::Result<Arc<crate::streams::PublicationLease>> {
+    fn selected_publication(&self, id: &str) -> crate::Result<Arc<crate::streams::StreamWriter>> {
         let selected = self.streams.binary_search_by(|stream| stream.id.as_str().cmp(id)).ok().map(|index| &self.streams[index]);
         if selected.is_none() {
             return Err(crate::Error::InvalidInput {
@@ -834,7 +834,7 @@ mod tests {
         drop(renewed);
         let mut changed = stream;
         changed.window += 1;
-        assert!(matches!(runtime.streams.stage_plugin(&scope, [changed]).await, Err(crate::streams::StreamAdmissionError::Inventory)));
+        assert!(matches!(runtime.streams.stage_plugin(&scope, [changed]).await, Err(crate::streams::StreamRegistrationError::Inventory)));
         runtime.shutdown().await.unwrap();
     }
 }

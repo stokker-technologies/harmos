@@ -64,8 +64,9 @@ fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, fa
 
 #[test]
 fn crate_builds_against() {
-    let harmos = fixtures::library("harmos");
+    let harmos = fixtures::library("harmos_runtime");
     let serde = fixtures::library("serde");
+    let operations = fixtures::library("harmos_operations");
     let dependencies = fixtures::dependencies();
     let fixtures = fixtures::manifest().join("tests/fixtures");
     let output = std::env::temp_dir().join(format!("harmos-facade-ui-{}", std::process::id()));
@@ -74,7 +75,7 @@ fn crate_builds_against() {
 
     // Built once against Harmos and serde — never harmos-macros directly, since
     // the facade re-exports the attributes through harmos, exactly as
-    // `crates/harmos` itself does.
+    // a host embedding crate does.
     let compiled = fixtures::command(&rustc)
         .arg("--edition=2024")
         .arg("--crate-type=rlib")
@@ -86,6 +87,8 @@ fn crate_builds_against() {
         .arg(format!("harmos={}", harmos.display()))
         .arg("--extern")
         .arg(format!("serde={}", serde.display()))
+        .arg("--extern")
+        .arg(format!("harmos_operations={}", operations.display()))
         .arg("-L")
         .arg(format!("dependency={}", dependencies.display()))
         .arg("--out-dir")

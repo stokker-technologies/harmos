@@ -20,7 +20,7 @@ use std::num::NonZeroUsize;
 
 // Local Imports
 use crate::Result;
-use harmos::operations::StreamSettings;
+use harmos_runtime::operations::StreamSettings;
 use schematic_app::app::Runtime;
 use schematic_app::domain::model::Snapshot;
 use schematic_app::operations::AnalyzeSchematic;

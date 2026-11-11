@@ -15,7 +15,6 @@ mod calls;
 mod cancellation;
 pub mod instance;
 pub mod instances;
-pub mod lifecycle;
 mod operation;
 pub mod publication;
 pub(crate) mod registration;
@@ -38,16 +37,11 @@ pub use cancellation::Cancellation;
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
 pub use operation::{AttemptInstance, AttemptOperationHost, Authored, Context, Dependent, Operation, Resource, Shape, Streams};
-pub(crate) use registration::RegistrationBatch;
 pub use registration::{Catalog, NativeInstance, OperationCatalog, OperationFactory, ServiceFactory, ServiceInstance};
 pub(crate) use resources::ResourceSet;
 pub use resources::{AssignedOperation, ExecutionContext, OperationAssignments, ResourceError};
 pub use response::Response;
-pub(crate) use serving::WireTable;
-pub use serving::{
-    CHILD_METHOD, ServingError, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError,
-    WireCommand, WireStreamLimits, decode_prepared_grant, encode_prepared_grant,
-};
+pub use serving::{ServingError, WireStreamLimits};
 
 #[cfg(feature = "streaming")]
 pub use serving::{WireEndpoints, WireStreams};

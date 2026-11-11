@@ -35,7 +35,7 @@ use crate::state::{Schematic, SymbolId};
 
 /* === Enums === */
 
-#[harmos::transactions(state = Schematic, error = SchematicError)]
+#[harmos_runtime::transactions(state = Schematic, error = SchematicError)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Transactions {
     PlaceSymbol(symbol::PlaceSymbol),

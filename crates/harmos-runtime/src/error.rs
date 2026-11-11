@@ -78,11 +78,11 @@ pub enum Error<E = Infallible> {
     #[error("operation child lane `{child}` would cycle with held lane `{parent}`")]
     OperationLaneCycle { parent: &'static str, child: &'static str },
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     #[error("operation caller is unavailable: {source}")]
     OperationCaller {
         #[source]
-        source: crate::plugin::DispatchError,
+        source: crate::guest::host::plugin::DispatchError,
     },
 
     #[error("caller `{caller}` may not invoke operation `{operation}` on `{owner}`")]
@@ -132,11 +132,11 @@ pub enum Error<E = Infallible> {
         source: std::sync::Arc<Error>,
     },
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     #[error("plugin lifecycle failed: {source}")]
     PluginLifecycle {
         #[source]
-        source: Box<crate::plugin::PluginFailure>,
+        source: Box<crate::guest::host::plugin::PluginFailure>,
     },
 
     #[error("{domain} task failed: {source}")]
@@ -300,7 +300,7 @@ impl<E> Error<E> {
             Self::OperationFinalization { outcome, source, .. } => outcome.as_deref().and_then(Error::failure).or_else(|| source.failure()),
             Self::OperationSettlement { source } => source.failure(),
             Self::OperationInvocation(source) => carried(source),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             Self::PluginLifecycle { source } => carried(source.as_ref()),
             _ => None,
         }

@@ -29,8 +29,8 @@ use serde::{Deserialize, Serialize};
 
 /* === Structs === */
 
-#[harmos::record(id = "export.completed")]
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[harmos_runtime::record(id = "export.completed")]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ExportCompleted {
     pub format: ExportFormat,
     pub symbols: u32,
@@ -38,7 +38,7 @@ pub struct ExportCompleted {
 
 /* === Enums === */
 
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum ExportFormat {
     Svg,
     Netlist,

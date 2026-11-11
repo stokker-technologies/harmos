@@ -38,7 +38,6 @@ mod support;
 // Standard Library Imports
 
 // Third Party Imports
-extern crate harmos_runtime as harmos;
 
 // Local Imports
 

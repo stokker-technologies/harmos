@@ -116,7 +116,7 @@ impl Manager {
             if !entry.active.load(Ordering::Acquire) || entry.available().is_err() || entry.authorize(&origin).is_err() {
                 continue;
             }
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             if entry.sdk.is_some() || entry.plugin.as_ref().is_some_and(|scope| !scope.is_ready() || scope.is_closed()) {
                 continue;
             }
@@ -153,7 +153,7 @@ impl Manager {
                 _ => None,
             };
             let grants: &[Grant] = required.map_or(&[], |selected| selected.grants.as_slice());
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             let grants = origin
                 .scope
                 .as_ref()
@@ -161,8 +161,10 @@ impl Manager {
                 .map_or(grants, |required| required.grants.as_slice());
             let selected_grants;
             let grants = if let Some(required) = required {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+                #[cfg(feature = "plugin-guest")]
                 let plugin_required = origin.scope.as_ref().and_then(|caller| caller.requirement(&entry.definition.id));
+                #[cfg(not(feature = "plugin-guest"))]
+                let plugin_required: Option<&harmos_domain::inventory::contracts::Required> = None;
 
                 selected_grants = required
                     .grants

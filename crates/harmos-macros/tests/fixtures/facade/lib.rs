@@ -11,7 +11,8 @@
 
 /* === Re-Exports === */
 
-pub use harmos::{catalog, lanes, listener, message, observer, operation, plugin, stream};
+pub use harmos::{lanes, listener, message, plugin, stream};
+pub use harmos_operations::{catalog, operation};
 pub use serde::*;
 
 /* === Imports === */

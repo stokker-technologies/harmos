@@ -503,37 +503,18 @@ impl Execution for Embedded {
 /* === Private Functions === */
 
 fn affected_dependents(registry: &Registry, id: &str) -> Result<BTreeSet<String>> {
-    let mut selected = BTreeSet::from([id.to_owned()]);
-    let mut pending = vec![id.to_owned()];
-    while let Some(owner) = pending.pop() {
-        for dependent in registry.dependents(&owner)? {
-            if selected.insert(dependent.clone()) {
-                pending.push(dependent);
-            }
-        }
+    if registry.definition(id).is_none() {
+        return Err(Error::InvalidInput {
+            field: "guest identity",
+            reason: "unknown guest",
+        });
     }
-    Ok(selected)
+    Ok(BTreeSet::from([id.to_owned()]))
 }
 
 fn recovering(registry: &Registry, lifecycle: &Lifecycle, id: &str) -> Result<BTreeSet<String>> {
     let mut selected = affected_dependents(registry, id)?;
     selected.retain(|owner| lifecycle.sources.get(owner).is_some_and(|source| source.enabled));
-    loop {
-        let mut blocked = Vec::new();
-        for owner in &selected {
-            if registry.dependencies(owner)?.iter().any(|provider| {
-                !selected.contains(provider) && !registry.status(provider).is_some_and(|status| status.state == super::PluginState::Ready)
-            }) {
-                blocked.push(owner.clone());
-            }
-        }
-        if blocked.is_empty() {
-            break;
-        }
-        for owner in blocked {
-            selected.remove(&owner);
-        }
-    }
     Ok(selected)
 }
 
@@ -643,12 +624,6 @@ async fn run(
                     continue;
                 }
                 let result = async {
-                    if !registry.dependents(&id)?.is_empty() {
-                        return Err(Error::InvalidInput {
-                            field: "plugin removal",
-                            reason: "registered dependents must be removed first",
-                        });
-                    }
                     registry.cancel_retry(&id);
                     let candidate = PluginDefinitions::new(registry.definitions().filter(|definition| definition.id != id).cloned(), [])?;
                     registry.reload_selected(candidate, &BTreeSet::from([id.clone()]), &mut lifecycle).await?;

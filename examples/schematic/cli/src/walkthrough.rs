@@ -23,7 +23,7 @@ use std::path::Path;
 
 // Local Imports
 use crate::Result;
-use harmos::{state::Focus, state::PrincipalId};
+use harmos_runtime::{state::Focus, state::PrincipalId};
 use schematic_app::domain::model;
 use schematic_app::operations::{ProposeRoute, ValidateSchematic};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};

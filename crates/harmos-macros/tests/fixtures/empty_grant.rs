@@ -36,8 +36,8 @@ struct Program;
 
 /* === Implementations === */
 
-#[harmos::plugin(id = "invalid_requirement", requires(harmos::builtins::lifecycle::Status: scope("")))]
-impl harmos::Plugin for Program {}
+#[harmos::guest(harmos_path = ::harmos, id = "invalid_requirement", requires(harmos::builtins::lifecycle::Status: scope("")))]
+impl harmos::guest::Plugin for Program {}
 
 /* === Public Functions === */
 

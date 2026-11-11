@@ -19,7 +19,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
+use harmos_runtime::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
 /* === Constants === */
 
@@ -80,7 +80,7 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
         for entry in &entries {
             if let Recorded::Transaction(change) = &entry.value {
                 if let Some(prepared) = &entry.prepared {
-                    if harmos::state::TransactionCatalog::replay(&**change, prepared, &mut self.replica).is_err() {
+                    if harmos_runtime::state::TransactionCatalog::replay(&**change, prepared, &mut self.replica).is_err() {
                         self.halted = true;
                         return self.durable;
                     }

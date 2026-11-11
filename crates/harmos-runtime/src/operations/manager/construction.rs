@@ -52,7 +52,7 @@ impl Manager {
                 state: Mutex::new(State {
                     closing: false,
                     entries: BTreeMap::new(),
-                    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+                    #[cfg(feature = "plugin-guest")]
                     staging: Vec::new(),
                     #[cfg(feature = "grpc")]
                     grpc: BTreeMap::new(),
@@ -61,7 +61,6 @@ impl Manager {
                 }),
             }),
         };
-        #[cfg(feature = "plugin-grpc")]
         manager.register_grpc_clock().expect("host clock contracts are valid");
         manager
     }
@@ -100,8 +99,9 @@ impl Manager {
                 operation: entry.id().to_owned(),
             };
             let contract = entry.contract.as_ref().ok_or_else(denied)?;
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-            let plugin = entry.plugin.is_some();
+            let plugin = entry.binding.is::<crate::plugin::grpc::invoke::Binding>();
+            #[cfg(feature = "plugin-guest")]
+            let plugin = plugin || entry.plugin.is_some();
 
             let selected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 authorizer.authorize(

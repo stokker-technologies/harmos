@@ -25,8 +25,8 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{broadcast, watch};
 // Local Imports
 use super::{
-    DispatchError, PluginBackend, PluginCaller, PluginDefinition, PluginDefinitions, PluginEvent, PluginEventKind, PluginEvents,
-    PluginFailureClass, PluginGeneration, PluginGraph, PluginKind, PluginScope, PluginState, PluginStatus, ReloadImpact, Router,
+    DispatchError, GuestInventory, PluginBackend, PluginCaller, PluginDefinition, PluginDefinitions, PluginEvent, PluginEventKind,
+    PluginEvents, PluginFailureClass, PluginGeneration, PluginKind, PluginScope, PluginState, PluginStatus, ReloadImpact, Router,
 };
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Error, Result};
@@ -48,14 +48,13 @@ type Stop<G, E> = for<'a> fn(&'a PluginDefinition, &'a PluginScope, &'a mut Plug
 pub struct PluginManager<G, E> {
     definitions: BTreeMap<String, PluginDefinition>,
     instances: BTreeMap<String, PluginInstance<G, E>>,
-    graph: PluginGraph,
+    inventory: GuestInventory,
     router: Router,
     failed: BTreeSet<String>,
     attempts: BTreeMap<String, u64>,
     last_failures: BTreeMap<String, String>,
     failure_classes: BTreeMap<String, PluginFailureClass>,
     restarts: BTreeMap<String, Restart>,
-    identity: PluginGeneration,
     revision: u64,
     events: broadcast::Sender<PluginEvent>,
     observer: Option<Arc<Observer>>,
@@ -94,9 +93,7 @@ pub struct PluginLifecycleAuthority<'a> {
     backend_kind: PluginKind,
 }
 
-pub struct PluginReloadPlan {
-    manager: PluginGeneration,
-    revision: u64,
+struct Transition {
     candidate: PluginDefinitions,
     impact: ReloadImpact,
 }
@@ -135,9 +132,6 @@ pub enum PluginFailure {
 
     #[error(transparent)]
     Routing(#[from] DispatchError),
-
-    #[error("reload plan revision {expected} is stale; manager revision is {actual}")]
-    StalePlan { expected: u64, actual: u64 },
 
     #[error("the application could not fence affected plugin work: {0}")]
     Fence(#[source] Error),
@@ -229,25 +223,13 @@ impl From<PluginFailure> for Error {
     }
 }
 
-impl PluginReloadPlan {
-    pub fn revision(&self) -> u64 {
-        self.revision
-    }
-
-    pub fn candidate(&self) -> &PluginDefinitions {
-        &self.candidate
-    }
-
+impl Transition {
     pub fn stopping(&self) -> &[PluginDefinition] {
         self.impact.stopping()
     }
 
     pub fn starting(&self) -> &[PluginDefinition] {
         self.impact.starting()
-    }
-
-    pub fn affected(&self) -> Vec<String> {
-        affected(&self.impact).into_iter().map(|definition| definition.id).collect()
     }
 }
 
@@ -259,19 +241,17 @@ impl<G, E> PluginInstance<G, E> {
 
 impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
     pub fn new(candidate: PluginDefinitions) -> Result<Self> {
-        let identity = PluginGeneration::fresh()?;
-        let definitions = by_id(&candidate.graph);
+        let definitions = by_id(&candidate.inventory);
         Ok(Self {
             definitions,
             instances: BTreeMap::new(),
-            router: Router::new(candidate.graph.clone()),
-            graph: candidate.graph,
+            router: Router::new(candidate.inventory.clone()),
+            inventory: candidate.inventory,
             failed: BTreeSet::new(),
             attempts: BTreeMap::new(),
             last_failures: BTreeMap::new(),
             failure_classes: BTreeMap::new(),
             restarts: BTreeMap::new(),
-            identity,
             revision: 0,
             events: broadcast::channel(EVENTS).0,
             observer: None,
@@ -293,7 +273,7 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
                 reason: "replacement generations require reload",
             });
         }
-        let definitions = by_id(&candidate.graph);
+        let definitions = by_id(&candidate.inventory);
         for (id, original) in &self.definitions {
             if definitions.get(id) != Some(original) {
                 return Err(Error::InvalidInput {
@@ -303,18 +283,18 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
             }
         }
         let changed: Vec<_> = candidate
-            .graph
+            .inventory
             .ordered()
             .iter()
-            .filter(|definition| !self.graph.same_contract(&definition.id, &candidate.graph))
+            .filter(|definition| !self.inventory.same_contract(&definition.id, &candidate.inventory))
             .map(|definition| definition.id.clone())
             .collect();
         if changed.is_empty() {
             return Ok(());
         }
         let revision = self.next_revision()?;
-        self.router.reconfigure(candidate.graph.clone()).map_err(PluginFailure::Routing)?;
-        self.graph = candidate.graph;
+        self.router.reconfigure(candidate.inventory.clone()).map_err(PluginFailure::Routing)?;
+        self.inventory = candidate.inventory;
         self.definitions = definitions;
         self.revision = revision;
         for id in changed {
@@ -375,9 +355,9 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         &mut self, candidate: PluginDefinitions, selected: &BTreeSet<String>, lifecycle: &mut L,
     ) -> Result<()> {
         self.resume_retirement().await?;
-        let mut plan = self.plan_reload(candidate)?;
+        let mut plan = self.collect_transition(candidate)?;
         plan.impact.select(selected);
-        self.apply_reload(plan, lifecycle).await
+        self.apply_transition(plan, lifecycle).await
     }
 
     pub(crate) async fn initialize_selected<L: PluginLifecycle<Guest = G, Embedded = E>>(
@@ -386,10 +366,10 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         self.resume_retirement().await?;
         self.resolve()?;
         let candidate = PluginDefinitions {
-            graph: self.graph.clone(),
+            inventory: self.inventory.clone(),
             rebuilt: self.failed.intersection(selected).cloned().collect(),
         };
-        let mut plan = self.plan_reload(candidate)?;
+        let mut plan = self.collect_transition(candidate)?;
         plan.impact.select(selected);
         self.transition(plan, FailureScope::Instance, lifecycle).await
     }
@@ -400,7 +380,7 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
 
     pub(crate) async fn cancel_initialization(&mut self, previous: &BTreeMap<String, PluginGeneration>) -> Result<()> {
         let stopping: Vec<_> = self
-            .graph
+            .inventory
             .ordered()
             .iter()
             .rev()
@@ -481,28 +461,11 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         if !self.definitions.contains_key(id) {
             return Err(unknown(id));
         }
-        let mut selected = BTreeSet::from([id.to_owned()]);
-        let mut pending = vec![id.to_owned()];
-        while let Some(owner) = pending.pop() {
-            for dependent in self.dependents(&owner)? {
-                if selected.insert(dependent.clone()) {
-                    pending.push(dependent);
-                }
-            }
-        }
-        Ok(self.graph.ordered().iter().rev().filter(|definition| selected.contains(&definition.id)).cloned().collect())
+        Ok(self.inventory.ordered().iter().filter(|definition| definition.id == id).cloned().collect())
     }
 
-    pub fn resolve(&self) -> Result<PluginGraph> {
-        let providers = self.graph.required_providers.iter().flat_map(|(consumer, selected)| {
-            selected.iter().map(|(operation, provider)| super::OperationProvider {
-                consumer: consumer.clone(),
-                operation: operation.clone(),
-                provider: provider.clone(),
-            })
-        });
-        PluginGraph::resolve_with_providers(self.definitions.values().cloned(), providers)
-            .map_err(|error| PluginFailure::Plan(error).into())
+    pub fn resolve(&self) -> Result<GuestInventory> {
+        GuestInventory::resolve(self.definitions.values().cloned()).map_err(|error| PluginFailure::Plan(error).into())
     }
 
     pub fn cleanup(&self) -> PluginCleanup {
@@ -558,25 +521,6 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         ids.into_iter().filter_map(|id| self.status(id))
     }
 
-    pub fn dependencies(&self, id: &str) -> Result<Vec<String>> {
-        if !self.definitions.contains_key(id) {
-            return Err(unknown(id));
-        }
-        Ok(self.graph.dependencies(id).iter().cloned().collect())
-    }
-
-    pub fn dependents(&self, id: &str) -> Result<Vec<String>> {
-        if !self.definitions.contains_key(id) {
-            return Err(unknown(id));
-        }
-        Ok(self
-            .definitions
-            .values()
-            .filter(|definition| self.graph.dependencies(&definition.id).contains(id))
-            .map(|definition| definition.id.clone())
-            .collect())
-    }
-
     pub fn caller(&self, id: &str) -> Result<PluginCaller> {
         if !self.instances.get(id).is_some_and(|instance| instance.ready()) {
             return Err(Error::NotReady { domain: "plugin activation" });
@@ -596,37 +540,32 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         self.instances.iter().filter(|(_, instance)| instance.ready()).map(|(id, instance)| (id.clone(), instance.generation)).collect()
     }
 
-    pub fn plan_reload(&self, candidate: PluginDefinitions) -> Result<PluginReloadPlan> {
+    fn collect_transition(&self, candidate: PluginDefinitions) -> Result<Transition> {
         if self.retirement.is_some() {
             return Err(Error::NotReady { domain: "plugin retirement" });
         }
-        let current = self.router.graph();
+        let current = self.router.inventory();
         let mut changed = candidate.rebuilt.clone();
-        for definition in self.graph.ordered().iter().chain(candidate.graph.ordered()) {
-            if !current.same_contract(&definition.id, &candidate.graph)
+        for definition in self.inventory.ordered().iter().chain(candidate.inventory.ordered()) {
+            if !current.same_contract(&definition.id, &candidate.inventory)
                 || (!self.instances.get(&definition.id).is_some_and(|instance| instance.ready())
                     && !self.instances.get(&definition.id).is_some_and(|instance| instance.cleanup.is_some()))
             {
                 changed.insert(definition.id.clone());
             }
         }
-        let impact = self.graph.reload(candidate.graph.clone(), changed).map_err(PluginFailure::Plan)?;
-        Ok(PluginReloadPlan {
-            manager: self.identity,
-            revision: self.revision,
-            candidate,
-            impact,
-        })
+        let impact = self.inventory.reload(candidate.inventory.clone(), changed).map_err(PluginFailure::Plan)?;
+        Ok(Transition { candidate, impact })
     }
 
     pub async fn initialize<L: PluginLifecycle<Guest = G, Embedded = E>>(&mut self, lifecycle: &mut L) -> Result<()> {
         self.resume_retirement().await?;
         self.resolve()?;
         let candidate = PluginDefinitions {
-            graph: self.graph.clone(),
+            inventory: self.inventory.clone(),
             rebuilt: self.failed.clone(),
         };
-        let plan = self.plan_reload(candidate)?;
+        let plan = self.collect_transition(candidate)?;
         self.transition(plan, FailureScope::Instance, lifecycle).await
     }
 
@@ -634,32 +573,17 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         &mut self, candidate: PluginDefinitions, lifecycle: &mut L,
     ) -> Result<()> {
         self.resume_retirement().await?;
-        let plan = self.plan_reload(candidate)?;
-        self.apply_reload(plan, lifecycle).await
+        let plan = self.collect_transition(candidate)?;
+        self.apply_transition(plan, lifecycle).await
     }
 
-    pub async fn apply_reload<L: PluginLifecycle<Guest = G, Embedded = E>>(
-        &mut self, plan: PluginReloadPlan, lifecycle: &mut L,
-    ) -> Result<()> {
+    async fn apply_transition<L: PluginLifecycle<Guest = G, Embedded = E>>(&mut self, plan: Transition, lifecycle: &mut L) -> Result<()> {
         self.transition(plan, FailureScope::Group, lifecycle).await
     }
 
     async fn transition<L: PluginLifecycle<Guest = G, Embedded = E>>(
-        &mut self, plan: PluginReloadPlan, failure_scope: FailureScope, lifecycle: &mut L,
+        &mut self, plan: Transition, failure_scope: FailureScope, lifecycle: &mut L,
     ) -> Result<()> {
-        if plan.manager != self.identity {
-            return Err(Error::InvalidInput {
-                field: "plugin reload plan",
-                reason: "plan belongs to another manager",
-            });
-        }
-        if plan.revision != self.revision {
-            return Err(PluginFailure::StalePlan {
-                expected: plan.revision,
-                actual: self.revision,
-            }
-            .into());
-        }
         lifecycle.preflight(&plan.candidate)?;
         if plan.stopping().is_empty() && plan.starting().is_empty() {
             return Ok(());
@@ -682,28 +606,28 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         if !failures.is_empty() {
             return Err(PluginFailure::Cleanup(failures).into());
         }
-        let current_graph = self.router.graph();
+        let current_graph = self.router.inventory();
         let changed: Vec<_> = plan
             .candidate
-            .graph
+            .inventory
             .ordered()
             .iter()
             .filter(|definition| {
                 self.definitions.get(&definition.id) != Some(*definition)
-                    || !current_graph.same_contract(&definition.id, &plan.candidate.graph)
+                    || !current_graph.same_contract(&definition.id, &plan.candidate.inventory)
                     || plan.candidate.rebuilt.contains(&definition.id)
             })
             .map(|definition| definition.id.clone())
             .collect();
-        self.router.reconfigure(plan.candidate.graph.clone()).map_err(PluginFailure::Routing)?;
+        self.router.reconfigure(plan.candidate.inventory.clone()).map_err(PluginFailure::Routing)?;
         let removed: Vec<_> = self
             .definitions
             .keys()
-            .filter(|id| !plan.candidate.graph.ordered().iter().any(|definition| definition.id == **id))
+            .filter(|id| !plan.candidate.inventory.ordered().iter().any(|definition| definition.id == **id))
             .cloned()
             .collect();
-        self.graph = plan.candidate.graph;
-        self.definitions = by_id(&self.graph);
+        self.inventory = plan.candidate.inventory;
+        self.definitions = by_id(&self.inventory);
         self.failed.retain(|id| self.definitions.contains_key(id) || self.instances.contains_key(id));
         for id in removed {
             self.attempts.remove(&id);
@@ -813,7 +737,7 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
     pub async fn shutdown<L: PluginLifecycle<Guest = G, Embedded = E>>(&mut self, lifecycle: &mut L) -> Result<()> {
         self.resume_retirement().await?;
         let stopping: Vec<_> =
-            self.graph.ordered().iter().rev().filter(|definition| self.instances.contains_key(&definition.id)).cloned().collect();
+            self.inventory.ordered().iter().rev().filter(|definition| self.instances.contains_key(&definition.id)).cloned().collect();
         let revision = self.next_revision()?;
         lifecycle.fence(PluginTransition::Shutdown, &stopping).await.map_err(PluginFailure::Fence)?;
         self.revision = revision;
@@ -835,7 +759,7 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
         if selected.is_empty() {
             return Vec::new();
         }
-        let schedule = self.graph.topology.retirement(selected.iter().map(|(id, _)| id.clone()).collect());
+        let schedule = selected.iter().map(|(id, _)| id.clone()).collect();
         let mut owners = BTreeMap::new();
         for (id, generation) in &selected {
             let instance = self.instances.get_mut(id).expect("selected original owner");
@@ -980,7 +904,6 @@ impl<G, E> Drop for PluginManager<G, E> {
         }
         let _execution = self.executor.as_ref().expect("active instances retain their executor").enter();
         self.cleanup.start(retirement::Closing {
-            topology: self.graph.topology.clone(),
             owners,
             previous: self.retirement.take().map(Arc::new),
             router: self.router.clone(),
@@ -994,7 +917,7 @@ impl<G, E> Drop for PluginManager<G, E> {
 
 /* === Private Functions === */
 
-#[cfg(any(feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 fn remote_failure(failure: crate::operations::FailureKind) -> PluginFailureClass {
     match failure {
         crate::operations::FailureKind::Transient | crate::operations::FailureKind::Ambiguous => PluginFailureClass::Recoverable,
@@ -1015,7 +938,7 @@ fn classify(error: &Error) -> PluginFailureClass {
         Error::Closing { .. } => PluginFailureClass::Cancelled,
         Error::PluginLifecycle { source } => match source.as_ref() {
             PluginFailure::Start { source, .. } | PluginFailure::Fence(source) => classify(source),
-            PluginFailure::Plan(_) | PluginFailure::Routing(_) | PluginFailure::StalePlan { .. } => PluginFailureClass::Terminal,
+            PluginFailure::Plan(_) | PluginFailure::Routing(_) => PluginFailureClass::Terminal,
             PluginFailure::Cleanup(_) => PluginFailureClass::Recoverable,
         },
         Error::OperationFailed { source, .. } | Error::TaskFailed { source, .. } => {
@@ -1061,8 +984,8 @@ fn stop_backend<'a, L: PluginLifecycle>(
     })
 }
 
-fn by_id(graph: &PluginGraph) -> BTreeMap<String, PluginDefinition> {
-    graph.ordered().iter().map(|definition| (definition.id.clone(), definition.clone())).collect()
+fn by_id(inventory: &GuestInventory) -> BTreeMap<String, PluginDefinition> {
+    inventory.ordered().iter().map(|definition| (definition.id.clone(), definition.clone())).collect()
 }
 
 fn unknown(id: &str) -> Error {

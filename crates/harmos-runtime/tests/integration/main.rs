@@ -18,7 +18,6 @@ mod publication;
 #[path = "../operations/main.rs"]
 mod operations;
 
-#[cfg(feature = "plugin-grpc")]
 #[path = "../plugin_grpc/main.rs"]
 mod plugin_grpc;
 
@@ -55,7 +54,6 @@ mod support;
 // Standard Library Imports
 
 // Third Party Imports
-extern crate harmos_runtime as harmos;
 
 // Local Imports
 

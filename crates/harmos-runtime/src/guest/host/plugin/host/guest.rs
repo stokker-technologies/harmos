@@ -28,9 +28,9 @@ use std::time::Duration;
 use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::catalog::Catalog;
 use crate::config::PluginSettings;
+use crate::guest::host::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::guest::{Loaded, Serving};
 use crate::operations::{ComponentBindings, Declarations, EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
-use crate::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::{Application, Error, Result};
 
 /* === Constants === */

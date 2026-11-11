@@ -21,7 +21,7 @@ use std::io::Write;
 // Third Party Imports
 
 // Local Imports
-use harmos::storage::StreamConsumer;
+use harmos_runtime::storage::StreamConsumer;
 use schematic_storage::streams::{JsonlStreams, read_rows};
 
 /* === Constants === */
@@ -34,7 +34,7 @@ use schematic_storage::streams::{JsonlStreams, read_rows};
 
 struct Model;
 
-#[harmos::stream(id = "reading", window = 8)]
+#[harmos_runtime::stream(id = "reading", window = 8)]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Reading {
     value: u64,
@@ -48,13 +48,13 @@ struct Columns {
 
 /* === Enums === */
 
-#[harmos::lanes]
+#[harmos_runtime::lanes]
 pub enum TestLanes {
     #[default]
     Open,
 }
 
-#[harmos::streams]
+#[harmos_runtime::streams]
 enum Feeds {
     Reading(Reading),
 }
@@ -63,17 +63,17 @@ enum Feeds {
 
 /* === Implementations === */
 
-impl harmos::Lifecycle for Model {
+impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
-    type Context = harmos::Startup<Self>;
+    type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 }
 
-impl harmos::Application for Model {
+impl harmos_runtime::Application for Model {
     type State = support::Ledger;
     type Transaction = support::Change;
     type Record = support::Fact;
@@ -96,10 +96,10 @@ fn contract_scenario() {
                 let capture = JsonlStreams::<Model>::open(directory).unwrap();
                 assert_eq!(
                     capture.resume(),
-                    harmos::storage::Cursor::ORIGIN,
+                    harmos_runtime::storage::Cursor::ORIGIN,
                     "a directory nothing has recorded into resumes from the origin"
                 );
-                let runtime = harmos::Runtime::<Model>::launch_with(support::Ledger::default(), (), |setup| {
+                let runtime = harmos_runtime::Runtime::<Model>::launch_with(support::Ledger::default(), (), |setup| {
                     setup.settings().register(Feeds::catalog()).attach_streams(capture.select::<Reading>());
                 })
                 .await
@@ -110,12 +110,12 @@ fn contract_scenario() {
                 runtime.shutdown().await.unwrap();
                 assert_eq!(
                     JsonlStreams::<Model>::open(directory).unwrap().resume(),
-                    harmos::storage::Cursor(7),
+                    harmos_runtime::storage::Cursor(7),
                     "a cursor survives the process that wrote it"
                 );
                 assert_eq!(
                     JsonlStreams::<Model>::open(directory).unwrap().resume(),
-                    harmos::storage::Cursor(7),
+                    harmos_runtime::storage::Cursor(7),
                     "healing repairs captures and never touches the checkpoint beside them"
                 );
             });

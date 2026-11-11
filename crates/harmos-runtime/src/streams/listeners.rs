@@ -26,8 +26,8 @@ use tokio::sync::watch;
 // Local Imports
 use super::window::{ListenerCandidate, Row};
 use super::{Holding, ManagedPublication, Stream, StreamManager, Table, Wired};
+use crate::guest::host::plugin::PluginScope;
 use crate::operations::{EncodedInvocation, Manager, PluginCallback};
-use crate::plugin::PluginScope;
 use crate::schema::{Described, graph::Schema};
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{Application, Error, Message, MessageError, Result};

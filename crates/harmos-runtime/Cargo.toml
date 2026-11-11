@@ -24,32 +24,14 @@ bench = false
 
 # Core Runtime and Authoring Are Always Available
 [features]
-default = ["plugin-grpc"]
-plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
-plugin-grpc = [
-  "plugin",
-  "grpc",
-  "dep:harmos-protocol",
-  "dep:prost",
-  "dep:hyper-util",
-  "dep:tonic",
-  "dep:tower",
-  "dep:prost-reflect",
-  "dep:prost-types",
-  "tokio/fs",
-  "tokio/io-util",
-  "tokio/net",
-  "tokio/process",
-]
-plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
+default = ["grpc"]
+plugin-guest = ["dep:harmos-packaging", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime", "dep:postcard"]
 grpc = [
   "harmos-operations/grpc",
   "generate-proto",
   "dep:tonic-reflection",
   "dep:http-body",
   "dep:bytes",
-  "dep:tonic",
-  "dep:prost-reflect",
   "tonic/tls-ring",
   "dep:rustls",
   "dep:tokio-rustls",
@@ -65,9 +47,9 @@ simulation = []
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
-harmos-operations = { workspace = true, features = ["runtime", "streaming"] }
+harmos-operations = { workspace = true, features = ["runtime", "streaming", "grpc"] }
 harmos-packaging = { workspace = true, optional = true }
-harmos-protocol = { workspace = true, optional = true }
+harmos-protocol = { workspace = true }
 harmos-storage = { workspace = true }
 
 # Git
@@ -82,14 +64,14 @@ tracing = { workspace = true, default-features = true }
 bytes = { workspace = true, optional = true }
 # Retry Windows Use Native Entropy Or Web Crypto On Browser WebAssembly.
 getrandom = { workspace = true, features = ["std", "wasm_js"] }
-petgraph = { workspace = true, default-features = true, optional = true }
-semver = { workspace = true, default-features = true, optional = true }
+semver = { workspace = true, default-features = true, features = ["serde"] }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
-prost = { workspace = true, optional = true }
-prost-reflect = { workspace = true, optional = true, features = ["serde"] }
-prost-types = { workspace = true, optional = true }
+postcard = { workspace = true, optional = true }
+prost = { workspace = true }
+prost-reflect = { workspace = true, features = ["serde"] }
+prost-types = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
 
@@ -105,16 +87,16 @@ tempfile = { workspace = true, default-features = true }
 # Async
 futures-core = { workspace = true, default-features = true }
 futures-util = { workspace = true }
-tokio = { workspace = true, default-features = true, features = ["rt", "sync", "time", "macros"] }
+tokio = { workspace = true, default-features = true, features = ["rt", "sync", "time", "macros", "fs", "io-util", "net", "process"] }
 
 # Networking
 http-body = { workspace = true, optional = true }
-hyper-util = { workspace = true, optional = true }
+hyper-util = { workspace = true }
 rustls = { workspace = true, features = ["ring", "std"], optional = true }
 tokio-rustls = { workspace = true, features = ["ring"], optional = true }
-tonic = { workspace = true, default-features = true, optional = true }
+tonic = { workspace = true, default-features = true }
 tonic-reflection = { workspace = true, features = ["server"], optional = true }
-tower = { workspace = true, optional = true }
+tower = { workspace = true }
 
 # Storage
 
@@ -128,7 +110,7 @@ tower = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Local
-harmos-sdk-grpc = { workspace = true }
+harmos = { workspace = true }
 harmos-packaging = { path = "../harmos-packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }

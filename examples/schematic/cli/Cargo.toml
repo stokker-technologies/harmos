@@ -24,7 +24,7 @@ version = { workspace = true }
 
 [dependencies]
 # Local
-harmos = { workspace = true, default-features = true, features = ["runtime", "guest", "plugin"] }
+harmos-runtime = { workspace = true, default-features = true, features = ["plugin-guest"] }
 schematic-app = { path = "../app" }
 
 # Git

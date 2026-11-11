@@ -16,7 +16,7 @@ pub mod directories;
 pub mod schematic;
 pub mod transfer;
 
-#[cfg(feature = "plugin-grpc")]
+#[cfg(feature = "authoring")]
 pub mod native;
 
 #[cfg(feature = "runtime")]
@@ -52,14 +52,14 @@ pub use schematic::validate::ValidateSchematic;
 
 /* === Enums === */
 
-#[harmos::catalog]
+#[harmos_operations::catalog]
 pub enum Operations {
     ValidateSchematic(ValidateSchematic),
     ProposeRoute(ProposeRoute),
     AnalyzeSchematic(AnalyzeSchematic),
 }
 
-#[harmos::catalog]
+#[harmos_operations::catalog]
 pub enum Native {
     #[nested]
     Shared(Operations),

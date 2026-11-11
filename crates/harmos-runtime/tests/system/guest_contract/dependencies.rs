@@ -35,7 +35,7 @@ use harmos_runtime::operations::{OperationDeclaration, OperationHost as _};
 /* === Type Aliases === */
 
 type GuestResources = Resources;
-type DependencyBackends = harmos_runtime::plugin::PluginBackend<GuestResources, ProviderResources>;
+type DependencyBackends = harmos_runtime::guest::PluginBackend<GuestResources, ProviderResources>;
 
 /* === Structs === */
 
@@ -60,7 +60,7 @@ struct NativeClient;
 
 #[derive(Default)]
 struct ProviderResources {
-    endpoint: Option<harmos_runtime::plugin::PluginEndpoint>,
+    endpoint: Option<harmos_runtime::guest::PluginEndpoint>,
     registration: Option<harmos_runtime::operations::PluginRegistration>,
 }
 
@@ -164,30 +164,30 @@ impl DependencyHost {
     }
 }
 
-impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
+impl harmos_runtime::guest::PluginLifecycle for DependencyHost {
     type Guest = GuestResources;
 
     type Embedded = ProviderResources;
-    fn preflight(&mut self, candidate: &harmos_runtime::plugin::PluginDefinitions) -> harmos_runtime::Result<()> {
+    fn preflight(&mut self, candidate: &harmos_runtime::guest::PluginDefinitions) -> harmos_runtime::Result<()> {
         self.operations.validate_requirements(candidate)
     }
-    fn prepare(&mut self, definition: &harmos_runtime::plugin::PluginDefinition) -> harmos_runtime::Result<DependencyBackends> {
+    fn prepare(&mut self, definition: &harmos_runtime::guest::PluginDefinition) -> harmos_runtime::Result<DependencyBackends> {
         Ok(match definition.kind() {
-            harmos_runtime::plugin::PluginKind::Guest => harmos_runtime::plugin::PluginBackend::Guest(self.guest.guest_seed()),
-            harmos_runtime::plugin::PluginKind::Embedded => harmos_runtime::plugin::PluginBackend::Embedded(ProviderResources::default()),
+            harmos_runtime::guest::PluginKind::Guest => harmos_runtime::guest::PluginBackend::Guest(self.guest.guest_seed()),
+            harmos_runtime::guest::PluginKind::Embedded => harmos_runtime::guest::PluginBackend::Embedded(ProviderResources::default()),
         })
     }
     async fn fence(
-        &mut self, _: harmos_runtime::plugin::PluginTransition, _: &[harmos_runtime::plugin::PluginDefinition],
+        &mut self, _: harmos_runtime::guest::PluginTransition, _: &[harmos_runtime::guest::PluginDefinition],
     ) -> harmos_runtime::Result<()> {
         Ok(())
     }
     async fn start(
-        &mut self, definition: &harmos_runtime::plugin::PluginDefinition, router: &harmos_runtime::plugin::Router,
-        authority: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>, backend: &mut DependencyBackends,
+        &mut self, definition: &harmos_runtime::guest::PluginDefinition, router: &harmos_runtime::guest::Router,
+        authority: &harmos_runtime::guest::PluginLifecycleAuthority<'_>, backend: &mut DependencyBackends,
     ) -> harmos_runtime::Result<()> {
         match backend {
-            harmos_runtime::plugin::PluginBackend::Embedded(resources) => {
+            harmos_runtime::guest::PluginBackend::Embedded(resources) => {
                 resources.endpoint = Some(router.enter(&definition.id).unwrap());
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
@@ -198,19 +198,19 @@ impl harmos_runtime::plugin::PluginLifecycle for DependencyHost {
                     }
                 })?);
             }
-            harmos_runtime::plugin::PluginBackend::Guest(resources) => {
+            harmos_runtime::guest::PluginBackend::Guest(resources) => {
                 resources.start::<GuestOperations>(&self.operations, definition, router, authority, GuestLanes::Open).await?;
             }
         }
         Ok(())
     }
     async fn stop(
-        _: &harmos_runtime::plugin::PluginDefinition, authority: &harmos_runtime::plugin::PluginLifecycleAuthority<'_>,
+        _: &harmos_runtime::guest::PluginDefinition, authority: &harmos_runtime::guest::PluginLifecycleAuthority<'_>,
         backend: &mut DependencyBackends,
     ) -> harmos_runtime::Result<()> {
         match backend {
-            harmos_runtime::plugin::PluginBackend::Guest(resources) => resources.stop(authority).await?,
-            harmos_runtime::plugin::PluginBackend::Embedded(resources) => {
+            harmos_runtime::guest::PluginBackend::Guest(resources) => resources.stop(authority).await?,
+            harmos_runtime::guest::PluginBackend::Embedded(resources) => {
                 if let Some(registration) = &mut resources.registration {
                     registration.shutdown().await?;
                 }
@@ -239,14 +239,12 @@ async fn runtime_with_provider(provider: Arc<ProviderOwner>) -> Runtime<Bank> {
     .unwrap()
 }
 
-async fn dependency_candidate(lifecycle: &mut DependencyHost, configuration: &str) -> harmos_runtime::plugin::PluginDefinitions {
+async fn dependency_candidate(lifecycle: &mut DependencyHost, configuration: &str) -> harmos_runtime::guest::PluginDefinitions {
     lifecycle.guest.candidate(configuration).await
 }
 
-async fn dependency_candidate_with_client(
-    lifecycle: &mut DependencyHost, configuration: &str,
-) -> harmos_runtime::plugin::PluginDefinitions {
-    use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions, Requirement};
+async fn dependency_candidate_with_client(lifecycle: &mut DependencyHost, configuration: &str) -> harmos_runtime::guest::PluginDefinitions {
+    use harmos_runtime::guest::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions, Requirement};
     let mut definitions: Vec<_> = dependency_candidate(lifecycle, configuration).await.definitions().cloned().collect();
     let provided = harmos_runtime::operations::WireDeclaration::of::<ForwardDeclaration>().contract().unwrap();
     let required = harmos_runtime::operations::WireDeclaration::of::<EchoOperation>().contract().unwrap();

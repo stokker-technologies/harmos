@@ -46,7 +46,7 @@ pub struct StagedRows {
 pub(crate) struct Activation {
     table: Weak<Table>,
     state: Mutex<State>,
-    leases: OnceLock<Vec<Arc<super::PublicationLease>>>,
+    leases: OnceLock<Vec<Arc<super::StreamWriter>>>,
 }
 
 #[derive(Default)]
@@ -119,11 +119,11 @@ impl Activation {
         }
     }
 
-    pub(super) fn retain_leases(&self, leases: Vec<Arc<super::PublicationLease>>) {
+    pub(super) fn retain_leases(&self, leases: Vec<Arc<super::StreamWriter>>) {
         assert!(self.leases.set(leases).is_ok(), "one original stream lease inventory");
     }
 
-    pub(crate) fn leases(&self) -> &[Arc<super::PublicationLease>] {
+    pub(crate) fn leases(&self) -> &[Arc<super::StreamWriter>] {
         self.leases.get().map_or(&[], Vec::as_slice)
     }
 

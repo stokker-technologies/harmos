@@ -29,7 +29,7 @@ use crate::state::NetId;
 
 /* === Structs === */
 
-#[harmos::stream(
+#[harmos_runtime::stream(
     description = "One low-rate voltage sample from the editor's simulator.\nThe runtime witnesses the journal position at publish. The time belongs in the payload because it is part of what this irregular feed declares.",
     id = "net_voltage",
     window = 4

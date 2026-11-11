@@ -16,6 +16,8 @@ pub(crate) mod host;
 
 /* === Re-Exports === */
 
+pub use host::plugin::*;
+
 pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
 
 pub use harmos_guest::{guest as plugin, kit, operations};

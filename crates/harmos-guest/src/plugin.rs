@@ -60,7 +60,7 @@ pub trait Plugin: harmos_operations::execution::Lifecycle<Context: Context> + li
 pub(crate) fn bind<P: crate::plugin::Plugin>(
     owner: std::sync::Arc<crate::plugin::Owner<P>>, table: &std::sync::Arc<std::sync::Mutex<crate::dispatch::Table>>,
 ) -> Result<(), crate::plugin::Error<P>> {
-    use harmos_operations::execution::operations::lifecycle::LifecycleAccess;
+    use crate::lifecycle::access::LifecycleAccess;
     let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
     dependencies
         .insert(std::sync::Arc::new(LifecycleAccess(owner)))
@@ -73,10 +73,10 @@ pub(crate) fn bind<P: crate::plugin::Plugin>(
         .map_err(harmos_operations::execution::ServingError::from)
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
-        .install_lifecycle::<harmos_operations::lifecycle::Initialize>(dependencies.clone(), initialize)
+        .install_lifecycle::<crate::lifecycle::Initialize>(dependencies.clone(), initialize)
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
-        .install_lifecycle::<harmos_operations::lifecycle::Shutdown>(dependencies, shutdown)
+        .install_lifecycle::<crate::lifecycle::Shutdown>(dependencies, shutdown)
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))
 }
 

@@ -49,26 +49,18 @@ pub fn message(input: TokenStream) -> TokenStream {
 
 fn sdk_path() -> Option<proc_macro2::TokenStream> {
     use proc_macro_crate::{FoundCrate, crate_name};
-    match crate_name("harmos-sdk-grpc") {
-        Ok(FoundCrate::Itself) => return Some(quote!(::harmos_sdk_grpc)),
-        Ok(FoundCrate::Name(name)) => {
-            let name = quote::format_ident!("{}", name.replace('-', "_"));
-            return Some(quote!(::#name));
-        }
-        Err(_) => {}
-    }
     match crate_name("harmos").ok()? {
-        FoundCrate::Itself => Some(quote!(crate::sdk)),
+        FoundCrate::Itself => Some(quote!(::harmos)),
         FoundCrate::Name(name) => {
             let name = quote::format_ident!("{}", name.replace('-', "_"));
-            Some(quote!(::#name::sdk))
+            Some(quote!(::#name))
         }
     }
 }
 
 fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let name = &input.ident;
-    let sdk = sdk_path().ok_or_else(|| syn::Error::new_spanned(&input, "Message Requires the Rust SDK or the Harmos Facade"))?;
+    let sdk = sdk_path().ok_or_else(|| syn::Error::new_spanned(&input, "Message Requires the Harmos SDK"))?;
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(&input, "Message Cannot Have Generic Parameters"));
     }

@@ -319,7 +319,7 @@ impl super::Context<'_> {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl super::Caller {
     pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))

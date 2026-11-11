@@ -27,7 +27,7 @@ harmos-operations = { path = "crates/harmos-operations", version = "=0.1.14", de
 harmos-packaging = { path = "crates/harmos-packaging", version = "=0.1.14", default-features = false }
 harmos-protocol = { path = "crates/harmos-protocol", version = "=0.1.14", default-features = false }
 harmos-runtime = { path = "crates/harmos-runtime", version = "=0.1.14", default-features = false }
-harmos-sdk-grpc = { path = "sdk/rust", version = "=0.1.14" }
+harmos = { path = "sdk/rust", version = "=0.1.14" }
 harmos-sdk-derive = { path = "sdk/rust/derive", version = "=0.1.14" }
 harmos-storage = { path = "crates/harmos-storage", version = "=0.1.14", default-features = false }
 

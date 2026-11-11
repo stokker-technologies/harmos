@@ -25,15 +25,15 @@ use schematic_domain::model::transfer::Batch;
 use super::store::Store;
 
 #[cfg(feature = "runtime")]
-use harmos::MemorySize;
+use harmos_operations::MemorySize;
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -42,11 +42,11 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(resources = [Store],
+#[harmos_operations::operation(resources = [Store],
     id = "benchmark.take", response = Batch,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Unknown,
+    replay = harmos_operations::operations::ReplaySafety::Unknown,
 )]
 pub struct Take {
     pub transfer: u64,
@@ -59,10 +59,10 @@ pub struct Take {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for Take {
+impl harmos_operations::Operation for Take {
     type Error = crate::Error;
 
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<Batch>, Self::Error> {
+    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Batch>, Self::Error> {
         let store = ctx.resource::<Store>();
 
         let mut stores = store.batches.lock().unwrap();

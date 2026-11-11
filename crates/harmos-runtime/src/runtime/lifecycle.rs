@@ -117,14 +117,14 @@ impl<A: Application> Runtime<A> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
-        #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+        #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
         self.plugin.close_admission();
-        #[cfg(not(all(feature = "plugin", not(target_arch = "wasm32"))))]
+        #[cfg(not(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
         {
             // Notify Residents Before Cancelling Their In-Flight Calls
             self.operations.close_resident_admission();
             self.operations.close_admission();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             {
                 self.records.stop_listeners();
                 self.streams.stop_listeners();
@@ -174,30 +174,24 @@ impl<A: Application> Resource for Shutdown<A> {
 impl<A: Application> Shutdown<A> {
     async fn finish(&mut self) -> Result<()> {
         if let Drain::Running(supervisor) = &mut self.state {
-            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             {
                 self.progress.send_replace("plugins");
                 self.handles.plugin.shutdown().await?;
             }
             self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             {
                 self.handles.records.stop_listeners();
                 self.handles.streams.stop_listeners();
             }
-            self.progress.send_replace("observers and listeners");
-            let observers = self.handles.operations.shutdown_observers();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-            let (observers, records, streams) =
-                tokio::join!(observers, self.handles.records.shutdown_listeners(), self.handles.streams.shutdown_listeners(),);
-
-            if self.handles.operations.observer_cleanup_pending() {
-                return Err(observers.err().unwrap_or(Error::NotReady { domain: "observer cleanup" }));
-            }
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            self.progress.send_replace("listeners");
+            #[cfg(feature = "plugin-guest")]
+            let (records, streams) = tokio::join!(self.handles.records.shutdown_listeners(), self.handles.streams.shutdown_listeners());
+            #[cfg(feature = "plugin-guest")]
             records?;
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(feature = "plugin-guest")]
             streams?;
             self.progress.send_replace("application services");
             let services = self.handles.operations.shutdown_application_services().await;
@@ -222,14 +216,6 @@ impl<A: Application> Shutdown<A> {
                 && settled.is_ok()
             {
                 settled = Err(Failure { domain: "application", source });
-            }
-            if let Err(source) = observers
-                && settled.is_ok()
-            {
-                settled = Err(Failure {
-                    domain: "observer",
-                    source: Arc::new(source),
-                });
             }
             if let Err(source) = services
                 && settled.is_ok()

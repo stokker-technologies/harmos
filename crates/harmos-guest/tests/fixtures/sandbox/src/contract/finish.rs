@@ -35,7 +35,7 @@ use super::{Duration, OperationPolicy, RetryPolicy, Value};
         timeout: Duration::from_secs(5), attempt_timeout: Duration::from_secs(5),
         cancellation_timeout: Duration::from_millis(100), retries: RetryPolicy::Never,
     }))]
-#[cfg_attr(target_arch = "wasm32", harmos::guest::operation(harmos_path = ::harmos::guest,
+#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest,
     resources = [crate::Owner], id = "fixture.finish", response = Value, policy = OperationPolicy {
         timeout: Duration::from_secs(5), attempt_timeout: Duration::from_secs(5),
         cancellation_timeout: Duration::from_millis(100), retries: RetryPolicy::Never,
@@ -89,10 +89,10 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos::guest::Operation for FinishOperation {
+    impl harmos_guest::Operation for FinishOperation {
         type Error = std::io::Error;
 
-        async fn run(self, sdk: harmos::guest::Context<'_, Self>) -> Result<harmos::guest::operations::Response<Value>, std::io::Error> {
+        async fn run(self, sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Value>, std::io::Error> {
             let owner = sdk.resource::<crate::Owner>();
             owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if self.mode == 2 {

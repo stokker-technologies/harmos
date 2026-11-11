@@ -22,7 +22,7 @@ use serde::{Deserializer, Serializer};
 use crate::app::SchematicEditor;
 use crate::records::Records;
 use crate::transactions::Transactions;
-use harmos::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
+use harmos_runtime::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
 use schematic_storage::Wire;
 
 /* === Constants === */
@@ -64,7 +64,7 @@ impl Wire for SchematicEditor {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(harmos::operations::Response::new(change)),
+                value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
             }),
             Kind::Record => Records::restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,

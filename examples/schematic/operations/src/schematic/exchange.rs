@@ -23,15 +23,15 @@
 #[cfg(feature = "runtime")]
 use super::upload::AnalysisResources;
 #[cfg(feature = "runtime")]
-use harmos::MemorySize;
+use harmos_operations::MemorySize;
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -40,20 +40,20 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[cfg_attr(feature = "plugin-grpc", harmos::operation(resources = [AnalysisResources],
+#[cfg_attr(feature = "authoring", harmos_operations::operation(resources = [AnalysisResources],
     id = "schematic.analyze.exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     output = super::analyze::Finding,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
+    replay = harmos_operations::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeExchange"),
 ))]
-#[cfg_attr(not(feature = "plugin-grpc"), harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
+#[cfg_attr(not(feature = "authoring"), harmos_operations::operation(resources = [AnalysisResources], operations = [harmos_operations::streams::Publish],
     id = "schematic.analyze.exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     output = super::analyze::Finding,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
+    replay = harmos_operations::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeExchange"),
 ))]
 pub struct AnalyzeExchange {
@@ -67,17 +67,19 @@ pub struct AnalyzeExchange {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for AnalyzeExchange {
+impl harmos_operations::Operation for AnalyzeExchange {
     type Error = crate::Error;
 
-    fn classify(error: &Self::Error) -> harmos::operations::FailureKind {
+    fn classify(error: &Self::Error) -> harmos_operations::operations::FailureKind {
         match error {
-            crate::Error::InvalidInput => harmos::operations::FailureKind::Invalid,
-            _ => harmos::operations::FailureKind::Permanent,
+            crate::Error::InvalidInput => harmos_operations::operations::FailureKind::Invalid,
+            _ => harmos_operations::operations::FailureKind::Permanent,
         }
     }
 
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<super::analyze::Analysis>, Self::Error> {
+    async fn run(
+        self, ctx: harmos_operations::Context<'_, Self>,
+    ) -> Result<harmos_operations::Response<super::analyze::Analysis>, Self::Error> {
         let resources = ctx.resource::<AnalysisResources>();
 
         // Check / Title Presence
@@ -101,15 +103,16 @@ impl harmos::Operation for AnalyzeExchange {
             let make = || Ok(finding);
             output.send_with(bytes, make).await?;
             let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: self.title.clone(), checked };
-            #[cfg(feature = "plugin-grpc")]
+            #[cfg(feature = "authoring")]
             resources.publish(progress)?;
-            #[cfg(not(feature = "plugin-grpc"))]
+            #[cfg(not(feature = "authoring"))]
             {
                 let sequence = resources.next_progress_sequence()?;
-                let payload = harmos::Message::encode(&progress);
+                let payload = harmos_operations::Message::encode(&progress);
                 // Publish Analysis Progress
-                let request = harmos::builtins::streams::Publish {
-                    stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
+                let request = harmos_operations::streams::Publish {
+                    stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos_operations::StreamSpec>::ID
+                        .to_owned(),
                     sequence: Some(sequence),
                     published_unix_micros: None,
                     context: None,

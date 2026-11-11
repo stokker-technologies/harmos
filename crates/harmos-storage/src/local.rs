@@ -410,18 +410,18 @@ pub(crate) fn io_error(step: &'static str, path: &Path, source: std::io::Error) 
 
 // Diagnostic Only: Never Use A Resolved Handle Path To Reopen The Source.
 #[allow(unsafe_code, reason = "Windows queries the live owned handle into a separately allocated UTF-16 buffer")]
-pub(crate) fn opened_path(file: &fs::File) -> PathBuf {
+pub(crate) fn opened_path(_file: &fs::File) -> PathBuf {
     #[cfg(windows)]
     {
         use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
         use windows_sys::Win32::Storage::FileSystem::{FILE_NAME_OPENED, GetFinalPathNameByHandleW};
 
         // SAFETY: The Handle Stays Live; A Zero-Length Query Writes No Bytes.
-        let length = unsafe { GetFinalPathNameByHandleW(file.as_raw_handle(), std::ptr::null_mut(), 0, FILE_NAME_OPENED) };
+        let length = unsafe { GetFinalPathNameByHandleW(_file.as_raw_handle(), std::ptr::null_mut(), 0, FILE_NAME_OPENED) };
         if length != 0 {
             let mut buffer = vec![0u16; length as usize];
             // SAFETY: The Buffer Owns The Advertised Number Of UTF-16 Elements.
-            let written = unsafe { GetFinalPathNameByHandleW(file.as_raw_handle(), buffer.as_mut_ptr(), length, FILE_NAME_OPENED) };
+            let written = unsafe { GetFinalPathNameByHandleW(_file.as_raw_handle(), buffer.as_mut_ptr(), length, FILE_NAME_OPENED) };
             if written != 0 && written < length {
                 return std::ffi::OsString::from_wide(&buffer[..written as usize]).into();
             }
@@ -431,7 +431,7 @@ pub(crate) fn opened_path(file: &fs::File) -> PathBuf {
     {
         use std::os::fd::AsRawFd;
 
-        let descriptor = file.as_raw_fd();
+        let descriptor = _file.as_raw_fd();
         for directory in ["/proc/self/fd", "/dev/fd"] {
             let link = Path::new(directory).join(descriptor.to_string());
             if let Ok(path) = fs::read_link(link) {

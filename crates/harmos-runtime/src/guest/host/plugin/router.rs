@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, Weak};
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
-use super::{PluginGeneration, PluginGraph, PluginScope};
+use super::{GuestInventory, PluginGeneration, PluginScope};
 use harmos_domain::Refusal;
 
 /* === Constants === */
@@ -38,7 +38,7 @@ struct Registry {
 }
 
 struct RegistryState {
-    graph: PluginGraph,
+    inventory: GuestInventory,
     generations: BTreeMap<String, PluginScope>,
     instances: BTreeMap<String, Weak<Live>>,
 }
@@ -65,7 +65,7 @@ pub struct PluginCaller {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DispatchError {
-    #[error("plugin `{owner}` is absent from the admitted graph")]
+    #[error("plugin `{owner}` is absent from the admitted inventory")]
     UnknownOwner { owner: String },
 
     #[error("plugin `{0}` is already serving or admitted")]
@@ -120,23 +120,23 @@ impl DispatchError {
 }
 
 impl Router {
-    pub fn new(graph: PluginGraph) -> Self {
+    pub fn new(inventory: GuestInventory) -> Self {
         Self(Arc::new(Registry {
             state: Mutex::new(RegistryState {
-                graph,
+                inventory,
                 generations: BTreeMap::new(),
                 instances: BTreeMap::new(),
             }),
         }))
     }
 
-    pub fn graph(&self) -> PluginGraph {
-        self.0.state.lock().expect("plugin registry lock").graph.clone()
+    pub fn inventory(&self) -> GuestInventory {
+        self.0.state.lock().expect("plugin registry lock").inventory.clone()
     }
 
     pub fn enter(&self, owner: &str) -> Result<PluginEndpoint, DispatchError> {
         let mut state = self.0.state.lock().expect("plugin registry lock");
-        if !state.graph.knows(owner) {
+        if !state.inventory.knows(owner) {
             return Err(DispatchError::UnknownOwner { owner: owner.to_owned() });
         }
 
@@ -171,8 +171,8 @@ impl Router {
         let scope = PluginScope::with_dependencies(owner, generation, &definition.requires)
             .with_requirements(
                 definition.contributions.required_contracts.as_ref(),
-                state.graph.required_providers(owner),
-                state.graph.dependencies(owner),
+                state.inventory.required_providers(owner),
+                &definition.requires.iter().map(|required| required.id.clone()).collect(),
             )
             .with_operations(&definition.contributions.operations)
             .with_wire_contracts(&definition.contributions.wire_contracts)
@@ -229,16 +229,16 @@ impl Router {
         }
     }
 
-    pub fn reconfigure(&self, graph: PluginGraph) -> Result<(), DispatchError> {
+    pub fn reconfigure(&self, inventory: GuestInventory) -> Result<(), DispatchError> {
         let mut state = self.0.state.lock().expect("plugin registry lock");
         for (owner, live) in &state.instances {
-            if live.upgrade().is_some_and(|live| *live.alive.borrow()) && !state.graph.same_contract(owner, &graph) {
+            if live.upgrade().is_some_and(|live| *live.alive.borrow()) && !state.inventory.same_contract(owner, &inventory) {
                 return Err(DispatchError::Occupied(owner.clone()));
             }
         }
         state.instances.retain(|_, live| live.upgrade().is_some_and(|live| *live.alive.borrow()));
-        state.generations.retain(|owner, _| graph.knows(owner));
-        state.graph = graph;
+        state.generations.retain(|owner, _| inventory.knows(owner));
+        state.inventory = inventory;
         Ok(())
     }
 }

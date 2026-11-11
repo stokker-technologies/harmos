@@ -38,16 +38,16 @@ pub enum Error {
     Unavailable,
 
     #[error(transparent)]
-    Resource(#[from] harmos::ResourceError),
+    Resource(#[from] harmos_operations::ResourceError),
 
     #[error(transparent)]
-    Invocation(#[from] harmos::operations::InvocationError),
+    Invocation(#[from] harmos_operations::execution::operations::InvocationError),
 
     #[error(transparent)]
-    Output(#[from] harmos::Error),
+    Output(#[from] harmos_operations::Error),
 
     #[error(transparent)]
-    Stream(#[from] harmos::operations::StreamError),
+    Stream(#[from] harmos_operations::execution::operations::StreamError),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),

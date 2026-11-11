@@ -53,8 +53,8 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    Described, domain_catalog as catalog, domain_operation as operation, listener, message, observer, plugin, record, records, stream,
-    streams, transaction, transactions,
+    Described, domain_catalog as catalog, domain_operation as operation, listener, message, record, records, stream, streams, transaction,
+    transactions,
 };
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
@@ -64,6 +64,8 @@ pub use presentation::{RowMetadata, StreamField};
 pub use streams::Definition;
 
 /* === Imports === */
+
+extern crate self as harmos_domain;
 
 // Standard Library Imports
 
@@ -93,6 +95,8 @@ pub mod __private {
     /* === Modules === */
 
     /* === Re-Exports === */
+
+    pub use crate::plugin;
 
     pub use crate::answer::Answer;
     pub use crate::config::SchemaSettings;

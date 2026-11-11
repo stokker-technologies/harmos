@@ -30,7 +30,7 @@ harmos_domain::postcard_product!(Initialize { config_json: Vec<u8>, generation_c
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, codec = manual, id = "harmos.initialize", response = (), policy = super::POLICY, )]
+#[harmos_operations::execution::operation(harmos_path = harmos_operations::execution, codec = manual, id = "harmos.initialize", response = (), policy = super::POLICY, )]
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Initialize {
     pub config_json: Vec<u8>,
@@ -38,22 +38,19 @@ pub struct Initialize {
     pub assignments: Vec<u8>,
 }
 
-#[cfg(feature = "lifecycle")]
 pub struct Control {
-    #[cfg(feature = "lifecycle")]
-    instance: Box<dyn crate::execution::operations::lifecycle::LifecycleInstance>,
+    instance: Box<dyn crate::lifecycle::access::LifecycleInstance>,
 }
 
 /* === Enums === */
 
-#[cfg(feature = "lifecycle")]
 #[derive(Debug, thiserror::Error)]
 pub enum ControlError {
     #[error(transparent)]
-    Dependency(#[from] crate::execution::ResourceError),
+    Dependency(#[from] harmos_operations::execution::ResourceError),
 
     #[error("plugin lifecycle access failed: {0}")]
-    Access(#[source] crate::execution::operations::access::AccessError),
+    Access(#[source] harmos_operations::execution::operations::access::AccessError),
 }
 
 /* === Traits === */
@@ -76,20 +73,19 @@ impl MemorySize for Initialize {
     }
 }
 
-#[cfg(feature = "lifecycle")]
-impl crate::execution::operations::Carrier for Control {
+impl harmos_operations::execution::operations::Carrier for Control {
     type Declaration = Initialize;
     type Error = super::ControlError;
     type StreamEndpoints = ();
-    async fn bind(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
-        let access = context.resource::<crate::execution::operations::lifecycle::LifecycleAccess>()?;
+    async fn bind(context: harmos_operations::execution::ExecutionContext) -> Result<Self, Self::Error> {
+        let access = context.resource::<crate::lifecycle::access::LifecycleAccess>()?;
         Ok(Self {
             instance: access.0.clone().begin(super::Action::Initialize),
         })
     }
     async fn attempt(
-        &mut self, context: crate::ExecutionContext, request: &mut Initialize, _: &mut (),
-    ) -> Result<crate::Response<()>, Self::Error> {
+        &mut self, context: harmos_operations::execution::ExecutionContext, request: &mut Initialize, _: &mut (),
+    ) -> Result<harmos_operations::execution::Response<()>, Self::Error> {
         let _ = &request;
         self.instance
             .run(context, &request.config_json, &request.generation_context, &request.assignments)
@@ -102,8 +98,7 @@ impl crate::execution::operations::Carrier for Control {
     }
 }
 
-#[cfg(feature = "lifecycle")]
-impl crate::Executable for Initialize {
+impl harmos_operations::execution::Executable for Initialize {
     type Carrier = Control;
 }
 

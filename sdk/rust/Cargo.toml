@@ -9,15 +9,14 @@
 # === Package === #
 
 [package]
-# Temporary package name until task 4.1 replaces the framed SDK.
-name = "harmos-sdk-grpc"
+name = "harmos"
 description = "Rust plugin authoring over the Harmos v1 gRPC protocol."
 autotests = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-publish = false
+publish.workspace = true
 
 # === Package Targets === #
 

@@ -30,9 +30,6 @@ use harmos_domain::inventory::publications;
 
 /* === Constants === */
 
-const MAX_PUBLICATION_BYTES: usize = 1024 * 1024;
-const MAX_WINDOW_ROWS: usize = 65_536;
-
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -49,15 +46,15 @@ pub struct PublicationRow {
 }
 
 #[derive(Clone)]
-pub struct PluginStream {
+pub struct PublishedStream {
     pub(super) wired: Arc<Wired>,
     pub(super) closed: Arc<AtomicBool>,
     pub(super) pool: Arc<super::publication::Pool>,
     pub(super) ingest: Arc<super::ingest::Ingest>,
 }
 
-pub struct PublicationLease {
-    pub(super) stream: PluginStream,
+pub struct StreamWriter {
+    pub(super) stream: PublishedStream,
     pub(super) active: Arc<Mutex<bool>>,
     pub(super) applied: watch::Receiver<Position>,
     pub(super) sequence: AtomicU64,
@@ -66,7 +63,7 @@ pub struct PublicationLease {
 /* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
-pub enum StreamAdmissionError {
+pub enum StreamRegistrationError {
     #[error("`{0}` is not a portable plugin owner identity")]
     Owner(String),
 
@@ -84,9 +81,6 @@ pub enum StreamAdmissionError {
 
     #[error("stream `{0}` collides with a native catalog definition; choose a different stream id")]
     Native(String),
-
-    #[error("a plugin stream window exceeds the 65536 row limit")]
-    WindowLimit,
 
     #[error("stream inventory cannot change during a transport restart; reload the plugin to activate a changed inventory")]
     Inventory,
@@ -132,21 +126,21 @@ pub enum StreamPublicationError {
 impl<A: Application> StreamManager<A> {
     pub fn validate_publications(
         &self, owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
-    ) -> Result<(), StreamAdmissionError> {
+    ) -> Result<(), StreamRegistrationError> {
         let definitions = publication_definitions(owner, declarations)?;
         if self.closed.load(Ordering::Acquire) {
-            return Err(StreamAdmissionError::Closed);
+            return Err(StreamRegistrationError::Closed);
         }
         let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
         let windows = self.windows.windows.read().expect("stream registry poisoned");
         validate_existing(&windows, &definitions, false)
     }
 
-    pub fn publication(&self, id: &str, version: u32) -> Option<PluginStream> {
+    pub fn publication(&self, id: &str, version: u32) -> Option<PublishedStream> {
         let wired = self.windows.wired(id, version)?;
         wired.definition.owner()?;
 
-        Some(PluginStream {
+        Some(PublishedStream {
             wired,
             closed: Arc::clone(&self.closed),
             pool: self.windows.publications.clone(),
@@ -154,10 +148,10 @@ impl<A: Application> StreamManager<A> {
         })
     }
 
-    pub fn current_publication(&self, id: &str) -> Option<PluginStream> {
+    pub fn current_publication(&self, id: &str) -> Option<PublishedStream> {
         let wired = self.windows.current(id)?;
         wired.definition.owner()?;
-        Some(PluginStream {
+        Some(PublishedStream {
             wired,
             closed: Arc::clone(&self.closed),
             pool: self.windows.publications.clone(),
@@ -172,8 +166,8 @@ impl<A: Application> StreamManager<A> {
     }
 }
 
-impl PublicationLease {
-    pub fn stream(&self) -> &PluginStream {
+impl StreamWriter {
+    pub fn stream(&self) -> &PublishedStream {
         &self.stream
     }
 
@@ -198,7 +192,6 @@ impl PublicationLease {
         self.admit(row, Some(wire_sequence), missed, None)
     }
 
-    #[cfg(feature = "plugin-grpc")]
     pub(crate) fn admit_clocked_row(
         &self, row: PublicationRow, wire_sequence: u64, clock: &crate::clock::Clock,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
@@ -207,19 +200,19 @@ impl PublicationLease {
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
     // `missed` applies before the first row only.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub fn stage_rows(&self, rows: Vec<PublicationRow>, first_wire_sequence: u64, missed: u64) -> super::StagedRows {
         self.stage_sequence(rows, Some(first_wire_sequence), missed, None)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub fn stage_derived_row(&self, row: PublicationRow, missed: u64) -> Result<super::StagedPublication, StreamPublicationError> {
         self.stage_sequence(vec![row], None, missed, None).single()
     }
 
     // One visibility fence and one scope phase cover the whole batch, so no
     // reader or commit observes it half staged.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     fn stage_sequence(
         &self, rows: Vec<PublicationRow>, wire_sequence: Option<u64>, missed: u64, context: Option<&crate::operations::Context<'_>>,
     ) -> super::StagedRows {
@@ -292,7 +285,11 @@ impl PublicationLease {
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(not(feature = "plugin-guest"))]
+            {
+                self.admit_locked(row, sequence, missed, true)
+            }
+            #[cfg(feature = "plugin-guest")]
             if let Some(staged) = &self.stream.wired.staged {
                 staged.scope.prepare_publication(|ready| {
                     if !ready {
@@ -323,9 +320,6 @@ impl PublicationLease {
         if !*active || self.stream.closed.load(Ordering::Acquire) {
             return Err(StreamPublicationError::Revoked);
         }
-        if row.payload.len() > MAX_PUBLICATION_BYTES {
-            return Err(StreamPublicationError::Oversized);
-        }
         let next = self
             .sequence
             .load(Ordering::Relaxed)
@@ -337,7 +331,11 @@ impl PublicationLease {
         }
         self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(&row.payload)?;
         let generation = {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+            #[cfg(not(feature = "plugin-guest"))]
+            {
+                None
+            }
+            #[cfg(feature = "plugin-guest")]
             {
                 self.stream.wired.staged.as_ref().map(|staged| staged.scope.generation().get())
             }
@@ -367,7 +365,7 @@ impl PublicationLease {
     }
 
     pub fn revoke(&self) {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some(staged) = &self.stream.wired.staged {
             staged.scope.unbind_streams();
         }
@@ -392,13 +390,13 @@ impl PublicationLease {
     }
 }
 
-impl Drop for PublicationLease {
+impl Drop for StreamWriter {
     fn drop(&mut self) {
         self.revoke();
     }
 }
 
-impl PluginStream {
+impl PublishedStream {
     pub fn definition(&self) -> &Definition {
         &self.wired.definition
     }
@@ -429,18 +427,15 @@ impl PluginStream {
 
 pub(super) fn publication_definitions(
     owner: &str, declarations: impl IntoIterator<Item = StreamDeclaration>,
-) -> Result<Vec<Definition>, StreamAdmissionError> {
+) -> Result<Vec<Definition>, StreamRegistrationError> {
     if !owner.split('.').all(harmos_domain::identity::segment) {
-        return Err(StreamAdmissionError::Owner(owner.into()));
+        return Err(StreamRegistrationError::Owner(owner.into()));
     }
     let mut ids = BTreeSet::new();
     declarations
         .into_iter()
         .map(|declaration| {
             publications::validate(&declaration)?;
-            if declaration.window > MAX_WINDOW_ROWS {
-                return Err(StreamAdmissionError::WindowLimit);
-            }
             if !ids.insert(declaration.id.clone()) {
                 return Err(publications::Error::DuplicateStream { id: declaration.id }.into());
             }
@@ -454,29 +449,29 @@ pub(super) fn publication_definitions(
 
 pub(super) fn validate_existing(
     windows: &Windows, definitions: &[Definition], require_unoccupied: bool,
-) -> Result<(), StreamAdmissionError> {
+) -> Result<(), StreamRegistrationError> {
     for definition in definitions {
         let Some(revisions) = windows.get(definition.id()) else {
             continue;
         };
         if revisions.definitions.values().any(|defined| defined.owner.is_none()) {
-            return Err(StreamAdmissionError::Native(definition.id().into()));
+            return Err(StreamRegistrationError::Native(definition.id().into()));
         }
         if revisions.definitions.values().any(|defined| defined.owner.as_deref() != definition.owner()) {
-            return Err(StreamAdmissionError::OwnerConflict(definition.id().into()));
+            return Err(StreamRegistrationError::OwnerConflict(definition.id().into()));
         }
         let Some(existing) = revisions.definitions.get(&definition.version()) else {
             continue;
         };
         if existing != &Contract::of(definition) {
-            return Err(StreamAdmissionError::Collision(definition.id().into()));
+            return Err(StreamRegistrationError::Collision(definition.id().into()));
         }
         let Some(wired) = revisions.wires.get(&definition.version()) else {
             continue;
         };
-        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+        #[cfg(feature = "plugin-guest")]
         if require_unoccupied && wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed()) {
-            return Err(StreamAdmissionError::Occupied(definition.id().into()));
+            return Err(StreamRegistrationError::Occupied(definition.id().into()));
         }
         if require_unoccupied
             && wired
@@ -486,7 +481,7 @@ pub(super) fn validate_existing(
                 .upgrade()
                 .is_some_and(|lease| *lease.lock().expect("stream lease poisoned"))
         {
-            return Err(StreamAdmissionError::Occupied(definition.id().into()));
+            return Err(StreamRegistrationError::Occupied(definition.id().into()));
         }
     }
     Ok(())
@@ -523,12 +518,15 @@ mod tests {
         let mut revisions = Revisions::default();
         revisions.definitions.insert(revision, Contract::of(&Definition::declared::<u64>("samples", schema.clone(), 4).unwrap()));
         let mut windows = HashMap::from([(Arc::from("samples"), revisions)]);
-        assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::Native(_))));
+        assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamRegistrationError::Native(_))));
         windows.get_mut("samples").unwrap().definitions.insert(
             revision,
             Contract::of(&Definition::declared::<PublicationRow>("samples", schema.clone(), 4).unwrap().publication("another")),
         );
-        assert!(matches!(validate_existing(&windows, std::slice::from_ref(&proposed), false), Err(StreamAdmissionError::OwnerConflict(_))));
+        assert!(matches!(
+            validate_existing(&windows, std::slice::from_ref(&proposed), false),
+            Err(StreamRegistrationError::OwnerConflict(_))
+        ));
         let mut changed = schema;
         changed.definitions[0][0].kind = Kind::String;
         windows
@@ -536,6 +534,6 @@ mod tests {
             .unwrap()
             .definitions
             .insert(revision, Contract::of(&Definition::declared::<PublicationRow>("samples", changed, 4).unwrap().publication("owner")));
-        assert!(matches!(validate_existing(&windows, &[proposed], false), Err(StreamAdmissionError::Collision(_))));
+        assert!(matches!(validate_existing(&windows, &[proposed], false), Err(StreamRegistrationError::Collision(_))));
     }
 }

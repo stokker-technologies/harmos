@@ -96,7 +96,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     upload.send(support::snapshot()).await.unwrap();
     upload.finish_input();
     assert_eq!(upload.join().await.unwrap().checked, 1);
-    let harmos::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Analysis Progress") };
+    let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Analysis Progress") };
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Exchange Snapshots and Findings in the Host
@@ -110,7 +110,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert!(exchange.next().await.unwrap().is_some());
     assert!(exchange.next().await.unwrap().is_none());
     assert_eq!(exchange.join().await.unwrap().checked, 1);
-    let harmos::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Exchange Progress") };
+    let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Exchange Progress") };
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Reject Invalid Analysis and Settle Cancellation Before Reusing Its Permit
@@ -118,7 +118,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     let mut invalid = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
     invalid.finish_input();
     let failure = invalid.join().await.unwrap_err();
-    let harmos::Error::OperationFailed { source, .. } = failure else { panic!("Expected Authored Input Failure: {failure:?}") };
+    let harmos_runtime::Error::OperationFailed { source, .. } = failure else { panic!("Expected Authored Input Failure: {failure:?}") };
     assert!(matches!(source.downcast_ref::<schematic_app::operations::Error>(), Some(schematic_app::operations::Error::InvalidInput)));
     let request = schematic_app::operations::AnalyzeUpload { title: "Cancelled".into() };
     let cancelled = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
@@ -128,7 +128,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     resumed.send(support::snapshot()).await.unwrap();
     resumed.finish_input();
     assert_eq!(resumed.join().await.unwrap().checked, 1);
-    let harmos::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Resumed Progress") };
+    let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Resumed Progress") };
     assert_eq!(row.value.title, "Resumed");
 
     // Hold the Shared Permit Until Upload Cancellation Settles
@@ -136,7 +136,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     let held = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
     held.send(support::snapshot()).await.unwrap();
     let (input, (), completion) = held.split();
-    let harmos::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Held Progress") };
+    let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Held Progress") };
     assert_eq!(row.value.title, "Held");
     let request = schematic_app::operations::AnalyzeExchange { title: "Waiting".into() };
     let mut waiting = runtime
@@ -155,7 +155,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     waiting.finish_input();
     assert!(waiting.next().await.unwrap().is_none());
     assert_eq!(waiting.join().await.unwrap().checked, 1);
-    let harmos::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Waiting Progress") };
+    let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Waiting Progress") };
     assert_eq!(row.value.title, "Waiting");
 
     // Upload and Download Transfer Batches Through Host-Owned Streams

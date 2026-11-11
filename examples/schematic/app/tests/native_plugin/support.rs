@@ -40,7 +40,7 @@ use schematic_app::{app::Runtime, document::Document};
 /* === Public Functions === */
 
 pub async fn host(directory: &Path) -> Runtime {
-    let (clock, _) = harmos::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
+    let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
     Runtime::launch_with(Document::new(directory.join("schematic.json")).into_origin(), None, |setup| {
         setup.settings().clock(clock);
     })
@@ -77,8 +77,8 @@ pub fn snapshot() -> schematic_app::domain::model::Snapshot {
     }
 }
 
-pub fn settings() -> harmos::operations::StreamSettings {
-    harmos::operations::StreamSettings {
+pub fn settings() -> harmos_runtime::operations::StreamSettings {
+    harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::new(4).unwrap(),
         bytes: NonZeroUsize::new(4096).unwrap(),
     }

@@ -25,7 +25,6 @@ use tokio::sync::{Notify, broadcast, watch};
 use super::{CleanupOwner, PluginEvent, PluginEventKind, PluginGeneration, PluginState, Router};
 use crate::Error;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
-use crate::supervision::dependencies;
 
 /* === Constants === */
 
@@ -47,7 +46,7 @@ pub(super) struct Owner {
 }
 
 pub(super) struct Driver {
-    pub schedule: dependencies::Retirement<String>,
+    pub schedule: Vec<String>,
     pub owners: BTreeMap<String, Owner>,
     pub router: Router,
     pub events: broadcast::Sender<PluginEvent>,
@@ -73,7 +72,6 @@ struct ClosingState {
 }
 
 pub(super) struct Closing {
-    pub topology: dependencies::Graph<String>,
     pub owners: BTreeMap<String, Owner>,
     pub previous: Option<Arc<Wait>>,
     pub router: Router,
@@ -100,7 +98,7 @@ impl Resource for Driver {
         Box::pin(async move {
             let mut pending = FuturesUnordered::new();
             loop {
-                for id in self.schedule.take_ready() {
+                for id in std::mem::take(&mut self.schedule) {
                     let owner = &self.owners[&id];
                     let previous =
                         self.previous.as_ref().filter(|previous| previous.selected.iter().any(|(selected, _)| selected == &id)).cloned();
@@ -135,7 +133,6 @@ impl Resource for Driver {
                 let Some((id, result, inherited)) = pending.next().await else {
                     break;
                 };
-                self.schedule.complete(&id, result.is_ok());
                 let (state, event) = if result.is_ok() {
                     (PluginState::Registered, PluginEventKind::Stopped)
                 } else {
@@ -244,7 +241,7 @@ impl Resource for Closing {
         Box::pin(async move {
             let outcomes = Arc::new(Mutex::new(BTreeMap::new()));
             let mut driver = Driver {
-                schedule: self.topology.retirement(self.owners.keys().cloned().collect()),
+                schedule: self.owners.keys().cloned().collect(),
                 owners: self.owners.clone(),
                 previous: self.previous.take(),
                 router: self.router.clone(),

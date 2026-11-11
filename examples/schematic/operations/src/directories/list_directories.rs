@@ -21,11 +21,11 @@
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -34,7 +34,7 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(
+#[harmos_operations::operation(
     id = "schematic.list.directories",
     response = Directories,
     policy = POLICY,
@@ -44,7 +44,7 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListDirectories {}
 
-#[harmos::message]
+#[harmos_operations::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Directories {
     pub directories: Vec<String>,
@@ -57,10 +57,10 @@ pub struct Directories {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for ListDirectories {
+impl harmos_operations::Operation for ListDirectories {
     type Error = crate::Error;
 
-    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Directories>, Self::Error> {
+    async fn run(self, _: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Directories>, Self::Error> {
         let entries = std::fs::read_dir(".")?;
         let mut directories = Vec::new();
         for entry in entries {

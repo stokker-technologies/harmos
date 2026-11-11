@@ -104,13 +104,13 @@ fn execution_error(error: &harmos_runtime::Error) -> &wasmtime::Error {
 }
 
 // A Failed Generation Reports Its SDK Shutdown Refusal Once, Then Retires
-async fn retire_failed_guest<L: harmos_runtime::plugin::PluginLifecycle>(
-    manager: &mut harmos_runtime::plugin::PluginManager<L::Guest, L::Embedded>, lifecycle: &mut L,
+async fn retire_failed_guest<L: harmos_runtime::guest::PluginLifecycle>(
+    manager: &mut harmos_runtime::guest::PluginManager<L::Guest, L::Embedded>, lifecycle: &mut L,
 ) {
     let harmos_runtime::Error::PluginLifecycle { source } = manager.shutdown(lifecycle).await.unwrap_err() else {
         panic!("the original failed generation must report its SDK shutdown refusal")
     };
-    let harmos_runtime::plugin::PluginFailure::Cleanup(failures) = *source else {
+    let harmos_runtime::guest::PluginFailure::Cleanup(failures) = *source else {
         panic!("the failed generation retains its original physical cleanup owner")
     };
     assert_eq!(failures.len(), 1);

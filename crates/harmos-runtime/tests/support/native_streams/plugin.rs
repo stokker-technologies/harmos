@@ -17,7 +17,7 @@
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
-use harmos_sdk_grpc::{Context, Message, Operation, Plugin, Visibility};
+use harmos::{Context, Message, Operation, Plugin, Visibility};
 use tokio::sync::Notify;
 
 // Local Imports

@@ -165,7 +165,7 @@ async fn contracts_guard_identity() {
     runtime.shutdown().await.unwrap();
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[tokio::test]
 async fn owner_assignments_isolate_instances() {
     let (runtime, resources) = runtime().await;
@@ -174,10 +174,10 @@ async fn owner_assignments_isolate_instances() {
         runtime
             .plugin
             .register_embedded::<crate::operations::Single<ReadContractDeclaration>, Lanes>(
-                harmos_runtime::plugin::PluginDefinition {
+                harmos_runtime::guest::PluginDefinition {
                     id: owner.into(),
                     version: "1.0.0".parse().unwrap(),
-                    artifact: harmos_runtime::plugin::PluginArtifact::Embedded { revision: "fixture".into() },
+                    artifact: harmos_runtime::guest::PluginArtifact::Embedded { revision: "fixture".into() },
                     requires: vec![],
                     configuration: b"null".to_vec(),
                     contributions: Default::default(),

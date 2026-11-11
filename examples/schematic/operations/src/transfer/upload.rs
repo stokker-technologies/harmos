@@ -30,15 +30,15 @@ use super::store::Store;
 use super::store::Stored;
 
 #[cfg(feature = "runtime")]
-use harmos::MemorySize;
+use harmos_operations::MemorySize;
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -47,11 +47,11 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(resources = [Store],
+#[harmos_operations::operation(resources = [Store],
     id = "benchmark.upload", response = Receipt, input = Batch,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
+    replay = harmos_operations::operations::ReplaySafety::Idempotent,
 )]
 pub struct Upload {
     pub transfer: u64,
@@ -64,10 +64,10 @@ pub struct Upload {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for Upload {
+impl harmos_operations::Operation for Upload {
     type Error = crate::Error;
 
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<Receipt>, Self::Error> {
+    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Receipt>, Self::Error> {
         let store = ctx.resource::<Store>();
 
         let mut batches = VecDeque::new();
@@ -80,14 +80,14 @@ impl harmos::Operation for Upload {
             receipt.bytes += batch.bytes.len() as u64;
             retained_bytes = retained_bytes.saturating_add(batch.memory_size());
             if retained_bytes > 64 * 1024 * 1024 {
-                return Err(crate::Error::Stream(harmos::operations::StreamError::Capacity));
+                return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
             }
             batches.push_back(batch);
         }
         let mut stores = store.batches.lock().unwrap();
         let other_bytes: usize = stores.iter().filter(|(id, _)| **id != self.transfer).map(|(_, stored)| stored.bytes).sum();
         if retained_bytes.saturating_add(other_bytes) > 64 * 1024 * 1024 {
-            return Err(crate::Error::Stream(harmos::operations::StreamError::Capacity));
+            return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
         }
         stores.insert(self.transfer, Stored { bytes: retained_bytes, batches });
         Ok(receipt.into())

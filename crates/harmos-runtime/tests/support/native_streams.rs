@@ -24,7 +24,7 @@ use std::num::NonZeroUsize;
 
 // Third Party Imports
 use futures_util::StreamExt;
-use harmos_sdk_grpc::encoding::Message as _;
+use harmos::encoding::Message as _;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 

@@ -184,31 +184,7 @@ fn portable_preserves_local() {
         key: "test.stage".into(),
         payload: Stage { id: "wire".into() }.encode(),
     }];
-    let mut call = harmos_runtime::operations::WireChildCall {
-        context: [7; 32],
-        generation_context: Some([9; 32]),
-        values: values.clone(),
-        operation: "overlay.child".into(),
-        fingerprint: [1; 32],
-        generation: u64::MAX,
-        payload: ().encode(),
-        submit: true,
-        retry: None,
-    };
-    let encoded = call.encode().unwrap();
-    let decoded = harmos_runtime::operations::WireChildCall::decode(&encoded).unwrap();
-    assert_eq!(decoded.context, call.context);
-    assert_eq!(decoded.generation_context, call.generation_context);
-    assert_eq!(decoded.values, values);
-    assert!(decoded.submit);
-    call.values.push(values[0].clone());
-    assert!(call.encode().is_err());
-    call.values = vec![CallValue {
-        key: "oversized".into(),
-        payload: vec![0; PORTABLE_BYTES],
-    }];
-    assert!(matches!(call.encode(), Err(harmos_runtime::operations::WireCodecError::Oversized)));
-    let wire = original.with_values(decoded.values).unwrap();
+    let wire = original.with_values(values.clone()).unwrap();
     assert!(wire.get::<Stage>().is_none());
     assert_eq!(wire.value::<Stage>().unwrap().unwrap().id, "wire");
     assert!(std::ptr::eq(original.require::<Principal>().unwrap(), wire.require::<Principal>().unwrap()));

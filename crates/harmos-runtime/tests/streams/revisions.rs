@@ -24,13 +24,13 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 
 // Local Imports
 use crate::support::{Bank, Ledger};
-use harmos_runtime::plugin::{
+use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_runtime::storage::{Cursor, PayloadEncoding, RecordInput, SchemaKey, StorageManager, StreamInput};
-use harmos_runtime::streams::{PluginStream, PublicationLease, PublicationRow, StreamManager, StreamRegistration};
+use harmos_runtime::streams::{PublicationRow, PublishedStream, StreamManager, StreamRegistration, StreamWriter};
 use harmos_runtime::{Error, Message, Result, Runtime};
 
 /* === Constants === */
@@ -63,7 +63,7 @@ struct Resources {
 struct Host {
     streams: StreamManager<Bank>,
     operations: harmos_runtime::operations::OperationManager<crate::support::Lanes>,
-    lease: Option<Arc<PublicationLease>>,
+    lease: Option<Arc<StreamWriter>>,
     fail: bool,
     before: Option<u32>,
 }
@@ -173,7 +173,7 @@ async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources
     (runtime, PluginManager::new(candidate(text, "Samples")).unwrap(), host)
 }
 
-fn current(host: &Host) -> PluginStream {
+fn current(host: &Host) -> PublishedStream {
     host.streams.current_publication("revision.samples").unwrap()
 }
 

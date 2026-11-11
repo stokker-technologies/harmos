@@ -21,11 +21,11 @@
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::operations::RetryPolicy::Never,
 };
 
 /* === Macros === */
@@ -34,12 +34,12 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(
+#[harmos_operations::operation(
     id = "schematic.validate",
     response = Validation,
     policy = POLICY,
     visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
+    replay = harmos_operations::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
 )]
 #[derive(Clone, Debug, PartialEq)]
@@ -47,7 +47,7 @@ pub struct ValidateSchematic {
     pub schematic: schematic_domain::model::Snapshot,
 }
 
-#[harmos::message]
+#[harmos_operations::message]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Validation {
     pub diagnostics: Vec<String>,
@@ -60,10 +60,10 @@ pub struct Validation {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos::Operation for ValidateSchematic {
+impl harmos_operations::Operation for ValidateSchematic {
     type Error = crate::Error;
 
-    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<Validation>, Self::Error> {
+    async fn run(self, _: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Validation>, Self::Error> {
         let diagnostics = self.schematic.diagnostics();
         Ok(Validation { diagnostics }.into())
     }

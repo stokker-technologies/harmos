@@ -69,16 +69,16 @@ async fn inert_plan_denies() {
         }
         definition
     });
-    let mut manager = Manager::new(harmos_runtime::plugin::PluginDefinitions::new(invalid, []).unwrap()).unwrap();
+    let mut manager = Manager::new(harmos_runtime::guest::PluginDefinitions::new(invalid, []).unwrap()).unwrap();
     assert!(manager.caller("schematic_tools").is_err());
     assert!(matches!(runtime.operation(route(4)).await, Err(harmos_runtime::Error::NotRegistered { domain: "operation", .. })));
     assert!(manager.initialize(&mut lifecycle).await.is_err(), "a unit configuration refuses an object");
 
     manager.shutdown(&mut lifecycle).await.unwrap();
 
-    let plan = manager.plan_reload(lifecycle.candidate(()).await).unwrap();
-    assert!(manager.caller("schematic_tools").is_err(), "collection and planning retain an inert original store");
-    manager.apply_reload(plan, &mut lifecycle).await.unwrap();
+    let candidate = lifecycle.candidate(()).await;
+    assert!(manager.caller("schematic_tools").is_err(), "collection retains an inert original store");
+    manager.reload(candidate, &mut lifecycle).await.unwrap();
     assert!(manager.caller("schematic_tools").is_ok());
     let response = runtime.operation(route(3)).await.unwrap();
     assert_eq!(response.points, corner(3));
@@ -166,7 +166,7 @@ async fn shutdown_retains_cleanup() {
     let error = runtime.plugin.stop("sandbox_guest").await.unwrap_err();
     assert!(format!("{error:?}").contains("guest plugin shutdown timeout"), "{error:?}");
     let failed = runtime.plugin.status("sandbox_guest").unwrap();
-    assert_eq!(failed.state, harmos_runtime::plugin::PluginState::Failed);
+    assert_eq!(failed.state, harmos_runtime::guest::PluginState::Failed);
     assert_eq!(failed.generation, ready.generation);
     assert_eq!(failed.attempts, 1);
     assert!(failed.next_retry.is_none());

@@ -22,7 +22,7 @@ use std::num::NonZeroUsize;
 // Local Imports
 use crate::support;
 use harmos_runtime::Runtime;
-use harmos_runtime::plugin::PluginState;
+use harmos_runtime::guest::PluginState;
 use schematic::model::{Connection, Point, Snapshot};
 use schematic_operations::Operations;
 use schematic_operations::schematic::{analyze, propose, validate};

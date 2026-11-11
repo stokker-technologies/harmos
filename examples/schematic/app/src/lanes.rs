@@ -29,7 +29,7 @@
 
 /* === Enums === */
 
-#[harmos::lanes]
+#[harmos_runtime::lanes]
 pub enum Lanes {
     #[default]
     Open,

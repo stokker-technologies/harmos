@@ -30,14 +30,12 @@ harmos_domain::postcard_product!(Shutdown {});
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, codec = manual, id = "harmos.shutdown", response = (), policy = super::POLICY, )]
+#[harmos_operations::execution::operation(harmos_path = harmos_operations::execution, codec = manual, id = "harmos.shutdown", response = (), policy = super::POLICY, )]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Shutdown {}
 
-#[cfg(feature = "lifecycle")]
 pub struct Control {
-    #[cfg(feature = "lifecycle")]
-    instance: Box<dyn crate::execution::operations::lifecycle::LifecycleInstance>,
+    instance: Box<dyn crate::lifecycle::access::LifecycleInstance>,
 }
 
 /* === Enums === */
@@ -59,20 +57,19 @@ impl MemorySize for Shutdown {
     }
 }
 
-#[cfg(feature = "lifecycle")]
-impl crate::execution::operations::Carrier for Control {
+impl harmos_operations::execution::operations::Carrier for Control {
     type Declaration = Shutdown;
     type Error = super::ControlError;
     type StreamEndpoints = ();
-    async fn bind(context: crate::ExecutionContext) -> Result<Self, Self::Error> {
-        let access = context.resource::<crate::execution::operations::lifecycle::LifecycleAccess>()?;
+    async fn bind(context: harmos_operations::execution::ExecutionContext) -> Result<Self, Self::Error> {
+        let access = context.resource::<crate::lifecycle::access::LifecycleAccess>()?;
         Ok(Self {
             instance: access.0.clone().begin(super::Action::Shutdown),
         })
     }
     async fn attempt(
-        &mut self, context: crate::ExecutionContext, request: &mut Shutdown, _: &mut (),
-    ) -> Result<crate::Response<()>, Self::Error> {
+        &mut self, context: harmos_operations::execution::ExecutionContext, request: &mut Shutdown, _: &mut (),
+    ) -> Result<harmos_operations::execution::Response<()>, Self::Error> {
         let _ = &request;
         self.instance.run(context, &[], &[], &[]).await.map_err(super::ControlError::Access)?;
         Ok(().into())
@@ -82,8 +79,7 @@ impl crate::execution::operations::Carrier for Control {
     }
 }
 
-#[cfg(feature = "lifecycle")]
-impl crate::Executable for Shutdown {
+impl harmos_operations::execution::Executable for Shutdown {
     type Carrier = Control;
 }
 

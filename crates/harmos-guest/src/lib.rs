@@ -13,6 +13,7 @@
 mod dispatch;
 mod envelope;
 mod error;
+pub mod lifecycle;
 #[cfg(feature = "kit")]
 pub mod plugin;
 
@@ -28,7 +29,10 @@ pub use harmos_domain::model;
 pub use harmos_domain::{
     ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec, encode_config, reserved, validate_config,
 };
-pub use harmos_operations as builtins;
+pub mod builtins {
+    pub use crate::lifecycle;
+    pub use harmos_operations::{Host, Storage, Streams, host, storage, streams};
+}
 pub mod operations {
     /* === Modules === */
 
@@ -52,8 +56,8 @@ pub mod operations {
     /* === Private Functions === */
     /* === Tests === */
 }
-pub use harmos_operations::execution::operations::OperationHost;
 pub use harmos_operations::execution::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_operations::execution::operations::{Catalog, OperationHost};
 pub use harmos_operations::execution::{Context, Dependent, Executable, Lifecycle, Operation, Resource, Response, Service, Setup};
 
 pub use harmos_domain::schema;
@@ -78,6 +82,8 @@ pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
 pub use plugin::Plugin;
 
 /* === Imports === */
+
+extern crate self as harmos_guest;
 
 // Standard Library Imports
 

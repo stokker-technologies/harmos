@@ -50,14 +50,11 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-#[cfg(target_arch = "wasm32")]
-use harmos::domain as harmos_domain;
-#[cfg(target_arch = "wasm32")]
-use harmos::guest;
 use harmos_domain::StreamSpec;
 use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
-#[cfg(not(target_arch = "wasm32"))]
 use harmos_guest as guest;
+#[cfg(target_arch = "wasm32")]
+use harmos_guest as harmos_domain;
 
 /* === Constants === */
 
@@ -113,7 +110,7 @@ impl RetryChoice {
 /* === Enums === */
 
 #[cfg_attr(not(target_arch = "wasm32"), harmos_domain::catalog(harmos_path = ::harmos_domain))]
-#[cfg_attr(target_arch = "wasm32", harmos::guest::catalog)]
+#[cfg_attr(target_arch = "wasm32", harmos_guest::catalog)]
 pub enum Operations {
     EchoOperation(EchoOperation),
     DeclineOperation(DeclineOperation),

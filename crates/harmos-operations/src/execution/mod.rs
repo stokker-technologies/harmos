@@ -9,14 +9,12 @@
 
 /* === Modules === */
 
-mod error;
 pub mod lifecycle;
 pub mod setup;
 
 #[cfg(feature = "grpc")]
 pub mod grpc;
 pub mod operations;
-pub mod plugin;
 pub mod services;
 
 /* === Re-Exports === */
@@ -27,7 +25,6 @@ pub use operations::{
     Catalog, Context, Dependent, EndpointSet, Executable, ExecutionContext, InputEndpoint, Instance, Invocation, Operation,
     OperationCatalog, OperationHost, OutputEndpoint, Resource, ResourceError, Response, ServingError, StartupError,
 };
-pub use plugin::Plugin;
 pub use services::Service;
 pub use setup::Setup;
 
@@ -104,7 +101,6 @@ pub mod __private {
     pub use crate::execution::operations::registration::{PreparedNative, RegistrationBatch, ServiceFuture};
     pub use crate::execution::operations::resources::ResourceSet;
     pub use crate::execution::operations::response::ErasedResponse;
-    pub use crate::execution::operations::serving::WireTable;
     pub use harmos_domain::__private::*;
 
     /* === Imports === */

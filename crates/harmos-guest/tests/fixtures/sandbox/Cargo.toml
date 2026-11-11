@@ -40,7 +40,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Local
-harmos = { path = "../../../../harmos", default-features = false, features = ["guest"] }
+harmos-guest = { path = "../../../../harmos-guest", default-features = false, features = ["kit", "derive", "grpc", "streaming"] }
 
 # Git
 

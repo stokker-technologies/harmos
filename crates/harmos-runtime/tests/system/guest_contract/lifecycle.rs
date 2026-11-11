@@ -24,12 +24,12 @@ use std::time::Duration;
 use super::{Bank, sandbox as wire};
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::Host;
-use harmos_runtime::operations::{
-    Context, EncodedInvocation, OperationDeclaration, PluginRegistration, PluginSdkRegistration, WireDeclaration,
-};
-use harmos_runtime::plugin::{
+use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
     PluginManager, PluginScope, PluginTransition, Router,
+};
+use harmos_runtime::operations::{
+    Context, EncodedInvocation, OperationDeclaration, PluginRegistration, PluginSdkRegistration, WireDeclaration,
 };
 
 /* === Constants === */
@@ -110,7 +110,7 @@ impl harmos_runtime::schema::Described for Publish {
 pub(super) struct Resources {
     registered: Option<harmos_runtime::guest::Registered<Bank>>,
     serving: Option<harmos_runtime::guest::Serving<Bank>>,
-    endpoint: Option<harmos_runtime::plugin::PluginEndpoint>,
+    endpoint: Option<harmos_runtime::guest::PluginEndpoint>,
     registration: Option<PluginRegistration>,
     sdk: Option<PluginSdkRegistration>,
     initializing: Option<EncodedInvocation>,
@@ -224,8 +224,8 @@ where
     }
     fn prepare(&mut self, definition: &PluginDefinition) -> harmos_runtime::Result<Backends> {
         match definition.kind() {
-            harmos_runtime::plugin::PluginKind::Guest => Ok(PluginBackend::Guest(self.guest_seed())),
-            harmos_runtime::plugin::PluginKind::Embedded => Ok(PluginBackend::Embedded(Resources::default())),
+            harmos_runtime::guest::PluginKind::Guest => Ok(PluginBackend::Guest(self.guest_seed())),
+            harmos_runtime::guest::PluginKind::Embedded => Ok(PluginBackend::Embedded(Resources::default())),
         }
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> harmos_runtime::Result<()> {
@@ -278,7 +278,7 @@ impl Resources {
                 authority,
                 &definition.configuration,
                 NonZeroUsize::new(
-                    2 * definition.configuration.len() + std::mem::size_of::<harmos_operations::lifecycle::Initialize>() + 64 + 30 + 3072,
+                    2 * definition.configuration.len() + std::mem::size_of::<harmos_guest::lifecycle::Initialize>() + 64 + 30 + 3072,
                 )
                 .unwrap(),
             )?,

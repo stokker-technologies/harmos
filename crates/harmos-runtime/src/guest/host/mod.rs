@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+pub(crate) mod envelope;
+pub(crate) mod plugin;
+
 mod sdk;
 mod serving;
 pub(crate) mod session;
@@ -78,7 +81,7 @@ pub struct Registered<A: Application> {
     store: Store<Bridge<A>>,
     sdk: sdk::Plugin,
     registrations: Vec<Registration>,
-    routing: Option<crate::plugin::PluginEndpoint>,
+    routing: Option<crate::guest::host::plugin::PluginEndpoint>,
     epochs: Arc<Epochs>,
     fuel: u64,
 }
@@ -86,7 +89,7 @@ pub struct Registered<A: Application> {
 struct Active<A: Application> {
     store: Store<Bridge<A>>,
     sdk: sdk::Plugin,
-    routing: Option<crate::plugin::PluginEndpoint>,
+    routing: Option<crate::guest::host::plugin::PluginEndpoint>,
     // Keeps Epoch Ticking Alive Through Physical Guest Settlement
     _epochs: Arc<Epochs>,
     fuel: u64,
@@ -96,9 +99,9 @@ struct Bridge<A: Application> {
     declaration: Declaration,
     streams: StreamManager<A>,
     operations: crate::operations::Manager,
-    publications: BTreeMap<String, Arc<crate::streams::PublicationLease>>,
+    publications: BTreeMap<String, Arc<crate::streams::StreamWriter>>,
     registration: Option<crate::streams::StreamRegistration>,
-    scope: Option<crate::plugin::PluginScope>,
+    scope: Option<crate::guest::host::plugin::PluginScope>,
     caller: Option<crate::operations::Caller>,
     children: Arc<Mutex<BTreeMap<[u8; 32], crate::operations::children::Children>>>,
     session: Option<std::sync::Weak<session::Endpoint>>,
@@ -111,13 +114,13 @@ struct Bridge<A: Application> {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Routing(#[from] crate::plugin::DispatchError),
+    Routing(#[from] crate::guest::host::plugin::DispatchError),
 
     #[error(transparent)]
     OperationCaller(#[from] crate::Error),
 
     #[error(transparent)]
-    Stream(#[from] crate::streams::StreamAdmissionError),
+    Stream(#[from] crate::streams::StreamRegistrationError),
 
     #[error(transparent)]
     Declaration(#[from] DeclarationError),
@@ -396,7 +399,7 @@ impl<A: Application> Registered<A> {
         &self.registrations
     }
 
-    pub fn routed(mut self, router: &crate::plugin::Router) -> Result<Self, Error> {
+    pub fn routed(mut self, router: &crate::guest::host::plugin::Router) -> Result<Self, Error> {
         let instance = router.enter(&self.store.data().declaration.id)?;
         self.store.data_mut().scope = instance.scope().cloned();
         let caller = self.store.data().operations.caller(&instance.caller())?;

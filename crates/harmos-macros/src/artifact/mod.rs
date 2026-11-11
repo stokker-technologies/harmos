@@ -9,11 +9,7 @@
 
 /* === Modules === */
 
-pub(crate) mod contribution;
 pub(crate) mod listener;
-pub(crate) mod observer;
-pub(crate) mod plugin;
-pub(crate) mod restart;
 
 /* === Re-Exports === */
 
@@ -22,7 +18,7 @@ pub(crate) mod restart;
 // Standard Library Imports
 
 // Third Party Imports
-use syn::{Error, LitStr};
+use syn::LitStr;
 // Local Imports
 
 /* === Constants === */
@@ -40,10 +36,6 @@ use syn::{Error, LitStr};
 /* === Implementations === */
 
 /* === Public Functions === */
-
-pub(crate) fn symbol(value: &str) -> String {
-    value.chars().map(|character| if character.is_ascii_alphanumeric() { character.to_ascii_uppercase() } else { '_' }).collect()
-}
 
 pub(crate) fn description(argument: Option<LitStr>, attributes: &[syn::Attribute]) -> String {
     argument.map(|written| written.value()).unwrap_or_else(|| documentation(attributes))
@@ -93,10 +85,6 @@ fn documented(attribute: &syn::Attribute) -> Option<String> {
     };
 
     Some(text.value())
-}
-
-fn version_argument(span: proc_macro2::Span) -> Error {
-    Error::new(span, "remove `version`: executable versions come from Cargo package.version")
 }
 
 /* === Tests === */

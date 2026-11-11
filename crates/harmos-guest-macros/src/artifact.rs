@@ -354,8 +354,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const REQUIRES: &'static [#harmos::catalog::Node<#requirement>] = {
                 const CALLEES: &[#harmos::catalog::Node<&'static [#harmos::operations::WireDeclaration]>] = #catalog_callees;
                 const EXPLICIT: &[#harmos::catalog::Node<#requirement>] = #requires;
-                const REQUIRED: [#harmos::catalog::Node<#requirement>; 1 + #harmos::plugin::callee_count(CALLEES)] =
-                    #harmos::plugin::aggregate(EXPLICIT, <#name as #declarations>::PROVIDES, CALLEES);
+                const REQUIRED: [#harmos::catalog::Node<#requirement>; 1 + #harmos::__private::plugin::callee_count(CALLEES)] =
+                    #harmos::__private::plugin::aggregate(EXPLICIT, <#name as #declarations>::PROVIDES, CALLEES);
                 &REQUIRED
             };
             const LISTENERS: &'static [#harmos::catalog::Node<#harmos::listeners::Entry>] = <#audience as #harmos::catalog::InertCatalog<#harmos::listeners::Declarations, #harmos::listeners::Entry>>::ENTRIES;

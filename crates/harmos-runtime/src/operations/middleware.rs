@@ -139,8 +139,8 @@ impl Invocation {
         self.origin.identity == super::caller::Identity::Host
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
+    #[cfg(feature = "plugin-guest")]
+    pub fn caller_scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
 

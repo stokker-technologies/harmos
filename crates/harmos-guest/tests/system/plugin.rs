@@ -21,8 +21,8 @@ use wasmtime::{Config, Engine, Store};
 // Local Imports
 use super::{Stub, support};
 use harmos_guest::Message;
+use harmos_guest::lifecycle::Initialize;
 use harmos_guest::operations::{WireAnswer, WireCommand};
-use harmos_operations::lifecycle::Initialize;
 
 /* === Constants === */
 
@@ -171,9 +171,7 @@ async fn sdk_lifecycle_retained() {
                 .phase(WireCommand::Prepare {
                     invocation: 7,
                     operation: "sandbox_guest.harmos.initialize".to_owned(),
-                    fingerprint: (harmos_domain::operations::Entry::of::<harmos_operations::lifecycle::Initialize>().fingerprint)()
-                        .unwrap()
-                        .0,
+                    fingerprint: (harmos_domain::operations::Entry::of::<harmos_guest::lifecycle::Initialize>().fingerprint)().unwrap().0,
                     generation: 1,
                     payload: Initialize {
                         config_json: br#""unexpected""#.to_vec(),
@@ -230,10 +228,10 @@ async fn sdk_lifecycle_retained() {
         generation_context: Vec::new(),
         assignments: Vec::new(),
     };
-    assert!(session.call::<harmos_operations::lifecycle::Initialize>(2, request.encode()).await.is_empty());
+    assert!(session.call::<harmos_guest::lifecycle::Initialize>(2, request.encode()).await.is_empty());
     let routed = session.call::<schematic_operations::schematic::ProposeRoute>(3, route()).await;
     assert_eq!(Response::decode(&routed).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 },]);
-    assert!(session.call::<harmos_operations::lifecycle::Shutdown>(4, vec![]).await.is_empty());
+    assert!(session.call::<harmos_guest::lifecycle::Shutdown>(4, vec![]).await.is_empty());
     assert!(
         matches!(
             session
@@ -252,7 +250,7 @@ async fn sdk_lifecycle_retained() {
         "shutdown revokes ordinary admission"
     );
     assert!(
-        session.call::<harmos_operations::lifecycle::Shutdown>(6, vec![]).await.is_empty(),
+        session.call::<harmos_guest::lifecycle::Shutdown>(6, vec![]).await.is_empty(),
         "SDK shutdown is idempotent on the same closed owner"
     );
 }

@@ -31,7 +31,7 @@ from . import bench, fixtures, paths
 
 # === Constants === #
 
-FEATURES = "harmos-runtime/plugin-grpc,harmos-runtime/plugin-guest,harmos-runtime/grpc"
+FEATURES = "harmos-runtime/plugin-guest,harmos-runtime/grpc"
 
 # === Types === #
 

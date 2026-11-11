@@ -35,8 +35,8 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-    pub fn validate_requirements(&self, candidate: &crate::plugin::PluginDefinitions) -> Result<()> {
+    #[cfg(feature = "plugin-guest")]
+    pub fn validate_requirements(&self, candidate: &crate::guest::host::plugin::PluginDefinitions) -> Result<()> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
         for (definition, required) in candidate.host_requirements() {
             let id = required.contract.operation().id.as_str();
@@ -80,7 +80,6 @@ impl Manager {
         let (result, retired) = {
             let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
             let retired = state.retired();
-            #[cfg(feature = "plugin-grpc")]
             for entry in entries {
                 if let Some(previous) = state.entries.get(entry.id()).and_then(|providers| {
                     providers.values().find(|previous| {
@@ -94,7 +93,6 @@ impl Manager {
                     });
                 }
             }
-            #[cfg(feature = "plugin-grpc")]
             for caller in state.entries.values().flat_map(|providers| providers.values()).chain(entries) {
                 let Some(binding) = caller.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() else {
                     continue;
@@ -156,12 +154,14 @@ impl Manager {
                     name: entry.id().to_owned(),
                 })
             } else {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+                #[cfg(feature = "plugin-guest")]
                 let gate = entries
                     .iter()
                     .find_map(|entry| entry.plugin.as_ref())
                     .map_or(Ok(()), |scope| if scope.is_closed() { Err(Error::Closing { domain: "plugin scope" }) } else { Ok(()) });
 
+                #[cfg(not(feature = "plugin-guest"))]
+                let gate = Ok(());
                 #[cfg(feature = "grpc")]
                 let gate = gate.and_then(|()| {
                     let mut staged = BTreeMap::new();

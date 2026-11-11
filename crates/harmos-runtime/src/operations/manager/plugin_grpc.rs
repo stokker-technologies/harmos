@@ -86,6 +86,7 @@ impl Manager {
                 binding,
                 definition,
                 Some(crate::operations::wire::dispatch_native),
+                #[cfg(feature = "plugin-guest")]
                 None,
             )?);
         }
@@ -110,7 +111,15 @@ impl Manager {
             };
             let binding = Arc::new(Binding::new(activation, contract.clone()));
             let entry = self
-                .binding_erased(&activation.description.id, lane, binding, definition, Some(crate::operations::wire::dispatch_native), None)
+                .binding_erased(
+                    &activation.description.id,
+                    lane,
+                    binding,
+                    definition,
+                    Some(crate::operations::wire::dispatch_native),
+                    #[cfg(feature = "plugin-guest")]
+                    None,
+                )
                 .map_err(|error| PlacementError::Invalid(error.to_string()))?;
             entries.push(entry);
         }

@@ -21,7 +21,7 @@ pub use harmos_domain::config::*;
 #[cfg(feature = "plugin-guest")]
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
-#[cfg(any(feature = "grpc", feature = "plugin"))]
+#[cfg(any(feature = "grpc", feature = "plugin-guest"))]
 use std::time::Duration;
 
 // Third Party Imports
@@ -92,7 +92,7 @@ pub struct OperationSettings {
     pub preparation_bytes: Option<NonZeroUsize>,
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone, Debug)]
 pub struct PluginSettings {
     pub configuration: Vec<u8>,
@@ -104,7 +104,7 @@ pub struct PluginSettings {
     pub restart: PluginRestartSettings,
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PluginRestartSettings {
     // Automatic Restarts Allowed Per Explicit Activation Cycle.
@@ -131,7 +131,7 @@ pub struct PluginGuestSettings {
 
 /* === Implementations === */
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl Default for PluginRestartSettings {
     fn default() -> Self {
         Self {
@@ -142,7 +142,7 @@ impl Default for PluginRestartSettings {
     }
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl PluginRestartSettings {
     pub fn validate(&self) -> Result<()> {
         if self.backoff_base.is_zero()
@@ -158,7 +158,7 @@ impl PluginRestartSettings {
     }
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl Default for PluginSettings {
     fn default() -> Self {
         Self {
@@ -173,7 +173,7 @@ impl Default for PluginSettings {
     }
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl PluginSettings {
     pub fn validate(&self) -> Result<()> {
         self.restart.validate()?;

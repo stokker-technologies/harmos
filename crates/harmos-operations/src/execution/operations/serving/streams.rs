@@ -156,9 +156,6 @@ impl WireStreams {
 
     #[tracing::instrument(target = "harmos::streams", name = "streams.send", level = "trace", skip_all)]
     pub async fn send(&self, epoch: u64, payload: &[u8]) -> Result<(), ServingError> {
-        if payload.len() > super::codec::LIMIT {
-            return Err(ServingError::Stream(streaming::Error::Capacity));
-        }
         let input = self.input.as_ref().ok_or(ServingError::StreamPhase)?;
         let mut changed = self.state.subscribe();
         self.check_input(epoch)?;
@@ -421,13 +418,7 @@ fn encode<T: Message + 'static>(
     #[cfg(feature = "grpc")]
     if let Some(codec) = codec {
         let bytes = (codec.encode)(item).map_err(ServingError::Codec)?;
-        if bytes.len() > super::codec::LIMIT {
-            return Err(ServingError::Stream(streaming::Error::Capacity));
-        }
         return Ok(bytes);
-    }
-    if item.encoded_size() > super::codec::LIMIT {
-        return Err(ServingError::Stream(streaming::Error::Capacity));
     }
     Ok(item.encode())
 }

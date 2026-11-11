@@ -253,11 +253,11 @@ fn stream_attribute_carries() {
     );
     assert_eq!(PresentedSample::definition().metadata().description.as_deref(), Some("Portable samples"));
 
-    #[cfg(feature = "plugin")]
-    const ENTRIES: &[harmos_runtime::plugin::inventory::publications::Entry] =
-        &[harmos_runtime::plugin::inventory::publications::Entry::of::<PresentedSample>()];
-    #[cfg(feature = "plugin")]
+    #[cfg(feature = "plugin-guest")]
+    const ENTRIES: &[harmos_runtime::guest::inventory::publications::Entry] =
+        &[harmos_runtime::guest::inventory::publications::Entry::of::<PresentedSample>()];
+    #[cfg(feature = "plugin-guest")]
     assert_eq!(ENTRIES[0].metadata(), <PresentedSample as StreamSpec>::metadata());
-    #[cfg(feature = "plugin")]
+    #[cfg(feature = "plugin-guest")]
     assert_eq!(ENTRIES[0].row_metadata(), <PresentedSample as StreamSpec>::row_metadata());
 }

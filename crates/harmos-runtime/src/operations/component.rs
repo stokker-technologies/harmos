@@ -310,11 +310,10 @@ impl Component {
             };
             // The guest decoded the request; refuse it before any attempt runs.
             let payload = ready(answer)?;
-            let grant =
-                harmos_operations::execution::operations::decode_prepared_grant(&payload).map_err(|error| GuestError::Malformed {
-                    method: "operate".to_owned(),
-                    message: format!("prepared grant is malformed: {error}"),
-                })?;
+            let grant = crate::guest::host::envelope::decode_prepared_grant(&payload).map_err(|error| GuestError::Malformed {
+                method: "operate".to_owned(),
+                message: format!("prepared grant is malformed: {error}"),
+            })?;
             context.admit_grant(grant.as_ref()).map_err(ComponentError::Unauthorized)?;
         }
         let answer = self.phase_encoded(state, context, Phase::Initialize).await?;
@@ -400,7 +399,7 @@ impl Component {
 }
 
 impl Component {
-    pub fn scope(&self) -> Option<&crate::plugin::PluginScope> {
+    pub fn scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.endpoint.scope()
     }
 
@@ -442,7 +441,7 @@ impl Component {
             field: "SDK lifecycle",
             reason: "expected exactly two entries",
         })?;
-        super::PluginSdkRegistration::new(operations.clone(), scope, entries, crate::plugin::PluginKind::Guest)
+        super::PluginSdkRegistration::new(operations.clone(), scope, entries, crate::guest::host::plugin::PluginKind::Guest)
     }
 }
 

@@ -22,7 +22,7 @@ use std::path::Path;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use harmos::state::Position;
+use harmos_runtime::state::Position;
 use schematic_storage::Jsonl;
 use support::{Bank, Ledger, booted, deposit, ledger, scratch};
 

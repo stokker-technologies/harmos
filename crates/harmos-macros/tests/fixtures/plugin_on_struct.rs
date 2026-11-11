@@ -29,7 +29,7 @@
 /* === Structs === */
 
 // Identity Is Authored on the Unified Implementation, Where Its Contract Is Known
-#[harmos::plugin(description = "A bridge.", id = "bridge", requires = ())]
+#[harmos::guest(harmos_path = ::harmos, description = "A bridge.", id = "bridge", requires = ())]
 pub struct Bridge;
 
 /* === Enums === */
@@ -38,7 +38,7 @@ pub struct Bridge;
 
 /* === Implementations === */
 
-impl harmos::Plugin for Bridge {}
+impl harmos::guest::Plugin for Bridge {}
 
 /* === Public Functions === */
 

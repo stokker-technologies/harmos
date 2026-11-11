@@ -15,7 +15,6 @@ mod entry;
 mod grants;
 mod inspection;
 mod lookup;
-#[cfg(feature = "plugin-grpc")]
 mod plugin_grpc;
 mod registration;
 mod registry;
@@ -30,7 +29,6 @@ mod residents;
 
 /* === Re-Exports === */
 
-#[cfg(feature = "plugin-grpc")]
 pub(crate) use plugin_grpc::Admission as GrpcAdmission;
 
 /* === Imports === */
@@ -53,9 +51,9 @@ use super::caller::{Origin, Source};
 use super::{OperationGeneration, OperationInstanceId, Running};
 
 use super::instances::Instances;
+#[cfg(feature = "plugin-guest")]
+use crate::guest::host::plugin::PluginScope;
 use crate::operations::{OperationDeclaration, OperationDefinition};
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
-use crate::plugin::PluginScope;
 use crate::supervision::instance::Instance;
 use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, state::Position};
 
@@ -84,7 +82,7 @@ pub struct Manager {
     pub(crate) resident: super::resident::Registry,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone)]
 pub(crate) struct WeakOperationManager {
     schema_settings: std::sync::Weak<crate::config::SchemaSettings>,
@@ -102,7 +100,7 @@ pub(crate) struct Registry {
     state: Mutex<State>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) struct GenerationCommit<'a> {
     _state: std::sync::MutexGuard<'a, State>,
 }
@@ -111,7 +109,7 @@ struct State {
     closing: bool,
     entries: BTreeMap<String, BTreeMap<String, Arc<Entry>>>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     staging: Vec<std::sync::Weak<PluginScope>>,
 
     #[cfg(feature = "grpc")]
@@ -142,10 +140,10 @@ pub(super) struct Entry {
 
     pub(super) wire: Option<super::wire::Dispatch>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     plugin: Option<PluginScope>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) sdk: Option<harmos_operations::lifecycle::Action>,
 }
 
@@ -165,7 +163,7 @@ pub(super) struct GrantAuthority {
     operation: String,
 
     // A cross-owner plugin caller and its declared requirement for this operation.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+    #[cfg(feature = "plugin-guest")]
     plugin: Option<(String, Option<harmos_domain::inventory::contracts::Required>)>,
 
     // External Authority Never Replaces A Plugin Caller's Own Requirement.
@@ -203,14 +201,14 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl std::fmt::Debug for WeakOperationManager {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_struct("WeakOperationManager").finish_non_exhaustive()
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl WeakOperationManager {
     pub(crate) fn upgrade(&self) -> Option<Manager> {
         Some(Manager {
@@ -228,7 +226,7 @@ impl WeakOperationManager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl Manager {
     pub(crate) fn downgrade(&self) -> WeakOperationManager {
         WeakOperationManager {
@@ -285,7 +283,7 @@ impl<L: Lane> std::ops::Deref for OperationManager<L> {
 
 /* === Private Functions === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 fn grant_allowed(required: Option<&harmos_domain::inventory::contracts::Required>, grant: Option<&harmos_domain::plugin::Grant>) -> bool {
     match grant {
         None => true,
