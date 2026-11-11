@@ -23,8 +23,8 @@ use std::task::Poll;
 use tokio::sync::{Mutex, watch};
 
 // Local Imports
-use super::ServingError;
-use crate::execution::operations::{EndpointSet, StreamInput, StreamOutput, StreamSettings, streaming};
+use super::{ServingError, WireStreamLimits};
+use crate::execution::operations::{EndpointSet, StreamInput, StreamOutput, streaming};
 use crate::execution::{MemorySize, Message};
 
 /* === Constants === */
@@ -36,12 +36,6 @@ use crate::execution::{MemorySize, Message};
 type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
 
 /* === Structs === */
-
-#[derive(Clone, Copy)]
-pub struct WireStreamLimits {
-    pub input: StreamSettings,
-    pub output: StreamSettings,
-}
 
 #[derive(Clone)]
 pub struct WireStreams {
@@ -246,7 +240,8 @@ impl WireStreams {
         })
     }
 
-    pub(crate) fn close(&self) {
+    #[doc(hidden)]
+    pub fn close(&self) {
         self.state.send_modify(|state| state.phase = Phase::Closed);
     }
 

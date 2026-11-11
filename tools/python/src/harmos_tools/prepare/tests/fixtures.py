@@ -15,6 +15,7 @@
 import argparse
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,7 @@ def main() -> None:
 
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--focused-messages", type=Path)
+    parser.add_argument("--componentizer", type=Path)
     parser.add_argument("--libraries", help="comma-separated library target names represented in focused Cargo messages")
     parser.add_argument("--inspection-messages", help="comma-separated Cargo JSON captures that produced inspected artifacts")
     parser.add_argument("--inspections", help="comma-separated native executable or wasm target names to inspect")
@@ -60,11 +62,18 @@ def main() -> None:
     inspections = options.inspections.split(",") if options.inspections else []
     if bool(inspection_messages) != bool(inspections):
         parser.error("--inspection-messages and --inspections must be supplied together")
-    prepare_focused(options.focused_messages, options.libraries.split(","), inspection_messages, inspections)
+    prepare_focused(
+        options.focused_messages, options.libraries.split(","), inspection_messages, inspections, componentizer=options.componentizer
+    )
 
 
 def prepare_focused(
-    messages: Path, requested: list[str], inspection_messages: list[Path] | None = None, inspections: list[str] | None = None
+    messages: Path,
+    requested: list[str],
+    inspection_messages: list[Path] | None = None,
+    inspections: list[str] | None = None,
+    *,
+    componentizer: Path | None = None,
 ) -> Path:
     """Export Hash-Stamped Focused Libraries And Optional Inspection Artifacts."""
     required = set(requested)
@@ -96,8 +105,17 @@ def prepare_focused(
     inspections = inspections or []
     inspection_sources = _inspection_artifacts(inspection_messages, inspections)
     inspection_paths = _stage_inspections(inspection_sources)
+    if componentizer is not None:
+        for path in inspection_paths.values():
+            if path.suffix != ".wasm":
+                continue
+            module = path.with_suffix(".core.wasm")
+            path.replace(module)
+            request = {"action": "component", "module": str(module), "output": str(path)}
+            subprocess.run([str(componentizer.resolve())], input=json.dumps(request), text=True, check=True)
     metadata["inspections"] = {name: str(path) for name, path in inspection_paths.items()}
     metadata["inspection_sha256"] = {name: staging.digest(path) for name, path in inspection_paths.items()}
+    metadata["artifacts"] = {name: str(path) for name, path in inspection_paths.items() if path.suffix == ".wasm"}
     for name, library in libraries.items():
         library_path = Path(library["path"])
         digest = staging.digest(library_path)

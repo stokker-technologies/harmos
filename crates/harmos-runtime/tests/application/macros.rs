@@ -565,13 +565,13 @@ mod guest_plugins {
         }
     }
 
-    #[harmos_runtime::plugin(
+    #[harmos_runtime::guest(
         id = "unified_guest",
         description = "Guest Authored Plugin",
         requires = (),
         streams(Row)
     )]
-    impl harmos_runtime::Plugin for Guest {
+    impl harmos_runtime::guest::Plugin for Guest {
         const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
     }
 
@@ -627,8 +627,8 @@ mod guest_plugins {
         }
     }
 
-    #[harmos_runtime::plugin(id = "unified_listening_guest", requires = (), listeners = Audience)]
-    impl harmos_runtime::Plugin for ListeningGuest {
+    #[harmos_runtime::guest(id = "unified_listening_guest", requires = (), listeners = Audience)]
+    impl harmos_runtime::guest::Plugin for ListeningGuest {
         const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
     }
 

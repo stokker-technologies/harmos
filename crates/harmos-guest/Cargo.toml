@@ -16,7 +16,7 @@ version = { workspace = true }
 
 [features]
 default = ["derive"]
-derive = ["harmos-domain/derive", "dep:harmos-macros"]
+derive = ["harmos-domain/derive", "dep:harmos-macros", "dep:harmos-guest-macros"]
 # Provider Protobuf Decoding For Contracts That Bind A gRPC Method; No Host Networking.
 grpc = ["harmos-operations/grpc"]
 # Stream Endpoints Add Rust Channel Traffic.
@@ -33,6 +33,7 @@ kit = ["harmos-operations/lifecycle", "dep:wit-bindgen", "wit-bindgen/inter-task
 [dependencies]
 # Local
 harmos-domain = { workspace = true }
+harmos-guest-macros = { workspace = true, optional = true }
 harmos-macros = { workspace = true, optional = true }
 harmos-operations = { workspace = true }
 
@@ -47,6 +48,8 @@ tracing = { workspace = true, default-features = true }
 # Utilities
 
 # Serialization
+serde = { workspace = true, features = ["derive"] }
+postcard = { workspace = true }
 wit-bindgen = { workspace = true, default-features = true, features = ["async-spawn"], optional = true }
 
 # Configuration
@@ -58,7 +61,7 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 # Concurrency
 
 # Async
-
+tokio = { workspace = true, features = ["sync"] }
 # Networking
 
 # Storage
@@ -85,7 +88,6 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 # Utilities
 
 # Serialization
-
 # Configuration
 
 # Filesystem

@@ -45,8 +45,8 @@ macro_rules! inert_plugin {
             async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> { panic!("inert inspection never shuts resources down") }
             async fn cleanup(&mut self) -> Result<(), Self::Error> { panic!("inert inspection never releases resources") }
         }
-        #[harmos_runtime::plugin(id = $id, description = "Inert Inventory Fixture", requires = (), harmos_path = crate::operations::wire::artifact::facade::__harmos)]
-        impl harmos_runtime::Plugin for $name {
+        #[harmos_runtime::guest(id = $id, description = "Inert Inventory Fixture", requires = (), harmos_path = crate::operations::wire::artifact::facade::__harmos)]
+        impl harmos_runtime::guest::Plugin for $name {
             const CATALOGS: &'static [harmos_runtime::operations::Catalog] = $catalogs;
         }
     };

@@ -231,6 +231,8 @@
   - [x] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
 - [ ] 4.5 Move surviving native invocation, resource and serving engine code from `crates/harmos-sdk` to host owners with narrow resources for operations; isolate guest dispatch, envelopes and authoring support privately in `harmos-guest` and the runtime guest host, with guest protocol migration deferred under 7.1.
   - [ ] 4.5.1 Separate `OperationFactory` installation from its shared `WireTable` callback in `crates/harmos-operations/src/execution/operations/registration.rs`; move guest-only dispatch, codec and lifecycle ownership into private guest modules and rerun guest integration and system stories before native removal.
+    - [x] 4.5.1.1 Remove the table-install callback; give guests a private table, lifecycle owner and envelope codec, with a guest-only artifact macro crate; retain erased operation preparation in operations and prove guest integration and system stories.
+    - [ ] 4.5.1.2 Finish the runtime guest host extraction: `src/guest/host/{mod,session}.rs` still imports native wire envelopes and `src/plugin/host/guest.rs` still uses shared plugin scopes, generations and admission; move their required guest controls privately before deleting the native owners.
 - [ ] 4.6 Verify plugin and client SDK dependency closures contain no host crates; migrate example/build-script imports to protocol or runtime as appropriate, and update README/product guidance for the public entry point.
 
 ## 5. Pilot SDKs

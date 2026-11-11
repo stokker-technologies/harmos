@@ -76,59 +76,6 @@ enum Initialization {
 /* === Implementations === */
 
 impl WireTable {
-    pub(crate) fn install<D, T>(
-        &mut self, dependencies: ResourceSet, contract: crate::execution::operations::Contract,
-    ) -> Result<(), ServingError>
-    where
-        D: OperationDeclaration,
-        T: Carrier<Declaration = D>,
-    {
-        let context = ExecutionContext::new(self.trusted_resources.clone(), super::super::CallContext::default());
-        let dependencies = context.with_resources(dependencies).resources().clone();
-        #[cfg(feature = "grpc")]
-        let protobuf = D::GRPC.is_some().then(super::protobuf::Codec::of::<D>);
-        #[cfg(feature = "streaming")]
-        let limits = self.stream_limits;
-        #[cfg(feature = "streaming")]
-        if T::StreamEndpoints::item_types() != (None, None) && limits.is_none() {
-            return Err(ServingError::StreamLimits);
-        }
-        #[cfg(not(feature = "streaming"))]
-        if T::StreamEndpoints::item_types() != (None, None) {
-            return Err(ServingError::StreamUnsupported);
-        }
-        let observe = std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::execution::observers::Control>();
-        self.bind_owned_contract::<D, T>(
-            dependencies,
-            contract,
-            false,
-            observe,
-            move || {
-                if let Some(endpoints) = T::StreamEndpoints::empty() {
-                    return Ok(StreamEndpoints {
-                        endpoints,
-                        #[cfg(feature = "streaming")]
-                        streams: None,
-                    });
-                }
-                #[cfg(feature = "streaming")]
-                {
-                    let (endpoints, streams) = T::StreamEndpoints::bind_wire(limits.ok_or(ServingError::StreamLimits)?)?;
-                    Ok(StreamEndpoints { endpoints, streams: Some(streams) })
-                }
-                #[cfg(not(feature = "streaming"))]
-                Err(ServingError::StreamUnsupported)
-            },
-            #[cfg(feature = "grpc")]
-            protobuf,
-        )?;
-        if observe {
-            let id = QualifiedId::qualify(&self.owner, D::ID).map_err(|_| ServingError::Catalog)?;
-            self.handlers.get_mut(id.as_str()).expect("installed observe control").resident = true;
-        }
-        Ok(())
-    }
-
     pub fn install_lifecycle<D, T>(
         &mut self, dependencies: ResourceSet, descriptor: harmos_domain::model::operations::lifecycle::Descriptor,
     ) -> Result<(), ServingError>
@@ -298,7 +245,7 @@ impl<T: Carrier> Prepared for State<T> {
         })
     }
 
-    fn attempt<'a>(&'a mut self, context: &'a ExecutionContext) -> Answer<'a> {
+    fn attempt<'a>(&'a mut self, context: &'a ExecutionContext, _epoch: Option<u64>) -> Answer<'a> {
         Box::pin(async move {
             if self.closing {
                 return Err(ServingError::Closing);

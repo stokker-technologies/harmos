@@ -51,6 +51,15 @@ Focused builds also accept `--example`. Check the packaging fixture driver with:
 mise run build -- --package harmos-packaging --example fixture-driver --features guest,generate-python --check
 ```
 
+Focused guest builds accept `--target wasm32-unknown-unknown` and `--messages <path>`
+to capture Cargo artifacts. Build each guest through that selection, then use
+`prepare:tests:fixtures --focused-messages <native-library-capture> --libraries harmos_guest
+--inspection-messages <guest-captures> --inspections <guest-names>
+--componentizer target/debug/examples/fixture-driver.exe` to componentize and stamp
+those exact artifacts. On Unix, omit `.exe`. Set `HARMOS_FOCUSED_FIXTURES` to the
+printed manifest when running the focused guest integration and system targets.
+Build the componentizer with the fixture-driver selection above, without `--check`.
+
 Use `test --language python --exact tests.integration.<module>.<case>` for a
 focused tooling test.
 

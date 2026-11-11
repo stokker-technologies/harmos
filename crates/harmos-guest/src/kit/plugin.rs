@@ -23,9 +23,10 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::context::Context;
-use harmos_operations::execution::__private::WireTable;
-use harmos_operations::execution::operations::{Contracts, WireCommand};
-use harmos_operations::execution::plugin::{Declared, Owner, Plugin};
+use crate::dispatch::Table as WireTable;
+use crate::envelope::WireCommand;
+use crate::plugin::{Declared, Owner, Plugin};
+use harmos_operations::execution::operations::Contracts;
 
 /* === Constants === */
 
@@ -86,7 +87,7 @@ pub fn registrations<P: Plugin + Declared>() -> Result<Vec<__bindings::harmos::g
     super::context::retain();
     std::hint::black_box(P::markers().map_err(|error| error.to_string())?);
     let mut registrar = harmos_domain::Registrar::new();
-    <P as harmos_operations::execution::Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
+    <P as Plugin>::register(&mut registrar).map_err(|error| error.to_string())?;
     Ok(registrar
         .finish()
         .into_iter()
@@ -138,7 +139,7 @@ where
             return Err(refusal("contribution sections differ from authored selection"));
         }
         let (owner, table) = Owner::<P>::new(assigned_owner, provides, capacity).map_err(refusal)?;
-        harmos_operations::lifecycle::bind(owner, &table).map_err(refusal)?;
+        crate::plugin::bind(owner, &table).map_err(refusal)?;
         let assignments = harmos_operations::execution::operations::OperationAssignments::default();
         *active = Some(Instance {
             owner: TypeId::of::<P>(),

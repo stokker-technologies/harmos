@@ -93,6 +93,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
     build.add_argument("--package")
     build.add_argument("--manifest-path", type=Path)
+    build.add_argument("--target")
+    build.add_argument("--messages", type=Path)
     build.add_argument("--features")
     build.add_argument("--example")
     build.add_argument("--check", action="store_true")
@@ -291,6 +293,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command += ["--features", options.features]
         if options.example:
             command += ["--example", options.example]
+        if options.target:
+            command += ["--target", options.target]
+        if options.messages is not None:
+            return cargo.focused(root, "check" if options.check else "build", command, messages=options.messages)
         return cargo.focused(root, "check" if options.check else "build", command)
     if options.command == "test" and options.package:
         if not options.target:

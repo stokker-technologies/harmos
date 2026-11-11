@@ -46,11 +46,11 @@ pub use response::Response;
 pub(crate) use serving::WireTable;
 pub use serving::{
     CHILD_METHOD, ServingError, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError,
-    WireCommand, decode_prepared_grant, encode_prepared_grant,
+    WireCommand, WireStreamLimits, decode_prepared_grant, encode_prepared_grant,
 };
 
 #[cfg(feature = "streaming")]
-pub use serving::{WireEndpoints, WireStreamLimits, WireStreams};
+pub use serving::{WireEndpoints, WireStreams};
 
 pub use startup::{StartupError, StartupIssue, StartupReport};
 #[cfg(feature = "streaming")]

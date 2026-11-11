@@ -102,7 +102,7 @@ impl Lifecycle for GuestPlugin {
 }
 
 #[harmos::guest(id = "guest_fixture", requires = ())]
-impl harmos::Plugin for GuestPlugin {
+impl harmos::guest::Plugin for GuestPlugin {
     const CATALOGS: &'static [harmos::operations::Catalog] = &[];
 }
 

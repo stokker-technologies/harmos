@@ -50,10 +50,10 @@ pub struct Context {
 /* === Implementations === */
 
 impl harmos_operations::execution::lifecycle::Context for Context {
-    type Configuration = harmos_operations::execution::__private::WireTable;
+    type Configuration = crate::dispatch::Table;
 }
 
-impl harmos_operations::execution::plugin::Context for Context {
+impl crate::plugin::Context for Context {
     fn assign_operations(&self, bytes: &[u8]) -> Result<(), harmos_operations::execution::operations::ServingError> {
         self.assignments.install(bytes)
     }

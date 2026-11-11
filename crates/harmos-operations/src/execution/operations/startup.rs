@@ -148,7 +148,8 @@ impl StartupError {
     }
 
     // Carriers Preserve The Whole Startup Aggregate Instead Of Losing Its Sibling Sources.
-    pub(crate) fn failure(error: &(dyn std::error::Error + 'static), kind: FailureKind) -> Failure {
+    #[doc(hidden)]
+    pub fn failure(error: &(dyn std::error::Error + 'static), kind: FailureKind) -> Failure {
         let startup = std::iter::successors(Some(error), |source| source.source()).find_map(|source| {
             source.downcast_ref::<Self>().or_else(|| match source.downcast_ref::<ServingError>() {
                 Some(ServingError::Startup(startup)) => Some(startup.as_ref()),

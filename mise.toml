@@ -166,11 +166,12 @@ description = "Join Independently Built Product and Test Fixtures"
 usage = '''
 flag "--profile <profile>" default="dev"
 flag "--focused-messages <path>"
+flag "--componentizer <path>"
 flag "--libraries <names>"
 flag "--inspection-messages <paths>"
 flag "--inspections <names>"
 '''
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.prepare.tests.fixtures --profile {{usage.profile}}{% if usage.focused_messages %} --focused-messages {{usage.focused_messages}} --libraries {{usage.libraries}}{% endif %}{% if usage.inspection_messages %} --inspection-messages {{usage.inspection_messages}} --inspections {{usage.inspections}}{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.prepare.tests.fixtures --profile {{usage.profile}}{% if usage.componentizer %} --componentizer {{usage.componentizer}}{% endif %}{% if usage.focused_messages %} --focused-messages {{usage.focused_messages}} --libraries {{usage.libraries}}{% endif %}{% if usage.inspection_messages %} --inspection-messages {{usage.inspection_messages}} --inspections {{usage.inspections}}{% endif %}"
 
 [tasks."format:python"]
 hide = true

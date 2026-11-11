@@ -999,11 +999,25 @@ name = "harmos-guest"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
+ "harmos-guest-macros",
  "harmos-macros",
  "harmos-operations",
+ "postcard",
+ "serde",
  "thiserror",
+ "tokio",
  "tracing",
  "wit-bindgen 0.61.1",
+]
+
+[[package]]
+name = "harmos-guest-macros"
+version = "0.1.14"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
 ]
 
 [[package]]

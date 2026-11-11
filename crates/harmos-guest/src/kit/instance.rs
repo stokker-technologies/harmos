@@ -27,11 +27,11 @@ use std::marker::PhantomData;
 use super::UNKNOWN;
 use super::context::Context;
 use crate::OperationRefusal;
+use crate::envelope::{WireChildAction, WireChildCall, WireChildControl};
 use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_operations::execution::operations::{
-    CallContext, ContextError, ContextValue, Instance, OperationDeclaration, OperationHost, Response, WireChildAction, WireChildCall,
-    WireChildControl,
+    CallContext, ContextError, ContextValue, Instance, OperationDeclaration, OperationHost, Response,
 };
 use harmos_operations::lifecycle::InstanceState;
 

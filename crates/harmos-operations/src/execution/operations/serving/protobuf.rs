@@ -40,8 +40,8 @@ type Prepare = fn(&[u8]) -> Result<(Vec<u8>, usize), MessageError>;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Codec {
-    pub(super) decode: Decode,
-    pub(super) encode: Encode,
+    pub(crate) decode: Decode,
+    pub(crate) encode: Encode,
 
     #[cfg(feature = "streaming")]
     pub(super) input: Option<ItemCodec>,
@@ -55,8 +55,8 @@ pub(crate) struct Codec {
 pub(super) struct ItemCodec {
     pub(super) item_type: std::any::TypeId,
     pub(super) prepare: Prepare,
-    pub(super) decode: Decode,
-    pub(super) encode: Encode,
+    pub(crate) decode: Decode,
+    pub(crate) encode: Encode,
 }
 
 /* === Enums === */

@@ -25,6 +25,9 @@ pub use harmos_sdk_grpc as sdk;
 #[cfg(all(feature = "runtime", target_arch = "wasm32"))]
 pub use harmos_operations::execution::*;
 
+#[cfg(all(feature = "guest", target_arch = "wasm32"))]
+pub use harmos_guest::{Plugin, plugin};
+
 // Portable operation declarations remain portable even when the same dependency graph
 // enables runtime execution for another crate.
 pub use harmos_macros::{catalog, operation};
@@ -33,7 +36,7 @@ pub use harmos_macros::{catalog, operation};
 pub use harmos_macros::plugin as sidecar;
 
 #[cfg(feature = "guest")]
-pub use harmos_macros::plugin as guest;
+pub use harmos_guest::guest;
 
 #[cfg(not(feature = "runtime"))]
 pub use harmos_domain::*;
@@ -144,8 +147,8 @@ pub mod guest {
 
     /* === Re-Exports === */
 
+    pub use harmos_guest::guest as plugin;
     pub use harmos_guest::*;
-    pub use harmos_macros::plugin;
 
     /* === Imports === */
 

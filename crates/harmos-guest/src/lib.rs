@@ -9,7 +9,12 @@
 
 /* === Modules === */
 
+#[cfg(feature = "kit")]
+mod dispatch;
+mod envelope;
 mod error;
+#[cfg(feature = "kit")]
+pub mod plugin;
 
 #[cfg(feature = "kit")]
 pub mod kit;
@@ -24,10 +29,32 @@ pub use harmos_domain::{
     ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec, encode_config, reserved, validate_config,
 };
 pub use harmos_operations as builtins;
-pub use harmos_operations::execution::operations;
+pub mod operations {
+    /* === Modules === */
+
+    /* === Re-Exports === */
+
+    #[doc(hidden)]
+    pub use crate::envelope::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand};
+    pub use harmos_operations::execution::operations::*;
+    /* === Imports === */
+    // Standard Library Imports
+    // Third Party Imports
+    // Local Imports
+    /* === Constants === */
+    /* === Macros === */
+    /* === Type Aliases === */
+    /* === Structs === */
+    /* === Enums === */
+    /* === Traits === */
+    /* === Implementations === */
+    /* === Public Functions === */
+    /* === Private Functions === */
+    /* === Tests === */
+}
 pub use harmos_operations::execution::operations::OperationHost;
 pub use harmos_operations::execution::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-pub use harmos_operations::execution::{Context, Dependent, Executable, Lifecycle, Operation, Plugin, Resource, Response, Service, Setup};
+pub use harmos_operations::execution::{Context, Dependent, Executable, Lifecycle, Operation, Resource, Response, Service, Setup};
 
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
@@ -44,8 +71,11 @@ pub use kit::{OperationInstance, OperationRefusal, PublishError, Publisher, UNKN
 pub use harmos_domain::{listener, message, stream};
 
 #[cfg(feature = "derive")]
+pub use harmos_guest_macros::plugin as guest;
+#[cfg(feature = "derive")]
 pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
-pub use harmos_operations::execution::plugin;
+#[cfg(feature = "kit")]
+pub use plugin::Plugin;
 
 /* === Imports === */
 

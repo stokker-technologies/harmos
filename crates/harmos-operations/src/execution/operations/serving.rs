@@ -22,7 +22,7 @@ mod streams;
 
 pub use codec::WireCodecError;
 #[cfg(feature = "streaming")]
-pub use streams::{WireEndpoints, WireStreamLimits, WireStreams};
+pub use streams::{WireEndpoints, WireStreams};
 
 /* === Imports === */
 
@@ -56,6 +56,12 @@ type Finalization<S> = Pin<Box<dyn Future<Output = (S, Result<(), ServingError>)
 type Prepare = Box<dyn Fn(Vec<u8>, bool) -> Result<Box<dyn Prepared>, ServingError> + Send + Sync>;
 
 /* === Structs === */
+
+#[derive(Clone, Copy)]
+pub struct WireStreamLimits {
+    pub input: harmos_domain::config::StreamSettings,
+    pub output: harmos_domain::config::StreamSettings,
+}
 
 struct Contextual<F: std::future::Future> {
     future: Option<std::pin::Pin<Box<F>>>,
@@ -319,7 +325,7 @@ trait Prepared: Send {
         None
     }
     fn bind<'a>(&'a mut self, context: &'a ExecutionContext) -> Finished<'a>;
-    fn attempt<'a>(&'a mut self, context: &'a ExecutionContext) -> Answer<'a>;
+    fn attempt<'a>(&'a mut self, context: &'a ExecutionContext, epoch: Option<u64>) -> Answer<'a>;
     fn finalize(&mut self) -> Finished<'_>;
 }
 
@@ -410,7 +416,7 @@ impl WireTable {
         staged.resources = self.resources.clone();
         staged.trusted_resources = self.trusted_resources.clone();
         for factory in batch.operations {
-            factory.install(&mut staged)?;
+            staged.install_factory(factory, false)?;
         }
         for factory in batch.services {
             factory.policy.validate().map_err(|_| ServingError::Catalog)?;
@@ -940,24 +946,13 @@ impl Slot {
     #[tracing::instrument(target = "harmos::streams", name = "streams.attempt", level = "trace", skip_all, fields(invocation))]
     async fn attempt(self: &Arc<Self>, invocation: u64, context: &ExecutionContext, epoch: Option<u64>) -> Result<Vec<u8>, ServingError> {
         let mut loan = self.borrow().await.ok_or(ServingError::Missing { invocation })?;
-        #[cfg(feature = "streaming")]
-        let attempt = match (&self.streams, epoch) {
-            (Some(streams), Some(epoch)) => Some(streams.start(epoch)?),
-            (None, None) => None,
-            _ => return Err(ServingError::StreamUnsupported),
-        };
         #[cfg(not(feature = "streaming"))]
         if epoch.is_some() {
             return Err(ServingError::StreamUnsupported);
         }
         let mut context = context.clone();
         context.cancellation = self.cancellation.clone();
-        let result = self.active(loan.prepared.as_mut().expect("loaned invocation state").attempt(&context)).await;
-        #[cfg(feature = "streaming")]
-        if let Some(attempt) = attempt {
-            attempt.end();
-        }
-        result
+        self.active(loan.prepared.as_mut().expect("loaned invocation state").attempt(&context, epoch)).await
     }
 
     #[tracing::instrument(target = "harmos::carrier", name = "carrier.finalize", level = "debug", skip_all)]

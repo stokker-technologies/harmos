@@ -37,7 +37,7 @@ harmos-storage = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 # Logging
-tracing = { workspace = true }
+tracing = { workspace = true, default-features = true }
 
 # Utilities
 

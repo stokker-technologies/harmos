@@ -11,6 +11,7 @@
 
 # Standard Library Imports
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -101,7 +102,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     return path
 
 
-def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
+def focused(directory: Path, operation: str, arguments: Sequence[str], *, messages: Path | None = None) -> int:
     if operation not in ("build", "check", "test", "clippy", "run"):
         raise ValueError("focused compilation requires build, check, test, clippy or run")
     profile = None
@@ -117,16 +118,21 @@ def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
         raise ValueError("focused compilation requires a canonical Cargo profile")
     if operation == "test" and ("--release" in compiler_arguments or profile not in (None, "test")):
         raise ValueError("focused tests use Cargo's default test profile")
-    return subprocess.run(
-        ["cargo", operation, *arguments],
-        cwd=directory,
-        env=dict(os.environ, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target")),
-        stdin=sys.stdin,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-        creationflags=spawn_flags(),
-        check=False,
-    ).returncode
+    command = ["cargo", operation, *arguments]
+    if messages is not None:
+        messages.parent.mkdir(parents=True, exist_ok=True)
+        command += ["--message-format", "json-render-diagnostics"]
+    with messages.open("w", encoding="utf-8") if messages is not None else contextlib.nullcontext(sys.stdout) as output:
+        return subprocess.run(
+            command,
+            cwd=directory,
+            env=dict(os.environ, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target")),
+            stdin=sys.stdin,
+            stdout=output,
+            stderr=sys.stderr,
+            creationflags=spawn_flags(),
+            check=False,
+        ).returncode
 
 
 def record_target(directory: Path, messages: Path, profile: str, native: str | None = None) -> None:

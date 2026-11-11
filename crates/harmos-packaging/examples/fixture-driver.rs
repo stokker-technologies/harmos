@@ -42,6 +42,10 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
+    Component {
+        module: PathBuf,
+        output: PathBuf,
+    },
     Collect {
         manifest: PathBuf,
         package: String,
@@ -75,6 +79,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read The Repository-Owned Request.
     let request: Request = serde_json::from_reader(std::io::stdin().lock())?;
     let output = match request {
+        Request::Component { module, output } => {
+            let bytes = std::fs::read(module)?;
+            let component = harmos_packaging::componentize(&bytes).map_err(std::io::Error::other)?;
+            std::fs::write(&output, component)?;
+            serde_json::json!({"component": output})
+        }
         Request::Collect {
             manifest,
             package,

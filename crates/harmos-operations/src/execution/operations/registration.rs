@@ -23,7 +23,7 @@ use std::pin::Pin;
 // Local Imports
 use super::{
     Carrier, Contract, Executable, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ResourceSet, ServingError,
-    WireDeclaration, WireTable,
+    WireDeclaration,
 };
 use crate::execution::services::Service;
 use crate::execution::{Message, ServicePolicy};
@@ -35,10 +35,9 @@ use crate::execution::{Message, ServicePolicy};
 /* === Type Aliases === */
 
 pub type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
-type Install = fn(&mut WireTable, ResourceSet, Contract) -> Result<(), ServingError>;
 type InitializeService = fn(ExecutionContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>>;
 type PrepareNative = fn(ResourceSet, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>;
-type PrepareEncoded = fn(ResourceSet, &[u8]) -> Result<PreparedNative, ServingError>;
+type PrepareEncoded = fn(ResourceSet, &[u8], bool, Option<super::WireStreamLimits>) -> Result<PreparedNative, ServingError>;
 
 /* === Structs === */
 
@@ -73,17 +72,13 @@ pub struct OperationFactory {
     named: fn(&str) -> Result<OperationDefinition, ServingError>,
     registered_id: Option<crate::execution::Identifier>,
     grant: fn(&str, Option<crate::execution::plugin::Grant>) -> Option<crate::execution::plugin::Grant>,
-    builtin: bool,
+    pub(super) builtin: bool,
     resources: &'static [Resource],
     contract: fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError>,
-    install: Install,
     native: PrepareNative,
     endpoints_valid: fn() -> bool,
     native_types: fn() -> (std::any::TypeId, std::any::TypeId, std::any::TypeId),
     encoded: PrepareEncoded,
-
-    #[cfg(all(feature = "grpc", feature = "streaming"))]
-    grpc: fn(ResourceSet, &[u8], super::WireStreamLimits) -> Result<PreparedNative, ServingError>,
 
     #[cfg(all(feature = "grpc", feature = "streaming"))]
     grpc_memory: fn(&[u8]) -> Result<usize, crate::execution::MessageError>,
@@ -110,7 +105,7 @@ struct NativeOperation<O: Carrier> {
     stopped: bool,
     encoded: bool,
 
-    #[cfg(all(feature = "grpc", feature = "streaming"))]
+    #[cfg(feature = "grpc")]
     protobuf: bool,
 
     #[cfg(feature = "streaming")]
@@ -143,6 +138,11 @@ pub trait NativeInstance: Send {
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, super::response::ErasedResponse>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
     fn cleanup(&mut self) -> ServiceFuture<'_, ()>;
+    #[cfg(feature = "streaming")]
+    fn run_stream(&mut self, context: ExecutionContext, epoch: u64) -> ServiceFuture<'_, super::response::ErasedResponse> {
+        let _ = (context, epoch);
+        Box::pin(async { Err(ServingError::StreamUnsupported) })
+    }
     fn transferred(&self) -> bool;
 
     #[cfg(feature = "streaming")]
@@ -222,7 +222,6 @@ impl RegistrationBatch {
                 }
                 WireDeclaration::of::<D>().contract_with_settings(settings)
             },
-            install: WireTable::install::<D, O>,
             native_types: || {
                 (
                     std::any::TypeId::of::<<O::Declaration as OperationDeclaration>::Request>(),
@@ -248,7 +247,7 @@ impl RegistrationBatch {
                     endpoints: *endpoints,
                     stopped: false,
                     encoded: false,
-                    #[cfg(all(feature = "grpc", feature = "streaming"))]
+                    #[cfg(feature = "grpc")]
                     protobuf: false,
                     #[cfg(feature = "streaming")]
                     streams: None,
@@ -256,46 +255,40 @@ impl RegistrationBatch {
                     epoch: 0,
                 }))
             },
-            encoded: |dependencies, payload| {
+            encoded: |dependencies, payload, protobuf, limits| {
                 use super::EndpointSet;
-                let endpoints = O::StreamEndpoints::empty().ok_or(ServingError::StreamUnsupported)?;
-                let request = <<O::Declaration as OperationDeclaration>::Request as crate::execution::Message>::decode(payload)
-                    .map_err(ServingError::Codec)?;
-                let grant = D::grant(&request);
-                let instance = NativeOperation::<O> {
-                    dependencies,
-                    operation: None,
-                    request,
-                    endpoints,
-                    stopped: false,
-                    encoded: true,
-                    #[cfg(all(feature = "grpc", feature = "streaming"))]
-                    protobuf: false,
-                    #[cfg(feature = "streaming")]
-                    streams: None,
-                    #[cfg(feature = "streaming")]
-                    epoch: 0,
-                };
-                Ok(PreparedNative {
-                    instance: Box::new(instance),
-                    grant,
-                    #[cfg(feature = "streaming")]
-                    streams: None,
-                })
-            },
-            #[cfg(all(feature = "grpc", feature = "streaming"))]
-            grpc: |dependencies, payload, limits| {
-                use super::EndpointSet;
-                let request = crate::execution::grpc::decode::<<O::Declaration as OperationDeclaration>::Request>(
-                    crate::execution::grpc::DecodeInput::new(payload),
-                )
-                .map_err(ServingError::Codec)?;
+                #[cfg(not(feature = "streaming"))]
+                let _ = limits;
+                #[cfg(feature = "streaming")]
                 let (endpoints, streams) = match O::StreamEndpoints::empty() {
                     Some(endpoints) => (endpoints, None),
                     None => {
-                        let (endpoints, streams) = O::StreamEndpoints::bind_wire(limits)?;
-                        (endpoints, Some(streams.protobuf(super::serving::protobuf::Codec::of::<D>())?))
+                        let (endpoints, streams) = O::StreamEndpoints::bind_wire(limits.ok_or(ServingError::StreamLimits)?)?;
+                        (endpoints, Some(streams))
                     }
+                };
+                #[cfg(not(feature = "streaming"))]
+                let endpoints = O::StreamEndpoints::empty().ok_or(ServingError::StreamUnsupported)?;
+                #[cfg(not(feature = "grpc"))]
+                if protobuf {
+                    return Err(ServingError::StreamUnsupported);
+                }
+                #[cfg(feature = "grpc")]
+                let codec = protobuf.then(super::serving::protobuf::Codec::of::<D>);
+                #[cfg(feature = "grpc")]
+                let request = if let Some(codec) = codec {
+                    let mut request = None::<D::Request>;
+                    (codec.decode)(payload, &mut request).map_err(ServingError::Codec)?;
+                    request.ok_or(ServingError::Catalog)?
+                } else {
+                    <D::Request as crate::execution::Message>::decode(payload).map_err(ServingError::Codec)?
+                };
+                #[cfg(not(feature = "grpc"))]
+                let request = <D::Request as crate::execution::Message>::decode(payload).map_err(ServingError::Codec)?;
+                #[cfg(all(feature = "grpc", feature = "streaming"))]
+                let streams = match (streams, codec) {
+                    (Some(streams), Some(codec)) => Some(streams.protobuf(codec)?),
+                    (streams, _) => streams,
                 };
                 let grant = D::grant(&request);
                 let instance = NativeOperation::<O> {
@@ -305,13 +298,17 @@ impl RegistrationBatch {
                     endpoints,
                     stopped: false,
                     encoded: true,
-                    protobuf: true,
+                    #[cfg(feature = "grpc")]
+                    protobuf,
+                    #[cfg(feature = "streaming")]
                     streams: streams.clone(),
+                    #[cfg(feature = "streaming")]
                     epoch: 0,
                 };
                 Ok(PreparedNative {
                     instance: Box::new(instance),
                     grant,
+                    #[cfg(feature = "streaming")]
                     streams,
                 })
             },
@@ -396,8 +393,17 @@ impl OperationFactory {
         (self.decoding_memory)(payload)
     }
 
+    #[doc(hidden)]
+    pub fn prepare_envelope(
+        &self, resources: ResourceSet, payload: &[u8], protobuf: bool, limits: Option<super::WireStreamLimits>,
+    ) -> Result<PreparedNative, ServingError> {
+        let mut prepared = (self.encoded)(resources, payload, protobuf, limits)?;
+        prepared.grant = self.grant(prepared.grant);
+        Ok(prepared)
+    }
+
     pub fn prepare_encoded(&self, resources: ResourceSet, payload: &[u8]) -> Result<PreparedNative, ServingError> {
-        let mut prepared = (self.encoded)(resources, payload)?;
+        let mut prepared = (self.encoded)(resources, payload, false, None)?;
         prepared.grant = self.grant(prepared.grant);
         Ok(prepared)
     }
@@ -406,7 +412,7 @@ impl OperationFactory {
     pub fn prepare_grpc(
         &self, resources: ResourceSet, payload: &[u8], limits: super::WireStreamLimits,
     ) -> Result<PreparedNative, ServingError> {
-        let mut prepared = (self.grpc)(resources, payload, limits)?;
+        let mut prepared = (self.encoded)(resources, payload, true, Some(limits))?;
         prepared.grant = self.grant(prepared.grant);
         Ok(prepared)
     }
@@ -435,14 +441,6 @@ impl OperationFactory {
             Some(id) => contract.with_id(id.to_string()),
             None => Ok(contract),
         }
-    }
-
-    pub fn install(self, table: &mut WireTable) -> Result<(), ServingError> {
-        self.validate()?;
-        self.verify_resources(table.owner_resources(), table.provided())?;
-        let contract = self.contract()?;
-        let resources = table.owner_resources().clone();
-        (self.install)(table, resources, contract)
     }
 }
 
@@ -477,7 +475,7 @@ impl<O: Carrier> NativeInstance for NativeOperation<O> {
             if let Some(attempt) = attempt {
                 attempt.end();
             }
-            #[cfg(all(feature = "grpc", feature = "streaming"))]
+            #[cfg(feature = "grpc")]
             if self.protobuf {
                 let mut bytes = Vec::new();
                 crate::execution::grpc::encode(&*response, &mut bytes).map_err(ServingError::Codec)?;
@@ -488,6 +486,14 @@ impl<O: Carrier> NativeInstance for NativeOperation<O> {
             }
             Ok(response.into_erased())
         })
+    }
+
+    #[cfg(feature = "streaming")]
+    fn run_stream(&mut self, context: ExecutionContext, epoch: u64) -> ServiceFuture<'_, super::response::ErasedResponse> {
+        if self.streams.is_none() || self.epoch.checked_add(1) != Some(epoch) {
+            return Box::pin(async { Err(ServingError::StreamPhase) });
+        }
+        self.run(context)
     }
 
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
@@ -570,6 +576,7 @@ fn operation_error<O: Carrier>(error: O::Error) -> ServingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::execution::operations::WireTable;
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},

@@ -70,7 +70,12 @@ pub fn artifact(name: &str) -> PathBuf {
 }
 
 pub fn component(name: &str) -> Vec<u8> {
-    std::fs::read(artifact(name)).unwrap_or_else(|error| panic!("stamped component {name} is unreadable: {error}"))
+    let bytes = std::fs::read(artifact(name)).unwrap_or_else(|error| panic!("stamped component {name} is unreadable: {error}"));
+    if focused_manifest() {
+        let expected = stamp()["metadata"]["inspection_sha256"][name].as_str().expect("the focused component has a digest");
+        verify_digest(&bytes, expected, &format!("focused component {name}"));
+    }
+    bytes
 }
 
 // Tests Own These Inert Copies; Inspecting Them Never Loads Or Executes A Plugin.

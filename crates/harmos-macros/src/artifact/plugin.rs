@@ -230,6 +230,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         syn::parse2(item.clone()).map_err(|_| Error::new(item.span(), "`#[harmos::plugin]` belongs on `impl Plugin for ConcreteType`"))?;
     let name = implemented(&block)?.clone();
     let name = &name;
+    let plugin = block.trait_.as_ref().expect("validated plugin trait").0.clone();
     let harmos = &declared.harmos;
     let mut block = block;
     let contributed = &declared.contributions;
@@ -316,8 +317,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const fn discard<T>(value: T) {
                 ::core::mem::forget(value);
             }
-            &declarations::<{ <#name as #harmos::Plugin>::CATALOGS.len() }>(
-                <#name as #harmos::Plugin>::CATALOGS,
+            &declarations::<{ <#name as #plugin>::CATALOGS.len() }>(
+                <#name as #plugin>::CATALOGS,
             )
         }
     };
@@ -339,8 +340,8 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
             const fn discard<T>(value: T) {
                 ::core::mem::forget(value);
             }
-            &callees::<{ <#name as #harmos::Plugin>::CATALOGS.len() }>(
-                <#name as #harmos::Plugin>::CATALOGS,
+            &callees::<{ <#name as #plugin>::CATALOGS.len() }>(
+                <#name as #plugin>::CATALOGS,
             )
         }
     };

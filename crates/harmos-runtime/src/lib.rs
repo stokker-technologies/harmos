@@ -70,7 +70,7 @@ pub use services::{ServiceContext, ServiceManager};
 pub use harmos_macros::plugin as sidecar;
 
 #[cfg(feature = "plugin-guest")]
-pub use harmos_macros::plugin as guest;
+pub use harmos_guest::guest;
 pub use harmos_operations::execution::plugin::Plugin;
 
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
