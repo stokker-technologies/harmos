@@ -100,8 +100,8 @@ The host-protobuf cutover replaces built-in and native example request/result de
 with generated messages. Core operations no longer has a `runtime` feature. Private guest
 operation/catalog attributes moved to `crates/harmos-guest/src/builtins/` and
 `examples/schematic/operations/src/guest/`; they remain owned by the deferred guest path.
-The inventory below reflects these moves. Task 1.1 still owns the final inventory lock and
-external consumer review before this change replaces declarations.
+The inventory below reflects these moves and is locked for implementation. External
+application adoption remains a follow-up outside this repository task.
 
 ### Projections and Replacement Owners
 
@@ -137,24 +137,23 @@ The guest aliases are also live through `crates/harmos-guest/src/lib.rs` and
 the sandbox fixture and schematic guest dependencies. Keep the guest macro crate
 unchanged; its consumers still participate in this workspace migration.
 
-### Required Changes Outside This Worktree's Ownership
+### Manifest, Fixture and Guest Ownership
 
-Deleting `harmos-macros` in task 4.3 requires coordinated owner edits to root
+Deleting `harmos-macros` in task 4.3 includes edits to root
 `Cargo.toml` (the workspace dependency), `Cargo.lock` and
 `tools/python/src/harmos_tools/build/fixtures.py`. The fixture producer's
 `LIBRARIES` still names `harmos_macros`, and its library resolver special-cases
 that procedural-macro artifact. Removing the crate without migrating this producer
-breaks the required Tests artifact. These paths are explicitly excluded from this
-worker's ownership; do not silently edit them or leave stale package references.
+breaks the required Tests artifact. These paths belong to this worktree's owner.
 
 `crates/harmos-guest-macros/src/artifact.rs` also consumes const catalog projections:
 `InertCatalog<listeners::Declarations, listeners::Entry>::ENTRIES` for listeners,
 plus operation declaration/callee trees and stream entries. Its listener consumer
 is the single `listener` attribute site in `tests/application/macros.rs` below.
 Replacing all catalog consumers with owned registries must account for this guest
-contract while guest macros remain deferred and outside this worker's ownership;
-do not substitute hand-written macro expansions or introduce an unapproved
-compatibility layer to claim those consumers migrated.
+contract while guest macros remain deferred. The owner authorizes changes to that
+crate needed for constant descriptions; explicit constant entry slices preserve
+guest artifact inspection without host dependencies or declaring macros.
 
 ### Attribute Sites
 
