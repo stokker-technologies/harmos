@@ -29,7 +29,6 @@ use serde::{Deserialize, Serialize};
 
 /* === Structs === */
 
-#[harmos_runtime::record(id = "export.completed")]
 #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ExportCompleted {
     pub format: ExportFormat,
@@ -47,6 +46,10 @@ pub enum ExportFormat {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for ExportCompleted {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("export.completed");
+}
 
 impl fmt::Display for ExportFormat {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

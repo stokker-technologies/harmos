@@ -44,7 +44,6 @@ struct Add {
     amount: i64,
 }
 
-#[harmos_runtime::record(id = "managed.seen")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
@@ -72,6 +71,10 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Seen {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("managed.seen");
+}
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();

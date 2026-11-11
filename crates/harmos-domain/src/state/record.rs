@@ -31,6 +31,11 @@ pub type PreparedMembers = Vec<(Option<SystemFact>, Prepared)>;
 
 /* === Structs === */
 
+pub struct RecordEntry<R> {
+    id: &'static str,
+    row: std::marker::PhantomData<fn() -> R>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Prepared {
@@ -68,7 +73,9 @@ pub enum PreparationError {
 
 /* === Traits === */
 
-pub trait Record: Identified + Serialize {}
+pub trait Record: crate::schema::Described + Serialize + Sized {
+    const ENTRY: RecordEntry<Self>;
+}
 
 pub trait RecordProjection<R> {
     fn project(&self) -> Option<&R>;
@@ -84,6 +91,52 @@ pub trait RecordCatalog: CatalogCodec + Sized {
 }
 
 /* === Implementations === */
+
+impl<R> Copy for RecordEntry<R> {}
+
+impl<R> Clone for RecordEntry<R> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<R> RecordEntry<R> {
+    pub const fn new(id: &'static str) -> Self {
+        Self { id, row: std::marker::PhantomData }
+    }
+
+    pub const fn id(self) -> &'static str {
+        self.id
+    }
+}
+
+impl<R: crate::schema::Described> RecordEntry<R> {
+    pub fn definition(self) -> (DefinitionId, u32) {
+        let schema = crate::schema::graph::Schema::from_declaration(R::DEFINITION, &crate::config::SchemaSettings::default())
+            .expect("valid stored data schema");
+        let revision = crate::schema::identity::revision(&schema).expect("valid stored data revision");
+        (DefinitionId::new(self.id), revision)
+    }
+
+    pub fn restore<'de, D>(self, revision: u32, payload: D) -> Result<Option<R>, D::Error>
+    where
+        R: Deserialize<'de>,
+        D: serde::Deserializer<'de>,
+    {
+        if revision != self.definition().1 {
+            return Ok(None);
+        }
+        R::deserialize(payload).map(Some)
+    }
+}
+
+impl<R: Record> Identified for R {
+    const ID: &'static str = R::ENTRY.id();
+
+    fn definition() -> (DefinitionId, u32) {
+        R::ENTRY.definition()
+    }
+}
 
 impl<R> RecordProjection<R> for R {
     fn project(&self) -> Option<&R> {

@@ -361,7 +361,6 @@ mod atomic_records {
     #[derive(Clone, Debug, Default, PartialEq, Eq)]
     struct State(i64);
 
-    #[harmos_runtime::record(id = "sim.observed")]
     #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     struct Observed {
         before: i64,
@@ -391,6 +390,10 @@ mod atomic_records {
     /* === Traits === */
 
     /* === Implementations === */
+
+    impl harmos_runtime::state::Record for Observed {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("sim.observed");
+    }
 
     impl Transaction<State> for Add {
         type Error = Infallible;

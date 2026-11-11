@@ -36,7 +36,6 @@ type Group = (Vec<Arc<Entry<Recorded<Model>>>>, Position);
 
 /* === Structs === */
 
-#[harmos_runtime::record(id = "capture.observed")]
 #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Observed(String);
 
@@ -71,6 +70,10 @@ enum Facts {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("capture.observed");
+}
 
 impl Transaction<i64> for Add {
     type Error = &'static str;

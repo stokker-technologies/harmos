@@ -183,7 +183,7 @@ impl<A: Application> PluginListenerBindings<'_, A> {
         R: Record + Message + Described,
         A::Record: RecordProjection<R>,
     {
-        let (id, version) = R::definition();
+        let (id, version) = R::ENTRY.definition();
         if !self.records.catalog.has_record(&id, version).map_err(|source| Error::RecordDeclaration { source })? {
             return Err(Error::NotRegistered {
                 domain: "native listener record",
@@ -297,7 +297,7 @@ where
     let Some(row) = record.project() else {
         return Ok(None);
     };
-    let (id, version) = R::definition();
+    let (id, version) = R::ENTRY.definition();
     if record.identify() != (id, version) {
         return Err(Error::InvalidInput {
             field: "record listener projection",

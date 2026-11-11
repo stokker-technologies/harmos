@@ -53,7 +53,7 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    Described, domain_catalog as catalog, domain_operation as operation, message, record, records, stream, transaction, transactions,
+    Described, domain_catalog as catalog, domain_operation as operation, message, records, stream, transaction, transactions,
 };
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};

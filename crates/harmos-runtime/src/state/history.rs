@@ -602,9 +602,12 @@ mod tests {
     use crate::state::{CorrelationId, Metadata};
     use serde::{Deserialize, Serialize};
 
-    #[crate::record(id = "listener.page")]
     #[derive(crate::Described, Clone, Serialize, Deserialize)]
     struct PageRecord(u64);
+
+    impl crate::state::Record for PageRecord {
+        const ENTRY: crate::state::RecordEntry<Self> = crate::state::RecordEntry::new("listener.page");
+    }
 
     struct Model;
 

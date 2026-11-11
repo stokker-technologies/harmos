@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::state::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordProjection, Records};
+pub use harmos_domain::state::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordEntry, RecordProjection, Records};
 
 /* === Imports === */
 

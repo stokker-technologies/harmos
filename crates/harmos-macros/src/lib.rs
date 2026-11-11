@@ -106,12 +106,7 @@ pub fn runtime_operation(attribute: TokenStream, item: TokenStream) -> TokenStre
 
 #[proc_macro_attribute]
 pub fn transaction(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    identity::stamp(attribute.into(), item.into(), Sort::Transaction).into()
-}
-
-#[proc_macro_attribute]
-pub fn record(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    identity::stamp(attribute.into(), item.into(), Sort::Record).into()
+    identity::stamp(attribute.into(), item.into()).into()
 }
 
 #[proc_macro_attribute]

@@ -150,14 +150,23 @@ fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], stat
 
         quote!(Self::#variant(definition) => ::serde::Serialize::serialize(definition, serializer),)
     });
-    let named = members.iter().map(|member| &member.definition);
+    let restorations = members.iter().map(|member| {
+        let named = &member.definition;
+        if state.is_some() {
+            quote! { if id.as_str() == <#named>::ID {
+                return Ok(<#named>::restore::<D>(version, payload)?.map(::core::convert::From::from));
+            } }
+        } else {
+            quote! { if id.as_str() == <#named as #harmos::state::Record>::ENTRY.id() {
+                return Ok(<#named as #harmos::state::Record>::ENTRY.restore(version, payload)?.map(::core::convert::From::from));
+            } }
+        }
+    });
     let restore = quote! {
         #visibility fn restore<'de, D>(id: &#harmos::DefinitionId, version: u32, payload: D)
             -> ::core::result::Result<::core::option::Option<Self>, D::Error>
         where D: ::serde::Deserializer<'de> + ::core::marker::Copy {
-            #(if id.as_str() == <#named>::ID {
-                return Ok(<#named>::restore::<D>(version, payload)?.map(::core::convert::From::from));
-            })*
+            #(#restorations)*
             Ok(None)
         }
     };

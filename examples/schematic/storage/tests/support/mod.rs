@@ -70,7 +70,6 @@ pub struct Bonus {
 #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Explode;
 
-#[harmos_runtime::record(id = "ledger.noted")]
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Noted(pub String);
 
@@ -107,6 +106,10 @@ pub enum Fact {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Noted {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("ledger.noted");
+}
 
 impl fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

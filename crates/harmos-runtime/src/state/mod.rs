@@ -32,7 +32,7 @@ pub use history::{Focus, Origin, Reversals};
 pub use managed::ManagedState;
 pub use manager::StateManager;
 pub(crate) use manager::{Context, Feed, TrackedState};
-pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordProjection, Records};
+pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordEntry, RecordProjection, Records};
 pub use snapshot::SnapshotPolicy;
 pub use transaction::{DecodeError, Invertible, Never, Transaction, TransactionCatalog};
 

@@ -114,14 +114,26 @@ Building the set rejects duplicate or reserved names and zero capacity, naming
 the invalid lane. Registration and per-call lane selection use the same lane
 value; `Application` and operation managers carry no lane type parameter.
 
-`#[record]` and `#[transaction]` derive schema-only revisions through
+Typed record entries and `#[transaction]` derive schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
 `harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's
 first four bytes become a little-endian nonzero `u32`. Presentation labels,
 Rust module paths and graph indices do not participate. Generated `DEFINITION`
 identity tuples are removed: use `T::ID` and `T::definition()` through `Identified`.
-Manual `Identified` implementations declare only `const ID: &'static str` and
-provide `Described`; the default derives the revision. Typed stored objects use
+Record rows select an entry value, which owns their stable identity:
+
+```rust
+impl harmos_runtime::state::Record for ExportCompleted {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> =
+        harmos_runtime::state::RecordEntry::new("export.completed");
+}
+```
+
+The row derives `Described` and Serde traits. `RecordEntry::definition()` computes
+the stored revision, and `RecordEntry::restore(revision, payload)` refuses another
+shape. The native `Identified` implementation delegates to this entry; it does not
+repeat the identity. Manual `Identified` implementations for other stored objects
+declare only `const ID: &'static str` and provide `Described`; typed stored objects use
 the same rule, including `ValidatedSchematic`.
 `restore(revision, payload)` now accepts only the derived revision.
 

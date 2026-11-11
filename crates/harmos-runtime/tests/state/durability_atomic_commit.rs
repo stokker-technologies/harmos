@@ -43,7 +43,6 @@ struct State {
     applications: usize,
 }
 
-#[harmos_runtime::record(id = "atomic.observed")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
@@ -51,15 +50,12 @@ struct Observed {
     ordinal: usize,
 }
 
-#[harmos_runtime::record(id = "atomic.foreign")]
 #[derive(harmos_runtime::Described, Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos_runtime::record(id = "harmos:sidecar/my_sidecar_2/result")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
-#[harmos_runtime::record(id = "atomic.broken")]
 #[derive(harmos_runtime::Described, Deserialize)]
 struct Broken;
 
@@ -76,7 +72,6 @@ struct Add {
 
 struct Model;
 
-#[harmos_runtime::record(id = "atomic.large")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
@@ -99,6 +94,26 @@ enum Facts {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.observed");
+}
+
+impl harmos_runtime::state::Record for Foreign {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.foreign");
+}
+
+impl harmos_runtime::state::Record for Reserved {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("harmos:sidecar/my_sidecar_2/result");
+}
+
+impl harmos_runtime::state::Record for Broken {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.broken");
+}
+
+impl harmos_runtime::state::Record for Large {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.large");
+}
 
 impl Serialize for Broken {
     fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {

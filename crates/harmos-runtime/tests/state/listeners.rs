@@ -44,7 +44,6 @@ type Seen = Vec<(bool, u32, Position)>;
 /* === Structs === */
 
 // Neither The Original Native Record Nor Its Decoded Callback Copy Is Clone.
-#[harmos_runtime::record(id = "listener.fact")]
 #[derive(Serialize, Deserialize)]
 struct Fact {
     value: u32,
@@ -128,6 +127,10 @@ enum Failed {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Fact {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("listener.fact");
+}
 
 impl Drop for Fact {
     fn drop(&mut self) {

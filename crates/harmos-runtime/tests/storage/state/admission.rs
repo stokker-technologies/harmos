@@ -45,7 +45,6 @@ struct Model;
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Advance {}
 
-#[harmos_runtime::record(id = "admission.observed")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Observed {
     before: u64,
@@ -70,6 +69,10 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("admission.observed");
+}
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();

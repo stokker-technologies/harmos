@@ -229,7 +229,6 @@ mod sheet {
     #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Erase;
 
-    #[harmos_runtime::record(id = "sheet.noted")]
     #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Noted(pub String);
 
@@ -254,6 +253,10 @@ mod sheet {
     /* === Traits === */
 
     /* === Implementations === */
+
+    impl harmos_runtime::state::Record for Noted {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("sheet.noted");
+    }
 
     impl Transaction<Sheet> for Rename {
         type Error = Untitled;
@@ -701,13 +704,19 @@ mod guest_plugins {
 
 #[test]
 fn catalog_projects_borrowed() {
-    #[harmos_runtime::record(id = "projection.first")]
     #[derive(harmos_runtime::Described, serde::Deserialize, serde::Serialize)]
     struct First(String);
 
-    #[harmos_runtime::record(id = "projection.second")]
+    impl harmos_runtime::state::Record for First {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("projection.first");
+    }
+
     #[derive(harmos_runtime::Described, serde::Deserialize, serde::Serialize)]
     struct Second(String);
+
+    impl harmos_runtime::state::Record for Second {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("projection.second");
+    }
 
     #[harmos_runtime::records]
     enum Facts {

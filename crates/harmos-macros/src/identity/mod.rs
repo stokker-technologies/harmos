@@ -61,19 +61,12 @@ impl Sort {
             Self::Record => quote!(#harmos::state::Kind::Record),
         }
     }
-
-    fn noun(self) -> &'static str {
-        match self {
-            Self::Transaction => "transaction",
-            Self::Record => "record",
-        }
-    }
 }
 
 /* === Public Functions === */
 
-pub(crate) fn stamp(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
-    match expand(attribute, &item, sort) {
+pub(crate) fn stamp(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    match expand(attribute, &item) {
         Ok(stamped) => stamped,
         Err(refused) => {
             let refusal = refused.to_compile_error();
@@ -118,8 +111,8 @@ fn undoing(name: &Ident, inverse: &Path, harmos: &HarmosPath) -> TokenStream {
     }
 }
 
-fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<TokenStream, Error> {
-    let mut declared = declaration(attribute, sort)?;
+fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Error> {
+    let mut declared = declaration(attribute)?;
     let parsed: Item = syn::parse2(item.clone())?;
     let name = named(&parsed)?;
 
@@ -133,37 +126,33 @@ fn expand(attribute: TokenStream, item: &TokenStream, sort: Sort) -> Result<Toke
     let id = declared.id.as_ref().ok_or_else(|| Error::new(parsed.span(), "a definition requires id"))?;
     let harmos = &declared.harmos;
     let restore = restore(harmos);
-    let undoing = match (&declared.undo, sort) {
-        (Some(inverse), _) => undoing(name, inverse, harmos),
-        (None, Sort::Transaction) => quote! {
+    let undoing = match &declared.undo {
+        Some(inverse) => undoing(name, inverse, harmos),
+        None => quote! {
             impl #name {
                 pub fn __harmos_check_inverse<S, C>(&self) {}
             }
         },
-        (None, Sort::Record) => TokenStream::new(),
     };
 
-    let record_marker = match sort {
-        Sort::Record => quote! { impl #harmos::state::Record for #name {} },
-        Sort::Transaction => quote! {
-            impl<S> #harmos::state::TransactionCatalog<S> for #name
-            where Self: #harmos::state::Transaction<S>, S: 'static {
-                fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::state::DecodeError> {
-                    let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
-                    if prepared.id.as_str() != Self::ID { return Err(refusal()); }
-                    let value = Self::restore(prepared.version, &prepared.payload)
-                        .map_err(|_| refusal())?.ok_or_else(refusal)?;
-                    #harmos::state::Transaction::apply(&value, state);
-                    Ok(())
-                }
+    let transaction = quote! {
+        impl<S> #harmos::state::TransactionCatalog<S> for #name
+        where Self: #harmos::state::Transaction<S>, S: 'static {
+            fn replay(&self, prepared: &#harmos::state::Prepared, state: &mut S) -> ::core::result::Result<(), #harmos::state::DecodeError> {
+                let refusal = || #harmos::state::DecodeError::Malformed { id: prepared.id.clone(), version: prepared.version };
+                if prepared.id.as_str() != Self::ID { return Err(refusal()); }
+                let value = Self::restore(prepared.version, &prepared.payload)
+                    .map_err(|_| refusal())?.ok_or_else(refusal)?;
+                #harmos::state::Transaction::apply(&value, state);
+                Ok(())
             }
-        },
+        }
     };
 
     Ok(quote! {
         #item
 
-        #record_marker
+        #transaction
         #undoing
 
         impl #name {
@@ -202,7 +191,7 @@ fn restore(harmos: &HarmosPath) -> TokenStream {
     }
 }
 
-fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error> {
+fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut id = None;
     let mut undo: Option<Path> = None;
@@ -223,28 +212,10 @@ fn declaration(attribute: TokenStream, sort: Sort) -> Result<Declaration, Error>
             other => {
                 return Err(Error::new(
                     other.span(),
-                    format!(
-                        "a {} declares `id = \"…\"`, a derived schema revision{}, and may \
-                         declare `harmos_path = …`",
-                        sort.noun(),
-                        match sort {
-                            Sort::Transaction => ", and may declare `inverse = …`",
-                            Sort::Record => "",
-                        }
-                    ),
+                    "a transaction declares `id`, a derived schema revision, optional `inverse` and `harmos_path`",
                 ));
             }
         }
-    }
-
-    if sort == Sort::Record
-        && let Some(undo) = &undo
-    {
-        return Err(Error::new(
-            undo.span(),
-            "a fact changes nothing, so nothing takes it back; only a transaction answers the \
-             undo question",
-        ));
     }
 
     Ok(Declaration {

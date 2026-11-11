@@ -62,7 +62,6 @@ struct Add {
     amount: i64,
 }
 
-#[harmos_runtime::record(id = "snapshot.seen")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
@@ -85,6 +84,10 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Seen {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("snapshot.seen");
+}
 
 impl tracing::field::Visit for SnapshotWarning {
     fn record_debug(&mut self, _: &tracing::field::Field, _: &dyn std::fmt::Debug) {}

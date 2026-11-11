@@ -28,7 +28,6 @@ use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state:
 
 /* === Structs === */
 
-#[harmos_runtime::record(id = "manager.note")]
 #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Noted(String);
 
@@ -45,6 +44,10 @@ enum Records {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Noted {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("manager.note");
+}
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();

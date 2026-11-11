@@ -50,13 +50,11 @@ struct Add {
     amount: i64,
 }
 
-#[harmos_runtime::record(id = "shape.observed")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
 }
 
-#[harmos_runtime::record(id = "shape.observed")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Changed {
     before: String,
@@ -120,6 +118,14 @@ enum StoredPluginObjects {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("shape.observed");
+}
+
+impl harmos_runtime::state::Record for Changed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("shape.observed");
+}
 
 impl Identified for PluginObject {
     const ID: &'static str = "plugin.document";
@@ -516,12 +522,15 @@ fn label_only_change_keeps_revision() {
         value: u64,
     }
 
-    #[harmos_runtime::record(id = "shape.observed")]
     #[harmos_runtime::message]
     #[derive(serde::Serialize, serde::Deserialize)]
     struct LabelledRecord {
         #[row(label = "Previous Value")]
         before: i64,
+    }
+
+    impl harmos_runtime::state::Record for LabelledRecord {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("shape.observed");
     }
 
     assert_eq!(Observed::definition().1, LabelledRecord::definition().1);
