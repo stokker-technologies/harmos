@@ -16,6 +16,7 @@ mod binding;
 mod caller;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod catalog;
+mod clock;
 pub(crate) mod context;
 mod surface;
 

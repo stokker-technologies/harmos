@@ -256,7 +256,7 @@ impl OperationFactory {
             },
             registered_id: None,
             grant: |_, grant| grant,
-            builtin: false,
+            builtin: matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now"),
             resources: O::RESOURCES,
             contract: contract::<O>,
             native: |resources, request, endpoints| {
@@ -383,6 +383,15 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         replay: O::REPLAY,
         fingerprint: crate::execution::Fingerprint([0; 32]),
     };
+    if matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now") {
+        let clock = Contract::clock(O::ID == "harmos.clock.sleep", O::POLICY, settings)?;
+        let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
+        let same_mapping = clock.grpc() == Some(&O::GRPC);
+        if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {
+            return Err(super::super::ContractError::Protobuf("clock declaration differs from the protocol-owned contract".into()));
+        }
+        return Ok(clock);
+    }
     Contract::from_protobuf(operation, protobuf, O::GRPC, settings)
 }
 

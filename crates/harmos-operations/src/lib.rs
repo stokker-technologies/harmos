@@ -10,6 +10,8 @@
 /* === Modules === */
 
 #[cfg(feature = "runtime")]
+pub mod clock;
+#[cfg(feature = "runtime")]
 mod error;
 pub mod execution;
 pub mod host;

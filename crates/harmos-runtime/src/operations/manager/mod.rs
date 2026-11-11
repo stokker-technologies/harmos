@@ -194,10 +194,12 @@ impl Manager {
     }
 
     pub(super) fn resources_for(&self, entry: &Entry) -> harmos_operations::execution::__private::ResourceSet {
-        harmos_operations::execution::ExecutionContext::new(entry.carrier.clone(), super::CallContext::default())
+        let mut resources = harmos_operations::execution::ExecutionContext::new(entry.carrier.clone(), super::CallContext::default())
             .with_resources(self.resources().clone())
             .resources()
-            .clone()
+            .clone();
+        resources.replace(Arc::new(harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone())))));
+        resources
     }
 }
 

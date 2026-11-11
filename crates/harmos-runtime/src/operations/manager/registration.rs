@@ -42,6 +42,7 @@ impl Manager {
             std::any::TypeId::of::<harmos_operations::execution::operations::access::GrantAccess>(),
             std::any::TypeId::of::<harmos_operations::execution::operations::instances::InstanceAccess>(),
             std::any::TypeId::of::<crate::operations::HostContext>(),
+            std::any::TypeId::of::<harmos_operations::clock::ClockAccess>(),
         ]
     }
 

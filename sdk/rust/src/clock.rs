@@ -20,7 +20,7 @@ pub use harmos_protocol::v1::{Now, Sleep, SleepResponse, Time};
 // Standard Library Imports
 
 // Third Party Imports
-use harmos_protocol::clock::{time_types, types as clock_types};
+use harmos_protocol::clock::catalog_types;
 use prost_types::FileDescriptorSet;
 
 // Local Imports
@@ -45,7 +45,7 @@ impl Message for Sleep {
         "harmos.v1.Sleep".into()
     }
     fn types() -> FileDescriptorSet {
-        clock_types("Sleep", Some(("duration", ".google.protobuf.Duration")), prost_types::Duration::types())
+        catalog_types()
     }
 }
 
@@ -54,7 +54,7 @@ impl Message for SleepResponse {
         "harmos.v1.SleepResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        clock_types("SleepResponse", None, FileDescriptorSet::default())
+        catalog_types()
     }
 }
 
@@ -63,7 +63,7 @@ impl Message for Now {
         "harmos.v1.Now".into()
     }
     fn types() -> FileDescriptorSet {
-        clock_types("Now", None, FileDescriptorSet::default())
+        catalog_types()
     }
 }
 
@@ -72,7 +72,7 @@ impl Message for Time {
         "harmos.v1.Time".into()
     }
     fn types() -> FileDescriptorSet {
-        clock_types("Time", Some(("now", ".google.protobuf.Timestamp")), prost_types::Timestamp::types())
+        catalog_types()
     }
 }
 
@@ -90,7 +90,7 @@ impl Message for prost_types::Duration {
         "google.protobuf.Duration".into()
     }
     fn types() -> FileDescriptorSet {
-        time_types("Duration", "google/protobuf/duration.proto")
+        catalog_types()
     }
 }
 
@@ -99,7 +99,7 @@ impl Message for prost_types::Timestamp {
         "google.protobuf.Timestamp".into()
     }
     fn types() -> FileDescriptorSet {
-        time_types("Timestamp", "google/protobuf/timestamp.proto")
+        catalog_types()
     }
 }
 

@@ -70,25 +70,36 @@ impl Drop for Admission {
 impl Manager {
     pub(crate) fn register_grpc_clock(&self) -> Result<()> {
         let mut entries = Vec::new();
-        for contract in crate::plugin::grpc::clock::contracts() {
-            let definition = OperationDefinition {
-                id: Identifier::new(&contract.id).unwrap(),
-                description: String::new(),
-                visibility: Visibility::Public,
-                policy: policy(None)?,
-                replay: ReplaySafety::Unknown,
-                fingerprint: harmos_domain::Fingerprint(contract.fingerprint.clone().try_into().unwrap()),
-            };
-            let binding = Arc::new(Binding::clock(contract, self.clock().clone()));
-            entries.push(self.binding_erased(
+        use harmos_operations::execution::operations::OperationFactory;
+        let factories = [
+            OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
+            OperationFactory::protobuf::<harmos_operations::clock::Now>(),
+        ];
+        for factory in factories {
+            let factory = factory.map_err(|source| Error::OperationFailed {
+                operation: "harmos.clock".into(),
+                source: Arc::new(source),
+            })?;
+            let contract = factory.contract().map_err(|source| Error::OperationFailed {
+                operation: factory.definition.id.to_string(),
+                source: Arc::new(source),
+            })?;
+            let definition = factory.definition.clone();
+            let mut entry = self.binding_erased(
                 "host",
                 crate::operations::lane::RESIDENT,
-                binding,
+                Arc::new(factory),
                 definition,
                 Some(crate::operations::wire::dispatch_native),
                 #[cfg(feature = "plugin-guest")]
                 None,
-            )?);
+            )?;
+            Arc::get_mut(&mut entry).expect("unpublished clock entry").contract = Some(contract);
+            #[cfg(feature = "grpc")]
+            {
+                Arc::get_mut(&mut entry).expect("unpublished clock entry").grpc = Some(crate::grpc::native::serve);
+            }
+            entries.push(entry);
         }
         self.reserve(&entries)
     }

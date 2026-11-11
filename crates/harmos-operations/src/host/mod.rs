@@ -26,7 +26,12 @@ pub use harmos_domain::model::operations::discovery::DiscoveredOperation;
 
 /* === Constants === */
 
-pub const POLICY: harmos_domain::OperationPolicy = crate::lifecycle::POLICY;
+pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
+    timeout: std::time::Duration::from_secs(30),
+    attempt_timeout: std::time::Duration::from_secs(30),
+    cancellation_timeout: std::time::Duration::ZERO,
+    retries: harmos_domain::RetryPolicy::Never,
+};
 
 /* === Macros === */
 

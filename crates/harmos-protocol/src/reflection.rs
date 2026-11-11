@@ -38,6 +38,27 @@ use std::sync::OnceLock;
 
 /* === Implementations === */
 
+impl ReflectMessage for crate::v1::Sleep {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.Sleep").expect("generated clock message")
+    }
+}
+impl ReflectMessage for crate::v1::SleepResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.SleepResponse").expect("generated clock message")
+    }
+}
+impl ReflectMessage for crate::v1::Now {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.Now").expect("generated clock message")
+    }
+}
+impl ReflectMessage for crate::v1::Time {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.Time").expect("generated clock message")
+    }
+}
+
 impl ReflectMessage for crate::host::InstanceState {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.host.v1.InstanceState").expect("generated message")
