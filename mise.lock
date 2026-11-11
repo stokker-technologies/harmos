@@ -404,9 +404,7 @@ backend = "core:rust"
 specifiers = ["1.99.1"]
 
 [tools.rust.options]
-components = "clippy,llvm-tools,rustfmt"
 profile = "minimal"
-targets = "wasm32-unknown-unknown,wasm32-wasip2"
 
 [[tools.sccache]]
 version = "0.19.0"

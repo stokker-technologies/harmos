@@ -5,7 +5,9 @@ pass arguments after `--`. Python tooling lives in `tools/python/src/harmos_tool
 the root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
 `sdk/python/.venv/` and `sdk/python/uv.lock`; tooling does not depend on the SDK.
 Run `mise run prepare` once after checkout or dependency changes to synchronize
-all locked dependency groups in both projects.
+all locked dependency groups in both projects and install the components and targets
+from `rust-toolchain.toml`. Tool versions stay pinned in `mise.toml` and `mise.lock`;
+release, CI and package settings live in `tools/project.toml`.
 The SDK's development group includes tooling for reference-host test support;
 this dependency does not enter the tooling workspace or the SDK runtime.
 Every other entry point uses `uv run --locked --no-sync`.

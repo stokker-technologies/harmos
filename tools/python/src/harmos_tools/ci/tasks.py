@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 # Third Party Imports
@@ -313,6 +314,21 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Prepare Explicit Inputs
     if options.command == "prepare":
+        toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]
+        _execute(
+            [
+                "rustup",
+                "toolchain",
+                "install",
+                toolchain["channel"],
+                "--profile",
+                toolchain["profile"],
+                "--component",
+                ",".join(toolchain["components"]),
+                "--target",
+                ",".join(toolchain["targets"]),
+            ]
+        )
         environment = dict(os.environ)
         environment.pop("VIRTUAL_ENV", None)
         return _execute(["uv", "sync", "--locked", "--all-groups", "--project", str(root / "sdk/python")], environment=environment)

@@ -204,13 +204,30 @@ class WorkflowTaskTests(unittest.TestCase):
                 focused.assert_not_called()
 
     def test_prepare_syncs_sdk_without_inheriting_tooling_environment(self):
+        toolchain = '[toolchain]\nchannel = "custom"\nprofile = "minimal"\ncomponents = ["rustfmt"]\ntargets = ["wasm32-wasip2"]\n'
         with (
             patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv")),
+            patch.object(Path, "read_text", return_value=toolchain),
             patch.object(tasks, "_execute", return_value=0) as execute,
             patch.object(cargo, "focused") as focused,
         ):
             self.assertEqual(tasks.dispatch(["prepare"]), 0)
-        execute.assert_called_once()
+        self.assertEqual(execute.call_count, 2)
+        self.assertEqual(
+            execute.call_args_list[0].args[0],
+            [
+                "rustup",
+                "toolchain",
+                "install",
+                "custom",
+                "--profile",
+                "minimal",
+                "--component",
+                "rustfmt",
+                "--target",
+                "wasm32-wasip2",
+            ],
+        )
         self.assertEqual(execute.call_args.args[0], ["uv", "sync", "--locked", "--all-groups", "--project", str(Path.cwd() / "sdk/python")])
         self.assertNotIn("VIRTUAL_ENV", execute.call_args.kwargs["environment"])
         focused.assert_not_called()
