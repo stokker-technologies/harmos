@@ -30,6 +30,10 @@ nothing about tests or any product concept.
 - A `Stop` call lets a plugin release what it holds before the host closes.
 - `sdk/<language>` holds each language's SDK over `harmos.v1`. The pilot covers Rust, Python,
   C# and C++.
+- `sdk/rust` is the `harmos` product crate, exposing plugin authoring and the client without
+  host code. Host embedders use runtime; proto owns contracts and operations own their handlers.
+- Client-facing gRPC declarations accept generated protobuf messages and descriptors directly,
+  enabling Dokime's adoption without service adapters or a duplicate conversion layer.
 
 ## Locked Decisions
 
@@ -58,8 +62,11 @@ nothing about tests or any product concept.
 
 - Breaking for every sidecar: it must be rebuilt against the new SDK.
 - Supersedes `plugin-grpc-protocol` and absorbs `harmos-sdk-layout` (both deleted with this
-  change): `crates/harmos-sdk` moves to `sdk/rust`. `harmos-sdk-go` is removed; Go follows the
-  pilot.
+  change): `sdk/rust` becomes `harmos`; surviving host engine code moves from
+  `crates/harmos-sdk` to host owners. `harmos-sdk-go` is removed; Go follows the pilot.
+- Domain retains only non-wire native state/recovery and storage foundations. Storage interface
+  extensions and Dokime extraction follow the last gRPC wave in separate `storage-interface`
+  changes with before/after multi-day benchmarks.
 - `operation-visibility` stays its own change and ships in the same revision; this change then
   removes its `Host` level.
   `runtime-observer-cadence` is landed; its rule that an observer's interval may come from
