@@ -4,9 +4,13 @@
 
 - [ ] 1.1 After authoritative host protobuf adoption under `grpc-plugins`, lock the source inventory per macro: uses in Harmos source, examples and tests, and in Dokime, with the typed projections each use depends on.
 
+The current [source inventory](proposal.md#source-inventory) records every textual
+attribute site, dependent projection, live alias export and excluded-path dependency.
+Task 1.1 remains open until the authoritative host protobuf cutover is complete.
+
 ## 2. Simple Declarations
 
-- [ ] 2.1 Inventory live `domain_catalog`, `runtime_catalog`, `domain_operation` and `runtime_operation` consumers and re-exports in domain, runtime, operations, examples and fixtures. Keep aliases until their families migrate in 3.1/3.2; only genuinely unreferenced variants may be deleted now.
+- [x] 2.1 Inventory live `domain_catalog`, `runtime_catalog`, `domain_operation` and `runtime_operation` consumers and re-exports in domain, runtime, operations, examples and fixtures. Keep aliases until their families migrate in 3.1/3.2; only genuinely unreferenced variants may be deleted now.
 - [ ] 2.2 Replace `listener`, `streams` and `lanes` with values checked when built.
 - [ ] 2.3 Replace `record` with a typed entry and split `stream` into a row derive and a stream value.
 

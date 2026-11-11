@@ -19,7 +19,6 @@ use std::collections::BTreeMap;
 // Third Party Imports
 use prost::Message;
 use prost_reflect::{DescriptorPool, Kind, MessageDescriptor};
-use serde::{Deserialize, Serialize};
 
 // Local Imports
 use crate::schema::{Cardinality, graph};
@@ -32,28 +31,24 @@ use crate::schema::{Cardinality, graph};
 
 /* === Structs === */
 
-/// Authoritative Message Descriptors for a Native Operation.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Protobuf {
-    pub descriptors: Vec<u8>,
-    pub request: String,
-    pub response: String,
-    pub input: Option<String>,
-    pub output: Option<String>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
 
+pub trait ProtobufExt {
+    fn pool(&self) -> Result<DescriptorPool, super::ContractError>;
+    fn schema(&self) -> Result<graph::Schema, super::ContractError>;
+    fn fingerprint(&self, id: &str) -> Result<crate::Fingerprint, super::ContractError>;
+}
+
 /* === Implementations === */
 
-impl Protobuf {
-    pub fn pool(&self) -> Result<DescriptorPool, super::ContractError> {
+impl ProtobufExt for super::Protobuf {
+    fn pool(&self) -> Result<DescriptorPool, super::ContractError> {
         DescriptorPool::decode(self.descriptors.as_slice()).map_err(|error| super::ContractError::Protobuf(error.to_string()))
     }
 
-    pub fn schema(&self) -> Result<graph::Schema, super::ContractError> {
+    fn schema(&self) -> Result<graph::Schema, super::ContractError> {
         let pool = self.pool()?;
         let mut messages = Vec::<MessageDescriptor>::new();
         let mut indices = BTreeMap::new();
@@ -127,7 +122,7 @@ impl Protobuf {
         })
     }
 
-    pub fn fingerprint(&self, id: &str) -> Result<crate::Fingerprint, super::ContractError> {
+    fn fingerprint(&self, id: &str) -> Result<crate::Fingerprint, super::ContractError> {
         let descriptors = prost_types::FileDescriptorSet::decode(self.descriptors.as_slice())
             .map_err(|error| super::ContractError::Protobuf(error.to_string()))?;
         let fingerprint = harmos_protocol::schema::fingerprint(id, &descriptors, &self.request, &self.response)

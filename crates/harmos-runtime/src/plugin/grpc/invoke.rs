@@ -43,7 +43,7 @@ pub(crate) struct Binding {
     pub(crate) owner: String,
     pub(crate) contract: v1::OperationContract,
     pub(crate) requires: Vec<v1::Requirement>,
-    target: Target,
+    connection: Arc<Connection>,
 }
 
 struct Invocation {
@@ -65,12 +65,6 @@ pub enum CallError {
     Protocol(String),
 }
 
-#[derive(Clone)]
-enum Target {
-    Plugin(Arc<Connection>),
-    Clock(crate::clock::Clock),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -81,16 +75,7 @@ impl Binding {
             owner: activation.description.id.clone(),
             contract,
             requires: activation.description.catalog.as_ref().unwrap().requires.clone(),
-            target: Target::Plugin(activation.connection.clone()),
-        }
-    }
-
-    pub(crate) fn clock(contract: v1::OperationContract, clock: crate::clock::Clock) -> Self {
-        Self {
-            owner: "host".into(),
-            contract,
-            requires: Vec::new(),
-            target: Target::Clock(clock),
+            connection: activation.connection.clone(),
         }
     }
 
@@ -132,10 +117,7 @@ impl NativeInstance for Invocation {
     fn run(&mut self, context: harmos_operations::execution::ExecutionContext) -> ServiceFuture<'_, ErasedResponse> {
         Box::pin(async move {
             let host = context.resource::<HostContext>().map_err(|_| harmos_operations::execution::ServingError::Catalog)?;
-            let result = match &self.binding.target {
-                Target::Plugin(_) => invoke(&self.binding, self.payload.clone(), &context, &host).await,
-                Target::Clock(clock) => super::clock::run(clock, &self.binding.contract.id, &self.payload).await,
-            };
+            let result = invoke(&self.binding, self.payload.clone(), &context, &host).await;
             result
                 .map(|bytes| crate::operations::Response::from(bytes).into_erased())
                 .map_err(|error| harmos_operations::execution::ServingError::Native(Arc::new(error)))
@@ -163,7 +145,7 @@ impl NativeInstance for Invocation {
 async fn invoke(
     binding: &Binding, payload: Vec<u8>, context: &harmos_operations::execution::ExecutionContext, host: &HostContext,
 ) -> Result<Vec<u8>, CallError> {
-    let Target::Plugin(connection) = &binding.target else { unreachable!() };
+    let connection = &binding.connection;
     let closed = connection.closed.subscribe();
     let work = async {
         let (output, input) = mpsc::channel(1);

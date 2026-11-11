@@ -126,8 +126,8 @@ where
         harmos_domain::inventory::publications::validate_match(P::STREAMS, &declaration.streams).map_err(refusal)?;
         let contracts = &declaration.contracts;
         let sdk = [
-            harmos_operations::lifecycle::Descriptor::of_initialize::<P>().map_err(refusal)?,
-            harmos_operations::lifecycle::Descriptor::of_shutdown::<P>().map_err(refusal)?,
+            crate::lifecycle::Descriptor::of_initialize::<P>().map_err(refusal)?,
+            crate::lifecycle::Descriptor::of_shutdown::<P>().map_err(refusal)?,
         ];
         if declaration.id != P::ID || contracts.provides != provides || contracts.requires != required || contracts.lifecycle != sdk {
             return Err(refusal("SDK manifest differs from authored contracts"));

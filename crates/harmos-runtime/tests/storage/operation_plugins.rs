@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+#[path = "generated_guest_hash.rs"]
+mod generated_guest_hash;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -25,13 +28,14 @@ use super::{Fixture, Lanes, config};
 use harmos_domain::inventory::contracts::Required;
 use harmos_domain::plugin::Grant;
 use harmos_operations::storage::{Query, WriteRecords};
+use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
 use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use harmos_runtime::operations::{OperationDeclaration, OperationManager, WireDeclaration};
+use harmos_runtime::operations::{OperationManager, ProtobufOperation};
 use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::query::transform::{
     Transform,
@@ -39,7 +43,6 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_runtime::{Error, Identifier, Result};
-use harmos_storage::writes::WriteReceipt;
 
 /* === Constants === */
 
@@ -102,12 +105,9 @@ impl PluginLifecycle for Host {
 
 /* === Private Functions === */
 
-fn required<O>(grants: Vec<Grant>) -> Required
-where
-    O: OperationDeclaration,
-{
+fn required<O: ProtobufOperation>(grants: Vec<Grant>) -> Required {
     Required {
-        contract: WireDeclaration::of::<O>().contract().unwrap(),
+        contract: harmos_operations::execution::operations::OperationFactory::protobuf::<O>().unwrap().contract().unwrap(),
         grants,
     }
 }
@@ -126,8 +126,8 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_operations::storage::Query {
-    harmos_operations::storage::Query {
+fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_runtime::storage::Query {
+    harmos_runtime::storage::Query {
         at: fixture.storage.cursor_saved(),
         source: Source::Records(RecordSelection {
             schema,
@@ -197,22 +197,22 @@ async fn write_grants_enforced() {
 
     super::writes::seed(&fixture).await;
     let mut exchange = writer
-        .exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecords { scope: None },
+        .exchange_protobuf::<WriteRecords>(
+            harmos_protocol::storage::WriteRecords { scope: None },
             super::writes::settings(),
             super::writes::settings(),
         )
         .unwrap();
-    exchange.send(super::writes::batch(1, "bench")).await.unwrap();
+    exchange.send(super::writes::batch(1, "bench").into()).await.unwrap();
     let cursor = loop {
         let receipt = exchange.next().await.unwrap().unwrap();
-        if let WriteReceipt::Durable(receipt) = &*receipt {
-            break Arc::new(receipt.cursor.clone());
+        if let Some(WriteReceipt::Durable(receipt)) = receipt.receipt {
+            break Arc::new(harmos_runtime::storage::StorageCursor::try_from(receipt.cursor.unwrap()).unwrap());
         }
     };
     // A Second Destination On The Same Invocation Needs Its Own Grant.
-    exchange.send(super::writes::batch(2, "other")).await.unwrap();
-    exchange.finish_input();
+    exchange.send(super::writes::batch(2, "other").into()).await.unwrap();
+    exchange.finish_input().unwrap();
     while exchange.next().await.unwrap().is_some() {}
     let failure = exchange.join().await.unwrap_err();
     assert!(
@@ -227,8 +227,8 @@ async fn write_grants_enforced() {
     assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
     assert_eq!(fixture.storage.cursor_accepted(), *cursor);
     assert!(matches!(
-        bystander.exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecords { scope: None },
+        bystander.exchange_protobuf::<WriteRecords>(
+            harmos_protocol::storage::WriteRecords { scope: None },
             super::writes::settings(),
             super::writes::settings()
         ),
@@ -263,10 +263,10 @@ async fn query_grants_enforced() {
     let reducer = fixture.runtime.operations.caller(&host.callers["reducer"]).unwrap();
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
-    let mut collected = reducer.download::<Query>(query(&fixture, schema.clone()), super::writes::settings()).unwrap();
+    let mut collected = reducer.download_protobuf::<Query>(query(&fixture, schema.clone()).into(), super::writes::settings()).unwrap();
     let mut count = None;
     while let Some(output) = collected.next().await.unwrap() {
-        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output.into_owned_request().unwrap().0).unwrap() {
+        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output).unwrap() {
             let values =
                 batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
             count = Some(values.value(0));
@@ -284,14 +284,17 @@ async fn query_grants_enforced() {
         source_end: None,
         after: 0,
     });
-    assert!(matches!(reducer.download::<Query>(cross_kind, super::writes::settings()), Err(Error::OperationUnauthorized { .. })));
+    assert!(matches!(
+        reducer.download_protobuf::<Query>(cross_kind.into(), super::writes::settings()),
+        Err(Error::OperationUnauthorized { .. })
+    ));
 
     assert!(matches!(
-        reducer.download::<Query>(query(&fixture, other), super::writes::settings()),
+        reducer.download_protobuf::<Query>(query(&fixture, other).into(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
     assert!(matches!(
-        bystander.download::<Query>(query(&fixture, schema), super::writes::settings()),
+        bystander.download_protobuf::<Query>(query(&fixture, schema).into(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
     manager.shutdown(&mut host).await.unwrap();

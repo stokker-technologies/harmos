@@ -145,6 +145,57 @@ pub fn message_types(types: &FileDescriptorSet, root: &str) -> Result<FileDescri
     Ok(result)
 }
 
+/// Retain Exactly the Descriptor Graphs Reachable from These Message Roots.
+pub fn operation_types(types: &FileDescriptorSet, roots: &[&str]) -> Result<FileDescriptorSet, Error> {
+    let mut result = FileDescriptorSet::default();
+    for root in roots {
+        merge_message_types(&mut result, message_types(types, root)?)?;
+    }
+    Ok(result)
+}
+
+/// Merge Data-Only Descriptor Graphs, Refusing Conflicting Definitions.
+pub fn merge_message_types(target: &mut FileDescriptorSet, source: FileDescriptorSet) -> Result<(), Error> {
+    for mut file in source.file {
+        let name = file.name.as_ref().ok_or_else(|| Error("Missing File Name".into()))?;
+        if !file.service.is_empty() || !file.extension.is_empty() {
+            return Err(Error("Expected Data-Only Descriptors".into()));
+        }
+        let Some(existing) = target.file.iter_mut().find(|existing| existing.name.as_ref() == Some(name)) else {
+            target.file.push(file);
+            continue;
+        };
+        if existing.package != file.package || existing.syntax != file.syntax || existing.options != file.options {
+            return Err(Error(format!("Conflicting File: {name}")));
+        }
+        for message in file.message_type.drain(..) {
+            if let Some(previous) = existing.message_type.iter().find(|previous| previous.name == message.name) {
+                if previous != &message {
+                    return Err(Error(format!("Conflicting Message: {name}")));
+                }
+            } else {
+                existing.message_type.push(message);
+            }
+        }
+        for enumeration in file.enum_type.drain(..) {
+            if let Some(previous) = existing.enum_type.iter().find(|previous| previous.name == enumeration.name) {
+                if previous != &enumeration {
+                    return Err(Error(format!("Conflicting Enum: {name}")));
+                }
+            } else {
+                existing.enum_type.push(enumeration);
+            }
+        }
+        existing.message_type.sort_by(|left, right| left.name.cmp(&right.name));
+        existing.enum_type.sort_by(|left, right| left.name.cmp(&right.name));
+        existing.dependency.append(&mut file.dependency);
+        existing.dependency.sort();
+        existing.dependency.dedup();
+    }
+    target.file.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(())
+}
+
 /* === Private Functions === */
 
 fn qualified(parent: &str, name: Option<&str>) -> Result<String, Error> {

@@ -12,6 +12,7 @@
 /* === Modules === */
 
 mod codec;
+mod protobuf;
 
 /* === Re-Exports === */
 

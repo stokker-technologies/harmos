@@ -7,163 +7,70 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::IO_POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Nested, product};
-use harmos_domain::model::storage::{FileBatch, FileMetadata, FileReference};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
 use crate::execution::operations::access::GrantAccess;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufInput, ProtobufOperation, Resource, ServingError, Visibility};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(WriteFile {
-    metadata: Nested<FileMetadata> => 1,
-});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-// Write One Finished File From Streamed Batches.
-#[harmos::operation(
-    harmos_path = crate,
-    resources = [StorageManager<ErasedCatalog>, GrantAccess],
-    codec = manual,
-    id = "storage.write_file",
-    response = FileReference,
-    policy = IO_POLICY,
-    input = FileBatch,
-    visibility = Public,
-    replay = ReplaySafety::Unknown,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "WriteFile"),
-    grant = Self::grant_for,
-)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteFile {
-    pub metadata: FileMetadata,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct WriteFile;
 
 /* === Implementations === */
 
-impl WriteFile {
-    fn grant_for(request: &WriteFile) -> Option<harmos_domain::plugin::Grant> {
-        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.metadata.id.as_str().to_owned()))
+impl ProtobufOperation for WriteFile {
+    type Request = harmos_protocol::storage::WriteFile;
+    type Response = harmos_protocol::storage::FileReference;
+    type Endpoints = ProtobufInput<harmos_protocol::storage::FileBatch>;
+    const ID: &'static str = "storage.write_file";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "WriteFile"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<GrantAccess>()];
+
+    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+        let metadata = request.metadata.as_ref().ok_or_else(|| harmos_domain::MessageError::borrowed("metadata is required"))?;
+        Ok(Some(harmos_domain::plugin::Grant::of(Self::ID, metadata.id.clone())))
     }
-}
 
-impl MemorySize for WriteFile {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.metadata.memory_size().saturating_sub(std::mem::size_of_val(&self.metadata)))
-    }
-}
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use super::*;
-    use crate::execution::operations::{Operation, OperationDeclaration};
-    use crate::{Error, Result};
-    use harmos_storage::FileReference;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::WriteFile {
-        type Error = Error;
-
-        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<FileReference>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let grants = context.resource::<crate::execution::operations::access::GrantAccess>();
-            let input = context.streams();
-
-            let host = grants;
-            let ctx = &host.0;
-            let grant = harmos_domain::plugin::Grant::of(WriteFile::ID, self.metadata.id.as_str().to_owned());
-            ctx.admit(&grant).map_err(Error::Access)?;
+    async fn run(context: ExecutionContext, request: Self::Request, input: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let grants = context.resource::<GrantAccess>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_storage::FileReference> = async {
+            let metadata: harmos_storage::FileMetadata =
+                request.metadata.ok_or(crate::Error::InvalidInput { field: "metadata", reason: "required" })?.try_into()?;
+            let grant = harmos_domain::plugin::Grant::of(Self::ID, metadata.id.to_string());
+            grants.0.admit(&grant).map_err(crate::Error::Access)?;
             storage.retry_transient_persistence();
-            let mut file = storage.create_file(self.metadata.clone()).await?;
-
+            let mut file = storage.create_file(metadata).await?;
             let mut offset = 0u64;
             while let Some(batch) = input.recv().await {
                 let (batch, _claims) = batch.into_owned_request()?;
-                ctx.admit(&grant).map_err(Error::Access)?;
+                grants.0.admit(&grant).map_err(crate::Error::Access)?;
                 if batch.offset != offset || batch.bytes.is_empty() {
-                    return Err(Error::InvalidInput {
+                    return Err(crate::Error::InvalidInput {
                         field: "file batch",
                         reason: "nonempty batches must have contiguous byte offsets",
                     });
                 }
-                let next = offset.checked_add(batch.bytes.len() as u64).ok_or(Error::InvalidInput {
+                let next = offset.checked_add(batch.bytes.len() as u64).ok_or(crate::Error::InvalidInput {
                     field: "file batch offset",
                     reason: "byte offset overflow",
                 })?;
                 file.write_all(batch.bytes).await?;
                 offset = next;
             }
-
-            ctx.admit(&grant).map_err(Error::Access)?;
+            grants.0.admit(&grant).map_err(crate::Error::Access)?;
             let reference = file.finish().await?;
             storage.await_durable(&reference.position).await?;
-            Ok(reference.into())
+            Ok(reference)
         }
-
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::execution::operations::FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(crate::execution::operations::FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */

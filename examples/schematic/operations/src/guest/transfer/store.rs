@@ -7,6 +7,8 @@
  * ***
  */
 
+// Plugin-Owned Bounded Transfer Storage.
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -14,12 +16,13 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::Mutex;
 
 // Third Party Imports
+use schematic_domain::model::transfer::Batch;
 
 // Local Imports
-use crate::operations::Contract;
-use crate::plugin::Grant;
 
 /* === Constants === */
 
@@ -29,15 +32,15 @@ use crate::plugin::Grant;
 
 /* === Structs === */
 
-// A Live Provider Contract. Invocation Still Performs Request-Specific Authorization.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DiscoveredOperation {
-    pub owner: crate::Identifier,
-    pub generation: u64,
-    pub contract: Contract,
-    pub grants: Vec<Grant>,
-    pub conditional_access: bool,
-    pub grpc_available: bool,
+#[derive(Default)]
+pub struct Store {
+    pub(super) batches: Mutex<BTreeMap<u64, Stored>>,
+}
+
+#[derive(Default)]
+pub(super) struct Stored {
+    pub(super) bytes: usize,
+    pub(super) batches: VecDeque<Batch>,
 }
 
 /* === Enums === */

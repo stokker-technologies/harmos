@@ -518,15 +518,15 @@ impl harmos_operations::execution::operations::access::Discovery for HostContext
         harmos_operations::execution::operations::access::AccessError,
     > {
         let context = self.borrow();
-        let request = harmos_operations::host::Catalog {
-            kind: harmos_operations::host::CatalogKind::Operations,
+        let request = harmos_protocol::host::Catalog {
+            kind: harmos_protocol::host::CatalogKind::Operations as i32,
             schema: None,
             after: after.map(str::to_owned),
-            rows: Some(rows),
-            bytes: Some(bytes),
+            rows: Some(rows as u64),
+            bytes: Some(bytes as u64),
         };
         let page = context.operations.discover(&context.source, &request)?;
-        Ok((page.entries, page.next))
+        Ok(page)
     }
 }
 impl harmos_operations::execution::operations::access::GrantAuthority for HostContext {
@@ -534,5 +534,12 @@ impl harmos_operations::execution::operations::access::GrantAuthority for HostCo
         &self, grant: &harmos_domain::plugin::Grant,
     ) -> std::result::Result<(), harmos_operations::execution::operations::access::AccessError> {
         self.borrow().admit_stream_grant(grant).map_err(Into::into)
+    }
+}
+
+impl harmos_operations::execution::operations::ProtobufHost for HostContext {
+    type Error = Error;
+    async fn call_protobuf<O: super::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        harmos_operations::execution::operations::ProtobufHost::call_protobuf::<O>(&self.borrow(), request).await
     }
 }

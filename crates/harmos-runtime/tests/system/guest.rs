@@ -24,8 +24,8 @@ use crate::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::PluginState;
 use schematic::model::{Connection, Point, Snapshot};
-use schematic_operations::Operations;
-use schematic_operations::schematic::{analyze, propose, validate};
+use schematic_operations::guest::Operations;
+use schematic_operations::guest::schematic::{analyze, propose, validate};
 
 /* === Constants === */
 

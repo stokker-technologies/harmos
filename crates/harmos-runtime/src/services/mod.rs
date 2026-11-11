@@ -30,6 +30,13 @@ use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
 use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, RestartPolicy, Running};
+impl<A: Application> harmos_operations::execution::operations::ProtobufHost for ServiceContext<A> {
+    type Error = Error;
+    async fn call_protobuf<O: crate::operations::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        harmos_operations::execution::operations::ProtobufHost::call_protobuf::<O>(&self.operations, request).await
+    }
+}
+
 #[cfg(test)]
 use crate::supervision::executor;
 use crate::{Application, Error, Result, state::StateManager, streams::StreamManager};

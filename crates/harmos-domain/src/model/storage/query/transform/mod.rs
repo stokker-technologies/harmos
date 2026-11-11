@@ -26,21 +26,10 @@ pub mod sort;
 
 // Local Imports
 use crate::MemorySize;
-use crate::model::storage::codec::{Many, Nested, Text, product, variants};
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(FieldPath { fields: Many<Text> => 1 });
-variants!(Transform {
-    0, 1, "filter": Self::Filter(value) => { value: Nested<filter::Filter> => 1 } => Self::Filter(value);
-    1, 2, "project": Self::Project(value) => { value: Nested<project::Project> => 1 } => Self::Project(value);
-    2, 3, "aggregate": Self::Aggregate(value) => { value: Nested<aggregate::Aggregate> => 1 } => Self::Aggregate(value);
-    3, 4, "histogram": Self::Histogram(value) => { value: Nested<histogram::Histogram> => 1 } => Self::Histogram(value);
-    4, 5, "downsample": Self::Downsample(value) => { value: Nested<downsample::Downsample> => 1 } => Self::Downsample(value);
-    5, 6, "sort": Self::Sort(value) => { value: Nested<sort::Sort> => 1 } => Self::Sort(value);
-});
 
 /* === Type Aliases === */
 

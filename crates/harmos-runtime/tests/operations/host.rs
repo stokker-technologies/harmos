@@ -112,6 +112,10 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     });
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<Gate>(gate.clone());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();
@@ -212,7 +216,8 @@ async fn host_instances_settle() {
         let instance = runtime.operation(HoldDeclaration { value: 1 }).start().await.unwrap();
         gate.started.notified().await;
         let id = Instance::detach(instance);
-        let status = runtime.operation(harmos_operations::lifecycle::Status::of(id)).await;
+        let status =
+            runtime.operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
         assert_eq!(status.unwrap().phase, Phase::Running.as_str());
         let cleaned = gate.cleanup.notified();
         gate.release.add_permits(1);
@@ -229,23 +234,23 @@ async fn builtin_controls_instance() {
     let mut instance = operations.submit::<HoldDeclaration>(HoldDeclaration { value: 1 }).await.unwrap();
     gate.started.notified().await;
     let id = instance.id();
-    let status = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
+    let status =
+        operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
     assert_eq!(status.phase, Phase::Running.as_str());
     assert_eq!(status.outcome, "");
     assert!(!status.cancellation_requested);
     let cancelled =
-        operations.operation::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(id)).await.unwrap();
+        operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(id)).await.unwrap();
     assert!(cancelled.cancellation_requested);
     assert!(matches!((&mut instance).await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     instance.settle().await.unwrap();
     // Settled Instances Leave The Index; Unknown Ids Stay Hidden
-    let settled = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
+    let settled = operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
     assert!(hidden(settled.err()));
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let refused = operations.operation::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(unknown)).await;
+    let refused = operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(unknown)).await;
     assert!(hidden(refused.err()));
-    let status = harmos_runtime::operations::instance::Status::try_from(&*cancelled);
-    assert_ne!(status.unwrap().outcome, Some(Outcome::Succeeded));
+    assert_ne!(cancelled.outcome, Outcome::Succeeded.as_str());
     runtime.shutdown().await.unwrap();
 }
 
@@ -276,7 +281,8 @@ async fn resident_leases_watched() {
     let id = first.id();
     let key = operations.resident_key(id).unwrap();
     assert_eq!(operations.resident(&key).unwrap().leases, 2);
-    let status = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
+    let status =
+        operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
     assert_eq!(status.phase, Phase::Running.as_str());
 
     // A Watch Streams Every Change Until the Instance Stops
@@ -284,19 +290,25 @@ async fn resident_leases_watched() {
         items: std::num::NonZeroUsize::new(16).unwrap(),
         bytes: std::num::NonZeroUsize::new(4096).unwrap(),
     };
-    let mut watch =
-        operations.download::<harmos_operations::lifecycle::Watch>(harmos_operations::lifecycle::Watch::of(id), settings).unwrap();
-    let current = watch.next().await.unwrap().unwrap();
+    let limits = harmos_runtime::operations::WireStreamLimits { input: settings, output: settings };
+    let (watch, stream) = operations
+        .submit_protobuf::<harmos_operations::lifecycle::Watch>(harmos_operations::lifecycle::Watch::of(id), Some(limits))
+        .unwrap();
+    let stream = stream.unwrap();
+    let current =
+        <harmos_protocol::host::InstanceState as prost::Message>::decode(stream.receive_current().await.unwrap().unwrap().as_slice())
+            .unwrap();
     assert_eq!(current.phase, Phase::Running.as_str());
     drop(first);
     assert_eq!(operations.resident(&key).unwrap().leases, 1);
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 0);
     second.request_cancel();
     let mut phases = Vec::new();
-    while let Some(state) = watch.next().await.unwrap() {
+    while let Some(bytes) = stream.receive_current().await.unwrap() {
+        let state = <harmos_protocol::host::InstanceState as prost::Message>::decode(bytes.as_slice()).unwrap();
         phases.push(state.phase.clone());
     }
-    let last = watch.join().await.unwrap();
+    let last = <harmos_protocol::host::InstanceState as prost::Message>::decode(watch.await.unwrap().as_slice()).unwrap();
     assert_eq!(last.phase, Phase::Stopped.as_str());
     assert_eq!(phases.last().map(String::as_str), Some(Phase::Stopped.as_str()));
     assert!(phases.iter().any(|phase| phase == Phase::Stopping.as_str()));
@@ -304,7 +316,7 @@ async fn resident_leases_watched() {
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
 
     // A Stopped Resident Leaves the Index Like a Settled Request
-    let stopped = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
+    let stopped = operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
     assert!(hidden(stopped.err()));
     runtime.shutdown().await.unwrap();
 }

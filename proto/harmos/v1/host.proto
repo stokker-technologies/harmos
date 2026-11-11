@@ -2,6 +2,8 @@
 syntax = "proto3";
 package harmos.host.v1;
 
+import "google/protobuf/duration.proto";
+
 // Assignments are frozen for the lifetime of a private guest activation.
 message AssignedOperation {
   string operation = 1;
@@ -12,3 +14,102 @@ message AssignedOperation {
 message OperationAssignments {
   repeated AssignedOperation operations = 1;
 }
+
+// Controls refer only to instances owned by the authenticated caller.
+message Status { uint64 instance = 1; }
+message Cancel { uint64 instance = 1; }
+message Watch { uint64 instance = 1; }
+message InstanceState {
+  string phase = 1;
+  string outcome = 2;
+  bool cancellation_requested = 3;
+  uint32 attempt = 4;
+}
+
+// Select one bounded page. Cursors are opaque and must be returned unchanged.
+message Catalog {
+  CatalogKind kind = 1;
+  optional string schema = 2;
+  optional string after = 3;
+  optional uint64 rows = 4;
+  optional uint64 bytes = 5;
+}
+// Storage catalogs retain their documented JSON storage representation.
+message CatalogPage {
+  // Stored catalog entries use their native storage JSON representation.
+  bytes entries = 1;
+  optional string next = 2;
+  repeated DiscoveredOperation operations = 3;
+}
+enum CatalogKind {
+  CATALOG_KIND_OPERATIONS = 0;
+  CATALOG_KIND_SCHEMAS = 1;
+  CATALOG_KIND_STREAMS = 2;
+  CATALOG_KIND_OBJECTS = 3;
+}
+
+// Descriptor bytes are a google.protobuf.FileDescriptorSet. Roots name messages
+// in that set; input and output, when present, are stream item messages.
+message Protobuf {
+  bytes descriptors = 1;
+  string request = 2;
+  string response = 3;
+  optional string input = 4;
+  optional string output = 5;
+}
+message Grpc { string package = 1; string service = 2; string method = 3; }
+message Grant { string operation = 1; optional string scope = 2; }
+message OperationPolicy {
+  google.protobuf.Duration timeout = 1;
+  google.protobuf.Duration attempt_timeout = 2;
+  google.protobuf.Duration cancellation_timeout = 3;
+  // No retry message means never retry. Retries apply only to transient failures.
+  RetryPolicy retries = 4;
+}
+message RetryPolicy {
+  uint64 max_retries = 1;
+  google.protobuf.Duration initial = 2;
+  // A present maximum selects exponential backoff; otherwise initial is fixed.
+  google.protobuf.Duration maximum = 3;
+  bool deterministic_jitter = 4;
+}
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  VISIBILITY_PRIVATE = 1;
+  VISIBILITY_PUBLIC = 2;
+}
+message OperationContract {
+  string id = 1;
+  string description = 2;
+  Visibility visibility = 3;
+  OperationPolicy policy = 4;
+  // True only for an explicitly idempotent declaration.
+  bool replay_safe = 5;
+  bytes fingerprint = 6;
+  // Absent for native-only declarations with no public protobuf binding.
+  Protobuf protobuf = 7;
+  Grpc grpc = 8;
+}
+message DiscoveredOperation {
+  string owner = 1;
+  uint64 generation = 2;
+  OperationContract contract = 3;
+  repeated Grant grants = 4;
+  bool conditional_access = 5;
+  bool grpc_available = 6;
+}
+
+// A Stream Publication Uses the Stream's Own Payload Codec.
+message Publish {
+  string stream = 1;
+  optional uint64 sequence = 3;
+  optional int64 published_unix_micros = 4;
+  optional string context = 5;
+  bytes payload = 6;
+  repeated FollowingRow following = 7;
+}
+message FollowingRow {
+  bytes payload = 1;
+  optional int64 published_delta_micros = 2;
+}
+message Published {}

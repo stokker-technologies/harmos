@@ -28,6 +28,7 @@ testing = []
 [dependencies]
 # Local
 harmos-domain = { workspace = true }
+harmos-protocol = { workspace = true }
 
 # Git
 
@@ -52,6 +53,7 @@ arrow-select = { workspace = true }
 base64 = { workspace = true }
 flatbuffers = { workspace = true }
 postcard = { workspace = true }
+prost = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
 

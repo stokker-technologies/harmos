@@ -73,7 +73,7 @@ struct Answer(ErasedResponse);
 
 struct NativeCall;
 
-struct NativeChild(super::Running<NativeCall>, &'static str);
+struct NativeChild(super::Running<NativeCall>, Target);
 
 struct EncodedChild {
     invocation: Option<super::EncodedInvocation>,
@@ -140,7 +140,7 @@ impl Caller for HostContext {
                 } else {
                     admit_native(&context, target, request, retry, endpoints, factory, |endpoints| endpoints)?
                 };
-                Ok(Box::new(NativeChild(running, target.id)) as Box<dyn ChildInstance>)
+                Ok(Box::new(NativeChild(running, target)) as Box<dyn ChildInstance>)
             }
             .await;
             result.map_err(|error: crate::Error| InvocationError::failed(target.id, error))
@@ -161,7 +161,12 @@ impl ChildInstance for NativeChild {
     }
     fn join(self: Box<Self>) -> CallFuture<'static> {
         Box::pin(async move {
-            crate::clock::waiting(self.0).await.map(|response| response.0.clone()).map_err(|error| InvocationError::failed(self.1, error))
+            let response = crate::clock::waiting(self.0).await.map_err(|error| InvocationError::failed(self.1.id, error))?.0.clone();
+            if self.1.protobuf_native {
+                let bytes = response.restore::<Vec<u8>>().ok_or(InvocationError::Response { operation: self.1.id })?;
+                return (self.1.decode_protobuf)(&bytes).map_err(|error| InvocationError::failed(self.1.id, error));
+            }
+            Ok(response)
         })
     }
     fn detach(self: Box<Self>) -> super::OperationInstanceId {
@@ -243,7 +248,8 @@ fn admit_native<P: Send + 'static>(
     context: &super::Context<'_>, target: Target, request: Box<dyn Any + Send>, retry: Option<super::RetryPolicy>, endpoints: P,
     factory: harmos_operations::execution::operations::OperationFactory, erase: fn(P) -> Box<dyn Any + Send>,
 ) -> crate::Result<super::Running<NativeCall>> {
-    let grant = (target.grant)(request.as_ref());
+    let grant =
+        (target.grant)(request.as_ref()).map_err(|source| crate::Error::OperationPayload { operation: target.id.into(), source })?;
     let memory = (target.memory)(request.as_ref());
     let entry = context.operations.entry_as(target.id, &context.source.check()?)?;
     let resources = context.operations.resources_for(&entry);

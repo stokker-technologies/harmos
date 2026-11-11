@@ -26,7 +26,7 @@ use std::sync::Arc;
 /* === Type Aliases === */
 
 pub type AccessError = Box<dyn std::error::Error + Send + Sync>;
-pub type DiscoveryPage = (Vec<u8>, Option<String>);
+pub type DiscoveryPage = harmos_protocol::host::CatalogPage;
 
 /* === Structs === */
 

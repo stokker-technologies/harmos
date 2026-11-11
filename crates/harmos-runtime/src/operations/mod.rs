@@ -16,6 +16,7 @@ mod binding;
 mod caller;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod catalog;
+mod clock;
 pub(crate) mod context;
 mod surface;
 
@@ -46,6 +47,8 @@ mod registration;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod remote;
 
+#[cfg(feature = "grpc")]
+mod protobuf;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod sdk;
 mod wire;
@@ -79,7 +82,9 @@ pub use harmos_operations::execution::operations::{
 pub use harmos_operations::execution::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
 pub use harmos_operations::execution::operations::{ExecutionContext, NativeInstance};
 #[cfg(feature = "grpc")]
-pub use harmos_operations::execution::operations::{ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput};
+pub use harmos_operations::execution::operations::{
+    ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
+};
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};
@@ -99,6 +104,7 @@ pub(crate) use manager::Manager;
 pub use manager::OperationManager;
 #[cfg(feature = "plugin-guest")]
 pub(crate) use manager::WeakOperationManager;
+pub use protobuf::{ProtobufDownload, ProtobufExchange, ProtobufUpload};
 pub use session::{Completion, Download, Exchange, Session, SessionInput, SessionOutput, Upload};
 pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
 

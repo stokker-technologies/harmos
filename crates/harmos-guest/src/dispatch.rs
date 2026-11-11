@@ -103,7 +103,7 @@ struct Loan {
 }
 
 struct Route {
-    callees: &'static [WireDeclaration],
+    callees: Vec<harmos_operations::execution::operations::OperationDependency>,
     lifecycle: bool,
     // Lifecycle actions and the observe control are built in: they serve the
     // plugin's machinery and never appear in its declared catalog.
@@ -306,23 +306,19 @@ impl Table {
     }
 
     pub fn validate_callees(&self, assignments: &[u8]) -> Result<(), ServingError> {
-        let assignments = AssignedOperation::decode(assignments)?;
+        let catalog = OperationAssignments::default();
+        catalog.install(assignments)?;
         for route in self.handlers.values() {
-            for callee in route.callees {
-                let id = callee.operation.id;
-                let fingerprint = (callee.operation.fingerprint)().map_err(|_| ServingError::Catalog)?;
+            for callee in &route.callees {
+                let id = callee.id.as_str();
+                let fingerprint = callee.fingerprint;
                 let local = QualifiedId::qualify(&self.owner, id).map_err(|_| ServingError::Catalog)?;
-                let actual = self
-                    .handlers
-                    .get(local.as_str())
-                    .map(|entry| entry.definition.fingerprint.0)
-                    .or_else(|| {
-                        assignments
-                            .iter()
-                            .find(|entry| entry.operation.split_once('.').is_some_and(|(_, name)| name == id))
-                            .map(|entry| entry.fingerprint)
-                    })
-                    .ok_or(ServingError::Unassigned { operation: id })?;
+                let actual = match self.handlers.get(local.as_str()) {
+                    Some(entry) => entry.definition.fingerprint.0,
+                    None => {
+                        catalog.resolve_dependency(id, fingerprint)?.fingerprint.as_slice().try_into().map_err(|_| ServingError::Catalog)?
+                    }
+                };
                 if actual != fingerprint.0 {
                     return Err(ServingError::Identity { operation: id.to_owned() });
                 }

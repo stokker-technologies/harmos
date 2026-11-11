@@ -53,7 +53,7 @@ pub enum ServingError {
     StoreFrozen,
 
     #[error("caller may not invoke operation `{operation}` without a host assignment")]
-    Unassigned { operation: &'static str },
+    Unassigned { operation: String },
 
     #[error("operation endpoint types differ from the declaration")]
     EndpointTypes,

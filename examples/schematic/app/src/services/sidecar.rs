@@ -57,13 +57,13 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<A
     let streams = runtime.streams.clone();
     resources.progress.get_or_init(|| Arc::new(move |row| streams.publish(row)));
     let registration = harmos_runtime::operations::Registration::new(Lanes::Open)
-        .operation::<schematic_operations::AnalyzeSchematic>("schematic.analyze")?
-        .operation::<schematic_operations::AnalyzeUpload>("schematic.analyze.upload")?
-        .operation::<schematic_operations::AnalyzeExchange>("schematic.analyze.exchange")?
-        .operation::<schematic_operations::transfer::Upload>("benchmark.upload")?
-        .operation::<schematic_operations::transfer::Download>("benchmark.download")?
-        .operation::<schematic_operations::transfer::Put>("benchmark.put")?
-        .operation::<schematic_operations::transfer::Take>("benchmark.take")?;
+        .protobuf::<schematic_operations::AnalyzeSchematic>()?
+        .protobuf::<schematic_operations::AnalyzeUpload>()?
+        .protobuf::<schematic_operations::AnalyzeExchange>()?
+        .protobuf::<schematic_operations::transfer::Upload>()?
+        .protobuf::<schematic_operations::transfer::Download>()?
+        .protobuf::<schematic_operations::transfer::Put>()?
+        .protobuf::<schematic_operations::transfer::Take>()?;
     runtime.register_batch(registration).await?;
 
     // Attach the Unary Plugin

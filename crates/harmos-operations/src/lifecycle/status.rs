@@ -13,16 +13,9 @@
 
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-#[cfg(feature = "runtime")]
+use crate::Error;
 use crate::execution::operations::instances::InstanceAccess;
-
-#[cfg(feature = "runtime")]
-use crate::{Error, Operation, Response};
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 use harmos_domain::operations::instance::Id;
 
 /* === Constants === */
@@ -33,28 +26,7 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::operation(
-    harmos_path = crate,
-    resources = [InstanceAccess],
-    id = "host.operations.status",
-    response = super::InstanceState,
-    policy = super::POLICY,
-    visibility = Public,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Status"),
-)]
-#[derive(Clone, Default, PartialEq)]
-pub struct Status {
-    pub instance: u64,
-}
-
-#[harmos::message(harmos_path = crate)]
-#[derive(Clone, Default, PartialEq)]
-pub struct InstanceState {
-    pub phase: String,
-    pub outcome: String,
-    pub cancellation_requested: bool,
-    pub attempt: u32,
-}
+pub struct Status;
 
 /* === Enums === */
 
@@ -62,50 +34,30 @@ pub struct InstanceState {
 
 /* === Implementations === */
 
+impl ProtobufOperation for Status {
+    type Request = harmos_protocol::host::Status;
+    type Response = super::InstanceState;
+    type Endpoints = ();
+    const ID: &'static str = "host.operations.status";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Operations", "Status"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
+
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let access = context.resource::<InstanceAccess>().map_err(|_| ServingError::Catalog)?;
+        let instance = access
+            .0
+            .owned(Id::new(request.instance))
+            .ok_or_else(|| ServingError::Native(std::sync::Arc::new(Error::UnknownInstance(request.instance))))?;
+        let _ = output;
+        Ok(super::state(instance.status()))
+    }
+}
+
 impl Status {
-    pub fn of(instance: Id) -> Self {
-        Self { instance: instance.value() }
-    }
-}
-
-#[cfg(feature = "runtime")]
-impl Operation for Status {
-    type Error = Error;
-
-    async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
-        let access = context.resource::<crate::execution::operations::instances::InstanceAccess>();
-
-        let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
-        Ok(super::InstanceState::from(instance.status()).into())
-    }
-}
-
-impl From<harmos_domain::operations::instance::Status> for InstanceState {
-    fn from(status: harmos_domain::operations::instance::Status) -> Self {
-        Self {
-            phase: status.phase.as_str().to_owned(),
-            outcome: status.outcome.map(harmos_domain::operations::instance::Outcome::as_str).unwrap_or_default().to_owned(),
-            cancellation_requested: status.cancellation_requested,
-            attempt: status.attempt,
-        }
-    }
-}
-
-impl TryFrom<&InstanceState> for harmos_domain::operations::instance::Status {
-    type Error = harmos_domain::operations::instance::ParseError;
-
-    fn try_from(state: &InstanceState) -> Result<Self, Self::Error> {
-        let phase = state.phase.parse::<harmos_domain::operations::instance::Phase>()?;
-        let outcome = match state.outcome.as_str() {
-            "" => None,
-            outcome => Some(outcome.parse::<harmos_domain::operations::instance::Outcome>()?),
-        };
-        Ok(Self {
-            phase,
-            outcome,
-            cancellation_requested: state.cancellation_requested,
-            attempt: state.attempt,
-        })
+    pub fn of(instance: Id) -> harmos_protocol::host::Status {
+        harmos_protocol::host::Status { instance: instance.value() }
     }
 }
 

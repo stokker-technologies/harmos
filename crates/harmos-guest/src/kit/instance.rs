@@ -28,12 +28,12 @@ use super::UNKNOWN;
 use super::context::Context;
 use crate::OperationRefusal;
 use crate::envelope::{WireChildAction, WireChildCall, WireChildControl};
+use crate::lifecycle::InstanceState;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
 use harmos_operations::execution::operations::{
     CallContext, ContextError, ContextValue, Instance, OperationDeclaration, OperationHost, Response,
 };
-use harmos_operations::lifecycle::InstanceState;
 
 /* === Constants === */
 
@@ -85,7 +85,7 @@ impl Context {
             generation_context: self.generation_context,
             values: self.call.portable(),
             operation: target.operation.clone(),
-            fingerprint: target.fingerprint,
+            fingerprint: target.fingerprint.as_slice().try_into().map_err(OperationRefusal::of)?,
             generation: target.generation,
             payload: harmos_domain::Message::encode(request),
             submit,
@@ -140,7 +140,7 @@ impl harmos_operations::execution::operations::Caller for Context {
                     generation_context: self.generation_context,
                     values: call.portable(),
                     operation: assigned.operation.clone(),
-                    fingerprint: assigned.fingerprint,
+                    fingerprint: assigned.fingerprint.as_slice().try_into().map_err(OperationRefusal::of)?,
                     generation: assigned.generation,
                     payload,
                     submit: true,
@@ -262,7 +262,7 @@ impl OperationHost for Context {
     where
         S::Row: harmos_domain::Message,
     {
-        harmos_operations::streams::publish_on::<_, S>(self, row)
+        crate::builtins::streams::publish_on::<_, S>(self, row)
     }
 
     type Error = OperationRefusal;

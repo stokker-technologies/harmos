@@ -76,15 +76,15 @@ async fn operation_retries_three() {
     let f = Fixture::new(config()).await;
     f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
-    let request = harmos_operations::storage::ResumeFile {
-        mutation: identity(&f.storage, "resume"),
-        session: file.session().unwrap().clone(),
+    let request = harmos_protocol::storage::ResumeFile {
+        mutation: Some(identity(&f.storage, "resume").into()),
+        session: Some(file.session().unwrap().clone().into()),
     };
     f.data.control.fence_failures.store(3, Ordering::SeqCst);
-    let first = f.runtime.operation(request.clone()).await.unwrap();
-    assert_eq!(first.session.generation, 2);
+    let first = f.runtime.operations.call_protobuf::<harmos_operations::storage::ResumeFile>(request.clone()).await.unwrap();
+    assert_eq!(first.session.as_ref().unwrap().generation, 2);
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
-    assert_eq!(*f.runtime.operation(request).await.unwrap(), *first);
+    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::ResumeFile>(request).await.unwrap(), first);
     f.finish().await;
 }
 
@@ -141,15 +141,18 @@ async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
     f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
-    let request = harmos_operations::storage::ResumeFile {
-        mutation: identity(&f.storage, "resume"),
-        session: file.session().unwrap().clone(),
+    let request = harmos_protocol::storage::ResumeFile {
+        mutation: Some(identity(&f.storage, "resume").into()),
+        session: Some(file.session().unwrap().clone().into()),
     };
     f.data.control.fence_failures.store(5, Ordering::SeqCst);
-    assert!(f.runtime.operation(request.clone()).await.is_err());
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::ResumeFile>(request.clone()).await.is_err());
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 1);
     f.data.control.fence_failures.store(0, Ordering::SeqCst);
-    assert_eq!(f.runtime.operation(request).await.unwrap().session.generation, 2);
+    assert_eq!(
+        f.runtime.operations.call_protobuf::<harmos_operations::storage::ResumeFile>(request).await.unwrap().session.unwrap().generation,
+        2
+    );
     f.finish().await;
 }
 

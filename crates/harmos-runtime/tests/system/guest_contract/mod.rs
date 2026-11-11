@@ -32,7 +32,7 @@ use super::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::Error;
 use schematic::model::Point;
-use schematic_operations::schematic::propose;
+use schematic_operations::guest::schematic::propose;
 use support::Bank;
 
 /* === Constants === */

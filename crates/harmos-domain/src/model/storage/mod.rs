@@ -14,6 +14,7 @@
 
 pub mod arrow;
 pub mod catalog;
+#[doc(hidden)]
 pub mod codec;
 pub mod data;
 pub mod directory;
@@ -24,7 +25,6 @@ pub mod mutations;
 pub mod objects;
 pub mod position;
 pub mod query;
-pub mod schema_input;
 pub mod time;
 pub mod writes;
 
@@ -44,11 +44,9 @@ pub use mutations::{FileProducer, MutationId, MutationWindow, StorageInfo};
 pub use objects::{ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectVersion, ObjectVersionToken};
 pub use position::{RecoveryPosition, StorageCursor, StoreHistory};
 pub use query::{
-    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection, RowSlice, SchemaSelection, Source,
-    StreamSelection,
+    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
 };
-pub use schema_input::{SchemaInfo, SchemaInput};
-pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
+pub use writes::DataBatch;
 
 /* === Imports === */
 

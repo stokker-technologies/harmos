@@ -27,6 +27,7 @@ use crate::execution::operations::{
     EndpointSet, Grpc, OperationPolicy, ReplaySafety, StreamInput, StreamItem, StreamOutput, Visibility, WireEndpoints, WireStreams,
 };
 use crate::execution::{MemorySize, MessageError};
+use harmos_domain::operations::ProtobufExt;
 
 /* === Constants === */
 
@@ -36,12 +37,17 @@ use crate::execution::{MemorySize, MessageError};
 
 /* === Structs === */
 
+pub struct ProtobufDependency {
+    definition: fn() -> Result<super::super::calls::OperationDependency, ServingError>,
+}
+
 pub struct ProtobufInput<T>(StreamInput<Value<T>>);
 pub struct ProtobufOutput<T>(StreamOutput<Encoded>, PhantomData<fn() -> T>);
 
 struct Encoded(Vec<u8>);
 pub struct ProtobufItem<T>(StreamItem<Value<T>>);
 
+#[derive(Clone)]
 struct Value<T> {
     value: T,
     memory: usize,
@@ -67,16 +73,37 @@ pub trait ProtobufOperation: Send + Sync + 'static {
     type Endpoints: ProtobufEndpoints;
 
     const ID: &'static str;
-    const GRPC: Grpc;
+    const GRPC: Option<Grpc> = None;
     const POLICY: OperationPolicy;
     const VISIBILITY: Visibility = Visibility::Private;
     const DESCRIPTION: &'static str = "";
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[];
+    const OPERATIONS: &'static [ProtobufDependency] = &[];
+
+    fn grant(_request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, MessageError> {
+        Ok(None)
+    }
+
+    fn classify(_error: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
+        super::super::FailureKind::Permanent
+    }
 
     fn run(
         context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints,
     ) -> impl Future<Output = Result<Self::Response, ServingError>> + Send;
+}
+
+pub trait ProtobufHost: Sync {
+    type Error: Send;
+    fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> impl Future<Output = Result<O::Response, Self::Error>> + Send;
+}
+
+pub trait ProtobufExchangeEndpoints: ProtobufEndpoints {
+    type Input: ReflectMessage + Default + Send + Sync + 'static;
+    type Output: ReflectMessage + Default + Send + Sync + 'static;
 }
 
 pub trait ProtobufEndpoints: EndpointSet {
@@ -84,6 +111,74 @@ pub trait ProtobufEndpoints: EndpointSet {
 }
 
 /* === Implementations === */
+
+impl super::super::Target {
+    pub fn protobuf<O: ProtobufOperation>() -> Result<Self, ServingError> {
+        OperationFactory::protobuf::<O>()?;
+        Ok(Self {
+            id: O::ID,
+            protobuf_native: true,
+            definition: || OperationFactory::protobuf::<O>().expect("validated protobuf declaration").definition,
+            request: TypeId::of::<O::Request>,
+            response: TypeId::of::<O::Response>,
+            memory: |request| {
+                request
+                    .downcast_ref::<O::Request>()
+                    .map_or(0, |request| memory::<O::Request>(&request.encode_to_vec()).unwrap_or(usize::MAX))
+            },
+            encode: |request| request.downcast_ref::<O::Request>().map(prost::Message::encode_to_vec),
+            decode: decode_response::<O>,
+            encode_protobuf: |request| {
+                request
+                    .downcast_ref::<O::Request>()
+                    .map(prost::Message::encode_to_vec)
+                    .ok_or_else(|| MessageError::borrowed("callee payload differs"))
+            },
+            decode_protobuf: decode_response::<O>,
+            grant: |request| {
+                O::grant(request.downcast_ref::<O::Request>().ok_or_else(|| MessageError::borrowed("callee payload differs"))?)
+            },
+        })
+    }
+}
+impl ExecutionContext {
+    pub async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> Result<super::super::Response<O::Response>, ServingError> {
+        let target = super::super::Target::protobuf::<O>()?;
+        let calls = self.resource::<super::super::Calls>().map_err(|_| ServingError::Catalog)?;
+        let child = calls.0.start(target, Box::new(request), None, Box::new(()), self.call.clone()).await?;
+        child.join().await?.restore().ok_or(ServingError::EndpointTypes)
+    }
+}
+impl From<super::super::InvocationError> for ServingError {
+    fn from(error: super::super::InvocationError) -> Self {
+        Self::Native(std::sync::Arc::new(error))
+    }
+}
+
+impl ProtobufDependency {
+    pub const fn of<O: ProtobufOperation>() -> Self {
+        Self {
+            definition: || {
+                let definition = OperationFactory::protobuf::<O>()?.definition;
+                Ok(super::super::calls::OperationDependency {
+                    id: definition.id.to_string(),
+                    fingerprint: definition.fingerprint,
+                })
+            },
+        }
+    }
+}
+
+impl<I, O> ProtobufExchangeEndpoints for (ProtobufInput<I>, ProtobufOutput<O>)
+where
+    I: ReflectMessage + Default + Send + Sync + 'static,
+    O: ReflectMessage + Default + Send + Sync + 'static,
+{
+    type Input = I;
+    type Output = O;
+}
 
 impl ProtobufEndpoints for () {
     fn descriptors() -> (Option<MessageDescriptor>, Option<MessageDescriptor>) {
@@ -176,6 +271,13 @@ impl<T: ReflectMessage + Default + Send + Sync + 'static> super::super::OutputEn
     }
 }
 
+impl<T: Clone + Send + Sync + 'static> ProtobufItem<T> {
+    pub fn into_owned_request(self) -> Result<(T, super::super::RequestClaims), super::super::StreamError> {
+        let (value, claims) = self.0.into_owned_request()?;
+        Ok((value.value, claims))
+    }
+}
+
 impl<T> Deref for ProtobufItem<T> {
     type Target = T;
     fn deref(&self) -> &T {
@@ -186,7 +288,13 @@ impl<T> Deref for ProtobufItem<T> {
 impl<T: ReflectMessage + Default + Send + Sync + 'static> ProtobufOutput<T> {
     pub async fn send(&self, value: T) -> Result<(), super::super::StreamError> {
         let memory = value.encoded_len().checked_add(std::mem::size_of::<Encoded>()).ok_or(super::super::StreamError::Capacity)?;
-        self.0.send_with(memory, || Ok(Encoded(value.encode_to_vec()))).await
+        self.send_with(memory, || Ok(value)).await
+    }
+
+    pub async fn send_with(
+        &self, memory: usize, make: impl FnOnce() -> Result<T, super::super::StreamError>,
+    ) -> Result<(), super::super::StreamError> {
+        self.0.send_with(memory, || Ok(Encoded(make()?.encode_to_vec()))).await
     }
 }
 
@@ -241,7 +349,7 @@ impl OperationFactory {
         let declared = contract::<O>(&harmos_domain::config::SchemaSettings::default()).map_err(ServingError::Contract)?;
         Ok(Self {
             definition: declared.operation().clone(),
-            operations: &[],
+            operations: || O::OPERATIONS.iter().map(|dependency| (dependency.definition)()).collect(),
             declared: || {
                 contract::<O>(&harmos_domain::config::SchemaSettings::default())
                     .expect("validated protobuf declaration")
@@ -256,7 +364,7 @@ impl OperationFactory {
             },
             registered_id: None,
             grant: |_, grant| grant,
-            builtin: false,
+            builtin: matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now"),
             resources: O::RESOURCES,
             contract: contract::<O>,
             native: |resources, request, endpoints| {
@@ -287,6 +395,7 @@ impl OperationFactory {
                 };
                 memory::<O::Request>(payload).map_err(ServingError::Codec)?;
                 let request = O::Request::decode(payload).map_err(|error| ServingError::Codec(MessageError::new(error.to_string())))?;
+                let grant = O::grant(&request).map_err(ServingError::Codec)?;
                 Ok(PreparedNative {
                     instance: Box::new(Instance::<O> {
                         request,
@@ -296,7 +405,7 @@ impl OperationFactory {
                         epoch: 0,
                         marker: PhantomData,
                     }),
-                    grant: None,
+                    grant,
                     streams,
                 })
             },
@@ -307,8 +416,8 @@ impl OperationFactory {
 }
 
 impl<O: ProtobufOperation> NativeInstance for Instance<O> {
-    fn classify(&self, _: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
-        super::super::FailureKind::Permanent
+    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
+        O::classify(error)
     }
     fn initialize(&mut self, _: ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
@@ -339,6 +448,9 @@ impl<O: ProtobufOperation> NativeInstance for Instance<O> {
         Box::pin(async { Ok(()) })
     }
     fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+        if let Some(streams) = &self.streams {
+            streams.complete();
+        }
         Box::pin(async { Ok(()) })
     }
     fn transferred(&self) -> bool {
@@ -352,6 +464,11 @@ impl<O: ProtobufOperation> NativeInstance for Instance<O> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn decode_response<O: ProtobufOperation>(bytes: &[u8]) -> Result<super::super::response::ErasedResponse, MessageError> {
+    let response = O::Response::decode(bytes).map_err(|error| MessageError::new(error.to_string()))?;
+    Ok(super::super::Response::new(response).into_erased())
+}
 
 fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettings) -> Result<Contract, super::super::ContractError> {
     let request = O::Request::default().descriptor();
@@ -368,8 +485,16 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
             }
         }
     }
+    let roots: Vec<_> = [Some(&request), Some(&response), input.as_ref(), output.as_ref()]
+        .into_iter()
+        .flatten()
+        .map(|message| message.full_name())
+        .collect();
+    let descriptors =
+        harmos_protocol::schema::operation_types(&prost_types::FileDescriptorSet { file: files.into_values().collect() }, &roots)
+            .map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
     let protobuf = harmos_domain::operations::Protobuf {
-        descriptors: prost_types::FileDescriptorSet { file: files.into_values().collect() }.encode_to_vec(),
+        descriptors: descriptors.encode_to_vec(),
         request: request.full_name().into(),
         response: response.full_name().into(),
         input: input.map(|message| message.full_name().into()),
@@ -383,10 +508,19 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         replay: O::REPLAY,
         fingerprint: crate::execution::Fingerprint([0; 32]),
     };
+    if matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now") {
+        let clock = Contract::clock(O::ID == "harmos.clock.sleep", O::POLICY, settings)?;
+        let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
+        let same_mapping = clock.grpc() == O::GRPC.as_ref();
+        if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {
+            return Err(super::super::ContractError::Protobuf("clock declaration differs from the protocol-owned contract".into()));
+        }
+        return Ok(clock);
+    }
     Contract::from_protobuf(operation, protobuf, O::GRPC, settings)
 }
 
-fn memory<T: ReflectMessage + Default>(bytes: &[u8]) -> Result<usize, MessageError> {
+pub(crate) fn memory<T: ReflectMessage + Default>(bytes: &[u8]) -> Result<usize, MessageError> {
     let descriptor = T::default().descriptor();
     let mut path = [const { None }; 32];
     let (_, largest) = layout(&descriptor, &mut path, 0)?;

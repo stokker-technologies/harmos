@@ -48,7 +48,7 @@ simulation = []
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-guest = { workspace = true, optional = true }
 harmos-macros = { workspace = true, default-features = true }
-harmos-operations = { workspace = true, features = ["runtime", "streaming", "grpc"] }
+harmos-operations = { workspace = true, features = ["lifecycle", "streaming", "grpc"] }
 harmos-packaging = { workspace = true, optional = true }
 harmos-protocol = { workspace = true }
 harmos-storage = { workspace = true }
@@ -118,7 +118,7 @@ harmos = { workspace = true }
 harmos-packaging = { path = "../harmos-packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
-schematic-operations = { path = "../../examples/schematic/operations" }
+schematic-operations = { path = "../../examples/schematic/operations", features = ["runtime"] }
 
 # Git
 

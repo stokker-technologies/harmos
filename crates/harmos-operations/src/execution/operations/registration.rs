@@ -70,7 +70,7 @@ pub struct PreparedNative {
 #[derive(Clone)]
 pub struct OperationFactory {
     pub definition: OperationDefinition,
-    pub operations: &'static [WireDeclaration],
+    pub operations: fn() -> Result<Vec<super::calls::OperationDependency>, ServingError>,
     declared: fn() -> OperationDefinition,
     named: fn(&str) -> Result<OperationDefinition, ServingError>,
     registered_id: Option<crate::execution::Identifier>,
@@ -212,7 +212,17 @@ impl RegistrationBatch {
     {
         self.operations.push(OperationFactory {
             resources,
-            operations: D::OPERATIONS,
+            operations: || {
+                D::OPERATIONS
+                    .iter()
+                    .map(|declaration| {
+                        Ok(super::calls::OperationDependency {
+                            id: declaration.operation.id.to_owned(),
+                            fingerprint: (declaration.operation.fingerprint)().map_err(ServingError::Declaration)?,
+                        })
+                    })
+                    .collect()
+            },
             definition: D::definition(),
             declared: D::definition,
             named: |id| OperationDefinition::named::<D>(id).map_err(ServingError::from),

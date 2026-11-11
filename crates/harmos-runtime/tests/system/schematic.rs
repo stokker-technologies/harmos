@@ -140,8 +140,8 @@ fn cli_streams_settle() {
         // Wasm Compilation Is Preparation, Outside The Operation Deadline.
         // The System Story Policy Still Bounds The Whole Walkthrough.
         let initializing = ready.recv();
-        let readiness = ready
-            .recv_timeout(<schematic_operations::AnalyzeSchematic as harmos_runtime::operations::OperationDeclaration>::POLICY.timeout);
+        let readiness =
+            ready.recv_timeout(<schematic_operations::AnalyzeSchematic as harmos_runtime::operations::ProtobufOperation>::POLICY.timeout);
         if initializing != Ok(Startup::Initializing) || readiness != Ok(Startup::Ready) {
             let _ = child.kill();
             let output = child.wait_with_output().expect("the failed CLI is reaped");

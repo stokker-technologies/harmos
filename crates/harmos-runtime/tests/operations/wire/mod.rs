@@ -20,6 +20,8 @@ mod endpoints;
 #[cfg(feature = "grpc")]
 mod generated;
 #[cfg(feature = "grpc")]
+mod generated_publication;
+#[cfg(feature = "grpc")]
 mod grpc;
 #[cfg(feature = "grpc")]
 mod grpc_manager;

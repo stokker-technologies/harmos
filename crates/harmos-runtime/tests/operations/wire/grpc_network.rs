@@ -44,7 +44,7 @@ use super::*;
 
 #[tokio::test]
 async fn filesystem_hash_roundtrip() {
-    use harmos_runtime::storage::{ByteRange, FileHash, FileSource, StorageManager};
+    use harmos_runtime::storage::StorageManager;
     use sha2::{Digest, Sha256};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.bin");
@@ -66,13 +66,19 @@ async fn filesystem_hash_roundtrip() {
     let attached = runtime.grpc().attach(super::settings()).await.unwrap();
     let address = format!("http://{}", attached.local_addr());
     let channel = tonic::transport::Endpoint::from_shared(address).unwrap().connect().await.unwrap();
-    let request = harmos_operations::storage::HashFile {
-        source: FileSource::Local(path),
-        range: ByteRange { offset: 5, limit: Some(10) },
+    let request = harmos_protocol::storage::HashFile {
+        source: Some(harmos_protocol::storage::FileSource {
+            source: Some(harmos_protocol::storage::file_source::Source::Local(path.to_str().unwrap().into())),
+        }),
+        range: Some(harmos_protocol::storage::ByteRange { offset: 5, limit: Some(10) }),
     };
-    let answer = builtin_call::<harmos_operations::storage::HashFile, FileHash>(channel, "/harmos.storage.v1.Storage/HashFile", request)
-        .await
-        .unwrap();
+    let answer = generated_call::<harmos_protocol::storage::HashFile, harmos_protocol::storage::FileHash>(
+        channel,
+        "/harmos.storage.v1.Storage/HashFile",
+        request,
+    )
+    .await
+    .unwrap();
     assert_eq!(answer.bytes_read, 10);
     assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     drop(attached);
@@ -107,6 +113,10 @@ async fn builtin_grpc_roundtrip() {
     let release = Arc::new(tokio::sync::Notify::new());
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<tokio::sync::Notify>(release.clone());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();
@@ -127,19 +137,34 @@ async fn builtin_grpc_roundtrip() {
     let id = parked.id();
 
     // An External Caller Neither Sees nor Cancels a Host Instance
-    let status = builtin_call::<Status, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Status", Status::of(id)).await;
+    let status = generated_call::<harmos_protocol::host::Status, InstanceState>(
+        channel.clone(),
+        "/harmos.host.v1.Operations/Status",
+        Status::of(id),
+    )
+    .await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let cancel = builtin_call::<Cancel, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Cancel", Cancel::of(unknown)).await;
+    let cancel = generated_call::<harmos_protocol::host::Cancel, InstanceState>(
+        channel.clone(),
+        "/harmos.host.v1.Operations/Cancel",
+        Cancel::of(unknown),
+    )
+    .await;
     assert!(cancel.is_err());
-    let foreign = builtin_call::<Cancel, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Cancel", Cancel::of(id)).await;
+    let foreign = generated_call::<harmos_protocol::host::Cancel, InstanceState>(
+        channel.clone(),
+        "/harmos.host.v1.Operations/Cancel",
+        Cancel::of(id),
+    )
+    .await;
     assert_eq!(foreign.unwrap_err().code(), cancel.unwrap_err().code());
     assert!(!parked.status().cancellation_requested());
 
     // The Submitting Host Reads and Cancels Its Own Instance
-    let owned = runtime.operation(Status::of(id)).await.unwrap();
+    let owned = runtime.operations.call_protobuf::<Status>(Status::of(id)).await.unwrap();
     assert_eq!(owned.phase, "running");
-    let cancelled = runtime.operation(Cancel::of(id)).await.unwrap();
+    let cancelled = runtime.operations.call_protobuf::<Cancel>(Cancel::of(id)).await.unwrap();
     assert!(cancelled.cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
@@ -148,7 +173,6 @@ async fn builtin_grpc_roundtrip() {
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_domain::plugin::Grant;
     use harmos_storage::{ErasedCatalog, StorageManager};
 
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
@@ -180,10 +204,16 @@ async fn external_authority_parity() {
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_catalog(channel.clone(), None).await.unwrap_err().code(), tonic::Code::Unauthenticated);
     let alice = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    let guarded = alice.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
-    assert_eq!(guarded.grants, [Grant::of("grpc.guarded", "reading")]);
+    let guarded = alice.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
+    assert_eq!(
+        guarded.grants,
+        [harmos_protocol::host::Grant {
+            operation: "grpc.guarded".into(),
+            scope: Some("reading".into())
+        }]
+    );
     let bob = external_catalog(channel.clone(), Some("Bearer bob")).await.unwrap();
-    assert!(bob.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    assert!(bob.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert_eq!(
         external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
@@ -209,11 +239,13 @@ async fn external_authority_parity() {
     assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
     mode.store(1, std::sync::atomic::Ordering::Release);
     assert!(
-        external_catalog(channel.clone(), Some("Bearer alice"))
-            .await
+        external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap().iter().all(|entry| entry
+            .contract
+            .as_ref()
             .unwrap()
-            .iter()
-            .all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded")
+            .id
+            .as_str()
+            != "grpc.guarded")
     );
     assert_eq!(
         external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
@@ -226,12 +258,12 @@ async fn external_authority_parity() {
     );
     mode.store(3, std::sync::atomic::Ordering::Release);
     let incompatible = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    assert!(incompatible.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    assert!(incompatible.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
     let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err();
     assert_eq!(denied.code(), tonic::Code::PermissionDenied, "full control must validate the live contract");
     mode.store(4, std::sync::atomic::Ordering::Release);
     let full = external_catalog(channel.clone(), Some("Bearer limited")).await.unwrap();
-    let guarded = full.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
+    let guarded = full.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
     assert!(guarded.grants.is_empty(), "full control does not invent finite scopes");
     assert!(guarded.conditional_access);
     assert_eq!(external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap(), "external:limited");
@@ -1189,4 +1221,17 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     let _ = awake.await;
     tokio::time::resume();
     runtime.shutdown().await.unwrap();
+}
+
+async fn generated_call<Q, R>(channel: tonic::transport::Channel, path: &'static str, request: Q) -> Result<R, tonic::Status>
+where
+    Q: prost::Message + Default + Send + Sync + 'static,
+    R: prost::Message + Default + Send + Sync + 'static,
+{
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
+    client
+        .unary(tonic::Request::new(request), http::uri::PathAndQuery::from_static(path), tonic_prost::ProstCodec::default())
+        .await
+        .map(tonic::Response::into_inner)
 }

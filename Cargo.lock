@@ -1182,7 +1182,9 @@ dependencies = [
  "harmos-guest-macros",
  "harmos-macros",
  "harmos-operations",
+ "harmos-protocol",
  "postcard",
+ "prost",
  "schematic-operations",
  "serde",
  "serde_json",
@@ -1274,8 +1276,10 @@ version = "0.1.14"
 dependencies = [
  "prost",
  "prost-build",
+ "prost-reflect",
  "prost-types",
  "protoc-bin-vendored",
+ "serde",
  "sha2 0.11.1",
  "tempfile",
  "thiserror",
@@ -1364,9 +1368,11 @@ dependencies = [
  "getrandom 0.4.3",
  "globset",
  "harmos-domain",
+ "harmos-protocol",
  "harmos-storage",
  "notify",
  "postcard",
+ "prost",
  "same-file",
  "serde",
  "serde_json",
@@ -2455,6 +2461,7 @@ name = "schematic-domain"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
+ "schematic-protocol",
  "serde",
  "thiserror",
 ]
@@ -2463,8 +2470,22 @@ dependencies = [
 name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
+ "harmos-guest",
  "harmos-operations",
  "schematic-domain",
+ "schematic-protocol",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "schematic-protocol"
+version = "0.1.14"
+dependencies = [
+ "harmos-protocol",
+ "prost",
+ "prost-reflect",
+ "prost-types",
 ]
 
 [[package]]

@@ -154,6 +154,56 @@ impl ObjectRetention {
     }
 }
 
+impl From<SchemaKey> for harmos_protocol::storage::SchemaKey {
+    fn from(value: SchemaKey) -> Self {
+        Self {
+            id: value.id.to_string(),
+            version: value.version.get(),
+            payload_encoding: value.payload_encoding as i32,
+        }
+    }
+}
+impl TryFrom<harmos_protocol::storage::SchemaKey> for SchemaKey {
+    type Error = Error;
+    fn try_from(value: harmos_protocol::storage::SchemaKey) -> Result<Self> {
+        if value.payload_encoding != harmos_protocol::storage::PayloadEncoding::PostcardV1 as i32 {
+            return Err(Error::InvalidInput {
+                field: "payload_encoding",
+                reason: "unsupported storage encoding",
+            });
+        }
+        Ok(Self {
+            id: Identifier::new(value.id)?,
+            version: NonZeroU32::new(value.version).ok_or(Error::InvalidInput {
+                field: "version",
+                reason: "must be nonzero",
+            })?,
+            payload_encoding: PayloadEncoding::PostcardV1,
+        })
+    }
+}
+
+impl From<ObjectValue> for harmos_protocol::storage::ObjectValue {
+    fn from(value: ObjectValue) -> Self {
+        Self {
+            schema: Some(value.schema.into()),
+            item: value.item.to_string(),
+            payload: value.payload,
+        }
+    }
+}
+
+impl TryFrom<harmos_protocol::storage::ObjectValue> for ObjectValue {
+    type Error = Error;
+    fn try_from(value: harmos_protocol::storage::ObjectValue) -> Result<Self> {
+        Ok(Self {
+            schema: value.schema.ok_or(Error::InvalidInput { field: "schema", reason: "required" })?.try_into()?,
+            item: ObjectKey::from_owned(value.item)?,
+            payload: value.payload,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 pub fn object_key<K: fmt::Display + ?Sized>(key: &K, limit: NonZeroUsize) -> Result<ObjectKey> {

@@ -29,10 +29,8 @@ pub use harmos_domain::model;
 pub use harmos_domain::{
     ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec, encode_config, reserved, validate_config,
 };
-pub mod builtins {
-    pub use crate::lifecycle;
-    pub use harmos_operations::{Host, Storage, Streams, host, storage, streams};
-}
+pub mod builtins;
+
 pub mod operations {
     /* === Modules === */
 

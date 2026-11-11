@@ -19,6 +19,7 @@ use std::sync::OnceLock;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
+use super::ProtobufExt;
 use super::{Direction, Entry, OperationDeclaration, OperationDefinition};
 use crate::catalog::{Catalog, Member, Projection, Visitor};
 use crate::config::SchemaSettings;
@@ -273,9 +274,42 @@ impl Contract {
     }
 
     pub fn from_protobuf(
-        mut operation: OperationDefinition, protobuf: super::Protobuf, binding: super::Grpc, settings: &SchemaSettings,
+        operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         operation.validate()?;
+        Self::generated(operation, protobuf, binding, settings)
+    }
+
+    /// Construct Only the Protocol-Owned Host Clock Contracts.
+    pub fn clock(sleep: bool, policy: super::OperationPolicy, settings: &SchemaSettings) -> Result<Self, ContractError> {
+        use prost::Message;
+        policy.validate().map_err(crate::Error::from)?;
+        let (id, request, response, method) = if sleep {
+            ("harmos.clock.sleep", "harmos.v1.Sleep", "harmos.v1.SleepResponse", "Sleep")
+        } else {
+            ("harmos.clock.now", "harmos.v1.Now", "harmos.v1.Time", "Now")
+        };
+        let operation = OperationDefinition {
+            id: crate::Identifier::new(id).map_err(crate::Error::from)?,
+            description: String::new(),
+            visibility: super::Visibility::Public,
+            policy,
+            replay: super::ReplaySafety::Unknown,
+            fingerprint: crate::Fingerprint([0; 32]),
+        };
+        let protobuf = super::Protobuf {
+            descriptors: harmos_protocol::clock::catalog_types().encode_to_vec(),
+            request: request.into(),
+            response: response.into(),
+            input: None,
+            output: None,
+        };
+        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.host.v1", "Clock", method)), settings)
+    }
+
+    fn generated(
+        mut operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
+    ) -> Result<Self, ContractError> {
         let schema = protobuf.schema()?;
         schema.prepare(settings).map_err(|source| ContractError::Schema {
             id: operation.id.to_string(),
@@ -292,7 +326,7 @@ impl Contract {
             grpc: None,
             protobuf: Some(protobuf),
         }
-        .with_grpc(Some(binding))
+        .with_grpc(binding)
     }
 
     pub fn protobuf(&self) -> Option<&super::Protobuf> {
@@ -486,12 +520,19 @@ impl TryFrom<DecodedContract> for Contract {
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
         if let Some(protobuf) = decoded.protobuf {
-            let expected = Self::from_protobuf(
-                decoded.operation.clone(),
-                protobuf,
-                decoded.grpc.ok_or(ContractError::Grpc)?,
-                &SchemaSettings::default(),
-            )?;
+            let expected = if matches!(decoded.operation.id.as_str(), "harmos.clock.sleep" | "harmos.clock.now") {
+                let clock = Self::clock(
+                    decoded.operation.id.as_str() == "harmos.clock.sleep",
+                    decoded.operation.policy,
+                    &SchemaSettings::default(),
+                )?;
+                if clock.protobuf() != Some(&protobuf) || clock.grpc != decoded.grpc {
+                    return Err(ContractError::Fingerprint { id: decoded.operation.id.to_string() });
+                }
+                clock
+            } else {
+                Self::from_protobuf(decoded.operation.clone(), protobuf, decoded.grpc, &SchemaSettings::default())?
+            };
             if expected.fingerprint != decoded.fingerprint
                 || expected.operation != decoded.operation
                 || expected.schema != decoded.schema

@@ -19,6 +19,17 @@ use `stage_plugin_observers(resources, scope, backends)` and
 `submit_resident_in(id, resources)` to retain plugin scope and resource identity;
 generation retirement stops these observers with the plugin.
 
+Built-in host operations use generated `harmos_protocol::{host, storage}` messages
+directly. Their declarations and handlers stay together in `harmos-operations`; its
+former `runtime` feature is removed. Lifecycle requests/results are
+`harmos_protocol::host::{Status, Cancel, Watch, InstanceState}`. Register `harmos_operations::Lifecycle` and invoke
+`operations.call_protobuf::<harmos_operations::lifecycle::Status>(request)` for a
+native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
+The consumer configures `preparation_bytes` for encoded admission; the callee owns
+its timeout and cancellation policy. Status and cancellation expose only instances
+owned by the caller. Guest child controls keep their private status codec until
+the guest protocol migration.
+
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission
@@ -292,19 +303,20 @@ foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Hosts place `builtins::host::Host` on a chosen lane to serve
-`builtins::host::Catalog` (unary gRPC path
-`/harmos.host.v1.Host/Catalog` when `grpc` is enabled). `builtins::host::CatalogRequest` selects a
-`kind` (`Operations`, `Schemas`, `Streams` or `Objects`) and accepts optional
-`schema`, `after`, `rows` and `bytes`; defaults are 64 rows and 64 KiB, with
-maxima of 256 rows and 4 MiB. `CatalogPage::entries` is a UTF-8 JSON array of the
-kind's entries: operation metadata (original contracts, provider
-owners and generations, selected grants and current gRPC availability), stored
-schemas or stored identities. The `next` cursor continues a bounded page. Stored
-kinds need the storage manager and a `host.catalog` grant scoped `schemas:*`,
-`streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`); listing
-operations needs no grant. The operation listing applies original readiness and caller
-visibility/dependency rules; `conditional_access` means invocation still checks
+Register `harmos_operations::Host` on a chosen lane to serve the `Catalog`
+declaration at `/harmos.host.v1.Host/Catalog`. Its generated request is
+`harmos_protocol::host::Catalog`, with `kind` (`Operations`, `Schemas`, `Streams`
+or `Objects`) and optional `schema`, `after`, `rows` and `bytes`. Defaults are
+64 rows and 64 KiB; maxima are 256 rows and 4 MiB. `CatalogPage::operations`
+contains generated operation metadata, including descriptors, provider identity,
+generation, policy, selected grants and current gRPC availability.
+`CatalogPage::entries` retains the UTF-8 JSON array for stored schemas and
+identities. The opaque `next` cursor continues a bounded page.
+
+Stored kinds need the storage manager and a `host.catalog` grant scoped
+`schemas:*`, `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`).
+Listing operations needs no grant. Discovery applies readiness, caller visibility
+and dependency rules; `conditional_access` means invocation still checks
 request-specific grants and middleware. Re-discover after provider reload or
 runtime restart; pages do not promise a frozen registry snapshot.
 
@@ -916,20 +928,55 @@ Ok(summary.into())
 
 Host applications can register Prost-generated request, response and stream messages directly
 with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Declaration>()`.
+Host lifecycle, clock and discovery declarations use the protocol crate's generated messages.
+Storage status, file mutation, read/capture/follow and directory operations also accept generated requests;
+use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for native streams.
+`Manager::download_protobuf` provides typed generated output items through `next` and a generated
+completion through `join`. Plugin-scoped callers use the same helper with their original scope.
+Supply the caller's preparation budget and stream limits in operation settings and submission.
+Storage kernels retain their native storage values and persisted encodings.
+`Manager::exchange_protobuf` sends generated input and receives generated receipts; call
+`finish_input` before draining the final receipts and joining. `Manager::upload_protobuf`
+finishes file input and returns the generated durable file reference. Scope-aware callers
+keep per-batch grant checks throughout an exchange.
+Schema registration uses the generated `SchemaGraph`: references index its definition table,
+scalar fields cannot reference definitions, and representation indices must be unique.
+The storage schema validator checks the graph before mutation admission.
+
+
+The declaration's `GRPC` is optional; private native operations leave it `None`.
+Declare typed callees in `OPERATIONS` and invoke them through the execution context:
+
+```rust
+const GRPC: Option<Grpc> = Some(Grpc::new("example.host.v1", "Operations", "Run"));
+const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<Callee>()];
+// Inside the handler:
+let response = context.call_protobuf::<Callee>(request).await?;
+```
+
 Messages implement `prost_reflect::ReflectMessage` using their authoritative descriptor set.
 The declaration owns `ID`, `GRPC`, `POLICY`, `VISIBILITY`, `RESOURCES` and its handler; unary
 endpoints use `()`, input uses `ProtobufInput<T>`, output uses `ProtobufOutput<T>`, and a pair
 supports both directions. Handlers receive generated requests and return generated responses.
 See the [declaration example](../openspec/changes/grpc-plugins/design.md#generated-host-messages).
 Reflection preserves original protobuf names, field encodings and presence. Decoding-memory
-admission bounds generated allocations before Prost decoding. Existing `Portable` declarations
-continue through their projection codec.
+admission bounds generated allocations before Prost decoding. Built-ins and native example operations no longer use `Portable` projections.
+The remaining projection machinery serves deferred guest declarations and legacy
+authoring consumers until their ordered migration.
 
-`operations.submit_encoded` and `call_encoded` accept and return protobuf payloads. For a
-`Portable` message, use `harmos_operations::execution::grpc::{encode, decode}` at that boundary;
-its `Message::{encode, decode}` methods remain the internal/stored-value codec. Assignment
-catalogs also use protobuf. The private guest command, lifecycle, child and streamed payload
-codecs retain Postcard until the guest envelope migration; persisted data is unchanged.
+`operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
+Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
+typed native declarations. Assignment catalogs use the generated
+`harmos.host.v1.OperationAssignments` messages, with frozen identity validation.
+
+The deferred guest path retains Postcard command/answer envelopes, lifecycle and
+child controls, typed guest requests/results and stream items. Private guest
+`storage.hash_file` and `host.publish` declarations live in
+`harmos-guest/src/builtins/`; runtime converts only their exact frozen contracts to
+the generated native handlers. Fingerprints, provider generations and grants remain
+checked. The small storage codec adapters still needed by guest hashing and the
+bounded persisted identity codecs remain; unused host payload codecs are deleted.
+Stored data encoding and schema revisions are unchanged.
 
 For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
 Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and

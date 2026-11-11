@@ -11,10 +11,8 @@
 
 /* === Modules === */
 
-pub mod discovery;
 pub mod lifecycle;
 pub mod policy;
-pub mod publication;
 
 /* === Re-Exports === */
 

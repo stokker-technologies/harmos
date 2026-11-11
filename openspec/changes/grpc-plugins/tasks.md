@@ -201,7 +201,7 @@
 - [x] 2.4 Canonicalize file options across SDK fingerprints, share Rust clock descriptors and pin both built-in clock fingerprints in conformance.
 
 - [x] 2.5 Extend conformance and every language fixture for schema graphs, setting-only observers and canonical descriptor metadata.
-- [ ] 2.6 Consolidate wire definitions in proto/generated protocol types; put only light Rust helpers in protocol and specify cross-language helper semantics in words with matching SDK implementations.
+- [x] 2.6 Consolidate wire definitions in proto/generated protocol types; put only light Rust helpers in protocol and specify cross-language helper semantics in words with matching SDK implementations.
 
 ## 3. Host
 
@@ -217,8 +217,24 @@
 - [x] 3.10 Before Dokime's Harmos-adoption wave 2, extend client-facing gRPC declarations/codecs to accept generated protobuf types and authoritative descriptors directly; preserve method paths, fingerprints, decoding-memory admission, cancellation, backpressure and all host streaming envelopes.
   - [x] 3.10.1 Register generated message declarations with authoritative descriptors, native endpoints and protobuf fingerprints in domain/operations/runtime.
   - [x] 3.10.2 Prove generated unary and streamed gRPC calls, authorization, reflection and decoding-memory refusal with a vendored-compiler test proto; document the declaration.
+  - [x] 3.10.3 Support private generated native operations and typed child calls with registration-time callee dependency checks.
 
-- [ ] 3.11 In the host wave, migrate built-in request/results to protocol messages with declaration, gRPC mapping, callee policy and handler in each operation file; register directly through narrow resources without a runtime dependency or per-service adapters.
+- [x] 3.11 In the host wave, migrate built-in request/results to protocol messages with declaration, gRPC mapping, callee policy and handler in each operation file; register directly through narrow resources without a runtime dependency or per-service adapters.
+  - [x] 3.11.1 Migrate lifecycle status, cancel and watch with generated messages and native/gRPC proof.
+  - [x] 3.11.2 Migrate clock operations and remove the plugin-specific clock binding.
+  - [x] 3.11.3 Migrate host discovery and remove its Rust wire mirrors.
+  - [x] 3.11.6 Migrate stream publication, retaining guest-private payload support.
+  - [x] 3.11.4 Migrate storage operation families and native streaming consumers.
+    - [x] 3.11.4.1 Migrate storage status, file mutation receipts and directory native streams.
+    - [x] 3.11.4.2 Migrate file reads, capture and following, preserving grants and terminal stream closure.
+    - [x] 3.11.4.3 Migrate schema registration and delete its Rust wire wrappers.
+    - [x] 3.11.4.4 Migrate queries, generated native downloads and scoped callers; delete the Rust query-output wire mirror.
+    - [x] 3.11.4.5 Migrate record, stream and object following; delete the followed-record Rust wire types.
+    - [x] 3.11.4.6 Migrate streamed Arrow/file writes and delete Rust receipt/completion wire models and their Postcard codecs.
+    - [x] 3.11.4.7 Migrate hashing and its guest-private callee boundary.
+  - [x] 3.11.5 Migrate example operations and remove superseded host projections and wire mirrors.
+    - [x] 3.11.5.1 Migrate native example operations, SDK consumers and generated application contracts; isolate deferred guest declarations.
+    - [x] 3.11.5.2 Remove replaced native host DTOs and unused storage projections; retain the codec machinery still required by deferred guest/declaration authoring.
 - [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
 
 ## 4. Rust SDK
@@ -253,7 +269,7 @@
 - [x] 6.3 Delete native plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing. Deferred guest lifecycle/child controls retain private authority and identity checks under 7.1.
 - [x] 6.4 Delete `crates/harmos-ffi` and its remaining manifest, task and consumer references.
 - [x] 6.4.1 Replace the C ABI bridge under `sdk/cpp` with the gRPC SDK.
-- [x] 6.5 Migrate public host operation payloads and shared host/guest assignment catalogs to protobuf-derived definitions and remove Postcard from the host wire contract, retaining the Portable projection. The native plugin derive is covered by 4.2.1; the user-deferred guest-owned private command, lifecycle, child and stream payload codecs remain with 7.1 as recorded in the design.
+- [x] 6.5 Migrate public host operation payloads and shared host/guest assignment catalogs to protobuf-derived definitions and remove Postcard from the host wire contract. Built-ins and native examples use authoritative generated messages; projection machinery still used by deferred guest/declaration authoring remains until those consumers migrate. The native plugin derive is covered by 4.2.1; the user-deferred guest-owned private command, lifecycle, child and stream payload codecs remain with 7.1 as recorded in the design.
   - [x] 6.5.1 Migrate public host encoded requests/results and operation contract identities to protobuf; retain private guest matching codecs and stored-value formats.
   - [x] 6.5.2 Replace shared assignment catalog Postcard encoding with protocol messages and validate catalog freezing and malformed input.
   - [x] 6.5.3 Document the precise guest-owned private Postcard codecs deferred to 7.1.
@@ -271,7 +287,7 @@
   - [ ] 6.8.4 Split `listeners/`, `observers.rs` and `streams/`: portable declarations to protocol, listener activation and host behaviour to runtime, persisted row identity retained natively.
   - [ ] 6.8.5 Delete legacy `inventory*`, `plugin/`, `artifacts.rs` and `registration.rs` inventories, grants and markers as replacements land; retain guest-required mechanisms only until 7.1. Split the remaining modules enumerated in Crate Structure by owner rather than retain mixed modules wholesale.
   - [ ] 6.8.6 Migrate manifests/re-exports and all consumers, including lightweight application models; preserve the downward runtime → operations → storage → domain → protocol graph and SDK → protocol boundary. Account for focused stored-schema, recovery/inverse and storage-query proof and affected README/topic guidance.
-- [ ] 6.9 Redirect contract-only operations consumers to protocol/SDK, then remove the operations `runtime` feature without moving handlers out of their operation files. The superseded host SDK root and facade are already removed under 4.1/4.5.
+- [x] 6.9 Redirect contract-only operations consumers to protocol/SDK, then remove the operations `runtime` feature without moving handlers out of their operation files. The superseded host SDK root and facade are already removed under 4.1/4.5.
 - [ ] 6.10 After the ordered `authoring-without-macros` replacements, merge `harmos-macros` into `sdk/rust/derive` as the single derive crate (`harmos-sdk-derive`), retaining only field-reading derives with distinct stored-schema, protobuf Message and row semantics. Coordinate that change's 4.3; migrate dependencies, re-exports, consumers and coverage, then delete the old package without adding host dependencies to the SDK.
 - [ ] 6.11 Move `harmos-conformance` to the tool package `tools/conformance` at any time, outside the six-library core; preserve binary names, CLI/release interfaces, all 19 protocol cases, managed/remote driving, reporting and Rust test integration. Keep its protocol-only product dependency; migrate SDK launchers, fixtures, tasks, docs, manifests and planned archive paths with `release-assets-layout`.
 - [ ] 6.12 Split `harmos-packaging` at any time: move build, watch/cancellation, componentization, inspection, bundle construction and proto/Python generation into `tools/packaging`; retain only required bundle reading in runtime. Remove normal runtime tooling dependencies and migrate build scripts, manifests, tasks, launchers, fixtures and README/topic guidance together.

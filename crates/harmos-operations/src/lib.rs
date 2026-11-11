@@ -9,26 +9,33 @@
 
 /* === Modules === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod clock;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod error;
 pub mod execution;
 pub mod host;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub mod lifecycle;
 pub mod storage;
 pub mod streams;
 
 /* === Re-Exports === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use error::Error;
 pub use harmos_domain::*;
 pub use harmos_macros::{catalog, operation};
 
 #[cfg(feature = "lifecycle")]
 pub use crate::execution::{Context, Dependent, Executable, ExecutionContext, Operation, Resource, ResourceError, Response};
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use host::Host;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use lifecycle::Lifecycle;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use storage::Storage;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use streams::Streams;
 
 /* === Imports === */
@@ -40,12 +47,12 @@ extern crate self as harmos;
 extern crate self as harmos_operations;
 
 // Local Imports
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 use crate::execution::__private::RegistrationBatch;
 
 /* === Constants === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 static BUILTIN_DECLARATIONS: [catalog::Node<operations::WireDeclaration>; 4] = [
     catalog::Node::Nested(Host::CATALOG.declarations),
     catalog::Node::Nested(Lifecycle::CATALOG.declarations),
@@ -53,7 +60,7 @@ static BUILTIN_DECLARATIONS: [catalog::Node<operations::WireDeclaration>; 4] = [
     catalog::Node::Nested(Streams::CATALOG.declarations),
 ];
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 static BUILTIN_CALLEES: [catalog::Node<&'static [operations::WireDeclaration]>; 4] = [
     catalog::Node::Nested(Host::CATALOG.callees),
     catalog::Node::Nested(Lifecycle::CATALOG.callees),
@@ -65,7 +72,7 @@ static BUILTIN_CALLEES: [catalog::Node<&'static [operations::WireDeclaration]>; 
 
 /* === Type Aliases === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub type Result<T> = std::result::Result<T, Error>;
 
 /* === Structs === */
@@ -78,6 +85,7 @@ pub struct Builtins;
 
 /* === Implementations === */
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 impl Builtins {
     pub fn catalog() -> Vec<harmos_domain::OperationDefinition> {
         let mut definitions = Host::catalog();
@@ -88,7 +96,7 @@ impl Builtins {
     }
 }
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 impl crate::execution::operations::OperationCatalog for Builtins {
     const CATALOG: crate::execution::operations::Catalog =
         crate::execution::operations::Catalog::of::<Self>("harmos.builtins", &BUILTIN_DECLARATIONS, &BUILTIN_CALLEES);

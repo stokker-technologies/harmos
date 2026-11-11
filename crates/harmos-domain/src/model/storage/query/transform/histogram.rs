@@ -20,13 +20,10 @@
 // Local Imports
 use super::FieldPath;
 use crate::MemorySize;
-use crate::model::storage::codec::{Float, Many, Nested, product};
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(Histogram { field: Nested<FieldPath> => 1, edges: Many<Float> => 2 });
 
 /* === Type Aliases === */
 

@@ -29,7 +29,8 @@ pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_B
 pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
-pub use protobuf::Protobuf;
+pub use harmos_protocol::host::Protobuf;
+pub use protobuf::ProtobufExt;
 
 /* === Imports === */
 

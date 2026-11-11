@@ -9,12 +9,19 @@
 
 /* === Modules === */
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod catalog;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod registration;
 
 /* === Re-Exports === */
 
-pub use catalog::{Catalog, CatalogKind, CatalogPage};
-pub use harmos_domain::model::operations::discovery::DiscoveredOperation;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use catalog::{Catalog, limits};
+pub use harmos_protocol::host::DiscoveredOperation;
+pub use harmos_protocol::host::{CatalogKind, CatalogPage};
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use registration::Host;
 
 /* === Imports === */
 
@@ -26,7 +33,12 @@ pub use harmos_domain::model::operations::discovery::DiscoveredOperation;
 
 /* === Constants === */
 
-pub const POLICY: harmos_domain::OperationPolicy = crate::lifecycle::POLICY;
+pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
+    timeout: std::time::Duration::from_secs(30),
+    attempt_timeout: std::time::Duration::from_secs(30),
+    cancellation_timeout: std::time::Duration::ZERO,
+    retries: harmos_domain::RetryPolicy::Never,
+};
 
 /* === Macros === */
 
@@ -35,11 +47,6 @@ pub const POLICY: harmos_domain::OperationPolicy = crate::lifecycle::POLICY;
 /* === Structs === */
 
 /* === Enums === */
-
-#[harmos::catalog(harmos_path = crate)]
-pub enum Host {
-    Catalog(Catalog),
-}
 
 /* === Traits === */
 

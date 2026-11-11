@@ -84,3 +84,20 @@ impl Snapshot {
 /* === Private Functions === */
 
 /* === Tests === */
+
+impl From<Snapshot> for schematic_protocol::Snapshot {
+    fn from(value: Snapshot) -> Self {
+        Self {
+            symbols: value.symbols,
+            connections: value.connections.into_iter().map(|c| schematic_protocol::Connection { from: c.from, to: c.to }).collect(),
+        }
+    }
+}
+impl From<schematic_protocol::Snapshot> for Snapshot {
+    fn from(value: schematic_protocol::Snapshot) -> Self {
+        Self {
+            symbols: value.symbols,
+            connections: value.connections.into_iter().map(|c| Connection { from: c.from, to: c.to }).collect(),
+        }
+    }
+}

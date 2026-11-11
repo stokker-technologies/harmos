@@ -39,13 +39,9 @@ use crate::storage::selection::Entry;
 use crate::storage::snapshot::Snapshot;
 use crate::storage::{FileReference, ObjectEntry, SchemaKey, StorageManager, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, MemorySize, Result};
-use harmos_domain::model::storage::ArrowIpc;
+use prost::Message;
 
 /* === Constants === */
-
-// Two Protobuf Keys (Five Bytes Each) and Two Length Varints (Ten Bytes Each),
-// Less The Postcard Variant And Length Bytes They Replace.
-const PROTOBUF_FRAMING: usize = 30;
 
 /* === Macros === */
 
@@ -132,19 +128,28 @@ impl MemorySize for Query {
 
 impl QueryArrow {
     // Bounds The Transport Value Before IPC Conversion.
+    // One Maximum Protobuf Field Key and Length Prefix Cover the IPC Bytes.
     pub fn output_memory_size(&self) -> usize {
         let capacity = match self {
             Self::Schema(schema) => schema.ipc_capacity(),
             Self::Batch(batch) => batch.ipc_capacity(),
         };
-        std::mem::size_of::<QueryOutput>().saturating_add(capacity)
+        std::mem::size_of::<Vec<u8>>().saturating_add(capacity).saturating_add(15)
     }
 
     #[tracing::instrument(name = "storage.query.reader.output", level = "trace", skip_all)]
     pub fn output(self) -> QueryOutput {
         match self {
-            Self::Schema(schema) => QueryOutput::Schema(ArrowIpc::from(schema)),
-            Self::Batch(batch) => QueryOutput::Batch(ArrowIpc::from(batch)),
+            Self::Schema(schema) => QueryOutput {
+                output: Some(harmos_protocol::storage::query_output::Output::Schema(
+                    harmos_domain::model::storage::ArrowIpc::from(schema).into_bytes(),
+                )),
+            },
+            Self::Batch(batch) => QueryOutput {
+                output: Some(harmos_protocol::storage::query_output::Output::Batch(
+                    harmos_domain::model::storage::ArrowIpc::from(batch).into_bytes(),
+                )),
+            },
         }
     }
 }
@@ -153,10 +158,15 @@ impl TryFrom<QueryOutput> for QueryArrow {
     type Error = Error;
 
     fn try_from(output: QueryOutput) -> Result<Self> {
-        Ok(match output {
-            QueryOutput::Schema(ipc) => Self::Schema(ArrowSchema::from_ipc(ipc.into_bytes())?),
-            QueryOutput::Batch(ipc) => Self::Batch(ArrowBatch::from_ipc(ipc.into_bytes())?),
-        })
+        Ok(
+            match output.output.ok_or(crate::Error::InvalidInput {
+                field: "query output",
+                reason: "missing output",
+            })? {
+                harmos_protocol::storage::query_output::Output::Schema(ipc) => Self::Schema(ArrowSchema::from_ipc(ipc)?),
+                harmos_protocol::storage::query_output::Output::Batch(ipc) => Self::Batch(ArrowBatch::from_ipc(ipc)?),
+            },
+        )
     }
 }
 
@@ -431,10 +441,10 @@ impl QueryReader {
             let output = ArrowBatch::try_new(slice)?;
 
             // The Wire Output Adds Its Envelope Around The Arrow Bytes Field.
-            let envelope = QueryOutput::Batch(ArrowIpc::new(output.ipc_bytes().to_vec()));
-            // Protobuf Frames This One-Variant Bytes Envelope with Two Keys and Two
-            // Length Prefixes Beyond The Postcard Bytes; Bound Both Encodings.
-            let encoded = crate::Message::encoded_size(&envelope).saturating_add(PROTOBUF_FRAMING);
+            let envelope = QueryOutput {
+                output: Some(harmos_protocol::storage::query_output::Output::Batch(output.ipc_bytes().to_vec())),
+            };
+            let encoded = envelope.encoded_len();
             drop(envelope);
             if encoded <= settings.batch_bytes.get() {
                 self.pending_offset += rows;
@@ -490,6 +500,17 @@ impl Rows {
             Self::Files(rows) => rows.last().map(Entry::position),
         };
         position.map(|position| position.sequence)
+    }
+}
+
+impl From<Query> for harmos_protocol::storage::Query {
+    fn from(value: Query) -> Self {
+        Self {
+            at: Some(value.at.into()),
+            source: Some(value.source.into()),
+            transforms: value.transforms.into_iter().map(Into::into).collect(),
+            slice: Some(value.slice.into()),
+        }
     }
 }
 

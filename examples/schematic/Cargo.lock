@@ -1077,7 +1077,9 @@ name = "harmos-protocol"
 version = "0.1.14"
 dependencies = [
  "prost",
+ "prost-reflect",
  "prost-types",
+ "serde",
  "sha2 0.11.1",
  "thiserror",
  "tonic",
@@ -1148,8 +1150,10 @@ dependencies = [
  "getrandom 0.4.3",
  "globset",
  "harmos-domain",
+ "harmos-protocol",
  "notify",
  "postcard",
+ "prost",
  "same-file",
  "serde",
  "serde_json",
@@ -2000,6 +2004,7 @@ dependencies = [
  "harmos-runtime",
  "schematic-domain",
  "schematic-operations",
+ "schematic-protocol",
  "schematic-storage",
  "serde",
  "serde_json",
@@ -2033,6 +2038,7 @@ name = "schematic-domain"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
+ "schematic-protocol",
  "serde",
  "thiserror",
 ]
@@ -2051,11 +2057,23 @@ dependencies = [
 name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
- "harmos",
+ "harmos-guest",
  "harmos-operations",
  "schematic-domain",
+ "schematic-protocol",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "schematic-protocol"
+version = "0.1.14"
+dependencies = [
+ "harmos",
+ "harmos-protocol",
+ "prost",
+ "prost-reflect",
+ "prost-types",
 ]
 
 [[package]]
@@ -2063,7 +2081,8 @@ name = "schematic-sidecar"
 version = "0.1.14"
 dependencies = [
  "harmos",
- "schematic-operations",
+ "schematic-domain",
+ "schematic-protocol",
  "tempfile",
  "tracing",
  "tracing-perfetto-file",

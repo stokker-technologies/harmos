@@ -40,6 +40,11 @@ pub type CallFuture<'a> = Pin<Box<dyn Future<Output = Result<ErasedResponse, Inv
 
 /* === Structs === */
 
+pub struct OperationDependency {
+    pub id: String,
+    pub fingerprint: crate::execution::Fingerprint,
+}
+
 // The Carrier Caller Of One Attempt, Inserted Into Its Execution Snapshot.
 #[derive(Clone)]
 pub struct Calls(pub Arc<dyn Caller>);
@@ -48,6 +53,7 @@ pub struct Calls(pub Arc<dyn Caller>);
 #[derive(Clone, Copy)]
 pub struct Target {
     pub id: &'static str,
+    pub protobuf_native: bool,
     pub definition: fn() -> OperationDefinition,
     pub request: fn() -> TypeId,
     pub memory: fn(&(dyn Any + Send)) -> usize,
@@ -60,7 +66,7 @@ pub struct Target {
 
     #[cfg(feature = "grpc")]
     pub decode_protobuf: fn(&[u8]) -> Result<ErasedResponse, MessageError>,
-    pub grant: fn(&(dyn Any + Send)) -> Option<harmos_domain::plugin::Grant>,
+    pub grant: fn(&(dyn Any + Send)) -> Result<Option<harmos_domain::plugin::Grant>, MessageError>,
 }
 
 /* === Enums === */
@@ -104,6 +110,7 @@ impl Target {
     pub fn of<T: OperationDeclaration>() -> Self {
         Self {
             id: T::ID,
+            protobuf_native: false,
             definition: T::definition,
             request: TypeId::of::<T::Request>,
             memory: |request| request.downcast_ref::<T::Request>().map_or(0, crate::execution::MemorySize::memory_size),
@@ -122,7 +129,7 @@ impl Target {
                 let response = crate::execution::grpc::decode::<T::Response>(crate::execution::grpc::DecodeInput::new(bytes))?;
                 Ok(Response::new(response).into_erased())
             },
-            grant: |request| request.downcast_ref::<T::Request>().and_then(T::grant),
+            grant: |request| Ok(request.downcast_ref::<T::Request>().and_then(T::grant)),
         }
     }
 }

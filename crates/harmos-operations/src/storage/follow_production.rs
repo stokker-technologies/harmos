@@ -7,152 +7,73 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::IO_POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Nested, Unsigned, product};
-use harmos_domain::model::storage::files::{FileBatch, FileProgress, StagedFile};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
-use crate::execution::operations::access::GrantAccess;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
+use harmos_domain::operations::{FailureKind, ReplaySafety};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(FollowProduction {
-    file: Nested<StagedFile> => 1,
-    offset: Unsigned => 2,
-});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-// Follow An Existing Staged Production Without Reinterpreting Its Identity.
-#[harmos::operation(
-    harmos_path = crate,
-    resources = [StorageManager<ErasedCatalog>, GrantAccess],
-    codec = manual,
-    id = "storage.follow_production",
-    response = FileProgress,
-    policy = IO_POLICY,
-    output = FileBatch,
-    visibility = Public,
-    replay = ReplaySafety::Unknown,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "FollowProduction"),
-    grant = Self::grant_for,
-)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FollowProduction {
-    pub file: StagedFile,
-    pub offset: u64,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct FollowProduction;
 
 /* === Implementations === */
 
-impl FollowProduction {
-    fn grant_for(request: &FollowProduction) -> Option<harmos_domain::plugin::Grant> {
-        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.file.id.as_str().to_owned()))
+impl ProtobufOperation for FollowProduction {
+    type Request = harmos_protocol::storage::FollowProduction;
+    type Response = harmos_protocol::storage::FileProgress;
+    type Endpoints = ProtobufOutput<harmos_protocol::storage::FileBatch>;
+    const ID: &'static str = "storage.follow_production";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "FollowProduction"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Unknown;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<crate::execution::operations::access::GrantAccess>()];
+
+    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+        let file = request.file.as_ref().ok_or_else(|| harmos_domain::MessageError::borrowed("file is required"))?;
+        Ok(Some(harmos_domain::plugin::Grant::of(Self::ID, file.id.clone())))
     }
-}
 
-impl MemorySize for FollowProduction {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
-            .saturating_add(self.offset.memory_size().saturating_sub(std::mem::size_of_val(&self.offset)))
-    }
-}
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use super::*;
-    use crate::execution::operations::{Operation, OperationDeclaration};
-    use crate::storage::IO_TIMEOUT;
-    use crate::{Error, Result};
-    use harmos_storage::FileProgress;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::FollowProduction {
-        type Error = Error;
-
-        #[tracing::instrument(target = "harmos::storage", name = "storage.operation.follow_production", level = "trace", skip_all)]
-        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<FileProgress>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let grants = context.resource::<crate::execution::operations::access::GrantAccess>();
-            let output = context.streams();
-
-            let host = grants;
-            let ctx = &host.0;
-            let grant = harmos_domain::plugin::Grant::of(FollowProduction::ID, self.file.id.as_str().to_owned());
-            ctx.admit(&grant).map_err(Error::Access)?;
-            let mut follower = storage.follow_production(&self.file, self.offset).await?;
-            let batch_bytes = storage.settings().response.batch_bytes;
-            while let Some(batch) = follower.next_batch(batch_bytes).await? {
-                ctx.admit(&grant).map_err(Error::Access)?;
-                let response = crate::execution::operations::Response::from_owner(batch.owner());
-                storage.clock().timeout(IO_TIMEOUT, output.send_owned(response)).await.map_err(|_| crate::storage::output_timeout())??;
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_domain::model::storage::FileProgress> = async {
+            let file: harmos_domain::model::storage::StagedFile =
+                request.file.ok_or(crate::Error::InvalidInput { field: "file", reason: "required" })?.try_into()?;
+            let grants =
+                context.resource::<crate::execution::operations::access::GrantAccess>().map_err(|_| crate::Error::InvalidInput {
+                    field: "grants",
+                    reason: "resource is missing",
+                })?;
+            let grant = Some(harmos_domain::plugin::Grant::of(Self::ID, file.id.to_string()));
+            if let Some(grant) = &grant {
+                grants.0.admit(grant).map_err(crate::Error::Access)?;
             }
-            Ok(follower.progress().into())
+            let mut reader = storage.follow_production(&file, request.offset).await?;
+            while let Some(batch) = reader.next_batch(storage.settings().response.batch_bytes).await? {
+                if let Some(grant) = &grant {
+                    grants.0.admit(grant).map_err(crate::Error::Access)?;
+                }
+                storage
+                    .clock()
+                    .timeout(
+                        super::IO_TIMEOUT,
+                        output.send(harmos_protocol::storage::FileBatch {
+                            offset: batch.offset(),
+                            bytes: batch.bytes().to_vec(),
+                        }),
+                    )
+                    .await
+                    .map_err(|_| super::output_timeout())??;
+            }
+            Ok(reader.progress())
         }
-
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */

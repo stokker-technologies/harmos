@@ -7,75 +7,53 @@
  * ***
  */
 
-// Hash Transfer Contracts and Execution.
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
+use harmos_operations::execution::operations::{ExecutionContext, ProtobufOperation, ServingError, Visibility};
 
 /* === Constants === */
 
-const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
+const POLICY: harmos_operations::execution::operations::OperationPolicy = harmos_operations::execution::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos_operations::operations::RetryPolicy::Never,
+    retries: harmos_operations::execution::operations::RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos_operations::operation(operations = [harmos_operations::storage::HashFile],
-    id = "benchmark.hash.file", response = FileHash,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Idempotent,
-)]
-pub struct Hash {
-    pub request: <harmos_operations::storage::HashFile as harmos_operations::OperationDeclaration>::Request,
-}
-
-#[harmos_operations::message]
-pub struct FileHash {
-    pub read_bytes: u64,
-    pub sha256: Vec<u8>,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct Hash;
 
 /* === Implementations === */
 
-#[cfg(feature = "runtime")]
-impl harmos_operations::Operation for Hash {
-    type Error = crate::Error;
-
-    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<FileHash>, Self::Error> {
-        // Hash the File
-        let request = self.request;
-        let response = ctx.operation(request).await?;
-        let response = FileHash {
-            read_bytes: response.bytes_read,
-            sha256: response.sha256.to_vec(),
-        };
-        Ok(response.into())
+impl ProtobufOperation for Hash {
+    type Request = crate::protocol::Hash;
+    type Response = crate::protocol::FileHash;
+    type Endpoints = ();
+    const ID: &'static str = "benchmark.hash.file";
+    const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: harmos_operations::execution::operations::ReplaySafety =
+        harmos_operations::execution::operations::ReplaySafety::Idempotent;
+    const OPERATIONS: &'static [harmos_operations::execution::operations::ProtobufDependency] =
+        &[harmos_operations::execution::operations::ProtobufDependency::of::<harmos_operations::storage::HashFile>()];
+    async fn run(ctx: ExecutionContext, request: Self::Request, _endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let result: Result<Self::Response, crate::Error> = async {
+            let request = request.request.ok_or(crate::Error::InvalidInput)?;
+            let response =
+                ctx.call_protobuf::<harmos_operations::storage::HashFile>(request).await.map_err(|e| crate::Error::Host(Box::new(e)))?;
+            Ok(crate::protocol::FileHash {
+                read_bytes: response.bytes_read,
+                sha256: response.sha256.clone(),
+            })
+        }
+        .await;
+        result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> harmos_operations::execution::operations::FailureKind {
+        match error.downcast_ref::<crate::Error>() {
+            Some(crate::Error::InvalidInput) => harmos_operations::execution::operations::FailureKind::Invalid,
+            _ => harmos_operations::execution::operations::FailureKind::Permanent,
+        }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -66,10 +66,10 @@ pub(crate) fn bind<P: crate::plugin::Plugin>(
         .insert(std::sync::Arc::new(LifecycleAccess(owner)))
         .map_err(|error| crate::plugin::Error::Resource(std::sync::Arc::new(error)))?;
     let mut table = table.lock().map_err(|_| crate::plugin::Error::Poisoned)?;
-    let initialize = harmos_operations::lifecycle::Descriptor::of_initialize::<P>()
+    let initialize = crate::lifecycle::Descriptor::of_initialize::<P>()
         .map_err(harmos_operations::execution::ServingError::from)
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?;
-    let shutdown = harmos_operations::lifecycle::Descriptor::of_shutdown::<P>()
+    let shutdown = crate::lifecycle::Descriptor::of_shutdown::<P>()
         .map_err(harmos_operations::execution::ServingError::from)
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table

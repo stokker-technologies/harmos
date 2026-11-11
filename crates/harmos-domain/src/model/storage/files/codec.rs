@@ -32,27 +32,9 @@ use crate::{Error, MessageError, Result};
 
 /* === Macros === */
 
-crate::model::storage::codec::product!(super::FileSession {
-    history: crate::model::storage::codec::Nested<crate::model::storage::StoreHistory> => 1,
-    id: crate::model::storage::codec::Id => 2,
-    generation: crate::model::storage::codec::Unsigned => 3,
-});
-
-crate::model::storage::codec::product!(super::StagedFile {
-    history: crate::model::storage::codec::Nested<crate::model::storage::StoreHistory> => 1,
-    id: crate::model::storage::codec::Id => 2,
-});
-crate::model::storage::codec::product!(super::FileProgress {
-    length: crate::model::storage::codec::Unsigned => 1,
-    phase: Phase => 2,
-});
-
 /* === Type Aliases === */
 
 /* === Structs === */
-
-// Wire Values: Zero Producing, One Finished, Two Abandoned.
-struct Phase;
 
 // Native Paths May Be Non-Unicode; Transport Decoding Requires Portable UTF-8.
 pub struct LocalPath;
@@ -112,41 +94,6 @@ impl crate::model::storage::codec::Value for LocalPath {
         let path = String::from_utf8(bytes).map_err(|_| MessageError::borrowed("transported local paths must be UTF-8"))?;
         Ok(PathBuf::from(path))
     }
-}
-
-impl crate::model::storage::codec::Value for Phase {
-    const NAME: &'static str = concat!(module_path!(), "::", stringify!(Phase));
-    fn postcard_write(value: &Self::Native, bytes: &mut Vec<u8>) {
-        crate::__private::PostcardValue::write(
-            &match value {
-                super::FilePhase::Producing => 0u64,
-                super::FilePhase::Finished => 1u64,
-                super::FilePhase::Abandoned => 2u64,
-            },
-            bytes,
-        );
-    }
-
-    fn postcard_size(_: &Self::Native) -> usize {
-        1
-    }
-
-    fn postcard_memory(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<usize, MessageError> {
-        Self::postcard_read(input)?;
-        Ok(0)
-    }
-
-    fn postcard_read(input: &mut crate::__private::PostcardReader<'_>) -> std::result::Result<Self::Native, MessageError> {
-        match input.value::<u64>()? {
-            0 => Ok(super::FilePhase::Producing),
-            1 => Ok(super::FilePhase::Finished),
-            2 => Ok(super::FilePhase::Abandoned),
-            _ => Err(MessageError::borrowed("invalid storage selector")),
-        }
-    }
-
-    type Native = super::FilePhase;
-    const KIND: Kind = Kind::U64;
 }
 
 impl FileMetadata {

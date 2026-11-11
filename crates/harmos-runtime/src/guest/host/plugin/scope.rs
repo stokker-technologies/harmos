@@ -220,7 +220,10 @@ impl PluginScope {
                     Some(selected) => selected == owner,
                     None => host,
                 };
-                provider && contract.is_some_and(|actual| required.iter().any(|expected| expected.contract == *actual))
+                provider
+                    && contract.is_some_and(|actual| {
+                        required.iter().any(|expected| crate::guest::host::native_payloads::matches(&expected.contract, actual))
+                    })
             }
         }
     }

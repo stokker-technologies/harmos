@@ -21,10 +21,6 @@ use std::num::NonZeroU128;
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use crate::MessageError;
-use crate::model::storage::codec::{
-    Flag, Float, Nested, Percent, Signed as SignedInt, Text, Unsigned, Wide, WideNonZero, WideSigned, coded, product, variants,
-};
 use crate::{Aggregate, Error, MemorySize, Result};
 
 /* === Constants === */
@@ -206,57 +202,6 @@ impl MemorySize for ExactNumber {
         std::mem::size_of::<Self>()
     }
 }
-
-// Only The Reduced Form Of An Exact Fraction Is Accepted On Decode.
-product!(
-    ExactNumber {
-        negative: Flag => 1,
-        numerator: Wide => 2,
-        denominator: WideNonZero => 3,
-    },
-    check = |value: &ExactNumber| {
-        if ExactNumber::new(value.negative, value.numerator, value.denominator) == *value {
-            Ok(())
-        } else {
-            Err(MessageError::borrowed("exact number is not reduced"))
-        }
-    }
-);
-
-coded!(ScalarKind {
-    Bool,
-    Signed,
-    Unsigned,
-    Float,
-    Text,
-    Datetime,
-    Exact
-});
-variants!(Agg {
-    0, 1, "len": Self::Len => {} => Self::Len;
-    1, 2, "last": Self::Last => {} => Self::Last;
-    2, 3, "count": Self::Of(Aggregate::Count) => {} => Self::Of(Aggregate::Count);
-    3, 4, "sum": Self::Of(Aggregate::Sum) => {} => Self::Of(Aggregate::Sum);
-    4, 5, "mean": Self::Of(Aggregate::Mean) => {} => Self::Of(Aggregate::Mean);
-    5, 6, "median": Self::Of(Aggregate::Median) => {} => Self::Of(Aggregate::Median);
-    6, 7, "min": Self::Of(Aggregate::Min) => {} => Self::Of(Aggregate::Min);
-    7, 8, "max": Self::Of(Aggregate::Max) => {} => Self::Of(Aggregate::Max);
-    8, 9, "rms": Self::Of(Aggregate::Rms) => {} => Self::Of(Aggregate::Rms);
-    9, 10, "std": Self::Of(Aggregate::Std) => {} => Self::Of(Aggregate::Std);
-    10, 11, "percentile": Self::Of(Aggregate::Percentile(rank)) => { rank: Percent => 1 } => Self::Of(Aggregate::Percentile(rank));
-});
-
-variants!(ScalarValue {
-    0, 1, "missing": Self::Missing => {} => Self::Missing;
-    1, 2, "null": Self::Null => {} => Self::Null;
-    2, 3, "bool": Self::Bool(value) => { value: Flag => 1 } => Self::Bool(value);
-    3, 4, "signed": Self::Signed(value) => { value: SignedInt => 1 } => Self::Signed(value);
-    4, 5, "unsigned": Self::Unsigned(value) => { value: Unsigned => 1 } => Self::Unsigned(value);
-    5, 6, "float": Self::Float(value) => { value: Float => 1 } => Self::Float(value);
-    6, 7, "text": Self::Text(value) => { value: Text => 1 } => Self::Text(value);
-    7, 8, "datetime": Self::Datetime(value) => { value: WideSigned => 1 } => Self::Datetime(value);
-    8, 9, "exact": Self::Exact(value) => { value: Nested<ExactNumber> => 1 } => Self::Exact(value);
-});
 
 /* === Public Functions === */
 

@@ -26,9 +26,9 @@ use std::sync::Arc;
 use harmos_guest::kit::Context;
 use harmos_guest::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
 #[cfg(not(feature = "benchmark"))]
-use schematic_operations::Operations;
+use schematic_operations::guest::Operations;
 #[cfg(feature = "benchmark")]
-use schematic_operations::transfer::Guest as Operations;
+use schematic_operations::guest::transfer::Guest as Operations;
 
 /* === Constants === */
 
@@ -49,7 +49,7 @@ harmos_guest::export_plugin!(Plugin, capacity = 8);
 
 pub struct Plugin {
     #[cfg(feature = "benchmark")]
-    transfer: Arc<schematic_operations::transfer::Store>,
+    transfer: Arc<schematic_operations::guest::transfer::Store>,
 }
 
 /* === Enums === */
@@ -71,10 +71,10 @@ impl harmos_guest::Lifecycle for Plugin {
     async fn prepare(_: (), setup: &mut harmos_guest::Setup<Self>) -> Result<Self, Error> {
         let plugin = Self {
             #[cfg(feature = "benchmark")]
-            transfer: Arc::new(schematic_operations::transfer::Store::default()),
+            transfer: Arc::new(schematic_operations::guest::transfer::Store::default()),
         };
         #[cfg(feature = "benchmark")]
-        setup.resource::<schematic_operations::transfer::Store>(Arc::clone(&plugin.transfer));
+        setup.resource::<schematic_operations::guest::transfer::Store>(Arc::clone(&plugin.transfer));
         let direction = StreamSettings {
             items: NonZeroUsize::new(4).unwrap(),
             bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),

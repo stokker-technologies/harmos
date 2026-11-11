@@ -7,9 +7,19 @@
  * ***
  */
 
+// Operations Over One Schematic Snapshot, Served by Every Delivery.
+
 /* === Modules === */
 
+pub mod analyze;
+pub mod propose;
+pub mod validate;
+
 /* === Re-Exports === */
+
+pub use analyze::AnalyzeSchematic;
+pub use propose::ProposeRoute;
+pub use validate::ValidateSchematic;
 
 /* === Imports === */
 
@@ -22,11 +32,6 @@
 /* === Constants === */
 
 /* === Macros === */
-
-crate::builtin_payload! { FollowingRow,
-    payload: Vec<u8> => (1, Kind::Bytes, Required),
-    published_delta_micros: Option<i64> => (2, Kind::I64, Optional),
-}
 
 /* === Type Aliases === */
 

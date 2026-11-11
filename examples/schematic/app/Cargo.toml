@@ -27,7 +27,8 @@ simulation = ["harmos-runtime/simulation"]
 harmos-runtime = { workspace = true, default-features = true, features = ["plugin-guest"] }
 harmos = { workspace = true }
 schematic-domain = { path = "../domain" }
-schematic-operations = { path = "../operations", features = ["runtime", "authoring"] }
+schematic-protocol = { path = "../protocol", features = ["sdk"] }
+schematic-operations = { path = "../operations", features = ["runtime"] }
 schematic-storage = { path = "../storage" }
 
 # Git

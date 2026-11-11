@@ -34,8 +34,8 @@ use harmos::guest::capabilities::Refusal as BridgeRefusal;
 use harmos_domain::inventory::{Declaration, Facility};
 use harmos_domain::{Message, Refusal};
 use harmos_guest::lifecycle::Initialize;
+use harmos_guest::lifecycle::InstanceState;
 use harmos_guest::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
-use harmos_operations::lifecycle::InstanceState;
 use sandbox::{EchoOperation, Echoed};
 
 /* === Constants === */
@@ -117,7 +117,7 @@ impl Stub {
                 Ok(answer.encode())
             }
             "host.host.publish" => {
-                let request = harmos_operations::streams::Publish::decode(&call.payload).map_err(Refusal::of)?;
+                let request = harmos_guest::builtins::streams::Publish::decode(&call.payload).map_err(Refusal::of)?;
                 assert_eq!(request.sequence, None, "the guest asks its original lease to derive the sequence");
                 assert_eq!(request.published_unix_micros, None);
                 assert_eq!(request.context, None);
@@ -224,23 +224,27 @@ impl Session {
         let request = Initialize {
             config_json: config.as_bytes().to_vec(),
             generation_context: vec![2; 32],
-            assignments: harmos_operations::execution::operations::AssignedOperation::encode(&[
-                harmos_operations::execution::operations::AssignedOperation {
-                    operation: "provider.provider.echo".into(),
-                    fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
-                        .fingerprint
-                        .0,
-                    generation: 1,
-                },
-                harmos_operations::execution::operations::AssignedOperation {
-                    operation: "host.host.publish".into(),
-                    fingerprint: <harmos_operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
-                        .fingerprint
-                        .0,
-                    generation: 1,
-                },
-            ])
-            .unwrap(),
+            assignments: prost::Message::encode_to_vec(&harmos_protocol::host::OperationAssignments {
+                operations: vec![
+                    harmos_operations::execution::operations::AssignedOperation {
+                        operation: "provider.provider.echo".into(),
+                        fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
+                            .fingerprint
+                            .0
+                            .to_vec(),
+                        generation: 1,
+                    },
+                    harmos_operations::execution::operations::AssignedOperation {
+                        operation: "host.host.publish".into(),
+                        fingerprint:
+                            <harmos_guest::builtins::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
+                                .fingerprint
+                                .0
+                                .to_vec(),
+                        generation: 1,
+                    },
+                ],
+            }),
         };
         self.call::<harmos_guest::lifecycle::Initialize>(1, request.encode()).await.map(|_| ())
     }

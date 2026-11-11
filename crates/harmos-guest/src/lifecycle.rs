@@ -12,12 +12,14 @@
 pub(crate) mod access;
 mod initialize;
 mod shutdown;
+mod state;
 
 /* === Re-Exports === */
 
-pub use harmos_operations::lifecycle::*;
+pub use harmos_domain::model::operations::lifecycle::*;
 pub use initialize::{ControlError, Initialize};
 pub use shutdown::Shutdown;
+pub use state::InstanceState;
 
 /* === Imports === */
 

@@ -64,6 +64,10 @@ impl Fixture {
         .unwrap();
         let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
             setup.resource(std::ops::Deref::deref(&storage).erased());
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+                ..Default::default()
+            });
             setup.settings().register(catalog());
         })
         .await
@@ -114,7 +118,6 @@ pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &
 }
 
 pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
-    use harmos_operations::storage::Query;
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_runtime::storage::Query {

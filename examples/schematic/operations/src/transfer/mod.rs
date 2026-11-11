@@ -47,30 +47,19 @@ pub use upload::Upload;
 
 /* === Enums === */
 
-#[harmos_operations::catalog]
-pub enum Transfers {
-    Upload(Upload),
-    Download(Download),
-    Put(Put),
-    Take(Take),
-    Hash(Hash),
+pub struct Transfers;
+impl harmos_operations::execution::operations::OperationCatalog for Transfers {
+    const CATALOG: harmos_operations::execution::operations::Catalog =
+        harmos_operations::execution::operations::Catalog::of::<Self>("schematic.transfers", &[], &[]);
+    fn batch() -> harmos_operations::execution::__private::RegistrationBatch {
+        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
+        batch.operations.extend([
+            harmos_operations::execution::operations::OperationFactory::protobuf::<Upload>().expect("Upload declaration"),
+            harmos_operations::execution::operations::OperationFactory::protobuf::<Download>().expect("Download declaration"),
+            harmos_operations::execution::operations::OperationFactory::protobuf::<Put>().expect("Put declaration"),
+            harmos_operations::execution::operations::OperationFactory::protobuf::<Take>().expect("Take declaration"),
+            harmos_operations::execution::operations::OperationFactory::protobuf::<Hash>().expect("Hash declaration"),
+        ]);
+        batch
+    }
 }
-
-#[harmos_operations::catalog]
-pub enum Guest {
-    #[nested]
-    Shared(crate::Operations),
-
-    #[nested]
-    Transfers(Transfers),
-}
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
