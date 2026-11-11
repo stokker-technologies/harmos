@@ -479,9 +479,7 @@ mod guest_plugins {
     #[harmos_runtime::operation(id = "fixture.unified.echo",  response = (), policy = POLICY)]
     struct Echo {}
 
-    #[harmos_runtime::stream(id = "unified_rows", window = 4)]
-    #[harmos_runtime::message]
-    #[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize)]
+    #[derive(harmos_runtime::Row, Debug, Default, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
     struct Row {
         value: u32,
     }
@@ -523,6 +521,10 @@ mod guest_plugins {
     /* === Traits === */
 
     /* === Implementations === */
+
+    impl harmos_runtime::streams::StreamRow for Row {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("unified_rows", 4).label("Row");
+    }
 
     impl harmos_runtime::operations::Operation for Echo {
         type Error = Infallible;

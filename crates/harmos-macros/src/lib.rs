@@ -16,6 +16,7 @@ mod message;
 mod operation;
 mod path;
 mod presentation;
+mod row;
 
 /* === Re-Exports === */
 
@@ -109,9 +110,9 @@ pub fn transaction(attribute: TokenStream, item: TokenStream) -> TokenStream {
     identity::stamp(attribute.into(), item.into()).into()
 }
 
-#[proc_macro_attribute]
-pub fn stream(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    identity::stream::stamp(attribute.into(), item.into()).into()
+#[proc_macro_derive(Row, attributes(row, harmos_path, serde))]
+pub fn row(item: TokenStream) -> TokenStream {
+    row::derive(item.into()).into()
 }
 
 #[proc_macro_attribute]

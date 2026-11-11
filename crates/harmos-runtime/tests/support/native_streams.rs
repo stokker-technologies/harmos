@@ -49,9 +49,7 @@ pub struct Fixture {
     relay: JoinHandle<()>,
 }
 
-#[harmos_runtime::stream(id = "consumption.payload", window = 16)]
-#[harmos_runtime::message]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Row, Debug, Default, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Payload {
     pub sequence: u64,
     pub bytes: Vec<u8>,
@@ -62,6 +60,10 @@ pub struct Payload {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::streams::StreamRow for Payload {
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("consumption.payload", 16).label("Payload");
+}
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
@@ -170,7 +172,7 @@ impl Drop for Fixture {
 /* === Public Functions === */
 
 pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-    vec![<Payload>::definition()]
+    vec![<Payload as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
 }
 
 /* === Private Functions === */

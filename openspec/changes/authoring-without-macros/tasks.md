@@ -18,9 +18,9 @@ local commit and focused proof for each complete macro family.
 - [x] 2.2.1 Replace `listener`, migrate deliveries and guest constant descriptions, and delete its generator and exports.
 - [x] 2.2.2 Replace `streams` and its membership projections with stream value lists.
 - [x] 2.2.3 Replace `lanes` and its typed catalogs with validated lane values.
-- [ ] 2.3 Replace `record` with a typed entry and split `stream` into a row derive and a stream value.
+- [x] 2.3 Replace `record` with a typed entry and split `stream` into a row derive and a stream value.
 - [x] 2.3.1 Replace `record` and its generator with typed record entries, preserving stored identity, revision and restoration.
-- [ ] 2.3.2 Replace `stream` with a field-reading row derive and a stream value, including guest constant descriptions.
+- [x] 2.3.2 Replace `stream` with a field-reading row derive and a stream value, including guest constant descriptions.
 
 ## 3. Operations and Messages
 

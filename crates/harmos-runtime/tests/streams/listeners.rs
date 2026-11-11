@@ -127,17 +127,10 @@ enum Failed {
 
 /* === Implementations === */
 
-impl Fact {
-    const ID: &'static str = "listener.samples";
-    const WINDOW: usize = 512;
-    fn definition() -> harmos_runtime::streams::Definition {
-        harmos_runtime::__private::stream_definition::<Self>(Self::ID, Self::WINDOW)
-    }
-}
+impl harmos_runtime::RowMetadata for Fact {}
 
-impl harmos_runtime::__private::StreamRow for Fact {
-    const ID: &'static str = "listener.samples";
-    const WINDOW: usize = 512;
+impl harmos_runtime::streams::StreamRow for Fact {
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("listener.samples", 512);
 }
 
 impl Clone for Fact {
@@ -417,7 +410,7 @@ impl PluginLifecycle for Host {
 /* === Public Functions === */
 
 fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-    vec![<Fact>::definition()]
+    vec![<Fact as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
 }
 
 /* === Private Functions === */

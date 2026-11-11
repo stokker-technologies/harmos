@@ -46,7 +46,7 @@ const METADATA_LABEL: &[u8] = b",\"label\":";
 #[derive(Clone, Copy)]
 pub struct Entry {
     pub id: &'static str,
-    pub metadata_json: &'static str,
+    pub presentation: crate::streams::Presentation,
     pub row_metadata_json: &'static str,
     pub window: usize,
     pub row: Definition,
@@ -123,26 +123,25 @@ pub enum Error {
 /* === Traits === */
 
 pub trait StreamSpec {
-    type Row;
-    const ID: &'static str;
-    const WINDOW: usize;
-    const METADATA_JSON: &'static str = "";
-    const ROW_METADATA_JSON: &'static str = "[]";
+    type Row: crate::schema::Described + crate::RowMetadata + 'static;
+    const ENTRY: crate::streams::StreamEntry<Self::Row>;
+    const ID: &'static str = Self::ENTRY.id();
+    const WINDOW: usize = Self::ENTRY.window();
 
     fn metadata() -> crate::Metadata {
-        if Self::METADATA_JSON.is_empty() {
-            crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)
-        } else {
-            serde_json::from_str(Self::METADATA_JSON).expect("macro-generated stream metadata is valid")
-        }
+        Self::ENTRY.metadata()
     }
-
     fn row_metadata() -> Vec<crate::StreamField> {
-        serde_json::from_str(Self::ROW_METADATA_JSON).expect("macro-generated row metadata is valid")
+        <Self::Row as crate::RowMetadata>::row_metadata()
     }
 }
 
 /* === Implementations === */
+
+impl<R: crate::streams::StreamRow> StreamSpec for R {
+    type Row = Self;
+    const ENTRY: crate::streams::StreamEntry<Self> = <Self as crate::streams::StreamRow>::ENTRY;
+}
 
 impl NamedManifest {
     pub fn resolve(self, declarations: &[Named], settings: &mut SchemaSettings) -> Result<Manifest, Error> {
@@ -182,28 +181,15 @@ impl NamedManifest {
 
 impl Entry {
     pub fn metadata(&self) -> crate::Metadata {
-        if self.metadata_json.is_empty() {
-            crate::Metadata::new(crate::Identifier::declared(self.id, "stream"), self.id, None)
-        } else {
-            serde_json::from_str(self.metadata_json).expect("declared stream metadata is valid")
-        }
+        self.presentation.metadata(self.id).expect("valid authored stream presentation")
     }
 
     pub fn row_metadata(&self) -> Vec<crate::StreamField> {
         serde_json::from_str(self.row_metadata_json).expect("declared row metadata is valid")
     }
 
-    pub const fn of<S: StreamSpec>() -> Self
-    where
-        S::Row: crate::schema::Described,
-    {
-        Self {
-            id: S::ID,
-            metadata_json: S::METADATA_JSON,
-            row_metadata_json: S::ROW_METADATA_JSON,
-            window: S::WINDOW,
-            row: <S::Row as crate::schema::Described>::DEFINITION,
-        }
+    pub const fn of<S: StreamSpec>() -> Self {
+        S::ENTRY.declaration()
     }
 }
 
@@ -212,7 +198,12 @@ impl Entry {
 pub const fn merge<const N: usize>(named: &[Entry], sampled: &[Entry]) -> [Entry; N] {
     let mut merged = [Entry {
         id: "",
-        metadata_json: "",
+        presentation: crate::streams::Presentation {
+            label: "",
+            description: None,
+            tags: &[],
+            attributes_json: "{}",
+        },
         row_metadata_json: "[]",
         window: 0,
         row: Definition::of::<()>(),
@@ -304,15 +295,7 @@ pub fn validate_match(expected: &[Entry], actual: &[StreamDeclaration]) -> Resul
 pub fn validate_match_with_settings(expected: &[Entry], actual: &[StreamDeclaration], settings: &SchemaSettings) -> Result<(), Error> {
     let mut authored = BTreeMap::new();
     for entry in expected {
-        let metadata = if entry.metadata_json.is_empty() {
-            let id = crate::Identifier::new(entry.id).map_err(|_| Error::InvalidId { id: entry.id.to_owned() })?;
-            crate::Metadata::new(id, entry.id, None)
-        } else {
-            serde_json::from_str(entry.metadata_json).map_err(|source| Error::Metadata {
-                id: entry.id.to_owned(),
-                reason: source.to_string(),
-            })?
-        };
+        let metadata = entry.presentation.metadata(entry.id)?;
         let row_metadata = serde_json::from_str(entry.row_metadata_json).map_err(|source| Error::Metadata {
             id: entry.id.to_owned(),
             reason: source.to_string(),
@@ -453,23 +436,48 @@ pub(crate) const fn same_bytes(left: &str, right: &str) -> bool {
 /* === Private Functions === */
 
 const fn metadata_len(entry: &Entry) -> usize {
-    if entry.metadata_json.is_empty() {
-        METADATA_ID.len() + quoted_len(entry.id) + METADATA_LABEL.len() + quoted_len(entry.id) + 1
-    } else {
-        entry.metadata_json.len()
+    let presentation = entry.presentation;
+    let mut len = METADATA_ID.len() + quoted_len(entry.id) + METADATA_LABEL.len() + quoted_len(presentation.label);
+    len += b",\"description\":".len()
+        + match presentation.description {
+            Some(description) => quoted_len(description),
+            None => 4,
+        };
+    len += b",\"tags\":[".len();
+    let mut index = 0;
+    while index < presentation.tags.len() {
+        if index > 0 {
+            len += 1;
+        }
+        len += quoted_len(presentation.tags[index]);
+        index += 1;
     }
+    len + b"],\"attributes\":".len() + presentation.attributes_json.len() + 1
 }
 
 const fn metadata_into<const N: usize>(output: &mut [u8; N], cursor: &mut usize, entry: &Entry) {
-    if entry.metadata_json.is_empty() {
-        write(output, cursor, METADATA_ID);
-        quoted(output, cursor, entry.id);
-        write(output, cursor, METADATA_LABEL);
-        quoted(output, cursor, entry.id);
-        write(output, cursor, b"}");
-    } else {
-        write(output, cursor, entry.metadata_json.as_bytes());
+    let presentation = entry.presentation;
+    write(output, cursor, METADATA_ID);
+    quoted(output, cursor, entry.id);
+    write(output, cursor, METADATA_LABEL);
+    quoted(output, cursor, presentation.label);
+    write(output, cursor, b",\"description\":");
+    match presentation.description {
+        Some(description) => quoted(output, cursor, description),
+        None => write(output, cursor, b"null"),
     }
+    write(output, cursor, b",\"tags\":[");
+    let mut index = 0;
+    while index < presentation.tags.len() {
+        if index > 0 {
+            write(output, cursor, b",");
+        }
+        quoted(output, cursor, presentation.tags[index]);
+        index += 1;
+    }
+    write(output, cursor, b"],\"attributes\":");
+    write(output, cursor, presentation.attributes_json.as_bytes());
+    write(output, cursor, b"}");
 }
 
 /* === Tests === */

@@ -25,6 +25,7 @@ use std::sync::{Arc, Mutex};
 // Local Imports
 use harmos_runtime::state::{CatalogCodec, DecodeError, Position, SnapshotPolicy, Transaction};
 use harmos_runtime::storage::{ObjectCatalog, ObjectRetention, StorageManager, StoredObject};
+use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{Application, Identified, Lifecycle, Runtime, Setup, Startup};
 use serde::{Deserialize, Serialize};
 
@@ -60,7 +61,9 @@ struct Changed {
     before: String,
 }
 
-#[harmos_runtime::stream(id = "shape.samples", window = 4, label = "Samples")]
+#[derive(harmos_runtime::Row)]
+#[serde(crate = "harmos_runtime::__private::serde")]
+#[derive(Clone, Debug, Default, PartialEq, harmos_runtime::__private::serde::Serialize, harmos_runtime::__private::serde::Deserialize)]
 struct Sample {
     value: u64,
 }
@@ -118,6 +121,10 @@ enum StoredPluginObjects {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::streams::StreamRow for Sample {
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("shape.samples", 4).label("Samples");
+}
 
 impl harmos_runtime::state::Record for Observed {
     const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("shape.observed");
@@ -214,7 +221,7 @@ impl Transaction<i64> for Add {
 /* === Public Functions === */
 
 fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-    vec![<Sample>::definition()]
+    vec![<Sample as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
 }
 
 /* === Private Functions === */
@@ -517,9 +524,17 @@ async fn native_stream_round_trip_uses_shared_revision() {
 
 #[test]
 fn label_only_change_keeps_revision() {
-    #[harmos_runtime::stream(id = "shape.samples", window = 4, label = "Renamed Samples")]
+    #[derive(harmos_runtime::Row)]
+    #[serde(crate = "harmos_runtime::__private::serde")]
+    #[derive(
+        Clone, Debug, Default, PartialEq, harmos_runtime::__private::serde::Serialize, harmos_runtime::__private::serde::Deserialize,
+    )]
     struct Relabelled {
         value: u64,
+    }
+
+    impl harmos_runtime::streams::StreamRow for Relabelled {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("shape.samples", 4).label("Renamed Samples");
     }
 
     #[harmos_runtime::message]

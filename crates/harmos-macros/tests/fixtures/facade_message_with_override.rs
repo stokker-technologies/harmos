@@ -28,10 +28,11 @@ extern crate facade as serde;
 
 /* === Structs === */
 
-#[facade::stream(id = "reading", window = 8, harmos_path = ::facade::__harmos)]
+#[derive(facade::Row)]
+#[harmos_path(::facade::__harmos)]
+#[derive(Debug, Default)]
 #[derive(facade::Serialize, facade::Deserialize)]
 #[serde(crate = "facade")]
-#[facade::message(harmos_path = ::facade::__harmos)]
 #[derive(Clone, PartialEq)]
 struct Reading {
     value: u64,
@@ -46,7 +47,10 @@ struct Sample {
     channels: Vec<u32>,
 }
 
-#[facade::stream(id = "portable", label = "Portable", window = 4, harmos_path = ::facade::__harmos)]
+#[derive(facade::Row)]
+#[harmos_path(::facade::__harmos)]
+#[serde(crate = "facade::__harmos::__private::serde")]
+#[derive(Clone, Debug, Default, PartialEq, facade::__harmos::__private::serde::Serialize, facade::__harmos::__private::serde::Deserialize)]
 struct Portable {
     #[row(label = "Measured Value", unit = "V")]
     value: f64,
@@ -82,6 +86,14 @@ enum ExcludedEnum {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl ::facade::__harmos::streams::StreamRow for Reading {
+    const ENTRY: ::facade::__harmos::StreamEntry<Self> = ::facade::__harmos::StreamEntry::new("reading", 8).label("Reading");
+}
+
+impl ::facade::__harmos::streams::StreamRow for Portable {
+    const ENTRY: ::facade::__harmos::StreamEntry<Self> = ::facade::__harmos::StreamEntry::new("portable", 4).label("Portable");
+}
 
 impl std::fmt::Debug for CustomDebug {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

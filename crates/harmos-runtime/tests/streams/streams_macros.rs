@@ -20,7 +20,8 @@ use std::pin::Pin;
 // Third Party Imports
 
 // Local Imports
-use harmos_runtime::{Application, Runtime, state::At, state::Position, state::Transaction, streams::Item, streams::Stream};
+use harmos_runtime::streams::StreamRow as _;
+use harmos_runtime::{Application, Runtime, state::At, state::Position, state::Transaction, streams::Item};
 
 /* === Constants === */
 
@@ -35,7 +36,9 @@ struct State;
 
 struct Studio;
 
-#[harmos_runtime::stream(description = "Portable samples", id = "presentation.samples", label = "Samples", window = 8, tags("lab"), attributes("acme.owner" = "bench", config = {"gain": 2, channels: [1, 2]}))]
+#[derive(harmos_runtime::Row)]
+#[serde(crate = "harmos_runtime::__private::serde")]
+#[derive(Clone, Debug, Default, PartialEq, harmos_runtime::__private::serde::Serialize, harmos_runtime::__private::serde::Deserialize)]
 struct PresentedSample {
     #[row(description = "Measured voltage", label = "Voltage", role = value, unit = "V", tags("electrical"), attributes(precision = 4u64))]
     voltage: f64,
@@ -50,6 +53,10 @@ enum Change {}
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::streams::StreamRow for PresentedSample {
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("presentation.samples", 8).label("Samples").description("Portable samples").tags(&["lab"]).attributes_json(r#"{"acme.owner":{"type":"text","value":"bench"},"config":{"type":"object","value":{"gain":{"type":"integer","value":"2"},"channels":{"type":"array","value":[{"type":"integer","value":"1"},{"type":"integer","value":"2"}]}}}}"#);
+}
 
 impl Transaction<State> for Change {
     type Error = Infallible;
@@ -169,12 +176,10 @@ mod streams {
 
     /* === Structs === */
 
-    #[harmos_runtime::stream(description = "A waveform-shaped row.", id = "pulse", window = 4)]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+    #[derive(harmos_runtime::Row, Clone, Copy, Debug, PartialEq, Eq, Serialize)]
     pub struct Pulse(pub u64);
 
-    #[harmos_runtime::stream(description = "A second vertical row proves dispatch and demand stay per-stream.", id = "reading", window = 2)]
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+    #[derive(harmos_runtime::Row, Default, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Reading {
         pub value: i64,
     }
@@ -185,6 +190,17 @@ mod streams {
 
     /* === Implementations === */
 
+    impl harmos_runtime::streams::StreamRow for Pulse {
+        const ENTRY: harmos_runtime::StreamEntry<Self> =
+            harmos_runtime::StreamEntry::new("pulse", 4).label("Pulse").description("A waveform-shaped row.");
+    }
+
+    impl harmos_runtime::streams::StreamRow for Reading {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("reading", 2)
+            .label("Reading")
+            .description("A second vertical row proves dispatch and demand stay per-stream.");
+    }
+
     impl<'de> Deserialize<'de> for Pulse {
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
             u64::deserialize(deserializer).map(Self)
@@ -194,7 +210,10 @@ mod streams {
     /* === Public Functions === */
 
     pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-        vec![<Pulse>::definition(), <Reading>::definition()]
+        vec![
+            <Pulse as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+            <Reading as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+        ]
     }
 
     /* === Private Functions === */
@@ -220,11 +239,11 @@ fn stream_values_register() {
     assert_eq!(catalog.iter().find(|definition| definition.id() == "reading").expect("the id is in the catalog").window(), 2);
     assert!(catalog.iter().find(|definition| definition.id() == "outside").is_none());
     assert_eq!(streams::Pulse::definition().id(), "pulse");
-    assert_eq!(<streams::Pulse as Stream<Studio>>::ID, "pulse");
+    assert_eq!(<streams::Pulse as harmos_runtime::streams::StreamRow>::ID, "pulse");
 }
 
 #[test]
-fn stream_attribute_carries() {
+fn row_and_stream_values_preserve_presentation() {
     use harmos_runtime::{Message, StreamSpec};
 
     let row = PresentedSample { voltage: -12.5, sample_index: u64::MAX };
@@ -250,4 +269,20 @@ fn stream_attribute_carries() {
     assert_eq!(ENTRIES[0].metadata(), <PresentedSample as StreamSpec>::metadata());
     #[cfg(feature = "plugin-guest")]
     assert_eq!(ENTRIES[0].row_metadata(), <PresentedSample as StreamSpec>::row_metadata());
+}
+
+#[test]
+fn stream_values_validate_identity_window_and_presentation() {
+    let valid = harmos_runtime::StreamEntry::<PresentedSample>::new("values.samples", 4).label("Samples");
+    assert_eq!(valid.build().unwrap().metadata().label, "Samples");
+    assert!(matches!(
+        harmos_runtime::StreamEntry::<PresentedSample>::new("bad/path", 4).build(),
+        Err(harmos_domain::inventory::publications::Error::InvalidId { .. })
+    ));
+    assert!(matches!(
+        harmos_runtime::StreamEntry::<PresentedSample>::new("values.samples", 0).build(),
+        Err(harmos_domain::inventory::publications::Error::ZeroWindow { .. })
+    ));
+    assert!(matches!(valid.attributes_json("broken").build(), Err(harmos_domain::inventory::publications::Error::Metadata { .. })));
+    assert!(matches!(valid.tags(&["duplicate", "duplicate"]).build(), Err(harmos_domain::inventory::publications::Error::Metadata { .. })));
 }

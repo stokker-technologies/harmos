@@ -29,12 +29,7 @@ use crate::state::NetId;
 
 /* === Structs === */
 
-#[harmos_runtime::stream(
-    description = "One low-rate voltage sample from the editor's simulator.\nThe runtime witnesses the journal position at publish. The time belongs in the payload because it is part of what this irregular feed declares.",
-    id = "net_voltage",
-    window = 4
-)]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos_runtime::Row, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct NetVoltage {
     pub net: NetId,
     pub sampled_at_us: u64,
@@ -46,6 +41,10 @@ pub struct NetVoltage {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::streams::StreamRow for NetVoltage {
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("net_voltage", 4).label("Net Voltage").description("One low-rate voltage sample from the editor's simulator.\nThe runtime witnesses the journal position at publish. The time belongs in the payload because it is part of what this irregular feed declares.");
+}
 
 impl NetVoltage {
     pub const fn teaching(sampled_at_us: u64, voltage_mv: i32) -> Self {

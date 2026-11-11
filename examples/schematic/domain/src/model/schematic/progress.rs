@@ -29,9 +29,7 @@
 
 /* === Structs === */
 
-#[harmos_domain::stream(id = "schematic.analysis_progress", window = 16)]
-#[harmos_domain::message]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_domain::Row, Default, PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct AnalysisProgress {
     pub title: String,
     pub checked: u32,
@@ -42,6 +40,11 @@ pub struct AnalysisProgress {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_domain::streams::StreamRow for AnalysisProgress {
+    const ENTRY: harmos_domain::StreamEntry<Self> =
+        harmos_domain::StreamEntry::new("schematic.analysis_progress", 16).label("Analysis Progress");
+}
 
 /* === Public Functions === */
 

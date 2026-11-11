@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos::{message, plugin, stream};
+pub use harmos::{Row, message, plugin};
 pub use harmos_operations::{catalog, operation};
 pub use serde::*;
 
@@ -31,8 +31,8 @@ pub use serde::*;
 
 /* === Structs === */
 
-#[harmos::stream(id = "reading", window = 8)]
-#[harmos::message]
+#[derive(harmos::Row)]
+#[derive(Debug, Default, PartialEq)]
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Reading {
     pub value: u32,
@@ -43,6 +43,10 @@ pub struct Reading {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos::streams::StreamRow for Reading {
+    const ENTRY: harmos::StreamEntry<Self> = harmos::StreamEntry::new("reading", 8).label("Reading");
+}
 
 /* === Public Functions === */
 
@@ -55,7 +59,7 @@ pub mod __harmos {
 
     pub use harmos::{
         __private, MemorySize, Message, MessageError, Metadata, OperationDeclaration, OperationDefinition, OperationPolicy, RowMetadata,
-        StreamField, StreamSpec,
+        StreamEntry, StreamField, StreamSpec,
     };
 
     #[cfg(feature = "runtime")]

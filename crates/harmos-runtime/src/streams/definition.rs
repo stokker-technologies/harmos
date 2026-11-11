@@ -21,14 +21,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, RwLock, Weak};
 // Third Party Imports
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
 use super::window::{Row, Window};
-use crate::streams::{Definition, StreamRow};
-use crate::{Application, state::Position, storage::Cursor};
+use crate::streams::Definition;
+use crate::{state::Position, storage::Cursor};
 
 /* === Constants === */
 
@@ -102,41 +100,7 @@ pub(crate) enum Refused {
 
 /* === Traits === */
 
-pub trait Stream<A: Application>: crate::schema::Described + Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
-    const ID: &'static str;
-
-    const WINDOW: usize;
-
-    fn metadata() -> crate::Metadata {
-        crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)
-    }
-
-    fn row_metadata() -> Vec<crate::StreamField> {
-        Vec::new()
-    }
-
-    fn definition() -> Definition {
-        Definition::native::<Self>(Self::ID, Self::WINDOW).presentation(Self::metadata(), Self::row_metadata())
-    }
-}
-
 /* === Implementations === */
-
-impl<A, S> Stream<A> for S
-where
-    A: Application,
-    S: StreamRow,
-{
-    const ID: &'static str = S::ID;
-    const WINDOW: usize = S::WINDOW;
-    fn metadata() -> crate::Metadata {
-        S::metadata()
-    }
-
-    fn row_metadata() -> Vec<crate::StreamField> {
-        S::row_metadata()
-    }
-}
 
 impl Contract {
     pub(super) fn of(definition: &Definition) -> Self {

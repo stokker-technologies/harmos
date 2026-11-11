@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 
 // Local Imports
 use feeds::{Narrow, Waveform, Wide};
-use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::Stream};
+use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::StreamRow};
 
 /* === Constants === */
 
@@ -237,7 +237,7 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
 
 /* === Private Functions === */
 
-fn measured<S: Stream<Probe>>(runtime: &Runtime<Probe>, row: fn(u64) -> S, count: u64) -> u64 {
+fn measured<S: StreamRow>(runtime: &Runtime<Probe>, row: fn(u64) -> S, count: u64) -> u64 {
     ALLOCATIONS.with(|allocations| allocations.set(0));
     MEASURING.with(|measuring| measuring.set(true));
     for value in 0..count {
@@ -290,24 +290,13 @@ mod feeds {
 
     /* === Structs === */
 
-    #[harmos_runtime::stream(description = "A row published into a small ring.", id = "narrow", window = 128)]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Narrow(pub u64);
 
-    #[harmos_runtime::stream(
-        description = "The same row shape published into a ring five hundred times as large.",
-        id = "wide",
-        window = 65_536
-    )]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Wide(pub u64);
 
-    #[harmos_runtime::stream(
-        description = "One waveform row whose own source clock is application-declared payload.",
-        id = "waveform",
-        window = 65_536
-    )]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Default, PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Waveform {
         pub captured_at_ns: u64,
         pub sample: i16,
@@ -319,10 +308,31 @@ mod feeds {
 
     /* === Implementations === */
 
+    impl harmos_runtime::streams::StreamRow for Narrow {
+        const ENTRY: harmos_runtime::StreamEntry<Self> =
+            harmos_runtime::StreamEntry::new("narrow", 128).label("Narrow").description("A row published into a small ring.");
+    }
+
+    impl harmos_runtime::streams::StreamRow for Wide {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("wide", 65_536)
+            .label("Wide")
+            .description("The same row shape published into a ring five hundred times as large.");
+    }
+
+    impl harmos_runtime::streams::StreamRow for Waveform {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("waveform", 65_536)
+            .label("Waveform")
+            .description("One waveform row whose own source clock is application-declared payload.");
+    }
+
     /* === Public Functions === */
 
     pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-        vec![<Narrow>::definition(), <Wide>::definition(), <Waveform>::definition()]
+        vec![
+            <Narrow as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+            <Wide as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+            <Waveform as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+        ]
     }
 
     /* === Private Functions === */

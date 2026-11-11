@@ -135,7 +135,7 @@ impl<A: Application> Batch<A> {
         })
     }
 
-    pub fn select<S: crate::streams::Stream<A>>(&self) -> impl Iterator<Item = At<&S>> + '_ {
+    pub fn select<S: crate::streams::StreamRow>(&self) -> impl Iterator<Item = At<&S>> + '_ {
         self.rows.iter().filter_map(|(_, definition, position, row)| {
             if definition.id() != S::ID || definition.owner().is_some() {
                 return None;
@@ -145,7 +145,7 @@ impl<A: Application> Batch<A> {
         })
     }
 
-    pub fn select_shared<S: crate::streams::Stream<A>>(&self) -> impl Iterator<Item = At<Arc<S>>> + '_ {
+    pub fn select_shared<S: crate::streams::StreamRow>(&self) -> impl Iterator<Item = At<Arc<S>>> + '_ {
         self.rows.iter().filter_map(|(_, definition, position, row)| {
             if definition.id() != S::ID || definition.owner().is_some() {
                 return None;

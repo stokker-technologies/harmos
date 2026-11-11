@@ -40,7 +40,10 @@ pub use voltage::NetVoltage;
 /* === Public Functions === */
 
 pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-    vec![<NetVoltage>::definition(), <schematic_domain::model::schematic::progress::AnalysisProgress>::definition()]
+    vec![
+        <NetVoltage as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+        <schematic_domain::model::schematic::progress::AnalysisProgress as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+    ]
 }
 
 /* === Private Functions === */

@@ -34,8 +34,7 @@ use schematic_storage::streams::{JsonlStreams, read_rows};
 
 struct Model;
 
-#[harmos_runtime::stream(id = "reading", window = 8)]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(harmos_runtime::Row, Debug, Default, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
 struct Reading {
     value: u64,
 }
@@ -51,6 +50,10 @@ struct Columns {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::streams::StreamRow for Reading {
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("reading", 8).label("Reading");
+}
 
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
@@ -71,7 +74,7 @@ impl harmos_runtime::Application for Model {
 /* === Public Functions === */
 
 fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-    vec![<Reading>::definition()]
+    vec![<Reading as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
 }
 
 /* === Private Functions === */

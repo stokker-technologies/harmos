@@ -128,8 +128,7 @@ pub enum Operations {
 
 impl StreamSpec for Echoed {
     type Row = Self;
-    const ID: &'static str = "progress";
-    const WINDOW: usize = 4;
+    const ENTRY: harmos_domain::StreamEntry<Self> = harmos_domain::StreamEntry::new("progress", 4);
 }
 
 impl guest::operations::ContextValue for Stage {

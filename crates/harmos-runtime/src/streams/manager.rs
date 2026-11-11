@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::watch;
 // Local Imports
 use super::window::Window;
-use super::{BeneathWindow, Demand, Item, Stream, Table, Wired, demand, window};
+use super::{BeneathWindow, Demand, Item, StreamRow, Table, Wired, demand, window};
 use crate::{Application, state::At, state::Position, storage::Batch, storage::Cursor};
 
 /* === Constants === */
@@ -113,12 +113,12 @@ impl<A: Application> StreamManager<A> {
         self.windows.frontier()
     }
 
-    pub fn publish<S: Stream<A>>(&self, row: S) {
+    pub fn publish<S: StreamRow>(&self, row: S) {
         let at = *self.applied.borrow();
         self.stream::<S>().window.publish(at, Arc::new(row));
     }
 
-    pub fn query<S: Stream<A>>(&self, range: impl RangeBounds<Position>) -> Query<S> {
+    pub fn query<S: StreamRow>(&self, range: impl RangeBounds<Position>) -> Query<S> {
         let wired = self.stream::<S>();
 
         Query {
@@ -131,14 +131,14 @@ impl<A: Application> StreamManager<A> {
         }
     }
 
-    pub fn watch<S: Stream<A>>(&self) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin + use<S, A> {
+    pub fn watch<S: StreamRow>(&self) -> impl futures_core::Stream<Item = Item<S>> + Send + Unpin + use<S, A> {
         let window = Arc::clone(&self.stream::<S>().window);
         let held = demand::Holding::engage(Arc::clone(&window));
 
         window::following(window, Arc::clone(&self.closed), held)
     }
 
-    pub fn demand<S: Stream<A>>(&self) -> Demand {
+    pub fn demand<S: StreamRow>(&self) -> Demand {
         Demand::of(&self.stream::<S>().window)
     }
 
@@ -167,7 +167,7 @@ impl<A: Application> StreamManager<A> {
         }
     }
 
-    fn stream<S: Stream<A>>(&self) -> Arc<Wired> {
+    fn stream<S: StreamRow>(&self) -> Arc<Wired> {
         self.windows
             .current(S::ID)
             .filter(|wired| wired.definition.row() == TypeId::of::<S>() && wired.definition.owner().is_none())

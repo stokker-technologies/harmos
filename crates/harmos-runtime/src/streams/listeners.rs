@@ -25,7 +25,7 @@ use std::task::Poll;
 use tokio::sync::watch;
 // Local Imports
 use super::window::{ListenerCandidate, Row};
-use super::{Holding, ManagedPublication, Stream, StreamManager, Table, Wired};
+use super::{Holding, ManagedPublication, StreamManager, StreamRow, Table, Wired};
 use crate::guest::host::plugin::PluginScope;
 use crate::operations::{EncodedInvocation, Manager, PluginCallback};
 use crate::schema::{Described, graph::Schema};
@@ -210,7 +210,7 @@ impl<A: Application> StreamManager<A> {
 }
 
 impl<A: Application> PluginListenerBindings<'_, A> {
-    pub fn stream<S: Stream<A> + Message + Described>(&mut self, after: u64) -> Result<()> {
+    pub fn stream<S: StreamRow + Message + Described>(&mut self, after: u64) -> Result<()> {
         let wired = self.source(S::ID)?;
         if wired.definition.row() != TypeId::of::<S>() || wired.definition.owner().is_some() {
             return Err(Error::InvalidInput {

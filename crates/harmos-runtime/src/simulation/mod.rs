@@ -31,7 +31,7 @@ use crate::{
     Application, DefinitionId, Error, Identified, Runtime, Setup, StartupError, runtime::Catalog, runtime::Incompatible,
     runtime::Registration, services::Resident, services::ServiceContext, state::At, state::Entry, state::Envelope, state::Focus,
     state::Origin, state::Position, state::PrincipalId, state::Receipt, state::Recorded, state::Transaction, storage::Cursor,
-    storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::Stream,
+    storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source, streams::StreamRow,
 };
 
 /* === Constants === */
@@ -246,7 +246,7 @@ where
         Ok(receipt)
     }
 
-    pub fn publish<S: Stream<A>>(&mut self, row: S) -> Result<(), SimError> {
+    pub fn publish<S: StreamRow>(&mut self, row: S) -> Result<(), SimError> {
         let runtime = self.runtime.as_ref().ok_or(SimError::NotRunning)?;
         runtime.streams.publish(row);
         let next = Cursor(self.cursors.last().map_or(1, |cursor| cursor.0 + 1));

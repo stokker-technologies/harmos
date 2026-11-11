@@ -77,8 +77,8 @@ or equal hash with a different canonical row remains an admission error. Rename
 the stream and report a hash collision. A transport restart inside one committed
 activation may only renew its frozen inventory; reload the plugin to change it.
 
-Streams expose `ID`, `WINDOW` and `definition()`; `StreamSpec`, `StreamRow` and
-native `Stream<A>` have no authored `VERSION`. Typed native readers select the
+Streams expose `ID`, `WINDOW` and `definition()` through `StreamRow` and the guest
+`StreamSpec` projection, with no authored `VERSION`. Typed native readers select the
 current definition by identity and compiled row type. Low-level declarations use
 `Definition::declared::<Row>(id, schema, window)` and return a derived definition.
 Every stream definition owns a schema; `Definition::schema()` returns it directly.
@@ -96,6 +96,25 @@ setup.settings().register(streams);
 
 Startup validates duplicate identities and empty windows. Typed readers and
 publishers resolve the registered identity and row type at runtime.
+
+The `Row` derive reads fields for row metadata, stored schema and supported native
+message codecs. Declare identity, retention and presentation with a stream value:
+
+```rust
+#[derive(harmos_runtime::Row, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct Temperature {
+    celsius: f64,
+}
+
+impl harmos_runtime::streams::StreamRow for Temperature {
+    const ENTRY: harmos_runtime::StreamEntry<Self> =
+        harmos_runtime::StreamEntry::new("thermal.samples", 8).label("Temperature");
+}
+```
+
+`StreamEntry::build()` checks the identity, window, schema and presentation before
+returning a definition. Deferred guests inspect its constant declaration projection;
+the projection and native definition read the same value and field metadata.
 
 Lanes are values configured at application startup. The default lane is
 unbounded; additional lanes declare their admission capacity in an owned set:

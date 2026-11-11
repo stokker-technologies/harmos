@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex};
 use support::{Bank, Copied, Ledger, Pulse, booted, catalog, deposit, ledger, pulse, streams, withdraw};
 // Local Imports
 use crate::state::support;
+use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{
     Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Batch, storage::Cursor,
     storage::JournalConsumer, storage::Recovery, storage::Source, storage::StreamConsumer,

@@ -53,14 +53,14 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    Described, domain_catalog as catalog, domain_operation as operation, message, records, stream, transaction, transactions,
+    Described, Row, domain_catalog as catalog, domain_operation as operation, message, records, transaction, transactions,
 };
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 pub use model::services::policy::{RestartPolicy, ServicePolicy};
 pub use operations::{Invokes, OperationDeclaration, OperationDefinition, Requires};
 pub use presentation::{RowMetadata, StreamField};
-pub use streams::Definition;
+pub use streams::{Definition, StreamEntry};
 
 /* === Imports === */
 
@@ -111,7 +111,6 @@ pub mod __private {
     };
     pub use crate::postcard_product;
     pub use crate::state::{Catalogued, Mutual, Paired};
-    pub use crate::streams::StreamRow;
     pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
 
     /* === Imports === */
@@ -143,10 +142,6 @@ pub mod __private {
     /* === Implementations === */
 
     /* === Public Functions === */
-
-    pub fn stream_definition<S: StreamRow>(id: &'static str, window: usize) -> crate::streams::Definition {
-        crate::streams::Definition::native::<S>(id, window).presentation(S::metadata(), S::row_metadata())
-    }
 
     /* === Private Functions === */
 

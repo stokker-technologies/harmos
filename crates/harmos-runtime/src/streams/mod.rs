@@ -30,8 +30,7 @@ mod window;
 
 /* === Re-Exports === */
 
-pub use definition::Stream;
-pub use harmos_domain::streams::{Definition, StreamRow};
+pub use harmos_domain::streams::{Definition, StreamEntry, StreamRow};
 
 #[cfg(feature = "plugin-guest")]
 pub use listeners::{PluginListenerBindings, PluginListenerRegistration};

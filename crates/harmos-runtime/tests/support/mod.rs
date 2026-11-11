@@ -582,23 +582,12 @@ mod feeds {
 
     /* === Structs === */
 
-    #[harmos_runtime::stream(
-        description = "A waveform-shaped sample row: the bank's high-rate feed.\nThe window is deliberately small so eviction is cheap to provoke.",
-        id = "pulse",
-        window = 8
-    )]
-    #[harmos_runtime::message]
-    #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Pulse {
         pub sample: u64,
     }
 
-    #[harmos_runtime::stream(
-        description = "A second, slower feed, so per-stream claims have a counterexample.",
-        id = "reading",
-        window = 4
-    )]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Reading {
         pub value: i64,
     }
@@ -609,10 +598,25 @@ mod feeds {
 
     /* === Implementations === */
 
+    impl harmos_runtime::streams::StreamRow for Pulse {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("pulse", 8).label("Pulse").description(
+            "A waveform-shaped sample row: the bank's high-rate feed.\nThe window is deliberately small so eviction is cheap to provoke.",
+        );
+    }
+
+    impl harmos_runtime::streams::StreamRow for Reading {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("reading", 4)
+            .label("Reading")
+            .description("A second, slower feed, so per-stream claims have a counterexample.");
+    }
+
     /* === Public Functions === */
 
     pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-        vec![<Pulse>::definition(), <Reading>::definition()]
+        vec![
+            <Pulse as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+            <Reading as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+        ]
     }
 
     /* === Private Functions === */

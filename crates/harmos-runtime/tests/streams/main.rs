@@ -40,9 +40,10 @@ use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 
 // Local Imports
 use crate::support;
+use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{
     Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
-    streams::Definition, streams::Item, streams::Stream, streams::StreamManager,
+    streams::Definition, streams::Item, streams::StreamManager,
 };
 
 /* === Constants === */
@@ -369,14 +370,9 @@ async fn definitions_refuse_invalid() {
         #[derive(harmos_runtime::Described, Clone, Copy, Debug, Serialize, Deserialize)]
         struct Hollow;
 
-        impl Stream<Bank> for Hollow {
-            const ID: &'static str = "hollow";
-            const WINDOW: usize = 0;
-        }
-
         let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
-            setup.settings().register([Hollow::definition()]);
+            setup.settings().register([Definition::native::<Hollow>("hollow", 0)]);
         })
         .await;
 
@@ -415,8 +411,7 @@ mod colliding {
 
     /* === Structs === */
 
-    #[harmos_runtime::stream(id = "pulse", window = 1)]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Imposter;
 
     /* === Enums === */
@@ -425,10 +420,14 @@ mod colliding {
 
     /* === Implementations === */
 
+    impl harmos_runtime::streams::StreamRow for Imposter {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("pulse", 1).label("Imposter");
+    }
+
     /* === Public Functions === */
 
     pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
-        vec![<Imposter>::definition()]
+        vec![<Imposter as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
     }
 
     /* === Private Functions === */

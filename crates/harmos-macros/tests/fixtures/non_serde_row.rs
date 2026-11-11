@@ -28,7 +28,7 @@
 
 /* === Structs === */
 
-#[harmos::stream(id = "pulse", window = 8)]
+#[derive(harmos::Row)]
 #[derive(Clone)]
 struct Pulse;
 
@@ -37,6 +37,10 @@ struct Pulse;
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos::streams::StreamRow for Pulse {
+    const ENTRY: harmos::StreamEntry<Self> = harmos::StreamEntry::new("pulse", 8).label("Pulse");
+}
 
 /* === Public Functions === */
 

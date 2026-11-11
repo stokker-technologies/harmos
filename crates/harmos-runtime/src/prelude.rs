@@ -20,7 +20,8 @@ pub use crate::{
     OperationDefinition, OperationHost, OperationPolicy, Portable, QualifiedId, Response, RestartPolicy, RetryPolicy, Running, Service,
     ServiceContext, ServicePolicy,
 };
-pub use crate::{catalog, message, operation, stream, transaction};
+pub use crate::{Row, StreamEntry};
+pub use crate::{catalog, message, operation, transaction};
 
 /* === Imports === */
 
