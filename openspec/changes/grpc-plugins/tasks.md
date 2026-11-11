@@ -233,6 +233,8 @@
     - [x] 3.11.4.6 Migrate streamed Arrow/file writes and delete Rust receipt/completion wire models and their Postcard codecs.
     - [x] 3.11.4.7 Migrate hashing and its guest-private callee boundary.
   - [ ] 3.11.5 Migrate example operations and remove superseded host projections and wire mirrors.
+    - [x] 3.11.5.1 Migrate native example operations, SDK consumers and generated application contracts; isolate deferred guest declarations.
+    - [ ] 3.11.5.2 Remove superseded host projections and remaining wire mirrors.
 - [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
 
 ## 4. Rust SDK

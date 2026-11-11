@@ -22,7 +22,7 @@ use crate::app::{Runtime, SchematicEditor};
 use crate::lanes::Lanes;
 use harmos_runtime::config::PluginSettings;
 use harmos_runtime::guest::{Host, Loaded};
-use schematic_operations::Operations;
+use schematic_operations::guest::Operations;
 
 /* === Constants === */
 

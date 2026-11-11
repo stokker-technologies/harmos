@@ -345,7 +345,7 @@ impl Lifecycle {
     }
 }
 
-impl Lifecycle<schematic_operations::Operations> {
+impl Lifecycle<schematic_operations::guest::Operations> {
     pub(super) fn schematic(runtime: &Runtime<Bank>) -> Self {
         Self::for_component(runtime, super::schematic(), super::GuestLanes::Open)
     }

@@ -76,8 +76,11 @@ impl PublicationHost for Publications {
 async fn native_publication_preserves_payload_and_batch_metadata() {
     let publications = Arc::new(Publications::default());
     let runtime = harmos_runtime::Runtime::<super::app::App>::launch_with((), (), |setup| {
-        setup.settings().operation_settings(harmos_runtime::operations::Settings { preparation_bytes: Some(std::num::NonZeroUsize::new(1024 * 1024).unwrap()), ..Default::default() });
-            setup.resource::<PublicationAccess>(Arc::new(PublicationAccess(publications.clone())));
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(1024 * 1024).unwrap()),
+            ..Default::default()
+        });
+        setup.resource::<PublicationAccess>(Arc::new(PublicationAccess(publications.clone())));
         setup.operations::<harmos_operations::Streams>(super::Lanes::Open);
     })
     .await

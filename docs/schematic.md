@@ -32,7 +32,8 @@ initialization starts; the readiness interval covers plugin initialization.
 | Directory | Owns |
 | --- | --- |
 | [domain](../examples/schematic/domain/src/lib.rs) | Shared models, stream and stored-object contracts. |
-| [operations](../examples/schematic/operations/src/lib.rs) | Vertical operation declarations, separate requests, optional implementations and catalogs for both carriers. |
+| [protocol](../examples/schematic/protocol/src/lib.rs) | Generated application messages and descriptors shared by host handlers and SDK clients. |
+| [operations](../examples/schematic/operations/src/lib.rs) | Generated native declarations and handlers, with deferred WebAssembly declarations under `guest/`. |
 | [app](../examples/schematic/app/src/app.rs) | Document state, transactions, persistence, runtime composition, and plugin lifecycle. |
 | [cli](../examples/schematic/cli/src/walkthrough.rs) | The readable teaching sequence and terminal output. |
 | [guest](../examples/schematic/guest/src/lib.rs) | Sandboxed Wasm composition of the shared operation catalog. |
@@ -40,9 +41,10 @@ initialization starts; the readiness interval covers plugin initialization.
 
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
-The operations crate exposes contracts with default features. Its `runtime` feature
-enables the host and guest implementations. `authoring` selects the native protobuf
-contracts and host-owned analysis progress.
+The protocol crate exposes generated contracts without the host stack. The operations
+crate enables implementations with `runtime`; its `guest` namespace retains the private
+WebAssembly declarations until the guest protocol migration. Native analysis publishes
+progress through its host-owned callback resource.
 
 `SchematicEditor` implements the shared `Lifecycle`. Its async `prepare` opens
 the recovery journal and recordings, configures `Setup<Self>`, and places the
@@ -51,7 +53,8 @@ before owner stop and cleanup. Tests can replace prepared resource allocations
 through `Runtime::launch_with` while keeping that preparation path.
 
 The native plugin depends on `harmos`; its unary protobuf contracts and
-operation builder values live in `operations/src/native.rs`. It ends in `serve()`.
+operation builder values live in `sidecar/src/operations.rs`, using messages generated
+from `proto/schematic/v1/operations.proto`. It ends in `serve()`.
 The host uses managed gRPC placement and checks its `Describe` identity.
 The guest retains `harmos-guest`, its catalog and preparation path.
 

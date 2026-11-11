@@ -17,15 +17,14 @@ version = { workspace = true }
 [features]
 default = []
 runtime = ["harmos-operations/lifecycle", "dep:thiserror", "dep:tokio"]
-authoring = ["dep:harmos"]
 
 # === Dependencies === #
 
 [dependencies]
 # Local
 harmos-guest = { workspace = true }
-harmos-operations = { workspace = true, default-features = false }
-harmos = { workspace = true, optional = true }
+harmos-operations = { workspace = true, default-features = false, features = ["grpc", "streaming"] }
+schematic-protocol = { path = "../protocol" }
 schematic-domain = { path = "../domain" }
 
 # Git
@@ -82,3 +81,6 @@ workspace = true
 # === Patches === #
 
 # === Other === #
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+harmos-operations = { workspace = true, features = ["runtime"] }

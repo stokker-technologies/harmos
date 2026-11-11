@@ -86,6 +86,11 @@ where
         self.invocation.request_cancel();
     }
 
+    pub async fn cancel_and_settle(self) -> Result<()> {
+        self.invocation.request_cancel();
+        self.invocation.settle().await
+    }
+
     pub async fn join(self) -> Result<O::Response> {
         O::Response::decode(self.invocation.await?.as_slice()).map_err(|error| Error::OperationPayload {
             operation: O::ID.into(),
@@ -153,15 +158,25 @@ where
             source: Arc::new(source),
         })
     }
-    pub async fn finish(self) -> Result<O::Response> {
+    pub fn finish_input(&self) -> Result<()> {
         self.streams.finish_current_input().map_err(|source| Error::OperationFailed {
             operation: O::ID.into(),
             source: Arc::new(source),
-        })?;
+        })
+    }
+    pub async fn finish(self) -> Result<O::Response> {
+        self.finish_input()?;
+        self.join().await
+    }
+    pub async fn join(self) -> Result<O::Response> {
         O::Response::decode(self.invocation.await?.as_slice()).map_err(|error| Error::OperationPayload {
             operation: O::ID.into(),
             source: crate::MessageError::new(error.to_string()),
         })
+    }
+    pub async fn cancel_and_settle(self) -> Result<()> {
+        self.invocation.request_cancel();
+        self.invocation.settle().await
     }
 }
 

@@ -24,7 +24,7 @@ use super::schematic::model::{Connection, Point, Snapshot};
 use super::{GuestLanes, corner, route, runtime, sandbox, support};
 use harmos_runtime::Message;
 use harmos_runtime::operations::ComponentError;
-use schematic_operations::schematic::{analyze, propose, validate};
+use schematic_operations::guest::schematic::{analyze, propose, validate};
 
 /* === Constants === */
 

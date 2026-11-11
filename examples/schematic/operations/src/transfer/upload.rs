@@ -7,95 +7,67 @@
  * ***
  */
 
-// Upload Transfer Contracts and Execution.
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-#[cfg(feature = "runtime")]
-use std::collections::VecDeque;
-
-// Third Party Imports
-use schematic_domain::model::transfer::{Batch, Receipt};
-
-// Local Imports
-#[cfg(feature = "runtime")]
-use super::store::Store;
-
-#[cfg(feature = "runtime")]
-use super::store::Stored;
-
-#[cfg(feature = "runtime")]
-use harmos_operations::MemorySize;
+use harmos_operations::execution::operations::{ExecutionContext, ProtobufOperation, ServingError, Visibility};
 
 /* === Constants === */
 
-const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations::operations::OperationPolicy {
+const POLICY: harmos_operations::execution::operations::OperationPolicy = harmos_operations::execution::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos_operations::operations::RetryPolicy::Never,
+    retries: harmos_operations::execution::operations::RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos_operations::operation(resources = [Store],
-    id = "benchmark.upload", response = Receipt, input = Batch,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Idempotent,
-)]
-pub struct Upload {
-    pub transfer: u64,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct Upload;
 
 /* === Implementations === */
 
-#[cfg(feature = "runtime")]
-impl harmos_operations::Operation for Upload {
-    type Error = crate::Error;
-
-    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Receipt>, Self::Error> {
-        let store = ctx.resource::<Store>();
-
-        let mut batches = VecDeque::new();
-        let mut retained_bytes = 0usize;
-        let mut receipt = Receipt { records: 0, samples: 0, bytes: 0 };
-        while let Some(item) = ctx.streams().recv().await {
-            let (batch, _claims) = item.into_owned_request()?;
-            receipt.records += batch.records.len() as u64;
-            receipt.samples += batch.samples.len() as u64;
-            receipt.bytes += batch.bytes.len() as u64;
-            retained_bytes = retained_bytes.saturating_add(batch.memory_size());
-            if retained_bytes > 64 * 1024 * 1024 {
+impl ProtobufOperation for Upload {
+    type Request = crate::protocol::Upload;
+    type Response = crate::protocol::Receipt;
+    type Endpoints = harmos_operations::execution::operations::ProtobufInput<crate::protocol::Batch>;
+    const ID: &'static str = "benchmark.upload";
+    const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: harmos_operations::execution::operations::ReplaySafety =
+        harmos_operations::execution::operations::ReplaySafety::Idempotent;
+    const RESOURCES: &'static [harmos_operations::Resource] = &[harmos_operations::Resource::of::<super::Store>()];
+    async fn run(ctx: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let result: Result<Self::Response, crate::Error> = async {
+            let store = ctx.resource::<super::Store>()?;
+            let mut batches = std::collections::VecDeque::new();
+            let mut retained_bytes = 0usize;
+            let mut receipt = crate::protocol::Receipt::default();
+            while let Some(item) = endpoints.recv().await {
+                let (batch, _claims) = item.into_owned_request()?;
+                receipt.records += batch.records.len() as u64;
+                receipt.samples += batch.samples.len() as u64;
+                receipt.bytes += batch.bytes.len() as u64;
+                retained_bytes = retained_bytes.saturating_add(super::store::memory(&batch));
+                if retained_bytes > 64 * 1024 * 1024 {
+                    return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
+                }
+                batches.push_back(batch);
+            }
+            let mut stores = store.batches.lock().unwrap();
+            let other_bytes: usize = stores.iter().filter(|(id, _)| **id != request.transfer).map(|(_, stored)| stored.bytes).sum();
+            if retained_bytes.saturating_add(other_bytes) > 64 * 1024 * 1024 {
                 return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
             }
-            batches.push_back(batch);
+            stores.insert(request.transfer, super::store::Stored { bytes: retained_bytes, batches });
+            Ok(receipt)
         }
-        let mut stores = store.batches.lock().unwrap();
-        let other_bytes: usize = stores.iter().filter(|(id, _)| **id != self.transfer).map(|(_, stored)| stored.bytes).sum();
-        if retained_bytes.saturating_add(other_bytes) > 64 * 1024 * 1024 {
-            return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
+        .await;
+        result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> harmos_operations::execution::operations::FailureKind {
+        match error.downcast_ref::<crate::Error>() {
+            Some(crate::Error::InvalidInput) => harmos_operations::execution::operations::FailureKind::Invalid,
+            _ => harmos_operations::execution::operations::FailureKind::Permanent,
         }
-        stores.insert(self.transfer, Stored { bytes: retained_bytes, batches });
-        Ok(receipt.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -26,7 +26,8 @@ version.workspace = true
 [dependencies]
 # Local
 harmos = { workspace = true }
-schematic-operations = { path = "../operations", features = ["authoring"] }
+schematic-protocol = { path = "../protocol", features = ["sdk"] }
+schematic-domain = { path = "../domain" }
 
 # Git
 

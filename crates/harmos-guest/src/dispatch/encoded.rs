@@ -50,7 +50,7 @@ struct State {
 
 impl Table {
     pub(crate) fn install_lifecycle<D: harmos_operations::execution::operations::Executable>(
-        &mut self, resources: harmos_operations::execution::__private::ResourceSet, descriptor: harmos_operations::lifecycle::Descriptor,
+        &mut self, resources: harmos_operations::execution::__private::ResourceSet, descriptor: crate::lifecycle::Descriptor,
     ) -> Result<(), ServingError> {
         if descriptor.action().id() != D::ID
             || descriptor.contract().fingerprint()

@@ -23,7 +23,7 @@ mod support;
 use futures_util::StreamExt;
 
 // Local Imports
-use schematic_app::{operations::native, services::sidecar};
+use schematic_app::{protocol as native, services::sidecar};
 
 /* === Constants === */
 
@@ -72,41 +72,43 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!(directories.directories, ["alpha", "zeta"]);
 
     // Validate and Route the Document Through Unary Calls
-    let request = native::ValidateSchematic { schematic: support::snapshot().into() };
+    let request = native::ValidateSchematic {
+        schematic: Some(support::snapshot().into()),
+    };
     let validation = sidecar::call(&runtime, request).await.unwrap();
     assert!(validation.diagnostics.is_empty());
     let request = native::ValidateSchematic {
-        schematic: native::Snapshot {
+        schematic: Some(native::Snapshot {
             symbols: vec![1],
             connections: vec![native::Connection { from: 1, to: 2 }],
-        },
+        }),
     };
     assert!(!sidecar::call(&runtime, request).await.unwrap().diagnostics.is_empty());
     let request = native::ProposeRoute {
-        from: native::Point { x: 0, y: 0 },
-        to: native::Point { x: 3, y: 4 },
+        from: Some(native::Point { x: 0, y: 0 }),
+        to: Some(native::Point { x: 3, y: 4 }),
     };
     let route = sidecar::call(&runtime, request).await.unwrap();
     assert_eq!(route.points, [native::Point { x: 0, y: 0 }, native::Point { x: 3, y: 0 }, native::Point { x: 3, y: 4 }]);
 
     // Upload Analysis and Observe Host-Owned Progress
     let mut progress = runtime.streams.watch::<schematic_app::domain::model::schematic::progress::AnalysisProgress>();
-    let request = schematic_app::operations::AnalyzeUpload { title: "Board".into() };
-    let mut upload = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
-    upload.send(support::snapshot()).await.unwrap();
-    upload.finish_input();
+    let request = schematic_app::operations::protocol::AnalyzeUpload { title: "Board".into() };
+    let mut upload = runtime.operations.upload_protobuf::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
+    upload.send(support::snapshot().into()).await.unwrap();
+    upload.finish_input().unwrap();
     assert_eq!(upload.join().await.unwrap().checked, 1);
     let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Analysis Progress") };
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Exchange Snapshots and Findings in the Host
-    let request = schematic_app::operations::AnalyzeExchange { title: "Board".into() };
+    let request = schematic_app::operations::protocol::AnalyzeExchange { title: "Board".into() };
     let mut exchange = runtime
         .operations
-        .exchange::<schematic_app::operations::AnalyzeExchange>(request, support::settings(), support::settings())
+        .exchange_protobuf::<schematic_app::operations::AnalyzeExchange>(request, support::settings(), support::settings())
         .unwrap();
-    exchange.send(support::snapshot()).await.unwrap();
-    exchange.finish_input();
+    exchange.send(support::snapshot().into()).await.unwrap();
+    exchange.finish_input().unwrap();
     assert!(exchange.next().await.unwrap().is_some());
     assert!(exchange.next().await.unwrap().is_none());
     assert_eq!(exchange.join().await.unwrap().checked, 1);
@@ -114,82 +116,82 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Reject Invalid Analysis and Settle Cancellation Before Reusing Its Permit
-    let request = schematic_app::operations::AnalyzeUpload { title: String::new() };
-    let mut invalid = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
-    invalid.finish_input();
+    let request = schematic_app::operations::protocol::AnalyzeUpload { title: String::new() };
+    let invalid = runtime.operations.upload_protobuf::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
+    invalid.finish_input().unwrap();
     let failure = invalid.join().await.unwrap_err();
     let harmos_runtime::Error::OperationFailed { source, .. } = failure else { panic!("Expected Authored Input Failure: {failure:?}") };
     assert!(matches!(source.downcast_ref::<schematic_app::operations::Error>(), Some(schematic_app::operations::Error::InvalidInput)));
-    let request = schematic_app::operations::AnalyzeUpload { title: "Cancelled".into() };
-    let cancelled = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
+    let request = schematic_app::operations::protocol::AnalyzeUpload { title: "Cancelled".into() };
+    let cancelled = runtime.operations.upload_protobuf::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
     cancelled.cancel_and_settle().await.unwrap();
-    let request = schematic_app::operations::AnalyzeUpload { title: "Resumed".into() };
-    let mut resumed = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
-    resumed.send(support::snapshot()).await.unwrap();
-    resumed.finish_input();
+    let request = schematic_app::operations::protocol::AnalyzeUpload { title: "Resumed".into() };
+    let mut resumed = runtime.operations.upload_protobuf::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
+    resumed.send(support::snapshot().into()).await.unwrap();
+    resumed.finish_input().unwrap();
     assert_eq!(resumed.join().await.unwrap().checked, 1);
     let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Resumed Progress") };
     assert_eq!(row.value.title, "Resumed");
 
     // Hold the Shared Permit Until Upload Cancellation Settles
-    let request = schematic_app::operations::AnalyzeUpload { title: "Held".into() };
-    let held = runtime.operations.upload::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
-    held.send(support::snapshot()).await.unwrap();
-    let (input, (), completion) = held.split();
+    let request = schematic_app::operations::protocol::AnalyzeUpload { title: "Held".into() };
+    let mut held = runtime.operations.upload_protobuf::<schematic_app::operations::AnalyzeUpload>(request, support::settings()).unwrap();
+    held.send(support::snapshot().into()).await.unwrap();
     let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Held Progress") };
     assert_eq!(row.value.title, "Held");
-    let request = schematic_app::operations::AnalyzeExchange { title: "Waiting".into() };
+    let request = schematic_app::operations::protocol::AnalyzeExchange { title: "Waiting".into() };
     let mut waiting = runtime
         .operations
-        .exchange::<schematic_app::operations::AnalyzeExchange>(request, support::settings(), support::settings())
+        .exchange_protobuf::<schematic_app::operations::AnalyzeExchange>(request, support::settings(), support::settings())
         .unwrap();
-    waiting.send(support::snapshot()).await.unwrap();
+    waiting.send(support::snapshot().into()).await.unwrap();
     {
         let next = waiting.next();
         futures_util::pin_mut!(next);
         assert!(futures_util::poll!(next).is_pending());
     }
-    completion.cancel_and_settle().await.unwrap();
-    drop(input);
+    held.cancel_and_settle().await.unwrap();
     assert!(waiting.next().await.unwrap().is_some());
-    waiting.finish_input();
+    waiting.finish_input().unwrap();
     assert!(waiting.next().await.unwrap().is_none());
     assert_eq!(waiting.join().await.unwrap().checked, 1);
     let harmos_runtime::streams::Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Waiting Progress") };
     assert_eq!(row.value.title, "Waiting");
 
     // Upload and Download Transfer Batches Through Host-Owned Streams
-    let batch = schematic_app::domain::model::transfer::Batch {
-        records: vec![schematic_app::domain::model::transfer::Record { sequence: 1, payload: vec![0, 255] }],
-        samples: vec![schematic_app::domain::model::transfer::Sample {
+    let batch = schematic_app::operations::protocol::Batch {
+        records: vec![schematic_app::operations::protocol::Record { sequence: 1, payload: vec![0, 255] }],
+        samples: vec![schematic_app::operations::protocol::Sample {
             sequence: 2,
             timestamp_us: 123,
             value: 1.5,
         }],
         bytes: vec![0, 1, 255],
     };
-    let request = schematic_app::operations::transfer::Upload { transfer: 7 };
-    let mut upload = runtime.operations.upload::<schematic_app::operations::transfer::Upload>(request, support::settings()).unwrap();
+    let request = schematic_app::operations::protocol::Upload { transfer: 7 };
+    let mut upload =
+        runtime.operations.upload_protobuf::<schematic_app::operations::transfer::Upload>(request, support::settings()).unwrap();
     upload.send(batch).await.unwrap();
-    upload.finish_input();
+    upload.finish_input().unwrap();
     let receipt = upload.join().await.unwrap();
     assert_eq!((receipt.records, receipt.samples, receipt.bytes), (1, 1, 3));
 
     // Unary Transfer Calls Share the Host Store With Streaming Calls
-    let request = schematic_app::operations::transfer::Put {
+    let request = schematic_app::operations::protocol::Put {
         transfer: 8,
         first: true,
-        batch: schematic_app::domain::model::transfer::Batch {
+        batch: Some(schematic_app::operations::protocol::Batch {
             records: Vec::new(),
             samples: Vec::new(),
             bytes: vec![3, 2, 1],
-        },
+        }),
     };
-    assert_eq!(runtime.operation(request).await.unwrap().bytes, 3);
-    let request = schematic_app::operations::transfer::Take { transfer: 8 };
-    assert_eq!(runtime.operation(request).await.unwrap().bytes, [3, 2, 1]);
-    let request = schematic_app::operations::transfer::Download { transfer: 7 };
-    let mut download = runtime.operations.download::<schematic_app::operations::transfer::Download>(request, support::settings()).unwrap();
+    assert_eq!(runtime.operations.call_protobuf::<schematic_app::operations::transfer::Put>(request).await.unwrap().bytes, 3);
+    let request = schematic_app::operations::protocol::Take { transfer: 8 };
+    assert_eq!(runtime.operations.call_protobuf::<schematic_app::operations::transfer::Take>(request).await.unwrap().bytes, [3, 2, 1]);
+    let request = schematic_app::operations::protocol::Download { transfer: 7 };
+    let mut download =
+        runtime.operations.download_protobuf::<schematic_app::operations::transfer::Download>(request, support::settings()).unwrap();
     let batch = download.next().await.unwrap().unwrap();
     assert_eq!((batch.records[0].sequence, batch.records[0].payload.as_slice()), (1, &[0, 255][..]));
     assert_eq!((batch.samples[0].sequence, batch.samples[0].timestamp_us, batch.samples[0].value), (2, 123, 1.5));
@@ -201,8 +203,11 @@ async fn native_advice_and_host_streaming_share_one_document() {
     // Stop Withdraws Plugin Advice While Host Analysis Remains Available
     plugin.stop("Story Complete").await.unwrap();
     assert!(sidecar::call(&runtime, native::ListDirectories {}).await.is_err());
-    let request = schematic_app::operations::AnalyzeSchematic { schematic: support::snapshot() };
-    let mut analysis = runtime.operations.download::<schematic_app::operations::AnalyzeSchematic>(request, support::settings()).unwrap();
+    let request = schematic_app::operations::protocol::AnalyzeSchematic {
+        schematic: Some(support::snapshot().into()),
+    };
+    let mut analysis =
+        runtime.operations.download_protobuf::<schematic_app::operations::AnalyzeSchematic>(request, support::settings()).unwrap();
     let mut findings = Vec::new();
     while let Some(finding) = analysis.next().await.unwrap() {
         findings.push(finding.text.clone());

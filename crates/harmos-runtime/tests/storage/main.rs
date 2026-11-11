@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+mod generated_example_hash;
+
 #[path = "generated_capture.rs"]
 mod generated_capture;
 #[path = "generated_directory.rs"]

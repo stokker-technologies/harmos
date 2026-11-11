@@ -26,7 +26,7 @@ use criterion::{BenchmarkId, Criterion, SamplingMode, Throughput};
 use super::fixture::Fixture;
 use harmos_runtime::operations::StreamSettings;
 use schematic_domain::model::transfer::{Batch, Receipt, Record, Sample};
-use schematic_operations::transfer::{Download, Put, Take, Upload};
+use schematic_operations::guest::transfer::{Download, Put, Take, Upload};
 
 /* === Constants === */
 

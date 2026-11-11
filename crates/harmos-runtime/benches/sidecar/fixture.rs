@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 // Local Imports
 use harmos_runtime::Runtime;
 use schematic_domain::model::Snapshot;
-use schematic_operations::schematic::{propose, validate};
+use schematic_operations::guest::schematic::{propose, validate};
 
 /* === Constants === */
 
@@ -93,7 +93,11 @@ impl Fixture {
         };
         let host = harmos_runtime::guest::Host::with_settings(&runtime, settings).unwrap();
         let loaded = host.load(&bytes).unwrap();
-        runtime.plugin.register_guest::<schematic_operations::transfer::Guest>(loaded, plugin_settings(), Lanes::Open).await.unwrap();
+        runtime
+            .plugin
+            .register_guest::<schematic_operations::guest::transfer::Guest>(loaded, plugin_settings(), Lanes::Open)
+            .await
+            .unwrap();
         runtime.plugin.initialize().await.unwrap();
         Self {
             runtime,

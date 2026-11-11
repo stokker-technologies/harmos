@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+mod operations;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -37,7 +39,7 @@
 
 pub fn plugin() -> harmos::Plugin {
     let directory = std::env::var_os("SCHEMATIC_DIRECTORY").map(std::path::PathBuf::from).unwrap_or_else(|| ".".into());
-    schematic_operations::native::plugin(directory)
+    operations::plugin(directory)
 }
 
 /* === Private Functions === */

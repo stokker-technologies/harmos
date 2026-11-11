@@ -25,7 +25,7 @@ use std::path::Path;
 use crate::Result;
 use harmos_runtime::{state::Focus, state::PrincipalId};
 use schematic_app::domain::model;
-use schematic_app::operations::{ProposeRoute, ValidateSchematic};
+use schematic_app::operations::guest::{ProposeRoute, ValidateSchematic};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
@@ -143,7 +143,9 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         let diagnostics = if guest.is_some() {
             runtime.operation(request).await?.diagnostics.clone()
         } else {
-            let request = schematic_app::operations::native::ValidateSchematic { schematic: request.schematic.into() };
+            let request = schematic_app::protocol::ValidateSchematic {
+                schematic: Some(request.schematic.into()),
+            };
             schematic_app::services::sidecar::call(&runtime, request).await?.diagnostics
         };
         println!("Validation: {} diagnostics", diagnostics.len());
@@ -158,9 +160,9 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         let proposed = if guest.is_some() {
             runtime.operation(request).await?.points.clone()
         } else {
-            let request = schematic_app::operations::native::ProposeRoute {
-                from: schematic_app::operations::native::Point { x: request.from.x, y: request.from.y },
-                to: schematic_app::operations::native::Point { x: request.to.x, y: request.to.y },
+            let request = schematic_app::protocol::ProposeRoute {
+                from: Some(schematic_app::protocol::Point { x: request.from.x, y: request.from.y }),
+                to: Some(schematic_app::protocol::Point { x: request.to.x, y: request.to.y }),
             };
             schematic_app::services::sidecar::call(&runtime, request)
                 .await?
