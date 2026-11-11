@@ -274,7 +274,7 @@ impl Contract {
     }
 
     pub fn from_protobuf(
-        operation: OperationDefinition, protobuf: super::Protobuf, binding: super::Grpc, settings: &SchemaSettings,
+        operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         operation.validate()?;
         Self::generated(operation, protobuf, binding, settings)
@@ -304,11 +304,11 @@ impl Contract {
             input: None,
             output: None,
         };
-        Self::generated(operation, protobuf, super::Grpc::new("harmos.host.v1", "Clock", method), settings)
+        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.host.v1", "Clock", method)), settings)
     }
 
     fn generated(
-        mut operation: OperationDefinition, protobuf: super::Protobuf, binding: super::Grpc, settings: &SchemaSettings,
+        mut operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         let schema = protobuf.schema()?;
         schema.prepare(settings).map_err(|source| ContractError::Schema {
@@ -326,7 +326,7 @@ impl Contract {
             grpc: None,
             protobuf: Some(protobuf),
         }
-        .with_grpc(Some(binding))
+        .with_grpc(binding)
     }
 
     pub fn protobuf(&self) -> Option<&super::Protobuf> {
@@ -520,12 +520,19 @@ impl TryFrom<DecodedContract> for Contract {
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
         if let Some(protobuf) = decoded.protobuf {
-            let expected = Self::from_protobuf(
-                decoded.operation.clone(),
-                protobuf,
-                decoded.grpc.ok_or(ContractError::Grpc)?,
-                &SchemaSettings::default(),
-            )?;
+            let expected = if matches!(decoded.operation.id.as_str(), "harmos.clock.sleep" | "harmos.clock.now") {
+                let clock = Self::clock(
+                    decoded.operation.id.as_str() == "harmos.clock.sleep",
+                    decoded.operation.policy,
+                    &SchemaSettings::default(),
+                )?;
+                if clock.protobuf() != Some(&protobuf) || clock.grpc != decoded.grpc {
+                    return Err(ContractError::Fingerprint { id: decoded.operation.id.to_string() });
+                }
+                clock
+            } else {
+                Self::from_protobuf(decoded.operation.clone(), protobuf, decoded.grpc, &SchemaSettings::default())?
+            };
             if expected.fingerprint != decoded.fingerprint
                 || expected.operation != decoded.operation
                 || expected.schema != decoded.schema

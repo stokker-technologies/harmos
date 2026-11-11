@@ -46,7 +46,7 @@ impl ProtobufOperation for Catalog {
     type Response = CatalogPage;
     type Endpoints = ();
     const ID: &'static str = "host.catalog";
-    const GRPC: Grpc = Grpc::new("harmos.host.v1", "Host", "Catalog");
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Host", "Catalog"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[

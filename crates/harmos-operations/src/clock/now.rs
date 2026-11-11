@@ -45,7 +45,7 @@ impl ProtobufOperation for Now {
     type Response = harmos_protocol::v1::Time;
     type Endpoints = ();
     const ID: &'static str = "harmos.clock.now";
-    const GRPC: Grpc = Grpc::new("harmos.host.v1", "Clock", "Now");
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Clock", "Now"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];

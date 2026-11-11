@@ -82,7 +82,9 @@ pub use harmos_operations::execution::operations::{
 pub use harmos_operations::execution::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
 pub use harmos_operations::execution::operations::{ExecutionContext, NativeInstance};
 #[cfg(feature = "grpc")]
-pub use harmos_operations::execution::operations::{ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput};
+pub use harmos_operations::execution::operations::{
+    ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
+};
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};

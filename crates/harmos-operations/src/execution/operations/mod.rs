@@ -32,13 +32,13 @@ mod surface;
 #[doc(hidden)]
 pub use authored::Carrier;
 pub use authored::{EndpointSet, Executable, InputEndpoint, OutputEndpoint};
-pub use calls::{CallFuture, Caller, Calls, ChildInstance, ControlFuture, InvocationError, StartFuture, Target};
+pub use calls::{CallFuture, Caller, Calls, ChildInstance, ControlFuture, InvocationError, OperationDependency, StartFuture, Target};
 pub use cancellation::Cancellation;
 pub use harmos_domain::operations::*;
 pub use instance::Instance;
 pub use operation::{AttemptInstance, AttemptOperationHost, Authored, Context, Dependent, Operation, Resource, Shape, Streams};
 #[cfg(all(feature = "grpc", feature = "streaming"))]
-pub use registration::generated::{ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput};
+pub use registration::generated::{ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput};
 pub use registration::{Catalog, NativeInstance, OperationCatalog, OperationFactory, ServiceFactory, ServiceInstance};
 pub(crate) use resources::ResourceSet;
 pub use resources::{AssignedOperation, ExecutionContext, OperationAssignments, ResourceError};

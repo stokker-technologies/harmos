@@ -37,6 +37,10 @@ use harmos_domain::operations::ProtobufExt;
 
 /* === Structs === */
 
+pub struct ProtobufDependency {
+    definition: fn() -> Result<super::super::calls::OperationDependency, ServingError>,
+}
+
 pub struct ProtobufInput<T>(StreamInput<Value<T>>);
 pub struct ProtobufOutput<T>(StreamOutput<Encoded>, PhantomData<fn() -> T>);
 
@@ -68,12 +72,13 @@ pub trait ProtobufOperation: Send + Sync + 'static {
     type Endpoints: ProtobufEndpoints;
 
     const ID: &'static str;
-    const GRPC: Grpc;
+    const GRPC: Option<Grpc> = None;
     const POLICY: OperationPolicy;
     const VISIBILITY: Visibility = Visibility::Private;
     const DESCRIPTION: &'static str = "";
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[];
+    const OPERATIONS: &'static [ProtobufDependency] = &[];
 
     fn grant(_request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, MessageError> {
         Ok(None)
@@ -93,6 +98,65 @@ pub trait ProtobufEndpoints: EndpointSet {
 }
 
 /* === Implementations === */
+
+impl super::super::Target {
+    pub fn protobuf<O: ProtobufOperation>() -> Result<Self, ServingError> {
+        OperationFactory::protobuf::<O>()?;
+        Ok(Self {
+            id: O::ID,
+            protobuf_native: true,
+            definition: || OperationFactory::protobuf::<O>().expect("validated protobuf declaration").definition,
+            request: TypeId::of::<O::Request>,
+            response: TypeId::of::<O::Response>,
+            memory: |request| {
+                request
+                    .downcast_ref::<O::Request>()
+                    .map_or(0, |request| memory::<O::Request>(&request.encode_to_vec()).unwrap_or(usize::MAX))
+            },
+            encode: |request| request.downcast_ref::<O::Request>().map(prost::Message::encode_to_vec),
+            decode: decode_response::<O>,
+            encode_protobuf: |request| {
+                request
+                    .downcast_ref::<O::Request>()
+                    .map(prost::Message::encode_to_vec)
+                    .ok_or_else(|| MessageError::borrowed("callee payload differs"))
+            },
+            decode_protobuf: decode_response::<O>,
+            grant: |request| {
+                O::grant(request.downcast_ref::<O::Request>().ok_or_else(|| MessageError::borrowed("callee payload differs"))?)
+            },
+        })
+    }
+}
+impl ExecutionContext {
+    pub async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> Result<super::super::Response<O::Response>, ServingError> {
+        let target = super::super::Target::protobuf::<O>()?;
+        let calls = self.resource::<super::super::Calls>().map_err(|_| ServingError::Catalog)?;
+        let child = calls.0.start(target, Box::new(request), None, Box::new(()), self.call.clone()).await?;
+        child.join().await?.restore().ok_or(ServingError::EndpointTypes)
+    }
+}
+impl From<super::super::InvocationError> for ServingError {
+    fn from(error: super::super::InvocationError) -> Self {
+        Self::Native(std::sync::Arc::new(error))
+    }
+}
+
+impl ProtobufDependency {
+    pub const fn of<O: ProtobufOperation>() -> Self {
+        Self {
+            definition: || {
+                let definition = OperationFactory::protobuf::<O>()?.definition;
+                Ok(super::super::calls::OperationDependency {
+                    id: definition.id.to_string(),
+                    fingerprint: definition.fingerprint,
+                })
+            },
+        }
+    }
+}
 
 impl ProtobufEndpoints for () {
     fn descriptors() -> (Option<MessageDescriptor>, Option<MessageDescriptor>) {
@@ -250,7 +314,7 @@ impl OperationFactory {
         let declared = contract::<O>(&harmos_domain::config::SchemaSettings::default()).map_err(ServingError::Contract)?;
         Ok(Self {
             definition: declared.operation().clone(),
-            operations: &[],
+            operations: || O::OPERATIONS.iter().map(|dependency| (dependency.definition)()).collect(),
             declared: || {
                 contract::<O>(&harmos_domain::config::SchemaSettings::default())
                     .expect("validated protobuf declaration")
@@ -363,6 +427,11 @@ impl<O: ProtobufOperation> NativeInstance for Instance<O> {
 
 /* === Private Functions === */
 
+fn decode_response<O: ProtobufOperation>(bytes: &[u8]) -> Result<super::super::response::ErasedResponse, MessageError> {
+    let response = O::Response::decode(bytes).map_err(|error| MessageError::new(error.to_string()))?;
+    Ok(super::super::Response::new(response).into_erased())
+}
+
 fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettings) -> Result<Contract, super::super::ContractError> {
     let request = O::Request::default().descriptor();
     let response = O::Response::default().descriptor();
@@ -404,7 +473,7 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
     if matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now") {
         let clock = Contract::clock(O::ID == "harmos.clock.sleep", O::POLICY, settings)?;
         let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
-        let same_mapping = clock.grpc() == Some(&O::GRPC);
+        let same_mapping = clock.grpc() == O::GRPC.as_ref();
         if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {
             return Err(super::super::ContractError::Protobuf("clock declaration differs from the protocol-owned contract".into()));
         }
@@ -413,7 +482,7 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
     Contract::from_protobuf(operation, protobuf, O::GRPC, settings)
 }
 
-fn memory<T: ReflectMessage + Default>(bytes: &[u8]) -> Result<usize, MessageError> {
+pub(crate) fn memory<T: ReflectMessage + Default>(bytes: &[u8]) -> Result<usize, MessageError> {
     let descriptor = T::default().descriptor();
     let mut path = [const { None }; 32];
     let (_, largest) = layout(&descriptor, &mut path, 0)?;

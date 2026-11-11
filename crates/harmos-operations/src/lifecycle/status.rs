@@ -39,7 +39,7 @@ impl ProtobufOperation for Status {
     type Response = super::InstanceState;
     type Endpoints = ();
     const ID: &'static str = "host.operations.status";
-    const GRPC: Grpc = Grpc::new("harmos.host.v1", "Operations", "Status");
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Operations", "Status"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];

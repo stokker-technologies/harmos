@@ -39,7 +39,7 @@ impl ProtobufOperation for Watch {
     type Response = super::InstanceState;
     type Endpoints = ProtobufOutput<super::InstanceState>;
     const ID: &'static str = "host.operations.watch";
-    const GRPC: Grpc = Grpc::new("harmos.host.v1", "Operations", "Watch");
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Operations", "Watch"));
     const POLICY: crate::OperationPolicy = super::WATCH_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];

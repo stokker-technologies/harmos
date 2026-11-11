@@ -926,6 +926,16 @@ Ok(summary.into())
 
 Host applications can register Prost-generated request, response and stream messages directly
 with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Declaration>()`.
+The declaration's `GRPC` is optional; private native operations leave it `None`.
+Declare typed callees in `OPERATIONS` and invoke them through the execution context:
+
+```rust
+const GRPC: Option<Grpc> = Some(Grpc::new("example.host.v1", "Operations", "Run"));
+const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<Callee>()];
+// Inside the handler:
+let response = context.call_protobuf::<Callee>(request).await?;
+```
+
 Messages implement `prost_reflect::ReflectMessage` using their authoritative descriptor set.
 The declaration owns `ID`, `GRPC`, `POLICY`, `VISIBILITY`, `RESOURCES` and its handler; unary
 endpoints use `()`, input uses `ProtobufInput<T>`, output uses `ProtobufOutput<T>`, and a pair

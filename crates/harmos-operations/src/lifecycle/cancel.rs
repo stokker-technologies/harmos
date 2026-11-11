@@ -39,7 +39,7 @@ impl ProtobufOperation for Cancel {
     type Response = super::InstanceState;
     type Endpoints = ();
     const ID: &'static str = "host.operations.cancel";
-    const GRPC: Grpc = Grpc::new("harmos.host.v1", "Operations", "Cancel");
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Operations", "Cancel"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];

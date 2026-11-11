@@ -29,7 +29,9 @@ use tonic::codegen::http::uri::PathAndQuery;
 
 // Local Imports
 use super::{Lanes, app::App};
-use harmos_operations::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, ServingError, Visibility};
+use harmos_operations::execution::operations::{
+    ExecutionContext, Grpc, ProtobufDependency, ProtobufOperation, ProtobufOutput, ServingError, Visibility,
+};
 use harmos_runtime::operations::{OperationPolicy, Registration, RetryPolicy};
 
 /* === Constants === */
@@ -53,6 +55,7 @@ mod messages;
 use messages::{Reply, Request};
 
 struct Echo;
+struct Forward;
 struct Watch;
 struct Access(AtomicBool);
 
@@ -88,12 +91,26 @@ impl ReflectMessage for Reply {
     }
 }
 
+impl ProtobufOperation for Forward {
+    type Request = Request;
+    type Response = Reply;
+    type Endpoints = ();
+    const ID: &'static str = "generated.forward";
+    const POLICY: OperationPolicy = POLICY;
+    const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<Echo>()];
+    const RESOURCES: &'static [harmos_operations::execution::operations::Resource] =
+        &[harmos_operations::execution::operations::Resource::of::<harmos_operations::execution::operations::Calls>()];
+    async fn run(context: ExecutionContext, request: Request, _: &()) -> Result<Reply, ServingError> {
+        Ok(context.call_protobuf::<Echo>(request).await?.into_owned())
+    }
+}
+
 impl ProtobufOperation for Echo {
     type Request = Request;
     type Response = Reply;
     type Endpoints = ();
     const ID: &'static str = "generated.echo";
-    const GRPC: Grpc = Grpc::new("generated.host.v1", "Operations", "Echo");
+    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Echo"));
     const POLICY: OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(_: ExecutionContext, request: Request, _: &()) -> Result<Reply, ServingError> {
@@ -106,7 +123,7 @@ impl ProtobufOperation for Watch {
     type Response = Reply;
     type Endpoints = ProtobufOutput<Reply>;
     const ID: &'static str = "generated.watch";
-    const GRPC: Grpc = Grpc::new("generated.host.v1", "Operations", "Watch");
+    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Watch"));
     const POLICY: OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(_: ExecutionContext, request: Request, output: &Self::Endpoints) -> Result<Reply, ServingError> {
@@ -170,12 +187,24 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
     assert_eq!(std::fs::read(output.path().join("operations.bin")).unwrap(), include_bytes!("../../fixtures/protobuf/operations.bin"));
 
     // Register Generated Handlers and the Product Authorization Hook.
-    let runtime = harmos_runtime::Runtime::<App>::launch((), ()).await.unwrap();
+    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: std::num::NonZeroUsize::new(256 * 1024),
+            ..Default::default()
+        });
+    })
+    .await
+    .unwrap();
+    assert!(runtime.operations.register_batch(Registration::new(Lanes::Open).protobuf::<Forward>().unwrap()).await.is_err());
     runtime
         .operations
-        .register_batch(Registration::new(Lanes::Open).protobuf::<Echo>().unwrap().protobuf::<Watch>().unwrap())
+        .register_batch(
+            Registration::new(Lanes::Open).protobuf::<Echo>().unwrap().protobuf::<Watch>().unwrap().protobuf::<Forward>().unwrap(),
+        )
         .await
         .unwrap();
+    let native = runtime.operations.call_protobuf::<Forward>(request()).await.unwrap();
+    assert_eq!(native, reply(request()));
     let access = Arc::new(Access(AtomicBool::new(false)));
     runtime.operations.register_authorizer(access.clone()).unwrap();
     let settings = harmos_runtime::grpc::Settings {

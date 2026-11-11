@@ -116,8 +116,15 @@ impl Manager {
                 let Some(factory) = caller.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>() else {
                     continue;
                 };
-                for required in factory.operations {
-                    let id = required.operation.id;
+                let dependencies = (factory.operations)().map_err(|source| match source {
+                    harmos_operations::execution::ServingError::Declaration(source) => Error::OperationDeclaration { source },
+                    source => Error::OperationFailed {
+                        operation: factory.definition.id.to_string(),
+                        source: Arc::new(source),
+                    },
+                })?;
+                for required in dependencies {
+                    let id = required.id.as_str();
                     let target = entries
                         .iter()
                         .find(|entry| entry.id() == id && entry.owner == caller.owner)
@@ -133,9 +140,7 @@ impl Manager {
                     if !permitted {
                         return Err(Error::PermissionDenied);
                     }
-                    if target.definition.fingerprint
-                        != (required.operation.fingerprint)().map_err(|source| Error::OperationDeclaration { source })?
-                    {
+                    if target.definition.fingerprint != required.fingerprint {
                         return Err(Error::InvalidInput {
                             field: "declared operation",
                             reason: "callee fingerprint differs",

@@ -349,7 +349,7 @@ impl ProtobufOperation for ReadSensor {
     type Endpoints = ProtobufOutput<ReadResult>; // Use () for unary.
 
     const ID: &'static str = "sensor.read";
-    const GRPC: Grpc = Grpc::new("sensor.v1", "Sensors", "Read");
+    const GRPC: Option<Grpc> = Some(Grpc::new("sensor.v1", "Sensors", "Read"));
     const POLICY: OperationPolicy = READ_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
 
