@@ -407,7 +407,7 @@ virtual time.
 | Grants between plugins, provider selection | Plugin paths of `crates/harmos-runtime/src/operations/manager/grants.rs`, `OperationProvider` |
 | Generation tokens and stale-call fencing | `crates/harmos-runtime/src/plugin/scope.rs`, stale endpoints in `router.rs` |
 | Native observer runner | `crates/harmos-sidecar/src/kit/{observer,task}.rs` |
-| Plugin, observer and catalog macros and their sidecar and guest variants | `crates/harmos-macros/src/artifact/`, `catalog/typed.rs` (about 1,300 lines with their tests' share) |
+| Native plugin, observer and catalog macros and their sidecar variants; guest/operation/state authoring macros remain for `authoring-without-macros` | `crates/harmos-macros/src/artifact/`, `catalog/typed.rs` (about 1,300 lines with their tests' share) |
 | Transport tests and benches | `crates/harmos-sidecar/tests/transport/`, `benches/transport/` |
 | C ABI and its C++ prototype | `crates/harmos-ffi`, the reflection bridge under `sdk/cpp`; `sdk/cpp` is rebuilt over `harmos.v1` |
 
@@ -441,7 +441,7 @@ access; products may use it to require an authenticated client.
 - Default policy on the new path: no deadline, zero cancellation grace and no retries.
 - `interval_setting` as a qualified protobuf section field of type `google.protobuf.Duration`.
 - Required consumer-owned `PlacementSettings.stream_window`.
-- Python package `harmos-plugin` / import `harmos`, and temporary Rust package `harmos-sdk-grpc`.
+- Python package `harmos-plugin` / import `harmos`. The Rust public entry point is settled in Language SDKs.
 - The Python, C# and C++ authoring shapes in Language SDKs.
 - Deferral of client survival across transient drops until Harmos request deduplication and watch replay are specified.
 

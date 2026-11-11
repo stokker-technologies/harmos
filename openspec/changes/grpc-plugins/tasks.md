@@ -10,17 +10,17 @@
   - `README.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
   - `crates/harmos-macros/tests/artifact/main.rs` — Replace native embedded-catalog assertions with SDK catalog construction; retain guest embedded-metadata assertions.
   - `crates/harmos-macros/tests/catalog/main.rs` — Retire native plugin/observer macro refusal cases and inspect guest/host catalogs; retain guest-required macro diagnostics until 7.1.
-  - `crates/harmos-macros/tests/fixtures/empty_grant.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/explicit_version_plugin.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
+  - `crates/harmos-macros/tests/fixtures/empty_grant.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until `authoring-without-macros` replaces their consumers.
+  - `crates/harmos-macros/tests/fixtures/explicit_version_plugin.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until `authoring-without-macros` replaces their consumers.
   - `crates/harmos-macros/tests/fixtures/facade/lib.rs` — Remove the native sidecar re-export; retain guest and host macro-path coverage.
   - `crates/harmos-macros/tests/fixtures/facade_runtime_catalogs.rs` — Remove native plugin/catalog fixture declarations; retain guest and host catalog inspection.
-  - `crates/harmos-macros/tests/fixtures/plugin_on_struct.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
+  - `crates/harmos-macros/tests/fixtures/plugin_on_struct.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until `authoring-without-macros` replaces their consumers.
   - `crates/harmos-macros/tests/fixtures/plugin_setup_operations.rs` — Delete the retired native plugin setup macro refusal fixture.
   - `crates/harmos-macros/tests/fixtures/synchronous_activation.rs` — Delete the retired native observer activation macro refusal fixture.
   - `crates/harmos-macros/tests/fixtures/synchronous_deactivation.rs` — Delete the retired native observer deactivation macro refusal fixture.
   - `crates/harmos-macros/tests/fixtures/undeclared_custom_observer_output.rs` — Delete the retired custom observer output macro refusal fixture.
   - `crates/harmos-macros/tests/fixtures/undeclared_observer_output.rs` — Delete the retired observer output macro refusal fixture.
-  - `crates/harmos-macros/tests/fixtures/unknown_grant.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
+  - `crates/harmos-macros/tests/fixtures/unknown_grant.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until `authoring-without-macros` replaces their consumers.
   - `crates/harmos-packaging/examples/fixture-driver.rs` — Collect native identity/catalogs with Describe and Stop and package without embedded framed inventory; retain guest packaging.
   - `crates/harmos-packaging/tests/build/capture.rs` — Migrate native fixture build/inspection consumers from embedded sidecar inventory to SDK Describe catalogs; retain guest packaging (packaging owner follow-up).
   - `crates/harmos-packaging/tests/integration/main.rs` — Migrate native fixture build/inspection consumers from embedded sidecar inventory to SDK Describe catalogs; retain guest packaging (packaging owner follow-up).
@@ -172,12 +172,12 @@
   - `examples/schematic/operations/src/transfer/store.rs` — Migrate native transfer contracts/handlers to SDK messages and builder values; retain guest contracts and unary transfer behaviour.
   - `examples/schematic/operations/src/transfer/take.rs` — Migrate native transfer contracts/handlers to SDK messages and builder values; retain guest contracts and unary transfer behaviour.
   - `examples/schematic/operations/src/transfer/upload.rs` — Keep native transfer upload in the host; preserve guest transfer benchmarks.
-  - `examples/schematic/sidecar/Cargo.toml` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
-  - `examples/schematic/sidecar/build.rs` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
-  - `examples/schematic/sidecar/src/benchmark.rs` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
-  - `examples/schematic/sidecar/src/lib.rs` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
-  - `examples/schematic/sidecar/src/main.rs` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
-  - `examples/schematic/sidecar/src/registration.rs` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
+  - `examples/schematic/sidecar/Cargo.toml` — Migrate to `harmos` builder values from `sdk/rust` and managed serving; remove framed registration and benchmark-only transport setup.
+  - `examples/schematic/sidecar/build.rs` — Migrate to `harmos` builder values from `sdk/rust` and managed serving; remove framed registration and benchmark-only transport setup.
+  - `examples/schematic/sidecar/src/benchmark.rs` — Migrate to `harmos` builder values from `sdk/rust` and managed serving; remove framed registration and benchmark-only transport setup.
+  - `examples/schematic/sidecar/src/lib.rs` — Migrate to `harmos` builder values from `sdk/rust` and managed serving; remove framed registration and benchmark-only transport setup.
+  - `examples/schematic/sidecar/src/main.rs` — Migrate to `harmos` builder values from `sdk/rust` and managed serving; remove framed registration and benchmark-only transport setup.
+  - `examples/schematic/sidecar/src/registration.rs` — Migrate to `harmos` builder values from `sdk/rust` and managed serving; remove framed registration and benchmark-only transport setup.
   - `examples/schematic/storage/src/journal.rs` — Migrate native plugin-history consumers as needed for the new placement; preserve retained evidence and guest history.
   - `examples/schematic/storage/src/lib.rs` — Migrate native plugin-history consumers as needed for the new placement; preserve retained evidence and guest history.
   - `examples/schematic/storage/tests/journal/main.rs` — Migrate native plugin-history consumers as needed for the new placement; preserve retained evidence and guest history.
