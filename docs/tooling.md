@@ -2,7 +2,11 @@
 
 Mise is the public entry point. Run `mise tasks` to see the supported entry points;
 pass arguments after `--`. Python tooling lives in `tools/python/src/harmos_tools/`;
-the root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
+Rust executable conformance lives in `tools/conformance`; reusable build, watch,
+componentization, inspection, bundle construction and generators live in `tools/packaging`.
+Runtime owns verified bundle reading at `harmos_runtime::bundle` and the descriptor
+projection required by its transport; its normal dependencies contain no packaging tools.
+The root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
 `sdk/python/.venv/` and `sdk/python/uv.lock`; tooling does not depend on the SDK.
 Run `mise run prepare` once after checkout or dependency changes to synchronize
 all locked dependency groups in both projects and install the components and targets

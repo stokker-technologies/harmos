@@ -23,8 +23,10 @@ mod listener;
 mod manager;
 pub mod middleware;
 pub(crate) mod native;
+pub mod projection;
 mod reflection;
 pub(crate) mod routing;
+pub mod schema;
 pub mod server;
 mod tls;
 
@@ -40,9 +42,9 @@ pub use envelope::{
     output_payload_limit_admitted, prepare_input_item, prepare_input_request,
 };
 pub use harmos_operations::execution::grpc::{encoded_len, encoded_len_admitted};
-pub use harmos_packaging::proto::DescriptorError;
 pub use input::{InputError, input, open};
 pub use manager::{Attached, GrpcManager, Settings};
+pub use projection::DescriptorError;
 pub use tls::ServerCertificate;
 
 /* === Imports === */

@@ -313,7 +313,6 @@ Host embedders depend explicitly on `harmos-runtime`. Managed and remote
 | --- | --- |
 | `plugin-guest` | Wasmtime guest hosting and its private lifecycle and child-control protocol. |
 | `grpc` | External host gRPC listener, reflection and TLS; enabled by default. |
-| `generate-proto` | Descriptor projection for host operation contracts. |
 | `simulation` | Deterministic runtime simulation. |
 
 Shared operation and state authoring still uses `harmos-domain`,
@@ -321,7 +320,11 @@ Shared operation and state authoring still uses `harmos-domain`,
 registries are owned values. Native plugin authoring uses SDK builder values. Guests depend on `harmos-guest` and retain guest-specific
 macros and setup; their lifecycle and child controls await a separate protocol decision.
 `harmos-storage` owns persistence and queries; `harmos-runtime` composes it with
-host lifecycle and managed state. Build tools use `harmos-packaging`.
+host lifecycle and managed state. Build tools use `harmos-packaging` from `tools/packaging`; it sits outside the six-library core.
+Runtime reads verified plugin bundles through `harmos_runtime::bundle`; construction uses
+`harmos_packaging::bundle::build`. Runtime has no normal dependency on packaging tooling.
+The reference host and plugin live in `tools/conformance`, preserving their executable names
+and release archive contents.
 
 ```toml
 [build-dependencies]

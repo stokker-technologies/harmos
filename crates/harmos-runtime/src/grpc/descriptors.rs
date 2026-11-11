@@ -21,8 +21,8 @@ use prost_reflect::{DescriptorPool, MessageDescriptor, ServiceDescriptor};
 use prost_types::FileDescriptorSet;
 
 // Local Imports
+use super::projection::DescriptorError;
 use harmos_domain::operations::Contract;
-use harmos_packaging::proto::DescriptorError;
 
 /* === Constants === */
 
@@ -42,7 +42,7 @@ use harmos_packaging::proto::DescriptorError;
 
 // Reuse the Projection's Service Envelopes with Authoritative Payload Descriptors.
 pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> Result<ServiceDescriptor, DescriptorError> {
-    let projected = harmos_packaging::proto::descriptor(package, name, methods)?;
+    let projected = super::projection::descriptor(package, name, methods)?;
     if methods.iter().all(|(_, contract)| contract.protobuf().is_none()) {
         return Ok(projected);
     }

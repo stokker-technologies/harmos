@@ -20,7 +20,8 @@ use serde_json::json;
 // Local Imports
 use harmos_domain::Registrar;
 use harmos_domain::inventory::{Declaration, Facility as Inspected};
-use harmos_packaging::bundle::{Bundle, Executable, Facility, Identity, Limits, Source};
+use harmos_packaging::bundle::Source;
+use harmos_runtime::bundle::{Bundle, Executable, Facility, Identity, Limits};
 
 /* === Constants === */
 
@@ -45,7 +46,7 @@ fn identity() -> Identity {
         name: "cargo_plugin".into(),
         version: "2.3.4".parse().unwrap(),
         description: "Cargo description".into(),
-        package: harmos_packaging::bundle::PackageMetadata {
+        package: harmos_runtime::bundle::PackageMetadata {
             authors: vec!["Author <author@example.test>".into()],
             license: Some("Apache-2.0".into()),
             repository: Some("https://example.test/source".into()),
@@ -114,7 +115,7 @@ fn guest() -> Vec<u8> {
 }
 
 fn asset() -> Bundle {
-    Bundle::build(
+    harmos_packaging::bundle::build(
         identity(),
         &[Source {
             path: "files/data",
@@ -169,7 +170,7 @@ fn independent_files_roundtrip() {
             executable: Some(executable(Facility::Guest)),
         },
     ];
-    let bundle = Bundle::build(identity(), &sources, Limits::default()).unwrap();
+    let bundle = harmos_packaging::bundle::build(identity(), &sources, Limits::default()).unwrap();
 
     // Source Order Does Not Change the Archive
     let reversed = [
@@ -189,7 +190,7 @@ fn independent_files_roundtrip() {
             executable: None,
         },
     ];
-    assert_eq!(bundle.bytes(), Bundle::build(identity(), &reversed, Limits::default()).unwrap().bytes());
+    assert_eq!(bundle.bytes(), harmos_packaging::bundle::build(identity(), &reversed, Limits::default()).unwrap().bytes());
 
     // Inspection Preserves Each File and Its Declaration
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
@@ -233,7 +234,7 @@ fn executable_owned_registrations() {
     let native = b"Native Catalogs Are Described at Connection Time".to_vec();
     let export = executable(Facility::Sidecar);
     let build = |export: Executable| {
-        Bundle::build(
+        harmos_packaging::bundle::build(
             identity(),
             &[Source {
                 path: "bin/probe",
@@ -254,7 +255,7 @@ fn executable_owned_registrations() {
         bytes: &native,
         executable: Some(export.clone()),
     }];
-    let bundle = Bundle::build(dotted.clone(), &sources, Limits::default()).unwrap();
+    let bundle = harmos_packaging::bundle::build(dotted.clone(), &sources, Limits::default()).unwrap();
     assert_eq!(Bundle::inspect(bundle.bytes(), Limits::default()).unwrap().manifest().identity, dotted);
 
     // Reject Invalid or Duplicated Registration Metadata
@@ -284,11 +285,11 @@ fn executable_owned_registrations() {
             executable: Some(export.clone()),
         },
     ];
-    assert!(Bundle::build(identity(), &sources, Limits::default()).is_err());
+    assert!(harmos_packaging::bundle::build(identity(), &sources, Limits::default()).is_err());
     let mut other_target = export.clone();
     other_target.target = "another-target".into();
     assert!(
-        Bundle::build(
+        harmos_packaging::bundle::build(
             identity(),
             &[
                 Source {
@@ -307,7 +308,7 @@ fn executable_owned_registrations() {
         .is_ok()
     );
     assert!(
-        Bundle::build(
+        harmos_packaging::bundle::build(
             identity(),
             &[Source {
                 path: "bin/missing",
@@ -407,11 +408,11 @@ fn paths_stay_portable() {
         "unicode-é",
     ] {
         let sources = [Source { path, bytes: b"abc", executable: None }];
-        assert!(Bundle::build(identity(), &sources, Limits::default()).is_err(), "{path}");
+        assert!(harmos_packaging::bundle::build(identity(), &sources, Limits::default()).is_err(), "{path}");
         assert!(Bundle::inspect(&archive(&manifest, &[(path, b"abc", tar::EntryType::Regular)]), Limits::default()).is_err(), "{path}");
     }
     for paths in [["a", "a"], ["A", "a"], ["A", "a/b"], ["a/b", "a"]] {
-        assert!(Bundle::build(identity(), &paths.map(|path| Source { path, bytes: b"abc", executable: None }), Limits::default()).is_err());
+        assert!(harmos_packaging::bundle::build(identity(), &paths.map(|path| Source { path, bytes: b"abc", executable: None }), Limits::default()).is_err());
     }
 }
 
@@ -430,7 +431,7 @@ fn inspection_bounds_inputs() {
     ] {
         assert!(Bundle::inspect(bundle.bytes(), limits).is_err());
         assert!(
-            Bundle::build(
+            harmos_packaging::bundle::build(
                 identity(),
                 &[Source {
                     path: "files/data",
@@ -446,7 +447,7 @@ fn inspection_bounds_inputs() {
     let mut export = executable(Facility::Sidecar);
     export.registrations = executable(Facility::Guest).registrations;
     assert!(
-        Bundle::build(
+        harmos_packaging::bundle::build(
             identity(),
             &[Source {
                 path: "bin/probe",
@@ -458,7 +459,7 @@ fn inspection_bounds_inputs() {
         .is_err()
     );
     assert!(Bundle::inspect(&bundle.bytes()[..512], Limits::default()).is_err());
-    let empty = Bundle::build(identity(), &[], Limits::default()).unwrap();
+    let empty = harmos_packaging::bundle::build(identity(), &[], Limits::default()).unwrap();
     assert!(Bundle::inspect(empty.bytes(), Limits::default()).is_ok());
 }
 
@@ -487,7 +488,7 @@ fn metadata_budgets_precede() {
         registrations: 0,
     };
     assert!(
-        Bundle::build(
+        harmos_packaging::bundle::build(
             identity(),
             &[Source {
                 path: "files/data",
@@ -503,7 +504,7 @@ fn metadata_budgets_precede() {
     let native = b"native".to_vec();
     let first = executable(Facility::Sidecar);
     let original = first.clone();
-    let one = Bundle::build(
+    let one = harmos_packaging::bundle::build(
         identity(),
         &[Source {
             path: "bin/one",
@@ -517,7 +518,7 @@ fn metadata_budgets_precede() {
     let limit = one_manifest.len();
     let mut other = executable(Facility::Sidecar);
     other.target = "other-target".into();
-    let error = Bundle::build(
+    let error = harmos_packaging::bundle::build(
         identity(),
         &[
             Source {

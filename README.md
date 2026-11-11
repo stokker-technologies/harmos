@@ -44,7 +44,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **gRPC Plugin Placement**: Invoke managed or remote `harmos.v1` plugins, capture their streams and drive plugin waits and observers from the host clock.
-- **gRPC Interfaces** [`grpc`, `generate-proto`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
+- **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
 ## Interfaces
@@ -137,6 +137,9 @@ On Windows, run the corresponding executable under
 `target/build/dev/windows-x86_64/bin/`. For library integration, select a
 [published Harmos version](https://crates.io/crates/harmos) and the
 [SDK](sdk/rust/Cargo.toml) or [runtime features](crates/harmos-runtime/Cargo.toml) your application needs.
+
+The conformance tool package lives in `tools/conformance`; build and generation tooling
+lives in `tools/packaging`, outside the core libraries.
 
 [Releases](https://github.com/stokker-technologies/harmos/releases) attach
 `harmos-proto-<version>.zip`, one `harmos-conformance-<version>-<platform>.zip|tar.gz`
