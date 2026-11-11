@@ -64,6 +64,10 @@ impl Fixture {
         .unwrap();
         let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
             setup.resource(std::ops::Deref::deref(&storage).erased());
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+                ..Default::default()
+            });
             setup.settings().register(catalog());
         })
         .await

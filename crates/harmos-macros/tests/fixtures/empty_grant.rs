@@ -36,7 +36,7 @@ struct Program;
 
 /* === Implementations === */
 
-#[harmos::guest(harmos_path = ::harmos, id = "invalid_requirement", requires(harmos::builtins::storage::StorageStatus: scope("")))]
+#[harmos::guest(harmos_path = ::harmos, id = "invalid_requirement", requires(harmos::builtins::streams::Publish: scope("")))]
 impl harmos::guest::Plugin for Program {}
 
 /* === Public Functions === */

@@ -52,8 +52,13 @@ fn metadata(id: &str) -> FileMetadata {
     }
 }
 
-fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFile {
-    harmos_operations::storage::DeleteFile {
+struct Deletion {
+    mutation: MutationId,
+    file: StagedFile,
+}
+
+fn request(f: &Fixture, id: &str) -> Deletion {
+    Deletion {
         mutation: MutationId {
             window: f.storage.mutation_window().unwrap().id,
             key: Identifier::new("delete").unwrap(),

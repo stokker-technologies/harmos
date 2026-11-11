@@ -101,6 +101,8 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
         let output = output.keep();
         panic!("generated Rust differs from src/host.rs; regenerated source retained in {}", output.display());
     }
+    assert_eq!(fs::read(output.path().join("harmos.storage.v1.rs"))?, include_bytes!("../../src/storage.rs"));
+    assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
     assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
     Ok(())
 }

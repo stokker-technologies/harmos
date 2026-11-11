@@ -127,6 +127,92 @@ impl MemorySize for FileProgress {
     }
 }
 
+impl From<FileMetadata> for harmos_protocol::storage::FileMetadata {
+    fn from(value: FileMetadata) -> Self {
+        Self {
+            id: value.id.to_string(),
+            scope: value.scope.map(|id| id.to_string()),
+            media_type: value.media_type,
+            expected_length: value.expected_length,
+            expected_sha256: value.expected_sha256.map(|bytes| bytes.to_vec()),
+        }
+    }
+}
+impl TryFrom<harmos_protocol::storage::FileMetadata> for FileMetadata {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::FileMetadata) -> crate::Result<Self> {
+        Ok(Self {
+            id: Identifier::new(value.id)?,
+            scope: value.scope.map(Identifier::new).transpose()?,
+            media_type: value.media_type,
+            expected_length: value.expected_length,
+            expected_sha256: value
+                .expected_sha256
+                .map(|bytes| {
+                    bytes.try_into().map_err(|_| crate::Error::InvalidInput {
+                        field: "expected_sha256",
+                        reason: "requires exactly 32 bytes",
+                    })
+                })
+                .transpose()?,
+        })
+    }
+}
+impl From<StagedFile> for harmos_protocol::storage::StagedFile {
+    fn from(value: StagedFile) -> Self {
+        Self {
+            history: Some(value.history.into()),
+            id: value.id.to_string(),
+        }
+    }
+}
+impl TryFrom<harmos_protocol::storage::StagedFile> for StagedFile {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::StagedFile) -> crate::Result<Self> {
+        Ok(Self {
+            history: value.history.ok_or(crate::Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
+            id: Identifier::new(value.id)?,
+        })
+    }
+}
+impl From<FileSession> for harmos_protocol::storage::FileSession {
+    fn from(value: FileSession) -> Self {
+        Self {
+            history: Some(value.history.into()),
+            id: value.id.to_string(),
+            generation: value.generation,
+        }
+    }
+}
+impl TryFrom<harmos_protocol::storage::FileSession> for FileSession {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::FileSession) -> crate::Result<Self> {
+        Ok(Self {
+            history: value.history.ok_or(crate::Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
+            id: Identifier::new(value.id)?,
+            generation: value.generation,
+        })
+    }
+}
+impl From<FileReference> for harmos_protocol::storage::FileReference {
+    fn from(value: FileReference) -> Self {
+        Self {
+            position: Some(value.position.into()),
+            metadata: Some(value.metadata.into()),
+            length: value.length,
+            sha256: value.sha256.to_vec(),
+        }
+    }
+}
+impl From<FileProgress> for harmos_protocol::storage::FileProgress {
+    fn from(value: FileProgress) -> Self {
+        Self {
+            length: value.length,
+            phase: value.phase as i32,
+        }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

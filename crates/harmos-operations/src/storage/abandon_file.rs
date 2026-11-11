@@ -7,123 +7,41 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Nested, product};
-use harmos_domain::model::storage::{FileProgress, FileSession, MutationId};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, ProtobufOperation, Resource, ServingError};
+use harmos_domain::operations::{FailureKind, ReplaySafety};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(AbandonFile {
-    mutation: Nested<MutationId> => 1,
-    session: Nested<FileSession> => 2,
-});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-// Abandon A Producing File Session, Exactly Once Per Mutation.
-#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
-    id = "storage.abandon_file",
-    response = FileProgress,
-    policy = POLICY,
-    visibility = Private,
-    replay = ReplaySafety::Idempotent)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AbandonFile {
-    pub mutation: MutationId,
-    pub session: FileSession,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct AbandonFile;
 
 /* === Implementations === */
 
-impl MemorySize for AbandonFile {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
-            .saturating_add(self.session.memory_size().saturating_sub(std::mem::size_of_val(&self.session)))
-    }
-}
+impl ProtobufOperation for AbandonFile {
+    type Request = harmos_protocol::storage::AbandonFile;
+    type Response = harmos_protocol::storage::FileProgress;
+    type Endpoints = ();
+    const ID: &'static str = "storage.abandon_file";
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>()];
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use crate::execution::operations::Operation;
-    use crate::{Error, Result};
-    use harmos_storage::FileProgress;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::AbandonFile {
-        type Error = Error;
-
-        #[tracing::instrument(target = "harmos::storage", name = "storage.operation.abandon_file", level = "trace", skip_all)]
-        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<FileProgress>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-
-            let result: ::core::result::Result<FileProgress, Self::Error> =
-                async move { storage.abandon_file_once(&self.mutation, &self.session).await.map_err(Into::into) }.await;
-            result.map(::core::convert::Into::into)
+    async fn run(context: ExecutionContext, request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_storage::FileProgress> = async {
+            let mutation: harmos_storage::MutationId =
+                request.mutation.ok_or(crate::Error::InvalidInput { field: "mutation", reason: "required" })?.try_into()?;
+            let session: harmos_storage::FileSession =
+                request.session.ok_or(crate::Error::InvalidInput { field: "session", reason: "required" })?.try_into()?;
+            Ok(storage.abandon_file_once(&mutation, &session).await?)
         }
-
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */

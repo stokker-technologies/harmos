@@ -9,6 +9,13 @@
 
 /* === Modules === */
 
+#[path = "generated_directory.rs"]
+mod generated_directory;
+#[path = "generated_file_mutations.rs"]
+mod generated_file_mutations;
+#[path = "generated_status.rs"]
+mod generated_status;
+
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 #[path = "../storage/coordinator.rs"]

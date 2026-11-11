@@ -343,7 +343,13 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.sdk == "python":
             return _module("build.python_protocol")
         if options.sdk == "rust":
-            binary = root / "target" / ("debug" if options.profile == "dev" else "release") / "examples" / ("generate.exe" if os.name == "nt" else "generate")
+            binary = (
+                root
+                / "target"
+                / ("debug" if options.profile == "dev" else "release")
+                / "examples"
+                / ("generate.exe" if os.name == "nt" else "generate")
+            )
             return _execute([str(binary)])
         from ..build.__main__ import generate
 

@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.storage.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Histories and positions are native storage identities, independent of transport.
+message StoreHistory { string store = 1; string epoch = 2; }
+message StorageCursor { StoreHistory history = 1; uint64 sequence = 2; }
+message MutationWindow {
+  StoreHistory history = 1;
+  string id = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+message StorageStatus {}
+message StorageInfo {
+  StorageCursor accepted = 1;
+  StorageCursor saved = 2;
+  MutationWindow mutations = 3;
+  uint64 file_batch_bytes = 4;
+}
+
+message MutationId { string window = 1; string key = 2; }
+message FileMetadata {
+  string id = 1;
+  optional string scope = 2;
+  string media_type = 3;
+  optional uint64 expected_length = 4;
+  optional bytes expected_sha256 = 5;
+}
+message StagedFile { StoreHistory history = 1; string id = 2; }
+message FileSession { StoreHistory history = 1; string id = 2; uint64 generation = 3; }
+message FileProducer { FileSession session = 1; uint64 length = 2; }
+message FileReference { StorageCursor position = 1; FileMetadata metadata = 2; uint64 length = 3; bytes sha256 = 4; }
+enum FilePhase { PRODUCING = 0; FINISHED = 1; ABANDONED = 2; }
+message FileProgress { uint64 length = 1; FilePhase phase = 2; }
+message CreateFile { MutationId mutation = 1; FileMetadata metadata = 2; }
+message AppendFile { MutationId mutation = 1; FileSession session = 2; uint64 offset = 3; bytes bytes = 4; }
+message ResumeFile { MutationId mutation = 1; FileSession session = 2; }
+message FinishFile { MutationId mutation = 1; FileSession session = 2; }
+message AbandonFile { MutationId mutation = 1; FileSession session = 2; }
+message DeleteFile { MutationId mutation = 1; StagedFile file = 2; }
+
+message DirectoryRule { string pattern = 1; bool include = 2; }
+message DirectorySelection { string root = 1; bool recursive = 2; repeated DirectoryRule rules = 3; }
+message DirectoryEntry { string path = 1; bool directory = 2; uint64 length = 3; }
+message DirectoryCompletion { uint64 entries = 1; }
+message DirectoryRename { string from = 1; string to = 2; }
+message Empty {}
+message DirectoryEvent {
+  oneof event {
+    DirectoryEntry existing = 1;
+    Empty initial_scan_complete = 2;
+    DirectoryEntry created = 3;
+    DirectoryEntry modified = 4;
+    string removed = 5;
+    DirectoryRename renamed = 6;
+    Empty rescan_required = 7;
+  }
+}
+message ListDirectory { DirectorySelection selection = 1; }
+message WatchDirectory { DirectorySelection selection = 1; bool include_existing = 2; }

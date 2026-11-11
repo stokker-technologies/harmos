@@ -12,13 +12,18 @@
 
 /* === Modules === */
 
+#[cfg(feature = "runtime")]
 mod abandon_file;
+#[cfg(feature = "runtime")]
 mod append_file;
 mod capture_file;
+#[cfg(feature = "runtime")]
 mod create_file;
+#[cfg(feature = "runtime")]
 mod delete_file;
 #[cfg(feature = "runtime")]
 pub(crate) mod exchange;
+#[cfg(feature = "runtime")]
 mod finish_file;
 mod follow_file;
 mod follow_objects;
@@ -26,11 +31,17 @@ mod follow_production;
 mod follow_records;
 mod follow_stream;
 mod hash_file;
+#[cfg(feature = "runtime")]
 mod list_directory;
 mod query;
 mod read_file;
+#[cfg(feature = "runtime")]
+mod registration;
+#[cfg(feature = "runtime")]
 mod resume_file;
+#[cfg(feature = "runtime")]
 mod storage_status;
+#[cfg(feature = "runtime")]
 mod watch_directory;
 mod write_file;
 mod write_objects;
@@ -40,11 +51,16 @@ mod write_streams;
 
 /* === Re-Exports === */
 
+#[cfg(feature = "runtime")]
 pub use abandon_file::AbandonFile;
+#[cfg(feature = "runtime")]
 pub use append_file::AppendFile;
 pub use capture_file::CaptureFile;
+#[cfg(feature = "runtime")]
 pub use create_file::CreateFile;
+#[cfg(feature = "runtime")]
 pub use delete_file::DeleteFile;
+#[cfg(feature = "runtime")]
 pub use finish_file::FinishFile;
 pub use follow_file::FollowFile;
 pub use follow_objects::FollowObjects;
@@ -52,11 +68,17 @@ pub use follow_production::FollowProduction;
 pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
 pub use follow_stream::FollowStream;
 pub use hash_file::HashFile;
+#[cfg(feature = "runtime")]
 pub use list_directory::ListDirectory;
 pub use query::Query;
 pub use read_file::ReadFile;
+#[cfg(feature = "runtime")]
+pub use registration::Storage;
+#[cfg(feature = "runtime")]
 pub use resume_file::ResumeFile;
+#[cfg(feature = "runtime")]
 pub use storage_status::StorageStatus;
+#[cfg(feature = "runtime")]
 pub use watch_directory::WatchDirectory;
 pub use write_file::WriteFile;
 pub use write_objects::WriteObjects;
@@ -107,9 +129,7 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 /* === Macros === */
 
 #[harmos::catalog(harmos_path = crate)]
-pub enum Storage {
-    ListDirectory(ListDirectory),
-    WatchDirectory(WatchDirectory),
+enum Legacy {
     Query(Query),
     ReadFile(ReadFile),
     HashFile(HashFile),
@@ -118,16 +138,9 @@ pub enum Storage {
     FollowRecords(FollowRecords),
     FollowStream(FollowStream),
     FollowFile(FollowFile),
-    StorageStatus(StorageStatus),
-    ResumeFile(ResumeFile),
-    CreateFile(CreateFile),
-    AppendFile(AppendFile),
-    FinishFile(FinishFile),
-    AbandonFile(AbandonFile),
     WriteRecords(WriteRecords),
     WriteStreams(WriteStreams),
     WriteFile(WriteFile),
-    DeleteFile(DeleteFile),
     WriteSchema(WriteSchema),
     WriteObjects(WriteObjects),
     FollowObjects(FollowObjects),

@@ -1,0 +1,75 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+// Register the Storage Operation Families.
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+use super::{AbandonFile, AppendFile, CreateFile, DeleteFile, FinishFile, ListDirectory, ResumeFile, StorageStatus, WatchDirectory};
+
+// Standard Library Imports
+
+// Third Party Imports
+
+// Local Imports
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+pub struct Storage;
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+impl Storage {
+    pub const CATALOG: crate::execution::operations::Catalog = <Self as crate::execution::operations::OperationCatalog>::CATALOG;
+    pub fn catalog() -> Vec<crate::OperationDefinition> {
+        <Self as crate::execution::operations::OperationCatalog>::batch().operations.into_iter().map(|factory| factory.definition).collect()
+    }
+}
+impl crate::execution::operations::OperationCatalog for Storage {
+    const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>(
+        "harmos.storage",
+        super::Legacy::CATALOG.declarations,
+        super::Legacy::CATALOG.callees,
+    );
+    fn batch() -> crate::execution::__private::RegistrationBatch {
+        let mut batch = super::Legacy::batch();
+        batch.operations.extend([
+            crate::execution::operations::OperationFactory::protobuf::<StorageStatus>().expect("StorageStatus declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<CreateFile>().expect("CreateFile declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<AppendFile>().expect("AppendFile declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<ResumeFile>().expect("ResumeFile declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<FinishFile>().expect("FinishFile declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<AbandonFile>().expect("AbandonFile declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<DeleteFile>().expect("DeleteFile declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<ListDirectory>().expect("ListDirectory declaration"),
+            crate::execution::operations::OperationFactory::protobuf::<WatchDirectory>().expect("WatchDirectory declaration"),
+        ]);
+        batch
+    }
+}
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

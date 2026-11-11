@@ -36,7 +36,7 @@ struct Program;
 
 /* === Implementations === */
 
-#[harmos::guest(harmos_path = ::harmos, id = "invalid_requirement", requires(harmos::builtins::storage::StorageStatus: invoke("ledger.deposit")))]
+#[harmos::guest(harmos_path = ::harmos, id = "invalid_requirement", requires(harmos::builtins::streams::Publish: invoke("ledger.deposit")))]
 impl harmos::guest::Plugin for Program {}
 
 /* === Public Functions === */

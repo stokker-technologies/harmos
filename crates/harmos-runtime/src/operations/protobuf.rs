@@ -77,8 +77,8 @@ impl Manager {
                 reason: "declaration differs from registered contract",
             });
         }
+        let mut preparation = self.claim_preparation(NonZeroUsize::new(request.encoded_len().max(1)).unwrap())?;
         let payload = request.encode_to_vec();
-        let mut preparation = self.claim_preparation(NonZeroUsize::new(payload.capacity().max(1)).unwrap())?;
         let memory =
             factory.grpc_decoding_memory(&payload).map_err(|source| Error::OperationPayload { operation: O::ID.into(), source })?;
         if let Some(memory) = NonZeroUsize::new(memory) {

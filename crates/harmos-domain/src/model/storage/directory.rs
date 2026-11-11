@@ -121,6 +121,53 @@ impl MemorySize for DirectoryEvent {
     }
 }
 
+impl TryFrom<harmos_protocol::storage::DirectorySelection> for DirectorySelection {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::DirectorySelection) -> crate::Result<Self> {
+        Ok(Self {
+            root: PathBuf::from(value.root),
+            recursive: value.recursive,
+            rules: value
+                .rules
+                .into_iter()
+                .map(|rule| DirectoryRule {
+                    pattern: rule.pattern,
+                    include: rule.include,
+                })
+                .collect(),
+        })
+    }
+}
+impl From<DirectoryEntry> for harmos_protocol::storage::DirectoryEntry {
+    fn from(value: DirectoryEntry) -> Self {
+        Self {
+            path: value.path,
+            directory: value.directory,
+            length: value.length,
+        }
+    }
+}
+impl From<DirectoryCompletion> for harmos_protocol::storage::DirectoryCompletion {
+    fn from(value: DirectoryCompletion) -> Self {
+        Self { entries: value.entries }
+    }
+}
+impl From<DirectoryEvent> for harmos_protocol::storage::DirectoryEvent {
+    fn from(value: DirectoryEvent) -> Self {
+        use harmos_protocol::storage::{DirectoryRename, Empty, directory_event::Event};
+        let event = match value {
+            DirectoryEvent::Existing(entry) => Event::Existing(entry.into()),
+            DirectoryEvent::InitialScanComplete => Event::InitialScanComplete(Empty {}),
+            DirectoryEvent::Created(entry) => Event::Created(entry.into()),
+            DirectoryEvent::Modified(entry) => Event::Modified(entry.into()),
+            DirectoryEvent::Removed { path } => Event::Removed(path),
+            DirectoryEvent::Renamed { from, to } => Event::Renamed(DirectoryRename { from, to }),
+            DirectoryEvent::RescanRequired => Event::RescanRequired(Empty {}),
+        };
+        Self { event: Some(event) }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

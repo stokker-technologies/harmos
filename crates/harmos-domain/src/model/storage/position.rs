@@ -91,6 +91,34 @@ impl RecoveryPosition {
     }
 }
 
+impl From<StoreHistory> for harmos_protocol::storage::StoreHistory {
+    fn from(value: StoreHistory) -> Self {
+        Self {
+            store: value.store.to_string(),
+            epoch: value.epoch.to_string(),
+        }
+    }
+}
+
+impl From<StorageCursor> for harmos_protocol::storage::StorageCursor {
+    fn from(value: StorageCursor) -> Self {
+        Self {
+            history: Some(value.history.into()),
+            sequence: value.sequence,
+        }
+    }
+}
+
+impl TryFrom<harmos_protocol::storage::StoreHistory> for StoreHistory {
+    type Error = Error;
+    fn try_from(value: harmos_protocol::storage::StoreHistory) -> Result<Self> {
+        Ok(Self {
+            store: Identifier::new(value.store)?,
+            epoch: Identifier::new(value.epoch)?,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

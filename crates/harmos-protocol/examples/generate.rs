@@ -46,7 +46,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output = tempfile::tempdir()?;
     codegen::generate(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
     let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    for (source, target) in [("harmos.v1.rs", "v1.rs"), ("harmos.host.v1.rs", "host.rs"), ("descriptors.bin", "descriptors.bin")] {
+    for (source, target) in [
+        ("harmos.v1.rs", "v1.rs"),
+        ("harmos.host.v1.rs", "host.rs"),
+        ("harmos.storage.v1.rs", "storage.rs"),
+        ("reflection.rs", "reflection.rs"),
+        ("descriptors.bin", "descriptors.bin"),
+    ] {
         std::fs::copy(output.path().join(source), destination.join(target))?;
     }
     Ok(())

@@ -33,6 +33,7 @@ pub use crate::execution::{Context, Dependent, Executable, ExecutionContext, Ope
 pub use host::Host;
 #[cfg(feature = "runtime")]
 pub use lifecycle::Lifecycle;
+#[cfg(feature = "runtime")]
 pub use storage::Storage;
 pub use streams::Streams;
 

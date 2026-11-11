@@ -7,113 +7,34 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::StorageInfo;
-use harmos_domain::model::storage::codec::product;
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, ProtobufOperation, Resource, ServingError};
+use harmos_domain::operations::{FailureKind, ReplaySafety};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(StorageStatus {});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-// Read The Storage Frontiers, Mutation Window And File Batch Size.
-#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
-    id = "storage.status",
-    response = StorageInfo,
-    policy = POLICY,
-    visibility = Private,
-    replay = ReplaySafety::Idempotent)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct StorageStatus {}
-
-/* === Enums === */
-
-/* === Traits === */
+/// Read the storage frontiers, mutation window and file batch size.
+pub struct StorageStatus;
 
 /* === Implementations === */
 
-impl MemorySize for StorageStatus {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-    }
-}
+impl ProtobufOperation for StorageStatus {
+    type Request = harmos_protocol::storage::StorageStatus;
+    type Response = harmos_protocol::storage::StorageInfo;
+    type Endpoints = ();
+    const ID: &'static str = "storage.status";
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>()];
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use crate::execution::operations::Operation;
-    use crate::{Error, Result};
-    use harmos_storage::StorageInfo;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::StorageStatus {
-        type Error = Error;
-
-        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<crate::execution::operations::Response<StorageInfo>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-
-            let result: ::core::result::Result<StorageInfo, Self::Error> = async move { storage.info().map_err(Into::into) }.await;
-            result.map(::core::convert::Into::into)
-        }
-
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+    async fn run(context: ExecutionContext, _request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        storage.info().map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(crate::Error::from(error))))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */

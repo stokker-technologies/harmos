@@ -37,7 +37,7 @@ use std::num::NonZeroUsize;
 // Local Imports
 use super::{Fixture, config, write};
 use harmos_operations::storage::Storage;
-use harmos_runtime::operations::Contracts;
+use harmos_runtime::operations::OperationCatalog;
 
 /* === Constants === */
 
@@ -82,7 +82,7 @@ fn records() -> harmos_runtime::storage::query::RecordSelection {
 
 #[test]
 fn catalog_serves_operations() {
-    let contracts = Contracts::of::<Storage>().unwrap();
+    let contracts: Vec<_> = Storage::batch().operations.iter().map(|factory| factory.contract().unwrap()).collect();
     let served: Vec<_> =
         contracts.iter().filter(|contract| contract.grpc().is_some()).map(|contract| contract.operation().id.to_string()).collect();
     for required in [

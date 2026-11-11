@@ -7,126 +7,48 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::IO_POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Nested, product};
-use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry, DirectorySelection};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
+use harmos_domain::operations::{FailureKind, ReplaySafety};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(ListDirectory { selection: Nested<DirectorySelection> => 1 });
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
-    id = "storage.list_directory",
-    response = DirectoryCompletion,
-    policy = IO_POLICY,
-    output = DirectoryEntry,
-    visibility = Public,
-    replay = ReplaySafety::Idempotent,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "ListDirectory"))]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ListDirectory {
-    pub selection: DirectorySelection,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct ListDirectory;
 
 /* === Implementations === */
 
-impl MemorySize for ListDirectory {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.selection.memory_size().saturating_sub(std::mem::size_of_val(&self.selection)))
-    }
-}
+impl ProtobufOperation for ListDirectory {
+    type Request = harmos_protocol::storage::ListDirectory;
+    type Response = harmos_protocol::storage::DirectoryCompletion;
+    type Endpoints = ProtobufOutput<harmos_protocol::storage::DirectoryEntry>;
+    const ID: &'static str = "storage.list_directory";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "ListDirectory"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>()];
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use crate::execution::operations::{Operation, Response};
-    use crate::{Error, Result};
-    use harmos_domain::model::storage::DirectoryCompletion;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::ListDirectory {
-        type Error = Error;
-
-        #[tracing::instrument(target = "harmos::storage", name = "storage.operation.list_directory", level = "trace", skip_all)]
-        async fn run(self, context: crate::execution::Context<'_, Self>) -> Result<Response<DirectoryCompletion>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let output = context.streams();
-
-            let mut reader = storage.list_directory(self.selection.clone()).await?;
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_domain::model::storage::DirectoryCompletion> = async {
+            let selection = request.selection.ok_or(crate::Error::InvalidInput { field: "selection", reason: "required" })?.try_into()?;
+            let mut reader = storage.list_directory(selection).await?;
             while let Some(item) = reader.next().await? {
-                let response = Response::from_owner(item.owner());
                 storage
                     .clock()
-                    .timeout(crate::storage::IO_TIMEOUT, output.send_owned(response))
+                    .timeout(super::IO_TIMEOUT, output.send((*item).clone().into()))
                     .await
-                    .map_err(|_| crate::storage::output_timeout())??;
+                    .map_err(|_| super::output_timeout())??;
             }
-            Ok(reader.completion()?.into())
+            Ok(reader.completion()?)
         }
-
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */
