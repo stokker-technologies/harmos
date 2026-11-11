@@ -45,7 +45,7 @@ impl Message for Sleep {
         "harmos.v1.Sleep".into()
     }
     fn types() -> FileDescriptorSet {
-        catalog_types()
+        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
@@ -54,7 +54,7 @@ impl Message for SleepResponse {
         "harmos.v1.SleepResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        catalog_types()
+        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
@@ -63,7 +63,7 @@ impl Message for Now {
         "harmos.v1.Now".into()
     }
     fn types() -> FileDescriptorSet {
-        catalog_types()
+        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
@@ -72,7 +72,7 @@ impl Message for Time {
         "harmos.v1.Time".into()
     }
     fn types() -> FileDescriptorSet {
-        catalog_types()
+        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
@@ -90,7 +90,7 @@ impl Message for prost_types::Duration {
         "google.protobuf.Duration".into()
     }
     fn types() -> FileDescriptorSet {
-        catalog_types()
+        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
@@ -99,7 +99,7 @@ impl Message for prost_types::Timestamp {
         "google.protobuf.Timestamp".into()
     }
     fn types() -> FileDescriptorSet {
-        catalog_types()
+        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 

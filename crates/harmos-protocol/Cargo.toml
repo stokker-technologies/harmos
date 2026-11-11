@@ -41,6 +41,7 @@ sha2 = { workspace = true }
 # Serialization
 prost = { workspace = true, features = ["derive", "std"] }
 prost-types = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["alloc", "derive"] }
 prost-reflect = { workspace = true }
 
 # Configuration

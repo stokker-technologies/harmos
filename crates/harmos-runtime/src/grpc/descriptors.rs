@@ -47,7 +47,7 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         return Ok(projected);
     }
     let service_file = projected.parent_file().name().to_owned();
-    let mut imports = BTreeMap::new();
+    let mut imports = prost_types::FileDescriptorSet::default();
     let mut removed = BTreeSet::new();
     let mut references = BTreeMap::new();
     for (method, contract) in methods {
@@ -72,11 +72,8 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
             let mut file = file.file_descriptor_proto().clone();
             // The Declaration Owns the Served Methods, Including Visibility.
             file.service.clear();
-            if let Some(previous) = imports.insert(file.name.clone(), file.clone())
-                && previous != file
-            {
-                return Err(DescriptorError::Name);
-            }
+            harmos_protocol::schema::merge_message_types(&mut imports, prost_types::FileDescriptorSet { file: vec![file] })
+                .map_err(|_| DescriptorError::Name)?;
         }
     }
     let mut files = BTreeMap::new();
@@ -87,7 +84,7 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         let mut descriptor = file.file_descriptor_proto().clone();
         if file.name() == service_file {
             descriptor.dependency.retain(|name| !removed.contains(name));
-            descriptor.dependency.extend(imports.values().filter_map(|file| file.name.clone()));
+            descriptor.dependency.extend(imports.file.iter().filter_map(|file| file.name.clone()));
             descriptor.dependency.sort();
             descriptor.dependency.dedup();
             for service in &mut descriptor.service {
@@ -109,7 +106,8 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         }
         files.insert(descriptor.name.clone(), descriptor);
     }
-    for (name, file) in imports {
+    for file in imports.file {
+        let name = file.name.clone();
         if let Some(previous) = files.insert(name, file.clone())
             && previous != file
         {

@@ -47,3 +47,192 @@ pub struct InstanceState {
     #[prost(uint32, tag = "4")]
     pub attempt: u32,
 }
+/// Select one bounded page. Cursors are opaque and must be returned unchanged.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Catalog {
+    #[prost(enumeration = "CatalogKind", tag = "1")]
+    pub kind: i32,
+    #[prost(string, optional, tag = "2")]
+    pub schema: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "3")]
+    pub after: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(uint64, optional, tag = "4")]
+    pub rows: ::core::option::Option<u64>,
+    #[prost(uint64, optional, tag = "5")]
+    pub bytes: ::core::option::Option<u64>,
+}
+/// Storage catalogs retain their documented JSON storage representation.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CatalogPage {
+    /// Stored catalog entries use their native storage JSON representation.
+    #[prost(bytes = "vec", tag = "1")]
+    pub entries: ::prost::alloc::vec::Vec<u8>,
+    #[prost(string, optional, tag = "2")]
+    pub next: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "3")]
+    pub operations: ::prost::alloc::vec::Vec<DiscoveredOperation>,
+}
+/// Descriptor bytes are a google.protobuf.FileDescriptorSet. Roots name messages
+/// in that set; input and output, when present, are stream item messages.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Protobuf {
+    #[prost(bytes = "vec", tag = "1")]
+    pub descriptors: ::prost::alloc::vec::Vec<u8>,
+    #[prost(string, tag = "2")]
+    pub request: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub response: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "4")]
+    pub input: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub output: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Grpc {
+    #[prost(string, tag = "1")]
+    pub package: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub service: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub method: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Grant {
+    #[prost(string, tag = "1")]
+    pub operation: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "2")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct OperationPolicy {
+    #[prost(message, optional, tag = "1")]
+    pub timeout: ::core::option::Option<::prost_types::Duration>,
+    #[prost(message, optional, tag = "2")]
+    pub attempt_timeout: ::core::option::Option<::prost_types::Duration>,
+    #[prost(message, optional, tag = "3")]
+    pub cancellation_timeout: ::core::option::Option<::prost_types::Duration>,
+    /// No retry message means never retry. Retries apply only to transient failures.
+    #[prost(message, optional, tag = "4")]
+    pub retries: ::core::option::Option<RetryPolicy>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RetryPolicy {
+    #[prost(uint64, tag = "1")]
+    pub max_retries: u64,
+    #[prost(message, optional, tag = "2")]
+    pub initial: ::core::option::Option<::prost_types::Duration>,
+    /// A present maximum selects exponential backoff; otherwise initial is fixed.
+    #[prost(message, optional, tag = "3")]
+    pub maximum: ::core::option::Option<::prost_types::Duration>,
+    #[prost(bool, tag = "4")]
+    pub deterministic_jitter: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct OperationContract {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(enumeration = "Visibility", tag = "3")]
+    pub visibility: i32,
+    #[prost(message, optional, tag = "4")]
+    pub policy: ::core::option::Option<OperationPolicy>,
+    /// True only for an explicitly idempotent declaration.
+    #[prost(bool, tag = "5")]
+    pub replay_safe: bool,
+    #[prost(bytes = "vec", tag = "6")]
+    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
+    /// Absent for native-only declarations with no public protobuf binding.
+    #[prost(message, optional, tag = "7")]
+    pub protobuf: ::core::option::Option<Protobuf>,
+    #[prost(message, optional, tag = "8")]
+    pub grpc: ::core::option::Option<Grpc>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DiscoveredOperation {
+    #[prost(string, tag = "1")]
+    pub owner: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub generation: u64,
+    #[prost(message, optional, tag = "3")]
+    pub contract: ::core::option::Option<OperationContract>,
+    #[prost(message, repeated, tag = "4")]
+    pub grants: ::prost::alloc::vec::Vec<Grant>,
+    #[prost(bool, tag = "5")]
+    pub conditional_access: bool,
+    #[prost(bool, tag = "6")]
+    pub grpc_available: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum CatalogKind {
+    Operations = 0,
+    Schemas = 1,
+    Streams = 2,
+    Objects = 3,
+}
+impl CatalogKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Operations => "CATALOG_KIND_OPERATIONS",
+            Self::Schemas => "CATALOG_KIND_SCHEMAS",
+            Self::Streams => "CATALOG_KIND_STREAMS",
+            Self::Objects => "CATALOG_KIND_OBJECTS",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CATALOG_KIND_OPERATIONS" => Some(Self::Operations),
+            "CATALOG_KIND_SCHEMAS" => Some(Self::Schemas),
+            "CATALOG_KIND_STREAMS" => Some(Self::Streams),
+            "CATALOG_KIND_OBJECTS" => Some(Self::Objects),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Visibility {
+    Unspecified = 0,
+    Private = 1,
+    Public = 2,
+}
+impl Visibility {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "VISIBILITY_UNSPECIFIED",
+            Self::Private => "VISIBILITY_PRIVATE",
+            Self::Public => "VISIBILITY_PUBLIC",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "VISIBILITY_UNSPECIFIED" => Some(Self::Unspecified),
+            "VISIBILITY_PRIVATE" => Some(Self::Private),
+            "VISIBILITY_PUBLIC" => Some(Self::Public),
+            _ => None,
+        }
+    }
+}

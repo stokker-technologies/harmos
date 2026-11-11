@@ -29,6 +29,7 @@ pub use harmos_macros::{catalog, operation};
 
 #[cfg(feature = "lifecycle")]
 pub use crate::execution::{Context, Dependent, Executable, ExecutionContext, Operation, Resource, ResourceError, Response};
+#[cfg(feature = "runtime")]
 pub use host::Host;
 #[cfg(feature = "runtime")]
 pub use lifecycle::Lifecycle;

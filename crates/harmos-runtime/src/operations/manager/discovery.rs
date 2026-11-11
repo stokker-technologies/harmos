@@ -14,19 +14,20 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::io::{self, Write};
+
 use std::ops::Bound;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 // Third Party Imports
-use serde::Serialize;
+use harmos_protocol::host;
+use prost::Message;
 // Local Imports
 use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::{Error, Identifier, Result};
 use harmos_domain::plugin::Grant;
-use harmos_operations::host::{Catalog, CatalogPage};
+use harmos_protocol::host::{Catalog, CatalogPage};
 
 /* === Constants === */
 
@@ -40,45 +41,16 @@ type ProviderEntry = (String, String, Arc<Entry>);
 
 /* === Structs === */
 
-#[derive(Serialize)]
-struct Metadata<'a> {
-    owner: &'a Identifier,
-    generation: u64,
-    contract: &'a Contract,
-    grants: &'a [Grant],
-    conditional_access: bool,
-    grpc_available: bool,
-}
-
-struct Bounded {
-    bytes: Vec<u8>,
-    limit: usize,
-}
-
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Write for Bounded {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            return Err(io::Error::other("discovery byte limit"));
-        }
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
 impl Manager {
     pub(in crate::operations) fn discover(&self, source: &Source, request: &Catalog) -> Result<CatalogPage> {
         let origin = source.check()?;
-        let (rows, bytes) = request.limits().map_err(|_| Error::InvalidInput {
+        let (rows, bytes) = harmos_operations::host::limits(request).map_err(|_| Error::InvalidInput {
             field: "catalog limits",
             reason: "rows must be 1..=256 and bytes must be 2..=4194304",
         })?;
@@ -106,10 +78,9 @@ impl Manager {
             })
             .transpose()?;
 
-        let mut output = Bounded { bytes: vec![b'['], limit: bytes - 1 };
+        let mut output = CatalogPage::default();
         let mut count = 0;
         let mut last = None;
-        let mut next = None;
         let mut position = after;
         while let Some((id, owner, entry)) = self.next_discovery(position.as_ref())? {
             position = Some((id.clone(), owner.clone()));
@@ -176,31 +147,36 @@ impl Manager {
             } else {
                 grants
             };
-            let metadata = Metadata {
-                owner: &entry.owner,
+            let metadata = host::DiscoveredOperation {
+                owner: entry.owner.to_string(),
                 generation: entry.generation.value(),
-                contract,
-                grants,
+                contract: Some(describe(contract)?),
+                grants: grants
+                    .iter()
+                    .map(|grant| host::Grant {
+                        operation: grant.operation.to_string(),
+                        scope: grant.scope.as_ref().map(ToString::to_string),
+                    })
+                    .collect(),
                 conditional_access: true,
                 grpc_available,
             };
-            let start = output.bytes.len();
-            if count > 0 {
-                output.bytes.push(b',');
-            }
-            if count == rows || serde_json::to_writer(&mut output, &metadata).is_err() {
-                output.bytes.truncate(start);
+            let cursor = serde_json::to_string(&(id, owner)).expect("identifier cursor serializes");
+            output.operations.push(metadata);
+            output.next = Some(cursor.clone());
+            if count == rows || output.encoded_len() > bytes {
+                output.operations.pop();
+                output.next = last.take();
                 if count == 0 {
                     return Err(Error::ResourceExhausted { resource: "discovery schema bytes" });
                 }
-                next = last.take();
-                break;
+                return Ok(output);
             }
-            last = Some(serde_json::to_string(&(id, owner)).expect("identifier cursor serializes"));
+            last = Some(cursor);
             count += 1;
         }
-        output.bytes.push(b']');
-        Ok(CatalogPage { entries: output.bytes, next })
+        output.next = None;
+        Ok(output)
     }
 
     fn next_discovery(&self, after: Option<&(String, String)>) -> Result<Option<ProviderEntry>> {
@@ -222,5 +198,110 @@ impl Manager {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn describe(contract: &Contract) -> Result<host::OperationContract> {
+    use crate::operations::{Backoff, Jitter, ReplaySafety, RetryPolicy, Visibility};
+    let definition = contract.operation();
+    let policy = definition.policy;
+    let retries = match policy.retries {
+        RetryPolicy::Never => None,
+        RetryPolicy::OnTransient { max_retries, backoff } => {
+            let (initial, maximum, jitter) = match backoff {
+                Backoff::Fixed { delay, jitter } => (delay, None, jitter),
+                Backoff::Exponential { initial, maximum, jitter } => (initial, Some(maximum), jitter),
+            };
+            Some(host::RetryPolicy {
+                max_retries: max_retries as u64,
+                initial: Some(duration(initial)?),
+                maximum: maximum.map(duration).transpose()?,
+                deterministic_jitter: jitter == Jitter::Deterministic,
+            })
+        }
+    };
+    Ok(host::OperationContract {
+        id: definition.id.to_string(),
+        description: definition.description.clone(),
+        visibility: match definition.visibility {
+            Visibility::Private => host::Visibility::Private,
+            Visibility::Public => host::Visibility::Public,
+        } as i32,
+        policy: Some(host::OperationPolicy {
+            timeout: Some(duration(policy.timeout)?),
+            attempt_timeout: Some(duration(policy.attempt_timeout)?),
+            cancellation_timeout: Some(duration(policy.cancellation_timeout)?),
+            retries,
+        }),
+        replay_safe: definition.replay == ReplaySafety::Idempotent,
+        fingerprint: definition.fingerprint.0.to_vec(),
+        protobuf: descriptors(contract)?,
+        grpc: contract.grpc().map(|binding| host::Grpc {
+            package: binding.package.to_string(),
+            service: binding.service.to_string(),
+            method: binding.method.to_string(),
+        }),
+    })
+}
+fn duration(value: std::time::Duration) -> Result<prost_types::Duration> {
+    let seconds = i64::try_from(value.as_secs()).map_err(|_| Error::InvalidInput {
+        field: "operation policy",
+        reason: "duration exceeds protocol range",
+    })?;
+    Ok(prost_types::Duration {
+        seconds,
+        nanos: value.subsec_nanos() as i32,
+    })
+}
+fn descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
+    if let Some(protobuf) = contract.protobuf() {
+        return Ok(Some(protobuf.clone()));
+    }
+    projected_descriptors(contract)
+}
+#[cfg(feature = "grpc")]
+fn projected_descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
+    let Some(binding) = contract.grpc() else { return Ok(None) };
+    let service = crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)]).map_err(|source| {
+        Error::OperationFailed {
+            operation: contract.operation().id.to_string(),
+            source: Arc::new(source),
+        }
+    })?;
+    let method = service.methods().find(|method| method.name() == binding.method).expect("declared method");
+    let request = payload(method.input(), "request", contract.input().is_some());
+    let response = payload(method.output(), "response", contract.output().is_some());
+    let input = contract.input().map(|_| payload(method.input(), "item", true));
+    let output = contract.output().map(|_| payload(method.output(), "item", true));
+    let types = prost_types::FileDescriptorSet {
+        file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+    };
+    let roots: Vec<_> =
+        [Some(&request), Some(&response), input.as_ref(), output.as_ref()].into_iter().flatten().map(String::as_str).collect();
+    let types = harmos_protocol::schema::operation_types(&types, &roots).map_err(|source| Error::OperationFailed {
+        operation: contract.operation().id.to_string(),
+        source: Arc::new(source),
+    })?;
+    Ok(Some(host::Protobuf {
+        descriptors: types.encode_to_vec(),
+        request,
+        response,
+        input,
+        output,
+    }))
+}
+#[cfg(not(feature = "grpc"))]
+fn projected_descriptors(_: &Contract) -> Result<Option<host::Protobuf>> {
+    Ok(None)
+}
+#[cfg(feature = "grpc")]
+fn payload(message: prost_reflect::MessageDescriptor, field: &str, streamed: bool) -> String {
+    if !streamed {
+        return message.full_name().to_owned();
+    }
+    let field = message.get_field_by_name(field).expect("stream envelope payload");
+    match field.kind() {
+        prost_reflect::Kind::Message(message) => message.full_name().to_owned(),
+        _ => unreachable!("message payload"),
+    }
+}
 
 /* === Tests === */

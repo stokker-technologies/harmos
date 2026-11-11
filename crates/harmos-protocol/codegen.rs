@@ -43,6 +43,7 @@ pub fn generate(
     let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
+    config.type_attribute(".harmos.host.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
     config.file_descriptor_set_path(output.join("descriptors.bin"));
     tonic_prost_build::configure()
         .client_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")

@@ -301,19 +301,20 @@ foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Hosts place `builtins::host::Host` on a chosen lane to serve
-`builtins::host::Catalog` (unary gRPC path
-`/harmos.host.v1.Host/Catalog` when `grpc` is enabled). `builtins::host::CatalogRequest` selects a
-`kind` (`Operations`, `Schemas`, `Streams` or `Objects`) and accepts optional
-`schema`, `after`, `rows` and `bytes`; defaults are 64 rows and 64 KiB, with
-maxima of 256 rows and 4 MiB. `CatalogPage::entries` is a UTF-8 JSON array of the
-kind's entries: operation metadata (original contracts, provider
-owners and generations, selected grants and current gRPC availability), stored
-schemas or stored identities. The `next` cursor continues a bounded page. Stored
-kinds need the storage manager and a `host.catalog` grant scoped `schemas:*`,
-`streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`); listing
-operations needs no grant. The operation listing applies original readiness and caller
-visibility/dependency rules; `conditional_access` means invocation still checks
+Register `harmos_operations::Host` on a chosen lane to serve the `Catalog`
+declaration at `/harmos.host.v1.Host/Catalog`. Its generated request is
+`harmos_protocol::host::Catalog`, with `kind` (`Operations`, `Schemas`, `Streams`
+or `Objects`) and optional `schema`, `after`, `rows` and `bytes`. Defaults are
+64 rows and 64 KiB; maxima are 256 rows and 4 MiB. `CatalogPage::operations`
+contains generated operation metadata, including descriptors, provider identity,
+generation, policy, selected grants and current gRPC availability.
+`CatalogPage::entries` retains the UTF-8 JSON array for stored schemas and
+identities. The opaque `next` cursor continues a bounded page.
+
+Stored kinds need the storage manager and a `host.catalog` grant scoped
+`schemas:*`, `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`).
+Listing operations needs no grant. Discovery applies readiness, caller visibility
+and dependency rules; `conditional_access` means invocation still checks
 request-specific grants and middleware. Re-discover after provider reload or
 runtime restart; pages do not promise a frozen registry snapshot.
 

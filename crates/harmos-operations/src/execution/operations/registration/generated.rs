@@ -27,6 +27,7 @@ use crate::execution::operations::{
     EndpointSet, Grpc, OperationPolicy, ReplaySafety, StreamInput, StreamItem, StreamOutput, Visibility, WireEndpoints, WireStreams,
 };
 use crate::execution::{MemorySize, MessageError};
+use harmos_domain::operations::ProtobufExt;
 
 /* === Constants === */
 
@@ -73,6 +74,14 @@ pub trait ProtobufOperation: Send + Sync + 'static {
     const DESCRIPTION: &'static str = "";
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[];
+
+    fn grant(_request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, MessageError> {
+        Ok(None)
+    }
+
+    fn classify(_error: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
+        super::super::FailureKind::Permanent
+    }
 
     fn run(
         context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints,
@@ -287,6 +296,7 @@ impl OperationFactory {
                 };
                 memory::<O::Request>(payload).map_err(ServingError::Codec)?;
                 let request = O::Request::decode(payload).map_err(|error| ServingError::Codec(MessageError::new(error.to_string())))?;
+                let grant = O::grant(&request).map_err(ServingError::Codec)?;
                 Ok(PreparedNative {
                     instance: Box::new(Instance::<O> {
                         request,
@@ -296,7 +306,7 @@ impl OperationFactory {
                         epoch: 0,
                         marker: PhantomData,
                     }),
-                    grant: None,
+                    grant,
                     streams,
                 })
             },
@@ -307,8 +317,8 @@ impl OperationFactory {
 }
 
 impl<O: ProtobufOperation> NativeInstance for Instance<O> {
-    fn classify(&self, _: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
-        super::super::FailureKind::Permanent
+    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
+        O::classify(error)
     }
     fn initialize(&mut self, _: ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
@@ -368,8 +378,16 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
             }
         }
     }
+    let roots: Vec<_> = [Some(&request), Some(&response), input.as_ref(), output.as_ref()]
+        .into_iter()
+        .flatten()
+        .map(|message| message.full_name())
+        .collect();
+    let descriptors =
+        harmos_protocol::schema::operation_types(&prost_types::FileDescriptorSet { file: files.into_values().collect() }, &roots)
+            .map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
     let protobuf = harmos_domain::operations::Protobuf {
-        descriptors: prost_types::FileDescriptorSet { file: files.into_values().collect() }.encode_to_vec(),
+        descriptors: descriptors.encode_to_vec(),
         request: request.full_name().into(),
         response: response.full_name().into(),
         input: input.map(|message| message.full_name().into()),

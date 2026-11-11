@@ -31,7 +31,7 @@ pub use harmos_domain::{
 };
 pub mod builtins {
     pub use crate::lifecycle;
-    pub use harmos_operations::{Host, Storage, Streams, host, storage, streams};
+    pub use harmos_operations::{Storage, Streams, storage, streams};
 }
 pub mod operations {
     /* === Modules === */

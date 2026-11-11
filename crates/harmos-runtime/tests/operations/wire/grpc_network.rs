@@ -167,7 +167,6 @@ async fn builtin_grpc_roundtrip() {
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_domain::plugin::Grant;
     use harmos_storage::{ErasedCatalog, StorageManager};
 
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
@@ -199,10 +198,16 @@ async fn external_authority_parity() {
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_catalog(channel.clone(), None).await.unwrap_err().code(), tonic::Code::Unauthenticated);
     let alice = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    let guarded = alice.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
-    assert_eq!(guarded.grants, [Grant::of("grpc.guarded", "reading")]);
+    let guarded = alice.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
+    assert_eq!(
+        guarded.grants,
+        [harmos_protocol::host::Grant {
+            operation: "grpc.guarded".into(),
+            scope: Some("reading".into())
+        }]
+    );
     let bob = external_catalog(channel.clone(), Some("Bearer bob")).await.unwrap();
-    assert!(bob.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    assert!(bob.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert_eq!(
         external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
@@ -228,11 +233,13 @@ async fn external_authority_parity() {
     assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
     mode.store(1, std::sync::atomic::Ordering::Release);
     assert!(
-        external_catalog(channel.clone(), Some("Bearer alice"))
-            .await
+        external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap().iter().all(|entry| entry
+            .contract
+            .as_ref()
             .unwrap()
-            .iter()
-            .all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded")
+            .id
+            .as_str()
+            != "grpc.guarded")
     );
     assert_eq!(
         external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
@@ -245,12 +252,12 @@ async fn external_authority_parity() {
     );
     mode.store(3, std::sync::atomic::Ordering::Release);
     let incompatible = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    assert!(incompatible.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    assert!(incompatible.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
     let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err();
     assert_eq!(denied.code(), tonic::Code::PermissionDenied, "full control must validate the live contract");
     mode.store(4, std::sync::atomic::Ordering::Release);
     let full = external_catalog(channel.clone(), Some("Bearer limited")).await.unwrap();
-    let guarded = full.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
+    let guarded = full.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
     assert!(guarded.grants.is_empty(), "full control does not invent finite scopes");
     assert!(guarded.conditional_access);
     assert_eq!(external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap(), "external:limited");

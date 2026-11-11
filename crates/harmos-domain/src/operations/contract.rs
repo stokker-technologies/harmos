@@ -19,6 +19,7 @@ use std::sync::OnceLock;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
+use super::ProtobufExt;
 use super::{Direction, Entry, OperationDeclaration, OperationDefinition};
 use crate::catalog::{Catalog, Member, Projection, Visitor};
 use crate::config::SchemaSettings;

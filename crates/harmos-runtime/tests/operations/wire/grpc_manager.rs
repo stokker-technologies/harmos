@@ -602,34 +602,33 @@ where
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_operations::host::{Catalog, CatalogKind, CatalogPage};
-    let mut client = tonic::client::Grpc::new(channel);
+    use harmos_protocol::host::{Catalog, CatalogKind, CatalogPage};
+    let (decode, encode) = limits();
+    let mut client = tonic::client::Grpc::new(channel)
+        .max_decoding_message_size(decode.message_bytes.get())
+        .max_encoding_message_size(encode.message_bytes.get());
     let mut entries = Vec::new();
     let mut after = None;
     // Bounded Pages Fit The Client's Decode Ceiling; The Catalog Ends With An Empty Cursor.
     loop {
         client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
         let page = Catalog {
-            kind: CatalogKind::Operations,
+            kind: CatalogKind::Operations as i32,
             schema: None,
             after: after.take(),
             rows: None,
             bytes: Some(2048),
         };
-        let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(page));
+        let mut request = tonic::Request::new(page);
         if let Some(token) = token {
             request.metadata_mut().insert("authorization", token.parse().unwrap());
         }
-        let (decode, encode) = limits();
-        let response: tonic::Response<harmos_runtime::operations::StreamItem<CatalogPage>> = client
-            .unary(
-                request,
-                http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"),
-                Codec::<harmos_runtime::grpc::Transcoded, CatalogPage, harmos_runtime::operations::Response<Catalog>>::new(decode, encode)?,
-            )
+        let response: tonic::Response<CatalogPage> = client
+            .unary(request, http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"), tonic_prost::ProstCodec::default())
             .await?;
         let page = response.into_inner();
-        entries.extend(serde_json::from_slice::<Vec<harmos_operations::host::DiscoveredOperation>>(&page.entries).unwrap());
+        assert!(prost::Message::encoded_len(&page) <= 2048);
+        entries.extend(page.operations);
         match page.next.clone() {
             Some(next) => after = Some(next),
             None => return Ok(entries),

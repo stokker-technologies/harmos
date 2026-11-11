@@ -9,12 +9,19 @@
 
 /* === Modules === */
 
+#[cfg(feature = "runtime")]
 mod catalog;
+#[cfg(feature = "runtime")]
+mod registration;
 
 /* === Re-Exports === */
 
-pub use catalog::{Catalog, CatalogKind, CatalogPage};
-pub use harmos_domain::model::operations::discovery::DiscoveredOperation;
+#[cfg(feature = "runtime")]
+pub use catalog::{Catalog, limits};
+pub use harmos_protocol::host::DiscoveredOperation;
+pub use harmos_protocol::host::{CatalogKind, CatalogPage};
+#[cfg(feature = "runtime")]
+pub use registration::Host;
 
 /* === Imports === */
 
@@ -40,11 +47,6 @@ pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolic
 /* === Structs === */
 
 /* === Enums === */
-
-#[harmos::catalog(harmos_path = crate)]
-pub enum Host {
-    Catalog(Catalog),
-}
 
 /* === Traits === */
 

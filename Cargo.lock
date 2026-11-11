@@ -1277,6 +1277,7 @@ dependencies = [
  "prost-reflect",
  "prost-types",
  "protoc-bin-vendored",
+ "serde",
  "sha2 0.11.1",
  "tempfile",
  "thiserror",
