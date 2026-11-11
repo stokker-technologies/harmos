@@ -46,6 +46,16 @@ pub(super) struct Publications {
     scope: PluginScope,
 }
 
+struct Demand {
+    output: mpsc::Sender<v1::PublishFrame>,
+    input: tonic::Streaming<v1::Samples>,
+    row: Row,
+    interval: Option<Duration>,
+    lease: Arc<PublicationLease>,
+    close: watch::Receiver<bool>,
+    closed: watch::Receiver<bool>,
+}
+
 /* === Enums === */
 
 /* === Traits === */
@@ -106,7 +116,16 @@ impl Publications {
             let connection = activation.connection.clone();
             let clock = clock.clone();
             publications.jobs.spawn(async move {
-                let result = run(&clock, activity, output, input, row, interval, lease, close, connection.closed.subscribe()).await;
+                let demand = Demand {
+                    output,
+                    input,
+                    row,
+                    interval,
+                    lease,
+                    close,
+                    closed: connection.closed.subscribe(),
+                };
+                let result = run(&clock, activity, demand).await;
                 if let Err(error) = result {
                     tracing::warn!(%error, "plugin publication failed; closing its connection");
                     connection.closed.send_replace(true);
@@ -182,10 +201,16 @@ fn interval(
         .transpose()
 }
 
-async fn run(
-    clock: &Clock, mut activity: crate::clock::Activity, output: mpsc::Sender<v1::PublishFrame>, mut input: tonic::Streaming<v1::Samples>,
-    row: Row, interval: Option<Duration>, lease: Arc<PublicationLease>, mut close: watch::Receiver<bool>, closed: watch::Receiver<bool>,
-) -> Result<(), Error> {
+async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
+    let Demand {
+        output,
+        mut input,
+        row,
+        interval,
+        lease,
+        mut close,
+        closed,
+    } = demand;
     {
         let work = async {
             let mut sequence = 0;

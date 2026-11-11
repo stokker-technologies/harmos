@@ -47,9 +47,14 @@ class SchematicHostSchemaTests(unittest.TestCase):
             metadata = root / "metadata.json"
             metadata.write_text(json.dumps({"packages": [{"id": "host", "name": "schematic-cli"}]}), encoding="utf-8")
             events = root / "messages.json"
-            events.write_text(json.dumps({"reason": "build-script-executed", "package_id": "host", "out_dir": str(schema.parent.parent)}), encoding="utf-8")
+            events.write_text(
+                json.dumps({"reason": "build-script-executed", "package_id": "host", "out_dir": str(schema.parent.parent)}),
+                encoding="utf-8",
+            )
             capture = {
-                "target": "native", "messages": {"path": str(events)}, "metadata": {"path": str(metadata)},
+                "target": "native",
+                "messages": {"path": str(events)},
+                "metadata": {"path": str(metadata)},
                 "receipt": str(root / "capture.json"),
                 "generated": {str(path): fixtures.digest(path) for path in (descriptor, manifest)},
             }

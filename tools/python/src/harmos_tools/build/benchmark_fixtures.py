@@ -53,12 +53,8 @@ def build(extra: list[str]) -> Path:
 
     with temporary.directory() as scratch:
         tool = fixtures.driver("bench", scratch)
-        for package, backend, target in (
-            ("schematic-guest", "guest", ["--features", "benchmark", "--target", "wasm32-unknown-unknown"]),
-        ):
-            capture = fixtures.capture(
-                package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, *target], scratch
-            )
+        for package, backend, target in (("schematic-guest", "guest", ["--features", "benchmark", "--target", "wasm32-unknown-unknown"]),):
+            capture = fixtures.capture(package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, *target], scratch)
             built, receipt = fixtures.collect(tool, fixtures.SCHEMATIC, package, backend, "bench", capture, scratch)
             artifact, _ = fixtures.stage_build(built, receipt, package, files, directory)
             artifacts[package] = artifact

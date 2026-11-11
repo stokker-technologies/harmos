@@ -47,8 +47,28 @@ pub fn message(input: TokenStream) -> TokenStream {
 
 /* === Private Functions === */
 
+fn sdk_path() -> Option<proc_macro2::TokenStream> {
+    use proc_macro_crate::{FoundCrate, crate_name};
+    match crate_name("harmos-sdk-grpc") {
+        Ok(FoundCrate::Itself) => return Some(quote!(::harmos_sdk_grpc)),
+        Ok(FoundCrate::Name(name)) => {
+            let name = quote::format_ident!("{}", name.replace('-', "_"));
+            return Some(quote!(::#name));
+        }
+        Err(_) => {}
+    }
+    match crate_name("harmos").ok()? {
+        FoundCrate::Itself => Some(quote!(crate::sdk)),
+        FoundCrate::Name(name) => {
+            let name = quote::format_ident!("{}", name.replace('-', "_"));
+            Some(quote!(::#name::sdk))
+        }
+    }
+}
+
 fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let name = &input.ident;
+    let sdk = sdk_path().ok_or_else(|| syn::Error::new_spanned(&input, "Message Requires the Rust SDK or the Harmos Facade"))?;
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(&input, "Message Cannot Have Generic Parameters"));
     }
@@ -135,11 +155,11 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         };
         let (module, kind) = scalar.unwrap_or(("message", 11));
         let module = syn::Ident::new(module, ident.span());
-        let encoding = quote!(::harmos_sdk_grpc::encoding::#module);
+        let encoding = quote!(#sdk::encoding::#module);
         let type_name = if scalar.is_none() {
             dependencies.push(quote! {
-                <#ty as ::harmos_sdk_grpc::Message>::register(types);
-                let type_name = <#ty as ::harmos_sdk_grpc::Message>::name();
+                <#ty as #sdk::Message>::register(types);
+                let type_name = <#ty as #sdk::Message>::name();
                 let dependency = types.file.iter().find(|file| {
                     file.message_type.iter().any(|message| format!("{}.{}", file.package.as_deref().unwrap_or(""), message.name.as_deref().unwrap_or("")) == type_name)
                 }).and_then(|file| file.name.clone());
@@ -148,7 +168,7 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                     if !current.dependency.contains(&dependency) { current.dependency.push(dependency); }
                 }
             });
-            quote!(Some(format!(".{}", <#ty as ::harmos_sdk_grpc::Message>::name())))
+            quote!(Some(format!(".{}", <#ty as #sdk::Message>::name())))
         } else {
             quote!(None)
         };
@@ -186,14 +206,14 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         let (proto3_optional, oneof_index) = if optional && scalar.is_some() {
             let index = oneofs.len() as i32;
             let oneof_name = format!("_{field_name}");
-            oneofs.push(quote!(::harmos_sdk_grpc::encoding::OneofDescriptorProto { name: Some(#oneof_name.into()), ..Default::default() }));
+            oneofs.push(quote!(#sdk::encoding::OneofDescriptorProto { name: Some(#oneof_name.into()), ..Default::default() }));
             (quote!(Some(true)), quote!(Some(#index)))
         } else {
             (quote!(None), quote!(None))
         };
         descriptors.push((
             tag,
-            quote!(::harmos_sdk_grpc::encoding::FieldDescriptorProto {
+            quote!(#sdk::encoding::FieldDescriptorProto {
                 name: Some(#field_name.into()), number: Some(#tag as i32), label: Some(#label), r#type: Some(#kind),
                 type_name: #type_name, proto3_optional: #proto3_optional, oneof_index: #oneof_index, ..Default::default()
             }),
@@ -209,32 +229,32 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let descriptors = descriptors.iter().map(|(_, code)| code);
     Ok(quote! {
         impl Default for #name { fn default() -> Self { Self { #(#defaults,)* } } }
-        impl ::harmos_sdk_grpc::encoding::Message for #name {
-            fn encode_raw(&self, buf: &mut impl ::harmos_sdk_grpc::encoding::BufMut) { #(#encodes)* }
-            fn merge_field(&mut self, tag: u32, wire_type: ::harmos_sdk_grpc::encoding::WireType, buf: &mut impl ::harmos_sdk_grpc::encoding::Buf,
-                ctx: ::harmos_sdk_grpc::encoding::DecodeContext) -> ::core::result::Result<(), ::harmos_sdk_grpc::encoding::DecodeError> {
-                match tag { #(#merges)* _ => ::harmos_sdk_grpc::encoding::skip_field(wire_type, tag, buf, ctx) }
+        impl #sdk::encoding::Message for #name {
+            fn encode_raw(&self, buf: &mut impl #sdk::encoding::BufMut) { #(#encodes)* }
+            fn merge_field(&mut self, tag: u32, wire_type: #sdk::encoding::WireType, buf: &mut impl #sdk::encoding::Buf,
+                ctx: #sdk::encoding::DecodeContext) -> ::core::result::Result<(), #sdk::encoding::DecodeError> {
+                match tag { #(#merges)* _ => #sdk::encoding::skip_field(wire_type, tag, buf, ctx) }
             }
             fn encoded_len(&self) -> usize { 0 #(+ #lengths)* }
             fn clear(&mut self) { *self = Default::default(); }
         }
-        impl ::harmos_sdk_grpc::Message for #name {
+        impl #sdk::Message for #name {
             fn name() -> String { #full_name.into() }
-            fn types() -> ::harmos_sdk_grpc::encoding::FileDescriptorSet {
-                let mut types = ::harmos_sdk_grpc::encoding::FileDescriptorSet::default();
+            fn types() -> #sdk::encoding::FileDescriptorSet {
+                let mut types = #sdk::encoding::FileDescriptorSet::default();
                 Self::register(&mut types);
                 types
             }
-            fn register(types: &mut ::harmos_sdk_grpc::encoding::FileDescriptorSet) {
+            fn register(types: &mut #sdk::encoding::FileDescriptorSet) {
                 let registered = types.file.iter().any(|file| file.package.as_deref() == Some(#package)
                     && file.message_type.iter().any(|message| message.name.as_deref() == Some(#message_name)));
-                let own = ::harmos_sdk_grpc::encoding::FileDescriptorSet { file: vec![::harmos_sdk_grpc::encoding::FileDescriptorProto {
+                let own = #sdk::encoding::FileDescriptorSet { file: vec![#sdk::encoding::FileDescriptorProto {
                     name: Some(#file.into()), package: Some(#package.into()), syntax: Some("proto3".into()),
-                    message_type: vec![::harmos_sdk_grpc::encoding::DescriptorProto {
+                    message_type: vec![#sdk::encoding::DescriptorProto {
                         name: Some(#message_name.into()), field: vec![#(#descriptors,)*], oneof_decl: vec![#(#oneofs,)*], ..Default::default()
                     }], ..Default::default()
                 }] };
-                ::harmos_sdk_grpc::encoding::merge_descriptor_types(types, own);
+                #sdk::encoding::merge_descriptor_types(types, own);
                 if registered { return; }
                 #(#dependencies)*
             }

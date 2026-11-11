@@ -182,7 +182,9 @@ def collect(tool: Path, manifest: Path, package: str, backend: str, profile: str
                 files = {name: digest(directory / name) for name in names}
                 for name, expected in files.items():
                     verify(expected, capture["generated"].get(str(directory / name)), "host schema differs from captured bytes")
-                build["schemas"].append({"producer": "schematic-cli", "catalog": directory.name, "directory": str(directory), "files": files})
+                build["schemas"].append(
+                    {"producer": "schematic-cli", "catalog": directory.name, "directory": str(directory), "files": files}
+                )
     result.write_text(json.dumps(build), encoding="utf-8")
     return build, result
 
@@ -383,6 +385,8 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
     shipping = _widest(found["harmos"])
     profile = found["harmos"][shipping][1] if shipping is not None else None
     selected = {name: _widest(builds, profile) for name, builds in found.items()}
+    if selected["serde"] is None and shipping is not None:
+        selected["serde"] = _compatible_serde(found["serde"], fixtures / shipping, destination)
     ambiguous = {name: sorted(found[name]) for name, path in selected.items() if path is None}
     if ambiguous:
         raise RuntimeError(f"compiler libraries are missing or ambiguous: {ambiguous}")
@@ -418,6 +422,48 @@ def _widest(builds: dict[str, tuple[set[str], dict]], profile: dict | None = Non
     if len(widest) > 1 and profile is not None:
         widest = [path for path in widest if builds[path][1] == profile]
     return widest[0] if len(widest) == 1 else None
+
+
+def _compatible_serde(builds: dict[str, tuple[set[str], dict]], harmos: Path, libraries: Path) -> str | None:
+    """Resolve Equal-Feature Host/Target Builds Against The Shipping Trait Identity."""
+    required = set().union(*(features for features, _ in builds.values()))
+    compatible = []
+    with temporary.directory() as scratch:
+        source = scratch / "serde_selection.rs"
+        source.write_text(
+            "#[derive(serde::Serialize)] pub struct Selection;\n"
+            "pub fn check() {\n"
+            "    fn accepts<T: harmos::__private::serde::Serialize>() {}\n"
+            "    accepts::<Selection>();\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        for path, (features, _) in builds.items():
+            if not required <= features:
+                continue
+            result = subprocess.run(
+                [
+                    "rustc",
+                    "--edition=2024",
+                    "--crate-type=lib",
+                    "--emit=metadata",
+                    str(source),
+                    "-o",
+                    str(scratch / "selection.rmeta"),
+                    "-L",
+                    f"dependency={libraries}",
+                    "--extern",
+                    f"harmos={harmos}",
+                    "--extern",
+                    f"serde={libraries.parent / path}",
+                ],
+                capture_output=True,
+                text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if result.returncode == 0:
+                compatible.append(path)
+    return compatible[0] if len(compatible) == 1 else None
 
 
 # === Entry Point === #

@@ -345,10 +345,10 @@ pub async fn offline(status: &mut watch::Receiver<harmos_runtime::plugin::grpc::
 
 pub async fn activation(status: &mut watch::Receiver<harmos_runtime::plugin::grpc::Status>, number: u64) -> Activation {
     loop {
-        if let Some(activation) = status.borrow_and_update().activation.clone() {
-            if activation.number >= number {
-                return activation;
-            }
+        if let Some(activation) = status.borrow_and_update().activation.clone()
+            && activation.number >= number
+        {
+            return activation;
         }
         status.changed().await.unwrap();
     }

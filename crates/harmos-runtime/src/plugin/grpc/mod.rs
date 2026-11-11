@@ -75,6 +75,20 @@ pub struct Attached {
     stopped: watch::Receiver<Option<Outcome>>,
 }
 
+struct Session<A: Application> {
+    operations: crate::operations::Manager,
+    streams: crate::streams::StreamManager<A>,
+    lane: &'static str,
+    clock: Clock,
+    settings: PlacementSettings,
+    process: Option<Process>,
+    address: String,
+    activation: Activation,
+    publications: publish::Publications,
+    stop: watch::Receiver<Option<String>>,
+    participant: crate::runtime::StopParticipant,
+}
+
 /* === Enums === */
 
 #[derive(Clone, Debug)]
@@ -166,9 +180,8 @@ impl Attached {
                 Placement::Remote(address) => (None, address.clone()),
             };
             let mut activation = connect(&clock, &address, 1, None, process.as_ref().map(|process| process.digest)).await?;
-            let admission = operations.admit_grpc(&activation, lane).map_err(|error| {
+            let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
-                error
             })?;
             activation.admission = Some(Arc::new(admission));
             let publications = publish::Publications::open(&streams, &activation, &clock, &settings).await?;
@@ -183,7 +196,7 @@ impl Attached {
         let (stop, stopping) = watch::channel(None);
         let (stopped, completed) = watch::channel(None);
         tokio::spawn(async move {
-            let result = supervise(
+            let session = Session {
                 operations,
                 streams,
                 lane,
@@ -193,11 +206,10 @@ impl Attached {
                 address,
                 activation,
                 publications,
-                &status,
-                stopping,
+                stop: stopping,
                 participant,
-            )
-            .await;
+            };
+            let result = supervise(session, &status).await;
             status.send_modify(|status| {
                 status.activation = None;
                 if let Err(error) = &result {
@@ -308,12 +320,20 @@ async fn stopping(stop: &mut watch::Receiver<Option<String>>, participant: &mut 
     }
 }
 
-async fn supervise<A: Application>(
-    operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, clock: Clock,
-    settings: PlacementSettings, mut process: Option<Process>, address: String, mut activation: Activation,
-    mut publications: publish::Publications, status: &watch::Sender<Status>, mut stop: watch::Receiver<Option<String>>,
-    mut participant: crate::runtime::StopParticipant,
-) -> Outcome {
+async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<Status>) -> Outcome {
+    let Session {
+        operations,
+        streams,
+        lane,
+        clock,
+        settings,
+        mut process,
+        address,
+        mut activation,
+        mut publications,
+        mut stop,
+        mut participant,
+    } = session;
     loop {
         let exited = async {
             match &mut process {

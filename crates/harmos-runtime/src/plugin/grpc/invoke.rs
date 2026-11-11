@@ -56,7 +56,7 @@ struct Invocation {
 #[derive(Debug, thiserror::Error)]
 pub enum CallError {
     #[error("{}", .0.message)]
-    Remote(v1::Failure),
+    Remote(Box<v1::Failure>),
 
     #[error("plugin transport failed: {0}")]
     Transport(tonic::Status),
@@ -241,7 +241,7 @@ async fn invoke(
                         }
                         return match response.result {
                             Some(v1::response::Result::Payload(payload)) => Ok(payload),
-                            Some(v1::response::Result::Failure(failure)) => Err(CallError::Remote(failure)),
+                            Some(v1::response::Result::Failure(failure)) => Err(CallError::Remote(Box::new(failure))),
                             None => Err(CallError::Protocol("Missing Response Result".into())),
                         };
                     }
@@ -286,7 +286,7 @@ async fn invoke(
 pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> v1::Failure {
     if let crate::Error::OperationFailed { source, .. } = error {
         if let Some(CallError::Remote(failure)) = source.downcast_ref::<CallError>() {
-            return failure.clone();
+            return failure.as_ref().clone();
         }
         if let Some(error) = source.downcast_ref::<CallError>() {
             return v1::Failure {

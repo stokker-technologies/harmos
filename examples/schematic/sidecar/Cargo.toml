@@ -51,7 +51,6 @@ tempfile = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, default-features = true, features = ["macros", "rt-multi-thread", "sync"] }
 
 # Networking
 

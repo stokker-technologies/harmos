@@ -977,6 +977,7 @@ dependencies = [
  "harmos-operations",
  "harmos-runtime",
  "harmos-sdk",
+ "harmos-sdk-grpc",
 ]
 
 [[package]]
@@ -1126,6 +1127,7 @@ dependencies = [
 name = "harmos-sdk-derive"
 version = "0.1.14"
 dependencies = [
+ "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 3.0.9",
@@ -2104,7 +2106,6 @@ dependencies = [
  "harmos-sdk-grpc",
  "schematic-operations",
  "tempfile",
- "tokio",
  "tracing",
  "tracing-perfetto-file",
  "tracing-subscriber",

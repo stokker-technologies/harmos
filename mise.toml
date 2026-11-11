@@ -213,7 +213,7 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-guest --target wasm32-unknown-unknown",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml -p harmos-sandbox-guest --target wasm32-unknown-unknown",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --bins --benches --profile bench --features harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --all-features{% endif %}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --features benchmark",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-guest --features benchmark --target wasm32-unknown-unknown",
   "{% if usage.extended %}uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test -p harmos-domain --target wasm32-unknown-unknown{% endif %}",
   "{% if usage.extended %}uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test -p harmos-domain --target wasm32-wasip2{% endif %}",
