@@ -2467,6 +2467,7 @@ dependencies = [
 name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
+ "harmos-guest",
  "harmos-operations",
  "schematic-domain",
 ]

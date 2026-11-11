@@ -198,7 +198,17 @@ impl Manager {
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         if expected.is_some_and(|(fingerprint, generation)| {
-            entry.declared().fingerprint.0 != fingerprint || entry.generation.value() != generation
+            entry.generation.value() != generation
+                || (entry.declared().fingerprint.0 != fingerprint && {
+                    #[cfg(feature = "plugin-guest")]
+                    {
+                        guest_payload(&origin, &entry).is_none_or(|payload| payload.fingerprint() != fingerprint)
+                    }
+                    #[cfg(not(feature = "plugin-guest"))]
+                    {
+                        true
+                    }
+                })
         }) {
             return Err(Error::InvalidInput {
                 field: "encoded operation identity",
@@ -420,9 +430,18 @@ impl super::Context<'_> {
 
 /* === Public Functions === */
 
+#[cfg(feature = "plugin-guest")]
+fn guest_payload(origin: &super::caller::Origin, entry: &Entry) -> Option<crate::guest::host::native_payloads::Payload> {
+    let scope = origin.scope.as_ref()?;
+    let expected = scope.requirement(&entry.declared().id)?;
+    crate::guest::host::native_payloads::Payload::between(&expected.contract, entry.contract.as_ref()?)
+}
+
 pub(super) fn dispatch_native(
     operations: &Manager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
 ) -> Result<EncodedInvocation> {
+    #[cfg(feature = "plugin-guest")]
+    let mut input = input;
     let submitted = submission.submitted;
     let timeout = submission.entry.declared().policy.timeout;
     budget(operations.clock(), submission.entry.id(), 1, timeout, submitted)?;
@@ -446,6 +465,26 @@ pub(super) fn dispatch_native(
         super::caller::Identity::Plugin { .. } => false,
     };
 
+    #[cfg(feature = "plugin-guest")]
+    let guest = guest_payload(&source.check()?, &submission.entry);
+    #[cfg(feature = "plugin-guest")]
+    if let Some(guest) = guest {
+        let error = |source| Error::OperationPayload {
+            operation: submission.entry.id().to_owned(),
+            source,
+        };
+        let bytes = guest.preparation(&input.payload).map_err(error)?;
+        let mut permit = operations.claim_preparation(std::num::NonZeroUsize::new(bytes.max(1)).unwrap())?;
+        let converted = guest.request(&input.payload).map_err(error)?;
+        let retained = converted.capacity().max(1);
+        if retained > permit.num_permits() {
+            return Err(Error::ResourceExhausted { resource: "guest conversion memory" });
+        }
+        drop(input.payload);
+        drop(input.preparation.take());
+        input.payload = converted;
+        input.preparation = permit.split(retained);
+    }
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
@@ -490,7 +529,21 @@ pub(super) fn dispatch_native(
     drop(input.payload);
     let mut request = super::binding::Request::from(Vec::new());
     request.retry = input.retry;
-    dispatch_prepared(operations, submission, source, parent, prepared, request)
+    let invocation = dispatch_prepared(operations, submission, source, parent, prepared, request)?;
+    #[cfg(feature = "plugin-guest")]
+    if let Some(guest) = guest {
+        let mut invocation = invocation;
+        let outcome = invocation.outcome;
+        invocation.outcome = Box::pin(async move {
+            let result = outcome.await?;
+            guest.response(&result).map_err(|source| Error::OperationPayload {
+                operation: "guest host response".into(),
+                source,
+            })
+        });
+        return Ok(invocation);
+    }
+    Ok(invocation)
 }
 
 pub(super) fn dispatch_prepared(

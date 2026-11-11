@@ -35,6 +35,7 @@ pub use host::Host;
 pub use lifecycle::Lifecycle;
 #[cfg(feature = "runtime")]
 pub use storage::Storage;
+#[cfg(feature = "runtime")]
 pub use streams::Streams;
 
 /* === Imports === */

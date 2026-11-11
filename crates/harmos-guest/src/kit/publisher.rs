@@ -87,7 +87,7 @@ impl<P: Declared> Publisher<P> {
             return Err(PublishError::UndeclaredStream);
         }
         self.context.calling_context()?;
-        let request = harmos_operations::streams::Publish {
+        let request = crate::builtins::streams::Publish {
             stream: S::ID.to_owned(),
             sequence: None,
             published_unix_micros: None,

@@ -7,6 +7,8 @@
  * ***
  */
 
+// Private WebAssembly Callee Declarations.
+
 /* === Modules === */
 
 /* === Re-Exports === */
@@ -23,11 +25,6 @@
 
 /* === Macros === */
 
-crate::builtin_payload! { FollowingRow,
-    payload: Vec<u8> => (1, Kind::Bytes, Required),
-    published_delta_micros: Option<i64> => (2, Kind::I64, Optional),
-}
-
 /* === Type Aliases === */
 
 /* === Structs === */
@@ -43,3 +40,8 @@ crate::builtin_payload! { FollowingRow,
 /* === Private Functions === */
 
 /* === Tests === */
+
+pub mod storage;
+pub use crate::lifecycle;
+pub mod streams;
+pub use streams::Streams;

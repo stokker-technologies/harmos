@@ -44,7 +44,7 @@ use super::*;
 
 #[tokio::test]
 async fn filesystem_hash_roundtrip() {
-    use harmos_runtime::storage::{ByteRange, FileHash, FileSource, StorageManager};
+    use harmos_runtime::storage::StorageManager;
     use sha2::{Digest, Sha256};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.bin");
@@ -66,13 +66,19 @@ async fn filesystem_hash_roundtrip() {
     let attached = runtime.grpc().attach(super::settings()).await.unwrap();
     let address = format!("http://{}", attached.local_addr());
     let channel = tonic::transport::Endpoint::from_shared(address).unwrap().connect().await.unwrap();
-    let request = harmos_operations::storage::HashFile {
-        source: FileSource::Local(path),
-        range: ByteRange { offset: 5, limit: Some(10) },
+    let request = harmos_protocol::storage::HashFile {
+        source: Some(harmos_protocol::storage::FileSource {
+            source: Some(harmos_protocol::storage::file_source::Source::Local(path.to_str().unwrap().into())),
+        }),
+        range: Some(harmos_protocol::storage::ByteRange { offset: 5, limit: Some(10) }),
     };
-    let answer = builtin_call::<harmos_operations::storage::HashFile, FileHash>(channel, "/harmos.storage.v1.Storage/HashFile", request)
-        .await
-        .unwrap();
+    let answer = generated_call::<harmos_protocol::storage::HashFile, harmos_protocol::storage::FileHash>(
+        channel,
+        "/harmos.storage.v1.Storage/HashFile",
+        request,
+    )
+    .await
+    .unwrap();
     assert_eq!(answer.bytes_read, 10);
     assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     drop(attached);

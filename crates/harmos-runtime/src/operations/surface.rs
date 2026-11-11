@@ -592,3 +592,17 @@ mod tests {
         runtime.shutdown().await.unwrap();
     }
 }
+
+impl<L: Lane> harmos_operations::execution::operations::ProtobufHost for RuntimeOperationHost<L> {
+    type Error = Error;
+    async fn call_protobuf<O: super::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        use prost::Message;
+        let (invocation, _) =
+            self.manager()?.submit_protobuf_scoped_as::<O>(request, None, self.source.clone(), None, self.lane.map(|lane| lane.name()))?;
+        let bytes = invocation.await?;
+        O::Response::decode(bytes.as_slice()).map_err(|e| Error::OperationPayload {
+            operation: O::ID.into(),
+            source: crate::MessageError::new(e.to_string()),
+        })
+    }
+}

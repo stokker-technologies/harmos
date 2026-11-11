@@ -223,15 +223,15 @@
   - [x] 3.11.1 Migrate lifecycle status, cancel and watch with generated messages and native/gRPC proof.
   - [x] 3.11.2 Migrate clock operations and remove the plugin-specific clock binding.
   - [x] 3.11.3 Migrate host discovery and remove its Rust wire mirrors.
-  - [ ] 3.11.6 Migrate stream publication, retaining guest-private payload support.
-  - [ ] 3.11.4 Migrate storage operation families and native streaming consumers.
+  - [x] 3.11.6 Migrate stream publication, retaining guest-private payload support.
+  - [x] 3.11.4 Migrate storage operation families and native streaming consumers.
     - [x] 3.11.4.1 Migrate storage status, file mutation receipts and directory native streams.
     - [x] 3.11.4.2 Migrate file reads, capture and following, preserving grants and terminal stream closure.
     - [x] 3.11.4.3 Migrate schema registration and delete its Rust wire wrappers.
     - [x] 3.11.4.4 Migrate queries, generated native downloads and scoped callers; delete the Rust query-output wire mirror.
     - [x] 3.11.4.5 Migrate record, stream and object following; delete the followed-record Rust wire types.
     - [x] 3.11.4.6 Migrate streamed Arrow/file writes and delete Rust receipt/completion wire models and their Postcard codecs.
-    - [ ] 3.11.4.7 Migrate hashing and its guest-private callee boundary.
+    - [x] 3.11.4.7 Migrate hashing and its guest-private callee boundary.
   - [ ] 3.11.5 Migrate example operations and remove superseded host projections and wire mirrors.
 - [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
 

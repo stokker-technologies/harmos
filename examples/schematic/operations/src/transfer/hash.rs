@@ -36,14 +36,14 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::operation(operations = [harmos_operations::storage::HashFile],
+#[harmos_operations::operation(operations = [harmos_guest::builtins::storage::HashFile],
     id = "benchmark.hash.file", response = FileHash,
     policy = POLICY,
     visibility = Public,
     replay = harmos_operations::operations::ReplaySafety::Idempotent,
 )]
 pub struct Hash {
-    pub request: <harmos_operations::storage::HashFile as harmos_operations::OperationDeclaration>::Request,
+    pub request: <harmos_guest::builtins::storage::HashFile as harmos_operations::OperationDeclaration>::Request,
 }
 
 #[harmos_operations::message]

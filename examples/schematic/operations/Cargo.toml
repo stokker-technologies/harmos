@@ -23,6 +23,7 @@ authoring = ["dep:harmos"]
 
 [dependencies]
 # Local
+harmos-guest = { workspace = true }
 harmos-operations = { workspace = true, default-features = false }
 harmos = { workspace = true, optional = true }
 schematic-domain = { path = "../domain" }

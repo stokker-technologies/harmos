@@ -584,3 +584,10 @@ mod tests {
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
     }
 }
+
+impl<A: Application> harmos_operations::execution::operations::ProtobufHost for ServiceContext<A> {
+    type Error = Error;
+    async fn call_protobuf<O: crate::operations::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        harmos_operations::execution::operations::ProtobufHost::call_protobuf::<O>(&self.operations, request).await
+    }
+}

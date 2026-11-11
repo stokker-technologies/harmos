@@ -94,6 +94,13 @@ pub trait ProtobufOperation: Send + Sync + 'static {
     ) -> impl Future<Output = Result<Self::Response, ServingError>> + Send;
 }
 
+pub trait ProtobufHost: Sync {
+    type Error: Send;
+    fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> impl Future<Output = Result<O::Response, Self::Error>> + Send;
+}
+
 pub trait ProtobufExchangeEndpoints: ProtobufEndpoints {
     type Input: ReflectMessage + Default + Send + Sync + 'static;
     type Output: ReflectMessage + Default + Send + Sync + 'static;

@@ -220,6 +220,21 @@ impl ReflectMessage for crate::host::DiscoveredOperation {
         pool().get_message_by_name("harmos.host.v1.DiscoveredOperation").expect("generated message")
     }
 }
+impl ReflectMessage for crate::host::Publish {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.host.v1.Publish").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::host::FollowingRow {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.host.v1.FollowingRow").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::host::Published {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.host.v1.Published").expect("generated message")
+    }
+}
 impl ReflectMessage for crate::storage::StoreHistory {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.StoreHistory").expect("generated message")

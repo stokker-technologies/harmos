@@ -262,7 +262,7 @@ impl OperationHost for Context {
     where
         S::Row: harmos_domain::Message,
     {
-        harmos_operations::streams::publish_on::<_, S>(self, row)
+        crate::builtins::streams::publish_on::<_, S>(self, row)
     }
 
     type Error = OperationRefusal;

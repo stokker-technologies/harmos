@@ -12,6 +12,7 @@
 pub(crate) mod envelope;
 pub(crate) mod plugin;
 
+pub(crate) mod native_payloads;
 mod sdk;
 mod serving;
 pub(crate) mod session;

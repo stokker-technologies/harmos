@@ -74,13 +74,13 @@ impl harmos_runtime::schema::Described for Echo {
     const MARKER: &'static [u8] = <wire::ProviderEchoOperation as harmos_runtime::schema::Described>::MARKER;
 }
 
-#[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext], id = <harmos_operations::streams::Publish as OperationDeclaration>::ID, response = (),
-    policy = <harmos_operations::streams::Publish as OperationDeclaration>::POLICY, visibility = Public)]
+#[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext], id = <harmos_guest::builtins::streams::Publish as OperationDeclaration>::ID, response = (),
+    policy = <harmos_guest::builtins::streams::Publish as OperationDeclaration>::POLICY, visibility = Public)]
 #[derive(Clone)]
-struct Publish(harmos_operations::streams::Publish);
+struct Publish(harmos_guest::builtins::streams::Publish);
 
 impl harmos_runtime::Message for Publish {
-    const CODEC: &'static str = <harmos_operations::streams::Publish as harmos_runtime::Message>::CODEC;
+    const CODEC: &'static str = <harmos_guest::builtins::streams::Publish as harmos_runtime::Message>::CODEC;
     fn encode(&self) -> Vec<u8> {
         harmos_runtime::Message::encode(&self.0)
     }
@@ -88,10 +88,10 @@ impl harmos_runtime::Message for Publish {
         harmos_runtime::Message::encoded_size(&self.0)
     }
     fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
-        <harmos_operations::streams::Publish as harmos_runtime::Message>::decoding_memory(bytes)
+        <harmos_guest::builtins::streams::Publish as harmos_runtime::Message>::decoding_memory(bytes)
     }
     fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        <harmos_operations::streams::Publish as harmos_runtime::Message>::decode(bytes).map(Self)
+        <harmos_guest::builtins::streams::Publish as harmos_runtime::Message>::decode(bytes).map(Self)
     }
 }
 impl harmos_runtime::MemorySize for Publish {
@@ -100,10 +100,10 @@ impl harmos_runtime::MemorySize for Publish {
     }
 }
 impl harmos_runtime::schema::Described for Publish {
-    const NAME: &'static str = <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::NAME;
+    const NAME: &'static str = <harmos_guest::builtins::streams::Publish as harmos_runtime::schema::Described>::NAME;
     const FIELDS: &'static [harmos_runtime::schema::Field] =
-        <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::FIELDS;
-    const MARKER: &'static [u8] = <harmos_operations::streams::Publish as harmos_runtime::schema::Described>::MARKER;
+        <harmos_guest::builtins::streams::Publish as harmos_runtime::schema::Described>::FIELDS;
+    const MARKER: &'static [u8] = <harmos_guest::builtins::streams::Publish as harmos_runtime::schema::Described>::MARKER;
 }
 
 #[derive(Default)]
@@ -201,7 +201,7 @@ impl harmos_runtime::Operation for Publish {
                 context: None,
             };
             lease.stage_derived_row(row, 0).map_err(|source| harmos_runtime::Error::OperationFailed {
-                operation: <harmos_operations::streams::Publish as OperationDeclaration>::ID.into(),
+                operation: <harmos_guest::builtins::streams::Publish as OperationDeclaration>::ID.into(),
                 source: Arc::new(source),
             })?;
             Ok(())

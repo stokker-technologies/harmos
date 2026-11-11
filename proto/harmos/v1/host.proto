@@ -98,3 +98,18 @@ message DiscoveredOperation {
   bool conditional_access = 5;
   bool grpc_available = 6;
 }
+
+// A Stream Publication Uses the Stream's Own Payload Codec.
+message Publish {
+  string stream = 1;
+  optional uint64 sequence = 3;
+  optional int64 published_unix_micros = 4;
+  optional string context = 5;
+  bytes payload = 6;
+  repeated FollowingRow following = 7;
+}
+message FollowingRow {
+  bytes payload = 1;
+  optional int64 published_delta_micros = 2;
+}
+message Published {}

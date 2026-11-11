@@ -173,6 +173,34 @@ pub struct DiscoveredOperation {
     #[prost(bool, tag = "6")]
     pub grpc_available: bool,
 }
+/// A Stream Publication Uses the Stream's Own Payload Codec.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Publish {
+    #[prost(string, tag = "1")]
+    pub stream: ::prost::alloc::string::String,
+    #[prost(uint64, optional, tag = "3")]
+    pub sequence: ::core::option::Option<u64>,
+    #[prost(int64, optional, tag = "4")]
+    pub published_unix_micros: ::core::option::Option<i64>,
+    #[prost(string, optional, tag = "5")]
+    pub context: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(bytes = "vec", tag = "6")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, repeated, tag = "7")]
+    pub following: ::prost::alloc::vec::Vec<FollowingRow>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowingRow {
+    #[prost(bytes = "vec", tag = "1")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+    #[prost(int64, optional, tag = "2")]
+    pub published_delta_micros: ::core::option::Option<i64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Published {}
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

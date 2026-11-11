@@ -579,26 +579,6 @@ async fn external_call(
     Ok(response.into_inner().actor.clone())
 }
 
-// One unary call to a built-in operation over its declared gRPC route.
-async fn builtin_call<Q, R>(channel: tonic::transport::Channel, path: &'static str, request: Q) -> Result<R, tonic::Status>
-where
-    Q: harmos_domain::Portable,
-    R: harmos_domain::Message + harmos_domain::schema::Described + harmos_runtime::MemorySize + Clone + Send + Sync + 'static,
-{
-    let mut client = tonic::client::Grpc::new(channel);
-    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-    let request = tonic::Request::new(harmos_runtime::operations::Response::new(request));
-    let (decode, encode) = limits();
-    let response: tonic::Response<harmos_runtime::operations::StreamItem<R>> = client
-        .unary(
-            request,
-            http::uri::PathAndQuery::from_static(path),
-            Codec::<harmos_runtime::grpc::Transcoded, R, harmos_runtime::operations::Response<Q>>::new(decode, encode)?,
-        )
-        .await?;
-    Ok((*response.into_inner()).clone())
-}
-
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {

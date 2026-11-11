@@ -17,8 +17,8 @@
 
 use super::{
     AbandonFile, AppendFile, CaptureFile, CreateFile, DeleteFile, FinishFile, FollowFile, FollowObjects, FollowProduction, FollowRecords,
-    FollowStream, ListDirectory, Query, ReadFile, ResumeFile, StorageStatus, WatchDirectory, WriteFile, WriteObjects, WriteRecords,
-    WriteSchema, WriteStreams,
+    FollowStream, HashFile, ListDirectory, Query, ReadFile, ResumeFile, StorageStatus, WatchDirectory, WriteFile, WriteObjects,
+    WriteRecords, WriteSchema, WriteStreams,
 };
 
 // Standard Library Imports
@@ -50,14 +50,11 @@ impl Storage {
     }
 }
 impl crate::execution::operations::OperationCatalog for Storage {
-    const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>(
-        "harmos.storage",
-        super::Legacy::CATALOG.declarations,
-        super::Legacy::CATALOG.callees,
-    );
+    const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>("harmos.storage", &[], &[]);
     fn batch() -> crate::execution::__private::RegistrationBatch {
-        let mut batch = super::Legacy::batch();
+        let mut batch = crate::execution::__private::RegistrationBatch::new();
         batch.operations.extend([
+            crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
             crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
             crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),
             crate::execution::operations::OperationFactory::protobuf::<WriteStreams>().expect("WriteStreams declaration"),

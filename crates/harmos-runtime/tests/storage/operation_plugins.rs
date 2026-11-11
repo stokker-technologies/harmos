@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+#[path = "generated_guest_hash.rs"]
+mod generated_guest_hash;
+
 /* === Re-Exports === */
 
 /* === Imports === */

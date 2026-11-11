@@ -39,7 +39,8 @@ pub use instance::Instance;
 pub use operation::{AttemptInstance, AttemptOperationHost, Authored, Context, Dependent, Operation, Resource, Shape, Streams};
 #[cfg(all(feature = "grpc", feature = "streaming"))]
 pub use registration::generated::{
-    ProtobufDependency, ProtobufEndpoints, ProtobufExchangeEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
+    ProtobufDependency, ProtobufEndpoints, ProtobufExchangeEndpoints, ProtobufHost, ProtobufInput, ProtobufItem, ProtobufOperation,
+    ProtobufOutput,
 };
 pub use registration::{Catalog, NativeInstance, OperationCatalog, OperationFactory, ServiceFactory, ServiceInstance};
 pub(crate) use resources::ResourceSet;

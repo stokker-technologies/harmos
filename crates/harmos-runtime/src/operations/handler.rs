@@ -536,3 +536,10 @@ impl harmos_operations::execution::operations::access::GrantAuthority for HostCo
         self.borrow().admit_stream_grant(grant).map_err(Into::into)
     }
 }
+
+impl harmos_operations::execution::operations::ProtobufHost for HostContext {
+    type Error = Error;
+    async fn call_protobuf<O: super::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        harmos_operations::execution::operations::ProtobufHost::call_protobuf::<O>(&self.borrow(), request).await
+    }
+}

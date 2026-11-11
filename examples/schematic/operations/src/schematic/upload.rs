@@ -45,7 +45,7 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
     replay = harmos_operations::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeUpload"),
 ))]
-#[cfg_attr(not(feature = "authoring"), harmos_operations::operation(resources = [AnalysisResources], operations = [harmos_operations::streams::Publish],
+#[cfg_attr(not(feature = "authoring"), harmos_operations::operation(resources = [AnalysisResources], operations = [harmos_guest::builtins::streams::Publish],
     id = "schematic.analyze.upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     policy = POLICY,
     visibility = Public,
@@ -110,7 +110,7 @@ impl harmos_operations::Operation for AnalyzeUpload {
                 let sequence = resources.next_progress_sequence()?;
                 let payload = harmos_operations::Message::encode(&progress);
                 // Publish Analysis Progress
-                let request = harmos_operations::streams::Publish {
+                let request = harmos_guest::builtins::streams::Publish {
                     stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos_operations::StreamSpec>::ID
                         .to_owned(),
                     sequence: Some(sequence),

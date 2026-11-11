@@ -233,9 +233,16 @@ impl Manager {
     pub(super) fn submit_protobuf_as<O: ProtobufOperation>(
         &self, request: O::Request, limits: Option<WireStreamLimits>, source: Source,
     ) -> Result<(EncodedInvocation, Option<WireStreams>)> {
+        self.submit_protobuf_scoped_as::<O>(request, limits, source, None, None)
+    }
+
+    pub(super) fn submit_protobuf_scoped_as<O: ProtobufOperation>(
+        &self, request: O::Request, limits: Option<WireStreamLimits>, source: Source, parent: Option<super::wire::Parent<'_>>,
+        lane: Option<&'static str>,
+    ) -> Result<(EncodedInvocation, Option<WireStreams>)> {
         let submitted = self.clock().now();
-        let entry = self.capture_entry(O::ID)?;
         let origin = source.check()?;
+        let entry = self.entry_as(O::ID, &origin)?;
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         let factory =
@@ -267,6 +274,8 @@ impl Manager {
                 source: Arc::new(source),
             })?;
         let streams = prepared.streams.clone();
+        let mut binding = super::binding::Request::from(payload);
+        binding.lane = lane;
         let invocation = super::wire::dispatch_prepared(
             self,
             Submission {
@@ -276,9 +285,9 @@ impl Manager {
                 preparation: Some(preparation),
             },
             source,
-            None,
+            parent,
             prepared,
-            super::binding::Request::from(payload),
+            binding,
         )?;
         Ok((invocation, streams))
     }
@@ -333,3 +342,49 @@ impl super::Caller {
 /* === Private Functions === */
 
 /* === Tests === */
+
+impl harmos_operations::execution::operations::ProtobufHost for Manager {
+    type Error = Error;
+    async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        Manager::call_protobuf::<O>(self, request).await
+    }
+}
+impl<L: super::Lane> harmos_operations::execution::operations::ProtobufHost for super::OperationManager<L> {
+    type Error = Error;
+    async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        Manager::call_protobuf::<O>(self, request).await
+    }
+}
+impl harmos_operations::execution::operations::ProtobufHost for super::Context<'_> {
+    type Error = Error;
+    async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        let (invocation, _) = self.operations.submit_protobuf_scoped_as::<O>(
+            request,
+            None,
+            self.source.clone(),
+            Some(super::wire::Parent {
+                scope: &self.scope,
+                ancestors: self.admission.held(),
+            }),
+            None,
+        )?;
+        let response = invocation.await?;
+        O::Response::decode(response.as_slice()).map_err(|e| Error::OperationPayload {
+            operation: O::ID.into(),
+            source: crate::MessageError::new(e.to_string()),
+        })
+    }
+}
+
+#[cfg(feature = "plugin-guest")]
+impl harmos_operations::execution::operations::ProtobufHost for super::Caller {
+    type Error = Error;
+    async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        let (invocation, _) = self.operations.submit_protobuf_as::<O>(request, None, Source::Plugin(self.source.clone()))?;
+        let bytes = invocation.await?;
+        O::Response::decode(bytes.as_slice()).map_err(|e| Error::OperationPayload {
+            operation: O::ID.into(),
+            source: crate::MessageError::new(e.to_string()),
+        })
+    }
+}

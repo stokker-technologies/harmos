@@ -36,6 +36,7 @@ mod follow_production;
 mod follow_records;
 #[cfg(feature = "runtime")]
 mod follow_stream;
+#[cfg(feature = "runtime")]
 mod hash_file;
 #[cfg(feature = "runtime")]
 mod list_directory;
@@ -86,6 +87,7 @@ pub use follow_production::FollowProduction;
 pub use follow_records::FollowRecords;
 #[cfg(feature = "runtime")]
 pub use follow_stream::FollowStream;
+#[cfg(feature = "runtime")]
 pub use hash_file::HashFile;
 #[cfg(feature = "runtime")]
 pub use list_directory::ListDirectory;
@@ -153,11 +155,6 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 };
 
 /* === Macros === */
-
-#[harmos::catalog(harmos_path = crate)]
-enum Legacy {
-    HashFile(HashFile),
-}
 
 /* === Type Aliases === */
 

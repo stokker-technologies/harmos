@@ -117,7 +117,7 @@ impl Stub {
                 Ok(answer.encode())
             }
             "host.host.publish" => {
-                let request = harmos_operations::streams::Publish::decode(&call.payload).map_err(Refusal::of)?;
+                let request = harmos_guest::builtins::streams::Publish::decode(&call.payload).map_err(Refusal::of)?;
                 assert_eq!(request.sequence, None, "the guest asks its original lease to derive the sequence");
                 assert_eq!(request.published_unix_micros, None);
                 assert_eq!(request.context, None);
@@ -234,9 +234,10 @@ impl Session {
                 },
                 harmos_operations::execution::operations::AssignedOperation {
                     operation: "host.host.publish".into(),
-                    fingerprint: <harmos_operations::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
-                        .fingerprint
-                        .0,
+                    fingerprint: <harmos_guest::builtins::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition(
+                    )
+                    .fingerprint
+                    .0,
                     generation: 1,
                 },
             ])
