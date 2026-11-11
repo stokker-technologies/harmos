@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-pub(crate) mod lanes;
 pub(crate) mod operation;
 pub(crate) mod typed;
 

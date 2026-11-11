@@ -44,7 +44,7 @@ use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
 
 async fn fixture() -> Fixture {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     f
 }
 fn key(f: &Fixture, key: &str) -> MutationId {
@@ -270,7 +270,7 @@ async fn finish_reconciles_lost() {
 #[tokio::test]
 async fn retries_never_multiply() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let request = harmos_protocol::storage::CreateFile {
         mutation: Some(key(&f, "create").into()),
         metadata: Some(metadata("retry-budget").into()),

@@ -31,7 +31,6 @@ use arrow_schema::{DataType, Field, Fields};
 
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
-use super::Lanes;
 use harmos_operations::storage::WriteObjects;
 use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
 use harmos_runtime::storage::{
@@ -143,7 +142,7 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
     })
     .await
     .unwrap();
-    runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, storage, data)
 }
 

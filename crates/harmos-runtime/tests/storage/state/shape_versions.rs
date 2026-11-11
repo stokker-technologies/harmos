@@ -101,12 +101,6 @@ enum NewFacts {
     Changed(Changed),
 }
 
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
-}
-
 #[harmos_domain::catalog]
 enum PluginObjects {
     Object(PluginObject),
@@ -187,14 +181,12 @@ impl Lifecycle for Model<true> {
 }
 
 impl Application for Model<false> {
-    type Lanes = Lanes;
     type State = i64;
     type Transaction = Changes;
     type Record = Facts;
 }
 
 impl Application for Model<true> {
-    type Lanes = Lanes;
     type State = i64;
     type Transaction = Changes;
     type Record = NewFacts;

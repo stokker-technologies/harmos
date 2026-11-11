@@ -340,7 +340,7 @@ impl<A: Application> ServiceContext<A> {
 
     // An owned host handle for calls made while this context is borrowed,
     // such as inside `until_stopping`.
-    pub fn host(&self) -> crate::operations::OperationManager<A::Lanes> {
+    pub fn host(&self) -> crate::operations::OperationManager {
         crate::operations::OperationManager::new(self.operations.clone())
     }
 
@@ -485,12 +485,6 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
-
     struct Model;
     impl crate::Lifecycle for Model {
         type Config = ();
@@ -503,7 +497,6 @@ mod tests {
     }
 
     impl Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
@@ -578,7 +571,7 @@ mod tests {
             },
         };
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().service::<Worker>("worker", policy);
-        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         executor::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);

@@ -42,6 +42,13 @@ use harmos_runtime::{
 
 /* === Constants === */
 
+pub const SERIAL: harmos_runtime::operations::Lane =
+    harmos_runtime::operations::Lane::new("Serial", harmos_runtime::operations::Capacity::serial());
+pub const CONCURRENT: harmos_runtime::operations::Lane =
+    harmos_runtime::operations::Lane::new("Concurrent", harmos_runtime::operations::Capacity::concurrent(2));
+pub const UNBOUNDED: harmos_runtime::operations::Lane =
+    harmos_runtime::operations::Lane::new("Unbounded", harmos_runtime::operations::Capacity::unbounded());
+
 pub const HOUSE: Account = Account(0);
 pub const VAULT: Account = Account(1);
 pub static DEPOSIT: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.deposit", revision::<Deposit>()));
@@ -100,21 +107,6 @@ pub struct Copied {
 }
 
 /* === Enums === */
-
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Serial,
-
-    #[lane(concurrent(2))]
-    Concurrent,
-
-    #[lane(unbounded)]
-    Unbounded,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
@@ -186,13 +178,16 @@ impl harmos_runtime::Lifecycle for Bank {
     type Error = std::convert::Infallible;
     type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        setup.settings().lanes(
+            harmos_runtime::operations::LaneSet::new([crate::support::SERIAL, crate::support::CONCURRENT, crate::support::UNBOUNDED])
+                .unwrap(),
+        );
         Ok(Self)
     }
 }
 
 impl Application for Bank {
-    type Lanes = Lanes;
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;

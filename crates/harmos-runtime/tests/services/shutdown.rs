@@ -20,11 +20,11 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
+use super::{Ledger, Runtime};
 use super::{
-    Lanes, assembly, service_status,
+    assembly, service_status,
     support::{Bank, Noted},
 };
-use super::{Ledger, Runtime};
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, services::ServiceExit, services::ServiceStatus, state::Position};
 
@@ -493,7 +493,7 @@ async fn domains_outlives_clones() {
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.resource::<Sequence>(sequence);
-        setup.operations::<Operations>(Lanes::Serial);
+        setup.operations::<Operations>(crate::support::SERIAL);
         setup.settings().service("resident", move |mut context: harmos_runtime::services::ServiceContext<Bank>| {
             let events = Arc::clone(&service_events);
             async move {

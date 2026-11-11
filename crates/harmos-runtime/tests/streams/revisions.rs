@@ -62,7 +62,7 @@ struct Resources {
 
 struct Host {
     streams: StreamManager<Bank>,
-    operations: harmos_runtime::operations::OperationManager<crate::support::Lanes>,
+    operations: harmos_runtime::operations::OperationManager,
     lease: Option<Arc<StreamWriter>>,
     fail: bool,
     before: Option<u32>,

@@ -24,7 +24,6 @@ use std::time::Duration;
 
 // Local Imports
 use super::{
-    Lanes,
     app::App,
     support::{Bank, Ledger, catalog},
 };
@@ -171,8 +170,8 @@ async fn runtime() -> (Runtime<App>, Arc<Counts>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<ComputeContractDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<super::Single<ParentContractDeclaration>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<super::Single<ComputeContractDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register::<super::Single<ParentContractDeclaration>>(crate::support::SERIAL).await.unwrap();
     (runtime, counts)
 }
 
@@ -229,7 +228,7 @@ async fn failure_never_emit() {
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource(Counts::default());
-        setup.operations::<super::Single<ComputeContractDeclaration>>(Lanes::Open);
+        setup.operations::<super::Single<ComputeContractDeclaration>>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();

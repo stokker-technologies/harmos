@@ -31,12 +31,6 @@ use crate::{Application, Runtime, state::Never};
 
 struct Collection;
 
-#[crate::lanes]
-enum Lanes {
-    #[default]
-    Default,
-}
-
 struct Cleanup {
     runtime: Option<Runtime<Collection>>,
     executor: tokio::runtime::Handle,
@@ -59,7 +53,6 @@ impl crate::Lifecycle for Collection {
 }
 
 impl Application for Collection {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();

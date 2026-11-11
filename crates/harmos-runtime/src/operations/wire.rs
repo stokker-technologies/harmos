@@ -614,12 +614,6 @@ mod tests {
     use super::*;
     use crate::operations::RegistrationExt;
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
-
     struct Model;
     impl crate::Lifecycle for Model {
         type Config = ();
@@ -632,7 +626,6 @@ mod tests {
     }
 
     impl crate::Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
@@ -670,7 +663,7 @@ mod tests {
         .await
         .unwrap();
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
-        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
 
         let source = Source::Host.external().unwrap();
         assert!(matches!(
@@ -689,7 +682,7 @@ mod tests {
     async fn assigned_identity_fences_before_decoding() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
-        runtime.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
         let entry = runtime.operations.entry(Probe::ID).unwrap();
         let fingerprint = entry.declared().fingerprint.0;
         let generation = entry.generation.value();
@@ -714,7 +707,7 @@ mod tests {
 
         let id = crate::QualifiedId::parse("host.fenced.probe").unwrap();
         runtime.unregister(&id).await.unwrap();
-        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
         runtime.shutdown().await.unwrap();
     }

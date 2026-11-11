@@ -364,7 +364,7 @@ impl harmos_operations::execution::operations::ProtobufHost for Manager {
         Manager::call_protobuf::<O>(self, request).await
     }
 }
-impl<L: super::Lane> harmos_operations::execution::operations::ProtobufHost for super::OperationManager<L> {
+impl harmos_operations::execution::operations::ProtobufHost for super::OperationManager {
     type Error = Error;
     async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
         Manager::call_protobuf::<O>(self, request).await

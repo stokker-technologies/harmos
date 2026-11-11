@@ -60,21 +60,6 @@ struct Counting;
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Serial,
-
-    #[lane(concurrent(2))]
-    Concurrent,
-
-    #[lane(unbounded)]
-    Unbounded,
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -84,13 +69,16 @@ impl harmos_runtime::Lifecycle for Probe {
     type Error = std::convert::Infallible;
     type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        setup.settings().lanes(
+            harmos_runtime::operations::LaneSet::new([crate::support::SERIAL, crate::support::CONCURRENT, crate::support::UNBOUNDED])
+                .unwrap(),
+        );
         Ok(Self)
     }
 }
 
 impl Application for Probe {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();

@@ -65,8 +65,6 @@ mod operations {
 
     /* === Re-Exports === */
 
-    pub(crate) use super::support::Lanes;
-
     /* === Imports === */
 
     // Standard Library Imports

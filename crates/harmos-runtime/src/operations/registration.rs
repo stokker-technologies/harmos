@@ -52,10 +52,10 @@ type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
 /* === Structs === */
 
 #[derive(Clone)]
-pub struct Registration<L: Lane> {
+pub struct Registration {
     pub(crate) batch: harmos_operations::execution::__private::RegistrationBatch,
-    pub(crate) lane: Option<L>,
-    pub(crate) defaults: std::collections::BTreeMap<&'static str, L>,
+    pub(crate) lane: Option<Lane>,
+    pub(crate) defaults: std::collections::BTreeMap<&'static str, Lane>,
 }
 
 #[derive(Clone)]
@@ -89,13 +89,13 @@ pub struct PluginRegistration {
 /* === Traits === */
 
 pub(crate) trait RegistrationExt {
-    fn lane<L: Lane>(self, lane: L) -> Registration<L>;
+    fn lane(self, lane: Lane) -> Registration;
 }
 
 /* === Implementations === */
 
-impl<L: Lane> Registration<L> {
-    pub fn new(lane: L) -> Self {
+impl Registration {
+    pub fn new(lane: Lane) -> Self {
         harmos_operations::execution::__private::RegistrationBatch::new().lane(lane)
     }
 
@@ -121,7 +121,7 @@ impl<L: Lane> Registration<L> {
 }
 
 impl RegistrationExt for harmos_operations::execution::__private::RegistrationBatch {
-    fn lane<L: Lane>(self, lane: L) -> Registration<L> {
+    fn lane(self, lane: Lane) -> Registration {
         Registration {
             batch: self,
             lane: Some(lane),
@@ -131,7 +131,7 @@ impl RegistrationExt for harmos_operations::execution::__private::RegistrationBa
 }
 
 impl CatalogBinding {
-    pub(crate) fn new<L: Lane>(registration: Registration<L>) -> Self {
+    pub(crate) fn new(registration: Registration) -> Self {
         let factories = registration.batch.operations.clone();
         let lanes = factories
             .iter()
@@ -141,7 +141,7 @@ impl CatalogBinding {
                     .get(factory.definition.id.as_str())
                     .copied()
                     .or(registration.lane)
-                    .unwrap_or_else(L::default_lane)
+                    .unwrap_or_else(Lane::default)
                     .name()
             })
             .collect();
@@ -217,11 +217,11 @@ impl Manager {
 
 #[cfg(feature = "plugin-guest")]
 impl Bindings<'_> {
-    pub fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: impl Lane) -> Result<()> {
+    pub fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: Lane) -> Result<()> {
         self.register(C::batch().lane(lane))
     }
 
-    pub fn register<L: Lane>(&mut self, registration: Registration<L>) -> Result<()> {
+    pub fn register(&mut self, registration: Registration) -> Result<()> {
         let entries = self.operations.native_entries(registration, self.owner, self.scope)?;
         self.entries.extend(entries);
         Ok(())
@@ -260,7 +260,7 @@ impl Bindings<'_> {
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 impl Bindings<'_> {
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    pub(super) fn project<C, V, H>(&mut self, lane: impl Lane, handler: Arc<H>) -> Result<()>
+    pub(super) fn project<C, V, H>(&mut self, lane: Lane, handler: Arc<H>) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<V>,
         V: Visitor<Entry = Binding<H>>,

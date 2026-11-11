@@ -47,7 +47,7 @@ async fn following_spends_budget() {
     use harmos_operations::storage::FollowRecords;
     use std::time::Duration;
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     write(&fixture.storage, "first").await;
     let limits = harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::MIN,

@@ -310,11 +310,6 @@ mod tests {
 
     struct Model;
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
     impl crate::Lifecycle for Model {
         type Config = ();
         type Error = std::convert::Infallible;
@@ -326,7 +321,6 @@ mod tests {
     }
 
     impl Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();

@@ -21,7 +21,7 @@
 use super::lifecycle::{GuestOperations, Lifecycle, Manager, serve_host};
 use super::sandbox::{CountsOperation, ReadOperation, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
-use super::{GuestLanes, corner, route, runtime, sandbox, support};
+use super::{corner, route, runtime, sandbox, support};
 use harmos_runtime::Message;
 use harmos_runtime::operations::ComponentError;
 use schematic_operations::guest::schematic::{analyze, propose, validate};
@@ -35,8 +35,6 @@ use schematic_operations::guest::schematic::{analyze, propose, validate};
 /* === Structs === */
 
 /* === Enums === */
-
-use support::Lanes;
 
 /* === Traits === */
 
@@ -138,11 +136,12 @@ async fn declared_operation_roundtrip() {
 async fn wrong_catalog_refused() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    serve_host(&runtime, GuestLanes::Open).await;
+    serve_host(&runtime, harmos_runtime::operations::Lane::default()).await;
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let bytes = sandbox();
     let loaded = host.load(&bytes).unwrap();
-    let refused = runtime.plugin.register_guest::<()>(loaded, pending_settings(), GuestLanes::Open).await.unwrap_err();
+    let refused =
+        runtime.plugin.register_guest::<()>(loaded, pending_settings(), harmos_runtime::operations::Lane::default()).await.unwrap_err();
     assert!(matches!(refused, harmos_runtime::Error::InvalidInput { field: "guest operation catalog", .. }));
     assert!(runtime.plugin.status("sandbox_guest").is_none());
     runtime.shutdown().await.unwrap();
@@ -153,11 +152,15 @@ async fn wrong_catalog_refused() {
 async fn shutdown_retains_cleanup() {
     let _report = crate::report::system();
     let runtime = runtime().await;
-    serve_host(&runtime, GuestLanes::Open).await;
+    serve_host(&runtime, harmos_runtime::operations::Lane::default()).await;
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let bytes = sandbox();
     let loaded = host.load(&bytes).unwrap();
-    runtime.plugin.register_guest::<GuestOperations>(loaded, pending_settings(), GuestLanes::Open).await.unwrap();
+    runtime
+        .plugin
+        .register_guest::<GuestOperations>(loaded, pending_settings(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status("sandbox_guest").unwrap();
     assert_eq!(ready.attempts, 1);
@@ -268,7 +271,7 @@ async fn children_in_lane(serial: bool) {
     })
     .await
     .unwrap();
-    let lane = if serial { Lanes::Serial } else { Lanes::Open };
+    let lane = if serial { crate::support::SERIAL } else { harmos_runtime::operations::Lane::default() };
     let mut lifecycle = Lifecycle::sandbox_in(&runtime, lane).await;
     let mut manager = Manager::new(lifecycle.candidate("children").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();

@@ -26,7 +26,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, Semaphore};
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::instance::{Outcome, Phase};
 use harmos_runtime::operations::{Instance, OperationDeclaration, OperationHost, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
@@ -119,8 +119,8 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::Lifecycle>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<HoldDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register::<harmos_operations::Lifecycle>(harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, gate)
 }
 

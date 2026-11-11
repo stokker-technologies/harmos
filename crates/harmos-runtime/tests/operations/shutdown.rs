@@ -24,7 +24,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, Runtime};
 
@@ -115,7 +115,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<Operations>(crate::support::SERIAL).await.unwrap();
     (runtime, trace)
 }
 

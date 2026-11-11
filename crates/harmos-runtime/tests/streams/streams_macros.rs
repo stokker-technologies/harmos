@@ -47,12 +47,6 @@ struct PresentedSample {
 
 enum Change {}
 
-#[harmos_runtime::lanes]
-pub enum StudioLanes {
-    #[default]
-    Open,
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -80,7 +74,6 @@ impl harmos_runtime::Lifecycle for Studio {
 }
 
 impl Application for Studio {
-    type Lanes = StudioLanes;
     type State = State;
     type Transaction = Change;
     type Record = ();

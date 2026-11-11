@@ -9,7 +9,7 @@
 
 /* === Modules === */
 
-#[allow(clippy::duplicate_mod, reason = "the minimal app binds each domain's own `super::Lanes`")]
+#[allow(clippy::duplicate_mod, reason = "the runtime and service fixtures share the minimal application")]
 #[path = "../support/app/minimal.rs"]
 mod app;
 #[path = "../services/lifecycle.rs"]
@@ -68,8 +68,6 @@ struct PingContractDeclaration {}
 enum Operations {
     PingContractDeclaration(PingContractDeclaration),
 }
-
-use support::Lanes;
 
 /* === Traits === */
 
@@ -171,7 +169,7 @@ async fn shutdown_preserves_work() {
     let manager = runtime.operations.clone();
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
-    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
     assert_eq!(*runtime.operations.operation::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
     runtime.shutdown().await.unwrap();
 }

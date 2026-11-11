@@ -28,7 +28,7 @@ use prost_reflect::{DescriptorPool, MessageDescriptor, ReflectMessage};
 use tonic::codegen::http::uri::PathAndQuery;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_operations::execution::operations::{
     ExecutionContext, Grpc, ProtobufDependency, ProtobufOperation, ProtobufOutput, ServingError, Visibility,
 };
@@ -195,11 +195,23 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
     })
     .await
     .unwrap();
-    assert!(runtime.operations.register_batch(Registration::new(Lanes::Open).protobuf::<Forward>().unwrap()).await.is_err());
+    assert!(
+        runtime
+            .operations
+            .register_batch(Registration::new(harmos_runtime::operations::Lane::default()).protobuf::<Forward>().unwrap())
+            .await
+            .is_err()
+    );
     runtime
         .operations
         .register_batch(
-            Registration::new(Lanes::Open).protobuf::<Echo>().unwrap().protobuf::<Watch>().unwrap().protobuf::<Forward>().unwrap(),
+            Registration::new(harmos_runtime::operations::Lane::default())
+                .protobuf::<Echo>()
+                .unwrap()
+                .protobuf::<Watch>()
+                .unwrap()
+                .protobuf::<Forward>()
+                .unwrap(),
         )
         .await
         .unwrap();

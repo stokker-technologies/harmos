@@ -99,12 +99,6 @@ pub(crate) mod tests {
     use crate::operations::middleware::{AttemptObservation, Enter, Invocation, Middleware};
     use std::sync::{Arc, Mutex};
 
-    #[crate::lanes]
-    pub(crate) enum Lanes {
-        #[default]
-        Open,
-    }
-
     pub(crate) struct Model;
 
     impl crate::Lifecycle for Model {
@@ -117,7 +111,6 @@ pub(crate) mod tests {
     }
 
     impl crate::Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
@@ -197,7 +190,7 @@ pub(crate) mod tests {
         .await
         .unwrap();
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Wait>();
-        runtime.register_batch(batch.lane(Lanes::Open)).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
 
         // Record Evidence Before And After A Host Wait
         let fact = crate::state::SystemFact::new(crate::state::FactSource::Work("clock_test".to_owned()), "before".to_owned(), vec![]);

@@ -182,11 +182,6 @@ impl harmos_runtime::state::Invertible<State> for Add {
     }
 }
 
-#[harmos_runtime::lanes]
-pub enum ModelLanes {
-    #[default]
-    Open,
-}
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -198,7 +193,6 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl Application for Model {
-    type Lanes = ModelLanes;
     type State = State;
     type Transaction = Changes;
     type Record = Facts;

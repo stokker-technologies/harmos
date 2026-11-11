@@ -28,7 +28,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
-use support::Lanes;
 use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
 
 // Local Imports
@@ -218,7 +217,6 @@ impl harmos_runtime::Lifecycle for Divergent {
 }
 
 impl Application for Divergent {
-    type Lanes = Lanes;
     type State = DivergentState;
     type Transaction = DivergentChange;
     type Record = NoRecord;
@@ -277,7 +275,7 @@ impl harmos_runtime::state::TransactionCatalog<DivergentState> for DivergentChan
 
 fn bank(seed: u64, configure: impl Fn(&mut Setup<Bank>) + Send + Sync + 'static) -> SimulatedRuntime<Bank> {
     Runtime::<Bank>::simulate_with(Ledger::default(), (), seed, move |setup| {
-        setup.operations::<SimOperations>(Lanes::Serial);
+        setup.operations::<SimOperations>(crate::support::SERIAL);
         setup.settings().register(catalog()).register(streams());
         configure(setup);
     })
@@ -328,7 +326,7 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
 #[tokio::test]
 async fn start_stays_send() {
     let runtime = tokio::spawn(Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.operations::<SimOperations>(Lanes::Serial);
+        setup.operations::<SimOperations>(crate::support::SERIAL);
         setup.settings().register(catalog()).register(streams());
     }))
     .await
@@ -426,7 +424,6 @@ mod atomic_records {
     }
 
     impl Application for Model {
-        type Lanes = Lanes;
         type State = State;
         type Transaction = Changes;
         type Record = Facts;

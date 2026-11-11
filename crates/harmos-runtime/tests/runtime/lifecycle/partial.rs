@@ -23,7 +23,6 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Notify;
 
 // Local Imports
-use crate::runtime::probe::Editor;
 use crate::storage::fixture::{Data, Recovery, StorageBackends, StorageManager, config, history};
 use harmos_runtime::runtime::{BootstrapCleanup, BootstrapStatus};
 use harmos_runtime::services::ServiceContext;
@@ -75,14 +74,12 @@ enum Failure {
 /* === Implementations === */
 
 impl Application for App {
-    type Lanes = <Editor as Application>::Lanes;
     type State = State;
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
 }
 
 impl Application for InitializingApp {
-    type Lanes = <Editor as Application>::Lanes;
     type State = State;
     type Transaction = harmos_runtime::state::Never;
     type Record = ();

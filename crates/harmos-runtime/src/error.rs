@@ -31,6 +31,9 @@ use std::convert::Infallible;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E = Infallible> {
+    #[error("invalid lane `{name}`: {reason}")]
+    InvalidLane { name: &'static str, reason: &'static str },
+
     #[error("snapshot entry is {bytes} bytes; segment limit is {limit} bytes")]
     SnapshotEntry { bytes: usize, limit: usize },
 

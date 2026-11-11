@@ -46,8 +46,8 @@ impl Manager {
         ]
     }
 
-    pub(in crate::operations) fn register_with_services<L: Lane>(
-        &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged,
+    pub(in crate::operations) fn register_with_services(
+        &self, registration: crate::operations::Registration, staged: crate::operations::resident::Staged,
     ) -> Result<()> {
         self.register_scoped_services(
             registration,
@@ -58,8 +58,8 @@ impl Manager {
         )
     }
 
-    pub(in crate::operations) fn register_scoped_services<L: Lane>(
-        &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged, owner: &str,
+    pub(in crate::operations) fn register_scoped_services(
+        &self, registration: crate::operations::Registration, staged: crate::operations::resident::Staged, owner: &str,
         #[cfg(feature = "plugin-guest")] scope: Option<&PluginScope>,
     ) -> Result<()> {
         let mut entries = self.native_entries(
@@ -85,7 +85,7 @@ impl Manager {
         Ok(())
     }
 
-    pub(crate) fn register_native<L: Lane>(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+    pub(crate) fn register_native(&self, registration: crate::operations::Registration) -> Result<()> {
         let entries = self.native_entries(
             registration,
             "host",
@@ -95,8 +95,8 @@ impl Manager {
         self.reserve(&entries)
     }
 
-    pub(in crate::operations) fn native_entries<L: Lane>(
-        &self, registration: crate::operations::Registration<L>, owner: &str, #[cfg(feature = "plugin-guest")] scope: Option<&PluginScope>,
+    pub(in crate::operations) fn native_entries(
+        &self, registration: crate::operations::Registration, owner: &str, #[cfg(feature = "plugin-guest")] scope: Option<&PluginScope>,
     ) -> Result<Vec<Arc<Entry>>> {
         let crate::operations::Registration { batch, lane, defaults } = registration;
         if !batch.services.is_empty() {
@@ -133,7 +133,7 @@ impl Manager {
                     });
                 }
             };
-            let selected = defaults.get(factory.definition.id.as_str()).copied().or(lane).unwrap_or_else(L::default_lane);
+            let selected = defaults.get(factory.definition.id.as_str()).copied().or(lane).unwrap_or_else(Lane::default);
             let definition = factory.definition.clone();
             definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
             let wire: Option<crate::operations::wire::Dispatch> =

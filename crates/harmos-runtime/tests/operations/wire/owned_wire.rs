@@ -20,7 +20,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RetryPolicy};
 
@@ -109,7 +109,7 @@ async fn runtime() -> (Runtime<App>, Arc<Resources>) {
             preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
             ..Default::default()
         });
-        setup.operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+        setup.operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -127,7 +127,7 @@ async fn wire_bindings_execute() {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
                 ..Default::default()
             });
-            setup.operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+            setup.operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();
@@ -160,7 +160,13 @@ async fn wire_bindings_execute() {
 #[tokio::test]
 async fn contracts_guard_identity() {
     let (runtime, resources) = runtime().await;
-    assert!(runtime.operations.register::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open).await.is_err());
+    assert!(
+        runtime
+            .operations
+            .register::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default())
+            .await
+            .is_err()
+    );
     assert!(resources.events.lock().unwrap().is_empty());
     runtime.shutdown().await.unwrap();
 }
@@ -173,7 +179,7 @@ async fn owner_assignments_isolate_instances() {
     for owner in ["camera", "simulator"] {
         runtime
             .plugin
-            .register_embedded::<crate::operations::Single<ReadContractDeclaration>, Lanes>(
+            .register_embedded::<crate::operations::Single<ReadContractDeclaration>>(
                 harmos_runtime::guest::PluginDefinition {
                     id: owner.into(),
                     version: "1.0.0".parse().unwrap(),
@@ -183,7 +189,7 @@ async fn owner_assignments_isolate_instances() {
                     contributions: Default::default(),
                 },
                 Default::default(),
-                Lanes::Open,
+                harmos_runtime::operations::Lane::default(),
             )
             .await
             .unwrap();
@@ -253,7 +259,7 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
                 setup.resource::<Resources>(resources.clone());
                 setup.settings().schema_settings(settings);
                 if initial {
-                    setup.operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+                    setup.operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
                 }
             })
             .await;
@@ -265,7 +271,10 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
                 }
             } else {
                 let runtime = runtime.unwrap();
-                let result = runtime.operations.register::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open).await;
+                let result = runtime
+                    .operations
+                    .register::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default())
+                    .await;
                 assert_eq!(result.is_ok(), accepted);
                 assert_eq!(runtime.operations.definition(ReadContractDeclaration::ID).is_ok(), accepted);
                 runtime.shutdown().await.unwrap();

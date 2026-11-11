@@ -99,7 +99,7 @@ fn crate_builds_against() {
     let facade = output.join("libfacade.rlib");
     assert!(facade.is_file(), "the facade build did not produce {}", facade.display());
 
-    for fixture in ["facade_message_with_override.rs", "facade_operations_with_override.rs", "facade_lanes_with_override.rs"] {
+    for fixture in ["facade_message_with_override.rs", "facade_operations_with_override.rs"] {
         let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture, &[]);
         assert!(
             compiled.status.success(),
@@ -119,12 +119,7 @@ fn crate_builds_against() {
         "unexpected payload diagnostic:\n{stderr}"
     );
 
-    for fixture in [
-        "facade_message_without_override.rs",
-        "facade_operations_without_override.rs",
-        "facade_catalog_without_override.rs",
-        "facade_lanes_without_override.rs",
-    ] {
+    for fixture in ["facade_message_without_override.rs", "facade_operations_without_override.rs", "facade_catalog_without_override.rs"] {
         let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture, &[]);
         let stderr = String::from_utf8_lossy(&compiled.stderr);
         assert!(

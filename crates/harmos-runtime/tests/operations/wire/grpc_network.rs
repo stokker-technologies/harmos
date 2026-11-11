@@ -58,7 +58,7 @@ async fn filesystem_hash_roundtrip() {
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.settings().storage(&storage);
-        setup.operations::<harmos_operations::Storage>(Lanes::Open);
+        setup.operations::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -120,8 +120,8 @@ async fn builtin_grpc_roundtrip() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<ParkedContract>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::Lifecycle>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<ParkedContract>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register::<harmos_operations::Lifecycle>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let paths = runtime
         .operations
         .grpc_methods()
@@ -180,9 +180,17 @@ async fn external_authority_parity() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<DescendantDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::Host>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<GuardedDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<DescendantDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime.operations.register::<harmos_operations::Host>(harmos_runtime::operations::Lane::default()).await.unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
     assert_eq!(runtime.operation(GuardedDeclaration {}).await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -274,7 +282,11 @@ async fn external_authority_parity() {
 
     // Existing Explicit Anonymous Routes Have No New Registration Requirement.
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<GuardedDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime
         .grpc()
         .register_service(Endpoint {
@@ -286,7 +298,11 @@ async fn external_authority_parity() {
     assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap(), "external:anonymous");
     runtime.shutdown().await.unwrap();
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<GuardedDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let operations = Arc::new(runtime.operations.clone());
     runtime
         .operations
@@ -347,7 +363,7 @@ async fn independent_listeners() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -432,8 +448,8 @@ async fn stalled_listener_settles() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -503,8 +519,8 @@ async fn shutdown_streams_unavailable() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<UploadDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -572,10 +588,10 @@ async fn shutdown_streams_unavailable() {
 #[tokio::test]
 async fn status_propagation() {
     let statuses = failures(Behavior::reject(), |operations| async move {
-        operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<WhoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+        operations.register::<crate::operations::Single<DownloadDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+        operations.register::<crate::operations::Single<UploadDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+        operations.register::<crate::operations::Single<ExchangeDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     })
     .await;
     for status in statuses {
@@ -586,10 +602,10 @@ async fn status_propagation() {
         assert_eq!(status.metadata().get_bin("x-fixture-context-bin").unwrap().to_bytes().unwrap().as_ref(), &[0, 255, 1]);
     }
     let statuses = failures(Behavior::crash(), |operations| async move {
-        operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+        operations.register::<crate::operations::Single<WhoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+        operations.register::<crate::operations::Single<DownloadDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+        operations.register::<crate::operations::Single<UploadDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+        operations.register::<crate::operations::Single<ExchangeDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     })
     .await;
     for status in statuses {
@@ -606,7 +622,7 @@ async fn runtime_stops_listener() {
     .await
     .unwrap();
     assert!(runtime.grpc().local_addr().is_none());
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
@@ -715,13 +731,33 @@ async fn streaming_principals(native: bool) {
     .await
     .unwrap();
     if native {
-        runtime.operations.register::<crate::operations::Single<NativeDownload>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<NativeUpload>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<NativeExchange>>(Lanes::Open).await.unwrap();
+        runtime
+            .operations
+            .register::<crate::operations::Single<NativeDownload>>(harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
+        runtime.operations.register::<crate::operations::Single<NativeUpload>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+        runtime
+            .operations
+            .register::<crate::operations::Single<NativeExchange>>(harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
     } else {
-        runtime.operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+        runtime
+            .operations
+            .register::<crate::operations::Single<DownloadDeclaration>>(harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register::<crate::operations::Single<UploadDeclaration>>(harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register::<crate::operations::Single<ExchangeDeclaration>>(harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
     }
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
@@ -811,7 +847,7 @@ async fn configured_tls_serves() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -872,7 +908,7 @@ async fn observes_cancel_deadline() {
         })
         .await
         .unwrap();
-        runtime.operations.register::<crate::operations::Single<NativeHold>>(Lanes::Open).await.unwrap();
+        runtime.operations.register::<crate::operations::Single<NativeHold>>(harmos_runtime::operations::Lane::default()).await.unwrap();
         let trace = Arc::new(Mutex::new(Vec::new()));
         runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
         runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
@@ -949,7 +985,7 @@ async fn access_never_grant() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime.grpc().register_middleware(Arc::new(DiscoveryAccess)).unwrap();
     runtime
@@ -998,7 +1034,11 @@ async fn reload_certificate_preserves_stream() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ExchangeDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -1095,7 +1135,9 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
     }
     let next = Arc::new(tokio::sync::Semaphore::new(0));
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<tokio::sync::Semaphore>(next.clone()).operations::<crate::operations::Single<Progress>>(Lanes::Open);
+        setup
+            .resource::<tokio::sync::Semaphore>(next.clone())
+            .operations::<crate::operations::Single<Progress>>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -1157,7 +1199,9 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     }
     let finished = Arc::new(tokio::sync::Notify::new());
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<tokio::sync::Notify>(finished.clone()).operations::<crate::operations::Single<Buffered>>(Lanes::Open);
+        setup
+            .resource::<tokio::sync::Notify>(finished.clone())
+            .operations::<crate::operations::Single<Buffered>>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();

@@ -60,7 +60,7 @@ async fn object_exchange_saves() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let first = value("a/b", "first");
     let second = value("second", "two");
     // Register Authored Schema Before Sending Its Typed Payload.

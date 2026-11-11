@@ -59,12 +59,6 @@ pub struct Payload {
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -80,7 +74,6 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl harmos_runtime::Application for Model {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();

@@ -25,7 +25,6 @@ use tokio::sync::{Semaphore, mpsc};
 
 // Local Imports
 use super::app::App;
-use super::support::Lanes;
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Runtime, operations::Capacity, operations::Lane};
 
@@ -92,7 +91,7 @@ impl harmos_runtime::Operation for MeasureContractDeclaration {
 
 /* === Private Functions === */
 
-async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
+async fn assert_admission(lane: Lane, count: usize, admitted: usize) {
     let (entered, mut receiver) = mpsc::channel(count);
     let gauge = Arc::new(Gauge {
         active: AtomicUsize::new(0),
@@ -128,111 +127,26 @@ async fn assert_admission(lane: Lanes, count: usize, admitted: usize) {
 
 #[tokio::test]
 async fn capacity_bounds_admission() {
-    assert_admission(Lanes::Serial, 3, 1).await;
-    assert_admission(Lanes::Concurrent, 3, 2).await;
+    assert_admission(crate::support::SERIAL, 3, 1).await;
+    assert_admission(crate::support::CONCURRENT, 3, 2).await;
 }
 
 #[tokio::test]
 async fn unbounded_lanes_admit() {
     // The default lane is unbounded like an explicit unbounded lane.
-    for lane in [Lanes::Unbounded, Lanes::default()] {
+    for lane in [crate::support::UNBOUNDED, harmos_runtime::operations::Lane::default()] {
         assert_admission(lane, 8, 8).await;
     }
-}
-
-mod hygiene {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    #[::harmos_runtime::lanes]
-    pub enum Lanes {
-        #[default]
-        Open,
-
-        #[lane(concurrent(2))]
-        Probe,
-    }
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    mod harmos {
-        /* === Modules === */
-
-        /* === Re-Exports === */
-
-        /* === Imports === */
-
-        // Standard Library Imports
-
-        // Third Party Imports
-
-        // Local Imports
-
-        /* === Constants === */
-
-        /* === Macros === */
-
-        /* === Type Aliases === */
-
-        /* === Structs === */
-
-        /* === Enums === */
-
-        /* === Traits === */
-
-        /* === Implementations === */
-
-        /* === Public Functions === */
-
-        /* === Private Functions === */
-
-        /* === Tests === */
-    }
-
-    /* === Tests === */
 }
 
 /* === Tests === */
 
 #[test]
-fn catalog_resolves_crate() {
-    assert_eq!(hygiene::Lanes::Probe.name(), "Probe");
-    assert_eq!(hygiene::Lanes::Probe.capacity(), Capacity::concurrent(2));
-    assert!(format!("{:?}", hygiene::Lanes::catalog()).contains("Probe"));
-    assert_eq!(hygiene::Lanes::default().name(), "Open");
-}
-
-#[test]
-fn capacities_match_variants() {
-    assert_eq!(Lanes::Serial.name(), "Serial");
-    assert_eq!(Lanes::Serial.capacity(), Capacity::serial());
-    assert_eq!(Lanes::Concurrent.capacity(), Capacity::concurrent(2));
-    assert_eq!(Lanes::Unbounded.capacity(), Capacity::unbounded());
-    assert_eq!(Lanes::default().name(), "Open");
-    assert_eq!(Lanes::Open.capacity(), Capacity::unbounded());
+fn lane_values_refuse_duplicates_and_invalid_capacity() {
+    let lane = harmos_runtime::operations::Lane::new("worker", Capacity::serial());
+    let duplicate = harmos_runtime::operations::LaneSet::new([lane, lane]);
+    assert!(matches!(duplicate, Err(harmos_runtime::Error::InvalidLane { name: "worker", .. })));
+    let invalid = harmos_runtime::operations::Lane::new("worker", Capacity::concurrent(0));
+    assert!(matches!(harmos_runtime::operations::LaneSet::new([invalid]), Err(harmos_runtime::Error::InvalidLane { name: "worker", .. })));
+    assert!(harmos_runtime::operations::LaneSet::new([lane]).is_ok());
 }

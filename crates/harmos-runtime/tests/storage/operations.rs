@@ -58,8 +58,6 @@ use harmos_runtime::operations::OperationCatalog;
 
 /* === Enums === */
 
-pub(crate) use super::support::Lanes;
-
 /* === Traits === */
 
 /* === Implementations === */

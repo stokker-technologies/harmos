@@ -41,7 +41,7 @@ use crate::{Application, Error, Result};
 
 /* === Structs === */
 
-struct Guest<A: Application, C, L> {
+struct Guest<A: Application, C> {
     loaded: Option<Loaded<A>>,
     serving: Option<Serving<A>>,
     exited: Option<LifecycleFuture<'static>>,
@@ -55,7 +55,7 @@ struct Guest<A: Application, C, L> {
     initialization_timeout: Duration,
     shutdown_timeout: Duration,
     encoding_memory_bytes: NonZeroUsize,
-    lane: L,
+    lane: Lane,
     catalog: PhantomData<fn() -> C>,
 }
 
@@ -66,21 +66,21 @@ struct Guest<A: Application, C, L> {
 /* === Implementations === */
 
 impl<A: Application> PluginHost<A> {
-    pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane) -> Result<()>
+    pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
         self.guest::<C>(loaded, settings, lane, false).await
     }
 
-    pub async fn reload_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane) -> Result<()>
+    pub async fn reload_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
         self.guest::<C>(loaded, settings, lane, true).await
     }
 
-    async fn guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: impl Lane, replace: bool) -> Result<()>
+    async fn guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane, replace: bool) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
     {
@@ -103,7 +103,7 @@ impl<A: Application> PluginHost<A> {
         let encoding_memory_bytes = settings.encoding_memory_bytes;
         let factory: Factory = Arc::new(move || {
             let inspected = loaded.duplicate().map_err(|source| failed(&loaded.declaration().id, source))?;
-            Ok(Box::new(Guest::<A, C, _> {
+            Ok(Box::new(Guest::<A, C> {
                 loaded: Some(inspected),
                 serving: None,
                 exited: None,
@@ -125,11 +125,10 @@ impl<A: Application> PluginHost<A> {
     }
 }
 
-impl<A, C, L> Execution for Guest<A, C, L>
+impl<A, C> Execution for Guest<A, C>
 where
     A: Application,
     C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
-    L: Lane,
 {
     fn start<'a>(
         &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,

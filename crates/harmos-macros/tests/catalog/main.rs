@@ -178,11 +178,6 @@ fn authoring_refusals_compile() {
         ("non_serde_row.rs", "Serialize"),
         ("unpaired_inverse.rs", "the declared inverse of `Place` does not name `Place` back"),
         ("uncatalogued_inverse.rs", "the declared inverse `Remove` is not a member of `Change`"),
-        // The default lane is the one every job that named no lane lands on,
-        // so a catalog answers where exactly once and that lane is unbounded.
-        ("capacitated_default_lane.rs", "the default lane is unbounded"),
-        ("defaultless_lanes.rs", "exactly one lane `#[default]`"),
-        ("doubly_defaulted_lanes.rs", "exactly one lane `#[default]`"),
         ("operation_on_impl.rs", "operation belongs on the implementation struct"),
         // Guest Artifact Declarations Remain Until The Guest Migration.
         ("explicit_version_plugin.rs", "remove `version`"),

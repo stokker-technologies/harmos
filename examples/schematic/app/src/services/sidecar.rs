@@ -21,7 +21,6 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::app::Runtime;
-use crate::lanes::Lanes;
 use harmos::{OperationRequest, encoding::Message as _};
 use harmos_runtime::plugin::grpc::{Attached, Managed, Placement, PlacementSettings};
 use harmos_runtime::{Error, Result};
@@ -56,7 +55,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<A
     let resources = runtime.operations.context().resource::<schematic_operations::schematic::upload::AnalysisResources>()?;
     let streams = runtime.streams.clone();
     resources.progress.get_or_init(|| Arc::new(move |row| streams.publish(row)));
-    let registration = harmos_runtime::operations::Registration::new(Lanes::Open)
+    let registration = harmos_runtime::operations::Registration::new(harmos_runtime::operations::Lane::default())
         .protobuf::<schematic_operations::AnalyzeSchematic>()?
         .protobuf::<schematic_operations::AnalyzeUpload>()?
         .protobuf::<schematic_operations::AnalyzeExchange>()?

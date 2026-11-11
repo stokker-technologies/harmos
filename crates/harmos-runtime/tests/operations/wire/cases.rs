@@ -19,7 +19,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Failed, Lanes, Owner};
+use super::{Failed, Owner};
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Message, Refusal};
 
@@ -380,7 +380,7 @@ async fn runtime_with_owner(owner: Arc<Owner>) -> harmos_runtime::Runtime<crate:
 async fn malformed_payload_refused() {
     let owner = Arc::new(Owner::default());
     let runtime = runtime_with_owner(owner.clone()).await;
-    runtime.operations.register::<crate::operations::Single<EchoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<EchoDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     assert!(matches!(
         runtime.operations.submit_encoded(&format!("host.{}", EchoDeclaration::ID), vec![0xff]),
         Err(Error::OperationPayload { .. })
@@ -394,7 +394,7 @@ async fn malformed_payload_refused() {
 async fn decode_panic_refused() {
     let owner = Arc::new(Owner::default());
     let runtime = runtime_with_owner(owner.clone()).await;
-    runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<Codec>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     assert!(matches!(
         runtime.operations.submit_encoded(&format!("host.{}", Codec::ID), protobuf(&Text::from("decode_panic"))),
         Err(Error::OperationPanicked { .. })
@@ -408,7 +408,7 @@ async fn decode_panic_refused() {
 async fn encode_panic_settles() {
     let owner = Arc::new(Owner::default());
     let runtime = runtime_with_owner(owner.clone()).await;
-    runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<Codec>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     assert!(matches!(
         runtime.operations.call_encoded(&format!("host.{}", Codec::ID), protobuf(&Text::from("encode_panic"))).await,
         Err(Error::OperationPanicked { .. })
@@ -424,14 +424,14 @@ async fn decode_races_replacement() {
     let old = Arc::new(Owner::default());
     let replacement = old.clone();
     let runtime = runtime_with_owner(old.clone()).await;
-    runtime.operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<Codec>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let operations = runtime.operations.clone();
     DECODE_HOOK.with(|hook| {
         *hook.borrow_mut() = Some(Box::new(move || {
             std::thread::spawn(move || {
                 tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
                     operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Codec::ID).unwrap()).await.unwrap();
-                    operations.register::<crate::operations::Single<Codec>>(Lanes::Open).await.unwrap();
+                    operations.register::<crate::operations::Single<Codec>>(harmos_runtime::operations::Lane::default()).await.unwrap();
                 });
             })
             .join()
@@ -454,8 +454,8 @@ async fn decode_races_replacement() {
 async fn children_refuse_held() {
     let owner = Arc::new(Owner::default());
     let runtime = runtime_with_owner(owner.clone()).await;
-    runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Serial).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<SameLaneDeclaration>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<SameLaneDeclaration>>(crate::support::SERIAL).await.unwrap();
     let error = runtime.operation(SameLaneDeclaration::from("child")).await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else {
         panic!("nested refusal retained");
@@ -470,8 +470,16 @@ async fn children_refuse_held() {
 async fn success_joins_unawaited() {
     let owner = Arc::new(Owner::default());
     let runtime = runtime_with_owner(owner.clone()).await;
-    runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<DetachedDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<PrivateEchoDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<DetachedDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     assert_eq!(&*runtime.operation(DetachedDeclaration::from("ignored")).await.unwrap(), "parent");
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", PrivateEchoDeclaration::ID).unwrap()).await.unwrap();
@@ -482,8 +490,12 @@ async fn success_joins_unawaited() {
 async fn cancellation_joins_child() {
     let owner = Arc::new(Owner::default());
     let runtime = runtime_with_owner(owner.clone()).await;
-    runtime.operations.register::<crate::operations::Single<PrivateEchoDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<NestedDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<PrivateEchoDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime.operations.register::<crate::operations::Single<NestedDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let started = owner.wire_started.notified();
     let parent = runtime.operation(NestedDeclaration::from("block")).start().await.unwrap();
     started.await;

@@ -24,7 +24,7 @@ use std::sync::Arc;
 // Local Imports
 use super::lifecycle::{GuestOperations, Lifecycle, Resources};
 use super::sandbox::{EchoOperation, Echoed, ProviderEchoOperation};
-use super::{Bank, GuestLanes, component_error, retire_failed_guest};
+use super::{Bank, component_error, retire_failed_guest};
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::{OperationDeclaration, OperationHost as _};
 
@@ -66,7 +66,7 @@ struct ProviderResources {
 
 struct DependencyHost {
     guest: Lifecycle,
-    operations: harmos_runtime::operations::OperationManager<GuestLanes>,
+    operations: harmos_runtime::operations::OperationManager,
 }
 
 /* === Enums === */
@@ -192,14 +192,16 @@ impl harmos_runtime::guest::PluginLifecycle for DependencyHost {
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
                     if definition.id == "provider" {
-                        bindings.operations::<ProviderOperations>(GuestLanes::Open)
+                        bindings.operations::<ProviderOperations>(harmos_runtime::operations::Lane::default())
                     } else {
-                        bindings.operations::<ForwardOperations>(GuestLanes::Open)
+                        bindings.operations::<ForwardOperations>(harmos_runtime::operations::Lane::default())
                     }
                 })?);
             }
             harmos_runtime::guest::PluginBackend::Guest(resources) => {
-                resources.start::<GuestOperations>(&self.operations, definition, router, authority, GuestLanes::Open).await?;
+                resources
+                    .start::<GuestOperations>(&self.operations, definition, router, authority, harmos_runtime::operations::Lane::default())
+                    .await?;
             }
         }
         Ok(())

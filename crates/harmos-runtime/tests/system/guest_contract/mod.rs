@@ -45,8 +45,6 @@ use support::Bank;
 
 /* === Enums === */
 
-use support::Lanes as GuestLanes;
-
 /* === Traits === */
 
 /* === Implementations === */

@@ -35,7 +35,7 @@ use tonic::{
 };
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::grpc::{Codec, DecodeSettings, EncodeSettings};
@@ -75,7 +75,7 @@ struct GuardedDeclaration {}
 struct DescendantDeclaration {}
 
 struct ExternalAccess {
-    operations: std::sync::Weak<harmos_runtime::operations::OperationManager<Lanes>>,
+    operations: std::sync::Weak<harmos_runtime::operations::OperationManager>,
     mode: Arc<std::sync::atomic::AtomicUsize>,
 }
 struct Sessions;
@@ -617,7 +617,7 @@ async fn external_catalog(
 }
 
 async fn failures<F: Future<Output = ()>>(
-    behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager<Lanes>) -> F,
+    behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager) -> F,
 ) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
     let runtime = Runtime::<App>::launch_with((), (), |setup| {

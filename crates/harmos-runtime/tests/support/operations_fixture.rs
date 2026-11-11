@@ -149,8 +149,6 @@ pub(crate) enum Single<O: harmos_runtime::OperationDeclaration> {
     Operation(O),
 }
 
-pub(crate) use support::Lanes;
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Failed {
     #[error("scripted failure {0:?}")]

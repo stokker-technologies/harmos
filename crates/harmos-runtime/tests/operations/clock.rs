@@ -21,7 +21,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::RetryPolicy;
 
@@ -134,7 +134,7 @@ fn sources_avoid_tokio() {
 #[tokio::test(start_paused = true)]
 async fn clock_measures_script() {
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let scripted = Duration::from_secs(300);
 
     let answer = runtime

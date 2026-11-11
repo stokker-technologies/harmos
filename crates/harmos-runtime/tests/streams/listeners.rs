@@ -88,7 +88,7 @@ struct Resources {
 }
 
 struct Host {
-    operations: harmos_runtime::operations::OperationManager<Lanes>,
+    operations: harmos_runtime::operations::OperationManager,
     owner: Arc<Owner>,
     scope: Option<PluginScope>,
     fail_start: bool,
@@ -112,12 +112,6 @@ enum HandlerOperations {
 enum Callbacks {
     First(HearingFirst),
     Second(HearingSecond),
-}
-
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -197,7 +191,6 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl harmos_runtime::Application for Model {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -360,7 +353,10 @@ impl PluginLifecycle for Host {
         resources.endpoint = Some(router.enter("listener").unwrap());
         let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
         self.scope = Some(scope.clone());
-        resources.operations = Some(self.operations.stage_plugin(scope, |bindings| bindings.operations::<HandlerOperations>(Lanes::Open))?);
+        resources.operations = Some(
+            self.operations
+                .stage_plugin(scope, |bindings| bindings.operations::<HandlerOperations>(harmos_runtime::operations::Lane::default()))?,
+        );
         if self.managed {
             resources.streams = Some(self.owner.streams.stage_plugin(scope, [publication()]).await.unwrap());
             self.lease = Some(resources.streams.as_ref().unwrap().leases()[0].clone());

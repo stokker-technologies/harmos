@@ -48,12 +48,6 @@ struct Columns {
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub enum TestLanes {
-    #[default]
-    Open,
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -72,7 +66,6 @@ impl harmos_runtime::Application for Model {
     type State = support::Ledger;
     type Transaction = support::Change;
     type Record = support::Fact;
-    type Lanes = TestLanes;
 }
 
 /* === Public Functions === */

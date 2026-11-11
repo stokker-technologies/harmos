@@ -49,7 +49,7 @@ async fn native_publication_preserves_payload_and_batch_metadata() {
             ..Default::default()
         });
         setup.resource::<PublicationAccess>(Arc::new(PublicationAccess(publications.clone())));
-        setup.operations::<harmos_operations::Streams>(super::Lanes::Open);
+        setup.operations::<harmos_operations::Streams>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();

@@ -81,7 +81,7 @@ impl EncodedBinding {
 }
 
 impl Bindings<'_> {
-    pub fn encoded(&mut self, binding: EncodedBinding, lane: impl Lane) -> crate::Result<()> {
+    pub fn encoded(&mut self, binding: EncodedBinding, lane: Lane) -> crate::Result<()> {
         let contract = &binding.contract;
         let validated = Contract::new_with_settings(
             contract.operation().clone(),

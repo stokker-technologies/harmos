@@ -23,10 +23,7 @@ use tracing::{Instrument, Subscriber, instrument::WithSubscriber};
 use tracing_subscriber::{Layer, layer::Context as TraceContext, prelude::*, registry::LookupSpan};
 
 // Local Imports
-use super::{
-    Lanes,
-    support::{self, Bank, Fact, Noted},
-};
+use super::support::{self, Bank, Fact, Noted};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime, state::CausationId, state::Position};
 
@@ -192,9 +189,9 @@ impl harmos_runtime::operations::Operation for FamilyContractDeclaration {
 
 async fn runtime() -> Runtime<Bank> {
     let runtime = super::runtime_with(|_| {}).await;
-    runtime.operations.register::<super::Single<FamilyContractDeclaration>>(Lanes::Serial).await.unwrap();
-    runtime.operations.register::<super::Single<DescendContractDeclaration>>(Lanes::Concurrent).await.unwrap();
-    runtime.operations.register::<super::Single<NoteContractDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<FamilyContractDeclaration>>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register::<super::Single<DescendContractDeclaration>>(crate::support::CONCURRENT).await.unwrap();
+    runtime.operations.register::<super::Single<NoteContractDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime
 }
 

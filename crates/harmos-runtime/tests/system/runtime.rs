@@ -25,7 +25,6 @@ use super::fixture::{
     Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema, state_settings,
 };
 use super::fixture::{Data, StorageBackends};
-use super::operations::Lanes;
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
@@ -121,7 +120,7 @@ async fn runtime_baseline_walks() {
 
     // Read the Catalog Before and After Serving Storage
     assert!(!served(&runtime).iter().any(|id| id.starts_with("storage_")), "nothing is served before the host registers it");
-    runtime.operations.register::<harmos_operations::storage::Storage>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<harmos_operations::storage::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let catalogue = served(&runtime);
     for required in ["storage.query", "storage.write_records", "storage.read_file"] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");

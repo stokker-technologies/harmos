@@ -220,37 +220,35 @@ impl<A: Application> PluginHost<A> {
         self.shared.cleanup.clone()
     }
 
-    pub async fn register_embedded<C: harmos_operations::execution::operations::OperationCatalog, L: Lane>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: L,
+    pub async fn register_embedded<C: harmos_operations::execution::operations::OperationCatalog>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: Lane,
     ) -> Result<()> {
         use crate::operations::RegistrationExt;
         self.embedded(definition, restart, C::batch().lane(lane), false).await
     }
 
-    pub async fn reload_embedded<C: harmos_operations::execution::operations::OperationCatalog, L: Lane>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: L,
+    pub async fn reload_embedded<C: harmos_operations::execution::operations::OperationCatalog>(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, lane: Lane,
     ) -> Result<()> {
         use crate::operations::RegistrationExt;
         self.embedded(definition, restart, C::batch().lane(lane), true).await
     }
 
-    pub async fn register_embedded_batch<L: Lane>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
-        registration: crate::operations::Registration<L>,
+    pub async fn register_embedded_batch(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, registration: crate::operations::Registration,
     ) -> Result<()> {
         self.embedded(definition, restart, registration, false).await
     }
 
-    pub async fn reload_embedded_batch<L: Lane>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
-        registration: crate::operations::Registration<L>,
+    pub async fn reload_embedded_batch(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, registration: crate::operations::Registration,
     ) -> Result<()> {
         self.embedded(definition, restart, registration, true).await
     }
 
-    async fn embedded<L: Lane>(
-        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings,
-        registration: crate::operations::Registration<L>, replace: bool,
+    async fn embedded(
+        &self, definition: PluginDefinition, restart: crate::config::PluginRestartSettings, registration: crate::operations::Registration,
+        replace: bool,
     ) -> Result<()> {
         let declarations = registration.batch.operations.iter().map(|factory| factory.definition.clone()).collect();
         let contracts = registration

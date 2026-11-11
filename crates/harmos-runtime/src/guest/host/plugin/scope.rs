@@ -691,12 +691,6 @@ mod tests {
     use crate::operations::RegistrationExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
-
     struct Model;
     impl crate::Lifecycle for Model {
         type Config = ();
@@ -709,7 +703,6 @@ mod tests {
     }
 
     impl Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
@@ -772,7 +765,7 @@ mod tests {
                 harmos_operations::execution::__private::RegistrationBatch::new()
                     .operation::<Read>()
                     .service::<Worker>("service", crate::services::POLICY)
-                    .lane(<Lanes as crate::operations::Lane>::default_lane()),
+                    .lane(crate::operations::Lane::default()),
             )
             .await
             .unwrap();
@@ -782,7 +775,7 @@ mod tests {
         receipt.shutdown().await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(runtime.operations.resident_definition("worker.service").is_none());
-        assert!(scope.operation::<Read, Lanes>(Read).start().await.is_err());
+        assert!(scope.operation::<Read>(Read).start().await.is_err());
         runtime.shutdown().await.unwrap();
     }
 
@@ -798,17 +791,17 @@ mod tests {
         let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
         assert!(scope.commit());
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Read>();
-        let invocation = scope.operation::<Read, Lanes>(Read);
-        scope.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        let invocation = scope.operation::<Read>(Read);
+        scope.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);
         assert_eq!(*invocation.await.unwrap(), 7);
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
         assert!(scope.unregister(&crate::QualifiedId::parse("host.read").unwrap()).await.is_err());
 
-        let stale = scope.operation::<Read, Lanes>(Read);
+        let stale = scope.operation::<Read>(Read);
         receipt.shutdown().await.unwrap();
         assert!(stale.start().await.is_err());
-        assert!(scope.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
+        assert!(scope.register_batch(batch.lane(crate::operations::Lane::default())).await.is_err());
         assert!(runtime.operations.definitions().iter().all(|definition| definition.id.as_str() != "read"));
         runtime.shutdown().await.unwrap();
     }

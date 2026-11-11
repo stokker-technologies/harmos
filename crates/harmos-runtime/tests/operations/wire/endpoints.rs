@@ -28,7 +28,7 @@ use std::{
 use tokio::sync::Notify;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream};
 use harmos_runtime::{Error, Runtime};
 
@@ -261,7 +261,7 @@ async fn decoded_charge_releases_on_hand_off() {
 
     let gate = Arc::new(Gate::default());
     let runtime = runtime_with_resource(gate.clone()).await;
-    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let mut codec = SlowCodec::new(decode, encode).unwrap();
     let opened = gate.clone();
     let frames = futures_util::stream::iter(0..=FRAMES).map(move |index| {
@@ -289,7 +289,11 @@ async fn decoded_charge_releases_on_hand_off() {
 async fn endpoint_admission_contract() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -310,7 +314,11 @@ async fn endpoint_admission_contract() {
 async fn cancellation_settles_owner() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -343,7 +351,11 @@ async fn cancellation_settles_child() {
 async fn half_close_joins() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (producer, decoded) = channel();
     producer.send_with(4, || Ok(7)).await.unwrap();
     let item = decoded.recv().await.unwrap();
@@ -366,7 +378,11 @@ async fn half_close_joins() {
 async fn settlement_never_wait() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
@@ -382,7 +398,11 @@ async fn settlement_never_wait() {
 async fn input_failure_settles_attempt() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
@@ -409,7 +429,11 @@ async fn input_failure_settles_attempt() {
 async fn input_drop_cancels() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
@@ -426,7 +450,11 @@ async fn input_drop_cancels() {
 async fn deadline_settles_peer() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, _output) = channel();
     let instance =
@@ -445,7 +473,11 @@ async fn grpc_exchange_polls() {
     use futures_util::StreamExt;
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (producer, decoded) = stream::<u32>(StreamSettings {
         items: NonZeroUsize::new(3).unwrap(),
         bytes: NonZeroUsize::new(12).unwrap(),
@@ -479,7 +511,11 @@ async fn exchange_failure_settles_attempt() {
     use futures_util::StreamExt;
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -511,7 +547,11 @@ async fn exchange_failure_settles_attempt() {
 async fn exchange_drop_cancels() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -527,7 +567,11 @@ async fn exchange_drop_cancels() {
 async fn charged_request_ownership() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (requests, decoded) = stream::<ForwardDeclaration>(StreamSettings {
         items: NonZeroUsize::new(1).unwrap(),
         bytes: NonZeroUsize::new(1).unwrap(),
@@ -573,7 +617,11 @@ async fn opening_admission_exchange() {
 
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let frames = futures_util::stream::iter([
         Ok(envelope(InputEnvelope::Request(ForwardDeclaration { consume: true })).await),
         Ok(envelope(InputEnvelope::Item(7)).await),
@@ -594,8 +642,12 @@ async fn opening_admission_exchange() {
 async fn parent_cancellation<const CHARGED: bool>() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<ParentDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime.operations.register::<crate::operations::Single<ParentDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let parent = runtime
@@ -622,7 +674,11 @@ async fn parent_cancellation<const CHARGED: bool>() {
 async fn stream_progress_outlives_total_timeout() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -642,7 +698,11 @@ async fn stream_progress_outlives_total_timeout() {
 async fn stream_stall_expires_after_progress() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace).await;
-    runtime.operations.register::<crate::operations::Single<ForwardDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let instance =
@@ -669,7 +729,7 @@ async fn unary_keeps_total_deadline() {
         }
     }
     let runtime = runtime_with_resource(Arc::new(Trace::default())).await;
-    runtime.operations.register::<crate::operations::Single<Unary>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<Unary>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let instance = runtime.operations.submit::<Unary>(Unary).unwrap();
     instance.ready().await.unwrap();
     tokio::time::advance(Duration::from_secs(4)).await;
@@ -691,7 +751,7 @@ async fn stream_final_response_wait_is_idle_bounded() {
     }
     let finished_input = Arc::new(Notify::new());
     let runtime = runtime_with_resource(finished_input.clone()).await;
-    runtime.operations.register::<crate::operations::Single<Final>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<Final>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let (input, receiving) = channel();
     let instance = runtime.operations.submit_endpoints::<Final, _>(Final, receiving).unwrap();
     instance.ready().await.unwrap();
@@ -711,7 +771,7 @@ async fn stream_final_response_wait_is_idle_bounded() {
 async fn grpc_stall_names_operation() {
     use harmos_runtime::grpc::{DecodeSettings, EncodeSettings, InputEnvelope};
     let runtime = runtime_with_resource(Arc::new(Gate::default())).await;
-    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let capacity = NonZeroUsize::new(4096).unwrap();
     let settings = harmos_runtime::grpc::server::Settings {
         calls: NonZeroUsize::new(1).unwrap(),

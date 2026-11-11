@@ -105,11 +105,6 @@ pub fn runtime_operation(attribute: TokenStream, item: TokenStream) -> TokenStre
 }
 
 #[proc_macro_attribute]
-pub fn lanes(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::lanes::close(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
 pub fn transaction(attribute: TokenStream, item: TokenStream) -> TokenStream {
     identity::stamp(attribute.into(), item.into(), Sort::Transaction).into()
 }

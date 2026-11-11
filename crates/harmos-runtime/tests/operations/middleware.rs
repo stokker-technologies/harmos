@@ -20,7 +20,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::operations::{CallContext, OperationDeclaration, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime};
@@ -156,8 +156,8 @@ impl Middleware for Policy {
 
 async fn runtime() -> Runtime<App> {
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<super::Single<DeclareParentDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register::<super::Single<DeclareParentDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime
 }
 
@@ -213,8 +213,8 @@ fn portable_preserves_local() {
 #[tokio::test]
 async fn child_preserves_authority() {
     let runtime = runtime().await;
-    runtime.operations.register::<super::Single<OverlayChildDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<super::Single<OverlayParentDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<OverlayChildDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register::<super::Single<OverlayParentDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let mut original = context("alice");
     original.insert_portable(Stage { id: "parent".into() }).unwrap();
     let operations = runtime.operations.with_context(original.clone());
@@ -325,7 +325,7 @@ async fn cancellation_interrupts_policy() {
 async fn overrides_preserve_type() {
     let runtime = runtime().await;
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", DeclareChildDeclaration::ID).unwrap()).await.unwrap();
-    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let operations = runtime.operations.with_context(context("alice"));
     let result =
         operations.submit_at::<DeclareChildDeclaration>(DeclareChildDeclaration::ID, DeclareChildDeclaration {}).unwrap().await.unwrap();
@@ -337,7 +337,7 @@ async fn overrides_preserve_type() {
 #[tokio::test]
 async fn retries_preserve_principal() {
     let runtime = runtime().await;
-    runtime.operations.register::<super::Single<RetryDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<RetryDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     runtime
         .operations

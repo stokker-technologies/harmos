@@ -25,7 +25,7 @@ use futures_util::StreamExt;
 use tokio::sync::Semaphore;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::Runtime;
 use harmos_runtime::grpc::Event;
 use harmos_runtime::operations::RetryPolicy;
@@ -144,7 +144,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         dropped: AtomicUsize::new(0),
     });
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<Trace>(trace.clone()).operations::<crate::operations::Single<ProduceDeclaration>>(Lanes::Serial);
+        setup.resource::<Trace>(trace.clone()).operations::<crate::operations::Single<ProduceDeclaration>>(crate::support::SERIAL);
     })
     .await
     .unwrap();

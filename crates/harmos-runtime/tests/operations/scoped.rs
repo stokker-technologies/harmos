@@ -24,9 +24,9 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
-use harmos_runtime::{Error, Runtime, operations::Lane};
+use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
 
@@ -177,7 +177,7 @@ impl Drop for FreeGuard {
 
 /* === Private Functions === */
 
-async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
+async fn runtime(parent_lane: harmos_runtime::operations::Lane) -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace {
         lane: parent_lane.name(),
         parent_constructions: AtomicUsize::new(0),
@@ -193,8 +193,8 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
     .await
     .unwrap();
     runtime.operations.register::<super::Single<ParentContractDeclaration>>(parent_lane).await.unwrap();
-    runtime.operations.register::<super::Single<BoundContractDeclaration>>(Lanes::Serial).await.unwrap();
-    runtime.operations.register::<super::Single<FreeContractDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<BoundContractDeclaration>>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register::<super::Single<FreeContractDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, trace)
 }
 
@@ -202,7 +202,7 @@ async fn runtime(parent_lane: Lanes) -> (Runtime<App>, Arc<Trace>) {
 
 #[tokio::test]
 async fn ancestor_cycles_rejected() {
-    for lane in [Lanes::Serial, Lanes::Concurrent] {
+    for lane in [crate::support::SERIAL, crate::support::CONCURRENT] {
         let (runtime, trace) = runtime(lane).await;
         let answer = runtime.operation(ParentContractDeclaration { mode: Mode::HandleCycle }).start().await.unwrap().await.unwrap();
         assert_eq!(*answer, 7);
@@ -214,7 +214,7 @@ async fn ancestor_cycles_rejected() {
 
 #[tokio::test]
 async fn refusal_survives_parent() {
-    let (runtime, trace) = runtime(Lanes::Serial).await;
+    let (runtime, trace) = runtime(crate::support::SERIAL).await;
     let error = runtime.operation(ParentContractDeclaration { mode: Mode::PropagateCycle }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(
@@ -226,7 +226,7 @@ async fn refusal_survives_parent() {
 
 #[tokio::test]
 async fn child_settles_another() {
-    let (runtime, trace) = runtime(Lanes::Concurrent).await;
+    let (runtime, trace) = runtime(crate::support::CONCURRENT).await;
     let blocker = runtime.operation(BoundContractDeclaration { hold: true }).start().await.unwrap();
     trace.bound_started.notified().await;
     let answer = runtime.operation(ParentContractDeclaration { mode: Mode::FullLane }).start().await.unwrap().await.unwrap();

@@ -157,9 +157,7 @@ impl HostFixture {
             setup.settings().attach_streams(Store(stored.clone(), harmos_runtime::storage::Cursor::ORIGIN, signals.clone()));
         })
         .await;
-        let registration = Registration::new(<crate::support::Lanes as harmos_runtime::operations::Lane>::default_lane())
-            .operation::<Host>("fixture.host")
-            .unwrap();
+        let registration = Registration::new(harmos_runtime::operations::Lane::default()).operation::<Host>("fixture.host").unwrap();
         runtime.register_batch(registration).await.unwrap();
         let contract = WireDeclaration::of::<Host>().contract().unwrap();
         let binding = contract.grpc().unwrap();

@@ -74,7 +74,7 @@ impl Authority {
         }
     }
 
-    pub fn trusted_host<L: crate::operations::Lane>(operations: &crate::operations::OperationManager<L>) -> Self {
+    pub fn trusted_host(operations: &crate::operations::OperationManager) -> Self {
         Self::TrustedHost(operations.execution())
     }
 

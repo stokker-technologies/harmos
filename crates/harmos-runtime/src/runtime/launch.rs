@@ -25,7 +25,7 @@ use futures_util::FutureExt;
 
 // Local Imports
 use super::{Builder, Runtime, StartupError};
-use crate::operations::{Lane, LaneSettings};
+use crate::operations::LaneSettings;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Application, Error, Setup, Startup};
 
@@ -156,16 +156,16 @@ impl<A: Application> harmos_operations::execution::lifecycle::SetupConfiguration
 }
 
 impl<A: Application> harmos_operations::execution::lifecycle::ApplicationConfiguration for Builder<A> {
-    type Lane = A::Lanes;
+    type Lane = crate::operations::Lane;
     type LaneSettings = LaneSettings;
 
-    fn lane(&mut self, lane: A::Lanes, settings: LaneSettings) {
+    fn lane(&mut self, lane: crate::operations::Lane, settings: LaneSettings) {
         if !self.lanes.configure(lane.name(), settings.capacity) {
             self.configuration_errors.push(StartupError::UnknownLane { lane: lane.name() });
         }
     }
 
-    fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: A::Lanes) {
+    fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: crate::operations::Lane) {
         self.operations::<C>(lane);
     }
 }

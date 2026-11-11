@@ -45,7 +45,7 @@ use super::*;
 #[tokio::test]
 async fn cancelled_exchange_retains() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     seed(&f).await;
 
     // Cancelling Delivery Does Not Retract Storage-Owned Samples.

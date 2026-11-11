@@ -52,21 +52,6 @@ pub(crate) struct Editor;
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Serial,
-
-    #[lane(concurrent(2))]
-    Concurrent,
-
-    #[lane(unbounded)]
-    Unbounded,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Refusal {
     #[error("the title must not be empty")]
@@ -148,13 +133,16 @@ impl harmos_runtime::Lifecycle for Editor {
     type Error = std::convert::Infallible;
     type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        setup.settings().lanes(
+            harmos_runtime::operations::LaneSet::new([crate::support::SERIAL, crate::support::CONCURRENT, crate::support::UNBOUNDED])
+                .unwrap(),
+        );
         Ok(Self)
     }
 }
 
 impl Application for Editor {
-    type Lanes = Lanes;
     type State = Sheet;
     type Transaction = Change;
     type Record = Note;

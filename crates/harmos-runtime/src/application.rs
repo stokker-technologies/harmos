@@ -38,8 +38,6 @@ pub struct Startup<A: Application> {
 /* === Traits === */
 
 pub trait Application: Lifecycle<Context = Startup<Self>> + Sync {
-    type Lanes: crate::operations::Lane;
-
     type State: Send + Sync + 'static;
 
     type Transaction: crate::state::Transaction<Self::State, Error: Send + Sync + 'static>

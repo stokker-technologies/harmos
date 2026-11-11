@@ -47,7 +47,7 @@ async fn stream_follow_sequence() {
     use harmos_operations::storage::FollowStream;
     use harmos_runtime::storage::StreamInput;
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let key = crate::storage::schema();
     let stream = harmos_runtime::Identifier::new("voltage").unwrap();
     let item = harmos_runtime::Identifier::new("row").unwrap();

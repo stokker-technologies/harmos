@@ -97,6 +97,23 @@ setup.settings().register(streams);
 Startup validates duplicate identities and empty windows. Typed readers and
 publishers resolve the registered identity and row type at runtime.
 
+Lanes are values configured at application startup. The default lane is
+unbounded; additional lanes declare their admission capacity in an owned set:
+
+```rust
+let analysis = harmos_runtime::operations::Lane::new(
+    "analysis",
+    harmos_runtime::operations::Capacity::serial(),
+);
+let lanes = harmos_runtime::operations::LaneSet::new([analysis])?;
+setup.settings().lanes(lanes);
+setup.operations::<AnalysisOperations>(analysis);
+```
+
+Building the set rejects duplicate or reserved names and zero capacity, naming
+the invalid lane. Registration and per-call lane selection use the same lane
+value; `Application` and operation managers carry no lane type parameter.
+
 `#[record]` and `#[transaction]` derive schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
 `harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's

@@ -47,7 +47,7 @@ async fn record_follow_resumes() {
     use harmos_operations::storage::FollowRecords;
     use harmos_protocol::storage::followed::Followed;
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     write(&fixture.storage, "historical").await;
     fixture.storage.flush().await.unwrap();
     let request = harmos_protocol::storage::FollowRecords {

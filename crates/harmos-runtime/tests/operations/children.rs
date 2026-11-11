@@ -24,7 +24,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
@@ -168,8 +168,8 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<ParentContractDeclaration>>(Lanes::Serial).await.unwrap();
-    runtime.operations.register::<super::Single<ChildContractDeclaration>>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<super::Single<ParentContractDeclaration>>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register::<super::Single<ChildContractDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, trace)
 }
 

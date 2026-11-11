@@ -39,12 +39,6 @@ const PLUGIN: &str = "schematic_tools";
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -94,7 +88,7 @@ async fn guest_composition_walks() {
         configuration: b"null".to_vec(),
         ..Default::default()
     };
-    runtime.plugin.register_guest::<Operations>(loaded, settings, Lanes::Open).await.unwrap();
+    runtime.plugin.register_guest::<Operations>(loaded, settings, harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status(PLUGIN).unwrap();
     assert_eq!(ready.state, PluginState::Ready);

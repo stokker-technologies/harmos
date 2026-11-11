@@ -48,7 +48,7 @@ async fn query_operation_batches() {
     let mut settings = config();
     settings.response.batch_rows = NonZeroUsize::new(2).unwrap();
     let fixture = Fixture::new(settings).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let schema = SchemaKey {
         id: Identifier::new("query-reading").unwrap(),
         version: NonZeroU32::new(1).unwrap(),

@@ -59,12 +59,6 @@ enum DispatchOperations {
     Dispatch(Dispatch),
 }
 
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
-}
-
 #[harmos_runtime::operation(
         resources = [Waiting],
         response = u64,
@@ -116,7 +110,7 @@ impl harmos_runtime::Lifecycle for App {
     type Context = harmos_runtime::Startup<Self>;
 
     async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-        setup.operations::<DispatchOperations>(Lanes::Open);
+        setup.operations::<DispatchOperations>(harmos_runtime::operations::Lane::default());
         Ok(Self)
     }
 }
@@ -125,7 +119,6 @@ impl harmos_runtime::Application for App {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Lanes = Lanes;
 }
 
 async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {

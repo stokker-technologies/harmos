@@ -66,9 +66,8 @@ use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, stat
 /* === Structs === */
 
 #[derive(Clone)]
-pub struct OperationManager<L: Lane> {
+pub struct OperationManager {
     inner: Manager,
-    lane: std::marker::PhantomData<fn() -> L>,
 }
 
 #[derive(Clone)]
@@ -243,25 +242,25 @@ impl Manager {
     }
 }
 
-impl<L: Lane> OperationManager<L> {
+impl OperationManager {
     pub fn clock(&self) -> &crate::clock::Clock {
         self.inner.clock()
     }
 
     pub(crate) fn new(inner: Manager) -> Self {
-        Self { inner, lane: std::marker::PhantomData }
+        Self { inner }
     }
 
     pub(crate) fn execution(&self) -> Manager {
         self.inner.clone()
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: L) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: Lane) -> Result<()> {
         use crate::operations::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub async fn register_batch(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+    pub async fn register_batch(&self, registration: crate::operations::Registration) -> Result<()> {
         self.inner.register_native(registration)
     }
 
@@ -274,7 +273,7 @@ impl<L: Lane> OperationManager<L> {
     }
 }
 
-impl<L: Lane> std::ops::Deref for OperationManager<L> {
+impl std::ops::Deref for OperationManager {
     type Target = Manager;
     fn deref(&self) -> &Self::Target {
         &self.inner

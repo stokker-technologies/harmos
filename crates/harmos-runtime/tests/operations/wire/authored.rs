@@ -24,7 +24,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
@@ -103,7 +103,9 @@ impl Drop for AttemptGuard {
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<Trace>(trace.clone()).operations::<crate::operations::Single<ReadContractDeclaration>>(Lanes::Open);
+        setup
+            .resource::<Trace>(trace.clone())
+            .operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -205,7 +207,7 @@ mod listed {
         value: u32,
         borrowed: std::sync::atomic::AtomicUsize,
         ran: std::sync::atomic::AtomicUsize,
-        operations: std::sync::OnceLock<std::sync::Weak<harmos_runtime::operations::OperationManager<crate::operations::fixture::Lanes>>>,
+        operations: std::sync::OnceLock<std::sync::Weak<harmos_runtime::operations::OperationManager>>,
     }
 
     /* === Enums === */
@@ -276,7 +278,7 @@ mod listed {
         let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
             setup
                 .resource::<BorrowOwner>(owner.clone())
-                .operations::<crate::operations::Single<BorrowOwnerDeclaration>>(crate::operations::fixture::Lanes::Open);
+                .operations::<crate::operations::Single<BorrowOwnerDeclaration>>(harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();
@@ -303,8 +305,8 @@ mod listed {
         let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
             setup
                 .resource::<u32>(original.clone())
-                .operations::<crate::operations::Single<InferredOwnedDeclaration>>(crate::operations::fixture::Lanes::Open)
-                .operations::<crate::operations::Single<DeclaredOwnedDeclaration>>(crate::operations::fixture::Lanes::Open);
+                .operations::<crate::operations::Single<InferredOwnedDeclaration>>(harmos_runtime::operations::Lane::default())
+                .operations::<crate::operations::Single<DeclaredOwnedDeclaration>>(harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();

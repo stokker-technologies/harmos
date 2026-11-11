@@ -19,7 +19,6 @@
 
 // Local Imports
 use crate::app::{Runtime, SchematicEditor};
-use crate::lanes::Lanes;
 use harmos_runtime::config::PluginSettings;
 use harmos_runtime::guest::{Host, Loaded};
 use schematic_operations::guest::Operations;
@@ -49,7 +48,7 @@ pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos
             reason: "the inspected component has a different owner",
         });
     }
-    runtime.plugin.register_guest::<Operations>(loaded, PluginSettings::default(), Lanes::Open).await?;
+    runtime.plugin.register_guest::<Operations>(loaded, PluginSettings::default(), harmos_runtime::operations::Lane::default()).await?;
     runtime.plugin.initialize().await
 }
 

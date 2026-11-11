@@ -90,8 +90,6 @@ enum Operations {
     PendingContractDeclaration(PendingContractDeclaration),
 }
 
-use crate::runtime::probe::Lanes;
-
 impl harmos_runtime::Operation for PendingContractDeclaration {
     type Error = std::convert::Infallible;
     async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
@@ -108,7 +106,7 @@ impl Drop for PendingGuard {
 }
 
 struct StopNotification {
-    operations: harmos_runtime::operations::OperationManager<crate::runtime::probe::Lanes>,
+    operations: harmos_runtime::operations::OperationManager,
     operation: harmos_runtime::operations::OperationInstanceId,
     cancelled: Arc<std::sync::OnceLock<bool>>,
 }
@@ -128,7 +126,7 @@ async fn services_stop_first() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime

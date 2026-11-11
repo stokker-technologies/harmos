@@ -26,7 +26,7 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, config};
+use super::{Fixture, config};
 use harmos_operations::storage::{FollowProduction, ReadFile};
 use harmos_protocol::storage as wire;
 use harmos_runtime::Identifier;
@@ -53,7 +53,7 @@ use prost::Message;
 
 async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, wire::FollowProduction) {
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     let mut producer = fixture
         .storage
         .produce_file(FileMetadata {

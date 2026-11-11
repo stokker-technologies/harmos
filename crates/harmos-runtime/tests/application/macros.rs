@@ -251,12 +251,6 @@ mod sheet {
         Noted(Noted),
     }
 
-    #[harmos_runtime::lanes]
-    pub enum StudioLanes {
-        #[default]
-        Open,
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
@@ -306,7 +300,6 @@ mod sheet {
     }
 
     impl harmos_runtime::Application for Studio {
-        type Lanes = StudioLanes;
         type State = Sheet;
         type Transaction = Change;
         type Record = Fact;
@@ -379,12 +372,6 @@ mod counter {
         Down(Down),
     }
 
-    #[harmos_runtime::lanes]
-    pub enum CounterLanes {
-        #[default]
-        Open,
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
@@ -440,7 +427,6 @@ mod counter {
     }
 
     impl harmos_runtime::Application for Counter {
-        type Lanes = CounterLanes;
         type State = Tally;
         type Transaction = Step;
         type Record = ();

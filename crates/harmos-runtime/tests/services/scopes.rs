@@ -52,7 +52,7 @@ struct Resources {
 
 /* === Private Functions === */
 
-fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::Lanes>, resources: Arc<Resources>) {
+fn register(manager: &OperationManager, resources: Arc<Resources>) {
     manager
         .register_service(
             ServiceDefinition {
@@ -291,7 +291,7 @@ async fn shutdown_preserve_typed() {
 #[tokio::test]
 async fn unregister_drops_factory() {
     struct Reentrant {
-        manager: OperationManager<<Bank as harmos_runtime::Application>::Lanes>,
+        manager: OperationManager,
         dropped: Arc<AtomicUsize>,
     }
     impl Drop for Reentrant {

@@ -87,7 +87,7 @@ async fn retries_clone_the_original_request() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let runtime =
         harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
-            setup.operations::<crate::operations::Single<Request>>(crate::operations::probe::Lanes::Open);
+            setup.operations::<crate::operations::Single<Request>>(harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();
@@ -109,7 +109,7 @@ async fn transfer_blocks_retry() {
         harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
             setup
                 .resource::<AtomicUsize>(runs.clone())
-                .operations::<crate::operations::Single<Streaming>>(crate::operations::probe::Lanes::Open);
+                .operations::<crate::operations::Single<Streaming>>(harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();

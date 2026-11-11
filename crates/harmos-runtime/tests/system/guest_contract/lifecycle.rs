@@ -121,10 +121,10 @@ pub(super) struct Resources {
 
 pub(super) struct Lifecycle<C = GuestOperations> {
     loader: Host<Bank>,
-    operations: harmos_runtime::operations::OperationManager<super::GuestLanes>,
+    operations: harmos_runtime::operations::OperationManager,
     prepared: Option<harmos_runtime::guest::Registered<Bank>>,
     bytes: Vec<u8>,
-    lane: super::GuestLanes,
+    lane: harmos_runtime::operations::Lane,
     provider: Option<PluginDefinition>,
     catalog: PhantomData<fn() -> C>,
 }
@@ -257,8 +257,8 @@ where
 
 impl Resources {
     pub(super) async fn start<C>(
-        &mut self, operations: &harmos_runtime::operations::OperationManager<super::GuestLanes>, definition: &PluginDefinition,
-        router: &Router, authority: &PluginLifecycleAuthority<'_>, lane: super::GuestLanes,
+        &mut self, operations: &harmos_runtime::operations::OperationManager, definition: &PluginDefinition, router: &Router,
+        authority: &PluginLifecycleAuthority<'_>, lane: harmos_runtime::operations::Lane,
     ) -> harmos_runtime::Result<Arc<harmos_runtime::operations::Component>>
     where
         C: harmos_runtime::catalog::Catalog<harmos_runtime::operations::Declarations>
@@ -341,19 +341,19 @@ impl Resources {
 
 impl Lifecycle {
     pub(super) async fn sandbox(runtime: &Runtime<Bank>) -> Self {
-        Self::sandbox_in(runtime, super::GuestLanes::Open).await
+        Self::sandbox_in(runtime, harmos_runtime::operations::Lane::default()).await
     }
 }
 
 impl Lifecycle<schematic_operations::guest::Operations> {
     pub(super) fn schematic(runtime: &Runtime<Bank>) -> Self {
-        Self::for_component(runtime, super::schematic(), super::GuestLanes::Open)
+        Self::for_component(runtime, super::schematic(), harmos_runtime::operations::Lane::default())
     }
 }
 
 impl Lifecycle<GuestOperations> {
     // The Sandbox Requires Host Publication and an Embedded Provider in Its Own Lane
-    pub(super) async fn sandbox_in(runtime: &Runtime<Bank>, lane: super::GuestLanes) -> Self {
+    pub(super) async fn sandbox_in(runtime: &Runtime<Bank>, lane: harmos_runtime::operations::Lane) -> Self {
         runtime.operations.register::<PublicationOperations>(lane).await.unwrap();
         let mut lifecycle = Self::for_component(runtime, super::sandbox(), lane);
         let contract = WireDeclaration::of::<wire::ProviderEchoOperation>().contract().unwrap();
@@ -375,7 +375,7 @@ impl Lifecycle<GuestOperations> {
 }
 
 impl<C> Lifecycle<C> {
-    pub(super) fn for_component(runtime: &Runtime<Bank>, bytes: Vec<u8>, lane: super::GuestLanes) -> Self {
+    pub(super) fn for_component(runtime: &Runtime<Bank>, bytes: Vec<u8>, lane: harmos_runtime::operations::Lane) -> Self {
         Self {
             loader: Host::new(runtime).unwrap(),
             operations: runtime.operations.clone(),
@@ -427,7 +427,7 @@ impl<C> Lifecycle<C> {
 /* === Private Functions === */
 
 // Serves the Sandbox's Requirements from the Host When No Plugin Provides Them
-pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: super::GuestLanes) {
+pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: harmos_runtime::operations::Lane) {
     runtime.operations.register::<PublicationOperations>(lane).await.unwrap();
     runtime.operations.register::<EchoOperations>(lane).await.unwrap();
 }

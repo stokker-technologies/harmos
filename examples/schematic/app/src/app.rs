@@ -80,7 +80,10 @@ impl Lifecycle for SchematicEditor {
             preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
             ..Default::default()
         };
-        setup.settings().operation_settings(settings);
+        setup
+            .settings()
+            .operation_settings(settings)
+            .lanes(harmos_runtime::operations::LaneSet::new([crate::lanes::ANALYSIS]).map_err(std::io::Error::other)?);
 
         setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(streams::stream_definitions());
         setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::new(Default::default()));
@@ -98,7 +101,6 @@ impl Application for SchematicEditor {
     type State = Schematic;
     type Transaction = Transactions;
     type Record = Records;
-    type Lanes = crate::lanes::Lanes;
 }
 
 /* === Public Functions === */

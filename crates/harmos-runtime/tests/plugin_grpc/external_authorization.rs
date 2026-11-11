@@ -170,7 +170,7 @@ async fn external_request_grants() {
         });
     })
     .await;
-    runtime.operations.register::<LocalOperations>(crate::support::Lanes::Open).await.unwrap();
+    runtime.operations.register::<LocalOperations>(harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.operations.register_authorizer(Arc::new(Holdings)).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers)))).unwrap();
 

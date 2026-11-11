@@ -288,30 +288,24 @@ fn admit_native<P: Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::{Lane, RegistrationExt};
+    use crate::operations::RegistrationExt;
     use harmos_operations::execution::{Context, Operation, Response};
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Open,
-
-        #[lane(serial)]
-        Serial,
-    }
     struct Model;
     impl crate::Lifecycle for Model {
         type Config = ();
         type Error = std::convert::Infallible;
         type Context = crate::Startup<Self>;
 
-        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        async fn prepare(_: (), setup: &mut crate::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+            setup.settings().lanes(
+                crate::operations::LaneSet::new([crate::operations::Lane::new("Serial", crate::operations::Capacity::serial())]).unwrap(),
+            );
             Ok(Self)
         }
     }
 
     impl crate::Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
@@ -452,7 +446,7 @@ mod tests {
             .operation::<RetryParent>()
             .operation::<RetryChild>()
             .operation::<Uncertain>();
-        runtime.register_batch(batch.lane(<Lanes as Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         assert_eq!(*runtime.operation(RetryParent { value: 42, override_retry: true }).await.unwrap(), 42);
         assert!(runtime.operation(RetryParent { value: 42, override_retry: false }).await.is_err());
         // Macro Defaults Retain Existing Transient Retry Semantics Even Without Replay Safety.
@@ -497,7 +491,11 @@ mod tests {
         .await
         .unwrap();
         runtime
-            .register_batch(harmos_operations::execution::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open))
+            .register_batch(
+                harmos_operations::execution::__private::RegistrationBatch::new()
+                    .operation::<Deadline>()
+                    .lane(crate::operations::Lane::default()),
+            )
             .await
             .unwrap();
         let retry = crate::RetryPolicy::OnTransient {
@@ -600,7 +598,11 @@ mod tests {
         let clock = probe.clone();
         runtime.operations.set_attempt_clock(AttemptClock::new(move || *clock.now.lock().unwrap())).unwrap();
         runtime
-            .register_batch(harmos_operations::execution::__private::RegistrationBatch::new().operation::<TimedAttempt>().lane(Lanes::Open))
+            .register_batch(
+                harmos_operations::execution::__private::RegistrationBatch::new()
+                    .operation::<TimedAttempt>()
+                    .lane(crate::operations::Lane::default()),
+            )
             .await
             .unwrap();
         let policy = if retry {
@@ -666,7 +668,11 @@ mod tests {
         async fn inherited_deadline_reports_applied_override() {
             let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
             runtime
-                .register_batch(harmos_operations::execution::__private::RegistrationBatch::new().operation::<Deadline>().lane(Lanes::Open))
+                .register_batch(
+                    harmos_operations::execution::__private::RegistrationBatch::new()
+                        .operation::<Deadline>()
+                        .lane(crate::operations::Lane::default()),
+                )
                 .await
                 .unwrap();
             let timeout = std::time::Duration::from_millis(5);
@@ -720,7 +726,7 @@ mod tests {
         .await
         .unwrap();
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<WaitParent>().operation::<WaitChild>();
-        runtime.register_batch(batch.lane(Lanes::Open)).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         let running = runtime.operation(WaitParent {}).start().await.unwrap();
         probe.started.notified().await;
         assert!(
@@ -739,7 +745,7 @@ mod tests {
         .await
         .unwrap();
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<RetryParent>().operation::<RetryChild>();
-        runtime.register_batch(batch.lane(Lanes::Serial)).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::new("Serial", crate::operations::Capacity::serial()))).await.unwrap();
         let error = runtime.operation(RetryParent { value: 42, override_retry: false }).await.unwrap_err();
         let crate::Error::OperationFailed { source, .. } = error else {
             panic!("parent must preserve the child failure");
@@ -755,9 +761,9 @@ mod tests {
     async fn declared_calls_verify_activation_and_run_with_resources() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
         let missing = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Parent>();
-        assert!(runtime.register_batch(missing.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
+        assert!(runtime.register_batch(missing.lane(crate::operations::Lane::default())).await.is_err());
         let missing = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Leaf>();
-        assert!(runtime.register_batch(missing.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
+        assert!(runtime.register_batch(missing.lane(crate::operations::Lane::default())).await.is_err());
         runtime.shutdown().await.unwrap();
         let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
             setup.resource(7_u64);
@@ -765,7 +771,7 @@ mod tests {
         .await
         .unwrap();
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Parent>().operation::<Leaf>();
-        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         let direct = runtime.operation(Leaf { value: 5 }).await.unwrap();
         let child = runtime.operation(Parent { value: 5 }).await.unwrap();
         assert_eq!(*child, 12);
@@ -805,7 +811,7 @@ mod tests {
         let mut batch = harmos_operations::execution::__private::RegistrationBatch::new().carrier::<Leaf, Carrier>();
         let factory = batch.operations.pop().unwrap();
         let binding = Arc::new(factory);
-        let lane = <Lanes as Lane>::default_lane().name();
+        let lane = crate::operations::Lane::default().name();
         let definition = Leaf::definition();
         let mut entry = runtime
             .operations

@@ -28,7 +28,7 @@ use std::{
 use tokio::sync::Notify;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
@@ -119,8 +119,8 @@ async fn cancel_final_response_in_process() {
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup
             .resource::<Probe>(probe.clone())
-            .operations::<super::Single<Finish>>(Lanes::Open)
-            .operations::<super::Single<Exchange>>(Lanes::Open);
+            .operations::<super::Single<Finish>>(harmos_runtime::operations::Lane::default())
+            .operations::<super::Single<Exchange>>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -186,8 +186,8 @@ async fn cancel_final_response_grpc() {
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup
             .resource::<Probe>(probe.clone())
-            .operations::<super::Single<Finish>>(Lanes::Open)
-            .operations::<super::Single<Exchange>>(Lanes::Open);
+            .operations::<super::Single<Finish>>(harmos_runtime::operations::Lane::default())
+            .operations::<super::Single<Exchange>>(harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();

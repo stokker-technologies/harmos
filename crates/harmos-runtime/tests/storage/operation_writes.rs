@@ -27,7 +27,7 @@ use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64
 use arrow_schema::{DataType, Field, Fields, Schema};
 
 // Local Imports
-use super::{Fixture, Lanes, config};
+use super::{Fixture, config};
 use harmos_operations::storage::{WriteRecords, WriteStreams};
 use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
 use harmos_runtime::Identifier;

@@ -24,7 +24,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Runtime, state::Position};
 
@@ -108,7 +108,7 @@ async fn runtime_selected_ids() {
     });
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<Bench>(resources.clone());
-        setup.operations::<Operations>(Lanes::Open);
+        setup.operations::<Operations>(harmos_runtime::operations::Lane::default());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(4096),
             ..Default::default()
@@ -117,7 +117,7 @@ async fn runtime_selected_ids() {
     .await
     .unwrap();
     let id = format!("devices.rig_{}.read", 7);
-    let registration = Registration::new(Lanes::Open).operation::<ReadContractDeclaration>(&id).unwrap();
+    let registration = Registration::new(harmos_runtime::operations::Lane::default()).operation::<ReadContractDeclaration>(&id).unwrap();
     runtime.register_batch(registration.clone()).await.unwrap();
 
     let definition = runtime.operations.definition(&id).unwrap();
@@ -141,9 +141,11 @@ async fn runtime_selected_ids() {
     assert_eq!((encoded.device.as_str(), encoded.seen), ("configured", 1));
 
     assert!(matches!(runtime.register_batch(registration).await, Err(harmos_runtime::Error::AlreadyRegistered { .. })));
-    let collision = Registration::new(Lanes::Open).operation::<ReadContractDeclaration>(ReadContractDeclaration::ID).unwrap();
+    let collision = Registration::new(harmos_runtime::operations::Lane::default())
+        .operation::<ReadContractDeclaration>(ReadContractDeclaration::ID)
+        .unwrap();
     assert!(matches!(runtime.register_batch(collision).await, Err(harmos_runtime::Error::AlreadyRegistered { .. })));
-    let duplicate = Registration::new(Lanes::Open)
+    let duplicate = Registration::new(harmos_runtime::operations::Lane::default())
         .operation::<ReadContractDeclaration>("devices.duplicate")
         .unwrap()
         .operation::<ReadContractDeclaration>("devices.duplicate")
@@ -171,7 +173,7 @@ async fn nested_resources_shared() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
+    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
 
     let parent = runtime.operation(ReadContractDeclaration { nested: true }).start().await.unwrap().await.unwrap();
     assert_eq!(parent.device, "sim://rig-a");
@@ -212,7 +214,7 @@ async fn private_grpc_refused() {
 
     assert!(matches!(WireDeclaration::of::<Private>().contract(), Err(harmos_runtime::operations::ContractError::PrivateGrpc { .. })));
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    let registration = Registration::new(Lanes::Open).operation::<Private>(Private::ID).unwrap();
+    let registration = Registration::new(harmos_runtime::operations::Lane::default()).operation::<Private>(Private::ID).unwrap();
     let error = runtime.register_batch(registration).await.unwrap_err();
     let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("unexpected error: {error:?}") };
     assert!(matches!(

@@ -46,12 +46,6 @@ pub struct Fixture {
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -67,7 +61,6 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl harmos_runtime::Application for Model {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -94,7 +87,11 @@ impl Fixture {
         let loaded = host.load(&bytes).unwrap();
         runtime
             .plugin
-            .register_guest::<schematic_operations::guest::transfer::Guest>(loaded, plugin_settings(), Lanes::Open)
+            .register_guest::<schematic_operations::guest::transfer::Guest>(
+                loaded,
+                plugin_settings(),
+                harmos_runtime::operations::Lane::default(),
+            )
             .await
             .unwrap();
         runtime.plugin.initialize().await.unwrap();

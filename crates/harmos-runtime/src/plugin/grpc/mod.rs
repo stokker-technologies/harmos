@@ -36,7 +36,6 @@ use harmos_protocol::v1::plugin_client::PluginClient;
 use tokio::sync::watch;
 
 // Local Imports
-use crate::operations::Lane;
 use crate::{Application, Runtime, clock::Clock};
 use connection::Connection;
 use managed::Process;
@@ -130,7 +129,7 @@ impl<A: Application> Runtime<A> {
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),
-            <A::Lanes as crate::operations::Lane>::default_lane().name(),
+            crate::operations::Lane::default().name(),
             placement,
             settings,
             participant,

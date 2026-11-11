@@ -79,7 +79,7 @@ pub struct Runtime<A: Application> {
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::operations::OperationManager<A::Lanes>,
+    pub operations: crate::operations::OperationManager,
 
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub plugin: crate::guest::host::plugin::PluginHost<A>,
@@ -99,7 +99,7 @@ pub struct Handle<A: Application> {
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
-    pub operations: crate::operations::OperationManager<A::Lanes>,
+    pub operations: crate::operations::OperationManager,
 
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub plugin: crate::guest::host::plugin::PluginHost<A>,
@@ -391,7 +391,7 @@ impl<A: Application> Runtime<A> {
             reconciliation: None,
             initializers: Vec::new(),
             snapshots: None,
-            lanes: <A::Lanes as crate::operations::Lane>::catalog(),
+            lanes: LaneSet::default(),
             operations: Vec::new(),
             operation_settings: crate::operations::Settings::default(),
             schema_settings: Arc::new(crate::config::SchemaSettings::default()),
@@ -474,7 +474,9 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub(crate) fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: A::Lanes) -> &mut Self {
+    pub(crate) fn operations<C: harmos_operations::execution::operations::OperationCatalog>(
+        &mut self, lane: crate::operations::Lane,
+    ) -> &mut Self {
         use crate::operations::RegistrationExt;
         if !self.operation_catalogs.insert(TypeId::of::<C>()) {
             self.configuration_errors.push(StartupError::DuplicateCatalog { name: type_name::<C>() });
@@ -507,10 +509,15 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn with_registration(&mut self, registration: crate::operations::Registration<A::Lanes>) -> &mut Self {
+    pub fn with_registration(&mut self, registration: crate::operations::Registration) -> &mut Self {
         let binding = crate::operations::CatalogBinding::new(registration);
         self.bind_operations(binding)
     }
+    pub fn lanes(&mut self, lanes: LaneSet) -> &mut Self {
+        self.lanes = lanes;
+        self
+    }
+
     pub fn operation_middleware(&mut self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> &mut Self {
         self.operation_middleware.push(middleware);
         self

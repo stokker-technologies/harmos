@@ -263,7 +263,7 @@ where
 }
 
 impl super::Bindings<'_> {
-    pub fn register_component_catalog<C>(&mut self, lane: impl Lane, component: Arc<Component>) -> crate::Result<()>
+    pub fn register_component_catalog<C>(&mut self, lane: Lane, component: Arc<Component>) -> crate::Result<()>
     where
         C: Catalog<Declarations> + Catalog<ComponentBindings>,
     {
@@ -403,7 +403,7 @@ impl Component {
         self.endpoint.scope()
     }
 
-    pub fn stage_sdk(&self, operations: &super::Manager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
+    pub fn stage_sdk(&self, operations: &super::Manager, lane: Lane) -> crate::Result<super::PluginSdkRegistration> {
         let scope = self.scope().ok_or(Error::InvalidInput {
             field: "SDK lifecycle",
             reason: "guest endpoint has no original plugin generation",

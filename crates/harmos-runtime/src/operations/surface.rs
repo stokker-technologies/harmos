@@ -36,33 +36,33 @@ use crate::{Error, Result};
 /* === Structs === */
 
 #[derive(Clone)]
-pub struct RuntimeOperationHost<L: Lane> {
+pub struct RuntimeOperationHost {
     operations: Option<Manager>,
     source: Source,
     context: CallContext,
-    lane: Option<L>,
+    lane: Option<Lane>,
 }
 
 /* === Enums === */
 
 /* === Traits === */
 
-pub trait InvocationExt<L: Lane>: Sized {
-    fn lane(self, lane: L) -> Self;
+pub trait InvocationExt: Sized {
+    fn lane(self, lane: Lane) -> Self;
 }
 
 /* === Implementations === */
 
-impl<L: Lane, O: OperationDeclaration, E: EndpointSet> InvocationExt<L>
-    for harmos_operations::execution::operations::Invocation<RuntimeOperationHost<L>, O, E>
+impl<O: OperationDeclaration, E: EndpointSet> InvocationExt
+    for harmos_operations::execution::operations::Invocation<RuntimeOperationHost, O, E>
 {
-    fn lane(mut self, lane: L) -> Self {
+    fn lane(mut self, lane: Lane) -> Self {
         self.host_mut().lane = Some(lane);
         self
     }
 }
 
-impl<L: Lane> RuntimeOperationHost<L> {
+impl RuntimeOperationHost {
     fn new(operations: Manager) -> Self {
         Self {
             context: operations.call_context().clone(),
@@ -86,7 +86,7 @@ impl<L: Lane> RuntimeOperationHost<L> {
     }
 }
 
-impl<L: Lane> harmos_operations::execution::operations::OperationHost for RuntimeOperationHost<L> {
+impl harmos_operations::execution::operations::OperationHost for RuntimeOperationHost {
     type Error = Error;
     type Instance<O: OperationDeclaration> = Running<O>;
     fn context(&self) -> &CallContext {
@@ -132,9 +132,9 @@ pub(super) fn validate_endpoints<O: OperationDeclaration, E: EndpointSet>() -> R
 
 #[cfg(feature = "plugin-guest")]
 impl crate::guest::host::plugin::PluginScope {
-    pub fn operation<O: OperationDeclaration<Request = O>, L: Lane>(
+    pub fn operation<O: OperationDeclaration<Request = O>>(
         &self, request: O,
-    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<L>, O> {
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost, O> {
         let host = RuntimeOperationHost {
             operations: None,
             source: Source::Scope(self.clone()),
@@ -144,12 +144,12 @@ impl crate::guest::host::plugin::PluginScope {
         harmos_operations::execution::operations::Invocation::new(host, request)
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog, L: Lane>(&self, lane: L) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: Lane) -> Result<()> {
         use super::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub async fn register_batch<L: Lane>(&self, mut registration: super::Registration<L>) -> Result<()> {
+    pub async fn register_batch(&self, mut registration: super::Registration) -> Result<()> {
         if !self.is_ready() {
             return Err(Error::Closing { domain: "plugin scope" });
         }
@@ -185,12 +185,14 @@ impl<A: crate::Application> crate::Runtime<A> {
         crate::ServiceManager::new(self.operations.execution())
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(
+        &self, lane: crate::operations::Lane,
+    ) -> Result<()> {
         use super::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
+    pub async fn register_batch(&self, mut registration: super::Registration) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
             return self.operations.register_batch(registration).await;
@@ -215,7 +217,7 @@ impl<A: crate::Application> crate::Runtime<A> {
 
     pub fn operation<O: OperationDeclaration<Request = O>>(
         &self, request: O,
-    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost, O> {
         harmos_operations::execution::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
     }
 }
@@ -225,12 +227,14 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
         crate::ServiceManager::new(self.operations.execution())
     }
 
-    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: A::Lanes) -> Result<()> {
+    pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(
+        &self, lane: crate::operations::Lane,
+    ) -> Result<()> {
         use super::RegistrationExt;
         self.register_batch(C::batch().lane(lane)).await
     }
 
-    pub async fn register_batch(&self, mut registration: super::Registration<A::Lanes>) -> Result<()> {
+    pub async fn register_batch(&self, mut registration: super::Registration) -> Result<()> {
         let services = std::mem::take(&mut registration.batch.services);
         if services.is_empty() {
             return self.operations.register_batch(registration).await;
@@ -255,20 +259,20 @@ impl<A: crate::Application> crate::runtime::Handle<A> {
 
     pub fn operation<O: OperationDeclaration<Request = O>>(
         &self, request: O,
-    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<A::Lanes>, O> {
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost, O> {
         harmos_operations::execution::operations::Invocation::new(RuntimeOperationHost::new(self.operations.execution()), request)
     }
 }
 
-impl<L: Lane> super::OperationManager<L> {
+impl super::OperationManager {
     pub fn operation<O: OperationDeclaration>(
         &self, request: O::Request,
-    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost<L>, O> {
+    ) -> harmos_operations::execution::operations::Invocation<RuntimeOperationHost, O> {
         harmos_operations::execution::operations::Invocation::new(RuntimeOperationHost::new(self.execution()), request)
     }
 }
 
-impl<L: Lane> harmos_operations::execution::operations::OperationHost for super::OperationManager<L> {
+impl harmos_operations::execution::operations::OperationHost for super::OperationManager {
     async fn invoke<O: OperationDeclaration, E: EndpointSet>(
         &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
@@ -402,7 +406,7 @@ impl harmos_operations::execution::operations::OperationHost for Context<'_> {
 
 /* === Tests === */
 
-impl<L: Lane> harmos_operations::execution::operations::ProtobufHost for RuntimeOperationHost<L> {
+impl harmos_operations::execution::operations::ProtobufHost for RuntimeOperationHost {
     type Error = Error;
     async fn call_protobuf<O: super::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
         use prost::Message;
@@ -427,12 +431,6 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
     };
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
-
     struct Model;
     impl crate::Lifecycle for Model {
         type Config = ();
@@ -445,7 +443,6 @@ mod tests {
     }
 
     impl Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
@@ -510,15 +507,10 @@ mod tests {
                 restart: crate::RestartPolicy::Never,
             },
         );
-        assert!(
-            runtime
-                .register_batch(batch.clone().operation::<Probe>().lane(<Lanes as crate::operations::Lane>::default_lane()))
-                .await
-                .is_err()
-        );
+        assert!(runtime.register_batch(batch.clone().operation::<Probe>().lane(crate::operations::Lane::default())).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
         assert!(runtime.operations.resident.definition("host.idle").is_none());
-        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         assert!(runtime.operations.definition(Probe::ID).is_ok());
         assert!(runtime.operations.resident.definition("host.idle").is_some());
         runtime.unregister(&crate::QualifiedId::parse("host.idle").unwrap()).await.unwrap();
@@ -541,19 +533,17 @@ mod tests {
         let service = harmos_operations::execution::__private::RegistrationBatch::new().service::<Idle>("test.probe", policy);
         assert!(
             runtime
-                .register_batch(
-                    operation.clone().service::<Idle>("test.probe", policy).lane(<Lanes as crate::operations::Lane>::default_lane())
-                )
+                .register_batch(operation.clone().service::<Idle>("test.probe", policy).lane(crate::operations::Lane::default()))
                 .await
                 .is_err()
         );
         assert!(runtime.operations.definition(Probe::ID).is_err());
         assert!(!runtime.operations.resident.contains("host.test.probe"));
-        runtime.operations.register_batch(operation.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.operations.register_batch(operation.clone().lane(crate::operations::Lane::default())).await.unwrap();
         assert!(runtime.services().register_batch(service.clone()).await.is_err());
         runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.services().register_batch(service).await.unwrap();
-        assert!(runtime.operations.register_batch(operation.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
+        assert!(runtime.operations.register_batch(operation.lane(crate::operations::Lane::default())).await.is_err());
         runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         runtime.shutdown().await.unwrap();
     }
@@ -567,18 +557,13 @@ mod tests {
         .await
         .unwrap();
         let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
-        assert!(
-            runtime
-                .register_batch(batch.clone().operation::<Probe>().lane(<Lanes as crate::operations::Lane>::default_lane()))
-                .await
-                .is_err()
-        );
+        assert!(runtime.register_batch(batch.clone().operation::<Probe>().lane(crate::operations::Lane::default())).await.is_err());
         assert!(runtime.operations.definition(Probe::ID).is_err());
         let mut mismatched = batch.clone();
         mismatched.operations[0].definition.id = crate::Identifier::new("different").unwrap();
-        assert!(runtime.register_batch(mismatched.lane(<Lanes as crate::operations::Lane>::default_lane())).await.is_err());
+        assert!(runtime.register_batch(mismatched.lane(crate::operations::Lane::default())).await.is_err());
         assert!(runtime.operations.definition("different").is_err());
-        runtime.operations.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.operations.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         assert!(matches!(
             runtime.operations.call_encoded("host.test.probe", Vec::new()).await,
             Err(Error::InvalidInput { field: "operation preparation bytes", .. })

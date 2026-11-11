@@ -101,12 +101,6 @@ enum Phase {
     Cleanup,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Lanes {
-    Open,
-    Unknown,
-}
-
 #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
 enum Operations {
     Read(Read),
@@ -122,26 +116,7 @@ enum MissingOperations {
 
 /* === Implementations === */
 
-impl Lane for Lanes {
-    fn catalog() -> LaneSet {
-        LaneSet::declared([("lifecycle.open", Capacity::serial())])
-    }
-    fn default_lane() -> Self {
-        Self::Open
-    }
-    fn name(&self) -> &'static str {
-        match self {
-            Self::Open => "lifecycle.open",
-            Self::Unknown => "lifecycle.unknown",
-        }
-    }
-    fn capacity(&self) -> Capacity {
-        Capacity::serial()
-    }
-}
-
 impl Application for Preparing {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -153,6 +128,7 @@ impl Lifecycle for Preparing {
     type Context = Startup<Self>;
 
     async fn prepare(config: Self::Config, setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
+        setup.settings().lanes(LaneSet::new([Lane::new("lifecycle.open", Capacity::serial())]).unwrap());
         *config.probe.cleanup.lock().unwrap() = Some(setup.settings().startup_cleanup());
         config.probe.entered.notify_one();
         if config.pending {
@@ -172,7 +148,6 @@ impl Lifecycle for Preparing {
 }
 
 impl Application for App {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
@@ -184,14 +159,15 @@ impl Lifecycle for App {
     type Context = Startup<Self>;
 
     async fn prepare(config: Config, setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
+        setup.settings().lanes(LaneSet::new([Lane::new("lifecycle.open", Capacity::serial())]).unwrap());
         config.counter.events.lock().unwrap().push(Phase::Prepare);
         setup.resource::<Counter>(config.counter.clone());
         if config.invalid {
             setup.resource::<Counter>(config.counter.clone());
-            setup.operations::<MissingOperations>(Lanes::Unknown);
-            setup.operations::<MissingOperations>(Lanes::Open);
+            setup.operations::<MissingOperations>(Lane::new("lifecycle.unknown", Capacity::serial()));
+            setup.operations::<MissingOperations>(Lane::new("lifecycle.open", Capacity::serial()));
         } else {
-            setup.operations::<Operations>(Lanes::Open);
+            setup.operations::<Operations>(Lane::new("lifecycle.open", Capacity::serial()));
         }
         Ok(Self(config))
     }

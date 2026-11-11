@@ -72,11 +72,6 @@ impl Identified for SetGain {
 
 struct Amplifier;
 
-#[harmos_runtime::lanes]
-pub enum AmplifierLanes {
-    #[default]
-    Open,
-}
 impl harmos_runtime::Lifecycle for Amplifier {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -88,7 +83,6 @@ impl harmos_runtime::Lifecycle for Amplifier {
 }
 
 impl Application for Amplifier {
-    type Lanes = AmplifierLanes;
     type State = Model;
     type Transaction = SetGain;
     type Record = ();

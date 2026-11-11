@@ -20,7 +20,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, config};
+use super::{Fixture, config};
 use harmos_operations::storage::Query;
 use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
@@ -109,7 +109,7 @@ fn request(f: &Fixture, name: &str) -> harmos_protocol::storage::WriteSchema {
 
 async fn setup() -> Fixture {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    f.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
     f
 }
 

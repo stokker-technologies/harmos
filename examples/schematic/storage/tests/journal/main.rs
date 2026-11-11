@@ -87,12 +87,6 @@ struct Large(String);
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub enum TestLanes {
-    #[default]
-    Open,
-}
-
 #[harmos_runtime::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
@@ -207,7 +201,6 @@ impl Application for Model {
     type State = State;
     type Transaction = Changes;
     type Record = Facts;
-    type Lanes = TestLanes;
 }
 
 impl Wire for Model {

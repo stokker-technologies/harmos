@@ -40,11 +40,6 @@ struct Plain;
 
 /* === Implementations === */
 
-#[harmos_runtime::lanes]
-pub enum PlainLanes {
-    #[default]
-    Open,
-}
 impl harmos_runtime::Lifecycle for Plain {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -56,7 +51,6 @@ impl harmos_runtime::Lifecycle for Plain {
 }
 
 impl Application for Plain {
-    type Lanes = PlainLanes;
     type State = State;
     type Transaction = Never;
     type Record = ();

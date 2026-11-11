@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
-use super::{Lanes, runtime_with};
+use super::runtime_with;
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationPolicy, ReplaySafety, RetryPolicy};
 use harmos_runtime::{Error, Refusal};
 
@@ -309,7 +309,7 @@ async fn bound_with<O: Behaves>(
         update(setup);
     })
     .await;
-    runtime.operations.register::<super::Single<O>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<super::Single<O>>(crate::support::SERIAL).await.unwrap();
     (runtime, probe)
 }
 
@@ -319,7 +319,7 @@ async fn invalid<O: Behaves>() {
         setup.resource(Owner(probe.clone()));
     })
     .await;
-    let error = runtime.operations.register::<super::Single<O>>(Lanes::Serial).await.unwrap_err();
+    let error = runtime.operations.register::<super::Single<O>>(crate::support::SERIAL).await.unwrap_err();
     assert!(matches!(error, Error::OperationDeclaration { .. }));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 0);
     assert!(runtime.operations.definition(<O as OperationDeclaration>::ID).is_err());
@@ -334,7 +334,7 @@ async fn queued_deadline_starts() {
         setup.resource(BlockerOwner(blocker_probe.clone()));
     })
     .await;
-    runtime.operations.register::<super::Single<BlockerDeclaration>>(Lanes::Serial).await.unwrap();
+    runtime.operations.register::<super::Single<BlockerDeclaration>>(crate::support::SERIAL).await.unwrap();
     let gate = Arc::new(Notify::new());
     let blocker = runtime
         .operation(BlockerDeclaration {
