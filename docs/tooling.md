@@ -216,7 +216,11 @@ Python process validates selectors and sets the warnings policy. Native sccache
 keeps its server across invocations. Lower Cargo parallelism if allocations fail.
 
 `build --artifact tests --profile dev|release` produces the shared archive and test
-fixtures. `build --artifact bench` produces benchmarks and their matching fixtures.
+fixtures. Test-only gRPC executables belong to the unpublished conformance package;
+the Tests producer stages them under `fixtures/bin` and stamps their hashes.
+Archived tests resolve these paths in the consumer checkout and restore executable
+permissions after transfer. `build --artifact bench` produces benchmarks and their
+matching fixtures.
 `build --artifact fixtures --profile dev|release` joins already-built Product and Tests inputs.
 `test` without `--package` consumes existing archives and fixtures. `package` never
 builds missing inputs. `generate --profile dev|release` regenerates Python clients

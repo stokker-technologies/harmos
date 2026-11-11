@@ -96,7 +96,8 @@ impl Fixture {
     pub async fn new() -> Self {
         let executable = std::env::current_exe().unwrap();
         let binary = format!("harmos-stream-consumer-fixture{}", std::env::consts::EXE_SUFFIX);
-        let path = executable.parent().unwrap().parent().unwrap().join(binary);
+        let compiled = executable.parent().unwrap().parent().unwrap().join(binary);
+        let path = crate::support::fixtures::binary("harmos-stream-consumer-fixture", compiled.to_str());
         Self::executable(&path).await
     }
 

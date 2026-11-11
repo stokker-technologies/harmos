@@ -119,8 +119,19 @@ pub fn dependencies() -> PathBuf {
     resolve(path)
 }
 
-// Nextest Names The Extracted Executable At Run Time; Plain `cargo test` Only Has The Compile-Time Path.
+// Archived Runs Use Stamped Executables From The Consumer Checkout.
 pub fn binary(name: &str, compiled: Option<&str>) -> PathBuf {
+    if std::env::var_os("STKR_TEST_PROFILE").is_some() {
+        let path = artifact(name);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&path).expect("transferred fixture executable").permissions();
+            permissions.set_mode(permissions.mode() | 0o100);
+            std::fs::set_permissions(&path, permissions).unwrap();
+        }
+        return path;
+    }
     let variable = format!("NEXTEST_BIN_EXE_{}", name.replace('-', "_"));
     let path = std::env::var_os(&variable).map(PathBuf::from);
     let path = match path {

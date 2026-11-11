@@ -238,7 +238,9 @@ def prepare(profile: str) -> None:
         metadata[key].update({name: os.path.relpath(export / path, fixtures) for name, path in catalog[key].items()})
     metadata["build_roots"].update(catalog["build_roots"])
     metadata["dependencies"] = "../product/examples/libraries"
-    metadata["executables"] = [metadata["artifacts"][name] for name in ("schematic-cli", "schematic-sidecar")]
+    metadata["executables"] = sorted(
+        set(metadata["executables"]) | {metadata["artifacts"][name] for name in ("schematic-cli", "schematic-sidecar")}
+    )
     # Integration Inspects Immutable Copies Without Running Product Hosts.
     for name in ("schematic-sidecar", "schematic-guest"):
         source = export / catalog["artifacts"][name]

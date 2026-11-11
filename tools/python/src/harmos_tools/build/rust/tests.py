@@ -64,6 +64,17 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
     files: dict[str, str] = {}
 
     compiler_profile = "test"
+    binaries = {}
+    messages = archive.location(ROOT, profile).with_name(archive.MESSAGES)
+    for message in cargo.artifacts(ROOT, messages):
+        fixture = Path(message["manifest_path"]) == ROOT / "crates/harmos-conformance/Cargo.toml"
+        if not fixture or message["target"]["kind"] != ["bin"] or not message.get("executable"):
+            continue
+        source = Path(message["executable"])
+        destination = fixtures / "bin" / source.name
+        staging.copy(source, destination, files)
+        binaries[message["target"]["name"]] = destination.relative_to(fixtures).as_posix()
+
     tool = staging.driver(compiler_profile, scratch)
 
     sandbox = "harmos-sandbox-guest"
@@ -81,7 +92,7 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
         profile,
         sorted(files),
         {
-            "artifacts": {sandbox: artifact},
+            "artifacts": {sandbox: artifact, **binaries},
             "inspections": {sandbox: artifact},
             "libraries": {},
             "builds": {sandbox: build},
@@ -89,7 +100,7 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
             "vendor": "inputs/vendor",
             "wheels": "inputs/wheels",
             "requirements": "inputs/requirements.txt",
-            "executables": [],
+            "executables": sorted(binaries.values()),
             "input_executables": executables,
         },
     )

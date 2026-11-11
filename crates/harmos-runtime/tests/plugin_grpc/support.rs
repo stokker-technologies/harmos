@@ -328,10 +328,17 @@ pub fn settings() -> PlacementSettings {
 
 pub fn binary(name: &str) -> PathBuf {
     let extension = std::env::consts::EXE_SUFFIX;
-    std::env::var_os(format!("NEXTEST_BIN_EXE_{name}"))
+    if std::env::var_os("STKR_TEST_PROFILE").is_some() {
+        return crate::support::fixtures::binary(name, None);
+    }
+    std::env::var_os(format!("NEXTEST_BIN_EXE_{}", name.replace('-', "_")))
         .or_else(|| std::env::var_os(format!("CARGO_BIN_EXE_{name}")))
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug").join(format!("{name}{extension}")))
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into()))
+                .join("../../target/debug")
+                .join(format!("{name}{extension}"))
+        })
 }
 
 pub async fn offline(status: &mut watch::Receiver<harmos_runtime::plugin::grpc::Status>) {

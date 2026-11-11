@@ -55,7 +55,7 @@ pub struct Process {
 
 impl Process {
     pub async fn start(cleanup: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let path = binary("harmos-sdk-diagnostics-plugin", env!("CARGO_BIN_EXE_harmos-sdk-diagnostics-plugin"));
+        let path = binary("harmos-sdk-diagnostics-plugin");
         let mut child = Command::new(path)
             .arg(cleanup)
             .env("HARMOS_ADDRESS", "127.0.0.1:0")
@@ -85,14 +85,32 @@ impl Process {
 /* === Public Functions === */
 
 pub fn plugin() -> PathBuf {
-    binary("harmos-sdk-conformance-plugin", env!("CARGO_BIN_EXE_harmos-sdk-conformance-plugin"))
+    binary("harmos-sdk-conformance-plugin")
 }
 
-pub fn binary(name: &str, fallback: &str) -> PathBuf {
-    std::env::var_os(format!("NEXTEST_BIN_EXE_{name}"))
+pub fn binary(name: &str) -> PathBuf {
+    let extension = std::env::consts::EXE_SUFFIX;
+    if let Ok(profile) = std::env::var("STKR_TEST_PROFILE") {
+        let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        let path = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into()))
+            .join("../../target/build")
+            .join(profile)
+            .join(target)
+            .join("fixtures/bin")
+            .join(format!("{name}{extension}"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&path).expect("transferred fixture executable").permissions();
+            permissions.set_mode(permissions.mode() | 0o100);
+            std::fs::set_permissions(&path, permissions).unwrap();
+        }
+        return path;
+    }
+    std::env::var_os(format!("NEXTEST_BIN_EXE_{}", name.replace('-', "_")))
         .or_else(|| std::env::var_os(format!("CARGO_BIN_EXE_{name}")))
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(fallback))
+        .unwrap_or_else(|| PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())).join("../../target/debug").join(format!("{name}{extension}")))
 }
 
 pub async fn describe(client: &mut PluginClient<Channel>) -> Result<v1::Description, tonic::Status> {
