@@ -26,6 +26,7 @@ import unittest
 import urllib.error
 import urllib.parse
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 # Third Party Imports
@@ -132,7 +133,7 @@ class ReleaseTagTests(unittest.TestCase):
         self.action = runpy.run_path(str(ROOT / ".github/actions/review-release/run.py"))
         self.project = (ROOT / "tools/project.toml").read_text(encoding="utf-8")
         self.tag = "v" + tomllib.loads(self.project)["version"]["value"]
-        self.review = {
+        self.review: dict[str, Any] = {
             "number": 211,
             "merged": True,
             "merged_at": "2026-11-10T00:00:00Z",
