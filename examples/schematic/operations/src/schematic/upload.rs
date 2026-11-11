@@ -20,7 +20,7 @@
 // Third Party Imports
 
 // Local Imports
-#[cfg(feature = "runtime")]
+#[cfg(all(feature = "runtime", not(feature = "plugin-grpc")))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /* === Constants === */
@@ -38,13 +38,20 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
+#[cfg_attr(feature = "plugin-grpc", harmos::operation(resources = [AnalysisResources],
     id = "schematic.analyze.upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     policy = POLICY,
     visibility = Public,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeUpload"),
-)]
+))]
+#[cfg_attr(not(feature = "plugin-grpc"), harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
+    id = "schematic.analyze.upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
+    policy = POLICY,
+    visibility = Public,
+    replay = harmos::operations::ReplaySafety::Idempotent,
+    grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeUpload"),
+))]
 pub struct AnalyzeUpload {
     pub title: String,
 }
@@ -52,7 +59,12 @@ pub struct AnalyzeUpload {
 #[cfg(feature = "runtime")]
 pub struct AnalysisResources {
     pub(crate) analysis: tokio::sync::Semaphore,
+
+    #[cfg(not(feature = "plugin-grpc"))]
     progress_sequence: AtomicU64,
+
+    #[cfg(feature = "plugin-grpc")]
+    pub progress: std::sync::OnceLock<std::sync::Arc<dyn Fn(schematic_domain::model::schematic::progress::AnalysisProgress) + Send + Sync>>,
 }
 
 /* === Enums === */
@@ -89,18 +101,23 @@ impl harmos::Operation for AnalyzeUpload {
             snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
             checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
             let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: self.title.clone(), checked };
-            let sequence = resources.next_progress_sequence()?;
-            let payload = harmos::Message::encode(&progress);
-            // Publish Analysis Progress
-            let request = harmos::builtins::streams::Publish {
-                stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
-                sequence: Some(sequence),
-                published_unix_micros: None,
-                context: None,
-                payload,
-                following: Vec::new(),
-            };
-            ctx.operation(request).await?;
+            #[cfg(feature = "plugin-grpc")]
+            resources.publish(progress)?;
+            #[cfg(not(feature = "plugin-grpc"))]
+            {
+                let sequence = resources.next_progress_sequence()?;
+                let payload = harmos::Message::encode(&progress);
+                // Publish Analysis Progress
+                let request = harmos::builtins::streams::Publish {
+                    stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
+                    sequence: Some(sequence),
+                    published_unix_micros: None,
+                    context: None,
+                    payload,
+                    following: Vec::new(),
+                };
+                ctx.operation(request).await?;
+            }
         }
         Ok(super::analyze::Analysis { checked }.into())
     }
@@ -111,14 +128,25 @@ impl Default for AnalysisResources {
     fn default() -> Self {
         Self {
             analysis: tokio::sync::Semaphore::new(1),
+            #[cfg(not(feature = "plugin-grpc"))]
             progress_sequence: AtomicU64::new(0),
+            #[cfg(feature = "plugin-grpc")]
+            progress: Default::default(),
         }
     }
 }
 
 #[cfg(feature = "runtime")]
 impl AnalysisResources {
+    #[cfg(feature = "plugin-grpc")]
+    pub(crate) fn publish(&self, row: schematic_domain::model::schematic::progress::AnalysisProgress) -> Result<(), crate::Error> {
+        let publish = self.progress.get().ok_or(crate::Error::Unavailable)?;
+        publish(row);
+        Ok(())
+    }
+
     // The Analysis Permit Keeps Publications in Sequence Order Across Calls.
+    #[cfg(not(feature = "plugin-grpc"))]
     pub(crate) fn next_progress_sequence(&self) -> Result<u64, crate::Error> {
         let advance = |sequence: u64| sequence.checked_add(1);
         let previous = self.progress_sequence.try_update(Ordering::Relaxed, Ordering::Relaxed, advance);

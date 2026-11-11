@@ -19,6 +19,7 @@ mod connection_loss;
 mod device_stream;
 mod duplicate_operation;
 mod host_clock;
+mod host_consumption;
 mod host_invoke;
 mod interval_stream;
 mod invoke_support;

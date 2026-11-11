@@ -98,8 +98,9 @@ applications control collection. See [Performance](docs/product-guide.md#perform
 The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers
 editing, plugin validation, undo/redo and save/reopen. Its
 [storage adapter](examples/schematic/storage/) shows application-owned persistence.
-Its sidecar and guest also provide shared transfer endpoints under the `benchmark`
-feature for the [performance suites](docs/product-guide.md#performance).
+Its native plugin serves unary advice over gRPC; analysis and transfer streams run
+in the host. The guest retains transfer endpoints under its `benchmark` feature
+for the [performance suites](docs/product-guide.md#performance).
 
 ### C++
 

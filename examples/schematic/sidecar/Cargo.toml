@@ -21,16 +21,12 @@ version.workspace = true
 
 # === Features === #
 
-[features]
-benchmark = []
-
 # === Dependencies === #
 
 [dependencies]
 # Local
-harmos = { workspace = true, features = ["sidecar"] }
-schematic-domain = { path = "../domain" }
-schematic-operations = { path = "../operations", features = ["runtime"] }
+harmos-sdk-grpc = { workspace = true }
+schematic-operations = { path = "../operations", features = ["plugin-grpc"] }
 
 # Git
 
@@ -69,9 +65,6 @@ tokio = { workspace = true, default-features = true, features = ["macros", "rt-m
 
 [build-dependencies]
 # Local
-harmos-domain = { workspace = true }
-harmos-packaging = { workspace = true, features = ["generate-proto"] }
-schematic-operations = { path = "../operations" }
 
 # Git
 

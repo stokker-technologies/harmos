@@ -21,7 +21,7 @@
   - `crates/harmos-macros/tests/fixtures/undeclared_custom_observer_output.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
   - `crates/harmos-macros/tests/fixtures/undeclared_observer_output.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
   - `crates/harmos-macros/tests/fixtures/unknown_grant.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-packaging/examples/fixture-driver.rs` — Migrate native fixture build/inspection consumers from embedded sidecar inventory to SDK Describe catalogs; retain guest packaging (packaging owner follow-up).
+  - `crates/harmos-packaging/examples/fixture-driver.rs` — Collect native identity/catalogs with Describe and Stop and package without embedded framed inventory; retain guest packaging.
   - `crates/harmos-packaging/tests/build/capture.rs` — Migrate native fixture build/inspection consumers from embedded sidecar inventory to SDK Describe catalogs; retain guest packaging (packaging owner follow-up).
   - `crates/harmos-packaging/tests/integration/main.rs` — Migrate native fixture build/inspection consumers from embedded sidecar inventory to SDK Describe catalogs; retain guest packaging (packaging owner follow-up).
   - `crates/harmos-runtime/Cargo.toml` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
@@ -102,7 +102,7 @@
   - `crates/harmos-runtime/tests/system/guest_contract/publications.rs` — Keep for guests, untouched in this slice; mixed native/guest dependency fixtures still use the old path and require coordinated migration in 7.1.
   - `crates/harmos-runtime/tests/system/main.rs` — Migrate native system journey/fixture selection to managed `plugin-grpc`; delete reload-plan/token/lease assertions, preserve guest journeys and example results.
   - `crates/harmos-runtime/tests/system/schematic.rs` — Migrate native system journey/fixture selection to managed `plugin-grpc`; delete reload-plan/token/lease assertions, preserve guest journeys and example results.
-  - `crates/harmos-runtime/tests/system/sidecar.rs` — Migrate native system journey/fixture selection to managed `plugin-grpc`; delete reload-plan/token/lease assertions, preserve guest journeys and example results.
+  - `crates/harmos-runtime/tests/system/sidecar.rs` — Replace Schematic retained advice/analysis/transfer behaviour with examples/schematic/app/tests/native_plugin; delete graph reload, generation and framed endpoint checks.
   - `crates/harmos-sidecar/benches/transport/main.rs` — Delete the framed transport benchmark with that transport.
   - `crates/harmos-sidecar/tests/attach/main.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
   - `crates/harmos-sidecar/tests/attach/source_scenarios.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
@@ -153,19 +153,19 @@
   - `examples/schematic/operations/src/directories/list_directories.rs` — Migrate native directory access to SDK request/response messages and an operation builder; preserve filesystem behaviour.
   - `examples/schematic/operations/src/directories/mod.rs` — Migrate native directory access to SDK request/response messages and an operation builder; preserve filesystem behaviour.
   - `examples/schematic/operations/src/lib.rs` — Migrate native contracts to SDK protobuf messages; keep existing guest contracts working without changing the guest crate.
-  - `examples/schematic/operations/src/schematic/analyze.rs` — Migrate native analysis to the SDK only after resolving streamed findings: Invoke has no response-item frames; preserving findings and cancellation needs an owner decision.
-  - `examples/schematic/operations/src/schematic/exchange.rs` — Migrate native exchange to the SDK only after resolving streamed snapshots/findings: unary Invoke cannot preserve this journey without a contract change.
+  - `examples/schematic/operations/src/schematic/analyze.rs` — Keep streamed findings and cancellation as a native host operation; retain the existing guest operation.
+  - `examples/schematic/operations/src/schematic/exchange.rs` — Keep snapshot input, findings and progress as a native host operation; retain the existing guest declaration.
   - `examples/schematic/operations/src/schematic/mod.rs` — Migrate native analysis/routing contracts to SDK messages and builder values; preserve guest contracts and algorithm results.
   - `examples/schematic/operations/src/schematic/propose.rs` — Migrate native analysis/routing contracts to SDK messages and builder values; preserve guest contracts and algorithm results.
-  - `examples/schematic/operations/src/schematic/upload.rs` — Migrate native upload to the SDK only after resolving streamed snapshots: Invoke has no input-item frames; preserve validation and progress publishing after the owner decision.
+  - `examples/schematic/operations/src/schematic/upload.rs` — Keep snapshot input, validation and progress as a native host operation; retain the existing guest declaration.
   - `examples/schematic/operations/src/schematic/validate.rs` — Migrate native analysis/routing contracts to SDK messages and builder values; preserve guest contracts and algorithm results.
-  - `examples/schematic/operations/src/transfer/download.rs` — Migrate native transfer fixture only after resolving streamed operation input/output, absent from Invoke; preserve guest transfer benchmarks.
+  - `examples/schematic/operations/src/transfer/download.rs` — Keep native transfer download in the host; preserve guest transfer benchmarks.
   - `examples/schematic/operations/src/transfer/hash.rs` — Migrate native transfer contracts/handlers to SDK messages and builder values; retain guest contracts and unary transfer behaviour.
   - `examples/schematic/operations/src/transfer/mod.rs` — Migrate native transfer contracts/handlers to SDK messages and builder values; retain guest contracts and unary transfer behaviour.
   - `examples/schematic/operations/src/transfer/put.rs` — Migrate native transfer contracts/handlers to SDK messages and builder values; retain guest contracts and unary transfer behaviour.
   - `examples/schematic/operations/src/transfer/store.rs` — Migrate native transfer contracts/handlers to SDK messages and builder values; retain guest contracts and unary transfer behaviour.
   - `examples/schematic/operations/src/transfer/take.rs` — Migrate native transfer contracts/handlers to SDK messages and builder values; retain guest contracts and unary transfer behaviour.
-  - `examples/schematic/operations/src/transfer/upload.rs` — Migrate native transfer fixture only after resolving streamed operation input/output, absent from Invoke; preserve guest transfer benchmarks.
+  - `examples/schematic/operations/src/transfer/upload.rs` — Keep native transfer upload in the host; preserve guest transfer benchmarks.
   - `examples/schematic/sidecar/Cargo.toml` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
   - `examples/schematic/sidecar/build.rs` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
   - `examples/schematic/sidecar/src/benchmark.rs` — Migrate to `harmos-sdk-grpc` builder values and managed serving; remove framed registration and benchmark-only transport setup.
@@ -210,6 +210,9 @@
 - [ ] 4.2 Replace attribute-macro authoring with derives for data and builder values for plugins, operations, streams and observers, with a target-selected `serve`; delete the plugin, observer and catalog macros and their sidecar and guest variants.
 - [ ] 4.3 Rebuild observers as functions that answer host ticks, route every SDK wait through the host clock, and share `publish_on` and its error type.
 - [ ] 4.4 Migrate the examples and fixtures.
+  - [x] 4.4.1 Migrate Schematic advice to SDK protobuf builders and managed placement, host analysis and transfer streaming, native packaging and benchmark selectors.
+  - [x] 4.4.2 Migrate the stream-consumer fixture and its host-row journey to SDK unary calls on managed placement.
+  - [ ] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
 
 ## 5. Pilot SDKs
 
@@ -225,6 +228,9 @@
 - [ ] 6.4 Delete `crates/harmos-ffi` and the C ABI bridge under `sdk/cpp`.
 - [ ] 6.5 Derive protobuf definitions from operation types into the catalog and delete the Postcard message encoding on the wire.
 - [ ] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
+  - [x] 6.6.1 Complete targeted proof of the replacement Schematic composition and host-row consumption journeys.
+  - [ ] 6.6.2 Migrate the remaining retained behaviour under crates/harmos-runtime/tests/{sidecar,observers,operations/wire,application,plugin,runtime,integration} and remove assertions for retired graph/grant/token/lease/cadence mechanisms.
+  - [ ] 6.6.3 Delete framed transport tests and benches in crates/harmos-sidecar and native transport benchmark branches in crates/harmos-runtime/benches, preserving guest-used support.
 - [ ] 6.7 Update the product guide, README and authoring guidance.
 
 ## 7. Guests

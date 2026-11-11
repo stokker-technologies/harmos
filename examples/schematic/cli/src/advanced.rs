@@ -23,7 +23,7 @@ use crate::Result;
 use harmos::operations::StreamSettings;
 use schematic_app::app::Runtime;
 use schematic_app::domain::model::Snapshot;
-use schematic_app::operations::{AnalyzeSchematic, ListDirectories};
+use schematic_app::operations::AnalyzeSchematic;
 
 /* === Constants === */
 
@@ -63,8 +63,8 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
 
     // Only the Native Sidecar Has Filesystem Access
     if native {
-        let request = ListDirectories {};
-        let response = runtime.operation(request).await?;
+        let request = schematic_app::operations::native::ListDirectories {};
+        let response = schematic_app::services::sidecar::call(runtime, request).await?;
         println!("Native directories: {:?}", response.directories);
     }
     Ok(())

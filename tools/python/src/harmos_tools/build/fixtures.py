@@ -37,7 +37,7 @@ TARGET = ROOT / "target"
 GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
 GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
-LIBRARIES = ("harmos", "harmos_sdk", "harmos_sidecar", "harmos_macros", "serde")
+LIBRARIES = ("harmos", "harmos_sdk", "harmos_sdk_grpc", "harmos_macros", "serde")
 
 # === Types === #
 
@@ -167,8 +167,24 @@ def collect(tool: Path, manifest: Path, package: str, backend: str, profile: str
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         stderr=sys.stderr,
     )
-    result.write_text(output, encoding="utf-8")
-    return json.loads(result.read_text(encoding="utf-8")), result
+    build = json.loads(output)
+    if package == "schematic-sidecar":
+        # Client Bindings Describe the Host Endpoint, Including Its Native Streams.
+        metadata = json.loads(Path(capture["metadata"]["path"]).read_text(encoding="utf-8"))
+        producers = {item["id"] for item in metadata["packages"] if item["name"] == "schematic-cli"}
+        for event in messages(capture):
+            if event.get("reason") != "build-script-executed" or event.get("package_id") not in producers:
+                continue
+            root = Path(event["out_dir"]) / "grpc"
+            for directory in sorted(root.iterdir()):
+                manifest = directory / "manifest.txt"
+                names = [*manifest.read_text(encoding="utf-8").splitlines(), "manifest.txt"]
+                files = {name: digest(directory / name) for name in names}
+                for name, expected in files.items():
+                    verify(expected, capture["generated"].get(str(directory / name)), "host schema differs from captured bytes")
+                build["schemas"].append({"producer": "schematic-cli", "catalog": directory.name, "directory": str(directory), "files": files})
+    result.write_text(json.dumps(build), encoding="utf-8")
+    return build, result
 
 
 def offline_inputs(destination: Path) -> Path:
@@ -251,11 +267,11 @@ def _requirements(project: Path, destination: Path) -> None:
 
 
 def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
-    """Generate The Schematic Sidecar's Python Client, Which `check:python:generated` Checks."""
+    """Generate the Schematic Host's Python Client From Its Captured Contracts."""
     metadata = json.loads(build.read_text(encoding="utf-8"))
-    catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-sidecar"}
+    catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-cli"}
     if len(catalogs) != 1:
-        raise RuntimeError(f"expected one schematic-sidecar catalog, found {sorted(catalogs)}")
+        raise RuntimeError(f"expected one schematic-cli catalog, found {sorted(catalogs)}")
 
     tool.chmod(tool.stat().st_mode | stat.S_IXUSR)
     protoc.chmod(protoc.stat().st_mode | stat.S_IXUSR)
@@ -263,7 +279,7 @@ def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
     shutil.rmtree(output, ignore_errors=True)
 
     catalog = catalogs.pop()
-    schema = next(schema for schema in metadata["schemas"] if schema["producer"] == "schematic-sidecar" and schema["catalog"] == catalog)
+    schema = next(schema for schema in metadata["schemas"] if schema["producer"] == "schematic-cli" and schema["catalog"] == catalog)
     request = {"action": "python", "export": schema["directory"], "output": str(output), "protoc": str(protoc)}
     subprocess.run(
         [str(tool)],

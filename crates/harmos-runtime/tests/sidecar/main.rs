@@ -17,9 +17,6 @@ use crate::support;
 #[path = "../sidecar/admission.rs"]
 mod admission;
 
-#[path = "../sidecar/consumption.rs"]
-mod consumption;
-
 #[cfg(feature = "grpc")]
 #[path = "../sidecar/grants.rs"]
 mod grants;

@@ -31,7 +31,7 @@ from . import bench, fixtures, paths
 
 # === Constants === #
 
-FEATURES = "harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc"
+FEATURES = "harmos-runtime/plugin-grpc,harmos-runtime/plugin-guest,harmos-runtime/grpc"
 
 # === Types === #
 
@@ -55,10 +55,10 @@ def build(extra: list[str]) -> Path:
         tool = fixtures.driver("bench", scratch)
         for package, backend, target in (
             ("schematic-sidecar", "sidecar", []),
-            ("schematic-guest", "guest", ["--target", "wasm32-unknown-unknown"]),
+            ("schematic-guest", "guest", ["--features", "benchmark", "--target", "wasm32-unknown-unknown"]),
         ):
             capture = fixtures.capture(
-                package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, "--features", "benchmark", *target], scratch
+                package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, *target], scratch
             )
             built, receipt = fixtures.collect(tool, fixtures.SCHEMATIC, package, backend, "bench", capture, scratch)
             artifact, _ = fixtures.stage_build(built, receipt, package, files, directory)

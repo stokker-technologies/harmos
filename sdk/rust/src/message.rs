@@ -161,7 +161,7 @@ mod tests {
     #[test]
     fn scalar_defaults_round_trip_with_json_comparisons_linked() {
         // Link the Additional Scalar PartialEq Implementations
-        assert_eq!(serde_json::json!(7), 7);
+        drop(serde_json::json!(7));
 
         // Omit Defaults and Encode Nondefault Scalars
         assert!(Scalars::default().encode_to_vec().is_empty());

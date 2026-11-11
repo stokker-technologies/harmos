@@ -14,11 +14,9 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 // Third Party Imports
-use tracing::Instrument;
 use tracing_perfetto_file::{FlushGuard, PerfettoLayer};
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::filter_fn;
@@ -45,11 +43,9 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 /* === Private Functions === */
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let report = capture()?;
-    let story = tracing::debug_span!("system.story", application = "schematic-sidecar", process = std::process::id());
-    let outcome = harmos::sidecar::run_plugin::<schematic_sidecar::Plugin>(NonZeroUsize::new(4).unwrap()).instrument(story).await;
+    let outcome = schematic_sidecar::plugin().serve();
     let flushed = report.as_ref().map(FlushGuard::flush).transpose();
     outcome?;
     flushed?;

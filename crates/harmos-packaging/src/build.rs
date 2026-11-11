@@ -509,10 +509,6 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
         BuildBackend::Sidecar => Facility::Sidecar,
         BuildBackend::Guest => Facility::Guest,
     };
-    let inspected = match backend {
-        BuildBackend::Sidecar => super::Facility::Sidecar,
-        BuildBackend::Guest => super::Facility::Guest,
-    };
     let mut prepared = BTreeMap::new();
     for artifact in artifacts {
         cancellation.check()?;
@@ -522,16 +518,34 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
         if digest(&content) != artifact.sha256 {
             return Err(Error::ArtifactChanged(artifact.path.clone()));
         }
-        let declaration = super::Declaration::inspect(&content, inspected)?;
         let executable = artifact
             .path
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| Error::Settings("artifact filename is not UTF-8".into()))?
             .to_owned();
-        let registrations = match backend {
-            BuildBackend::Sidecar => exported_catalog(&artifact.path, cancellation)?,
-            BuildBackend::Guest => Vec::new(),
+        let identity = match backend {
+            #[cfg(feature = "sidecar")]
+            BuildBackend::Sidecar => {
+                let description = crate::native::describe(&artifact.path, cancellation)?;
+                Identity {
+                    name: description.id,
+                    version: description.version.parse().map_err(|error: semver::Error| Error::Settings(error.to_string()))?,
+                    description: String::new(),
+                    package: Default::default(),
+                }
+            }
+            #[cfg(not(feature = "sidecar"))]
+            BuildBackend::Sidecar => return Err(Error::Settings("native packaging requires the sidecar feature".into())),
+            BuildBackend::Guest => {
+                let declaration = super::Declaration::inspect(&content, super::Facility::Guest)?;
+                Identity {
+                    name: declaration.id,
+                    version: declaration.version,
+                    description: declaration.description,
+                    package: Default::default(),
+                }
+            }
         };
         let mut files = BTreeMap::from([(executable.clone(), content)]);
         for schema in schemas.iter().filter(|schema| schema.producer == artifact.producer) {
@@ -556,16 +570,10 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
                 executable: (path == &executable).then(|| Executable {
                     facility,
                     target: target.to_owned(),
-                    registrations: registrations.clone(),
+                    registrations: Vec::new(),
                 }),
             })
             .collect();
-        let identity = Identity {
-            name: declaration.id,
-            version: declaration.version,
-            description: declaration.description,
-            package: Default::default(),
-        };
         let bundle = Bundle::build(identity, &sources, Limits::default())?;
         let destination = output.join(&artifact.producer).join(format!("{}.harmos", artifact.name));
         if prepared.insert(destination.clone(), (artifact.producer.clone(), bundle)).is_some() {
@@ -581,18 +589,6 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
         packages.push(PackageOutput { producer, path, sha256 });
     }
     Ok(packages)
-}
-
-// The registrations a stamped sidecar exports; this runs the artifact, never Cargo.
-fn exported_catalog(path: &Path, cancellation: &BuildCancellation) -> Result<Vec<harmos_domain::Registration>, Error> {
-    let mut command = Command::new(std::path::absolute(path)?);
-    command.arg(harmos_domain::CATALOG_EXPORT_FLAG).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let output = Process::spawn(command, cancellation)?.output()?;
-    cancellation.check()?;
-    if !output.status.success() || output.stdout.len() > crate::bundle::Limits::default().manifest_bytes {
-        return Err(Error::Settings(format!("{} catalog export failed: {}", path.display(), String::from_utf8_lossy(&output.stderr))));
-    }
-    Ok(serde_json::from_slice(&output.stdout)?)
 }
 
 fn safe_name(name: &str) -> Result<(), Error> {

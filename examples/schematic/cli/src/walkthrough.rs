@@ -140,8 +140,13 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
 
         // Validate the Schematic
         let request = ValidateSchematic { schematic: schematic.clone() };
-        let validation = runtime.operation(request).await?;
-        println!("Validation: {} diagnostics", validation.diagnostics.len());
+        let diagnostics = if guest.is_some() {
+            runtime.operation(request).await?.diagnostics.clone()
+        } else {
+            let request = schematic_app::operations::native::ValidateSchematic { schematic: request.schematic.into() };
+            schematic_app::services::sidecar::call(&runtime, request).await?.diagnostics
+        };
+        println!("Validation: {} diagnostics", diagnostics.len());
 
         // Propose a Route
         let from = snapshot.symbol(SymbolId(1)).position;
@@ -150,13 +155,26 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
             from: model::Point { x: from.x, y: from.y },
             to: model::Point { x: to.x, y: to.y },
         };
-        let proposed = runtime.operation(request).await?;
+        let proposed = if guest.is_some() {
+            runtime.operation(request).await?.points.clone()
+        } else {
+            let request = schematic_app::operations::native::ProposeRoute {
+                from: schematic_app::operations::native::Point { x: request.from.x, y: request.from.y },
+                to: schematic_app::operations::native::Point { x: request.to.x, y: request.to.y },
+            };
+            schematic_app::services::sidecar::call(&runtime, request)
+                .await?
+                .points
+                .into_iter()
+                .map(|point| model::Point { x: point.x, y: point.y })
+                .collect()
+        };
 
         // Apply the Route
-        let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
+        let points = proposed.iter().map(|point| Point::new(point.x, point.y)).collect();
         let request = ApplyRoute { net: NetId(1), points };
         state.commit(request).await?;
-        println!("Applied route: {:?}", proposed.points);
+        println!("Applied route: {:?}", proposed);
 
         // Undo the Route
         let selection = Focus::all();

@@ -16,6 +16,9 @@ pub mod directories;
 pub mod schematic;
 pub mod transfer;
 
+#[cfg(feature = "plugin-grpc")]
+pub mod native;
+
 #[cfg(feature = "runtime")]
 mod error;
 

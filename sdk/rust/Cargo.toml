@@ -37,6 +37,10 @@ path = "src/bin/host-fixture.rs"
 name = "harmos-sdk-invoke-fixture"
 path = "src/bin/invoke-fixture.rs"
 
+[[bin]]
+name = "harmos-stream-consumer-fixture"
+path = "../../crates/harmos-runtime/tests/fixtures/stream_consumer.rs"
+
 # === Features === #
 
 # === Dependencies === #
@@ -74,9 +78,11 @@ tonic = { workspace = true, features = ["codegen", "router", "transport"] }
 # === Dev Dependencies === #
 
 [dev-dependencies]
-serde_json = { workspace = true, features = ["std"] }
 # Local
 harmos-conformance = { workspace = true }
+
+# Serialization
+serde_json = { workspace = true, features = ["std"] }
 
 # Filesystem
 tempfile = { workspace = true }

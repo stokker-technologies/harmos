@@ -28,9 +28,6 @@ mod report;
 mod runtime;
 mod schematic;
 
-#[cfg(feature = "plugin-sidecar")]
-mod sidecar;
-
 #[path = "../support/mod.rs"]
 mod support;
 

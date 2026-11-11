@@ -37,7 +37,7 @@ use harmos::guest::Loaded;
 
 pub enum Plugin {
     Guest { manager: harmos::plugin::PluginHost<SchematicEditor> },
-    Sidecar { manager: harmos::plugin::PluginHost<SchematicEditor> },
+    Sidecar { attached: harmos::plugin::grpc::Attached },
 }
 
 /* === Traits === */
@@ -51,14 +51,17 @@ impl Plugin {
     }
 
     pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> harmos::Result<Self> {
-        sidecar::start(runtime, path, directory).await?;
-        Ok(Self::Sidecar { manager: runtime.plugin.clone() })
+        let attached = sidecar::start(runtime, path, directory).await?;
+        Ok(Self::Sidecar { attached })
     }
 
     pub async fn stop(self) -> harmos::Result<()> {
         match self {
             Self::Guest { manager } => manager.stop(guest::NAME).await,
-            Self::Sidecar { manager } => manager.stop(sidecar::NAME).await,
+            Self::Sidecar { attached } => attached
+                .stop("Example Complete")
+                .await
+                .map_err(|source| harmos::Error::OperationFailed { operation: sidecar::NAME.into(), source }),
         }
     }
 }

@@ -40,14 +40,22 @@ const POLICY: harmos::operations::OperationPolicy = harmos::operations::Operatio
 
 /* === Structs === */
 
-#[harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
+#[cfg_attr(feature = "plugin-grpc", harmos::operation(resources = [AnalysisResources],
     id = "schematic.analyze.exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
     output = super::analyze::Finding,
     policy = POLICY,
     visibility = Public,
     replay = harmos::operations::ReplaySafety::Idempotent,
     grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeExchange"),
-)]
+))]
+#[cfg_attr(not(feature = "plugin-grpc"), harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
+    id = "schematic.analyze.exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
+    output = super::analyze::Finding,
+    policy = POLICY,
+    visibility = Public,
+    replay = harmos::operations::ReplaySafety::Idempotent,
+    grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeExchange"),
+))]
 pub struct AnalyzeExchange {
     pub title: String,
 }
@@ -93,18 +101,23 @@ impl harmos::Operation for AnalyzeExchange {
             let make = || Ok(finding);
             output.send_with(bytes, make).await?;
             let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: self.title.clone(), checked };
-            let sequence = resources.next_progress_sequence()?;
-            let payload = harmos::Message::encode(&progress);
-            // Publish Analysis Progress
-            let request = harmos::builtins::streams::Publish {
-                stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
-                sequence: Some(sequence),
-                published_unix_micros: None,
-                context: None,
-                payload,
-                following: Vec::new(),
-            };
-            ctx.operation(request).await?;
+            #[cfg(feature = "plugin-grpc")]
+            resources.publish(progress)?;
+            #[cfg(not(feature = "plugin-grpc"))]
+            {
+                let sequence = resources.next_progress_sequence()?;
+                let payload = harmos::Message::encode(&progress);
+                // Publish Analysis Progress
+                let request = harmos::builtins::streams::Publish {
+                    stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
+                    sequence: Some(sequence),
+                    published_unix_micros: None,
+                    context: None,
+                    payload,
+                    following: Vec::new(),
+                };
+                ctx.operation(request).await?;
+            }
         }
         Ok(super::analyze::Analysis { checked }.into())
     }

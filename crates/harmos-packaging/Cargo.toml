@@ -25,7 +25,7 @@ publish.workspace = true
 [features]
 default = []
 build-tools = ["dep:notify", "dep:process-wrap"]
-sidecar = ["build-tools"]
+sidecar = ["build-tools", "dep:harmos-protocol", "dep:prost", "dep:tokio"]
 guest = ["build-tools", "dep:wit-component", "dep:wasm-encoder", "dep:wasmparser"]
 generate-proto = ["dep:heck", "dep:prost-reflect"]
 generate-python = ["generate-proto"]
@@ -35,6 +35,7 @@ generate-python = ["generate-proto"]
 [dependencies]
 # Local
 harmos-domain = { workspace = true }
+harmos-protocol = { workspace = true, optional = true }
 
 # Git
 
@@ -50,6 +51,7 @@ semver = { workspace = true, default-features = true, features = ["serde"] }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
+prost = { workspace = true, optional = true, features = ["std"] }
 prost-reflect = { workspace = true, optional = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
@@ -70,6 +72,7 @@ tempfile = { workspace = true, default-features = true }
 process-wrap = { workspace = true, optional = true, features = ["std", "job-object", "process-group", "creation-flags"] }
 
 # Async
+tokio = { workspace = true, optional = true, features = ["rt", "net", "time"] }
 
 # Networking
 

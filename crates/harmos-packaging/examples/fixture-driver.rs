@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 distribution: "schematic-client".into(),
                 module: "schematic_client".into(),
                 version: "0.0.0".parse()?,
-                description: "Schematic Sidecar Client".into(),
+                description: "Schematic Host Client".into(),
                 license: "Apache-2.0".into(),
                 operations: Vec::new(),
             };

@@ -22,7 +22,7 @@ mod native_streams;
 // Third Party Imports
 
 // Local Imports
-use native_streams::{Fixture, Payload};
+use native_streams::Fixture;
 
 /* === Constants === */
 
@@ -43,22 +43,22 @@ use native_streams::{Fixture, Payload};
 /* === Private Functions === */
 
 #[tokio::test]
-async fn native_consumption_settles() {
+async fn host_rows_reach_managed_plugin_in_order() {
+    // Attach a Managed SDK Consumer to a Virtual Host
     let fixture = Fixture::new().await;
-    let size = 4096;
-    for batch in 0..2 {
-        for offset in 0..8 {
-            let sequence = batch * 8 + offset;
-            fixture.runtime.streams.publish(Payload {
-                sequence,
-                bytes: vec![(sequence % 251) as u8; size],
-            });
-        }
-        let expected = (batch + 1) * 8;
-        let acknowledged = fixture.acknowledged(expected).await;
-        assert_eq!(acknowledged.rows, expected);
-        assert_eq!(acknowledged.bytes, expected * size as u64);
-    }
+
+    // Deliver and Acknowledge the First Batch Across the Process Boundary
+    fixture.publish(0..8, 4096);
+    let acknowledged = fixture.acknowledged(8).await;
+    assert_ne!(acknowledged.process_id, std::process::id());
+    assert_eq!((acknowledged.rows, acknowledged.bytes), (8, 8 * 4096));
+
+    // Preserve Stream Order and Byte Counts Across the Next Batch
+    fixture.publish(8..16, 4096);
+    let acknowledged = fixture.acknowledged(16).await;
+    assert_eq!((acknowledged.rows, acknowledged.bytes), (16, 16 * 4096));
+
+    // Settle the Host and Its Managed Consumer
     fixture.runtime.shutdown().await.unwrap();
 }
 

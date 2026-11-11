@@ -14,13 +14,6 @@ version = { workspace = true }
 # === Package Targets === #
 
 [[bin]]
-name = "harmos-stream-consumer-fixture"
-path = "tests/fixtures/stream_consumer.rs"
-required-features = ["plugin-sidecar"]
-test = false
-bench = false
-
-[[bin]]
 name = "harmos-grpc-benchmark-fixture"
 path = "tests/fixtures/benchmark_grpc.rs"
 required-features = ["grpc"]
@@ -139,6 +132,7 @@ tower = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Local
+harmos-sdk-grpc = { workspace = true }
 harmos-packaging = { path = "../harmos-packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }

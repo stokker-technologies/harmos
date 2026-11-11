@@ -17,12 +17,14 @@ version = { workspace = true }
 [features]
 default = []
 runtime = ["harmos/runtime", "dep:thiserror", "dep:tokio"]
+plugin-grpc = ["dep:harmos-sdk-grpc"]
 
 # === Dependencies === #
 
 [dependencies]
 # Local
 harmos = { workspace = true, default-features = false }
+harmos-sdk-grpc = { workspace = true, optional = true }
 schematic-domain = { path = "../domain" }
 
 # Git

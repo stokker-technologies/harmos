@@ -64,7 +64,7 @@ fn executable(facility: Facility) -> Executable {
     Executable {
         facility,
         target: "test-target".into(),
-        registrations: registrar.finish(),
+        registrations: if facility == Facility::Guest { registrar.finish() } else { Vec::new() },
     }
 }
 
@@ -150,8 +150,7 @@ fn independent_files_roundtrip() {
     // Build Independent Native and Guest Files
     let staging = tempfile::tempdir().unwrap();
     let marker = staging.path().join("executed");
-    let mut native = format!("#!/bin/sh\nprintf executed > '{}'\nexit 73\n", marker.display()).into_bytes();
-    native.extend(fragments("sidecar", "native_fixture"));
+    let native = format!("#!/bin/sh\nprintf executed > '{}'\nexit 73\n", marker.display()).into_bytes();
     let guest = guest();
     let sources = [
         Source {
@@ -195,7 +194,7 @@ fn independent_files_roundtrip() {
     // Inspection Preserves Each File and Its Declaration
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
     assert_eq!(inspected.manifest().identity, identity());
-    assert_eq!(inspected.declaration("bin/probe"), Some(&Declaration::inspect(&native, Inspected::Sidecar).unwrap()));
+    assert!(inspected.declaration("bin/probe").is_none());
     assert_eq!(inspected.declaration("guests/tool.wasm"), Some(&Declaration::inspect(&guest, Inspected::Guest).unwrap()));
     let manifest = serde_json::to_value(inspected.manifest()).unwrap();
     assert!(manifest["files"][0]["executable"].get("declaration").is_none());
@@ -230,9 +229,9 @@ fn independent_files_roundtrip() {
 
 #[test]
 fn executable_owned_registrations() {
-    // Registration Order Is Canonical
-    let native = fragments("sidecar", "probe");
-    let mut export = executable(Facility::Sidecar);
+    // Native Catalogs Are Obtained Through Describe
+    let native = b"Native Catalogs Are Described at Connection Time".to_vec();
+    let export = executable(Facility::Sidecar);
     let build = |export: Executable| {
         Bundle::build(
             identity(),
@@ -244,13 +243,24 @@ fn executable_owned_registrations() {
             Limits::default(),
         )
     };
-    export.registrations.reverse();
     let valid = build(export.clone()).unwrap();
-    assert_eq!(valid.manifest().files[0].executable.as_ref().unwrap().registrations, executable(Facility::Sidecar).registrations);
+    assert!(valid.declaration("bin/probe").is_none());
+
+    // Protocol Identities May Contain Dots
+    let mut dotted = identity();
+    dotted.name = "measurement.sensor".into();
+    let sources = [Source {
+        path: "bin/probe",
+        bytes: &native,
+        executable: Some(export.clone()),
+    }];
+    let bundle = Bundle::build(dotted.clone(), &sources, Limits::default()).unwrap();
+    assert_eq!(Bundle::inspect(bundle.bytes(), Limits::default()).unwrap().manifest().identity, dotted);
 
     // Reject Invalid or Duplicated Registration Metadata
     for change in 0..4 {
         let mut invalid = executable(Facility::Sidecar);
+        invalid.registrations = executable(Facility::Guest).registrations;
         match change {
             0 => invalid.registrations[0].schema = 0,
             1 => invalid.registrations[0].namespace = "INVALID".into(),
@@ -306,7 +316,7 @@ fn executable_owned_registrations() {
             }],
             Limits::default()
         )
-        .is_err()
+        .is_ok()
     );
 }
 
@@ -432,14 +442,16 @@ fn inspection_bounds_inputs() {
             .is_err()
         );
     }
-    let native = fragments("sidecar", "probe");
+    let native = b"native".to_vec();
+    let mut export = executable(Facility::Sidecar);
+    export.registrations = executable(Facility::Guest).registrations;
     assert!(
         Bundle::build(
             identity(),
             &[Source {
                 path: "bin/probe",
                 bytes: &native,
-                executable: Some(executable(Facility::Sidecar))
+                executable: Some(export)
             }],
             Limits { registrations: 1, ..Limits::default() }
         )
@@ -488,7 +500,7 @@ fn metadata_budgets_precede() {
     );
     assert!(Bundle::inspect(bundle.bytes(), exact).is_ok());
 
-    let native = fragments("sidecar", "probe");
+    let native = b"native".to_vec();
     let first = executable(Facility::Sidecar);
     let original = first.clone();
     let one = Bundle::build(

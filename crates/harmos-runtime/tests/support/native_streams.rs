@@ -10,27 +10,27 @@
 /* === Modules === */
 
 #[path = "native_streams/plugin.rs"]
+#[allow(dead_code, reason = "The Executable Owns SDK Handler Construction")]
 mod plugin;
 
 /* === Re-Exports === */
 
-pub use plugin::{Acknowledged, Payload};
+pub use plugin::Acknowledged;
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 // Third Party Imports
-use sha2::{Digest, Sha256};
+use futures_util::StreamExt;
+use harmos_sdk_grpc::encoding::Message as _;
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
 
 // Local Imports
-use harmos_runtime::operations::OperationDeclaration;
-use harmos_runtime::plugin::{PluginArtifact, PluginContributions, PluginDefinition};
-use harmos_runtime::sidecar::{Attach, Executable, Notice, Supervised};
-use harmos_runtime::{Message, Runtime, services::ServiceContext, services::ServiceStatus};
-use plugin::Receiver;
+use harmos_runtime::plugin::grpc::{Managed, Placement, PlacementSettings};
+use harmos_runtime::{Runtime, streams::Item};
 
 /* === Constants === */
 
@@ -38,17 +38,23 @@ use plugin::Receiver;
 
 /* === Type Aliases === */
 
-type Resident<T> = Supervised<Model, T, fn(&ServiceContext<Model>, Notice)>;
-type Managed<T> = harmos_runtime::sidecar::Managed<Model, T, fn(&ServiceContext<Model>, Notice), Lanes>;
-type Constructor<T> = fn(Resident<T>, PluginDefinition, Lanes, NonZeroUsize, NonZeroUsize) -> harmos_runtime::Result<Managed<T>>;
-
 /* === Structs === */
 
 pub struct Model;
 
 pub struct Fixture {
     pub runtime: Runtime<Model>,
-    _lease: harmos_runtime::operations::Running<harmos_runtime::operations::resident::Activation>,
+    _attached: harmos_runtime::plugin::grpc::Attached,
+    failed: watch::Receiver<Option<String>>,
+    relay: JoinHandle<()>,
+}
+
+#[harmos_runtime::stream(id = "consumption.payload", window = 16)]
+#[harmos_runtime::message]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Payload {
+    pub sequence: u64,
+    pub bytes: Vec<u8>,
 }
 
 /* === Enums === */
@@ -73,7 +79,7 @@ impl harmos_runtime::Lifecycle for Model {
     type Error = std::convert::Infallible;
     type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
+    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 }
@@ -88,106 +94,88 @@ impl harmos_runtime::Application for Model {
 
 impl Fixture {
     pub async fn new() -> Self {
-        let capacity = NonZeroUsize::new(8).unwrap();
-        let source = harmos_sidecar::PluginNative::<Receiver>::new(capacity).unwrap();
-        Self::attached(
-            source,
-            PluginArtifact::LocalSidecar { revision: "stream-consumption".into() },
-            "1.0.0".parse().unwrap(),
-            harmos_runtime::sidecar::Managed::new,
-        )
-        .await
+        let executable = std::env::current_exe().unwrap();
+        let binary = format!("harmos-stream-consumer-fixture{}", std::env::consts::EXE_SUFFIX);
+        let path = executable.parent().unwrap().parent().unwrap().join(binary);
+        Self::executable(&path).await
     }
 
     pub async fn executable(path: &std::path::Path) -> Self {
-        let path = std::fs::canonicalize(path).unwrap();
-        let source = Executable::at(&path).unwrap();
-        let version = source.declaration().version.clone();
-        let artifact = PluginArtifact::Sidecar {
-            sha256: Sha256::digest(std::fs::read(&path).unwrap()).into(),
-            path,
-            arguments: Vec::new(),
-            directory: None,
-            environment: Default::default(),
-        };
-        Self::attached(source, artifact, version, harmos_runtime::sidecar::Managed::new_executable).await
-    }
-
-    async fn attached<T: Attach>(source: T, artifact: PluginArtifact, version: semver::Version, construct: Constructor<T>) -> Self {
-        let capacity = NonZeroUsize::new(8).unwrap();
-        let definition = PluginDefinition {
-            id: source.owner().into(),
-            version,
-            artifact,
-            configuration: serde_json::to_vec(&()).unwrap(),
-            requires: vec![],
-            contributions: PluginContributions {
-                operations: source.operations().unwrap(),
-                wire_contracts: source.operation_contracts().unwrap().unwrap(),
-                required_contracts: source.required_contracts().unwrap(),
-                lifecycle: source.sdk_lifecycle().unwrap(),
-                streams: source.publications(),
-                observers: source.observers(),
-                listeners: source.listener_declarations().unwrap().unwrap(),
-                ..PluginContributions::default()
-            },
-        };
-        let resident = Supervised::new(source, notices as fn(&ServiceContext<Model>, Notice));
+        // Keep Scenario Time on the Host's Virtual Clock
+        let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
         let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-            setup.settings().register(Streams::catalog()).operation_settings(harmos_runtime::operations::Settings {
+            setup.settings().clock(clock).register(Streams::catalog()).operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(32 * 1024 * 1024).unwrap()),
                 ..Default::default()
             });
         })
         .await
         .unwrap();
-        runtime
-            .operations
-            .register_service(
-                harmos_runtime::services::ServiceDefinition {
-                    id: "consumer".into(),
-                    policy: harmos_runtime::ServicePolicy {
-                        restart: harmos_runtime::operations::RestartPolicy::Never,
-                        ..harmos_runtime::services::POLICY
-                    },
-                },
-                move |_: Arc<harmos_sdk::ExecutionContext>| {
-                    construct(resident.clone(), definition.clone(), Lanes::Open, capacity, NonZeroUsize::new(4096).unwrap())
-                        .unwrap()
-                        .stream_listeners(|_, bindings| bindings.stream::<Payload>(0))
-                },
-            )
-            .unwrap();
-        let lease = runtime.operations.submit_resident("consumer").await.unwrap();
-        let mut statuses = runtime.operations.watch_residents();
-        loop {
-            let status = statuses
-                .borrow_and_update()
-                .get(&harmos_runtime::operations::resident::Key::root("consumer"))
-                .and_then(|item| item.health.clone());
-            match status {
-                Some(ServiceStatus::Running { .. }) => break,
-                Some(ServiceStatus::Stopped) => {
-                    panic!("consumer failed to start: {status:?}")
+        let placement = Placement::Managed(Managed {
+            executable: std::fs::canonicalize(path).unwrap(),
+            arguments: Vec::new(),
+            environment: Default::default(),
+        });
+        let settings = PlacementSettings {
+            connect_timeout: std::time::Duration::from_secs(30),
+            reconnect_delay: std::time::Duration::from_millis(100),
+            stop_grace: std::time::Duration::from_secs(30),
+            stream_window: NonZeroUsize::new(8).unwrap(),
+        };
+        let attached = runtime.attach_grpc(placement, settings).await.unwrap();
+
+        // Forward Typed Host Rows Through Unary Plugin Calls in Stream Order
+        let mut rows = runtime.streams.watch::<Payload>();
+        let operations = runtime.operations.clone();
+        let (failure, failed) = watch::channel(None);
+        let relay = tokio::spawn(async move {
+            while let Some(item) = rows.next().await {
+                let Item::Row(row) = item else {
+                    let _ = failure.send(Some("Host Stream Lost Rows".into()));
+                    return;
+                };
+                let request = plugin::Payload {
+                    sequence: row.value.sequence,
+                    bytes: row.value.bytes.clone(),
+                };
+                if let Err(error) = operations.call_encoded("consumption.consume", request.encode_to_vec()).await {
+                    let _ = failure.send(Some(error.to_string()));
+                    return;
                 }
-                _ => {}
             }
-            statuses.changed().await.unwrap();
-        }
-        Self { runtime, _lease: lease }
+        });
+        Self { runtime, _attached: attached, failed, relay }
     }
 
     pub async fn acknowledged(&self, rows: u64) -> Acknowledged {
-        let bytes =
-            self.runtime.operations.call_encoded(&format!("consumption.{}", plugin::ProgressDeclaration::ID), rows.encode()).await.unwrap();
-        Acknowledged::decode(&bytes).unwrap()
+        let request = plugin::Progress { expected: rows };
+        let call = self.runtime.operations.call_encoded("consumption.progress", request.encode_to_vec());
+        let mut failed = self.failed.clone();
+        let bytes = tokio::select! {
+            result = call => result.unwrap(),
+            _ = failed.changed() => panic!("Host Stream Relay Failed: {:?}", failed.borrow()),
+        };
+        Acknowledged::decode(bytes.as_slice()).unwrap()
+    }
+
+    pub fn publish(&self, sequences: std::ops::Range<u64>, bytes: usize) {
+        for sequence in sequences {
+            self.runtime.streams.publish(Payload {
+                sequence,
+                bytes: vec![(sequence % 251) as u8; bytes],
+            });
+        }
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        self.relay.abort();
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn notices(_: &ServiceContext<Model>, _: Notice) {}
 
 /* === Tests === */

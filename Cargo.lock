@@ -1306,10 +1306,12 @@ name = "harmos-packaging"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
+ "harmos-protocol",
  "harmos-sdk",
  "heck",
  "notify",
  "process-wrap",
+ "prost",
  "prost-reflect",
  "protoc-bin-vendored",
  "semver",
@@ -1319,6 +1321,7 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror",
+ "tokio",
  "tracing",
  "wasm-encoder",
  "wasmparser",
@@ -1360,6 +1363,7 @@ dependencies = [
  "harmos-packaging",
  "harmos-protocol",
  "harmos-sdk",
+ "harmos-sdk-grpc",
  "harmos-sidecar",
  "harmos-storage",
  "http-body",

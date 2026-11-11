@@ -23,6 +23,8 @@ mod dev;
 mod error;
 #[cfg(feature = "build-tools")]
 mod metadata;
+#[cfg(feature = "sidecar")]
+mod native;
 #[cfg(feature = "build-tools")]
 mod process;
 #[cfg(feature = "generate-proto")]
@@ -83,6 +85,23 @@ pub struct Inspection {
 pub fn inspect(path: &Path) -> Result<Inspection, Error> {
     let bytes = std::fs::read(path)?;
     let guest = bytes.starts_with(b"\0asm");
+    if !guest {
+        #[cfg(feature = "sidecar")]
+        {
+            let description = native::describe(path, &BuildCancellation::default())?;
+            return Ok(Inspection {
+                id: description.id,
+                version: description.version,
+                description: String::new(),
+                config: String::new(),
+                operations: description.catalog.into_iter().flat_map(|catalog| catalog.operations).map(|operation| operation.id).collect(),
+                sha256: digest(&bytes),
+                facility: "sidecar",
+            });
+        }
+        #[cfg(not(feature = "sidecar"))]
+        return Err(Error::Settings("native inspection requires the sidecar feature".into()));
+    }
     let facility = if guest { Facility::Guest } else { Facility::Sidecar };
     let declaration = Declaration::inspect(&bytes, facility)?;
 

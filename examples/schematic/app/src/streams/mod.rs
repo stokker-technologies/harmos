@@ -36,6 +36,7 @@ pub use voltage::NetVoltage;
 #[harmos::streams]
 pub enum Streams {
     NetVoltage(NetVoltage),
+    AnalysisProgress(schematic_domain::model::schematic::progress::AnalysisProgress),
 }
 
 /* === Traits === */

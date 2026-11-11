@@ -118,6 +118,15 @@ impl Bundle {
         for file in &manifest.files {
             let content = &bytes[contents[&file.path].clone()];
             if let Some(executable) = &file.executable {
+                if executable.facility == Facility::Sidecar {
+                    if !executable.registrations.is_empty() {
+                        return Err(invalid("native catalogs are obtained through Describe"));
+                    }
+                    if !owners.insert((executable.facility, manifest.identity.name.clone(), &executable.target)) {
+                        return Err(invalid("duplicate executable facility, owner, and target"));
+                    }
+                    continue;
+                }
                 let facility = match executable.facility {
                     Facility::Sidecar => harmos_domain::inventory::Facility::Sidecar,
                     Facility::Guest => harmos_domain::inventory::Facility::Guest,
@@ -183,8 +192,11 @@ fn validate(manifest: &Manifest, limits: Limits) -> Result<(), Error> {
         return Err(invalid("unsupported schema"));
     }
     let name = &manifest.identity.name;
-    if name.is_empty() || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')) {
-        return Err(invalid("invalid Cargo package name"));
+    let native =
+        manifest.files.iter().any(|file| file.executable.as_ref().is_some_and(|executable| executable.facility == Facility::Sidecar));
+    if name.is_empty() || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_') || (native && byte == b'.'))
+    {
+        return Err(invalid("invalid plugin identity"));
     }
     if manifest.files.len() > limits.files {
         return Err(Error::Limit("file count"));

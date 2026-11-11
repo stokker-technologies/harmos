@@ -83,6 +83,8 @@ impl Lifecycle for SchematicEditor {
         setup.settings().operation_settings(settings);
 
         setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(Streams::catalog());
+        setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::new(Default::default()));
+        setup.resource::<schematic_operations::transfer::Store>(Arc::new(Default::default()));
         Ok(Self { checkpoint })
     }
 
