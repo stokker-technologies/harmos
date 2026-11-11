@@ -2,7 +2,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/*", "sdk/rust", "sdk/rust/derive"]
+members = ["crates/*", "tools/conformance", "sdk/rust", "sdk/rust/derive"]
 exclude = ["crates/harmos-guest/tests/fixtures/sandbox", "examples/schematic"]
 
 # === Workspace Package === #

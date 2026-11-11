@@ -42,7 +42,7 @@ path = "../../sdk/rust/src/bin/invoke-fixture.rs"
 
 [[bin]]
 name = "harmos-stream-consumer-fixture"
-path = "../harmos-runtime/tests/fixtures/stream_consumer.rs"
+path = "../../crates/harmos-runtime/tests/fixtures/stream_consumer.rs"
 
 # === Features === #
 

@@ -10,7 +10,7 @@ catalog under `harmos.host.v1`. Assignments retain a qualified operation name, a
 validates identities, refuses duplicate local names, and freezes the first accepted catalog.
 
 Rust bindings live in `crates/harmos-protocol`; the independent reference host
-and hand-written Rust fixture server live in `crates/harmos-conformance`.
+and hand-written Rust fixture server live in `tools/conformance`.
 The behaviour contract includes build and invocation examples for every SDK.
 
 Within `harmos.v1`, evolve additively: never reuse field numbers or enum values,

@@ -248,7 +248,7 @@ Value projection; its original five operations, three requirements and two strea
 retain their order and fingerprints. Catalog.types is extended with the following
 messages in the same fixture.proto and the imported google/protobuf/duration.proto.
 The three SDK fixture.proto copies are identical. The normalized reachable Graph
-projection is stored as crates/harmos-conformance/fixtures/schema.bin for the
+projection is stored as tools/conformance/fixtures/schema.bin for the
 hand-written plugin and Rust SDK fixture; case 17 compares it against each SDK's
 advertised graph. It retains message options and omits Duration's file options.
 

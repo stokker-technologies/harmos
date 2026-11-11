@@ -67,7 +67,7 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
     binaries = {}
     messages = archive.location(ROOT, profile).with_name(archive.MESSAGES)
     for message in cargo.artifacts(ROOT, messages):
-        fixture = Path(message["manifest_path"]) == ROOT / "crates/harmos-conformance/Cargo.toml"
+        fixture = Path(message["manifest_path"]) == ROOT / "tools/conformance/Cargo.toml"
         if not fixture or message["target"]["kind"] != ["bin"] or not message.get("executable"):
             continue
         source = Path(message["executable"])
