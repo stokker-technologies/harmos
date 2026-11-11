@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+#[path = "generated_capture.rs"]
+mod generated_capture;
 #[path = "generated_directory.rs"]
 mod generated_directory;
 #[path = "generated_file_mutations.rs"]

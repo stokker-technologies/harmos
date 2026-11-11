@@ -60,3 +60,17 @@ message DirectoryEvent {
 }
 message ListDirectory { DirectorySelection selection = 1; }
 message WatchDirectory { DirectorySelection selection = 1; bool include_existing = 2; }
+
+message FileSource { oneof source { FileReference stored = 1; string local = 2; } }
+message ByteRange { uint64 offset = 1; optional uint64 limit = 2; }
+message FileBatch { uint64 offset = 1; bytes bytes = 2; }
+message FileCompletion { uint64 bytes = 1; }
+message FileHash { uint64 bytes_read = 1; bytes sha256 = 2; }
+message FollowStart { oneof start { Empty beginning = 1; Empty end = 2; uint64 at = 3; } }
+message FileEvent { oneof event { FileBatch data = 1; uint64 truncated = 2; Empty replaced = 3; } }
+enum CaptureConsistency { BOUNDED = 0; STABLE = 1; }
+message ReadFile { FileSource source = 1; ByteRange range = 2; }
+message HashFile { FileSource source = 1; ByteRange range = 2; }
+message CaptureFile { FileSource source = 1; ByteRange range = 2; FileMetadata metadata = 3; CaptureConsistency consistency = 4; }
+message FollowFile { FileSource source = 1; FollowStart start = 2; }
+message FollowProduction { StagedFile file = 1; uint64 offset = 2; }

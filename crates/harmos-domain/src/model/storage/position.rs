@@ -119,6 +119,16 @@ impl TryFrom<harmos_protocol::storage::StoreHistory> for StoreHistory {
     }
 }
 
+impl TryFrom<harmos_protocol::storage::StorageCursor> for StorageCursor {
+    type Error = Error;
+    fn try_from(value: harmos_protocol::storage::StorageCursor) -> Result<Self> {
+        Ok(Self {
+            history: value.history.ok_or(Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
+            sequence: value.sequence,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

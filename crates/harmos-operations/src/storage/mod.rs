@@ -16,6 +16,7 @@
 mod abandon_file;
 #[cfg(feature = "runtime")]
 mod append_file;
+#[cfg(feature = "runtime")]
 mod capture_file;
 #[cfg(feature = "runtime")]
 mod create_file;
@@ -25,8 +26,10 @@ mod delete_file;
 pub(crate) mod exchange;
 #[cfg(feature = "runtime")]
 mod finish_file;
+#[cfg(feature = "runtime")]
 mod follow_file;
 mod follow_objects;
+#[cfg(feature = "runtime")]
 mod follow_production;
 mod follow_records;
 mod follow_stream;
@@ -34,6 +37,7 @@ mod hash_file;
 #[cfg(feature = "runtime")]
 mod list_directory;
 mod query;
+#[cfg(feature = "runtime")]
 mod read_file;
 #[cfg(feature = "runtime")]
 mod registration;
@@ -55,6 +59,7 @@ mod write_streams;
 pub use abandon_file::AbandonFile;
 #[cfg(feature = "runtime")]
 pub use append_file::AppendFile;
+#[cfg(feature = "runtime")]
 pub use capture_file::CaptureFile;
 #[cfg(feature = "runtime")]
 pub use create_file::CreateFile;
@@ -62,8 +67,10 @@ pub use create_file::CreateFile;
 pub use delete_file::DeleteFile;
 #[cfg(feature = "runtime")]
 pub use finish_file::FinishFile;
+#[cfg(feature = "runtime")]
 pub use follow_file::FollowFile;
 pub use follow_objects::FollowObjects;
+#[cfg(feature = "runtime")]
 pub use follow_production::FollowProduction;
 pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
 pub use follow_stream::FollowStream;
@@ -71,6 +78,7 @@ pub use hash_file::HashFile;
 #[cfg(feature = "runtime")]
 pub use list_directory::ListDirectory;
 pub use query::Query;
+#[cfg(feature = "runtime")]
 pub use read_file::ReadFile;
 #[cfg(feature = "runtime")]
 pub use registration::Storage;
@@ -131,13 +139,9 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 #[harmos::catalog(harmos_path = crate)]
 enum Legacy {
     Query(Query),
-    ReadFile(ReadFile),
     HashFile(HashFile),
-    CaptureFile(CaptureFile),
-    FollowProduction(FollowProduction),
     FollowRecords(FollowRecords),
     FollowStream(FollowStream),
-    FollowFile(FollowFile),
     WriteRecords(WriteRecords),
     WriteStreams(WriteStreams),
     WriteFile(WriteFile),

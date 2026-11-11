@@ -248,6 +248,135 @@ pub struct WatchDirectory {
     pub include_existing: bool,
 }
 #[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileSource {
+    #[prost(oneof = "file_source::Source", tags = "1, 2")]
+    pub source: ::core::option::Option<file_source::Source>,
+}
+/// Nested message and enum types in `FileSource`.
+pub mod file_source {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Source {
+        #[prost(message, tag = "1")]
+        Stored(super::FileReference),
+        #[prost(string, tag = "2")]
+        Local(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ByteRange {
+    #[prost(uint64, tag = "1")]
+    pub offset: u64,
+    #[prost(uint64, optional, tag = "2")]
+    pub limit: ::core::option::Option<u64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileBatch {
+    #[prost(uint64, tag = "1")]
+    pub offset: u64,
+    #[prost(bytes = "vec", tag = "2")]
+    pub bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileCompletion {
+    #[prost(uint64, tag = "1")]
+    pub bytes: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileHash {
+    #[prost(uint64, tag = "1")]
+    pub bytes_read: u64,
+    #[prost(bytes = "vec", tag = "2")]
+    pub sha256: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowStart {
+    #[prost(oneof = "follow_start::Start", tags = "1, 2, 3")]
+    pub start: ::core::option::Option<follow_start::Start>,
+}
+/// Nested message and enum types in `FollowStart`.
+pub mod follow_start {
+    #[allow(clippy::all)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Start {
+        #[prost(message, tag = "1")]
+        Beginning(super::Empty),
+        #[prost(message, tag = "2")]
+        End(super::Empty),
+        #[prost(uint64, tag = "3")]
+        At(u64),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileEvent {
+    #[prost(oneof = "file_event::Event", tags = "1, 2, 3")]
+    pub event: ::core::option::Option<file_event::Event>,
+}
+/// Nested message and enum types in `FileEvent`.
+pub mod file_event {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Event {
+        #[prost(message, tag = "1")]
+        Data(super::FileBatch),
+        #[prost(uint64, tag = "2")]
+        Truncated(u64),
+        #[prost(message, tag = "3")]
+        Replaced(super::Empty),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ReadFile {
+    #[prost(message, optional, tag = "1")]
+    pub source: ::core::option::Option<FileSource>,
+    #[prost(message, optional, tag = "2")]
+    pub range: ::core::option::Option<ByteRange>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct HashFile {
+    #[prost(message, optional, tag = "1")]
+    pub source: ::core::option::Option<FileSource>,
+    #[prost(message, optional, tag = "2")]
+    pub range: ::core::option::Option<ByteRange>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct CaptureFile {
+    #[prost(message, optional, tag = "1")]
+    pub source: ::core::option::Option<FileSource>,
+    #[prost(message, optional, tag = "2")]
+    pub range: ::core::option::Option<ByteRange>,
+    #[prost(message, optional, tag = "3")]
+    pub metadata: ::core::option::Option<FileMetadata>,
+    #[prost(enumeration = "CaptureConsistency", tag = "4")]
+    pub consistency: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowFile {
+    #[prost(message, optional, tag = "1")]
+    pub source: ::core::option::Option<FileSource>,
+    #[prost(message, optional, tag = "2")]
+    pub start: ::core::option::Option<FollowStart>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowProduction {
+    #[prost(message, optional, tag = "1")]
+    pub file: ::core::option::Option<StagedFile>,
+    #[prost(uint64, tag = "2")]
+    pub offset: u64,
+}
+#[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum FilePhase {
@@ -273,6 +402,33 @@ impl FilePhase {
             "PRODUCING" => Some(Self::Producing),
             "FINISHED" => Some(Self::Finished),
             "ABANDONED" => Some(Self::Abandoned),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum CaptureConsistency {
+    Bounded = 0,
+    Stable = 1,
+}
+impl CaptureConsistency {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Bounded => "BOUNDED",
+            Self::Stable => "STABLE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "BOUNDED" => Some(Self::Bounded),
+            "STABLE" => Some(Self::Stable),
             _ => None,
         }
     }

@@ -9,6 +9,13 @@
 
 /* === Modules === */
 
+#[path = "generated_future_offset.rs"]
+mod future_offset;
+#[path = "generated_read.rs"]
+mod read;
+#[path = "generated_reconnect.rs"]
+mod reconnect;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -21,9 +28,10 @@ use std::num::NonZeroUsize;
 // Local Imports
 use super::{Fixture, Lanes, config};
 use harmos_operations::storage::{FollowProduction, ReadFile};
+use harmos_protocol::storage as wire;
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::files::FileBatch as FileBytes;
-use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
+use harmos_runtime::storage::{FileMetadata, StagedFile};
+use prost::Message;
 
 /* === Constants === */
 
@@ -43,7 +51,7 @@ use harmos_runtime::storage::{FileMetadata, FilePhase, StagedFile};
 
 /* === Private Functions === */
 
-async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_operations::storage::FollowProduction) {
+async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, wire::FollowProduction) {
     let fixture = Fixture::new(config()).await;
     fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
     let mut producer = fixture
@@ -59,96 +67,29 @@ async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, harmos_opera
         .unwrap();
     producer.write_all((b"prefix").to_vec()).await.unwrap();
     let session = producer.session().unwrap();
-    let request = harmos_operations::storage::FollowProduction {
-        file: StagedFile {
-            history: session.history.clone(),
-            id: session.id.clone(),
-        },
+    let request = wire::FollowProduction {
+        file: Some(
+            StagedFile {
+                history: session.history.clone(),
+                id: session.id.clone(),
+            }
+            .into(),
+        ),
         offset: 0,
     };
     (fixture, producer, request)
 }
 
-fn limits() -> harmos_runtime::operations::StreamSettings {
-    harmos_runtime::operations::StreamSettings {
+fn limits() -> Option<harmos_runtime::operations::WireStreamLimits> {
+    let settings = harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(1024).unwrap(),
-    }
-}
-
-#[tokio::test]
-async fn read_file_streams() {
-    let (fixture, mut producer, _) = setup().await;
-    let finished = producer.finish().await.unwrap();
-    fixture.storage.flush().await.unwrap();
-    let request = harmos_operations::storage::ReadFile {
-        source: harmos_domain::model::storage::files::FileSource::Stored(finished),
-        range: harmos_runtime::storage::files::ByteRange { offset: 0, limit: None },
     };
-    let (sender, receiver) = harmos_runtime::operations::stream::<harmos_runtime::storage::files::FileBatch>(limits()).unwrap();
-    let instance = fixture.runtime.operations.submit_endpoints::<ReadFile, _>(request, sender).unwrap();
-    let first = receiver.recv().await.unwrap();
-    assert_eq!(first.offset, 0);
-    let mut bytes = first.bytes.clone();
-    drop(first);
-
-    while let Some(chunk) = receiver.recv().await {
-        assert_eq!(chunk.offset, bytes.len() as u64);
-
-        bytes.extend_from_slice(&chunk.bytes);
-    }
-    assert_eq!(bytes, b"prefix");
-    let result = instance.await.unwrap();
-    assert_eq!(result.bytes, 6);
-    fixture.finish().await;
+    Some(harmos_runtime::operations::WireStreamLimits { input: settings, output: settings })
 }
 
-#[tokio::test]
-async fn follow_reconnect_resumes() {
-    let (fixture, mut producer, mut request) = setup().await;
-    let (sender, receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
-    let instance = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(request.clone(), sender).unwrap();
-    let mut offset = 0;
-    while offset < 6 {
-        let chunk = receiver.recv().await.unwrap();
-        assert_eq!(chunk.offset, offset);
-        offset += chunk.bytes.len() as u64;
-    }
-    instance.request_cancel();
-    assert!(instance.await.is_err());
-    drop(receiver);
-    producer.write_all((b"later").to_vec()).await.unwrap();
-    request.offset = offset;
-    let (sender, receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
-    let instance = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(request, sender).unwrap();
-    let mut bytes = Vec::new();
-    while offset < 11 {
-        let chunk = receiver.recv().await.unwrap();
-        assert_eq!(chunk.offset, offset);
-        bytes.extend_from_slice(&chunk.bytes);
-        offset += chunk.bytes.len() as u64;
-    }
-    assert_eq!(bytes, b"later");
-    producer.abort().await.unwrap();
-    assert!(receiver.recv().await.is_none());
-    let result = instance.await.unwrap();
-    assert_eq!(result.length, 11);
-    assert_eq!(result.phase, FilePhase::Abandoned);
-    fixture.finish().await;
-}
-
-#[tokio::test]
-async fn future_offset_refused() {
-    let (fixture, mut producer, request) = setup().await;
-    let beyond = harmos_operations::storage::FollowProduction { offset: 7, ..request };
-    let (sender, receiver) = harmos_runtime::operations::stream::<FileBytes>(limits()).unwrap();
-    let result = fixture.runtime.operations.submit_endpoints::<FollowProduction, _>(beyond, sender);
-    if let Ok(instance) = result {
-        assert!(instance.await.is_err());
-    }
-    assert!(receiver.recv().await.is_none());
-    producer.abort().await.unwrap();
-    fixture.finish().await;
+async fn receive(streams: &harmos_runtime::operations::WireStreams) -> Option<wire::FileBatch> {
+    streams.receive_current().await.unwrap().map(|bytes| wire::FileBatch::decode(bytes.as_slice()).unwrap())
 }
 
 /* === Tests === */

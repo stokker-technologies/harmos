@@ -413,6 +413,9 @@ impl<O: ProtobufOperation> NativeInstance for Instance<O> {
         Box::pin(async { Ok(()) })
     }
     fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+        if let Some(streams) = &self.streams {
+            streams.complete();
+        }
         Box::pin(async { Ok(()) })
     }
     fn transferred(&self) -> bool {

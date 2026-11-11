@@ -927,7 +927,7 @@ Ok(summary.into())
 Host applications can register Prost-generated request, response and stream messages directly
 with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Declaration>()`.
 Host lifecycle, clock and discovery declarations use the protocol crate's generated messages.
-Storage status, file mutation and directory operations also accept generated requests;
+Storage status, file mutation, read/capture/follow and directory operations also accept generated requests;
 use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for native streams.
 Supply the caller's preparation budget and stream limits in operation settings and submission.
 Storage kernels retain their native storage values and persisted encodings.

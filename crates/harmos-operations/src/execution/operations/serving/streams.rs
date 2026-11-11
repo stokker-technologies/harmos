@@ -205,6 +205,15 @@ impl WireStreams {
         }
     }
 
+    pub(crate) fn complete(&self) {
+        self.state.send_modify(|state| {
+            if state.phase != Phase::Closed {
+                state.epoch = state.epoch.max(1);
+                state.phase = Phase::Ended;
+            }
+        });
+    }
+
     fn check_input(&self, epoch: u64) -> Result<(), ServingError> {
         let state = *self.state.borrow();
         if (state.epoch == epoch && state.phase == Phase::Running) || (state.epoch == 0 && epoch == 1 && state.phase == Phase::Waiting) {

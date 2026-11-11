@@ -190,6 +190,96 @@ impl MemorySize for FileCompletion {
     }
 }
 
+impl From<ByteRange> for harmos_protocol::storage::ByteRange {
+    fn from(value: ByteRange) -> Self {
+        Self { offset: value.offset, limit: value.limit }
+    }
+}
+impl From<harmos_protocol::storage::ByteRange> for ByteRange {
+    fn from(value: harmos_protocol::storage::ByteRange) -> Self {
+        Self { offset: value.offset, limit: value.limit }
+    }
+}
+impl TryFrom<FileSource> for harmos_protocol::storage::FileSource {
+    type Error = crate::Error;
+    fn try_from(value: FileSource) -> crate::Result<Self> {
+        use harmos_protocol::storage::file_source::Source;
+        Ok(Self {
+            source: Some(match value {
+                FileSource::Stored(file) => Source::Stored(file.into()),
+                FileSource::Local(path) => Source::Local(path.into_os_string().into_string().map_err(|_| crate::Error::InvalidInput {
+                    field: "local path",
+                    reason: "transport requires UTF-8",
+                })?),
+            }),
+        })
+    }
+}
+impl TryFrom<harmos_protocol::storage::FileSource> for FileSource {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::FileSource) -> crate::Result<Self> {
+        use harmos_protocol::storage::file_source::Source;
+        match value.source.ok_or(crate::Error::InvalidInput { field: "source", reason: "required" })? {
+            Source::Stored(file) => Ok(Self::Stored(file.try_into()?)),
+            Source::Local(path) => Ok(Self::Local(path.into())),
+        }
+    }
+}
+impl From<FileBatch> for harmos_protocol::storage::FileBatch {
+    fn from(value: FileBatch) -> Self {
+        Self { offset: value.offset, bytes: value.bytes }
+    }
+}
+impl From<FileCompletion> for harmos_protocol::storage::FileCompletion {
+    fn from(value: FileCompletion) -> Self {
+        Self { bytes: value.bytes }
+    }
+}
+impl From<FileHash> for harmos_protocol::storage::FileHash {
+    fn from(value: FileHash) -> Self {
+        Self {
+            bytes_read: value.bytes_read,
+            sha256: value.sha256.to_vec(),
+        }
+    }
+}
+impl TryFrom<harmos_protocol::storage::FollowStart> for FollowStart {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::FollowStart) -> crate::Result<Self> {
+        use harmos_protocol::storage::follow_start::Start;
+        Ok(match value.start.ok_or(crate::Error::InvalidInput { field: "start", reason: "required" })? {
+            Start::Beginning(_) => Self::Beginning,
+            Start::End(_) => Self::End,
+            Start::At(offset) => Self::At(offset),
+        })
+    }
+}
+impl From<FileEvent> for harmos_protocol::storage::FileEvent {
+    fn from(value: FileEvent) -> Self {
+        use harmos_protocol::storage::{Empty, file_event::Event};
+        Self {
+            event: Some(match value {
+                FileEvent::Data(batch) => Event::Data(batch.into()),
+                FileEvent::Truncated { length } => Event::Truncated(length),
+                FileEvent::Replaced => Event::Replaced(Empty {}),
+            }),
+        }
+    }
+}
+impl TryFrom<i32> for CaptureConsistency {
+    type Error = crate::Error;
+    fn try_from(value: i32) -> crate::Result<Self> {
+        match harmos_protocol::storage::CaptureConsistency::try_from(value) {
+            Ok(harmos_protocol::storage::CaptureConsistency::Bounded) => Ok(Self::Bounded),
+            Ok(harmos_protocol::storage::CaptureConsistency::Stable) => Ok(Self::Stable),
+            Err(_) => Err(crate::Error::InvalidInput {
+                field: "consistency",
+                reason: "unknown value",
+            }),
+        }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

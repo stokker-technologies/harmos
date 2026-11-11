@@ -213,6 +213,21 @@ impl From<FileProgress> for harmos_protocol::storage::FileProgress {
     }
 }
 
+impl TryFrom<harmos_protocol::storage::FileReference> for FileReference {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::FileReference) -> crate::Result<Self> {
+        Ok(Self {
+            position: value.position.ok_or(crate::Error::InvalidInput { field: "position", reason: "required" })?.try_into()?,
+            metadata: value.metadata.ok_or(crate::Error::InvalidInput { field: "metadata", reason: "required" })?.try_into()?,
+            length: value.length,
+            sha256: value.sha256.try_into().map_err(|_| crate::Error::InvalidInput {
+                field: "sha256",
+                reason: "requires exactly 32 bytes",
+            })?,
+        })
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
