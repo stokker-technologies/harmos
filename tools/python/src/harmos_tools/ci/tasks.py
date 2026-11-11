@@ -352,6 +352,11 @@ def dispatch(arguments: list[str] | None = None) -> int:
         languages = [options.language] if options.language else list(LANGUAGES)
         if options.command == "check" and options.repository:
             return _task("check:repository")
+        if options.command == "check" and (options.generated or options.language in (None, "python")):
+            if not (root / "target/generated/python/src").is_dir():
+                parser.error(
+                    "generated Python clients are absent; run `mise run build` before the complete Python check (hosted CI supplies Product outputs)"
+                )
         if options.command == "check" and options.generated:
             return _task("check:python:generated")
         for language in languages:

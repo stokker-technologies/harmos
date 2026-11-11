@@ -332,7 +332,9 @@ The dev Python job selects the existing format/lint tasks because the complete
 Python check also runs SDK and tooling tests. Generated-client checks consume
 Product outputs, including `target/generated/python/src`; they do not build or
 invent missing clients. Local complete Python checks require the reference host
-(`mise run build -- --package harmos-conformance`) and matching Product outputs.
+(`mise run build -- --package harmos-conformance`) and matching Product outputs
+(`mise run build`). The complete Python check reports this prerequisite before checking
+clients when `target/generated/python/src` is absent.
 
 Every pull request runs the full verification graph. Packaging consumes Product
 without waiting for checks. Unit tests download only Tests and wait only for its build.
