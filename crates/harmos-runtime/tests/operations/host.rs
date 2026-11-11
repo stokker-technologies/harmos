@@ -47,9 +47,9 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 /* === Structs === */
 
 // The declaration is its own request, so `call` and `submit` infer it.
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct HoldDeclaration {
@@ -74,9 +74,9 @@ struct Gate {
 struct CompletionGuard(Arc<Gate>);
 
 // A resident service activated through the host by its identity.
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct TickerDeclaration {}

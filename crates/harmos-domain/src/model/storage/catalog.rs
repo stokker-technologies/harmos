@@ -359,13 +359,15 @@ fn verification_limit() -> Error {
 mod tests {
     use super::*;
 
-    #[crate::message(harmos_path = crate)]
+    #[derive(crate::Message, Debug, Default)]
+    #[harmos_path(crate)]
     #[derive(Clone, PartialEq)]
     struct Document {
         id: String,
         value: u64,
     }
-    #[crate::message(harmos_path = crate)]
+    #[derive(crate::Message, Clone, Debug, Default)]
+    #[harmos_path(crate)]
     struct Other {
         id: String,
     }

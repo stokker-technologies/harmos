@@ -52,7 +52,7 @@ pub use registration::{CATALOG_EXPORT_FLAG, Registrar, Registration, Registratio
 pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
-pub use harmos_macros::{Described, Request, Row, message, transaction, transactions};
+pub use harmos_macros::{Described, Message, Request, Row, transaction, transactions};
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 pub use model::services::policy::{RestartPolicy, ServicePolicy};

@@ -24,7 +24,7 @@ use std::fmt::Debug;
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::graph::Schema;
 use harmos_domain::schema::{Described, Kind};
-use harmos_domain::{MemorySize, Message, message};
+use harmos_domain::{MemorySize, Message};
 use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
@@ -35,7 +35,8 @@ use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Structs === */
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Leaf {
     value: u64,
@@ -201,7 +202,7 @@ mod plain {
 
     // Local Imports
     use super::Leaf;
-    use harmos_domain::message;
+    use harmos_domain::Message;
 
     /* === Constants === */
 
@@ -211,7 +212,8 @@ mod plain {
 
     /* === Structs === */
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Holder {
         pub row: Leaf,
@@ -220,12 +222,19 @@ mod plain {
 
     /* === Enums === */
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Choice {
         Empty,
         Tuple(Leaf, u32),
         Named { row: Leaf, note: Option<String> },
+    }
+
+    impl Default for Choice {
+        fn default() -> Self {
+            Self::Empty
+        }
     }
 
     /* === Traits === */
@@ -253,7 +262,7 @@ mod heap {
 
     // Local Imports
     use super::Leaf;
-    use harmos_domain::message;
+    use harmos_domain::Message;
 
     /* === Constants === */
 
@@ -263,7 +272,8 @@ mod heap {
 
     /* === Structs === */
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Holder {
         pub row: Box<Leaf>,
@@ -272,12 +282,19 @@ mod heap {
 
     /* === Enums === */
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Choice {
         Empty,
         Tuple(Box<Leaf>, u32),
         Named { row: Box<Leaf>, note: Option<String> },
+    }
+
+    impl Default for Choice {
+        fn default() -> Self {
+            Self::Empty
+        }
     }
 
     /* === Traits === */

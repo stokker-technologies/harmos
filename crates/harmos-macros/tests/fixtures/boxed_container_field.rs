@@ -28,13 +28,13 @@
 
 /* === Structs === */
 
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug, Default)]
 struct Leaf {
     value: u64,
 }
 
 // A box owns a nested message, never a container or bytes.
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug)]
 struct Holder {
     rows: Box<Vec<Leaf>>,
 }

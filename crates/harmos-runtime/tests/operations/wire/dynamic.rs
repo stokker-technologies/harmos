@@ -38,17 +38,16 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[derive(Debug, PartialEq)]
+#[derive(harmos_runtime::Message, Clone, Default, Debug, PartialEq)]
 struct Value {
     small: u32,
     wide: u64,
     optional: Option<u32>,
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Value)]
 #[derive(Clone)]
 struct UnaryDeclaration {
@@ -65,9 +64,9 @@ static UNARY_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaratio
 const UNARY_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<UnaryDeclaration> =
     harmos_runtime::operations::OperationSpec::<UnaryDeclaration>::new(&UNARY_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Value, input = Value, output = Value)]
 #[derive(Clone)]
 struct ExchangeDeclaration {

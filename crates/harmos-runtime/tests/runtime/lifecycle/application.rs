@@ -62,9 +62,9 @@ struct Config {
 
 struct App(Config);
 
-#[::harmos_runtime::message(harmos_path = ::harmos_runtime)]
-#[derive(::harmos_runtime::Request)]
+#[derive(::harmos_runtime::Message, Debug, Default)]
 #[harmos_path(::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct Read;
@@ -75,9 +75,9 @@ static READ_DESCRIPTION: ::harmos_runtime::operations::WireDeclaration =
 const READ_OPERATION: ::harmos_runtime::operations::OperationSpec<Read> =
     ::harmos_runtime::operations::OperationSpec::<Read>::new(&READ_DESCRIPTION);
 
-#[::harmos_runtime::message(harmos_path = ::harmos_runtime)]
-#[derive(::harmos_runtime::Request)]
+#[derive(::harmos_runtime::Message, Debug, Default)]
 #[harmos_path(::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct Pending;
@@ -90,9 +90,9 @@ const PENDING_OPERATION: ::harmos_runtime::operations::OperationSpec<Pending> =
 
 struct PendingGuard(Arc<Counter>);
 
-#[::harmos_runtime::message(harmos_path = ::harmos_runtime)]
-#[derive(::harmos_runtime::Request)]
+#[derive(::harmos_runtime::Message, Debug, Default)]
 #[harmos_path(::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct Missing;

@@ -105,9 +105,9 @@ mod tests {
     use crate::execution::operations::{CallContext, ExecutionContext, Response};
     use std::{future::Future, sync::Arc};
 
-    #[crate::execution::message(harmos_path = crate::execution)]
-    #[derive(crate::execution::Request)]
+    #[derive(crate::execution::Message, Debug, Default)]
     #[harmos_path(crate::execution)]
+    #[derive(crate::execution::Request)]
     #[request(response = u64)]
     #[derive(Clone)]
     struct Increment {

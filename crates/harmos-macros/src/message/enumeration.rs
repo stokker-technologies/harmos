@@ -41,7 +41,7 @@ use crate::path::HarmosPath;
 // A Message Enum Is A Oneof: Each Variant Selects One Payload Shape Whose Fields
 // Are The Variant's Fields. Payload Shapes Are Unit Markers Carrying Only Their
 // Described Fields; Values Live In The Enum And Its Postcard Encoding.
-pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, skip_default: bool) -> Result<TokenStream, Error> {
+pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath) -> Result<TokenStream, Error> {
     if !item.generics.params.is_empty() || item.variants.is_empty() {
         return Err(Error::new(item.span(), "a message enum requires non-generic variants"));
     }
@@ -51,8 +51,6 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
     let mut payloads = Vec::new();
     let mut memories = Vec::new();
     let mut schemas = Vec::new();
-    let mut defaults = Vec::new();
-    let mut defaultable = true;
     for (index, variant) in item.variants.iter_mut().enumerate() {
         if variant.discriminant.is_some() {
             return Err(Error::new(variant.span(), "message variants use name-derived tags, without discriminants"));
@@ -65,19 +63,15 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
         let mut bindings = Vec::new();
         let mut members = Vec::new();
         let mut owned = Vec::new();
-        let mut initial = Vec::new();
         for (position, field) in variant.fields.iter_mut().enumerate() {
             let ident = field.ident.clone().unwrap_or_else(|| format_ident!("field_{position}"));
             // Validate the Same Portable Field Shapes as Struct Messages
-            let (required_message, kind, cardinality) = encoding(&field.ty, &harmos).map_err(|error| {
+            let (_, kind, cardinality) = encoding(&field.ty, &harmos).map_err(|error| {
                 Error::new(
                     field.span(),
                     format!("field `{ident}` of variant `{variant_name}` of type `{}`: {error}", field.ty.to_token_stream()),
                 )
             })?;
-            if index == 0 && required_message {
-                defaultable = false;
-            }
             let field_name = ident.to_string();
             let field_name = field_name.strip_prefix("r#").unwrap_or(&field_name);
             fields.push(quote! {
@@ -96,18 +90,12 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
             });
             bindings.push(binding);
             members.push(ident);
-            initial.push(quote!(::std::default::Default::default()));
         }
         let pattern = match &variant.fields {
             Fields::Unit => quote!(#name::#variant_name),
             Fields::Unnamed(_) => quote!(#name::#variant_name(#(#bindings),*)),
             Fields::Named(_) => quote!(#name::#variant_name { #(#members: #bindings),* }),
         };
-        defaults.push(match &variant.fields {
-            Fields::Unit => quote!(#name::#variant_name),
-            Fields::Unnamed(_) => quote!(#name::#variant_name(#(#initial),*)),
-            Fields::Named(_) => quote!(#name::#variant_name { #(#members: #initial),* }),
-        });
         let described = super::described(&payload, quote!(&[#(#fields),*]), quote!(), &harmos);
         payloads.push(quote! {
             struct #payload;
@@ -129,34 +117,19 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
         .into_iter()
         .flatten()
         .collect();
-    if !derives.iter().any(|path| path.segments.last().is_some_and(|part| part.ident == "Clone")) {
-        item.attrs.push(syn::parse_quote!(#[derive(Clone)]));
-    }
     let has_default = derives.iter().any(|path| path.segments.last().is_some_and(|part| part.ident == "Default"));
-    // An Absent Oneof Decodes To The `#[default]` Unit Variant, Else The First.
     let default_variant = item.variants.iter().position(|variant| {
         has_default && matches!(variant.fields, Fields::Unit) && variant.attrs.iter().any(|attribute| attribute.path().is_ident("default"))
-    });
-    if !skip_debug && !derives.iter().any(|path| path.segments.last().is_some_and(|part| part.ident == "Debug")) {
-        item.attrs.push(syn::parse_quote!(#[derive(Debug)]));
-    }
-    let default = &defaults[0];
-    let default_impl = (!skip_default && !has_default && defaultable).then(|| {
-        quote! {
-            impl ::std::default::Default for #name { fn default() -> Self { #default } }
-        }
     });
     let extra =
         default_variant.map(|index| quote!(const DEFAULT_VARIANT: ::std::option::Option<usize> = ::std::option::Option::Some(#index);));
     let schemas = schemas.into_iter();
     let schema = super::described(name, quote!(&[#(#schemas),*]), quote!(#extra), &harmos);
     Ok(quote! {
-        #item
         #(#gates)*
         const _: () = {
             #postcard
             #(#payloads)*
-            #default_impl
             impl #harmos::MemorySize for #name {
                 fn memory_size(&self) -> usize {
                     match self { #(#memories),* }

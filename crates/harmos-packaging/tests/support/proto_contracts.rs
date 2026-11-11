@@ -38,16 +38,17 @@ const POLICY: OperationPolicy = OperationPolicy {
 
 /* === Structs === */
 
-#[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 pub(crate) struct Payload {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[::harmos_domain::message(harmos_path = ::harmos_domain)]
-#[derive(::harmos_domain::Request)]
+#[derive(::harmos_domain::Message, Debug, Default)]
 #[harmos_path(::harmos_domain)]
+#[derive(::harmos_domain::Request)]
 #[request(response = Payload)]
 #[derive(Clone)]
 pub(crate) struct ReadOperation {
@@ -64,9 +65,9 @@ pub(crate) static READ_OPERATION_DESCRIPTION: ::harmos_domain::operations::WireD
 pub(crate) const READ_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<ReadOperation> =
     ::harmos_domain::operations::OperationSpec::<ReadOperation>::new(&READ_OPERATION_DESCRIPTION);
 
-#[::harmos_domain::message(harmos_path = ::harmos_domain)]
-#[derive(::harmos_domain::Request)]
+#[derive(::harmos_domain::Message, Debug, Default)]
 #[harmos_path(::harmos_domain)]
+#[derive(::harmos_domain::Request)]
 #[request(response = Payload, input = Payload, output = Payload)]
 #[derive(Clone)]
 pub(crate) struct ExchangeOperation {
@@ -83,9 +84,9 @@ pub(crate) static EXCHANGE_OPERATION_DESCRIPTION: ::harmos_domain::operations::W
 pub(crate) const EXCHANGE_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<ExchangeOperation> =
     ::harmos_domain::operations::OperationSpec::<ExchangeOperation>::new(&EXCHANGE_OPERATION_DESCRIPTION);
 
-#[::harmos_domain::message(harmos_path = ::harmos_domain)]
-#[derive(::harmos_domain::Request)]
+#[derive(::harmos_domain::Message, Debug, Default)]
 #[harmos_path(::harmos_domain)]
+#[derive(::harmos_domain::Request)]
 #[request(response = Payload, input = Payload)]
 #[derive(Clone)]
 pub(crate) struct UploadOperation {
@@ -102,9 +103,9 @@ pub(crate) static UPLOAD_OPERATION_DESCRIPTION: ::harmos_domain::operations::Wir
 pub(crate) const UPLOAD_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<UploadOperation> =
     ::harmos_domain::operations::OperationSpec::<UploadOperation>::new(&UPLOAD_OPERATION_DESCRIPTION);
 
-#[::harmos_domain::message(harmos_path = ::harmos_domain)]
-#[derive(::harmos_domain::Request)]
+#[derive(::harmos_domain::Message, Debug, Default)]
 #[harmos_path(::harmos_domain)]
+#[derive(::harmos_domain::Request)]
 #[request(response = Payload, output = Payload)]
 #[derive(Clone)]
 pub(crate) struct DownloadOperation {
@@ -121,9 +122,9 @@ pub(crate) static DOWNLOAD_OPERATION_DESCRIPTION: ::harmos_domain::operations::W
 pub(crate) const DOWNLOAD_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<DownloadOperation> =
     ::harmos_domain::operations::OperationSpec::<DownloadOperation>::new(&DOWNLOAD_OPERATION_DESCRIPTION);
 
-#[::harmos_domain::message(harmos_path = ::harmos_domain)]
-#[derive(::harmos_domain::Request)]
+#[derive(::harmos_domain::Message, Debug)]
 #[harmos_path(::harmos_domain)]
+#[derive(::harmos_domain::Request)]
 #[request(response = AnnotatedOperation)]
 #[derive(Clone, PartialEq)]
 pub(crate) struct AnnotatedOperation {
@@ -142,9 +143,9 @@ pub(crate) static ANNOTATED_OPERATION_DESCRIPTION: ::harmos_domain::operations::
 pub(crate) const ANNOTATED_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<AnnotatedOperation> =
     ::harmos_domain::operations::OperationSpec::<AnnotatedOperation>::new(&ANNOTATED_OPERATION_DESCRIPTION);
 
-#[::harmos_domain::message(harmos_path = ::harmos_domain)]
-#[derive(::harmos_domain::Request)]
+#[derive(::harmos_domain::Message, Debug)]
 #[harmos_path(::harmos_domain)]
+#[derive(::harmos_domain::Request)]
 #[request(response = Delivered)]
 #[derive(Clone, PartialEq)]
 pub(crate) struct EnvelopeOperation {
@@ -196,11 +197,18 @@ pub(crate) const PORTABLE_CATALOG: harmos_operations::execution::operations::Cat
         None,
     );
 
-#[harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(harmos_domain::Message, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq)]
 pub(crate) enum Delivered {
     Missing,
     Boxed(Box<AnnotatedOperation>),
+}
+
+impl Default for Delivered {
+    fn default() -> Self {
+        Self::Missing
+    }
 }
 
 static BOXED_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =

@@ -52,7 +52,7 @@ struct Fact {
     dropped: Arc<AtomicUsize>,
 }
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct WireFact {
     value: u32,
 }

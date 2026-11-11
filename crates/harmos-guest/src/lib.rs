@@ -70,7 +70,7 @@ pub use harmos_operations::execution::__private;
 pub use kit::{OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};
 
 #[cfg(feature = "derive")]
-pub use harmos_domain::{Request, Row, StreamEntry, message};
+pub use harmos_domain::{Request, Row, StreamEntry};
 
 #[cfg(feature = "derive")]
 pub use harmos_guest_macros::plugin as guest;

@@ -33,9 +33,9 @@ use harmos_runtime::operations::RetryPolicy;
 
 /* === Structs === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Measured)]
 #[derive(Clone)]
 struct MeasureContractDeclaration {
@@ -57,7 +57,7 @@ const MEASURE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::Operat
     harmos_runtime::operations::OperationSpec::<MeasureContractDeclaration>::new(&MEASURE_CONTRACT_DECLARATION_DESCRIPTION);
 
 // The Host's Monotonic And Date Readings Across One Wait.
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Measured {
     scoped_nanos: u64,
     wall_nanos: u64,

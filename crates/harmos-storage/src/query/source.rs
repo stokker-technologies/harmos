@@ -364,13 +364,13 @@ mod tests {
 
     /* === Structs === */
 
-    #[harmos_domain::message]
+    #[derive(harmos_domain::Message, Clone, Debug, Default)]
     struct Sample {
         x: f64,
         y: f64,
     }
 
-    #[harmos_domain::message]
+    #[derive(harmos_domain::Message, Clone, Debug)]
     struct Nested {
         scalar: Sample,
         optional: Option<Sample>,
@@ -388,11 +388,17 @@ mod tests {
 
     /* === Enums === */
 
-    #[harmos_domain::message]
+    #[derive(harmos_domain::Message, Clone, Debug)]
     enum Choice {
         Empty,
         Value(Sample),
         Many(Vec<Sample>),
+    }
+
+    impl Default for Choice {
+        fn default() -> Self {
+            Self::Empty
+        }
     }
 
     /* === Traits === */

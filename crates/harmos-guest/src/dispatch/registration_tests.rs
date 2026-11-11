@@ -27,9 +27,9 @@ pub fn read_catalog_catalog_batch() -> Catalog {
     Catalog::new().entry(read_operation().expect("representable operation"))
 }
 
-#[harmos_operations::execution::message(harmos_path = harmos_operations::execution)]
-#[derive(harmos_operations::execution::Request)]
+#[derive(harmos_operations::execution::Message, Debug, Default)]
 #[harmos_path(harmos_operations::execution)]
+#[derive(harmos_operations::execution::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct Read;

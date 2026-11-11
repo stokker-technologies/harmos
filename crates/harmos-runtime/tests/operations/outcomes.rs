@@ -51,13 +51,18 @@ struct AttemptGuard(Arc<Counts>);
 
 /* === Enums === */
 
-#[harmos_runtime::message]
-#[derive(Clone, Copy)]
+#[derive(harmos_runtime::Message, Debug, Clone, Copy)]
 enum Mode {
     Value(u64),
     Reject,
     Wait,
     Retry,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Value(Default::default())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -72,9 +77,9 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct ComputeContractDeclaration {
@@ -101,9 +106,9 @@ static COMPUTE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wir
 const COMPUTE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ComputeContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ComputeContractDeclaration>::new(&COMPUTE_CONTRACT_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct ParentContractDeclaration {

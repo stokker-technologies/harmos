@@ -43,21 +43,24 @@ wasmtime::component::bindgen!({
 /* === Structs === */
 
 // Mirrors The Schematic Contract's Route Messages; Field Names Fix The Wire Tags
-#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(harmos_guest::Message, Default)]
+#[harmos_path(::harmos_guest)]
 #[derive(Clone, Debug, PartialEq)]
 struct Point {
     x: i32,
     y: i32,
 }
 
-#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(harmos_guest::Message)]
+#[harmos_path(::harmos_guest)]
 #[derive(Clone, Debug, PartialEq)]
 struct Request {
     from: Point,
     to: Point,
 }
 
-#[harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(harmos_guest::Message, Default)]
+#[harmos_path(::harmos_guest)]
 #[derive(Clone, Debug, PartialEq)]
 struct Response {
     points: Vec<Point>,

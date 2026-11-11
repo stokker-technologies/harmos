@@ -65,9 +65,9 @@ inert_plugin!(ExplicitEmptyGuest, "explicit_empty_guest", harmos_runtime::guest:
 
 /* === Structs === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Response)]
 #[derive(Clone)]
 struct SelectedDeclaration {}
@@ -96,9 +96,9 @@ static SELECTED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
 const SELECTED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<SelectedDeclaration> =
     harmos_runtime::operations::OperationSpec::<SelectedDeclaration>::new(&SELECTED_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Response)]
 #[derive(Clone)]
 struct UnselectedDeclaration {}
@@ -112,7 +112,7 @@ static UNSELECTED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDecla
 const UNSELECTED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<UnselectedDeclaration> =
     harmos_runtime::operations::OperationSpec::<UnselectedDeclaration>::new(&UNSELECTED_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Response {
     value: u32,
 }

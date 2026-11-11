@@ -42,13 +42,12 @@ use harmos_runtime::{
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[derive(Clone)]
+#[derive(harmos_runtime::Message, Debug, Default, Clone)]
 pub struct Host {
     pub value: Vec<u8>,
 }
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 pub struct Reply {
     pub value: Vec<u8>,
 }

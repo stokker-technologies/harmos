@@ -28,20 +28,20 @@
 
 /* === Structs === */
 
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug, Default)]
 struct Leaf {
     value: u64,
 }
 
 // Shared ownership has no message wire meaning; only `Box<T>` is admitted.
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug)]
 struct Holder {
     row: std::sync::Arc<Leaf>,
 }
 
 /* === Enums === */
 
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug)]
 enum Shared {
     Owned(std::rc::Rc<Leaf>),
 }

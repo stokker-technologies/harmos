@@ -9,9 +9,10 @@
 
 use harmos_operations::execution as harmos;
 const POLICY: harmos::OperationPolicy = harmos::model::operations::lifecycle::POLICY;
-#[harmos::message(harmos_path = harmos)]
-#[derive(harmos::Request, Clone)]
+#[derive(harmos::Message, Debug, Default)]
 #[harmos_path(harmos)]
+#[derive(harmos::Request, Clone)]
+
 struct Read;
 static DESCRIPTION: harmos::operations::WireDeclaration = harmos::operations::WireDeclaration::request::<Read>("fixture.always", POLICY);
 const SPEC: harmos::operations::OperationSpec<Read> = harmos::operations::OperationSpec::new(&DESCRIPTION);

@@ -85,9 +85,9 @@ pub fn transactions(attribute: TokenStream, item: TokenStream) -> TokenStream {
     catalog::close(attribute.into(), item.into()).into()
 }
 
-#[proc_macro_attribute]
-pub fn message(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    message::declare(attribute.into(), item.into()).into()
+#[proc_macro_derive(Message, attributes(harmos_path, row))]
+pub fn message(item: TokenStream) -> TokenStream {
+    message::derive(item.into()).into()
 }
 
 /* === Private Functions === */

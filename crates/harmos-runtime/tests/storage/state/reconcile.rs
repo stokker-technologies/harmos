@@ -36,7 +36,7 @@ use harmos_runtime::{Error, Identifier, Runtime, services::ServiceContext, state
 
 /* === Structs === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Balance {
     value: i64,
 }

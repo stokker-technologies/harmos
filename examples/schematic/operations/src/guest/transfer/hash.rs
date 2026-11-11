@@ -36,9 +36,9 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::message(harmos_path = harmos_operations)]
-#[derive(harmos_operations::Request)]
+#[derive(harmos_operations::Message, Debug)]
 #[harmos_path(harmos_operations)]
+#[derive(harmos_operations::Request)]
 #[request(response = FileHash)]
 #[derive(Clone)]
 pub struct Hash {
@@ -55,7 +55,7 @@ static HASH_CALLEES: [harmos_operations::operations::WireDeclaration; 1] =
 pub const HASH_OPERATION: harmos_operations::operations::OperationSpec<Hash> =
     harmos_operations::operations::OperationSpec::<Hash>::new(&HASH_DESCRIPTION).calls(&HASH_CALLEES);
 
-#[harmos_operations::message]
+#[derive(harmos_operations::Message, Clone, Debug, Default)]
 pub struct FileHash {
     pub read_bytes: u64,
     pub sha256: Vec<u8>,

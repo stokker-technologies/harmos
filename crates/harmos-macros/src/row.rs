@@ -63,10 +63,7 @@ fn expand(item: TokenStream) -> Result<TokenStream, Error> {
         .transpose()?;
     let harmos = HarmosPath::resolve(explicit);
     if crate::message::portable(&parsed, &harmos) {
-        let expanded = crate::message::expand(quote!(harmos_path = #harmos), item)?;
-        let expanded: syn::File = syn::parse2(expanded)?;
-        let implementations = expanded.items.into_iter().filter(|item| !matches!(item, Item::Struct(_)));
-        return Ok(quote!(#(#implementations)*));
+        return crate::message::expand(quote!(harmos_path = #harmos), item);
     }
     let schema = crate::message::shape(&parsed, &harmos)?;
     let (name, metadata) = match &mut parsed {

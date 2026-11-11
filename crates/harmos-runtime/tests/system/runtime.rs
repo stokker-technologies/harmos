@@ -39,7 +39,7 @@ use std::sync::Arc;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Reading {
     value: i64,
 }

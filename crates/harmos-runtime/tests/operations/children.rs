@@ -47,12 +47,18 @@ struct ChildGuard(Arc<Trace>);
 
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug)]
 enum Exit {
     Return,
     Fail,
     Wait,
     Retry,
+}
+
+impl Default for Exit {
+    fn default() -> Self {
+        Self::Return
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -67,9 +73,9 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct ParentContractDeclaration {
@@ -96,9 +102,9 @@ static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
 const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct ChildContractDeclaration {}

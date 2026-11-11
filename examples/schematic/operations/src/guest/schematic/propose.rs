@@ -34,9 +34,9 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::message(harmos_path = harmos_operations)]
-#[derive(harmos_operations::Request)]
+#[derive(harmos_operations::Message)]
 #[harmos_path(harmos_operations)]
+#[derive(harmos_operations::Request)]
 #[request(response = Route)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProposeRoute {
@@ -53,8 +53,7 @@ pub static PROPOSE_ROUTE_DESCRIPTION: harmos_operations::operations::WireDeclara
 pub const PROPOSE_ROUTE_OPERATION: harmos_operations::operations::OperationSpec<ProposeRoute> =
     harmos_operations::operations::OperationSpec::<ProposeRoute>::new(&PROPOSE_ROUTE_DESCRIPTION);
 
-#[harmos_operations::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_operations::Message, Default, Clone, Debug, PartialEq)]
 pub struct Route {
     pub points: Vec<schematic_domain::model::Point>,
 }

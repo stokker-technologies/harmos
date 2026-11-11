@@ -36,15 +36,14 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_operations::Message, Default, Clone, Debug, PartialEq)]
 pub struct Finding {
     pub text: String,
 }
 
-#[harmos_operations::message(harmos_path = harmos_operations)]
-#[derive(harmos_operations::Request)]
+#[derive(harmos_operations::Message)]
 #[harmos_path(harmos_operations)]
+#[derive(harmos_operations::Request)]
 #[request(response = Analysis, output = Finding)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct AnalyzeSchematic {
@@ -60,8 +59,7 @@ pub static ANALYZE_SCHEMATIC_DESCRIPTION: harmos_operations::operations::WireDec
 pub const ANALYZE_SCHEMATIC_OPERATION: harmos_operations::operations::OperationSpec<AnalyzeSchematic> =
     harmos_operations::operations::OperationSpec::<AnalyzeSchematic>::new(&ANALYZE_SCHEMATIC_DESCRIPTION);
 
-#[harmos_operations::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_operations::Message, Default, Clone, Debug, PartialEq)]
 pub struct Analysis {
     pub checked: u32,
 }

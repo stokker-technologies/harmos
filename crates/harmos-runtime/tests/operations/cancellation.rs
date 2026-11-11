@@ -49,9 +49,9 @@ pub(crate) struct Probe {
 
 struct Guard(Arc<Probe>);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 pub(crate) struct Finish {
@@ -74,9 +74,9 @@ pub(crate) static FINISH_DESCRIPTION: harmos_runtime::operations::WireDeclaratio
 pub(crate) const FINISH_OPERATION: harmos_runtime::operations::OperationSpec<Finish> =
     harmos_runtime::operations::OperationSpec::<Finish>::new(&FINISH_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64, input = u64, output = u64)]
 #[derive(Clone)]
 pub(crate) struct Exchange {}

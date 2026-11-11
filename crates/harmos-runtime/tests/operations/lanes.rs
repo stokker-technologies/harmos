@@ -44,9 +44,9 @@ struct Gauge {
     release: Semaphore,
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct MeasureContractDeclaration {}

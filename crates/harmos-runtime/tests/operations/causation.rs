@@ -58,9 +58,9 @@ struct TraceFields(BTreeMap<String, String>);
 
 /* === Enums === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct NoteContractDeclaration {
@@ -73,9 +73,9 @@ static NOTE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
 const NOTE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<NoteContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<NoteContractDeclaration>::new(&NOTE_CONTRACT_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct DescendContractDeclaration {
@@ -88,9 +88,9 @@ static DESCEND_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wir
 const DESCEND_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DescendContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<DescendContractDeclaration>::new(&DESCEND_CONTRACT_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct FamilyContractDeclaration {

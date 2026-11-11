@@ -64,9 +64,9 @@ const REJECTION_DETAILS: &[u8] = &[
 /* === Structs === */
 
 struct Principal(String);
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply)]
 #[derive(Clone)]
 struct GuardedDeclaration {}
@@ -79,9 +79,9 @@ const GUARDED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<G
     harmos_runtime::operations::OperationSpec::<GuardedDeclaration>::new(&GUARDED_DECLARATION_DESCRIPTION)
         .grant(|_: &GuardedDeclaration| Some(harmos_domain::plugin::Grant::of(GUARDED_DECLARATION_OPERATION.entry().id, "reading")));
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply)]
 #[derive(Clone)]
 struct DescendantDeclaration {}
@@ -100,9 +100,9 @@ struct ExternalAccess {
 struct Sessions;
 struct PendingAuthentication;
 struct DiscoveryAccess;
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply)]
 #[derive(Clone)]
 struct WhoDeclaration {}
@@ -114,9 +114,9 @@ static WHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration 
 const WHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<WhoDeclaration> =
     harmos_runtime::operations::OperationSpec::<WhoDeclaration>::new(&WHO_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply, output = Reply)]
 #[derive(Clone)]
 struct DownloadDeclaration {}
@@ -128,9 +128,9 @@ static DOWNLOAD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
 const DOWNLOAD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DownloadDeclaration> =
     harmos_runtime::operations::OperationSpec::<DownloadDeclaration>::new(&DOWNLOAD_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply, input = Reply)]
 #[derive(Clone)]
 struct UploadDeclaration {}
@@ -142,9 +142,9 @@ static UPLOAD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclarati
 const UPLOAD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<UploadDeclaration> =
     harmos_runtime::operations::OperationSpec::<UploadDeclaration>::new(&UPLOAD_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply, input = Reply, output = Reply)]
 #[derive(Clone)]
 struct ExchangeDeclaration {}
@@ -156,9 +156,9 @@ static EXCHANGE_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
 const EXCHANGE_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ExchangeDeclaration> =
     harmos_runtime::operations::OperationSpec::<ExchangeDeclaration>::new(&EXCHANGE_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply, output = Reply)]
 #[derive(Clone)]
 struct HoldDeclaration {}
@@ -170,11 +170,11 @@ static HOLD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration
 const HOLD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<HoldDeclaration> =
     harmos_runtime::operations::OperationSpec::<HoldDeclaration>::new(&HOLD_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Reply {
     actor: String,
 }
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Ask {}
 #[derive(Clone)]
 struct Endpoint {

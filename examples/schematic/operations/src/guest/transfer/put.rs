@@ -42,9 +42,9 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::message(harmos_path = harmos_operations)]
-#[derive(harmos_operations::Request)]
+#[derive(harmos_operations::Message, Debug)]
 #[harmos_path(harmos_operations)]
+#[derive(harmos_operations::Request)]
 #[request(response = Receipt)]
 #[derive(Clone)]
 pub struct Put {

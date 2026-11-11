@@ -41,13 +41,13 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 /* === Structs === */
 
 struct Principal(&'static str);
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Stage {
     id: String,
 }
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone)]
 struct OverlayParentDeclaration {}
@@ -61,9 +61,9 @@ const OVERLAY_PARENT_DECLARATION_OPERATION: harmos_runtime::operations::Operatio
     harmos_runtime::operations::OperationSpec::<OverlayParentDeclaration>::new(&OVERLAY_PARENT_DECLARATION_DESCRIPTION)
         .calls(&OVERLAY_PARENT_DECLARATION_CALLEES);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone)]
 struct OverlayChildDeclaration {}
@@ -74,9 +74,9 @@ static OVERLAY_CHILD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
 const OVERLAY_CHILD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<OverlayChildDeclaration> =
     harmos_runtime::operations::OperationSpec::<OverlayChildDeclaration>::new(&OVERLAY_CHILD_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone)]
 struct DeclareParentDeclaration {}
@@ -90,9 +90,9 @@ const DECLARE_PARENT_DECLARATION_OPERATION: harmos_runtime::operations::Operatio
     harmos_runtime::operations::OperationSpec::<DeclareParentDeclaration>::new(&DECLARE_PARENT_DECLARATION_DESCRIPTION)
         .calls(&DECLARE_PARENT_DECLARATION_CALLEES);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone)]
 struct DeclareChildDeclaration {}
@@ -491,9 +491,9 @@ impl Middleware for Wait {
     }
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone)]
 struct RetryDeclaration {}

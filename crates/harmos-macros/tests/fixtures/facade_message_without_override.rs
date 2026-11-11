@@ -28,7 +28,7 @@
 
 /* === Structs === */
 
-#[facade::message]
+#[derive(facade::Message, Clone, Debug, Default)]
 struct Sample { value: u32 }
 
 /* === Enums === */

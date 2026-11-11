@@ -298,7 +298,8 @@ mod tests {
     use super::*;
     use std::{borrow::Borrow, sync::Arc};
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug, Default)]
+    #[harmos_path(::harmos_domain)]
     struct Chunk {
         offset: u64,
         data: Vec<u8>,

@@ -65,8 +65,7 @@ pub use harmos_guest::guest;
 
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
-// `message` Names Both The Contract Module And Its Same-Named Attribute.
-pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, message, schema};
+pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, schema};
 pub use harmos_macros::{Described, Request, Row, transaction, transactions};
 
 /* === Imports === */

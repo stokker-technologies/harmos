@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos::{Request, Row, message, plugin};
+pub use harmos::{Request, Row, Message, plugin};
 pub use serde::*;
 
 /* === Imports === */
@@ -56,10 +56,7 @@ pub mod __harmos {
 
     /* === Re-Exports === */
 
-    pub use harmos::{
-        __private, MemorySize, Message, MessageError, Metadata, Request, RequestShape, OperationDefinition, OperationPolicy, RowMetadata,
-        StreamEntry, StreamField, StreamSpec,
-    };
+    pub use harmos::{__private, MemorySize, Message, MessageError, Metadata, Request, RequestShape, OperationDefinition, OperationPolicy, RowMetadata, StreamEntry, StreamField, StreamSpec, };
 
     #[cfg(feature = "runtime")]
     pub use harmos::runtime;

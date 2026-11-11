@@ -29,7 +29,7 @@
 
 /* === Structs === */
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug)]
 pub struct ValidatedSchematic {
     pub id: String,
     pub schematic: super::Snapshot,

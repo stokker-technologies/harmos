@@ -68,15 +68,13 @@ struct Sample {
     value: u64,
 }
 
-#[harmos_runtime::message]
-#[derive(Serialize, Deserialize)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default, Serialize, Deserialize)]
 struct PluginObject {
     id: String,
     value: u64,
 }
 
-#[harmos_runtime::message]
-#[derive(Serialize, Deserialize)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default, Serialize, Deserialize)]
 struct NewPluginObject {
     id: String,
     value: String,
@@ -579,8 +577,7 @@ fn label_only_change_keeps_revision() {
         const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("shape.samples", 4).label("Renamed Samples");
     }
 
-    #[harmos_runtime::message]
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
     struct LabelledRecord {
         #[row(label = "Previous Value")]
         before: i64,

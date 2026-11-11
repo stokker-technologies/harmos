@@ -170,9 +170,9 @@ async fn transfer_blocks_retry() {
     runtime.shutdown().await.unwrap();
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = (), input = u32, output = u32)]
 #[derive(Clone)]
 struct Streaming {

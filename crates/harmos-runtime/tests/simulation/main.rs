@@ -49,9 +49,9 @@ static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);
 
 /* === Structs === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct PendingDeclaration {}
@@ -70,9 +70,9 @@ static PENDING_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclarat
 const PENDING_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PendingDeclaration> =
     harmos_runtime::operations::OperationSpec::<PendingDeclaration>::new(&PENDING_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct AnsweringDeclaration {
@@ -130,9 +130,9 @@ struct Divergent;
 #[derive(Clone)]
 struct DivergentCatalog;
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct TimingItsOwnWaitDeclaration {

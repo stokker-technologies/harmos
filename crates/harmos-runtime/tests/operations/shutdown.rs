@@ -48,16 +48,22 @@ struct AttemptGuard(Arc<Trace>);
 
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug)]
 enum Mode {
     Hold,
     Count,
     Sleep,
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Hold
+    }
+}
+
+#[derive(harmos_runtime::Message, Debug)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = ())]
 #[derive(Clone)]
 struct WaitContractDeclaration {

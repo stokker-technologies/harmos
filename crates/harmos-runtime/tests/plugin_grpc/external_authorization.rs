@@ -55,15 +55,14 @@ struct Bearers;
 // Bearers Are Denied.
 struct Holdings;
 
-#[harmos_runtime::message]
-#[derive(Clone)]
+#[derive(harmos_runtime::Message, Debug, Default, Clone)]
 struct Fetch {
     value: u32,
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Fetch)]
 #[derive(Clone)]
 struct LocalFetchDeclaration {

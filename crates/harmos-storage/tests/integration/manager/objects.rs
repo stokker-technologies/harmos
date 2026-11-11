@@ -33,29 +33,26 @@ use harmos_storage::{ObjectCatalog, ObjectRetention, StorageBackends, StorageMan
 
 /* === Structs === */
 
-#[harmos_domain::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_domain::Message, Debug, Default, Clone, PartialEq)]
 struct Document {
     id: String,
     status: String,
 }
 
-#[harmos_domain::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_domain::Message, Debug, Default, Clone, PartialEq)]
 struct DifferentDocument {
     id: String,
     status: String,
     annotation: u32,
 }
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
 struct Duplicate {
     id: String,
     status: String,
 }
 
-#[harmos_domain::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_domain::Message, Debug, Default, Clone, PartialEq)]
 struct Counter {
     id: u64,
     value: u64,

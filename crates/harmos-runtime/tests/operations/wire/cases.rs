@@ -125,9 +125,9 @@ macro_rules! scripted_codec {
 
 /* === Structs === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone)]
 pub(super) struct EchoDeclaration {
@@ -141,9 +141,9 @@ pub(super) static ECHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
 pub(super) const ECHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<EchoDeclaration> =
     harmos_runtime::operations::OperationSpec::<EchoDeclaration>::new(&ECHO_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone, Debug)]
 pub(super) struct PrivateEchoDeclaration {
@@ -156,9 +156,9 @@ pub(super) static PRIVATE_ECHO_DECLARATION_DESCRIPTION: harmos_runtime::operatio
 pub(super) const PRIVATE_ECHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PrivateEchoDeclaration> =
     harmos_runtime::operations::OperationSpec::<PrivateEchoDeclaration>::new(&PRIVATE_ECHO_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone, Debug)]
 pub(super) struct NestedDeclaration {
@@ -172,9 +172,9 @@ pub(super) static NESTED_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wi
 pub(super) const NESTED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<NestedDeclaration> =
     harmos_runtime::operations::OperationSpec::<NestedDeclaration>::new(&NESTED_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone, Debug)]
 pub(super) struct DetachedDeclaration {
@@ -187,9 +187,9 @@ pub(super) static DETACHED_DECLARATION_DESCRIPTION: harmos_runtime::operations::
 pub(super) const DETACHED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DetachedDeclaration> =
     harmos_runtime::operations::OperationSpec::<DetachedDeclaration>::new(&DETACHED_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = String)]
 #[derive(Clone, Debug)]
 struct SameLaneDeclaration {
@@ -218,8 +218,7 @@ const CODEC_OPERATION: harmos_runtime::operations::OperationSpec<Codec> =
 
 pub(super) struct Payload(Text);
 
-#[harmos_runtime::message]
-#[derive(Debug)]
+#[derive(harmos_runtime::Message, Clone, Default, Debug)]
 pub(super) struct Text {
     pub value: String,
 }

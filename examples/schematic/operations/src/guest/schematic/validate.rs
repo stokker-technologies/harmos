@@ -34,9 +34,9 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::message(harmos_path = harmos_operations)]
-#[derive(harmos_operations::Request)]
+#[derive(harmos_operations::Message)]
 #[harmos_path(harmos_operations)]
+#[derive(harmos_operations::Request)]
 #[request(response = Validation)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidateSchematic {
@@ -52,8 +52,7 @@ pub static VALIDATE_SCHEMATIC_DESCRIPTION: harmos_operations::operations::WireDe
 pub const VALIDATE_SCHEMATIC_OPERATION: harmos_operations::operations::OperationSpec<ValidateSchematic> =
     harmos_operations::operations::OperationSpec::<ValidateSchematic>::new(&VALIDATE_SCHEMATIC_DESCRIPTION);
 
-#[harmos_operations::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_operations::Message, Default, Clone, Debug, PartialEq)]
 pub struct Validation {
     pub diagnostics: Vec<String>,
 }

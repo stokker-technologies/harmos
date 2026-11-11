@@ -30,9 +30,9 @@ use super::{Backoff, Duration, Jitter, OperationPolicy, RetryPolicy, Value};
 
 /* === Structs === */
 
-#[::harmos_guest::message(harmos_path = ::harmos_guest)]
-#[derive(::harmos_guest::Request)]
+#[derive(::harmos_guest::Message, Debug, Default)]
 #[harmos_path(::harmos_guest)]
+#[derive(::harmos_guest::Request)]
 #[request(response = Value)]
 #[derive(Clone, PartialEq)]
 

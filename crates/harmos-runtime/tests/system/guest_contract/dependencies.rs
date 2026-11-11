@@ -49,9 +49,9 @@ struct ProviderOwner {
 
 struct Cancelled(Arc<tokio::sync::Notify>);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Echoed)]
 #[derive(Clone)]
 struct ForwardDeclaration {

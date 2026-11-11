@@ -7,9 +7,10 @@
  * ***
  */
 
-#[facade::message(harmos_path = ::facade::__harmos)]
-#[derive(facade::Request, Clone)]
+#[derive(facade::Message, Debug, Default)]
 #[harmos_path(::facade::__harmos)]
+#[derive(facade::Request, Clone)]
+
 struct Export {}
 static DESCRIPTION: facade::__harmos::operations::WireDeclaration = facade::__harmos::operations::WireDeclaration::request::<Export>("test.export", facade::__harmos::model::operations::lifecycle::POLICY);
 const SPEC: facade::__harmos::operations::OperationSpec<Export> = facade::__harmos::operations::OperationSpec::new(&DESCRIPTION);

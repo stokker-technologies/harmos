@@ -59,7 +59,7 @@ struct FreeGuard {
 
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug)]
 enum Mode {
     Leaf,
     HandleCycle,
@@ -67,9 +67,15 @@ enum Mode {
     FullLane,
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Leaf
+    }
+}
+
+#[derive(harmos_runtime::Message, Debug)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct ParentContractDeclaration {
@@ -82,9 +88,9 @@ static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
 const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct BoundContractDeclaration {
@@ -97,9 +103,9 @@ static BOUND_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireD
 const BOUND_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<BoundContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<BoundContractDeclaration>::new(&BOUND_CONTRACT_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u64)]
 #[derive(Clone)]
 struct FreeContractDeclaration {

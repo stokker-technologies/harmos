@@ -40,7 +40,8 @@ struct Reading {
     bytes: Vec<u8>,
 }
 
-#[facade::message(harmos_path = ::facade::__harmos)]
+#[derive(facade::Message, Debug, Default)]
+#[harmos_path(::facade::__harmos)]
 #[derive(Clone, PartialEq)]
 struct Sample {
     reading: Option<Reading>,
@@ -56,32 +57,42 @@ struct Portable {
     value: f64,
 }
 
-#[facade::message(harmos_path = ::facade::__harmos)]
+#[derive(facade::Message, Clone, Debug, Default)]
+#[harmos_path(::facade::__harmos)]
 #[cfg(any())]
 struct Excluded {
     value: u32,
 }
 
-#[facade::message(harmos_path = ::facade::__harmos, skip_debug)]
+#[derive(facade::Message, Clone, Default)]
+#[harmos_path(::facade::__harmos)]
 struct CustomDebug {
     value: u32,
 }
 
 /* === Enums === */
 
-#[facade::message(harmos_path = ::facade::__harmos)]
+#[derive(facade::Message, Clone, Debug)]
+#[harmos_path(::facade::__harmos)]
 enum Outcome {
     Pending,
     Ready { sample: Sample },
     Failed(String),
 }
 
-#[facade::message(harmos_path = ::facade::__harmos)]
+impl Default for Outcome { fn default() -> Self { Self::Pending } }
+
+
+#[derive(facade::Message, Clone, Debug)]
+#[harmos_path(::facade::__harmos)]
 #[cfg(any())]
 enum ExcludedEnum {
     Pending,
     Ready(u32),
 }
+#[cfg(any())]
+impl Default for ExcludedEnum { fn default() -> Self { Self::Pending } }
+
 
 /* === Traits === */
 

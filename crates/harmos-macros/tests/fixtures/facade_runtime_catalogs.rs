@@ -37,15 +37,17 @@ const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
 
 /* === Structs === */
 
-#[harmos::message(harmos_path = harmos)]
-#[derive(harmos::Request, Clone)]
+#[derive(harmos::Message, Debug, Default)]
 #[harmos_path(harmos)]
+#[derive(harmos::Request, Clone)]
+
 struct GuestOperation;
 static GUEST_DESCRIPTION: harmos::operations::WireDeclaration = harmos::operations::WireDeclaration::request::<GuestOperation>("fixture.guest", POLICY);
 
-#[harmos::message(harmos_path = harmos)]
-#[derive(harmos::Request, Clone)]
+#[derive(harmos::Message, Debug, Default)]
 #[harmos_path(harmos)]
+#[derive(harmos::Request, Clone)]
+
 struct ApplicationOperation;
 static APPLICATION_DESCRIPTION: harmos::operations::WireDeclaration = harmos::operations::WireDeclaration::request::<ApplicationOperation>("fixture.application", POLICY);
 

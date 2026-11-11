@@ -29,7 +29,7 @@ mod serde;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::{MemorySize, Message, message};
+use harmos_domain::{MemorySize, Message};
 use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
@@ -40,21 +40,24 @@ use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Structs === */
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Original {
     value: u64,
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Reordered {
     payload: Vec<u8>,
     value: u64,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Added {
     extra: String,
@@ -62,14 +65,16 @@ struct Added {
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Renamed {
     renamed: u64,
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq, Default)]
 struct Nested {
     row: Original,
@@ -83,13 +88,15 @@ struct Nested {
     r#type: String,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct QualifiedBytes {
     bytes: Vec<std::primitive::u8>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct DecoderNames {
     input: u64,
@@ -100,7 +107,8 @@ struct DecoderNames {
     __harmos_input: bool,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Choices {
     selected: Choice,
@@ -110,7 +118,8 @@ struct Choices {
 
 /* === Enums === */
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone)]
+#[harmos_path(::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum Choice {
     Empty,
@@ -118,7 +127,14 @@ enum Choice {
     Sample { enabled: bool, row: Original, bytes: Vec<u8>, values: Vec<i64>, note: Option<String> },
 }
 
-#[message(harmos_path = ::harmos_domain)]
+impl Default for Choice {
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
+#[derive(Message, Clone)]
+#[harmos_path(::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum ReorderedChoice {
     Sample { note: Option<String>, values: Vec<i64>, bytes: Vec<u8>, row: Original, enabled: bool },
@@ -126,7 +142,8 @@ enum ReorderedChoice {
     Empty,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone)]
+#[harmos_path(::harmos_domain)]
 #[derive(Debug, Default, PartialEq)]
 enum ExplicitDefault {
     Other(String),
@@ -135,17 +152,31 @@ enum ExplicitDefault {
     Selected,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone)]
+#[harmos_path(::harmos_domain)]
 #[derive(Debug, PartialEq)]
 enum MergedChoice {
     Empty,
     Pair { left: String, right: String },
 }
 
-#[message(harmos_path = ::harmos_domain)]
+impl Default for MergedChoice {
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 enum SingleVariant {
     Named { r#type: String },
+}
+
+impl Default for SingleVariant {
+    fn default() -> Self {
+        Self::Named { r#type: Default::default() }
+    }
 }
 
 /* === Traits === */
@@ -243,11 +274,13 @@ fn nested_values_defaults() {
 
 #[test]
 fn bytes_packed_numbers() {
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message, Clone, Debug, Default)]
+    #[harmos_path(::harmos_domain)]
     struct Bytes {
         payload: Vec<u8>,
     }
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message, Clone, Debug, Default)]
+    #[harmos_path(::harmos_domain)]
     struct Numbers {
         payload: Vec<u32>,
     }

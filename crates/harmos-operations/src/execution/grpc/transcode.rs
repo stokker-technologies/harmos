@@ -657,26 +657,36 @@ mod tests {
     use super::*;
     use std::borrow::Cow;
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug, Default)]
+    #[harmos_path(::harmos_domain)]
     struct Leaf {
         value: i64,
         negative_zero: f64,
     }
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug)]
+    #[harmos_path(::harmos_domain)]
     struct Row {
         leaf: Leaf,
         values: Vec<u64>,
         optional: Option<u32>,
     }
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug)]
+    #[harmos_path(::harmos_domain)]
     enum Choice {
         Empty,
         Row(Row),
     }
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    impl Default for Choice {
+        fn default() -> Self {
+            Self::Empty
+        }
+    }
+
+    #[derive(harmos_domain::Message, Clone, Debug)]
+    #[harmos_path(::harmos_domain)]
     struct Wide {
         alpha: u32,
         bravo: Row,

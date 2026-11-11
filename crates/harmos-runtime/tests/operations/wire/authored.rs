@@ -44,14 +44,14 @@ struct Trace {
 
 struct AttemptGuard(Arc<Trace>);
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Answer {
     value: u64,
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Answer)]
 #[derive(Clone)]
 struct ReadContractDeclaration {
@@ -74,11 +74,17 @@ const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::Operation
 
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug)]
 enum Mode {
     Complete,
     Wait,
     Panic,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Complete
+    }
 }
 
 /* === Traits === */
@@ -197,9 +203,9 @@ mod listed {
 
     /* === Structs === */
 
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = u32)]
     #[derive(Clone)]
     pub struct DoublingDeclaration {
@@ -212,9 +218,9 @@ mod listed {
     pub const DOUBLING_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DoublingDeclaration> =
         harmos_runtime::operations::OperationSpec::<DoublingDeclaration>::new(&DOUBLING_DECLARATION_DESCRIPTION);
 
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = u32)]
     #[derive(Clone)]
     struct InferredOwnedDeclaration {
@@ -227,9 +233,9 @@ mod listed {
     const INFERRED_OWNED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<InferredOwnedDeclaration> =
         harmos_runtime::operations::OperationSpec::<InferredOwnedDeclaration>::new(&INFERRED_OWNED_DECLARATION_DESCRIPTION);
 
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = u32)]
     #[derive(Clone)]
     struct BorrowOwnerDeclaration {
@@ -242,9 +248,9 @@ mod listed {
     const BORROW_OWNER_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<BorrowOwnerDeclaration> =
         harmos_runtime::operations::OperationSpec::<BorrowOwnerDeclaration>::new(&BORROW_OWNER_DECLARATION_DESCRIPTION);
 
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = u32)]
     #[derive(Clone)]
     struct DeclaredOwnedDeclaration {

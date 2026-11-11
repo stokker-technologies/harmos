@@ -30,22 +30,19 @@ pub mod validated;
 
 /* === Structs === */
 
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_domain::Message, Default, Clone, Debug, PartialEq)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
 }
 
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_domain::Message, Default, Clone, Debug, PartialEq)]
 pub struct Connection {
     pub from: u64,
     pub to: u64,
 }
 
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_domain::Message, Default, Clone, Debug, PartialEq)]
 pub struct Snapshot {
     pub symbols: Vec<u64>,
     pub connections: Vec<Connection>,

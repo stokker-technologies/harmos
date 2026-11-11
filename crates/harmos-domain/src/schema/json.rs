@@ -265,12 +265,14 @@ mod tests {
     use crate::{Message, message};
     use serde_json::json;
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug, Default)]
+    #[harmos_path(crate)]
     struct Child {
         enabled: bool,
     }
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug)]
+    #[harmos_path(crate)]
     struct Row {
         counter: u64,
         voltage: Option<f64>,
@@ -279,13 +281,21 @@ mod tests {
         data: Vec<u8>,
     }
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug, Default)]
+    #[harmos_path(crate)]
     struct Unit {}
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug)]
+    #[harmos_path(crate)]
     enum Choice {
         Empty,
         Reading { value: i32 },
+    }
+
+    impl Default for Choice {
+        fn default() -> Self {
+            Self::Empty
+        }
     }
 
     #[test]

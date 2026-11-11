@@ -63,16 +63,16 @@ const CHECKPOINT: &str = include_str!("../../../harmos-domain/tests/fixtures/che
 
 /* === Structs === */
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
 struct Payload {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::message(harmos_path = harmos_domain)]
-#[derive(harmos_domain::Request)]
+#[derive(harmos_domain::Message, Debug, Default)]
 #[harmos_path(harmos_domain)]
+#[derive(harmos_domain::Request)]
 #[request(response = Payload)]
 #[derive(Clone)]
 struct ReadOperation {
@@ -89,9 +89,9 @@ static READ_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaration =
 const READ_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<ReadOperation> =
     harmos_domain::operations::OperationSpec::<ReadOperation>::new(&READ_OPERATION_DESCRIPTION);
 
-#[harmos_domain::message(harmos_path = harmos_domain)]
-#[derive(harmos_domain::Request)]
+#[derive(harmos_domain::Message, Debug, Default)]
 #[harmos_path(harmos_domain)]
+#[derive(harmos_domain::Request)]
 #[request(response = Payload, input = Payload, output = Payload)]
 #[derive(Clone)]
 struct ExchangeOperation {
@@ -108,9 +108,9 @@ static EXCHANGE_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaratio
 const EXCHANGE_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<ExchangeOperation> =
     harmos_domain::operations::OperationSpec::<ExchangeOperation>::new(&EXCHANGE_OPERATION_DESCRIPTION);
 
-#[harmos_domain::message(harmos_path = harmos_domain)]
-#[derive(harmos_domain::Request)]
+#[derive(harmos_domain::Message, Debug, Default)]
 #[harmos_path(harmos_domain)]
+#[derive(harmos_domain::Request)]
 #[request(response = Payload, input = Payload)]
 #[derive(Clone)]
 struct UploadOperation {
@@ -127,9 +127,9 @@ static UPLOAD_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaration 
 const UPLOAD_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<UploadOperation> =
     harmos_domain::operations::OperationSpec::<UploadOperation>::new(&UPLOAD_OPERATION_DESCRIPTION);
 
-#[harmos_domain::message(harmos_path = harmos_domain)]
-#[derive(harmos_domain::Request)]
+#[derive(harmos_domain::Message, Debug, Default)]
 #[harmos_path(harmos_domain)]
+#[derive(harmos_domain::Request)]
 #[request(response = Payload, output = Payload)]
 #[derive(Clone)]
 struct DownloadOperation {
@@ -146,8 +146,7 @@ static DOWNLOAD_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaratio
 const DOWNLOAD_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<DownloadOperation> =
     harmos_domain::operations::OperationSpec::<DownloadOperation>::new(&DOWNLOAD_OPERATION_DESCRIPTION);
 
-#[harmos_domain::message]
-#[derive(PartialEq)]
+#[derive(harmos_domain::Message, Clone, Debug, PartialEq)]
 struct Summary {
     aggregate: Aggregate,
     aggregates: Vec<Aggregate>,

@@ -7,14 +7,16 @@
  * ***
  */
 
-#[facade::message(harmos_path = ::harmos)]
-#[derive(facade::Request, Clone)]
+#[derive(facade::Message, Debug, Default)]
 #[harmos_path(::harmos)]
+#[derive(facade::Request, Clone)]
+
 #[request(response = relative::Reply)]
 pub struct Echo { pub value: String }
 mod relative {
     pub type Reply = WireReply;
-    #[facade::message(harmos_path = ::harmos)]
+    #[derive(facade::Message, Clone, Debug, Default)]
+#[harmos_path(::harmos)]
     pub struct WireReply { pub value: String }
 }
 fn main() {}

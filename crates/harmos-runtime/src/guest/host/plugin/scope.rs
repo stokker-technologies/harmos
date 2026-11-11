@@ -708,9 +708,9 @@ mod tests {
         type Record = ();
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = u64)]
     #[derive(Clone)]
     struct Read;

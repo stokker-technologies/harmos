@@ -45,8 +45,7 @@ use harmos_storage::writes::DataBatch;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_runtime::Message, Debug, Default, Clone, PartialEq)]
 struct Document {
     id: String,
     text: String,

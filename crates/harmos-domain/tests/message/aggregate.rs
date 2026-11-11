@@ -23,7 +23,7 @@
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::graph::Schema;
 use harmos_domain::schema::{Cardinality, Described, Kind};
-use harmos_domain::{Aggregate, MemorySize, Message, message};
+use harmos_domain::{Aggregate, MemorySize, Message};
 use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
@@ -49,7 +49,8 @@ const EVERY: [Aggregate; 11] = [
 /* === Structs === */
 
 // The Aggregate Reaches Every Field Cardinality of a Derived Message
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(Clone, PartialEq)]
 struct Summary {
     aggregate: Aggregate,
@@ -81,7 +82,7 @@ fn twin(value: Aggregate) -> twin::Aggregate {
     }
 }
 
-// The Shape `#[harmos::message]` Derives For The Same Vocabulary
+// The Shape `#[derive(harmos::Message)]` Derives For The Same Vocabulary
 mod twin {
     /* === Modules === */
 
@@ -94,7 +95,7 @@ mod twin {
     // Third Party Imports
 
     // Local Imports
-    use harmos_domain::message;
+    use harmos_domain::Message;
 
     /* === Constants === */
 
@@ -106,7 +107,8 @@ mod twin {
 
     /* === Enums === */
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message, Debug)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Copy, PartialEq)]
     pub enum Aggregate {
         Count,
@@ -118,6 +120,12 @@ mod twin {
         Rms,
         Std,
         Percentile { rank: u32 },
+    }
+
+    impl Default for Aggregate {
+        fn default() -> Self {
+            Self::Count
+        }
     }
 
     /* === Traits === */

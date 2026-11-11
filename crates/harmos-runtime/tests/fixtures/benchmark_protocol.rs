@@ -35,9 +35,9 @@ use harmos_runtime::operations::RetryPolicy;
 
 pub struct Model;
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Payload)]
 #[derive(Clone)]
 pub struct EchoDeclaration {
@@ -60,7 +60,7 @@ pub static ECHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
 pub const ECHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<EchoDeclaration> =
     harmos_runtime::operations::OperationSpec::<EchoDeclaration>::new(&ECHO_DECLARATION_DESCRIPTION);
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 pub struct Payload {
     pub bytes: Vec<u8>,
 }

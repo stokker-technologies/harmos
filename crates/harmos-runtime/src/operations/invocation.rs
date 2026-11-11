@@ -317,9 +317,9 @@ mod tests {
         retries: crate::RetryPolicy::Never,
     };
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = u64)]
     #[derive(Clone)]
     struct Leaf {
@@ -339,9 +339,9 @@ mod tests {
         })
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = u64)]
     #[derive(Clone)]
     struct Parent {
@@ -368,7 +368,7 @@ mod tests {
         policy: crate::RetryPolicy,
     }
 
-    #[crate::message]
+    #[derive(crate::Message, Clone, Debug, Default)]
     struct Trace {
         value: u64,
     }
@@ -376,9 +376,9 @@ mod tests {
         const KEY: &'static str = "test.invocation.trace";
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = u64)]
     #[derive(Clone)]
     struct RetryChild {
@@ -415,9 +415,9 @@ mod tests {
         )
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = u64)]
     #[derive(Clone)]
     struct RetryParent {
@@ -452,9 +452,9 @@ mod tests {
         )
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = u64)]
     #[derive(Clone)]
     struct Uncertain {}
@@ -565,9 +565,9 @@ mod tests {
         runtime.shutdown().await.unwrap();
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = ())]
     #[derive(Clone)]
     struct Deadline {}
@@ -663,9 +663,9 @@ mod tests {
         }
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = ())]
     #[derive(Clone)]
     struct TimedAttempt {
@@ -828,9 +828,9 @@ mod tests {
         cancelled: std::sync::atomic::AtomicBool,
     }
 
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = ())]
     #[derive(Clone)]
     struct WaitChild {}
@@ -863,9 +863,9 @@ mod tests {
             |_| crate::operations::FailureKind::Permanent,
         )
     }
-    #[crate::message(harmos_path = crate)]
-    #[derive(crate::Request)]
+    #[derive(crate::Message, Debug, Default)]
     #[harmos_path(crate)]
+    #[derive(crate::Request)]
     #[request(response = ())]
     #[derive(Clone)]
     struct WaitParent {}

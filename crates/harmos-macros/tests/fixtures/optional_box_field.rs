@@ -28,13 +28,13 @@
 
 /* === Structs === */
 
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug, Default)]
 struct Leaf {
     value: u64,
 }
 
 // An optional message stays `Option<T>`; boxing inside the option is refused.
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug, Default)]
 struct Holder {
     row: Option<Box<Leaf>>,
 }

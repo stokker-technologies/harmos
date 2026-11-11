@@ -29,7 +29,8 @@
 
 /* === Structs === */
 
-#[harmos_domain::message(harmos_path = harmos_domain)]
+#[derive(harmos_domain::Message, Debug)]
+#[harmos_path(harmos_domain)]
 #[derive(Clone, Default, PartialEq)]
 pub struct InstanceState {
     pub phase: String,

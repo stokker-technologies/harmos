@@ -40,17 +40,16 @@ struct Resources {
 
 struct AttemptGuard(Arc<Resources>);
 
-#[harmos_runtime::message]
-#[derive(Debug)]
+#[derive(harmos_runtime::Message, Clone, Default, Debug)]
 struct Text {
     value: String,
 }
 
 /* === Enums === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Text)]
 #[derive(Clone)]
 struct ReadContractDeclaration {

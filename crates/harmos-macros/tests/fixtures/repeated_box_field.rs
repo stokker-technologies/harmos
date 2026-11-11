@@ -28,13 +28,13 @@
 
 /* === Structs === */
 
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug, Default)]
 struct Leaf {
     value: u64,
 }
 
 // Repeated messages already live on the heap inside their vector.
-#[harmos::message]
+#[derive(harmos::Message, Clone, Debug, Default)]
 struct Holder {
     rows: Vec<Box<Leaf>>,
 }

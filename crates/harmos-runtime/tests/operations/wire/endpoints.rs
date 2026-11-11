@@ -36,9 +36,9 @@ use harmos_runtime::{Error, Runtime};
 
 /* === Macros === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u32, input = u32, output = u32)]
 #[derive(Clone)]
 struct ForwardDeclaration {
@@ -109,9 +109,9 @@ struct AttemptGuard(Arc<Trace>);
 struct Gate(Notify);
 
 #[cfg(feature = "grpc")]
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = u32, input = u32)]
 #[derive(Clone)]
 struct SlowDeclaration {}
@@ -781,9 +781,9 @@ async fn stream_stall_expires_after_progress() {
 
 #[tokio::test(start_paused = true)]
 async fn unary_keeps_total_deadline() {
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = ())]
     #[derive(Clone)]
     struct Unary;
@@ -827,9 +827,9 @@ async fn unary_keeps_total_deadline() {
 
 #[tokio::test(start_paused = true)]
 async fn stream_final_response_wait_is_idle_bounded() {
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = (), input = u32)]
     #[derive(Clone)]
     struct Final;

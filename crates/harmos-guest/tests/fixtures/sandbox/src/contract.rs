@@ -94,23 +94,27 @@ const PROBE: OperationPolicy = OperationPolicy {
 
 /* === Structs === */
 
-#[guest::message(harmos_path = guest)]
+#[derive(guest::Message, Debug, Default)]
+#[harmos_path(guest)]
 #[derive(Clone, PartialEq)]
 pub struct Echoed {
     pub said: String,
 }
 
-#[guest::message(harmos_path = guest)]
+#[derive(guest::Message, Clone, Debug, Default)]
+#[harmos_path(guest)]
 pub struct Value {
     pub value: String,
 }
 
-#[guest::message(harmos_path = guest)]
+#[derive(guest::Message, Clone, Debug, Default)]
+#[harmos_path(guest)]
 pub struct Stage {
     pub id: String,
 }
 
-#[guest::message(harmos_path = guest)]
+#[derive(guest::Message, Clone, Debug, Default)]
+#[harmos_path(guest)]
 pub struct RetryChoice {
     pub retries: u32,
     pub delay_millis: u64,

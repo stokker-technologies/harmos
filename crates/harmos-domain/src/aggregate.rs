@@ -28,7 +28,7 @@ use crate::{MemorySize, MessageError, RowMetadata};
 /* === Constants === */
 
 // Protobuf variant tags, hashed from each authored variant name exactly as
-// `#[harmos::message]` derives them; the message tests pin them against a
+// `#[derive(harmos::Message)]` derives them; the message tests pin them against a
 // derived twin, so the hand-written codec and the derive cannot drift apart.
 const COUNT: u32 = 31_971_292;
 const SUM: u32 = 534_305_306;
@@ -59,7 +59,7 @@ struct Rank;
 // percentage, 0 to 100, answered by linear interpolation between ranks.
 //
 // A message field of this type travels as a Harmos enum message, the shape
-// `#[harmos::message]` gives a data-carrying enum: one protobuf oneof whose
+// `#[derive(harmos::Message)]` gives a data-carrying enum: one protobuf oneof whose
 // members are the PascalCase variant names, each holding a payload message.
 // Unit members carry an empty payload; `Percentile` carries `rank` (uint32,
 // refused above 255 on decode). An absent member decodes as `Count`. Postcard

@@ -129,7 +129,7 @@ async fn discovery_shares_producer() {
     use std::num::NonZeroU32;
     use std::sync::Arc;
 
-    #[harmos_runtime::message]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default)]
     struct Message {
         value: String,
     }
@@ -214,7 +214,7 @@ async fn record_registration_uses_runtime_schema_settings() {
     use harmos_runtime::schema::Described;
     use std::num::{NonZeroU32, NonZeroUsize};
 
-    #[harmos_runtime::message]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default)]
     struct ConfiguredRow {
         value: String,
     }

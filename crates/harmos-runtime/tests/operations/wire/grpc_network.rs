@@ -90,9 +90,9 @@ async fn filesystem_hash_roundtrip() {
 async fn builtin_grpc_roundtrip() {
     use harmos_operations::lifecycle::{Cancel, InstanceState, Status};
 
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = ())]
     #[derive(Clone)]
     struct ParkedContract {}
@@ -737,9 +737,9 @@ async fn runtime_stops_listener() {
     assert!(call(channel, Some("Bearer alice")).await.is_err());
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply, output = Reply)]
 #[derive(Clone)]
 struct NativeDownload {}
@@ -778,9 +778,9 @@ fn native_download_operation()
     )
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply, input = Reply)]
 #[derive(Clone)]
 struct NativeUpload {}
@@ -823,9 +823,9 @@ fn native_upload_operation()
     )
 }
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reply, input = Reply, output = Reply)]
 #[derive(Clone)]
 struct NativeExchange {}
@@ -1051,9 +1051,9 @@ async fn configured_tls_serves() {
 #[tokio::test]
 async fn observes_cancel_deadline() {
     use harmos_runtime::grpc::OutputEnvelope;
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = Reply, output = Reply)]
     #[derive(Clone)]
     struct NativeHold {}
@@ -1319,9 +1319,9 @@ async fn reload_certificate_preserves_stream() {
 #[tokio::test]
 async fn native_stream_progress_outlives_listener_and_operation_totals() {
     use harmos_runtime::grpc::OutputEnvelope;
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = u32, output = u32)]
     #[derive(Clone)]
     struct Progress {}
@@ -1404,9 +1404,9 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
 #[tokio::test]
 async fn settled_stream_drain_keeps_idle_deadline() {
     use harmos_runtime::grpc::OutputEnvelope;
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = (), output = Vec<u8>)]
     #[derive(Clone)]
     struct Buffered {}

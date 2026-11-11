@@ -646,7 +646,7 @@ async fn partial_projection_refused() {
 async fn registration_stores_schema() {
     use harmos_runtime::schema::{Described, Validator};
 
-    #[harmos_runtime::message]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default)]
     struct Message {
         value: String,
     }

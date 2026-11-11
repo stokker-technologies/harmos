@@ -975,7 +975,7 @@ async fn recovery_owner_retained() {
     f.finish().await;
 }
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
 struct TracedRow {
     value: String,
 }

@@ -19,9 +19,9 @@ use std::cell::Cell;
 // Third Party Imports
 
 // Local Imports
+use harmos_domain::Message;
 use harmos_domain::journal::Position;
 use harmos_domain::listeners::{Context, Delivery};
-use harmos_domain::message;
 use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
@@ -38,7 +38,8 @@ thread_local! {
 
 macro_rules! layer {
     ($name:ident, $inner:ident) => {
-        #[message(harmos_path = ::harmos_domain)]
+        #[derive(Message, Clone, Debug, Default)]
+        #[harmos_path(::harmos_domain)]
         #[derive(PartialEq)]
         struct $name {
             row: $inner,
@@ -71,13 +72,15 @@ struct Measurement {
 
 struct MeasurementGuard;
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Leaf {
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Selection {
     row: Choice,
@@ -85,7 +88,8 @@ struct Selection {
     rows: Vec<Fifth>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Strings {
     label: String,
@@ -94,14 +98,16 @@ struct Strings {
     counts: Vec<u32>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct BoxedSelection {
     row: Box<Fifth>,
     choice: BoxedChoice,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct BoxedLeaf {
     row: Box<Leaf>,
@@ -109,14 +115,16 @@ struct BoxedLeaf {
 
 /* === Enums === */
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 enum BoxedChoice {
     Selected(Box<Fifth>),
     Named { row: Box<Leaf> },
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 enum Choice {
     Selected(Fifth),

@@ -43,9 +43,9 @@ struct Bench {
 
 /* === Enums === */
 
-#[harmos_runtime::message(harmos_path = harmos_runtime)]
-#[derive(harmos_runtime::Request)]
+#[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
 #[request(response = Reading)]
 #[derive(Clone)]
 struct ReadContractDeclaration {
@@ -71,7 +71,7 @@ const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::Operation
         .calls(&READ_CONTRACT_DECLARATION_CALLEES);
 
 // The Device A Read Saw And How Many Reads Preceded It.
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Reading {
     device: String,
     seen: u64,
@@ -124,9 +124,9 @@ fn read_contract_declaration_operation()
 async fn runtime_selected_ids() {
     use harmos_runtime::operations::Registration;
 
-    #[harmos_runtime::message(harmos_path = harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
     #[request(response = Reading)]
     #[derive(Clone)]
     struct OtherRead {
@@ -220,8 +220,7 @@ async fn nested_resources_shared() {
 async fn private_grpc_refused() {
     use harmos_runtime::operations::{Grpc, NoStream, Registration};
 
-    #[harmos_runtime::message]
-    #[derive(Clone)]
+    #[derive(harmos_runtime::Message, Debug, Default, Clone)]
     struct Private;
 
     impl harmos_domain::operations::RequestShape for Private {

@@ -33,14 +33,14 @@ use super::backend::{history, storage_settings};
 
 /* === Structs === */
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug)]
 struct Payload {
     label: Option<String>,
     values: Vec<f64>,
     event: Event,
 }
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
 struct Expansion {
     values: Vec<String>,
 }
@@ -54,10 +54,16 @@ struct Mapped {
 
 /* === Enums === */
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug)]
 enum Event {
     Reading(i64),
     Empty,
+}
+
+impl Default for Event {
+    fn default() -> Self {
+        Self::Reading(Default::default())
+    }
 }
 
 /* === Traits === */
@@ -156,7 +162,7 @@ fn compact() -> [Expansion; 1] {
 
 /* === Tests === */
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
 struct PlotSample {
     x: f64,
     y: f64,
