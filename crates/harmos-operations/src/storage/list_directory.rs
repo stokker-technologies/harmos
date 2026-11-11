@@ -36,16 +36,12 @@ impl ProtobufOperation for ListDirectory {
             let selection = request.selection.ok_or(crate::Error::InvalidInput { field: "selection", reason: "required" })?.try_into()?;
             let mut reader = storage.list_directory(selection).await?;
             while let Some(item) = reader.next().await? {
-                storage
-                    .clock()
-                    .timeout(super::IO_TIMEOUT, output.send((*item).clone().into()))
-                    .await
-                    .map_err(|_| super::output_timeout())??;
+                storage.clock().timeout(super::IO_TIMEOUT, output.send((*item).clone())).await.map_err(|_| super::output_timeout())??;
             }
             Ok(reader.completion()?)
         }
         .await;
-        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
+        result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {

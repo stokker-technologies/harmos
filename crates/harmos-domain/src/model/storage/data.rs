@@ -9,8 +9,6 @@
 
 /* === Modules === */
 
-pub mod codec;
-
 /* === Re-Exports === */
 
 /* === Imports === */

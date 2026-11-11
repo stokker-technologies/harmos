@@ -81,6 +81,3 @@ workspace = true
 # === Patches === #
 
 # === Other === #
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-harmos-operations = { workspace = true, features = ["runtime"] }

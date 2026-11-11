@@ -19,8 +19,10 @@ use `stage_plugin_observers(resources, scope, backends)` and
 `submit_resident_in(id, resources)` to retain plugin scope and resource identity;
 generation retirement stops these observers with the plugin.
 
-Host lifecycle operations use `harmos_protocol::host::{Status, Cancel, Watch,
-InstanceState}` directly. Register `harmos_operations::Lifecycle` and invoke
+Built-in host operations use generated `harmos_protocol::{host, storage}` messages
+directly. Their declarations and handlers stay together in `harmos-operations`; its
+former `runtime` feature is removed. Lifecycle requests/results are
+`harmos_protocol::host::{Status, Cancel, Watch, InstanceState}`. Register `harmos_operations::Lifecycle` and invoke
 `operations.call_protobuf::<harmos_operations::lifecycle::Status>(request)` for a
 native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
@@ -958,14 +960,23 @@ endpoints use `()`, input uses `ProtobufInput<T>`, output uses `ProtobufOutput<T
 supports both directions. Handlers receive generated requests and return generated responses.
 See the [declaration example](../openspec/changes/grpc-plugins/design.md#generated-host-messages).
 Reflection preserves original protobuf names, field encodings and presence. Decoding-memory
-admission bounds generated allocations before Prost decoding. Existing `Portable` declarations
-continue through their projection codec.
+admission bounds generated allocations before Prost decoding. Built-ins and native example operations no longer use `Portable` projections.
+The remaining projection machinery serves deferred guest declarations and legacy
+authoring consumers until their ordered migration.
 
-`operations.submit_encoded` and `call_encoded` accept and return protobuf payloads. For a
-`Portable` message, use `harmos_operations::execution::grpc::{encode, decode}` at that boundary;
-its `Message::{encode, decode}` methods remain the internal/stored-value codec. Assignment
-catalogs also use protobuf. The private guest command, lifecycle, child and streamed payload
-codecs retain Postcard until the guest envelope migration; persisted data is unchanged.
+`operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
+Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
+typed native declarations. Assignment catalogs use the generated
+`harmos.host.v1.OperationAssignments` messages, with frozen identity validation.
+
+The deferred guest path retains Postcard command/answer envelopes, lifecycle and
+child controls, typed guest requests/results and stream items. Private guest
+`storage.hash_file` and `host.publish` declarations live in
+`harmos-guest/src/builtins/`; runtime converts only their exact frozen contracts to
+the generated native handlers. Fingerprints, provider generations and grants remain
+checked. The small storage codec adapters still needed by guest hashing and the
+bounded persisted identity codecs remain; unused host payload codecs are deleted.
+Stored data encoding and schema revisions are unchanged.
 
 For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
 Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and

@@ -11,7 +11,7 @@ Final validation waits for source closure; completed source does not close nativ
 | --- | --- | --- | --- |
 | 1 | Protocol 2.1–2.5; `facility-trim`; `tooling-streamline`; `align-ci-release` | Protocol source landed; tooling follow-ups and native proof remain | `proto/`, protocol and conformance; tooling and CI |
 | 2 | Host 3.1–3.9; Rust SDK 4.1–4.6; removal 6.1–6.4, 6.6–6.7; pilot SDKs 5.x | Native cutover, virtual clock, SDK rename, engine relocation and framed-path removal landed; cross-platform final proof remains open | Runtime, operations, SDKs, examples and retained tests |
-| 3 | Authoritative host protobuf: 2.6, 3.10–3.12, host portion of 6.5; 6.9 | Generated-protobuf declarations landed; migrate built-in handlers and delete replaced models before authoring migration | Protocol, operations, runtime; contract-only consumers |
+| 3 | Authoritative host protobuf: 2.6, 3.10–3.12, host portion of 6.5; 6.9 | Built-in and native example handlers use generated messages; replaced host DTOs/codecs and the operations runtime feature are removed | Protocol, operations, runtime; contract-only consumers |
 | 4 | `authoring-without-macros`; 6.10 | Agreed, implementation not started; follow its steps 1–11, migrate live aliases before deleting them, then consolidate surviving field-reading derives | Macro consumers, `crates/harmos-macros`, `sdk/rust/derive` |
 | 5 | Reduced domain: 6.8 | Pending wave 4; retain the native foundation and move or delete every other module by owner | Domain, protocol, operations, runtime and consumers |
 | 6 | Guests 7.1 and guest portion of 6.5 | Deferred until lifecycle/child-control design; after wave 5, fold guests into optional SDK Wasm support and delete guest macros together | SDK adapter, guest fixtures and runtime guest host |
@@ -370,9 +370,10 @@ runtime.operations
 The server scans protobuf before Prost decoding, admitting a conservative bound for generated
 message layouts and vector growth through the existing decoding-memory owner. Authoritative
 message descriptors supply reflection, dynamic validation and canonical protobuf fingerprints;
-the host adds only its operation service and streaming/control envelopes. Existing `Portable`
-declarations keep their projection path. Their canonical Postcard values are internal codec
-workspace; host encoded calls and their results carry the protobuf projection.
+the host adds only its operation service and streaming/control envelopes. All built-in
+and example native operations now use generated declarations. Their replaced payload DTOs
+and unused storage Postcard codecs are removed. Legacy declaration projections remain for
+the deferred guest/authoring machinery; native built-in and example handlers do not use them.
 
 Assignment catalogs use `harmos.host.v1.OperationAssignments` from
 `proto/harmos/v1/host.proto`, including when passed inside guest initialization. Operation
@@ -383,8 +384,19 @@ continues to own Postcard command/answer envelopes, lifecycle requests, typed gu
 and stream payloads, child requests/results and child-control replies. Runtime's private
 `src/guest/host/envelope/`, `operations/{component,remote,sdk,children}.rs` and guest-origin native
 dispatch retain that matching codec. Guest artifact inventories remain private JSON metadata;
-the assignment blob inside initialization is now protobuf. `harmos-domain::Message` and its
-Postcard value reader also remain for persisted data and the retained projection workspace.
+the assignment blob inside initialization is now protobuf, using generated entries directly.
+The guest's private `HashFile` and `Publish` declarations live in
+`crates/harmos-guest/src/builtins/`. Runtime's `src/guest/host/native_payloads.rs` recognizes
+only the complete frozen guest/native contract pairs, converts their payloads with admitted
+workspace, and preserves the guest fingerprint alongside the actual provider generation.
+No arbitrary schema compatibility or fingerprint substitution is accepted.
+
+`harmos-domain::Message` and its Postcard reader remain for persisted data and the deferred
+declaration projections. `model/storage/codec.rs` retains only the adapters needed by guest
+hashing, together with its file source/range/hash codecs. Bounded file identity, storage cursor
+and object version codecs preserve their stored formats. Example private guest declarations
+are isolated under `examples/schematic/operations/src/guest/`; native application messages
+are generated into `examples/schematic/protocol/` from `proto/schematic/v1/operations.proto`.
 No native plugin, external gRPC payload or public host encoded call uses that message encoding.
 
 ## Calls Between Plugins

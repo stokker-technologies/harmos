@@ -12,106 +12,106 @@
 
 /* === Modules === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod abandon_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod append_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod capture_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod create_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod delete_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub(crate) mod exchange;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod finish_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod follow_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod follow_objects;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod follow_production;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod follow_records;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod follow_stream;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod hash_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod list_directory;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod query;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod read_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod registration;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod resume_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod storage_status;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod watch_directory;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_file;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_objects;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_records;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_schema;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_streams;
 
 /* === Re-Exports === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use abandon_file::AbandonFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use append_file::AppendFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use capture_file::CaptureFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use create_file::CreateFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use delete_file::DeleteFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use finish_file::FinishFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use follow_file::FollowFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use follow_objects::FollowObjects;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use follow_production::FollowProduction;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use follow_records::FollowRecords;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use follow_stream::FollowStream;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use hash_file::HashFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use list_directory::ListDirectory;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use query::Query;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use read_file::ReadFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use registration::Storage;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use resume_file::ResumeFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use storage_status::StorageStatus;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use watch_directory::WatchDirectory;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_file::WriteFile;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_objects::WriteObjects;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_records::WriteRecords;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_schema::WriteSchema;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_streams::WriteStreams;
 
 /* === Imports === */
@@ -172,9 +172,9 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 
 /* === Tests === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 fn output_timeout() -> crate::Error {
     harmos_storage::Error::backend(
         "storage output",
@@ -184,7 +184,7 @@ fn output_timeout() -> crate::Error {
     .into()
 }
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 fn classify(error: &crate::Error) -> harmos_domain::operations::FailureKind {
     match error {
         crate::Error::Storage(source) if source.backend_failure() == Some(harmos_storage::BackendFailure::Transient) => {
@@ -194,7 +194,7 @@ fn classify(error: &crate::Error) -> harmos_domain::operations::FailureKind {
     }
 }
 
-#[cfg(all(test, feature = "runtime"))]
+#[cfg(all(test, not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod tests {
     use super::classify;
     use harmos_domain::operations::FailureKind;

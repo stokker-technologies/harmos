@@ -402,6 +402,20 @@ impl harmos_operations::execution::operations::OperationHost for Context<'_> {
 
 /* === Tests === */
 
+impl<L: Lane> harmos_operations::execution::operations::ProtobufHost for RuntimeOperationHost<L> {
+    type Error = Error;
+    async fn call_protobuf<O: super::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        use prost::Message;
+        let (invocation, _) =
+            self.manager()?.submit_protobuf_scoped_as::<O>(request, None, self.source.clone(), None, self.lane.map(|lane| lane.name()))?;
+        let bytes = invocation.await?;
+        O::Response::decode(bytes.as_slice()).map_err(|e| Error::OperationPayload {
+            operation: O::ID.into(),
+            source: crate::MessageError::new(e.to_string()),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,19 +604,5 @@ mod tests {
         runtime.operations.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         assert!(runtime.operation(Probe { value: 0 }).start().await.is_err());
         runtime.shutdown().await.unwrap();
-    }
-}
-
-impl<L: Lane> harmos_operations::execution::operations::ProtobufHost for RuntimeOperationHost<L> {
-    type Error = Error;
-    async fn call_protobuf<O: super::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
-        use prost::Message;
-        let (invocation, _) =
-            self.manager()?.submit_protobuf_scoped_as::<O>(request, None, self.source.clone(), None, self.lane.map(|lane| lane.name()))?;
-        let bytes = invocation.await?;
-        O::Response::decode(bytes.as_slice()).map_err(|e| Error::OperationPayload {
-            operation: O::ID.into(),
-            source: crate::MessageError::new(e.to_string()),
-        })
     }
 }

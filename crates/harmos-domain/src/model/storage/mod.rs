@@ -14,6 +14,7 @@
 
 pub mod arrow;
 pub mod catalog;
+#[doc(hidden)]
 pub mod codec;
 pub mod data;
 pub mod directory;

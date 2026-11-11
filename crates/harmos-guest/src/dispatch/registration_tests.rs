@@ -100,30 +100,35 @@ fn named_factory_contract() {
 #[test]
 fn carrier_assignments_are_immutable() {
     use harmos_operations::execution::operations::{AssignedOperation, OperationAssignments};
+    use prost::Message as _;
     let first = AssignedOperation {
         operation: format!("fixture.{}", Read::ID),
-        fingerprint: Read::definition().fingerprint.0,
+        fingerprint: Read::definition().fingerprint.0.to_vec(),
         generation: 1,
     };
     let assignments = OperationAssignments::default();
-    let bytes = AssignedOperation::encode(std::slice::from_ref(&first)).unwrap();
+    let bytes = harmos_protocol::host::OperationAssignments { operations: vec![first.clone()] }.encode_to_vec();
     assignments.install(&bytes).unwrap();
     assignments.clone().install(&bytes).unwrap();
     assert_eq!(assignments.resolve::<Read>().unwrap(), &first);
     let mut replacement = first.clone();
     replacement.generation = 2;
-    assert!(assignments.install(&AssignedOperation::encode(&[replacement]).unwrap()).is_err());
+    assert!(assignments.install(&harmos_protocol::host::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err());
     assert_eq!(assignments.resolve::<Read>().unwrap().generation, 1);
     let mut wrong = first.clone();
     wrong.fingerprint[0] ^= 1;
     let incompatible = OperationAssignments::default();
-    incompatible.install(&AssignedOperation::encode(&[wrong]).unwrap()).unwrap();
+    incompatible.install(&harmos_protocol::host::OperationAssignments { operations: vec![wrong] }.encode_to_vec()).unwrap();
     assert!(incompatible.resolve::<Read>().is_err());
     let duplicate = AssignedOperation {
         operation: format!("other.{}", Read::ID),
         ..first.clone()
     };
-    assert!(OperationAssignments::default().install(&AssignedOperation::encode(&[first, duplicate]).unwrap()).is_err());
+    assert!(
+        OperationAssignments::default()
+            .install(&harmos_protocol::host::OperationAssignments { operations: vec![first, duplicate] }.encode_to_vec())
+            .is_err()
+    );
 }
 
 #[test]

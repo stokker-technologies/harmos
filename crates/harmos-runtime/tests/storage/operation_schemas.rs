@@ -103,7 +103,7 @@ fn request(f: &Fixture, name: &str) -> harmos_protocol::storage::WriteSchema {
             }
             .into(),
         ),
-        schema: Some(schema(name).into()),
+        schema: Some(schema(name)),
     }
 }
 

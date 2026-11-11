@@ -224,24 +224,27 @@ impl Session {
         let request = Initialize {
             config_json: config.as_bytes().to_vec(),
             generation_context: vec![2; 32],
-            assignments: harmos_operations::execution::operations::AssignedOperation::encode(&[
-                harmos_operations::execution::operations::AssignedOperation {
-                    operation: "provider.provider.echo".into(),
-                    fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
-                        .fingerprint
-                        .0,
-                    generation: 1,
-                },
-                harmos_operations::execution::operations::AssignedOperation {
-                    operation: "host.host.publish".into(),
-                    fingerprint: <harmos_guest::builtins::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition(
-                    )
-                    .fingerprint
-                    .0,
-                    generation: 1,
-                },
-            ])
-            .unwrap(),
+            assignments: prost::Message::encode_to_vec(&harmos_protocol::host::OperationAssignments {
+                operations: vec![
+                    harmos_operations::execution::operations::AssignedOperation {
+                        operation: "provider.provider.echo".into(),
+                        fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
+                            .fingerprint
+                            .0
+                            .to_vec(),
+                        generation: 1,
+                    },
+                    harmos_operations::execution::operations::AssignedOperation {
+                        operation: "host.host.publish".into(),
+                        fingerprint:
+                            <harmos_guest::builtins::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
+                                .fingerprint
+                                .0
+                                .to_vec(),
+                        generation: 1,
+                    },
+                ],
+            }),
         };
         self.call::<harmos_guest::lifecycle::Initialize>(1, request.encode()).await.map(|_| ())
     }

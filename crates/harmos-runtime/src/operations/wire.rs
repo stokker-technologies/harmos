@@ -473,6 +473,9 @@ pub(super) fn dispatch_native(
             operation: submission.entry.id().to_owned(),
             source,
         };
+        if input.preparation.is_none() {
+            input.preparation = Some(operations.claim_preparation(std::num::NonZeroUsize::new(input.payload.capacity().max(1)).unwrap())?);
+        }
         let bytes = guest.preparation(&input.payload).map_err(error)?;
         let mut permit = operations.claim_preparation(std::num::NonZeroUsize::new(bytes.max(1)).unwrap())?;
         let converted = guest.request(&input.payload).map_err(error)?;

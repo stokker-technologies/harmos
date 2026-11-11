@@ -329,3 +329,28 @@ has a 30-second transport hang guard. These guards do not advance scenario time.
 Cases use literal host tick timestamps and protocol events, never sleeps, elapsed
 time assertions, Tokio's paused transport clock, or a local SDK clock. Only the
 reference plugin's process startup timestamp reads the system clock once.
+
+## Host Operation Messages
+
+Built-in host operations use the generated messages in `host.proto` and `storage.proto`.
+The handler owns its deadline, retry and visibility policy; consumers configure admission,
+concurrency and response sizes. Native streaming handlers remain in process and expose the
+same client-facing gRPC streaming/control envelopes.
+
+An assignment names an owner-qualified operation, contains exactly 32 fingerprint bytes and
+a nonzero provider generation. Local operation identifiers must be unique within a catalog.
+The first valid catalog freezes an activation's assignments; reinstalling identical entries
+is permitted, and changing an entry or its order is refused. This catalog is protobuf even
+inside the deferred guest initialization envelope.
+
+File SHA-256 values contain exactly 32 bytes. A finished file reference has a positive stored
+position, and its length/hash must agree with any expected integrity metadata. Local file
+paths cross the protocol as UTF-8; native paths that cannot be represented are refused.
+Wide query integers use minimal decimal strings, datetimes use signed nanoseconds since the
+Unix epoch, exact fractions are reduced, and floating-point query values must be finite.
+Directory response limits count the actual generated protobuf entry/event size.
+
+The deferred WebAssembly boundary retains its private envelopes and typed payload codec.
+Only the exact private guest hash/publication contracts have native payload conversions;
+the host still checks the frozen fingerprint, selected provider generation and grants.
+These conversions do not define a second public host contract.

@@ -27,20 +27,6 @@ use crate::{Identifier, MemorySize};
 
 /* === Macros === */
 
-crate::model::storage::codec::product!(MutationId {
-    window: crate::model::storage::codec::Id => 1,
-    key: crate::model::storage::codec::Id => 2,
-});
-crate::model::storage::codec::product!(MutationWindow {
-    history: crate::model::storage::codec::Nested<StoreHistory> => 1,
-    id: crate::model::storage::codec::Id => 2,
-    expires_at: crate::model::storage::codec::Time => 3,
-});
-crate::model::storage::codec::product!(FileProducer {
-    session: crate::model::storage::codec::Nested<FileSession> => 1,
-    length: crate::model::storage::codec::Unsigned => 2,
-});
-
 /* === Type Aliases === */
 
 /* === Structs === */

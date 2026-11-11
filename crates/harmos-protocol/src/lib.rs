@@ -20,6 +20,7 @@ mod reflection;
 #[rustfmt::skip]
 pub mod storage;
 pub mod schema;
+mod storage_helpers;
 
 // Checked-In Output of the Generator Exercised by the Integration Drift Check.
 #[rustfmt::skip]

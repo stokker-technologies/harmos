@@ -2,7 +2,7 @@
 
 [package]
 name = "harmos-operations"
-description = "Portable Harmos built-in operations and optional execution."
+description = "Native Harmos operations with authoritative protobuf contracts."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -17,12 +17,11 @@ version = { workspace = true }
 # === Features === #
 
 [features]
-default = ["runtime"]
+default = ["lifecycle", "grpc", "streaming"]
 lifecycle = []
 derive = ["harmos-domain/derive"]
 grpc = ["dep:prost-reflect", "dep:prost-types"]
 streaming = []
-runtime = ["lifecycle", "dep:harmos-storage", "grpc", "streaming"]
 
 # === Dependencies === #
 
@@ -31,7 +30,6 @@ runtime = ["lifecycle", "dep:harmos-storage", "grpc", "streaming"]
 harmos-protocol = { workspace = true }
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-macros = { workspace = true }
-harmos-storage = { workspace = true, optional = true }
 
 # Git
 
@@ -125,3 +123,6 @@ workspace = true
 # === Patches === #
 
 # === Other === #
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+harmos-storage = { workspace = true }

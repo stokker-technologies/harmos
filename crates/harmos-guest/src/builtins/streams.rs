@@ -79,13 +79,14 @@ where
 static DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =
     [harmos_domain::catalog::Node::Leaf(harmos_domain::operations::WireDeclaration::of::<Publish>())];
 pub struct Streams;
-impl harmos_operations::operations::OperationCatalog for Streams {
-    const CATALOG: harmos_operations::operations::Catalog =
-        harmos_operations::operations::Catalog::of::<Self>("harmos.guest.streams", &DECLARATIONS, &[]);
+impl harmos_operations::execution::operations::OperationCatalog for Streams {
+    const CATALOG: harmos_operations::execution::operations::Catalog =
+        harmos_operations::execution::operations::Catalog::of::<Self>("harmos.guest.streams", &DECLARATIONS, &[]);
     fn batch() -> harmos_operations::execution::__private::RegistrationBatch {
         harmos_operations::execution::__private::RegistrationBatch::new()
     }
 }
 impl Streams {
-    pub const CATALOG: harmos_operations::operations::Catalog = <Self as harmos_operations::operations::OperationCatalog>::CATALOG;
+    pub const CATALOG: harmos_operations::execution::operations::Catalog =
+        <Self as harmos_operations::execution::operations::OperationCatalog>::CATALOG;
 }

@@ -121,7 +121,7 @@ impl Manager {
                 entry.owner.as_str().len().checked_add(entry.id().len()).and_then(|length| length.checked_add(1)).ok_or_else(exhausted)?;
             let encoded = name.checked_add(52).and_then(|length| length.checked_mul(2)).ok_or_else(exhausted)?;
             peak = peak
-                .checked_add(std::mem::size_of::<harmos_operations::execution::operations::AssignedOperation>())
+                .checked_add(std::mem::size_of::<harmos_operations::execution::operations::AssignedOperation>() + 32)
                 .and_then(|length| length.checked_add(name))
                 .and_then(|length| length.checked_add(encoded))
                 .ok_or_else(exhausted)?;
@@ -137,15 +137,13 @@ impl Manager {
                 let entry = select(contract)?;
                 Ok(harmos_operations::execution::operations::AssignedOperation {
                     operation: format!("{}.{}", entry.owner, entry.id()),
-                    fingerprint: contract.operation().fingerprint.0,
+                    fingerprint: contract.operation().fingerprint.0.to_vec(),
                     generation: entry.generation.value(),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        harmos_operations::execution::operations::AssignedOperation::encode(&assignments).map_err(|source| Error::OperationFailed {
-            operation: "SDK assignments".into(),
-            source: Arc::new(source),
-        })
+        use prost::Message;
+        Ok(harmos_protocol::host::OperationAssignments { operations: assignments }.encode_to_vec())
     }
 
     // Capture Does Not Grant Readiness; Submission Rechecks The Exact Entry.

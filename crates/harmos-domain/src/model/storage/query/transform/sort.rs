@@ -20,14 +20,10 @@
 // Local Imports
 use super::FieldPath;
 use crate::MemorySize;
-use crate::model::storage::codec::{Flag, Nested, Repeated, product};
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(Sort { keys: Repeated<SortKey> => 1 });
-product!(SortKey { field: Nested<FieldPath> => 1, descending: Flag => 2, nulls_first: Flag => 3 });
 
 /* === Type Aliases === */
 

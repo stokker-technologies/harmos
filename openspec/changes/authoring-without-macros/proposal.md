@@ -96,12 +96,12 @@ they are not expanded declaration counts. Domain, runtime and guest aliases are
 grouped with their operation/catalog family. External application adoption remains
 the Workflow Follow-Up in tasks.md and is outside this worktree's ownership.
 
-The host-protobuf prerequisite is still open: `grpc-plugins` 3.11 and 6.9 retain
-native request/result declarations. For example,
-`crates/harmos-operations/src/host/catalog.rs` still declares its own `Catalog`,
-`CatalogPage` and `CatalogKind`, with a manual native codec and an operation attribute.
-The generated-protobuf serving support landed under 3.10/3.12 does not migrate these
-consumers. Complete that cutover before closing task 1.1 or replacing declarations.
+The host-protobuf cutover replaces built-in and native example request/result declarations
+with generated messages. Core operations no longer has a `runtime` feature. Private guest
+operation/catalog attributes moved to `crates/harmos-guest/src/builtins/` and
+`examples/schematic/operations/src/guest/`; they remain owned by the deferred guest path.
+The inventory below reflects these moves. Task 1.1 still owns the final inventory lock and
+external consumer review before this change replaces declarations.
 
 ### Projections and Replacement Owners
 
@@ -169,6 +169,8 @@ compatibility layer to claim those consumers migrated.
 | `crates/harmos-domain/tests/message/main.rs` | `message` (15) |
 | `crates/harmos-domain/tests/message/maps.rs` | `message` (5) |
 | `crates/harmos-domain/tests/message/native.rs` | `message` (6) |
+| `crates/harmos-guest/src/builtins/storage.rs` | `operation` (1) |
+| `crates/harmos-guest/src/builtins/streams.rs` | `operation` (1) |
 | `crates/harmos-guest/src/dispatch/registration_tests.rs` | `operation` (1) |
 | `crates/harmos-guest/src/lifecycle/initialize.rs` | `operation` (1) |
 | `crates/harmos-guest/src/lifecycle/shutdown.rs` | `operation` (1) |
@@ -213,38 +215,6 @@ compatibility layer to claim those consumers migrated.
 | `crates/harmos-operations/src/execution/grpc/mod.rs` | `message` (2) |
 | `crates/harmos-operations/src/execution/grpc/transcode.rs` | `message` (4) |
 | `crates/harmos-operations/src/execution/operations/operation.rs` | `operation` (2) |
-| `crates/harmos-operations/src/host/catalog.rs` | `operation` (1) |
-| `crates/harmos-operations/src/host/mod.rs` | `catalog` (1) |
-| `crates/harmos-operations/src/lifecycle/cancel.rs` | `operation` (1) |
-| `crates/harmos-operations/src/lifecycle/mod.rs` | `catalog` (1) |
-| `crates/harmos-operations/src/lifecycle/status.rs` | `operation` (1), `message` (1) |
-| `crates/harmos-operations/src/lifecycle/watch.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/abandon_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/append_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/capture_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/create_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/delete_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/finish_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/follow_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/follow_objects.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/follow_production.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/follow_records.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/follow_stream.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/hash_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/list_directory.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/mod.rs` | `catalog` (1) |
-| `crates/harmos-operations/src/storage/query.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/read_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/resume_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/storage_status.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/watch_directory.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/write_file.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/write_objects.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/write_records.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/write_schema.rs` | `operation` (1) |
-| `crates/harmos-operations/src/storage/write_streams.rs` | `operation` (1) |
-| `crates/harmos-operations/src/streams/mod.rs` | `catalog` (1) |
-| `crates/harmos-operations/src/streams/publish.rs` | `operation` (1) |
 | `crates/harmos-packaging/tests/acceptance/bindings.rs` | `catalog` (1), `operation` (4), `message` (2) |
 | `crates/harmos-packaging/tests/support/proto_contracts.rs` | `catalog` (3), `operation` (6), `message` (2) |
 | `crates/harmos-runtime/benches/operations/main.rs` | `catalog` (1), `operation` (1), `lanes` (1) |
@@ -344,17 +314,16 @@ compatibility layer to claim those consumers migrated.
 | `examples/schematic/domain/src/model/schematic/progress.rs` | `stream` (1), `message` (1) |
 | `examples/schematic/domain/src/model/schematic/validated.rs` | `catalog` (1), `message` (1) |
 | `examples/schematic/domain/src/model/transfer.rs` | `message` (4) |
-| `examples/schematic/operations/src/directories/list_directories.rs` | `operation` (1), `message` (1) |
-| `examples/schematic/operations/src/lib.rs` | `catalog` (2) |
-| `examples/schematic/operations/src/schematic/analyze.rs` | `operation` (1), `message` (2) |
-| `examples/schematic/operations/src/schematic/propose.rs` | `operation` (1), `message` (1) |
-| `examples/schematic/operations/src/schematic/validate.rs` | `operation` (1), `message` (1) |
-| `examples/schematic/operations/src/transfer/download.rs` | `operation` (1) |
-| `examples/schematic/operations/src/transfer/hash.rs` | `operation` (1), `message` (1) |
-| `examples/schematic/operations/src/transfer/mod.rs` | `catalog` (2) |
-| `examples/schematic/operations/src/transfer/put.rs` | `operation` (1) |
-| `examples/schematic/operations/src/transfer/take.rs` | `operation` (1) |
-| `examples/schematic/operations/src/transfer/upload.rs` | `operation` (1) |
+| `examples/schematic/operations/src/guest.rs` | `catalog` (1) |
+| `examples/schematic/operations/src/guest/schematic/analyze.rs` | `message` (2), `operation` (1) |
+| `examples/schematic/operations/src/guest/schematic/propose.rs` | `operation` (1), `message` (1) |
+| `examples/schematic/operations/src/guest/schematic/validate.rs` | `operation` (1), `message` (1) |
+| `examples/schematic/operations/src/guest/transfer/download.rs` | `operation` (1) |
+| `examples/schematic/operations/src/guest/transfer/hash.rs` | `operation` (1), `message` (1) |
+| `examples/schematic/operations/src/guest/transfer/mod.rs` | `catalog` (2) |
+| `examples/schematic/operations/src/guest/transfer/put.rs` | `operation` (1) |
+| `examples/schematic/operations/src/guest/transfer/take.rs` | `operation` (1) |
+| `examples/schematic/operations/src/guest/transfer/upload.rs` | `operation` (1) |
 | `examples/schematic/storage/tests/journal/main.rs` | `lanes` (1), `record` (5), `records` (1), `transaction` (1), `transactions` (1) |
 | `examples/schematic/storage/tests/streams/main.rs` | `lanes` (1), `streams` (1), `stream` (1) |
 | `examples/schematic/storage/tests/support/mod.rs` | `lanes` (1), `record` (1), `records` (1), `transaction` (5), `transactions` (1) |

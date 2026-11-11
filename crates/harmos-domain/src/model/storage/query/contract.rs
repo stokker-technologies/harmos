@@ -21,8 +21,6 @@ use std::time::SystemTime;
 // Third Party Imports
 
 // Local Imports
-use crate::model::storage::codec::{Code, Id, Nested, Optional, Time, Unsigned, coded, product, variants};
-use crate::model::storage::objects::Key;
 use crate::model::storage::{ObjectKey, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize, Result};
 
@@ -143,39 +141,6 @@ impl Source {
     }
 }
 
-product!(RowSlice { offset: Unsigned => 1, limit: Optional<Unsigned> => 2 });
-product!(ObjectSelection {
-    schema: Optional<Nested<SchemaKey>> => 1,
-    key: Optional<Key> => 2,
-    versions: Code<ObjectVersions> => 3,
-});
-product!(RecordSelection {
-    schema: Nested<SchemaKey> => 1,
-    scope: Optional<Id> => 2,
-    item: Optional<Id> => 3,
-    source_start: Optional<Time> => 4,
-    source_end: Optional<Time> => 5,
-});
-product!(StreamSelection {
-    schema: Nested<SchemaKey> => 1,
-    scope: Optional<Id> => 2,
-    item: Optional<Id> => 3,
-    stream: Optional<Id> => 4,
-    source_start: Optional<Time> => 5,
-    source_end: Optional<Time> => 6,
-    after: Unsigned => 7,
-});
-product!(SchemaSelection { schema: Optional<Nested<SchemaKey>> => 1 });
-product!(FileSelection { scope: Optional<Id> => 1, item: Optional<Id> => 2 });
-product!(QueryCompletion { at: Nested<StorageCursor> => 1, rows: Unsigned => 2 });
-coded!(ObjectVersions { Latest, Revisions });
-variants!(Source {
-    0, 1, "objects": Self::Objects(value) => { value: Nested<ObjectSelection> => 1 } => Self::Objects(value);
-    1, 2, "records": Self::Records(value) => { value: Nested<RecordSelection> => 1 } => Self::Records(value);
-    2, 3, "stream": Self::Stream(value) => { value: Nested<StreamSelection> => 1 } => Self::Stream(value);
-    3, 4, "schemas": Self::Schemas(value) => { value: Nested<SchemaSelection> => 1 } => Self::Schemas(value);
-    4, 5, "files": Self::Files(value) => { value: Nested<FileSelection> => 1 } => Self::Files(value);
-});
 macro_rules! memory {
     ($ty:ty, $($field:ident),+ $(,)?) => {
         impl MemorySize for $ty {

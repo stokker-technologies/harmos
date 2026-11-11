@@ -1182,7 +1182,9 @@ dependencies = [
  "harmos-guest-macros",
  "harmos-macros",
  "harmos-operations",
+ "harmos-protocol",
  "postcard",
+ "prost",
  "schematic-operations",
  "serde",
  "serde_json",
@@ -2458,8 +2460,8 @@ dependencies = [
 name = "schematic-domain"
 version = "0.1.14"
 dependencies = [
- "schematic-protocol",
  "harmos-domain",
+ "schematic-protocol",
  "serde",
  "thiserror",
 ]
@@ -2468,12 +2470,22 @@ dependencies = [
 name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
- "schematic-protocol",
- "tokio",
- "thiserror",
  "harmos-guest",
  "harmos-operations",
  "schematic-domain",
+ "schematic-protocol",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "schematic-protocol"
+version = "0.1.14"
+dependencies = [
+ "harmos-protocol",
+ "prost",
+ "prost-reflect",
+ "prost-types",
 ]
 
 [[package]]
@@ -3810,13 +3822,3 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[package]]
-name = "schematic-protocol"
-version = "0.1.14"
-dependencies = [
- "harmos-protocol",
- "prost",
- "prost-reflect",
- "prost-types",
-]

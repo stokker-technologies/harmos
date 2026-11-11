@@ -9,13 +9,13 @@
 
 /* === Modules === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod publish;
 
 /* === Re-Exports === */
 
 pub use harmos_protocol::host::FollowingRow;
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use publish::Publish;
 
 /* === Imports === */
@@ -36,10 +36,10 @@ pub use publish::Publish;
 
 /* === Enums === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub struct Streams;
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 impl crate::execution::operations::OperationCatalog for Streams {
     const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>("harmos.streams", &[], &[]);
     fn batch() -> crate::execution::__private::RegistrationBatch {
@@ -48,7 +48,7 @@ impl crate::execution::operations::OperationCatalog for Streams {
         batch
     }
 }
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 impl Streams {
     pub fn catalog() -> Vec<crate::OperationDefinition> {
         <Self as crate::execution::operations::OperationCatalog>::batch().operations.into_iter().map(|factory| factory.definition).collect()
@@ -63,7 +63,7 @@ impl Streams {
 /* === Public Functions === */
 
 // Publish Through the Native Declaration With the Caller's Authority.
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub async fn publish_on<H, S>(host: &H, row: &S::Row) -> Result<(), H::Error>
 where
     H: crate::execution::operations::ProtobufHost,

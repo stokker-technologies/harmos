@@ -54,7 +54,7 @@ impl ProtobufOperation for WatchDirectory {
             Ok(harmos_domain::model::storage::DirectoryCompletion { entries })
         }
         .await;
-        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
+        result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {

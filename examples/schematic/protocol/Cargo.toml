@@ -1,22 +1,82 @@
-# SPDX-License-Identifier: Apache-2.0
+# === Package === #
+
 [package]
-name = "schematic-protocol"
 publish = false
-version.workspace = true
+name = "schematic-protocol"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+
+# Generated Application Contracts Shared With Native Plugins and Clients.
+version = { workspace = true }
+
+# === Package Targets === #
+
+# === Features === #
 
 [features]
 default = []
 sdk = ["dep:harmos"]
 
+# === Dependencies === #
+
 [dependencies]
+# Local
 harmos-protocol = { workspace = true }
 harmos = { workspace = true, optional = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true }
 prost-types = { workspace = true }
 
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
 [lints]
 workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

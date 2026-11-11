@@ -109,6 +109,8 @@ tokio = { workspace = true, features = ["sync"] }
 # Testing
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+harmos-protocol = { workspace = true }
+prost = { workspace = true }
 # Local
 schematic-operations = { path = "../../examples/schematic/operations", default-features = false }
 

@@ -20,7 +20,7 @@ use std::path::PathBuf;
 // Third Party Imports
 // Local Imports
 use super::FileReference;
-use crate::model::storage::codec::{Nested, Unsigned, coded, variants};
+use crate::model::storage::codec::{Nested, Unsigned, variants};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -31,28 +31,12 @@ crate::model::storage::codec::product!(ByteRange {
     offset: crate::model::storage::codec::Unsigned => 1,
     limit: crate::model::storage::codec::Optional<crate::model::storage::codec::Unsigned> => 2,
 });
-crate::model::storage::codec::product!(FileBatch {
-    offset: crate::model::storage::codec::Unsigned => 1,
-    bytes: crate::model::storage::codec::Bytes => 2,
-});
-crate::model::storage::codec::product!(FileCompletion {
-    bytes: crate::model::storage::codec::Unsigned => 1,
-});
+
 variants!(FileSource {
     0, 1, "stored": Self::Stored(file) => { file: Nested<FileReference> => 1 } => Self::Stored(file);
     1, 2, "local": Self::Local(path) => { path: super::codec::LocalPath => 1 } => Self::Local(path);
 });
-variants!(FollowStart {
-    0, 1, "beginning": Self::Beginning => {} => Self::Beginning;
-    1, 2, "end": Self::End => {} => Self::End;
-    2, 3, "at": Self::At(offset) => { offset: Unsigned => 1 } => Self::At(offset);
-});
-variants!(FileEvent {
-    0, 1, "data": Self::Data(batch) => { batch: Nested<FileBatch> => 1 } => Self::Data(batch);
-    1, 2, "truncated": Self::Truncated { length } => { length: Unsigned => 1 } => Self::Truncated { length };
-    2, 3, "replaced": Self::Replaced => {} => Self::Replaced;
-});
-coded!(CaptureConsistency { Bounded, Stable });
+
 crate::model::storage::codec::product!(FileHash {
     bytes_read: Unsigned => 1,
     sha256: super::codec::Digest => 2,

@@ -21,14 +21,11 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::codec::{Bytes, product};
 use crate::MemorySize;
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(ArrowIpc { ipc: Bytes => 1 });
 
 /* === Type Aliases === */
 

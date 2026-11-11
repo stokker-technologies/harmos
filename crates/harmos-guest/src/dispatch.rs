@@ -315,7 +315,9 @@ impl Table {
                 let local = QualifiedId::qualify(&self.owner, id).map_err(|_| ServingError::Catalog)?;
                 let actual = match self.handlers.get(local.as_str()) {
                     Some(entry) => entry.definition.fingerprint.0,
-                    None => catalog.resolve_dependency(id, fingerprint)?.fingerprint,
+                    None => {
+                        catalog.resolve_dependency(id, fingerprint)?.fingerprint.as_slice().try_into().map_err(|_| ServingError::Catalog)?
+                    }
                 };
                 if actual != fingerprint.0 {
                     return Err(ServingError::Identity { operation: id.to_owned() });

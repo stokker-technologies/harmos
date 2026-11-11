@@ -9,11 +9,7 @@
 
 /* === Modules === */
 
-pub mod codec;
-
 /* === Re-Exports === */
-
-pub use codec::Key;
 
 /* === Imports === */
 

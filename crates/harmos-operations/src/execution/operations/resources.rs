@@ -11,6 +11,8 @@
 
 /* === Re-Exports === */
 
+pub use harmos_protocol::host::AssignedOperation;
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -41,13 +43,6 @@ pub struct ExecutionContext {
     resources: ResourceSet,
     pub call: CallContext,
     pub cancellation: super::Cancellation,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct AssignedOperation {
-    pub operation: String,
-    pub fingerprint: [u8; 32],
-    pub generation: u64,
 }
 
 #[derive(Clone, Default)]
@@ -132,43 +127,16 @@ impl ExecutionContext {
     }
 }
 
-impl AssignedOperation {
-    pub fn encode(entries: &[Self]) -> Result<Vec<u8>, super::ServingError> {
-        use prost::Message;
-        let assignments = harmos_protocol::host::OperationAssignments {
-            operations: entries
-                .iter()
-                .map(|entry| harmos_protocol::host::AssignedOperation {
-                    operation: entry.operation.clone(),
-                    fingerprint: entry.fingerprint.to_vec(),
-                    generation: entry.generation,
-                })
-                .collect(),
-        };
-        Ok(assignments.encode_to_vec())
-    }
-}
-
 impl OperationAssignments {
     pub fn install(&self, bytes: &[u8]) -> Result<(), super::ServingError> {
         use prost::Message;
         let assignments = harmos_protocol::host::OperationAssignments::decode(bytes).map_err(|_| super::ServingError::Catalog)?;
-        let entries = assignments
-            .operations
-            .into_iter()
-            .map(|entry| {
-                Ok(AssignedOperation {
-                    operation: entry.operation,
-                    fingerprint: entry.fingerprint.try_into().map_err(|_| super::ServingError::Catalog)?,
-                    generation: entry.generation,
-                })
-            })
-            .collect::<Result<Vec<_>, super::ServingError>>()?;
+        let entries = assignments.operations;
         let mut locals = std::collections::BTreeSet::new();
         for entry in &entries {
             harmos_domain::QualifiedId::parse(&entry.operation).map_err(|_| super::ServingError::Catalog)?;
             let (_, local) = entry.operation.split_once('.').ok_or(super::ServingError::Catalog)?;
-            if entry.generation == 0 || !locals.insert(local) {
+            if entry.generation == 0 || entry.fingerprint.len() != 32 || !locals.insert(local) {
                 return Err(super::ServingError::Catalog);
             }
         }
@@ -238,18 +206,24 @@ mod tests {
         use prost::Message;
         let entry = AssignedOperation {
             operation: "host.catalog.read".into(),
-            fingerprint: [7; 32],
+            fingerprint: vec![7; 32],
             generation: 1,
         };
-        let encoded = AssignedOperation::encode(std::slice::from_ref(&entry)).unwrap();
+        let encoded = harmos_protocol::host::OperationAssignments { operations: vec![entry.clone()] }.encode_to_vec();
         let decoded = harmos_protocol::host::OperationAssignments::decode(encoded.as_slice()).unwrap();
         assert_eq!(decoded.operations[0].operation, entry.operation);
         let assignments = OperationAssignments::default();
         assignments.install(&encoded).unwrap();
         assignments.install(&encoded).unwrap();
         let replacement = AssignedOperation { generation: 2, ..entry.clone() };
-        assert!(assignments.install(&AssignedOperation::encode(&[replacement]).unwrap()).is_err());
-        assert!(OperationAssignments::default().install(&AssignedOperation::encode(&[entry.clone(), entry]).unwrap()).is_err());
+        assert!(
+            assignments.install(&harmos_protocol::host::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err()
+        );
+        assert!(
+            OperationAssignments::default()
+                .install(&harmos_protocol::host::OperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())
+                .is_err()
+        );
         let mut invalid = decoded;
         invalid.operations[0].fingerprint.pop();
         assert!(OperationAssignments::default().install(&invalid.encode_to_vec()).is_err());
