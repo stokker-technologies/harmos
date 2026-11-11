@@ -1,7 +1,6 @@
 # Facility Trim
 
-Status: agreed with the owner on 2026-11-10; implementation has not started and waits for the
-owner's go. Independent of `grpc-plugins`.
+Status: removal source is implemented; native validation remains open. Delivered with `grpc-plugins`.
 
 ## Why
 
@@ -26,10 +25,11 @@ State management stays. It is a Harmos feature that applications build on.
 
 - FFT, including the disk-backed variant, moves to Dokime, its only consumer.
 - Statistics and downsampling are used by the storage query and by stream summaries. They stay
-  as internals of storage, with no public namespace.
+  as internals of storage queries, with no public namespace or statistical stream-batch API.
 - The hand-maintained downsampling kernels (min/max, largest-triangle, decimation) stay, private
   to storage. Replacing them with `tsdownsample` was tried and dropped: the crate needs nightly
-  Rust (`argminmax/nightly_simd`, error `E0554` on stable). Open for the owner to revisit.
+  Rust (`argminmax/nightly_simd`, error `E0554` on stable). Consumer applications own their
+  private FFT, statistics and downsampling outside storage.
 
 ### Simulation
 
@@ -44,3 +44,15 @@ stay as they are.
 - Breaking for a consumer that enables the `signal`, `signal-fft` or JSON storage features.
   Dokime moves FFT in its own change.
 - Benchmarks that used the JSON backend are removed with it.
+
+## Storage Removal Contract
+
+The JSON backend removal is part of this combined branch; do not reimplement it in a later
+slice. Its persistence benchmarks and JSON-only fixtures are removed with it. Consumer backends
+supply persistence; Harmos retains its state-file journal and backend-neutral query kernels.
+
+## Open Points
+
+### Awaiting Owner Confirmation
+
+- Keep the hand-maintained storage downsampling kernels and drop `tsdownsample` on stable Rust.

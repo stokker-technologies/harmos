@@ -1,12 +1,36 @@
 # gRPC Plugins Design
 
-Status: locked by the owner on 2026-11-10; not implemented, and implementation waits for the
-owner's go. Code below is the intended shape, not landed source. Field numbers and exact names are settled during implementation.
+## Resuming
+
+Integration branch: `feat/grpc-plugins`; every change under `openspec/changes/` is delivered together on it.
+All changes use the one `grpc-plugins` implementation marker. Source and proof are tracked separately in tasks.
+Next work is the first unticked tasks in wave order; resolve confirmations before changing those contracts.
+Final validation waits for source closure; completed source does not close native proof.
+
+| Wave | Implementation Waves | State and Next Work | Ownership |
+| --- | --- | --- | --- |
+| 1 | Protocol 2.x; `facility-trim`; `tooling-streamline`; `align-ci-release` | Source landed; tooling follow-ups and native proof remain | `proto/`, protocol/conformance crates; removed facilities; tooling and CI |
+| 2 | Host clock 3.5 | Landed | Runtime, storage and built-in operation time reads |
+| 3 | Host 3.1–3.4, 3.6, 3.8; Rust SDK 4.x | Host and plugin SDK landed; next 4.1 rename/replace, 4.2 host migration, 4.4 examples | Runtime plugin/services; both SDK roots; derive crate; sidecar and guest adapters |
+| 4 | Removal 6.x; virtual mode 3.7; pilot SDKs 5.x | Virtual mode and SDKs landed; next remaining 6.x | Removed transport/graph/grant/token paths; simulation; Python, C# and C++ SDKs |
+| 5 | `authoring-without-macros` | Inventory, then declaration steps in task order | One writer across the workspace |
+| 6 | `test-stories`; guests 7.1; guides; coupled storage follow-ups | Inventory, stories and guest envelopes remain; consumer adoption is separate proof | Tests; guest/host adapters; docs; `dokime-storage-facilities` inventory |
+
+Give a worker one whole task, its specification section and an explicit disjoint path ownership list.
+Name its focused `mise run build -- --package ... --check` and `mise run test -- --package ... --target ...` selections;
+pass `--features` where required. Run `mise run format -- --language ...` and the applicable scoped check before handoff.
+A handoff is at most ten lines: task, owned paths, changes, focused proof, format/check result and remaining follow-ups.
+SDK system suites run in Nightly only. No full lane has been established for this candidate; native Linux proof remains open.
+
+Status: implementation is partial. The new `plugin-grpc` feature coexists with the framed path;
+`sdk/rust` supplies the plugin authoring half while `crates/harmos-sdk` still supplies host APIs.
+The intended final contracts below do not imply that the remaining removal and migration tasks are complete.
 
 ## Protocol
 
 The complete definition is `proto/harmos/v1/plugin.proto`, with its compatibility rules in
-`proto/README.md`. In outline:
+`proto/README.md`; the landed behavioural contract is `proto/harmos/v1/behaviour.md`.
+The change-local `proto/` copy must stay aligned until it is retired; tooling checker repair belongs to `tooling-streamline` 4.3. In outline:
 
 ```proto
 service Plugin {
@@ -19,6 +43,14 @@ service Plugin {
 
 `Failure` keeps today's content (classification, code, message, cause, operation context) and adds
 the action a user can take. Built-in operations use the same package.
+`OperationPolicy.backoff` is a protobuf Duration carrying the retry delay.
+The checked-in protocol and generated bindings, not the change-local draft, define the implemented field numbers.
+
+Fingerprints use the data-only descriptor projection in `proto/harmos/v1/behaviour.md`:
+file options, source locations and field JSON names are excluded, including for well-known imports.
+Reachable message/enum metadata is retained; the complete ordered catalog has its own digest.
+All SDKs and host operations share this rule. Rust shares `harmos-protocol` clock descriptors;
+conformance covers schema graphs, setting-based observers and both built-in clock fingerprints.
 
 ## Placement
 
@@ -62,7 +94,9 @@ plugin. The network is trusted, as it is for clients.
 - A lost connection fails the calls in flight. Their operation policy decides retries.
 - The host reconnects without user action. Harmos exposes `started_at` of the previous and the
   current activation; the product decides what a changed value means.
-- Samples produced while disconnected are lost.
+- Samples produced while disconnected are lost. There is no request deduplication or watch replay.
+  Client survival across transient drops is deferred until those host contracts are separately specified;
+  reconnecting a plugin does not establish resumable client requests or subscriptions.
 - Before the host shuts down or removes a plugin it calls `Stop` on it. The plugin runs its
   stop and cleanup hooks and replies; the host closes once every plugin has replied or the
   grace period ends. A managed plugin then exits; a remote one keeps running.
@@ -74,12 +108,17 @@ plugin. The network is trusted, as it is for clients.
   host; products use it for operations the host drives. `Public` operations may be called by
   everyone connected: other plugins and the host's clients. The `Host` level is removed.
 - Retries are the existing operation policy. Nothing new is added for retry on connection loss.
+  On the new path an absent policy means no overall or attempt deadline, zero cancellation grace
+  and no retries. `attempts` is the total attempt count; absent or at most one means no retry.
+  Retrying uses the wire `backoff` as a fixed delay without jitter.
 - An authored handler returns its value: `Result<T, E>`, not a result of a response of a type.
   The shared-owner `Response<T>` stays below the authoring surface for host code that returns a
   view into a larger allocation.
 - A handle obtained on one connection fails when that connection closes and never follows its
   replacement.
-- Streaming child calls stay unsupported.
+- Plugin operations are unary: one request and one result. Streaming requests and results remain
+  available only to host-native operations. Streaming child calls stay unsupported. Examples and
+  fixtures with streamed plugin operations must migrate to unary calls or declared sample streams.
 
 ## Calls Between Plugins
 
@@ -120,10 +159,15 @@ auto reply = ctx.operation(thermal::v1::SetTemperature{.target = 85});
 - An observer is a function the author registers for a stream with an interval. The host sends
   one tick per interval on the stream's call and the SDK answers each tick by calling the
   function and sending its value as one sample, stamped with the tick's time. The interval is a
-  declared default or a plugin setting, which the host resolves.
+  declared default or a plugin setting, which the host resolves. `interval_setting` names a
+  fully qualified protobuf section field in `Catalog.sections` whose type is
+  `google.protobuf.Duration`; its positive value overrides the declared interval.
+  Missing, unresolved, zero or malformed values refuse admission.
 - A stream without an interval is driven by the plugin, which sends a sample when its device
   produces one.
 - Guests cannot hold a call open, so they declare no streams and no observers.
+- `PlacementSettings.stream_window` is required and is a positive retained-row capacity per
+  stream supplied by the consumer. Harmos supplies no implicit storage budget.
 
 ## Clock
 
@@ -134,8 +178,8 @@ host, and an observer runs on the host's ticks.
   wakes the waiter when it is due.
 - One clock object per host gives two readings from one source: a monotonic instant for waits
   and deadlines, and a date for evidence, derived as a fixed epoch plus the elapsed time. The
-  runtime reads time nowhere else; today about sixty places read Tokio or the system clock
-  directly.
+  runtime, storage and built-in operations use that captured clock for their time reads and waits.
+  Transport scheduling and whole-test hang guards remain on real time.
 - Samples and records carry host time, so evidence from plugins on different machines shares one
   time base. A device's own timestamp, when a plugin supplies one, is kept as the source's time
   and never replaces the host's.
@@ -219,7 +263,10 @@ fn main() -> Result<()> {
 ## Language SDKs
 
 The pilot covers Rust (`sdk/rust`), Python (`sdk/python`), C# (`sdk/csharp`) and C++
-(`sdk/cpp`). Go is outside the pilot.
+(`sdk/cpp`). Go is outside the pilot. Python publishes as `harmos-plugin` and imports as `harmos`.
+The Rust plugin half currently uses the temporary package `harmos-sdk-grpc`; task 4.1 merges
+host APIs into `sdk/rust`, restores the `harmos-sdk` package name and removes the old crate root.
+This temporary name is not the final public package contract.
 
 Every SDK, Rust included, is built over the `.proto` files: the authoring layer produces and
 consumes `harmos.v1` messages, and a transport adapter carries them (a gRPC server for a
@@ -241,8 +288,8 @@ The instance owns author state; `Context` owns invocation resources and host clo
 
 C# uses a typed builder registering async instance methods. The class owns its state;
 requests, replies and rows are generated protobuf message classes. `Grpc.Tools` generates
-code at build time; generated C# is not checked in. This fills the previously unspecified
-C# authoring shape for owner review.
+code at build time; generated C# is not checked in. C# and C++ authoring use the builder
+shapes below; Python uses the linked decorated-method example.
 
 ```csharp
 using Harmos.Sdk;
@@ -362,27 +409,37 @@ virtual time.
 
 Behaviour tests under `crates/harmos-runtime/tests/sidecar/` migrate to the new transport.
 
-## Implementation Waves
+## Remaining Source Inventory
 
-Every change on this branch is delivered together, and Dokime adopts the result. Work proceeds in
-waves; within a wave each worker owns a disjoint set of paths, and a wave starts when the one
-before it builds and its focused tests pass.
+Task 1.2 covers `proto/`, `crates/harmos-protocol`, `crates/harmos-conformance`,
+`crates/harmos-sdk`, `crates/harmos-sdk-derive`, `sdk/{rust,python,csharp,cpp}`,
+`crates/harmos-runtime/src/{clock,plugin,operations,streams,observers,services,simulation}`,
+`crates/harmos-storage` timing consumers, `crates/harmos-operations`, `crates/harmos-macros`,
+`crates/harmos-sidecar`, `crates/harmos-guest` and `crates/harmos-ffi`.
+Migrate `examples/schematic`, guest sandbox and runtime/SDK fixtures, sidecar behaviour tests,
+transport benches, manifests/locks, `mise.toml`, `tools/python`, CI, README, product/topic guides
+and canonical/generated authoring guidance. Removal paths are enumerated above.
+Cross-cutting declarations and test consolidation follow their own change inventories.
 
-| Wave | Work | Owned Paths |
-| --- | --- | --- |
-| 1 | The protocol crate and definitions (tasks 2.x); `facility-trim`; `tooling-streamline` | `crates/harmos-protocol`, `proto/`; the JSON backend, signal namespace, authoring tool, response cache, series adapter and stream batches; `mise.toml`, `tools/python`, `.github` |
-| 2 | The host clock (task 3.5), alone, because it moves every time read in the runtime, storage and operations | `crates/harmos-runtime`, `crates/harmos-storage`, `crates/harmos-operations` |
-| 3 | Placement, invoke, publish, clock operations, visibility and stop on the host (3.1 to 3.4, 3.6, 3.8); the Rust SDK over the protocol (4.x) | Runtime services, plugin, observers and streams; `sdk/rust`, `crates/harmos-sidecar`, `crates/harmos-guest` |
-| 4 | Removal of the framed wire, plugin graph, grants and tokens (6.x); the virtual clock mode (3.7); the Python, C# and C++ SDKs with the conformance suite (5.x, 2.3) | The paths being deleted; the clock and simulation; `sdk/python`, `sdk/csharp`, `sdk/cpp` |
-| 5 | `authoring-without-macros`, one worker at a time, since each step touches every crate | The whole workspace |
-| 6 | `test-stories`; guests on the `harmos.v1` messages (7.1); guides | Test trees; the guest crate and host; documentation |
+Crate splitting and relaxing System test serialization are deferred until measurements after
+these removals. Existing serial scheduling remains; no new crate split is part of this batch.
+The host clock and facility trim may share storage paths only through sequential handoff and
+review of the combined tree; the clock no longer needs an isolated implementation wave.
+
+The external-client authorization hook remains. Without it Harmos falls back to anonymous
+access; products may use it to require an authenticated client.
 
 ## Open Points
 
-Not yet decided with the owner; each is settled before its task starts.
+### Awaiting Owner Confirmation
 
-1. The exact wire format. A draft is in `proto/` with its compatibility rules and review
-   questions. It is agreed before any implementation.
+- Unary-only plugin operations, with streamed requests/results confined to host-native operations.
+- Default policy on the new path: no deadline, zero cancellation grace and no retries.
+- `interval_setting` as a qualified protobuf section field of type `google.protobuf.Duration`.
+- Required consumer-owned `PlacementSettings.stream_window`.
+- Python package `harmos-plugin` / import `harmos`, and temporary Rust package `harmos-sdk-grpc`.
+- The Python, C# and C++ authoring shapes in Language SDKs.
+- Deferral of client survival across transient drops until Harmos request deduplication and watch replay are specified.
 
-The hook through which an application authorizes external clients stays: without it Harmos falls
-back to anonymous access, and Dokime uses it to require an authenticated client.
+The built-in visibility mapping awaits confirmation in `operation-visibility`; retaining the
+hand-maintained downsampling kernels awaits confirmation in `facility-trim`.

@@ -3,7 +3,7 @@
 ## 1. Contract
 
 - [ ] 1.1 Settle the open points in `design.md` with the owner and record each outcome there.
-- [ ] 1.2 Lock the source inventory: producers, consumers, tests, fixtures, examples and guidance.
+- [x] 1.2 Lock the source inventory: producers, consumers, tests, fixtures, examples and guidance.
   - `CONTRIBUTING.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
   - `Cargo.lock` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
   - `Cargo.toml` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
@@ -200,6 +200,8 @@
 - [x] 2.3 Add the conformance suite with a reference host usable by non-Rust SDKs.
 - [x] 2.4 Canonicalize file options across SDK fingerprints, share Rust clock descriptors and pin both built-in clock fingerprints in conformance.
 
+- [x] 2.5 Extend conformance and every language fixture for schema graphs, setting-only observers and canonical descriptor metadata.
+
 ## 3. Host
 
 - [x] 3.1 Add the managed placement: start the process, read the address it announces, dial and supervise it, and call `Stop` before closing.
@@ -214,9 +216,11 @@
 
 ## 4. Rust SDK
 
-- [ ] 4.1 Move `crates/harmos-sdk` to `sdk/rust`, keeping its crate name, and serve `harmos.v1` from it in place of the framed wire.
-- [ ] 4.2 Replace attribute-macro authoring with derives for data and builder values for plugins, operations, streams and observers, with a target-selected `serve`; delete the plugin, observer and catalog macros and their sidecar and guest variants.
-- [ ] 4.3 Rebuild observers as functions that answer host ticks, route every SDK wait through the host clock, and share `publish_on` and its error type.
+- [ ] 4.1 Merge the host SDK into `sdk/rust`, restore the `harmos-sdk` package name, migrate dependencies and remove the old crate root and temporary package name.
+- [x] 4.1.1 Implement the native gRPC plugin SDK in `sdk/rust` with conformance fixtures.
+- [ ] 4.2 Integrate the builder surface across host consumers and guests with target-selected `serve`; delete plugin, observer and catalog macros and their sidecar and guest variants.
+- [x] 4.2.1 Add the Rust Message derive and native plugin, operation, stream and observer builder values.
+- [x] 4.3 Implement native plugin SDK observers answering host ticks, route its waits through the host clock, and share publish_on and its error type.
 - [x] 4.4 Migrate the examples and fixtures.
   - [x] 4.4.1 Migrate Schematic advice to SDK protobuf builders and managed placement, host analysis and transfer streaming, native packaging and benchmark selectors.
   - [x] 4.4.2 Migrate the stream-consumer fixture and its host-row journey to SDK unary calls on managed placement.
@@ -233,9 +237,10 @@
 - [ ] 6.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
 - [ ] 6.2 Delete publication leases, admission, cadence reports and the native observer runner.
 - [ ] 6.3 Delete the plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing.
-- [ ] 6.4 Delete `crates/harmos-ffi` and the C ABI bridge under `sdk/cpp`.
-- [ ] 6.5 Derive protobuf definitions from operation types into the catalog and delete the Postcard message encoding on the wire.
-- [x] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
+- [ ] 6.4 Delete `crates/harmos-ffi` and its remaining manifest, task and consumer references.
+- [x] 6.4.1 Replace the C ABI bridge under `sdk/cpp` with the gRPC SDK.
+- [ ] 6.5 Migrate remaining host/guest operation payloads and catalogs to protobuf-derived definitions and remove Postcard message encoding from the wire; the native plugin derive is covered by 4.2.1.
+- [ ] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
   - [x] 6.6.1 Complete targeted proof of the replacement Schematic composition and host-row consumption journeys.
   - [x] 6.6.2 Migrate the remaining retained behaviour under crates/harmos-runtime/tests/{sidecar,observers,operations/wire,application,plugin,runtime,integration} and remove assertions for retired graph/grant/token/lease/cadence mechanisms.
     - [x] 6.6.2.1 Retire the process graph and graph reload-plan stories, the framed plugin upload/download/exchange transport stories and their fixture registrations, and the C ABI prototype story, feature and guide.
@@ -249,6 +254,8 @@
 ## 8. Final Validation
 
 - [ ] 8.1 Run targeted transport, lifecycle, conformance and guest tests on Linux and Windows.
+
+- [ ] 8.2 Run each pilot SDK against the extended conformance suite on native Linux and Windows; retain failures and repair affected consumers.
 
 ## Workflow Follow-Up
 
