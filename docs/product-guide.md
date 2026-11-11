@@ -22,7 +22,7 @@ generation retirement stops these observers with the plugin.
 Built-in host operations use generated `harmos_protocol::{host, storage}` messages
 directly. Their declarations and handlers stay together in `harmos-operations`; its
 former `runtime` feature is removed. Lifecycle requests/results are
-`harmos_protocol::host::{Status, Cancel, Watch, InstanceState}`. Register `harmos_operations::Lifecycle` and invoke
+`harmos_protocol::host::{Status, Cancel, Watch, InstanceState}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
 `operations.call_protobuf::<harmos_operations::lifecycle::Status>(request)` for a
 native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
@@ -126,19 +126,18 @@ let analysis = harmos_runtime::operations::Lane::new(
 );
 let lanes = harmos_runtime::operations::LaneSet::new([analysis])?;
 setup.settings().lanes(lanes);
-setup.operations::<AnalysisOperations>(analysis);
+setup.catalog(analysis_catalog(), analysis);
 ```
 
 Building the set rejects duplicate or reserved names and zero capacity, naming
 the invalid lane. Registration and per-call lane selection use the same lane
 value; `Application` and operation managers carry no lane type parameter.
 
-Typed record entries and `#[transaction]` derive schema-only revisions through
+Typed record and transaction entries compute schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
 `harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's
 first four bytes become a little-endian nonzero `u32`. Presentation labels,
-Rust module paths and graph indices do not participate. Generated `DEFINITION`
-identity tuples are removed: use `T::ID` and `T::definition()` through `Identified`.
+Rust module paths and graph indices do not participate. Entry values own stored identities and revisions; use `entry.definition()`.
 Record rows select an entry value, which owns their stable identity:
 
 ```rust
@@ -157,8 +156,8 @@ the same rule, including `ValidatedSchematic`.
 `restore(revision, payload)` now accepts only the derived revision.
 
 Records, transactions and their nested Serde domain types declare their schema
-with `#[derive(harmos_runtime::Described)]`; an existing `#[message]`
-already supplies the schema. This schema-only derive retains the existing
+with `#[derive(harmos_runtime::Described)]`; `#[derive(harmos_runtime::Message)]`
+also supplies a schema for supported native message fields. This schema-only derive retains the existing
 Serde payload codec. It describes named and tuple structs, transparent newtypes,
 and externally, internally, adjacently tagged or untagged enums. Serialization
 names follow `rename`, `rename_all` and `rename_all_fields`, including directional
@@ -180,6 +179,50 @@ explicit constant `listeners = ENTRIES` slice of listener entry nodes.
 System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
 `SystemFact::encode(source, name, &value)` for a described Serde payload. Their
 stored revision carrier remains necessary; callers no longer supply its value.
+
+Record registries own typed preparation, restoration and borrowed projection:
+
+```rust
+let records = harmos_runtime::state::RecordRegistry::new()
+    .entry(ExportCompleted::ENTRY, Facts::ExportCompleted, |fact| {
+        let Facts::ExportCompleted(value) = fact;
+        Some(value)
+    })
+    .build()?;
+setup.settings().register(records);
+```
+
+`Facts` is an ordinary application data union. `registry.project::<Row>(&fact)`
+returns a borrowed row only when the typed entry and matching payload are present.
+Restoration selects the registered stored identity and derived revision.
+Duplicate identity/revision pairs are refused when built or registered.
+
+Object catalogs also own their definitions. Obtain a checked typed handle before
+encoding or decoding; an absent entry is an error:
+
+```rust
+use harmos_runtime::storage::{ObjectCatalog, ObjectDefinition};
+
+let objects = ObjectCatalog::new()
+    .entry(ObjectDefinition::of::<ValidatedSchematic>())
+    .build()?;
+let schematic = objects.handle::<ValidatedSchematic>()?;
+let stored = schematic.encode(&document, max_payload_bytes)?;
+let restored = schematic.decode(&stored, max_payload_bytes)?;
+```
+
+`StorageManager::with_catalog(objects, backends, settings)` retains the owned
+catalog. The storage manager has no catalog type parameter.
+
+All surviving field-reading derives live in
+[`sdk/rust/derive`](../sdk/rust/derive/): SDK `Message` describes protobuf values;
+`StoredMessage`, re-exported as `harmos_runtime::Message`, describes native
+portable values and their Postcard codec, memory use and row metadata.
+`Described` describes stored Serde shapes without adding a payload codec, and
+`Row` reads row fields. Host data authors explicitly derive `Clone`, `Debug`, `Default`
+and any needed Serde traits. `harmos-macros` is retired. Deferred guest registration
+macros remain in `harmos-guest-macros`; their inventories consume constant
+catalog descriptions and entry slices without host dependencies in the SDK.
 
 Managed journal entries and snapshot definition inventories store derived
 revisions. Open refuses a stored host record or transaction whose definition differs,
@@ -274,8 +317,8 @@ Host embedders depend explicitly on `harmos-runtime`. Managed and remote
 | `simulation` | Deterministic runtime simulation. |
 
 Shared operation and state authoring still uses `harmos-domain`,
-`harmos-operations` and their operation/catalog attributes. Native plugin authoring
-uses SDK builder values. Guests depend on `harmos-guest` and retain guest-specific
+`harmos-operations` with operation and catalog values. State entries and record
+registries are owned values. Native plugin authoring uses SDK builder values. Guests depend on `harmos-guest` and retain guest-specific
 macros and setup; their lifecycle and child controls await a separate protocol decision.
 `harmos-storage` owns persistence and queries; `harmos-runtime` composes it with
 host lifecycle and managed state. Build tools use `harmos-packaging`.
@@ -357,8 +400,8 @@ Stream producers use `output.send_owned(response).await?` to retain the same own
 through queueing and encoding; ordinary stream payloads keep their existing `Send`
 contract. Protobuf payloads and RPC paths remain unchanged.
 
-Harmos serves no built-in operation by default. Place `builtins::Lifecycle` on a
-runtime lane with `setup.operations::<builtins::Lifecycle>(lane)` to provide the
+Harmos serves no built-in operation by default. Place `builtins::lifecycle_catalog()` on a
+runtime lane with `setup.catalog(builtins::lifecycle_catalog(), lane)` to provide the
 Status, Cancel and Watch operations (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
@@ -366,7 +409,7 @@ foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Register `harmos_operations::Host` on a chosen lane to serve the `Catalog`
+Register `harmos_operations::host_catalog()` by value on a chosen lane to serve the `Catalog`
 declaration at `/harmos.host.v1.Host/Catalog`. Its generated request is
 `harmos_protocol::host::Catalog`, with `kind` (`Operations`, `Schemas`, `Streams`
 or `Objects`) and optional `schema`, `after`, `rows` and `bytes`. Defaults are
@@ -706,200 +749,78 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and pending-write limits remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
-One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
-contract tests. The runtime division follows the definition's Tests section and contains its own complete skeleton, including runtime-only
-tests. Shared models remain in the product domain; resource libraries are optional execution dependencies.
+## Native Operation Values
+
+Keep a request shape, policy, wire description and plain handler together. A
+request derive reads the response and optional input/output types; the operation
+value owns identity, visibility, replay policy, callees and grants. Resources
+belong to the handler registration.
 
 ```rust
-/* === --- === Definition Module === --- === */
+use harmos_runtime::operations::{
+    Catalog, FailureKind, FunctionContext, InvocationError, Operation,
+    OperationSpec, Resource, ServingError, Visibility, WireDeclaration,
+};
+use harmos_runtime::Response;
 
-/* === Modules === */
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
+struct Reading { value: f64 }
 
+#[derive(harmos_runtime::Message, harmos_runtime::Request, Clone, Debug, Default)]
+#[request(response = Reading)]
+struct Read { channel: u32 }
 
-/* === Re-Exports === */
+static READ_DESCRIPTION: WireDeclaration =
+    WireDeclaration::request::<Read>("temperature.read", POLICY)
+        .visibility(Visibility::Public);
+const READ: OperationSpec<Read> = OperationSpec::new(&READ_DESCRIPTION);
 
-
-/* === Imports === */
-
-#[cfg(feature = "runtime")]
-use device::Device;
-
-/* === Constants === */
-
-const POLICY: harmos_runtime::OperationPolicy = crate::POLICY;
-
-/* === Macros === */
-
-
-/* === Type Aliases === */
-
-
-/* === Structs === */
-
-#[harmos_runtime::message]
-pub struct Reading { pub value: f64 }
-
-#[harmos_runtime::operation(id = "temperature.read", response = Reading, policy = POLICY,
-    visibility = Public, resources = [Device], replay = harmos_runtime::operations::ReplaySafety::Idempotent)]
-pub struct Read { pub channel: u32 }
-
-/* === Enums === */
-
-
-/* === Traits === */
-
-
-/* === Implementations === */
-
-
-/* === Public Functions === */
-
-
-/* === Private Functions === */
-
-
-/* === Tests === */
-
-
-/* === --- === Runtime Module === --- === */
-
-#[cfg(feature = "runtime")]
-mod runtime {
-    /* === Modules === */
-
-
-    /* === Re-Exports === */
-
-
-    /* === Imports === */
-
-    use super::*;
-    use harmos_runtime::{Context, Operation, Response};
-
-    /* === Constants === */
-
-
-    /* === Macros === */
-
-
-    /* === Type Aliases === */
-
-
-    /* === Structs === */
-
-
-    /* === Enums === */
-
-
-    /* === Traits === */
-
-
-    /* === Implementations === */
-
-    impl Operation for Read {
-        type Error = device::Error;
-
-        async fn run(self, ctx: Context<'_, Self>) -> Result<Response<Reading>, Self::Error> {
-            let device = ctx.resource::<Device>();
-            Ok(Reading { value: device.read(self.channel).await? }.into())
-        }
-    }
-
-    /* === Public Functions === */
-
-
-    /* === Private Functions === */
-
-
-    /* === Tests === */
+async fn read(request: Read, ctx: FunctionContext<Read>)
+    -> Result<Response<Reading>, InvocationError>
+{
+    let device = ctx.resource::<Device>()?;
+    let value = device.read(request.channel).await;
+    Ok(Reading { value }.into())
 }
+
+fn operations_catalog() -> Result<Catalog, ServingError> {
+    let operation = Operation::function(
+        READ, &[Resource::of::<Device>()], read, |_| FailureKind::Permanent,
+    )?;
+    Catalog::new().entry(operation).build()
+}
+
+// Inside Lifecycle::prepare, after opening the application's Device:
+setup.resource::<Device>(device.clone());
+setup.catalog(operations_catalog()?, lane);
 ```
 
-The operations crate uses `harmos` with `default-features = false` and
-`runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
-`visibility` to `Private`; `Private` and `Public` are the two visibility forms. The operation struct is the request message;
-its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
-Private operations cannot declare `grpc(...)`; use `Public` for gRPC exposure.
-The macro rejects Private bindings at compile time, and runtime registration refuses them.
-Private operations admit their declaring plugin and the host. Public operations admit everyone
-connected, including other plugins and external clients subject to the client authorization hook.
+`POLICY`, `Device` and `lane` are application values. See the
+[resource and nested-call story](../crates/harmos-runtime/tests/operations/resources.rs)
+for a complete registration and handler. `Catalog::extend(other)?` composes owned
+catalogs; `entry_named(factory, id)?` registers an explicit alias. Put platform
+`#[cfg]` attributes on ordinary modules and the corresponding builder statements.
+Private operations omit gRPC exposure; registration rejects incompatible metadata.
 
-For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
-variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.
+Application lifecycle preparation owns resources and registers their concrete
+`Arc<T>` values. Runtime startup checks catalogs, resources and lanes before
+initialization. Test overrides still use `Runtime::launch_with` and replace
+resource lookups after application preparation. Owner cleanup closes acquired
+resources even when validation or initialization fails.
 
-```rust
-#[cfg(windows)]
-mod desktop;
+`ctx.resource::<T>()` is fallible. `ctx.operation(CALLEE, request)` checks the
+explicit callee value against `OperationSpec::calls(&CALLEES)`. Undeclared access
+fails when attempted and names the registered caller and resource or callee.
+Activation validates the complete resource and callee inventory, including
+visibility and fingerprints; no type-level membership proof is required.
 
-#[harmos_runtime::catalog]
-pub enum Operations {
-    Read(temperature::read::Read),
-    #[cfg(windows)]
-    Desktop(desktop::Inspect),
-}
+`#[request(input = Item, output = ResultRow)]` selects typed stream endpoints;
+`ctx.streams()` borrows them. Plain functions retain request cloning across retries,
+cooperative cancellation, endpoint settlement and declared error classification.
+The operation policy supplies defaults; per-call options override one invocation.
+The standalone Rust plugin SDK uses its protobuf `Message` derive and its own
+operation builders; generated native host declarations are described below.
 
-use harmos_runtime::operations::InvocationExt;
-
-impl harmos_runtime::Lifecycle for Product {
-    type Config = ProductSettings;
-    type Error = DeviceError;
-    type Context = harmos_runtime::Startup<Self>;
-
-    async fn prepare(config: Self::Config, setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-        // Resources
-        let device = std::sync::Arc::new(Device::open(config.device).await?);
-        setup.resource::<Device>(device.clone());
-
-        // Lanes
-        setup.lane(Lane::Interactive, harmos_runtime::operations::LaneSettings { capacity: config.capacity });
-
-        // Operations
-        setup.operations::<Operations>(Lane::Interactive);
-        Ok(Self { device })
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> { self.device.close().await }
-}
-
-let retry = settings.retry;
-let runtime = harmos_runtime::Runtime::<Product>::launch(origin, settings).await?;
-let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).await?;
-runtime.shutdown().await?;
-```
-
-Applications implement the shared `Lifecycle` and keep their resource owners in
-`Self`. `prepare` receives one mutable `Setup<Self>`; settings live behind
-`setup.settings()`, and all declared application lanes are available automatically.
-`launch` reports typed duplicate resources/catalogs, missing resources and unknown
-lanes together before initialize runs. Distinct instances of one Rust type need
-distinct newtypes. `Arc` insertion specifies the concrete type explicitly.
-Shutdown drains supervised work, then calls owner stop and cleanup; owner lifecycle
-hooks close devices and connections. Cleanup releases prepare's acquisitions even
-when validation prevents initialize, and still runs when stop fails. Put physical
-resource closure in cleanup so failed closure can retain its owner for retry.
-
-Tests use the same preparation and catalog path, replacing prepared allocations
-by type with `Runtime::launch_with(origin, settings, |setup| {
-setup.resource::<Device>(fake.clone()); })`. Overrides do not replace catalogs.
-Prepare still runs first: configure acquisition for the test environment. The
-lifecycle owner closes the resources it acquired; overrides change execution lookups.
-
-`ctx.call()` exposes portable call metadata. `ctx.resource::<T>()` returns `Arc<T>` infallibly for a type listed in `resources`.
-`operations = [other::Read]` permits `ctx.operation(other::Read { channel: 3 }).await`; catalogs aggregate these callees into
-plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
-
-- Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
-- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Public`; host callers may also invoke `Private` operations; missing targets and incompatible fingerprints are refused before execution.
-- Run: operation errors, deadlines and carrier faults remain fallible.
-
-`input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
-or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
-Every authoring surface returns the SDK `Invocation<H: OperationHost, O, E = ()>` from `ctx.operation(request)`.
-Await it to receive `Response<T>`, which dereferences to the value; `into_owned()` moves the payload out, cloning only when shared.
-`.start().await?` returns an owned instance, and `.endpoints(...)` supplies its declared endpoints. Builders are inert until awaited or started.
-Runtime `.lane(...)` is supplied by `operations::InvocationExt`; templates have no lane option. Use `operations.submit_at` for dynamic registrations.
-
-The operation macro owns the default policy. An option overrides only that call; a later call without options uses the declaration unchanged.
 Pass `.retry(settings.retry)` from settings, parameters or configuration. Retry overrides never change operation or attempt deadlines.
 Enabling call-site retry requires declared `Idempotent` or `Deduplicated` replay safety; unknown safety is refused before execution.
 Declaration defaults retain their existing semantics: transient failures may retry with unknown safety, while ambiguous failures require replay safety.
@@ -970,7 +891,7 @@ Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
 Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:
 `temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
-and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
+and `storage.append_file`. A manual native message codec remains an ordinary trait implementation.
 
 Started operations return the same typed `Response<T>` from `join()` and
 `cancel().await`. `request_cancel()` sends only the signal. An implementation
@@ -984,7 +905,7 @@ and cleanup. Dropping a handle requests cancellation without retaining its resul
 ```rust
 let handle = runtime.operation(request).start().await?;
 let summary = handle.cancel().await?;
-// Inside Operation::run:
+// Inside the plain handler:
 ctx.cancelled().await;
 Ok(summary.into())
 ```
@@ -1024,8 +945,8 @@ supports both directions. Handlers receive generated requests and return generat
 See the [declaration example](../openspec/changes/grpc-plugins/design.md#generated-host-messages).
 Reflection preserves original protobuf names, field encodings and presence. Decoding-memory
 admission bounds generated allocations before Prost decoding. Built-ins and native example operations no longer use `Portable` projections.
-The remaining projection machinery serves deferred guest declarations and legacy
-authoring consumers until their ordered migration.
+The remaining portable projection machinery serves deferred guest declarations
+and native portable message values.
 
 `operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
 Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
@@ -1060,7 +981,7 @@ client. Ordinary RPC methods remain available alongside managed calls.
 
 Portable request and response integer fields support `u32`, `u64`, `i32` and
 `i64` across in-process, sidecar, guest and gRPC carriers. `u16` is rejected by
-the message macro; represent ports with `u32` and validate their range in the
+the native `Message` derive; represent ports with `u32` and validate their range in the
 operation. `u8` is supported as byte buffers (`Vec<u8>`), not as a scalar field.
 `usize`, `isize`, narrower signed integers and 128-bit integers are unsupported.
 
@@ -1277,8 +1198,8 @@ and their optional execution. `harmos-runtime` exposes these under
 `crates/harmos-guest/src/lifecycle/`; they are absent from the host built-in catalog.
 
 The invocation and resource engine lives in
-`crates/harmos-operations/src/execution/`. Portable guest execution selects
-`lifecycle`; native execution selects `runtime`, which includes `harmos-storage`.
+`crates/harmos-operations/src/execution/`. Guest execution selects
+`lifecycle`; native operation modules select `grpc` and `streaming` and use `harmos-storage`.
 Neither the engine nor the standalone `harmos` SDK depends on `harmos-runtime`.
 
 Guest artifact inventory retains contract and lifecycle fragments for inert
@@ -1288,12 +1209,47 @@ catalogs through `harmos.v1` and use the SDK builders.
 
 ## Transaction Reversibility
 
-Implement `harmos_runtime::state::Invertible<S>` with `type Inverse` and
-`fn inverse(&self, before: &S) -> Self::Inverse` for a reversible transaction.
-The catalog infers an undo barrier when that implementation is absent.
-`#[harmos_runtime::transaction(id = "ledger.deposit", inverse = Withdraw)]` optionally
-checks that the inverse declaration matches the implementation and its mutual pair.
-There is no explicit irreversibility marker.
+Keep `Transaction<S>` and `Invertible<S>` implementations beside their data.
+Declare each entry as reversible or as a barrier explicitly:
+
+```rust
+use harmos_runtime::state::{StateCatalog, TransactionEntry};
+
+let movement = TransactionEntry::<Schematic, MoveSymbol>::new("symbol.move")
+    .reversible::<MoveSymbol>();
+let placement = TransactionEntry::<Schematic, PlaceSymbol>::new("symbol.place")
+    .barrier();
+let changes = StateCatalog::new()
+    .transaction(movement, Transactions::MoveSymbol, |change| match change {
+        Transactions::MoveSymbol(value) => Some(value),
+        _ => None,
+    })
+    .transaction(placement, Transactions::PlaceSymbol, |change| match change {
+        Transactions::PlaceSymbol(value) => Some(value),
+        _ => None,
+    })
+    .build()?;
+setup.settings().register(changes);
+```
+
+Only listed variants are admitted. The complete Schematic registry is
+[`transactions_state_catalog`](../examples/schematic/app/src/transactions/mod.rs).
+A data union may implement ordinary `From`, `Transaction` and `CatalogCodec`
+dispatch; catalog membership and restoration belong to the value registry.
+Entry constants such as `MoveSymbol::ENTRY` are reusable values, not membership proofs.
+
+`StateCatalog::build()` and runtime startup reject duplicate identities or typed
+entries, undeclared reversibility, missing inverse entries and non-mutual pairs.
+`reversible::<I>()` requires the existing `Invertible<S, Inverse = I>` body.
+A self-inverse names its own type. Barriers use `.barrier()` even when another
+transaction in the same catalog is reversible.
+
+Preparation retains the accepted payload with its stable identity and
+schema-derived revision. Replay restores that payload and applies it without
+running admission checks again. Undo computes the inverse against the pre-state
+and admits it through the existing check/apply path. Snapshot consumers receive
+their restoration catalog by value; see the
+[snapshot adapter](../examples/schematic/storage/src/snapshot.rs).
 
 ## Plugin Source Layout
 

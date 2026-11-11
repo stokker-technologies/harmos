@@ -82,6 +82,8 @@ Its protobuf messages and operation, stream and observer builders compile withou
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote `harmos.v1` placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
+Host operations, state catalogs and record registries are values; data shapes use
+field-reading derives. See [Native Operation Values](docs/product-guide.md#native-operation-values).
 
 Portable messages support standard Rust maps with deterministic key ordering
 and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/product-guide.md)
@@ -149,8 +151,9 @@ written definitions across shape changes and plugin removal. Wire compatibility
 versions remain explicit.
 
 Built-in operation contracts live in `harmos-operations`, re-exported as
-`harmos_runtime::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs
-and `Builtins::catalog()` are available without runtime dependencies.
+`harmos_runtime::builtins`. Its `host_catalog()`, `lifecycle_catalog()`, `storage_catalog()`,
+`streams_catalog()` and `builtins_catalog()` functions return owned catalogs
+without depending on `harmos-runtime`.
 
 ## Contributing
 

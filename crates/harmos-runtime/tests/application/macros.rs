@@ -55,7 +55,7 @@ async fn product_commits_refuses() {
     assert!(matches!(refused, Err(Error::Rejected(Untitled))));
     assert_eq!(runtime.state.applied(), first.position);
 
-    // The Catalog Infers Reversibility From The Invertible Implementation.
+    // The Entry Explicitly Registers The Authored Inverse.
     handle.undo(support::alice(), Focus::all()).await.expect("a rename comes back");
     assert_eq!(title(&runtime).await, "origin");
 

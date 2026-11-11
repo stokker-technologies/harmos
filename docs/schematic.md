@@ -48,7 +48,9 @@ progress through its host-owned callback resource.
 
 `SchematicEditor` implements the shared `Lifecycle`. Its async `prepare` opens
 the recovery journal and recordings, configures `Setup<Self>`, and places the
-operation catalog. `app::launch` calls `Runtime::launch`; shutdown drains work
+operation catalog value. The application composes `transactions_state_catalog()`,
+`records_registry()` and stream definitions as values. Transaction entries explicitly
+select `.reversible::<Inverse>()` or `.barrier()`. `app::launch` calls `Runtime::launch`; shutdown drains work
 before owner stop and cleanup. Tests can replace prepared resource allocations
 through `Runtime::launch_with` while keeping that preparation path.
 

@@ -37,7 +37,7 @@ mise run build -- --package harmos-domain
 mise run build -- --package harmos-domain --check
 mise run build -- --package harmos-runtime --features grpc,simulation --check
 mise run test -- --package harmos-runtime --features simulation --target lib --exact simulation::clock::tests::evidence_dates_retain_the_host_epoch_across_reboot
-mise run test -- --package harmos-macros --target lib --exact operation::tests::portable_domain_operation
+mise run test -- --package harmos-sdk-derive --target lib --exact stored_message::tests::map_field_shapes
 ```
 
 Focused builds select one package; focused tests select exactly one library or

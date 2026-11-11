@@ -98,7 +98,7 @@ For a focused Rust compiler check or selected test, use the package and target a
 
 ```sh
 mise run build -- --package harmos-domain --check
-mise run test -- --package harmos-macros --target lib --exact operation::tests::portable_domain_operation
+mise run test -- --package harmos-sdk-derive --target lib --exact stored_message::tests::map_field_shapes
 ```
 
 `prepare` synchronizes the locked Python environment.

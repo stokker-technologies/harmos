@@ -90,7 +90,7 @@ assumed.
 
 ## Source Inventory
 
-This inventory covers attribute sites in Harmos source, examples, test fixtures and
+This locked starting inventory covers attribute sites in Harmos source, examples, test fixtures and
 quoted generator tests. Counts are textual sites, including macro_rules templates;
 they are not expanded declaration counts. Domain, runtime and guest aliases are
 grouped with their operation/catalog family. External application adoption remains
@@ -100,7 +100,7 @@ The host-protobuf cutover replaces built-in and native example request/result de
 with generated messages. Core operations no longer has a `runtime` feature. Private guest
 operation/catalog attributes moved to `crates/harmos-guest/src/builtins/` and
 `examples/schematic/operations/src/guest/`; they remain owned by the deferred guest path.
-The inventory below reflects these moves and is locked for implementation. External
+The inventory below records those starting moves and is retained as the locked implementation worklist. External
 application adoption remains a follow-up outside this repository task.
 
 ### Projections and Replacement Owners

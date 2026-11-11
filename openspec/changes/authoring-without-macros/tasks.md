@@ -4,7 +4,7 @@
 
 - [x] 1.1 After authoritative host protobuf adoption under `grpc-plugins`, lock the source inventory per macro: uses in Harmos source, examples and tests, and in Dokime, with the typed projections each use depends on.
 
-The current [source inventory](proposal.md#source-inventory) records every textual
+The locked starting [source inventory](proposal.md#source-inventory) records every textual
 attribute site, dependent projection, live alias export and excluded-path dependency.
 The host protobuf cutover is complete. This worktree owns all Rust consumers,
 manifests, fixture tooling and guides; external application adoption remains the
@@ -39,7 +39,7 @@ local commit and focused proof for each complete macro family.
 ## 5. Final Validation
 
 - [ ] 5.1 Run the operation, state, storage and example tests on Linux and Windows.
-- [ ] 5.2 Update the product guide and authoring guidance.
+- [x] 5.2 Update the product guide and authoring guidance.
 
 ## Workflow Follow-Up
 
