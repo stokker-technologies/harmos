@@ -369,7 +369,7 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
     """Transfer exact compiler-emitted libraries needed by the authoring refusal stories.
 
     Prefer the build whose features include every other's. Equal-feature host and
-    shipping builds resolve against the authoritative shipping Harmos profile.
+    shipping builds resolve against the shipping Harmos profile and type identities.
     """
     found: dict[str, dict[str, tuple[set[str], dict]]] = {name: {} for name in LIBRARIES}
     destination = fixtures / "libraries"
@@ -385,8 +385,10 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
     shipping = _widest(found["harmos_runtime"])
     profile = found["harmos_runtime"][shipping][1] if shipping is not None else None
     selected = {name: _widest(builds, profile) for name, builds in found.items()}
-    if selected["serde"] is None and shipping is not None:
-        selected["serde"] = _compatible_serde(found["serde"], fixtures / shipping, destination)
+    if shipping is not None:
+        for name in ("serde", "harmos_operations"):
+            if selected[name] is None:
+                selected[name] = _compatible_library(name, found[name], fixtures / shipping, destination)
     ambiguous = {name: sorted(found[name]) for name, path in selected.items() if path is None}
     if ambiguous:
         raise RuntimeError(f"compiler libraries are missing or ambiguous: {ambiguous}")
@@ -424,20 +426,26 @@ def _widest(builds: dict[str, tuple[set[str], dict]], profile: dict | None = Non
     return widest[0] if len(widest) == 1 else None
 
 
-def _compatible_serde(builds: dict[str, tuple[set[str], dict]], harmos: Path, libraries: Path) -> str | None:
-    """Resolve Equal-Feature Host/Target Builds Against The Shipping Trait Identity."""
+def _compatible_library(name: str, builds: dict[str, tuple[set[str], dict]], harmos: Path, libraries: Path) -> str | None:
+    """Resolve Equal-Feature Host/Target Builds Against The Shipping Type Identity."""
     required = set().union(*(features for features, _ in builds.values()))
     compatible = []
-    with temporary.directory() as scratch:
-        source = scratch / "serde_selection.rs"
-        source.write_text(
+    sources = {
+        "serde": (
             "#[derive(serde::Serialize)] pub struct Selection;\n"
             "pub fn check() {\n"
             "    fn accepts<T: harmos::__private::serde::Serialize>() {}\n"
             "    accepts::<Selection>();\n"
-            "}\n",
-            encoding="utf-8",
-        )
+            "}\n"
+        ),
+        "harmos_operations": (
+            "pub fn check(value: harmos_operations::execution::operations::ExecutionContext)\n"
+            "    -> harmos::operations::ExecutionContext { value }\n"
+        ),
+    }
+    with temporary.directory() as scratch:
+        source = scratch / "library_selection.rs"
+        source.write_text(sources[name], encoding="utf-8")
         for path, (features, _) in builds.items():
             if not required <= features:
                 continue
@@ -455,7 +463,7 @@ def _compatible_serde(builds: dict[str, tuple[set[str], dict]], harmos: Path, li
                     "--extern",
                     f"harmos={harmos}",
                     "--extern",
-                    f"serde={libraries.parent / path}",
+                    f"{name}={libraries.parent / path}",
                 ],
                 capture_output=True,
                 text=True,
