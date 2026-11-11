@@ -423,8 +423,6 @@ impl harmos_runtime::state::CatalogCodec for Fact {
     }
 }
 
-impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
-
 /* === Public Functions === */
 
 fn revision<T: harmos_runtime::schema::Described>() -> u32 {

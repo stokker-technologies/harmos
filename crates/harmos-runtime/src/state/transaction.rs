@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::state::{Catalogued, DecodeError, Invertible, Mutual, Never, Paired, Transaction, TransactionCatalog};
+pub use harmos_domain::state::{DecodeError, Invertible, Never, Transaction};
 
 /* === Imports === */
 

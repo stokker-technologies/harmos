@@ -32,12 +32,15 @@ use harmos_runtime::state::Transaction;
 
 /* === Structs === */
 
-#[harmos_runtime::transaction(id = "net.connect")]
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ConnectPins {
     pub net: NetId,
     pub name: NetName,
     pub pins: BTreeSet<PinRef>,
+}
+impl ConnectPins {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("net.connect").barrier();
 }
 
 /* === Enums === */

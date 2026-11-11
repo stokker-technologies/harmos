@@ -34,7 +34,7 @@ pub use manager::StateManager;
 pub(crate) use manager::{Context, Feed, TrackedState};
 pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordEntry, RecordRegistry, Records};
 pub use snapshot::SnapshotPolicy;
-pub use transaction::{DecodeError, Invertible, Never, Transaction, TransactionCatalog};
+pub use transaction::{DecodeError, Invertible, Never, Transaction};
 
 // The proof traits generated authoring code reaches through `__private`: they
 
@@ -43,7 +43,6 @@ pub use transaction::{DecodeError, Invertible, Never, Transaction, TransactionCa
 // checked to be a member of the catalog that will commit it. Public because an
 
 // application's generated code names them, hidden because nothing else may.
-pub use transaction::{Catalogued, Mutual, Paired};
 
 // What boot needs of the journal's insides and nothing more: the fold replay
 // rebuilds, the hook it re-derives inverses through, and the version table it

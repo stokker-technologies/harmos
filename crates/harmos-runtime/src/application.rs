@@ -41,7 +41,7 @@ pub trait Application: Lifecycle<Context = Startup<Self>> + Sync {
     type State: Send + Sync + 'static;
 
     type Transaction: crate::state::Transaction<Self::State, Error: Send + Sync + 'static>
-        + crate::state::TransactionCatalog<Self::State>
+        + crate::state::CatalogCodec
         + Send
         + Sync
         + 'static;

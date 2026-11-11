@@ -59,7 +59,6 @@ struct Reserved;
 #[derive(harmos_runtime::Described, Deserialize)]
 struct Broken;
 
-#[harmos_runtime::transaction(id = "atomic.add",  inverse = Self,)]
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize)]
 struct Add {
     amount: i64,
@@ -69,6 +68,10 @@ struct Add {
     #[serde(skip)]
     encodings: Arc<AtomicUsize>,
 }
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<State, Self> =
+        harmos_runtime::state::TransactionEntry::new("atomic.add").reversible::<Self>();
+}
 
 struct Model;
 
@@ -77,10 +80,50 @@ struct Large(String);
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
     Add(Add),
+}
+impl From<Add> for Changes {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<State> for Changes {
+    type Error = Refusal;
+    fn check(&self, state: &State) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+        }
+    }
+    fn apply(&self, state: &mut State) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &State, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Changes {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<State, Changes> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+        let Changes::Add(value) = value;
+        Some(value)
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -261,14 +304,14 @@ impl Application for Model {
 impl Wire for Model {
     fn identify(v: &Recorded<Self>) -> (harmos_runtime::DefinitionId, u32) {
         match v {
-            Recorded::Transaction(v) => v.identify(),
+            Recorded::Transaction(v) => harmos_runtime::state::CatalogCodec::identify(&**v),
             Recorded::Record(v) => harmos_runtime::state::CatalogCodec::identify(v),
             Recorded::System(v) => v.identify(),
         }
     }
     fn encode<S: serde::Serializer>(v: &Recorded<Self>, s: S) -> Result<S::Ok, S::Error> {
         match v {
-            Recorded::Transaction(v) => v.encode_with(s),
+            Recorded::Transaction(v) => harmos_runtime::state::CatalogCodec::encode(&**v, s),
             Recorded::Record(v) => harmos_runtime::state::CatalogCodec::encode(v, s),
             Recorded::System(_) => unreachable!(),
         }
@@ -278,7 +321,7 @@ impl Wire for Model {
     ) -> Result<Option<harmos_runtime::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
             harmos_runtime::state::Kind::Transaction => {
-                Changes::restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
+                changes_state_catalog().restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
                     prepared: None,
                     id: id.clone(),
                     version,
@@ -312,7 +355,7 @@ fn add(amount: i64, count: usize, mode: u8) -> Add {
 
 async fn boot(copy: &Store, tail: usize) -> Runtime<Model> {
     Runtime::<Model>::launch_with(State::default(), (), |setup| {
-        setup.settings().register(Changes::catalog());
+        setup.settings().register(changes_state_catalog());
         setup.settings().register(facts_registry());
         setup.settings().recover(Journal::<Model>::open(copy));
         setup.settings().tail(tail);
@@ -452,7 +495,7 @@ async fn contract_refuses_apply() {
     }
     let captures = Arc::new(AtomicUsize::new(0));
     let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
-        setup.settings().register(Changes::catalog());
+        setup.settings().register(changes_state_catalog());
         setup.settings().require_capture(
             harmos_runtime::state::CaptureLimits {
                 pending_bytes: 4096,

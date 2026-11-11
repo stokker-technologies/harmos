@@ -74,7 +74,7 @@ async fn payload_own_shape() {
 
     // What names the payload is the pair beside it, and only that pair.
     assert_eq!(lines[0].get("id").and_then(serde_json::Value::as_str), Some("ledger.deposit"));
-    assert_eq!(lines[0].get("version"), Some(&serde_json::json!(<super::support::Deposit as harmos_runtime::Identified>::definition().1)));
+    assert_eq!(lines[0].get("version"), Some(&serde_json::json!(super::support::Deposit::ENTRY.definition().1)));
     assert_eq!(lines[0].get("kind"), Some(&serde_json::json!("Transaction")));
     assert_eq!(lines[0].get("position"), Some(&serde_json::json!(deposited.position.0)));
 }
@@ -97,7 +97,7 @@ async fn another_build_reads() {
     // The other build's catalogs share not one variant name or position with
     // the ones that wrote this file, and share every definition.
     let recovered = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().register(other::Movement::catalog());
+        setup.settings().register(other::movement_state_catalog());
         setup.settings().register(other::observed_registry());
         setup.settings().recover(Journal::<other::Branch>::open(&copy));
     })
@@ -116,7 +116,7 @@ async fn another_build_reads() {
 #[tokio::test]
 async fn decode_matches_recovery() {
     let runtime = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().register(other::Movement::catalog());
+        setup.settings().register(other::movement_state_catalog());
         setup.settings().register(other::observed_registry());
     })
     .await
@@ -127,16 +127,11 @@ async fn decode_matches_recovery() {
 
     let live = runtime
         .state
-        .decode_transaction(&id, <super::support::Deposit as harmos_runtime::Identified>::definition().1, &bytes)
+        .decode_transaction(&id, super::support::Deposit::ENTRY.definition().1, &bytes)
         .expect("the registered restore decodes live bytes");
-    let recovered = <other::Branch as Wire>::decode(
-        Kind::Transaction,
-        &id,
-        <super::support::Deposit as harmos_runtime::Identified>::definition().1,
-        &value,
-    )
-    .expect("the recovery decoder accepts the same payload")
-    .expect("the recovery catalog declares the pair");
+    let recovered = <other::Branch as Wire>::decode(Kind::Transaction, &id, super::support::Deposit::ENTRY.definition().1, &value)
+        .expect("the recovery decoder accepts the same payload")
+        .expect("the recovery catalog declares the pair");
     let Recorded::Transaction(recovered) = recovered.value else {
         panic!("a transaction envelope decodes as a transaction");
     };
@@ -179,13 +174,96 @@ mod other {
 
     /* === Enums === */
 
-    #[harmos_runtime::transactions(state = Ledger, error = Refusal)]
     #[derive(Clone, Debug)]
     pub enum Movement {
         Paid(Pay),
         Blew(Explode),
         Took(Withdraw),
         Put(Deposit),
+    }
+    impl From<Pay> for Movement {
+        fn from(value: Pay) -> Self {
+            Self::Paid(value)
+        }
+    }
+    impl From<Explode> for Movement {
+        fn from(value: Explode) -> Self {
+            Self::Blew(value)
+        }
+    }
+    impl From<Withdraw> for Movement {
+        fn from(value: Withdraw) -> Self {
+            Self::Took(value)
+        }
+    }
+    impl From<Deposit> for Movement {
+        fn from(value: Deposit) -> Self {
+            Self::Put(value)
+        }
+    }
+    impl harmos_runtime::state::Transaction<Ledger> for Movement {
+        type Error = Refusal;
+        fn check(&self, state: &Ledger) -> std::result::Result<(), Self::Error> {
+            match self {
+                Self::Paid(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+                Self::Blew(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+                Self::Took(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+                Self::Put(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            }
+        }
+        fn apply(&self, state: &mut Ledger) {
+            match self {
+                Self::Paid(value) => harmos_runtime::state::Transaction::apply(value, state),
+                Self::Blew(value) => harmos_runtime::state::Transaction::apply(value, state),
+                Self::Took(value) => harmos_runtime::state::Transaction::apply(value, state),
+                Self::Put(value) => harmos_runtime::state::Transaction::apply(value, state),
+            }
+        }
+        fn records(&self, state: &Ledger, records: &mut harmos_runtime::state::Records) {
+            match self {
+                Self::Paid(value) => harmos_runtime::state::Transaction::records(value, state, records),
+                Self::Blew(value) => harmos_runtime::state::Transaction::records(value, state, records),
+                Self::Took(value) => harmos_runtime::state::Transaction::records(value, state, records),
+                Self::Put(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            }
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Movement {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Paid(_) => Pay::ENTRY.definition(),
+                Self::Blew(_) => Explode::ENTRY.definition(),
+                Self::Took(_) => Withdraw::ENTRY.definition(),
+                Self::Put(_) => Deposit::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Paid(value) => serde::Serialize::serialize(value, serializer),
+                Self::Blew(value) => serde::Serialize::serialize(value, serializer),
+                Self::Took(value) => serde::Serialize::serialize(value, serializer),
+                Self::Put(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn movement_state_catalog() -> harmos_runtime::state::StateCatalog<Ledger, Movement> {
+        harmos_runtime::state::StateCatalog::new()
+            .transaction(Pay::ENTRY, Movement::Paid, |value| match value {
+                Movement::Paid(value) => Some(value),
+                _ => None,
+            })
+            .transaction(Explode::ENTRY, Movement::Blew, |value| match value {
+                Movement::Blew(value) => Some(value),
+                _ => None,
+            })
+            .transaction(Withdraw::ENTRY, Movement::Took, |value| match value {
+                Movement::Took(value) => Some(value),
+                _ => None,
+            })
+            .transaction(Deposit::ENTRY, Movement::Put, |value| match value {
+                Movement::Put(value) => Some(value),
+                _ => None,
+            })
     }
 
     #[derive(Clone, Debug)]
@@ -239,7 +317,7 @@ mod other {
     impl Wire for Branch {
         fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
             match value {
-                Recorded::Transaction(change) => change.identify(),
+                Recorded::Transaction(change) => harmos_runtime::state::CatalogCodec::identify(&**change),
                 Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::identify(fact),
                 Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
             }
@@ -247,7 +325,7 @@ mod other {
 
         fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
             match value {
-                Recorded::Transaction(change) => change.encode_with(serializer),
+                Recorded::Transaction(change) => harmos_runtime::state::CatalogCodec::encode(&**change, serializer),
                 Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::encode(fact, serializer),
                 Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
             }
@@ -257,7 +335,7 @@ mod other {
             kind: Kind, id: &DefinitionId, version: u32, payload: D,
         ) -> Result<Option<Payload<Self>>, D::Error> {
             Ok(match kind {
-                Kind::Transaction => Movement::restore(id, version, payload)?.map(|change| Payload {
+                Kind::Transaction => movement_state_catalog().restore(id, version, payload)?.map(|change| Payload {
                     prepared: None,
                     id: id.clone(),
                     version,

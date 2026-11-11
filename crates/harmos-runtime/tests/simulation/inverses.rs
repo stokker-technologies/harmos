@@ -65,7 +65,6 @@ impl Transaction<Model> for SetGain {
     }
 }
 
-impl harmos_runtime::state::TransactionCatalog<Model> for SetGain {}
 impl Identified for SetGain {
     const ID: &'static str = "sim.gain";
 }

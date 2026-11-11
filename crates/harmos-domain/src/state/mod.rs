@@ -23,7 +23,7 @@ pub use envelope::{DefinitionId, Envelope, FactSource, Kind, SystemFact};
 pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordEntry, Records};
 pub use record_registry::RecordRegistry;
 pub use state_catalog::{StateCatalog, StateDecoder, StateInverse, TransactionEntry};
-pub use transaction::{Catalogued, DecodeError, Invertible, Mutual, Never, Paired, Transaction, TransactionCatalog};
+pub use transaction::{DecodeError, Invertible, Never, Transaction};
 
 /* === Imports === */
 

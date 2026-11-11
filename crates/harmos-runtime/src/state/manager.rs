@@ -411,7 +411,7 @@ impl<A: Application> StateManager<A> {
         if self.capture_status().is_err() { Error::CaptureFailed } else { Error::Unavailable }
     }
 
-    async fn request<E>(
+    pub(crate) async fn request<E>(
         &self, key: Option<RequestKey>, transaction: crate::operations::Response<A::Transaction>,
     ) -> Result<Receipt, Error<E>>
     where

@@ -338,8 +338,6 @@ impl harmos_runtime::state::CatalogCodec for NoRecord {
     }
 }
 
-impl harmos_runtime::state::TransactionCatalog<DivergentState> for DivergentChange {}
-
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -438,18 +436,61 @@ mod atomic_records {
         amount: i64,
     }
 
-    #[harmos_runtime::transaction(id = "sim.add",  inverse = Self)]
     #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
     struct Add(i64);
+    impl Add {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<State, Self> =
+            harmos_runtime::state::TransactionEntry::new("sim.add").reversible::<Self>();
+    }
 
     struct Model;
 
     /* === Enums === */
 
-    #[harmos_runtime::transactions(state = State, error = Infallible)]
     #[derive(Clone, Debug)]
     enum Changes {
         Add(Add),
+    }
+    impl From<Add> for Changes {
+        fn from(value: Add) -> Self {
+            Self::Add(value)
+        }
+    }
+    impl harmos_runtime::state::Transaction<State> for Changes {
+        type Error = Infallible;
+        fn check(&self, state: &State) -> std::result::Result<(), Self::Error> {
+            match self {
+                Self::Add(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            }
+        }
+        fn apply(&self, state: &mut State) {
+            match self {
+                Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+            }
+        }
+        fn records(&self, state: &State, records: &mut harmos_runtime::state::Records) {
+            match self {
+                Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            }
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Changes {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Add(_) => Add::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Add(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<State, Changes> {
+        harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+            let Changes::Add(value) = value;
+            Some(value)
+        })
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -535,7 +576,7 @@ mod atomic_records {
     fn records_survive_reboot() {
         let make = || {
             Runtime::<Model>::simulate_with(State::default(), (), 17, |setup| {
-                setup.settings().register(Changes::catalog()).register(facts_registry());
+                setup.settings().register(changes_state_catalog()).register(facts_registry());
             })
             .unwrap()
         };

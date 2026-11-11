@@ -169,8 +169,6 @@ fn authoring_refusals_compile() {
     for (fixture, expected) in [
         ("serde_refusals.rs", "Serde attribute"),
         ("non_serde_row.rs", "Serialize"),
-        ("unpaired_inverse.rs", "the declared inverse of `Place` does not name `Place` back"),
-        ("uncatalogued_inverse.rs", "the declared inverse `Remove` is not a member of `Change`"),
         // Guest Artifact Declarations Remain Until The Guest Migration.
         ("explicit_version_plugin.rs", "remove `version`"),
         ("plugin_on_struct.rs", "belongs on `impl Plugin for ConcreteType`"),

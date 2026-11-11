@@ -45,10 +45,13 @@ struct Recording {
     cursor: harmos_runtime::storage::Cursor,
 }
 
-#[harmos_runtime::transaction(id = "shape.add")]
 #[derive(harmos_runtime::Described, Clone, Serialize, Deserialize)]
 struct Add {
     amount: i64,
+}
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<i64, Self> =
+        harmos_runtime::state::TransactionEntry::new("shape.add").barrier();
 }
 
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -82,10 +85,50 @@ struct NewPluginObject {
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = i64, error = std::convert::Infallible)]
 #[derive(Clone)]
 enum Changes {
     Add(Add),
+}
+impl From<Add> for Changes {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<i64> for Changes {
+    type Error = std::convert::Infallible;
+    fn check(&self, state: &i64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+        }
+    }
+    fn apply(&self, state: &mut i64) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &i64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Changes {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<i64, Changes> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+        let Changes::Add(value) = value;
+        Some(value)
+    })
 }
 
 #[derive(Clone)]
@@ -290,7 +333,7 @@ async fn original(storage: &StorageManager, snapshot: bool) -> Runtime<Model<fal
         setup
             .settings()
             .storage(storage)
-            .register(Changes::catalog())
+            .register(changes_state_catalog())
             .register(facts_registry())
             .register(stream_definitions())
             .managed_storage(managed(snapshot));
@@ -315,7 +358,7 @@ async fn plugin_runtime(storage: &StorageManager, snapshot: bool) -> Runtime<Mod
     let mut settings = managed(snapshot);
     settings.journal_tail = 16;
     Runtime::<Model<false>>::launch_with(0, (), |setup| {
-        setup.settings().storage(storage).register(Changes::catalog()).register(facts_registry()).managed_storage(settings);
+        setup.settings().storage(storage).register(changes_state_catalog()).register(facts_registry()).managed_storage(settings);
     })
     .await
     .unwrap()
@@ -439,7 +482,12 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         // The Same Root Still Refuses A Changed Host Record Definition.
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
-            setup.settings().storage(&disk).register(Changes::catalog()).register(new_facts_registry()).managed_storage(managed(snapshot));
+            setup
+                .settings()
+                .storage(&disk)
+                .register(changes_state_catalog())
+                .register(new_facts_registry())
+                .managed_storage(managed(snapshot));
         })
         .await;
         let error = match result {
@@ -500,7 +548,12 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
 
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
-            setup.settings().storage(&disk).register(Changes::catalog()).register(new_facts_registry()).managed_storage(managed(snapshot));
+            setup
+                .settings()
+                .storage(&disk)
+                .register(changes_state_catalog())
+                .register(new_facts_registry())
+                .managed_storage(managed(snapshot));
         })
         .await;
         let error = match result {
@@ -537,7 +590,7 @@ async fn native_stream_round_trip_uses_shared_revision() {
         setup
             .settings()
             .storage(&disk)
-            .register(Changes::catalog())
+            .register(changes_state_catalog())
             .register(facts_registry())
             .register(stream_definitions())
             .managed_storage(managed(false))

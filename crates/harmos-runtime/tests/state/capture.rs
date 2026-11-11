@@ -39,9 +39,12 @@ type Group = (Vec<Arc<Entry<Recorded<Model>>>>, Position);
 #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Observed(String);
 
-#[harmos_runtime::transaction(id = "capture.add",  inverse = Self)]
 #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Add(i64);
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<i64, Self> =
+        harmos_runtime::state::TransactionEntry::new("capture.add").reversible::<Self>();
+}
 
 struct Model;
 
@@ -55,10 +58,50 @@ struct Panics;
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
     Add(Add),
+}
+impl From<Add> for Changes {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<i64> for Changes {
+    type Error = Refusal;
+    fn check(&self, state: &i64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+        }
+    }
+    fn apply(&self, state: &mut i64) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &i64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Changes {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<i64, Changes> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+        let Changes::Add(value) = value;
+        Some(value)
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -156,7 +199,7 @@ async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model
     let (offered, observed) = mpsc::unbounded_channel();
     let release = Arc::new(Semaphore::new(0));
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().register(Changes::catalog());
+        setup.settings().register(changes_state_catalog());
         setup.settings().register(facts_registry());
         setup.settings().tail(tail);
         setup.settings().require_capture(

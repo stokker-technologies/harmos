@@ -32,7 +32,7 @@ local commit and focused proof for each complete macro family.
 ## 4. State
 
 - [x] 4.1 Add the state catalog and typed transaction entries with explicit reversible and barrier declarations, and run the existing replay, recovery and inverse-law tests against it unchanged.
-- [ ] 4.2 Replace `transaction` and `transactions`, then delete their generators.
+- [x] 4.2 Replace `transaction` and `transactions`, then delete their generators.
 
 - [ ] 4.3 After all ordered declaration replacements, consolidate surviving field-reading derives in `sdk/rust/derive` (`harmos-sdk-derive`) and delete `harmos-macros`, coordinated with `grpc-plugins` 6.10. Preserve distinct stored-schema `Described`, protobuf Message and row semantics; migrate manifests, re-exports, consumers and derive coverage without SDK host dependencies. Domain reduction follows this consolidation; guest registration and `harmos-guest-macros` deletion remain with deferred `grpc-plugins` 7.1.
 

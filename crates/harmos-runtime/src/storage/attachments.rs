@@ -441,7 +441,11 @@ fn apply<A: Application>(
                 if !states.is_empty() {
                     return states.replay(&prepared, state);
                 }
-                crate::state::TransactionCatalog::replay(&*transaction, &prepared, state)
+                if crate::state::CatalogCodec::identify(&*transaction) != (prepared.id.clone(), prepared.version) {
+                    return Err(mismatched(prepared.id, prepared.version));
+                }
+                transaction.apply(state);
+                Ok(())
             } else {
                 transaction.apply(state);
                 Ok(())

@@ -31,11 +31,14 @@ use harmos_runtime::{state::Invertible, state::Transaction};
 
 /* === Structs === */
 
-#[harmos_runtime::transaction(id = "net.route",  inverse = Self)]
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ApplyRoute {
     pub net: NetId,
     pub points: Vec<Point>,
+}
+impl ApplyRoute {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("net.route").reversible::<Self>();
 }
 
 /* === Enums === */

@@ -10,9 +10,7 @@
 /* === Modules === */
 
 mod artifact;
-mod catalog;
 mod configuration;
-mod identity;
 mod message;
 mod path;
 mod presentation;
@@ -70,19 +68,9 @@ pub fn described(item: TokenStream) -> TokenStream {
     result.unwrap_or_else(|error: syn::Error| error.to_compile_error()).into()
 }
 
-#[proc_macro_attribute]
-pub fn transaction(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    identity::stamp(attribute.into(), item.into()).into()
-}
-
 #[proc_macro_derive(Row, attributes(row, harmos_path, serde))]
 pub fn row(item: TokenStream) -> TokenStream {
     row::derive(item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn transactions(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::close(attribute.into(), item.into()).into()
 }
 
 #[proc_macro_derive(Message, attributes(harmos_path, row))]

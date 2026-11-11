@@ -66,7 +66,7 @@ pub use harmos_guest::guest;
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
 pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, schema};
-pub use harmos_macros::{Described, Request, Row, transaction, transactions};
+pub use harmos_macros::{Described, Request, Row};
 
 /* === Imports === */
 
@@ -130,7 +130,7 @@ pub mod __private {
     // Ungated on purpose: a hand-written contribution in a crate that compiles
 
     // no authoring attributes at all still resolves the same paths.
-    pub use crate::state::{Catalogued, Mutual, Paired};
+
     pub use harmos_domain::__private::Answer;
 
     /* === Imports === */

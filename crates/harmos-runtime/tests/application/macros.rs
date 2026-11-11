@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 // Third Party Imports
 
 // Local Imports
-use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled, fact_registry};
+use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled, change_state_catalog, fact_registry};
 use crate::application::support;
 use harmos_runtime::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position, state::Transaction};
 
@@ -91,7 +91,7 @@ async fn catalog_declares_records() {
         assert_eq!(fact, Fact::Noted(Noted("exported".to_owned())));
     }
     {
-        let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(Change::catalog())
+        let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(change_state_catalog())
             .into_iter()
             .chain(definitions_of::<Studio>(fact_registry()))
             .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
@@ -100,9 +100,9 @@ async fn catalog_declares_records() {
         assert_eq!(
             registered,
             BTreeMap::from([
-                (("sheet.erase".to_owned(), <sheet::Erase as harmos_runtime::Identified>::definition().1), Kind::Transaction),
+                (("sheet.erase".to_owned(), sheet::Erase::ENTRY.definition().1), Kind::Transaction),
                 (("sheet.noted".to_owned(), <Noted as harmos_runtime::Identified>::definition().1), Kind::Record),
-                (("sheet.rename".to_owned(), <Rename as harmos_runtime::Identified>::definition().1), Kind::Transaction),
+                (("sheet.rename".to_owned(), Rename::ENTRY.definition().1), Kind::Transaction),
             ]),
             "one variant per current definition"
         );
@@ -121,10 +121,10 @@ async fn catalog_declares_records() {
 
 #[tokio::test]
 async fn derived_aggregate_writer() {
-    use counter::{Counter, Down, Step, StepError, Tally, Underflow, Up};
+    use counter::{Counter, Down, Step, StepError, Tally, Underflow, Up, step_state_catalog};
 
     let runtime = Runtime::<Counter>::launch_with(Tally::default(), (), |setup| {
-        setup.settings().register(Step::catalog());
+        setup.settings().register(step_state_catalog());
     })
     .await
     .expect("a memory-only boot recovers nothing");
@@ -175,7 +175,7 @@ async fn studio() -> Runtime<Studio> {
     };
 
     Runtime::<Studio>::launch_with(origin, (), |setup| {
-        setup.settings().register(Change::catalog());
+        setup.settings().register(change_state_catalog());
         setup.settings().register(fact_registry());
     })
     .await
@@ -219,15 +219,21 @@ mod sheet {
     #[error("the title must not be empty")]
     pub struct Untitled;
 
-    #[harmos_runtime::transaction(id = "sheet.rename", inverse = Self)]
     #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Rename {
         pub to: String,
     }
+    impl Rename {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Sheet, Self> =
+            harmos_runtime::state::TransactionEntry::new("sheet.rename").reversible::<Self>();
+    }
 
-    #[harmos_runtime::transaction(id = "sheet.erase")]
     #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Erase;
+    impl Erase {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Sheet, Self> =
+            harmos_runtime::state::TransactionEntry::new("sheet.erase").barrier();
+    }
 
     #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Noted(pub String);
@@ -237,11 +243,66 @@ mod sheet {
 
     /* === Enums === */
 
-    #[harmos_runtime::transactions(state = Sheet, error = Untitled)]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum Change {
         Rename(Rename),
         Erase(Erase),
+    }
+    impl From<Rename> for Change {
+        fn from(value: Rename) -> Self {
+            Self::Rename(value)
+        }
+    }
+    impl From<Erase> for Change {
+        fn from(value: Erase) -> Self {
+            Self::Erase(value)
+        }
+    }
+    impl harmos_runtime::state::Transaction<Sheet> for Change {
+        type Error = Untitled;
+        fn check(&self, state: &Sheet) -> std::result::Result<(), Self::Error> {
+            match self {
+                Self::Rename(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+                Self::Erase(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            }
+        }
+        fn apply(&self, state: &mut Sheet) {
+            match self {
+                Self::Rename(value) => harmos_runtime::state::Transaction::apply(value, state),
+                Self::Erase(value) => harmos_runtime::state::Transaction::apply(value, state),
+            }
+        }
+        fn records(&self, state: &Sheet, records: &mut harmos_runtime::state::Records) {
+            match self {
+                Self::Rename(value) => harmos_runtime::state::Transaction::records(value, state, records),
+                Self::Erase(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            }
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Change {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Rename(_) => Rename::ENTRY.definition(),
+                Self::Erase(_) => Erase::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Rename(value) => serde::Serialize::serialize(value, serializer),
+                Self::Erase(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn change_state_catalog() -> harmos_runtime::state::StateCatalog<Sheet, Change> {
+        harmos_runtime::state::StateCatalog::new()
+            .transaction(Rename::ENTRY, Change::Rename, |value| match value {
+                Change::Rename(value) => Some(value),
+                _ => None,
+            })
+            .transaction(Erase::ENTRY, Change::Erase, |value| match value {
+                Change::Erase(value) => Some(value),
+                _ => None,
+            })
     }
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -377,24 +438,99 @@ mod counter {
     #[error("the tally would go negative")]
     pub struct Underflow;
 
-    #[harmos_runtime::transaction(id = "tally.up",  inverse = Down)]
     #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Up(pub i64);
+    impl Up {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Tally, Self> =
+            harmos_runtime::state::TransactionEntry::new("tally.up").reversible::<Down>();
+    }
 
-    #[harmos_runtime::transaction(id = "tally.down",  inverse = Up)]
     #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Down(pub i64);
+    impl Down {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Tally, Self> =
+            harmos_runtime::state::TransactionEntry::new("tally.down").reversible::<Up>();
+    }
 
     #[derive(Clone, Copy, Debug)]
     pub struct Counter;
 
     /* === Enums === */
 
-    #[harmos_runtime::transactions(state = Tally)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Step {
         Up(Up),
         Down(Down),
+    }
+    impl From<Up> for Step {
+        fn from(value: Up) -> Self {
+            Self::Up(value)
+        }
+    }
+    impl From<Down> for Step {
+        fn from(value: Down) -> Self {
+            Self::Down(value)
+        }
+    }
+    #[derive(Debug)]
+    pub enum StepError {
+        Up(<Up as harmos_runtime::state::Transaction<Tally>>::Error),
+        Down(<Down as harmos_runtime::state::Transaction<Tally>>::Error),
+    }
+    impl std::fmt::Display for StepError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Up(error) => std::fmt::Display::fmt(error, formatter),
+                Self::Down(error) => std::fmt::Display::fmt(error, formatter),
+            }
+        }
+    }
+    impl std::error::Error for StepError {}
+    impl harmos_runtime::state::Transaction<Tally> for Step {
+        type Error = StepError;
+        fn check(&self, state: &Tally) -> std::result::Result<(), Self::Error> {
+            match self {
+                Self::Up(value) => harmos_runtime::state::Transaction::check(value, state).map_err(StepError::Up),
+                Self::Down(value) => harmos_runtime::state::Transaction::check(value, state).map_err(StepError::Down),
+            }
+        }
+        fn apply(&self, state: &mut Tally) {
+            match self {
+                Self::Up(value) => harmos_runtime::state::Transaction::apply(value, state),
+                Self::Down(value) => harmos_runtime::state::Transaction::apply(value, state),
+            }
+        }
+        fn records(&self, state: &Tally, records: &mut harmos_runtime::state::Records) {
+            match self {
+                Self::Up(value) => harmos_runtime::state::Transaction::records(value, state, records),
+                Self::Down(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            }
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Step {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Up(_) => Up::ENTRY.definition(),
+                Self::Down(_) => Down::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Up(value) => serde::Serialize::serialize(value, serializer),
+                Self::Down(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn step_state_catalog() -> harmos_runtime::state::StateCatalog<Tally, Step> {
+        harmos_runtime::state::StateCatalog::new()
+            .transaction(Up::ENTRY, Step::Up, |value| match value {
+                Step::Up(value) => Some(value),
+                _ => None,
+            })
+            .transaction(Down::ENTRY, Step::Down, |value| match value {
+                Step::Down(value) => Some(value),
+                _ => None,
+            })
     }
 
     /* === Traits === */

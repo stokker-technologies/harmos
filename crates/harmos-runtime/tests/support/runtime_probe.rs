@@ -148,8 +148,6 @@ impl Application for Editor {
     type Record = Note;
 }
 
-impl harmos_runtime::state::TransactionCatalog<Sheet> for Change {}
-
 impl harmos_runtime::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
         match self {

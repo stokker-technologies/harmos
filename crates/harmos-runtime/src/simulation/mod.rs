@@ -221,12 +221,23 @@ where
 {
     pub fn commit<T>(&mut self, principal: PrincipalId, transaction: T) -> Result<Receipt, Error<T::Error>>
     where
-        T: Identified + Transaction<A::State> + Into<A::Transaction>,
+        T: Transaction<A::State> + Into<A::Transaction>,
         T::Error: From<<A::Transaction as Transaction<A::State>>::Error>,
     {
-        let identity = T::definition();
+        let transaction = transaction.into();
         let journal = self.runtime.as_ref().ok_or(Error::Unavailable)?.state.as_principal(principal);
-        let receipt = self.executor.block_on(journal.commit(transaction))?;
+        let (catalog, _) = journal.record_resources();
+        let identity = if catalog.states.is_empty() {
+            crate::state::CatalogCodec::identify(&transaction)
+        } else {
+            let prepared = catalog
+                .states
+                .prepare(&transaction)
+                .map_err(Error::Preparation)?
+                .ok_or(Error::Preparation(crate::state::PreparationError::Membership))?;
+            (prepared.id, prepared.version)
+        };
+        let receipt = self.executor.block_on(journal.request::<T::Error>(None, crate::operations::Response::new(transaction)))?;
         self.memory.identify(receipt.position, identity, self.executor.elapsed_ms());
         self.executor.block_on(journal.wait_until_stored(receipt.frontier));
         self.executor.drive();

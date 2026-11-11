@@ -120,8 +120,7 @@ async fn redelivery_forwards_stored() {
     // produces — so any re-encoding, of the payload or of the frame, fails
     // the byte comparison below.
     let original = r#"[{"kind":"Transaction","position":9,"id":"ledger.bonus","version":1,"metadata":{"principal":null,"correlation":9,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{ "amount":3 }}]"#;
-    let original = original
-        .replace("\"version\":1", &format!("\"version\":{}", <super::support::Bonus as harmos_runtime::Identified>::definition().1));
+    let original = original.replace("\"version\":1", &format!("\"version\":{}", super::support::Bonus::ENTRY.definition().1));
     // A Matching Record Is Forwarded Without Re-encoding Its Frame.
     let recorded = frame(
         10,
@@ -231,6 +230,7 @@ async fn tail_restores_state() {
 
     let live = booted(Ledger::default(), |builder| {
         builder.settings().recover(Journal::<Bank>::open(&copy)).snapshot(Snapshot::<Bank>::folding(
+            support::change_state_catalog(),
             Ledger::default(),
             Position::ORIGIN,
             {

@@ -48,34 +48,49 @@ pub struct Ledger {
     pub payouts: Vec<u64>,
 }
 
-#[harmos_runtime::transaction(id = "ledger.deposit",  inverse = Withdraw)]
 #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Deposit {
     pub amount: i64,
 }
+impl Deposit {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Ledger, Self> =
+        harmos_runtime::state::TransactionEntry::new("ledger.deposit").reversible::<Withdraw>();
+}
 
-#[harmos_runtime::transaction(id = "ledger.withdraw",  inverse = Deposit)]
 #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Withdraw {
     pub amount: i64,
 }
+impl Withdraw {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Ledger, Self> =
+        harmos_runtime::state::TransactionEntry::new("ledger.withdraw").reversible::<Deposit>();
+}
 
-#[harmos_runtime::transaction(id = "ledger.pay")]
 #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Pay {
     pub effect: u64,
     pub amount: i64,
 }
+impl Pay {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Ledger, Self> =
+        harmos_runtime::state::TransactionEntry::new("ledger.pay").barrier();
+}
 
-#[harmos_runtime::transaction(id = "ledger.bonus")]
 #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Bonus {
     pub amount: i64,
 }
+impl Bonus {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Ledger, Self> =
+        harmos_runtime::state::TransactionEntry::new("ledger.bonus").barrier();
+}
 
-#[harmos_runtime::transaction(id = "ledger.explode")]
 #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Explode;
+impl Explode {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Ledger, Self> =
+        harmos_runtime::state::TransactionEntry::new("ledger.explode").barrier();
+}
 
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Noted(pub String);
@@ -100,7 +115,6 @@ pub enum Refusal {
     Overdrawn,
 }
 
-#[harmos_runtime::transactions(state = Ledger, error = Refusal)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Change {
     Deposit(Deposit),
@@ -108,6 +122,104 @@ pub enum Change {
     Pay(Pay),
     Bonus(Bonus),
     Explode(Explode),
+}
+impl From<Deposit> for Change {
+    fn from(value: Deposit) -> Self {
+        Self::Deposit(value)
+    }
+}
+impl From<Withdraw> for Change {
+    fn from(value: Withdraw) -> Self {
+        Self::Withdraw(value)
+    }
+}
+impl From<Pay> for Change {
+    fn from(value: Pay) -> Self {
+        Self::Pay(value)
+    }
+}
+impl From<Bonus> for Change {
+    fn from(value: Bonus) -> Self {
+        Self::Bonus(value)
+    }
+}
+impl From<Explode> for Change {
+    fn from(value: Explode) -> Self {
+        Self::Explode(value)
+    }
+}
+impl harmos_runtime::state::Transaction<Ledger> for Change {
+    type Error = Refusal;
+    fn check(&self, state: &Ledger) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Deposit(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::Withdraw(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::Pay(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::Bonus(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::Explode(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+        }
+    }
+    fn apply(&self, state: &mut Ledger) {
+        match self {
+            Self::Deposit(value) => harmos_runtime::state::Transaction::apply(value, state),
+            Self::Withdraw(value) => harmos_runtime::state::Transaction::apply(value, state),
+            Self::Pay(value) => harmos_runtime::state::Transaction::apply(value, state),
+            Self::Bonus(value) => harmos_runtime::state::Transaction::apply(value, state),
+            Self::Explode(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &Ledger, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Deposit(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            Self::Withdraw(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            Self::Pay(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            Self::Bonus(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            Self::Explode(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Change {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Deposit(_) => Deposit::ENTRY.definition(),
+            Self::Withdraw(_) => Withdraw::ENTRY.definition(),
+            Self::Pay(_) => Pay::ENTRY.definition(),
+            Self::Bonus(_) => Bonus::ENTRY.definition(),
+            Self::Explode(_) => Explode::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Deposit(value) => serde::Serialize::serialize(value, serializer),
+            Self::Withdraw(value) => serde::Serialize::serialize(value, serializer),
+            Self::Pay(value) => serde::Serialize::serialize(value, serializer),
+            Self::Bonus(value) => serde::Serialize::serialize(value, serializer),
+            Self::Explode(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+pub fn change_state_catalog() -> harmos_runtime::state::StateCatalog<Ledger, Change> {
+    harmos_runtime::state::StateCatalog::new()
+        .transaction(Deposit::ENTRY, Change::Deposit, |value| match value {
+            Change::Deposit(value) => Some(value),
+            _ => None,
+        })
+        .transaction(Withdraw::ENTRY, Change::Withdraw, |value| match value {
+            Change::Withdraw(value) => Some(value),
+            _ => None,
+        })
+        .transaction(Pay::ENTRY, Change::Pay, |value| match value {
+            Change::Pay(value) => Some(value),
+            _ => None,
+        })
+        .transaction(Bonus::ENTRY, Change::Bonus, |value| match value {
+            Change::Bonus(value) => Some(value),
+            _ => None,
+        })
+        .transaction(Explode::ENTRY, Change::Explode, |value| match value {
+            Change::Explode(value) => Some(value),
+            _ => None,
+        })
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -263,7 +375,7 @@ impl Application for Bank {
 impl Wire for Bank {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
         match value {
-            Recorded::Transaction(change) => change.identify(),
+            Recorded::Transaction(change) => harmos_runtime::state::CatalogCodec::identify(&**change),
             Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::identify(fact),
             Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
         }
@@ -271,7 +383,7 @@ impl Wire for Bank {
 
     fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
         match value {
-            Recorded::Transaction(change) => change.encode_with(serializer),
+            Recorded::Transaction(change) => harmos_runtime::state::CatalogCodec::encode(&**change, serializer),
             Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::encode(fact, serializer),
             Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
         }
@@ -281,7 +393,7 @@ impl Wire for Bank {
         kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error> {
         Ok(match kind {
-            Kind::Transaction => Change::restore(id, version, payload)?.map(|change| Payload {
+            Kind::Transaction => change_state_catalog().restore(id, version, payload)?.map(|change| Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
@@ -304,11 +416,14 @@ impl Registration<Bank> for Definitions {
         }
 
         Catalog::Transactions {
-            states: Some(Change::catalog()),
+            states: Some(change_state_catalog()),
             records: Some(fact_registry()),
             definitions: self.0,
             decode: std::sync::Arc::new(decode),
-            inverses: Some(std::sync::Arc::new(Change::__harmos_inverses)),
+            inverses: Some({
+                let catalog = change_state_catalog();
+                std::sync::Arc::new(move |change, before| catalog.inverse(change, before))
+            }),
         }
     }
 }
@@ -368,7 +483,7 @@ impl JournalConsumer<Bank> for Payouts {
 /* === Public Functions === */
 
 pub fn catalog() -> impl Registration<Bank> {
-    Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(fact_registry())).collect())
+    Definitions(definitions_of::<Bank>(change_state_catalog()).into_iter().chain(definitions_of::<Bank>(fact_registry())).collect())
 }
 
 pub fn deposit(amount: i64) -> Deposit {
@@ -389,7 +504,7 @@ pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Ru
 
 pub async fn opened(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Result<Runtime<Bank>, StartupError> {
     Runtime::<Bank>::launch_with(origin, (), |setup| {
-        setup.settings().register(Change::catalog()).register(fact_registry());
+        setup.settings().register(change_state_catalog()).register(fact_registry());
         attach(setup);
     })
     .await
