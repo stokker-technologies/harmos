@@ -30,7 +30,7 @@ from unittest.mock import patch
 # Third Party Imports
 # Local Imports
 from harmos_tools.ci import bootstrap
-from harmos_tools.release import layout, nightly, pins, policy, registry, review, run
+from harmos_tools.release import nightly, pins, policy, registry, review, run
 
 # Type Checking Imports
 
@@ -646,47 +646,6 @@ class NightlyTests(unittest.TestCase):
                 else:
                     with self.assertRaises(policy.ToolError):
                         nightly._github_source()
-
-
-class CatalogTests(unittest.TestCase):
-    def test_distribution_inventory(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            root = directory / run.ASSETS
-            shared = root / run.SHARED
-            shared.mkdir(parents=True)
-            (shared / "CHANGELOG.md").write_bytes(b"notes")
-            (shared / run.SUMS).write_bytes(b"initial")
-            layout.upload_manifest(directory, root, [run._describe(root, path) for path in shared.iterdir()])
-            targets = ["linux-x86_64", "windows-x86_64"]
-            for target in targets:
-                packaged = directory / "target/package/release" / target
-                assets = {}
-                for relative in (f"rust/tool-{target}.zip", f"rust/schematic-{target}.zip", "producer/plugin.harmos"):
-                    source = packaged / relative
-                    source.parent.mkdir(parents=True, exist_ok=True)
-                    data = (target + relative).encode()
-                    source.write_bytes(data)
-                    assets[relative] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
-                (packaged / "catalog.json").write_text(json.dumps({"profile": "release", "assets": assets}), encoding="utf-8")
-            nightly._include_packages(directory, targets)
-            files = layout.uploads(directory, staged=True)
-            names = {item["name"] for item in files}
-            expected = {"CHANGELOG.md", "SHA256SUMS"}
-            for target in targets:
-                expected.update({f"tool-{target}.zip", f"schematic-{target}.zip", f"{target}-plugin.harmos"})
-            self.assertEqual(names, expected)
-            inventory = {item["name"]: item for item in files}
-            run._checksums(shared / run.SUMS, inventory)
-            source.write_bytes(b"changed")
-            with self.assertRaises(policy.ToolError):
-                nightly._include_packages(directory, targets)
-
-    def test_missing_platform(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            with patch.object(layout, "uploads", return_value=[]), self.assertRaises(FileNotFoundError):
-                nightly._include_packages(directory, ["windows-x86_64"])
 
 
 # === Public Functions === #

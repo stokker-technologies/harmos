@@ -14,7 +14,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sys
 import tomllib
 import urllib.parse
@@ -23,7 +22,7 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-from . import layout, policy, registry, run
+from . import layout, policy, registry, reports, run
 
 # Type Checking Imports
 
@@ -71,15 +70,118 @@ def publish(directory: Path) -> None:
     with policy.credential_free(settings, profile=PROFILE):
         run._refuse_overrides(directory)
         content = _notes(directory, settings, sha, source_run, previous_notes)
-        run.dry(directory, settings, profile=PROFILE, require_all=True, release_notes=content)
-        _include_packages(directory, settings["targets"])
+        run.dry(directory, settings, profile=PROFILE, require_all=True, release_notes=content, channel="nightly")
 
     files = layout.uploads(directory, staged=True)
-    notes = (directory / run.ASSETS / run.SHARED / "CHANGELOG.md").read_text(encoding="utf-8")
+    notes = json.loads((directory / run.ASSETS / run.SHARED / "release.json").read_text(encoding="utf-8"))["notes"]
     if github:
         _github(directory, settings, files, sha, identifier, notes)
     else:
         _gitlab(settings, files, sha, identifier, notes)
+
+
+def verify(directory: Path) -> None:
+    """Verify The Run-Owned Nightly Inventory And Every Remote Asset Digest."""
+    settings = policy.policy(directory, "release")
+    sha, identifier, url = _github_source()
+    current = registry.document(settings, "releases/tags/nightly", channel=True)
+    identity = f"| CI Run | [{identifier}]({url}) |"
+    if not current or identity not in current["body"].splitlines():
+        raise policy.ToolError("Nightly verification belongs to a replaced publication")
+    if _tag(settings) != sha:
+        raise policy.ToolError("Nightly tag differs from the source commit")
+    files = layout.uploads(directory)
+    endpoint = f"releases/{current['id']}"
+    remote = {item["name"]: item for item in registry.pages(settings, endpoint + "/assets", channel=True)}
+    if set(remote) != {item["name"] for item in files}:
+        raise policy.ToolError("Nightly verification inventory differs")
+    verified = []
+    with run.temporary.directory() as downloads:
+        for item in files:
+            data = registry.request(settings, f"releases/assets/{remote[item['name']]['id']}", binary=True, channel=True)
+            if data is None:
+                raise policy.ToolError("Nightly download is unavailable")
+            digest = hashlib.sha256(data).hexdigest()
+            mutable = item["name"] in {"release.json", "benchmarks.json", run.SUMS} or item["name"].startswith("harmos-reports-")
+            if not mutable and (digest != item["sha256"] or len(data) != item["size"]):
+                raise policy.ToolError("Nightly download differs from the publication inventory")
+            (downloads / item["name"]).write_bytes(data)
+            verified.append({**item, "sha256": digest, "size": len(data)})
+        run._checksums(downloads / run.SUMS, {item["name"]: item for item in verified})
+        _verify_assets(settings, endpoint, verified, "published inventory differs")
+        run.verify_conformance(directory, settings, PROFILE, run.native_target(settings), downloads)
+
+
+def report(directory: Path, results: dict, url: str) -> None:
+    """Append Run-Owned Results And Replace Reports, Index And Checksums Together."""
+    settings = policy.policy(directory, "release")
+    current = registry.document(settings, "releases/tags/nightly", channel=True)
+    identity = f"| CI Run | [{os.environ['GITHUB_RUN_ID']}]({url}) |"
+    if not current or identity not in current["body"].splitlines():
+        print("A Newer Run Replaced Nightly; Leaving Its Reports Unchanged")
+        return
+    files = layout.uploads(directory)
+    endpoint = f"releases/{current['id']}"
+    remote = {item["name"]: item for item in registry.pages(settings, endpoint + "/assets", channel=True)}
+    if set(remote) != {item["name"] for item in files}:
+        raise policy.ToolError("Nightly report asset names differ from publication inventory")
+    sums_data = registry.request(settings, f"releases/assets/{remote[run.SUMS]['id']}", binary=True, channel=True)
+    if sums_data is None:
+        raise policy.ToolError("Nightly checksums are unavailable")
+    checksums = dict(line.split("  ", 1)[::-1] for line in sums_data.decode("utf-8").splitlines())
+    root = directory / run.ASSETS
+    for item in files:
+        data = registry.request(settings, f"releases/assets/{remote[item['name']]['id']}", binary=True, channel=True)
+        if data is None:
+            raise policy.ToolError("Nightly report input is unavailable")
+        digest = hashlib.sha256(data).hexdigest()
+        mutable = item["name"] in {"release.json", "benchmarks.json", run.SUMS} or item["name"].startswith("harmos-reports-")
+        if item["name"] != run.SUMS and digest != checksums.get(item["name"]):
+            raise policy.ToolError("Nightly report input checksum differs")
+        if not mutable and (digest != item["sha256"] or len(data) != item["size"]):
+            raise policy.ToolError("Nightly report input digest differs")
+        destination = policy.inside(directory, item["path"])
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+    shared = root / run.SHARED
+    document = json.loads((shared / "release.json").read_text(encoding="utf-8"))
+    version = document["downloads"]["version"]
+    summary, _ = reports.collect(directory)
+    marker = "<!-- nightly-results -->"
+    notes = current["body"].split(marker, 1)[0].rstrip()
+    notes += "\n\n" + marker + "\n" + reports.table(summary, results, url) + "\n"
+    replaced = {f"harmos-reports-{version}.zip", "benchmarks.json", "release.json", run.SUMS}
+    inventory = [run._describe(root, directory / item["path"]) for item in files if item["name"] not in replaced]
+    for destination in reports.stage(directory, shared, version):
+        inventory.append(run._describe(root, destination))
+    document["notes"] = notes
+    document["downloads"] = layout.downloads(
+        settings,
+        version=version,
+        channel="nightly",
+        tag=TAG,
+        published=document["pub_date"],
+        files=inventory,
+        sums="".join(f"{item['sha256']}  {item['name']}\n" for item in inventory),
+    )
+    policy.write_json(shared / "release.json", document)
+    inventory.append(run._describe(root, shared / "release.json"))
+    (shared / run.SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in inventory), encoding="utf-8")
+    inventory.append(run._describe(root, shared / run.SUMS))
+    layout.upload_manifest(directory, root, inventory)
+    uploads = layout.uploads(directory, staged=True)
+    # The Workflow Serializes This Update With Publication; Recheck Identity Before Mutating Assets.
+    latest = registry.document(settings, "releases/tags/nightly", channel=True)
+    if latest["id"] != current["id"] or identity not in latest["body"].splitlines():
+        print("A Newer Run Replaced Nightly; Leaving Its Reports Unchanged")
+        return
+    for item in uploads:
+        if item["name"] not in replaced:
+            continue
+        registry.request(settings, f"releases/assets/{remote[item['name']]['id']}", "DELETE", channel=True)
+        _upload(directory, settings, endpoint, item)
+    _verify_assets(settings, endpoint, uploads, "reported inventory differs")
+    registry.document(settings, endpoint, "PATCH", {"body": notes}, channel=True)
 
 
 # === Private Functions === #
@@ -104,43 +206,6 @@ def _gitlab_source() -> tuple[str, str, str]:
     if not eligible or os.environ.get("CI_DEFAULT_BRANCH") != "dev":
         raise policy.ToolError(f"GitLab nightly requires a {'/'.join(sorted(GITLAB_SOURCES))} pipeline on default dev")
     return os.environ["CI_COMMIT_SHA"], os.environ["CI_PIPELINE_ID"], os.environ["CI_PIPELINE_URL"]
-
-
-def _include_packages(directory: Path, targets: list[str]) -> None:
-    """Include Every Cataloged Distribution From Both Native Package Jobs."""
-    root = directory / run.ASSETS
-    files = [
-        {**item, "path": Path(item["path"]).relative_to(run.ASSETS).as_posix()}
-        for item in layout.uploads(directory, staged=True)
-        if item["name"] != run.SUMS
-    ]
-    for target in targets:
-        packaged = policy.inside(directory, f"target/package/{PROFILE}/{target}")
-        catalog = json.loads((packaged / "catalog.json").read_text(encoding="utf-8"))
-        if catalog["profile"] != PROFILE or not catalog["assets"]:
-            raise policy.ToolError(f"nightly requires a complete {PROFILE} package catalog")
-        for relative, expected in sorted(catalog["assets"].items()):
-            source = run.packages.regular(packaged, relative)
-            data = source.read_bytes()
-            digest = hashlib.sha256(data).hexdigest()
-            if digest != expected["sha256"] or len(data) != expected["bytes"]:
-                raise policy.ToolError(f"{PROFILE} package differs from its catalog: {relative}")
-            # Native Plugin Bundles Share Names; Qualify Them By Their Producer Target.
-            name = f"{target}-{source.name}" if source.suffix == ".harmos" else source.name
-            existing = next((item for item in files if item["name"].casefold() == name.casefold()), None)
-            if existing:
-                if existing["sha256"] != digest or existing["size"] != len(data):
-                    raise policy.ToolError(f"nightly download names collide: {name}")
-                continue
-            destination = policy.inside(root, f"{target}/{name}")
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, destination)
-            files.append(run._describe(root, destination))
-    sums = root / run.SHARED / run.SUMS
-    sums.write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
-    files.append(run._describe(root, sums))
-    layout.upload_manifest(directory, root, files)
-    layout.uploads(directory, staged=True)
 
 
 def _superseded(release: dict | None, identifier: str, field: str) -> bool:

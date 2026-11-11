@@ -23,7 +23,7 @@ from pathlib import Path
 
 # Local Imports
 from ..process import spawn_flags
-from ..release import policy, registry
+from ..release import policy
 from . import summary
 
 # Type Checking Imports
@@ -103,27 +103,10 @@ def run(operation: str, arguments: list[str], profile: str) -> int:
         with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
             output.write(f"build={str(build).lower()}\n")
         return 0
-    if operation == "nightly-publish":
+    if operation == "nightly-report":
         from ..release import nightly
 
-        nightly.publish(policy.root())
-        return 0
-    if operation == "nightly-report":
-        root = policy.root()
-        settings = policy.policy(root, "release")
-        current = registry.document(settings, "releases/tags/nightly", channel=True)
-        notes = current["body"]
-        url = os.environ["RUN_URL"]
-        identity = f"| CI Run | [{os.environ['GITHUB_RUN_ID']}]({url}) |"
-        if identity not in notes.splitlines():
-            print("A Newer Run Replaced Nightly; Leaving Its Notes Unchanged")
-            return 0
-        results = json.loads(os.environ["NEEDS"])
-        failed = [name for name, job in results.items() if name != "publish" and job["result"] != "success"]
-        status = "failed: " + ", ".join(failed) if failed else "passed"
-        line = f"**Suite:** {status} ([run]({url}))"
-        notes = "\n".join(row for row in notes.splitlines() if not row.startswith("**Suite:**")).rstrip()
-        registry.document(settings, f"releases/{current['id']}", "PATCH", {"body": notes + "\n\n" + line + "\n"}, channel=True)
+        nightly.report(policy.root(), json.loads(os.environ["NEEDS"]), os.environ["RUN_URL"])
         return 0
     if operation == "mirror":
         branch = os.environ["GITHUB_REF_NAME"]

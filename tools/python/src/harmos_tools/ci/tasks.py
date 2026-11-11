@@ -122,6 +122,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
     package.add_argument("--profile", choices=("dev", "release"), default="dev")
     for name in ("prepare", "tag", "rehearse", "publish", "verify"):
         release = commands.add_parser(f"release:{name}")
+        if name in ("publish", "verify"):
+            release.add_argument("--channel", choices=("stable", "nightly"), default="stable")
         if name == "publish":
             publication = release.add_mutually_exclusive_group()
             publication.add_argument("--dry", action="store_true")
@@ -139,7 +141,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
         "summary",
         "nightly-freshness",
         "nightly-report",
-        "nightly-publish",
         "mirror",
         "runners",
         "review",
@@ -460,6 +461,20 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Release Operations
     operation = options.command.partition(":")[2]
+    if operation in ("publish", "verify") and options.channel == "nightly":
+        from ..release import nightly, policy as release_policy
+
+        if operation == "verify":
+            nightly.verify(root)
+        elif options.dry:
+            from ..release import run as releases
+
+            releases.dry(root, release_policy.policy(root, "release"), profile="release", require_all=True, channel="nightly")
+        elif options.stage:
+            parser.error("nightly publication has one complete publish entry point")
+        else:
+            nightly.publish(root)
+        return 0
     if operation == "publish":
         if not options.dry and options.stage in (None, "assets") and os.environ.get("GITHUB_ACTIONS"):
             _module("release.checks")

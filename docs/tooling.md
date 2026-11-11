@@ -323,16 +323,40 @@ the Cargo lock hash is the final restorable component. Other tool versions do
 not invalidate compiler caches.
 
 Nightly runs every four hours in UTC and on manual dispatch, only on dev.
-Whole runs never cancel an earlier run. `ci:nightly-freshness` writes `build` to
-`GITHUB_OUTPUT`: scheduled runs compare the nightly tag with the source revision;
-a missing tag allows the first build, while other lookup errors fail closed.
-Manual runs bypass tag freshness. Both skip duplicate queued or running revisions.
-`ci:nightly-publish` consumes both native package archives and uses the existing
-publisher's staged upload and tag, release and asset verification. Publication
-waits only for packages. `ci:nightly-report` reads `NEEDS` JSON and `RUN_URL`,
-replaces its previous suite verdict idempotently and lists failed or skipped jobs.
-It updates only the release whose CI Run row matches this run's ID and URL.
-Mirror uses `ci:mirror` with its SSH key, known hosts and GitHub ref/SHA inputs.
+Runs never cancel each other. Freshness compares the nightly tag, suppresses duplicate
+queued/running revisions and fails closed on lookup errors. Publication waits only for
+Product Build and Package; suites, benchmarks and coverage may fail independently.
+
+`validation.yml` owns the shared validation job bodies, selected by `selection`,
+`profile` and `channel`; CI and Nightly call it. `publication.yml` and
+`verification.yml` own the shared publish and verify jobs. Both channels use
+`release:publish --channel stable|nightly` and `release:verify --channel stable|nightly`.
+Stable keeps its review evidence and registry guards; Nightly creates no stable tag
+and publishes no registry packages. Registry publication remains in `release.yml`.
+
+Package exports the reference host and plugin archive from matching Product bytes,
+with conservative locked Cargo target graphs and the Python SDK lock inventory as
+CycloneDX JSON plus notices. Release staging builds protocol and compliance ZIPs,
+`release.json` and `SHA256SUMS` from those existing packages. It replaces its owned
+staging directories and rejects files or links where a directory is required.
+The changelog is stored in `release.json` for the release body and is never attached separately. No legacy
+plugin feed, separate download index, example archive or individual compliance file
+is added to the upload inventory.
+
+`release:rehearse --target native --profile dev --stage-only` checks existing local
+packages without registry dry runs. Hosted rehearsal requires release-profile
+packages for both native targets and registry verification. `release:publish --dry`
+uses the same staging path; add `--channel nightly` to rehearse the Nightly inventory.
+Neither command builds missing inputs.
+
+Nightly publishes initial report downloads even when no suite has finished. The final
+report job downloads available benchmark and coverage artifacts, then replaces the
+reports ZIP, `benchmarks.json`, `release.json` and checksums. It appends an idempotent
+results table and pipeline URL only when the release's CI Run row identifies this run.
+Publication and report updates share noncancelling concurrency; verification checks
+remote asset names and digests. Benchmark exports retain medians and pre-run baselines,
+including results available from a failed benchmark subprocess.
+
 `ci:runners` preserves the runner allowlist check. `ci:release-mode` emits `mode`
 and `sha` to `GITHUB_OUTPUT`: successful release-review CI completion selects its
 merged, untagged release squash for tagging; unrelated completions skip. A dispatch

@@ -28,7 +28,7 @@ from collections.abc import Iterable
 from ..build.fixtures import ROOT
 from ..build import paths
 from .. import temporary
-from . import run
+from . import conformance, run
 
 # Type Checking Imports
 
@@ -68,6 +68,7 @@ def main() -> None:
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
+    conformance.package(ROOT, profile, paths.target())
     packaged = (source for source in (destination / "rust").iterdir() if source.is_file())
     assets = _records(packaged, destination)
     products = run.definitions(ROOT, profile, paths.target())

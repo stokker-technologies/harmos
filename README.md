@@ -136,10 +136,14 @@ On Windows, run the corresponding executable under
 [published Harmos version](https://crates.io/crates/harmos) and the
 [SDK](sdk/rust/Cargo.toml) or [runtime features](crates/harmos-runtime/Cargo.toml) your application needs.
 
-The [Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
-prerelease provides unsigned release-profile Schematic ZIPs and
-plugin bundles from dev, with SHA256SUMS. Its downloads change in place with each
-nightly run, and its notes record whether that run's suite passed.
+[Releases](https://github.com/stokker-technologies/harmos/releases) attach
+`harmos-proto-<version>.zip`, one `harmos-conformance-<version>-<platform>.zip|tar.gz`
+per platform, `harmos-compliance-<version>.zip`, `release.json` and `SHA256SUMS`.
+The changelog is the release body; crates and language SDKs use their registries.
+The mutable [Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
+adds `harmos-reports-<version>.zip` and fixed-name `benchmarks.json`. Its notes record
+coverage, benchmark regressions, suite results and the workflow link; failed suites
+can accompany a published build.
 
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
 and plugin revisions aligned and review release notes before updating. Stored data

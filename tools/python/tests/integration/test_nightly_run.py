@@ -12,7 +12,6 @@
 # === Imports === #
 
 # Standard Library Imports
-import json
 import os
 import subprocess
 import tempfile
@@ -103,51 +102,10 @@ class NightlyRunTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     tasks.main(["ci:nightly-freshness"])
 
-            # Publish The Existing Native Packages Through The Workflow Entry Point.
-            with patch.object(nightly, "publish") as publish, patch.object(workflow.policy, "root", return_value=Path(temporary)):
-                self.assertEqual(tasks.main(["ci:nightly-publish"]), 0)
-                publish.assert_called_once_with(Path(temporary))
-
-            # Record Failed, Cancelled And Skipped Suites Without Duplicating A Rerun.
-            current = {"id": 9, "body": "| CI Run | [7](https://example.test/actions/runs/7) |"}
-            updates = []
-
-            def document(settings, endpoint, method="GET", payload=None, **kwargs):
-                if method == "PATCH":
-                    assert payload is not None
-                    self.assertEqual(endpoint, "releases/9")
-                    updates.append(payload["body"])
-                    current.update(payload)
-                return current
-
-            environment["NEEDS"] = json.dumps(
-                {
-                    "publish": {"result": "success"},
-                    "test": {"result": "failure"},
-                    "bench": {"result": "cancelled"},
-                    "coverage": {"result": "skipped"},
-                }
-            )
-            with (
-                patch.dict(os.environ, environment, clear=True),
-                patch.object(workflow.policy, "root", return_value=Path(temporary)),
-                patch.object(workflow.policy, "policy", return_value={}),
-                patch.object(workflow.registry, "document", side_effect=document),
-            ):
-                self.assertEqual(tasks.main(["ci:nightly-report"]), 0)
-                self.assertEqual(tasks.main(["ci:nightly-report"]), 0)
-                self.assertEqual(updates[0], updates[1])
-                self.assertIn("failed: test, bench, coverage", current["body"])
-                self.assertEqual(current["body"].count("**Suite:**"), 1)
-                os.environ["NEEDS"] = json.dumps({"test": {"result": "success"}})
-                self.assertEqual(tasks.main(["ci:nightly-report"]), 0)
-                self.assertIn("**Suite:** passed", current["body"])
-
-                # Leave A Replacement Publication Untouched, Even With An Incidental Run Link.
-                current["body"] = "| CI Run | [8](https://example.test/actions/runs/8) |\n[7](https://example.test/actions/runs/7)"
-                count = len(updates)
-                self.assertEqual(tasks.main(["ci:nightly-report"]), 0)
-                self.assertEqual(len(updates), count)
+            # Publish Through The Same Channel-Aware Entry Point As Stable Releases.
+            with patch.object(nightly, "publish") as publish:
+                self.assertEqual(tasks.main(["release:publish", "--channel", "nightly"]), 0)
+                publish.assert_called_once_with(Path.cwd())
 
 
 # === Public Functions === #

@@ -11,11 +11,9 @@
 
 # Standard Library Imports
 import hashlib
-import io
 import json
 import re
-import tarfile
-import zipfile
+import urllib.parse
 from pathlib import Path
 
 # Third Party Imports
@@ -36,156 +34,62 @@ from . import policy
 
 
 def triple(directory: Path, settings: dict, target: str) -> str:
-    """Resolve A Product's Actual ABI From Its Declarations, Never From Its Name."""
-    candidates = {
-        item["targets"][target] for item in policy.config(directory).get("package", {}).get("executables", []) if target in item["targets"]
-    }
-    candidates.update(item["targets"][target] for item in settings.get("plugins", []) if target in item.get("targets", {}))
-    declared = settings.get("target_triples", {}).get(target)
-    if declared:
-        candidates.add(declared)
-    if len(candidates) != 1:
-        raise policy.ToolError(f"declare one release.target_triples entry or executable ABI for {target}")
-    value = candidates.pop()
+    value = settings.get("target_triples", {}).get(target)
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+){2,}", value):
-        raise policy.ToolError("invalid release Rust target triple")
+        raise policy.ToolError(f"declare release.target_triples for {target}")
     return value
 
 
-def asset_name(directory: Path, settings: dict, definition: dict, selected: str, tag: str, source: Path) -> str | None:
-    """Accept Only The Locked Download Kinds; Product Examples And Registry Artifacts Stay Out."""
-    if source.name == "latest.json":
-        return "latest.json"
-    parts = source.relative_to(directory).parts
-    extension = settings.get("plugin_extension")
-    plugin_bundle = extension is not None and source.suffix == f".{extension}"
-    if source.suffix.lower() in {".sig", ".whl"} or plugin_bundle or "python" in parts or "examples" in parts:
-        return None
-    kind = definition.get("kind", "installer")
-    if kind not in {"installer", "tool", "distribution"}:
-        raise policy.ToolError(f"unsupported release asset kind: {kind}")
-    name = definition.get("name", source.name)
-    substitutions = {"product": settings["product"], "version": tag[1:], "target": selected}
-    if kind == "distribution":
-        if source.suffix != ".zip":
-            raise policy.ToolError("distribution input must be a ZIP")
-        return f"{settings['product']}-distribution-{tag[1:]}-{triple(directory, settings, selected)}.zip"
-    name = name.format(**substitutions)
-    if kind == "tool":
-        return name
-    if source.suffix.lower() in {".deb", ".rpm"}:
-        return name
-    if source.suffix.lower() not in {".exe", ".msi", ".msix", ".appimage", ".dmg", ".pkg"}:
-        raise policy.ToolError(f"unsupported release asset; declare distribution ZIPs with kind = 'distribution': {source.name}")
-    suffix = "-setup.exe" if source.name.endswith("-setup.exe") else source.suffix
-    return f"{settings['product']}-{tag[1:]}-{triple(directory, settings, selected)}{suffix}"
+def conformance_name(directory: Path, settings: dict, target: str, version: str) -> str:
+    abi = triple(directory, settings, target)
+    suffix = ".zip" if "-windows-" in abi else ".tar.gz"
+    return f"{settings['product']}-conformance-{version}-{abi}{suffix}"
 
 
-def plugins(directory: Path, settings: dict, tag: str, targets: list[str], profile: str) -> list[dict]:
-    """Resolve Explicit Shipped Bundles Into Shared Archives And Version-Less Members."""
-    declarations = settings.get("plugins", [])
-    if not declarations:
-        return []
-    extension = settings.get("plugin_extension")
-    if not isinstance(extension, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", extension):
-        raise policy.ToolError("release.plugin_extension must declare the bundle extension without a dot")
-    requirement_key = f"requires_{settings['product']}"
-    result = []
-    names = set()
-    for declaration in declarations:
-        package = declaration["package"]
-        if not isinstance(package, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", package):
-            raise policy.ToolError("invalid shipped plugin package")
-        if package.casefold() in names:
-            raise policy.ToolError("shipped plugin names collide")
-        names.add(package.casefold())
-        kind = declaration.get("kind")
-        if kind not in {"sidecar", "guest"}:
-            raise policy.ToolError("shipped plugin kind must be sidecar or guest")
-        requirement = declaration.get(requirement_key)
-        if not isinstance(requirement, str) or not requirement.strip() or len(requirement) > 256:
-            raise policy.ToolError(f"plugin {requirement_key} must declare its host requirement")
-        if kind == "guest" and "targets" in declaration:
-            raise policy.ToolError("guest plugins are target-independent; omit targets")
-        declared = declaration.get("targets") if kind == "sidecar" else {"any": "any"}
-        if (
-            not isinstance(declared, dict)
-            or not declared
-            or not set(declared) <= set(settings["targets"] if kind == "sidecar" else ["any"])
-        ):
-            raise policy.ToolError("sidecar targets must map declared release targets to Rust ABIs")
-        for target in targets if kind == "sidecar" else ["any"]:
-            abi = declared.get(target)
-            if abi is None:
-                continue
-            if kind == "sidecar" and abi != triple(directory, settings, target):
-                raise policy.ToolError("plugin target differs from the declared release ABI")
-            relative = declaration["path"].format(profile=profile, target=target, version=tag[1:], package=package)
-            source = policy.inside(directory, relative)
-            if source.suffix != f".{extension}" or not source.is_file() or source.is_symlink():
-                raise policy.ToolError(f"missing regular shipped plugin bundle: {relative}")
-            suffix = ".zip" if target == "any" or target.startswith("windows-") else ".tar.gz"
-            name = f"{settings['product']}-{kind}s-{tag[1:]}" + ("" if target == "any" else f"-{abi}") + suffix
-            result.append(
-                {
-                    "package": package,
-                    "kind": kind,
-                    "requires": requirement,
-                    "archive": name,
-                    "member": f"{package}.{extension}",
-                    "path": relative,
-                    "target": target,
-                    "triple": abi,
-                }
-            )
-    return result
+def download_url(settings: dict, tag: str, name: str) -> str:
+    """The Public Download Of One Release Asset Under Its Tag, From The Declared Provider."""
+    quoted = f"{urllib.parse.quote(tag, safe='')}/{urllib.parse.quote(name, safe='')}"
+    if settings["provider"] == "github":
+        return f"https://github.com/{settings['repository']}/releases/download/{quoted}"
+    base = settings.get("api_url", "https://gitlab.com/api/v4").removesuffix("/api/v4")
+    return f"{base}/{settings['project_id']}/-/releases/{quoted.replace('/', '/downloads/', 1)}"
 
 
-def plugin_feed(settings: dict, tag: str, bundles: list[dict]) -> dict:
-    entries = {}
-    for bundle in bundles:
-        entry = entries.setdefault(
-            bundle["package"],
+def classify(settings: dict, name: str) -> dict:
+    for family in ("proto", "compliance", "reports"):
+        if name.startswith(f"{settings['product']}-{family}-") and name.endswith(".zip"):
+            return {"kind": family, "os": "any", "arch": "any", "format": "zip"}
+    if name == "benchmarks.json":
+        return {"kind": "benchmarks", "os": "any", "arch": "any", "format": "json"}
+    match = re.fullmatch(r"harmos-conformance-.+-(x86_64|aarch64)-[a-z0-9_]+-(linux|windows|darwin).*(\.zip|\.tar\.gz)", name)
+    if match:
+        return {"kind": "conformance", "os": {"darwin": "macos"}.get(match[2], match[2]), "arch": match[1], "format": match[3][1:]}
+    raise policy.ToolError(f"unsupported release download: {name}")
+
+
+def downloads(settings: dict, *, version: str, channel: str, tag: str, published: str, files: list[dict], sums: str) -> dict:
+    """Classify And Link Payloads; The Index And Checksums Stay Outside Their Own Inventory."""
+    digests = {}
+    for line in sums.splitlines():
+        digest, separator, name = line.partition("  ")
+        if not separator or name in digests:
+            raise policy.ToolError("invalid or duplicate SHA256SUMS entry")
+        digests[name] = digest
+    artifacts = []
+    for item in sorted(files, key=lambda entry: entry["name"]):
+        digest = digests.get(item["name"])
+        if digest is None:
+            raise policy.ToolError(f"SHA256SUMS does not list {item['name']}")
+        artifacts.append(
             {
-                "name": bundle["package"],
-                "kind": bundle["kind"],
-                "version": tag[1:],
-                f"requires_{settings['product']}": bundle["requires"],
-                "targets": {},
-            },
+                **classify(settings, item["name"]),
+                "name": item["name"],
+                "url": download_url(settings, tag, item["name"]),
+                "size": item["size"],
+                "sha256": digest,
+            }
         )
-        entry["targets"][bundle["triple"]] = {key: bundle[key] for key in ("archive", "member", "sha256")}
-    return {"format_version": 2, "plugins": [entries[name] for name in sorted(entries)]}
-
-
-def plugin_archives(directory: Path, root: Path, bundles: list[dict]) -> list[Path]:
-    """Archive Bundle Bytes Once Per Kind And Target, Hashing The Exact Member Bytes."""
-    groups = {}
-    for bundle in bundles:
-        groups.setdefault((bundle["target"], bundle["archive"]), []).append(bundle)
-    outputs = []
-    for (target, name), members in sorted(groups.items()):
-        destination = policy.inside(root, f"{target}/{name}")
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            raise policy.ToolError(f"release download names collide: {name}")
-        if name.endswith(".zip"):
-            with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
-                for bundle in sorted(members, key=lambda item: item["member"]):
-                    data = policy.inside(directory, bundle["path"]).read_bytes()
-                    bundle["sha256"] = hashlib.sha256(data).hexdigest()
-                    archive.writestr(bundle["member"], data)
-        else:
-            with tarfile.open(destination, "x:gz") as archive:
-                for bundle in sorted(members, key=lambda item: item["member"]):
-                    data = policy.inside(directory, bundle["path"]).read_bytes()
-                    bundle["sha256"] = hashlib.sha256(data).hexdigest()
-                    metadata = tarfile.TarInfo(bundle["member"])
-                    metadata.size = len(data)
-                    metadata.mode = 0o644
-                    archive.addfile(metadata, io.BytesIO(data))
-        outputs.append(destination)
-    return outputs
+    return {"version": version, "channel": channel, "tag": tag, "pub_date": published, "artifacts": artifacts}
 
 
 def upload_manifest(directory: Path, root: Path, files: list[dict]) -> None:

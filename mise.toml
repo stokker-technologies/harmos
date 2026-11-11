@@ -127,11 +127,6 @@ hide = true
 description = "CI / Nightly Freshness"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:nightly-freshness"
 
-[tasks."ci:nightly-publish"]
-description = "Publish Nightly Packages"
-hide = true
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:nightly-publish"
-
 [tasks."ci:nightly-report"]
 hide = true
 description = "CI / Nightly Report"
@@ -374,7 +369,7 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 
 [tasks."release:publish:assets"]
 hide = true
-description = "Draft the Release with Its Signed Assets"
+description = "Draft the Release with Its Assets"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.release.run publish"
 
 [tasks."release:publish:dry"]

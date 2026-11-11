@@ -64,870 +64,119 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: python,uv
   check:
-    name: Check / ${{ matrix.label }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-        cache-backend: ${{ matrix.cache }}
-        cache-mode: ${{ matrix.mode }}
-    - name: Run Project Task
-      run: mise run check -- ${{ matrix.arguments }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: matrix.cache != '' && (success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.sccache-cache-hit
-        != 'true')
-      with:
-        key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
-        path: ${{ steps.setup.outputs.sccache-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,git-cliff,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
-      COMPILER_CACHE_BACKEND: ${{ matrix.cache }}
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ matrix.mode }}
-      CI_CACHE_PROFILE: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - label: Repository
-          runner: ubuntu-24.04
-          arguments: --repository
-          cache: ''
-          mode: ''
-        - label: Rust (unix)
-          runner: ubuntu-24.04
-          arguments: --language rust
-          cache: disk
-          mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' ||
-            'READ_ONLY' }}
-        - label: Rust (windows)
-          runner: windows-2022
-          arguments: --language rust
-          cache: disk
-          mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' ||
-            'READ_ONLY' }}
     needs:
     - freshness
     if: needs.freshness.outputs.build == 'true'
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: check
+      profile: release
   build_product:
-    name: Build / Product (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-        cache-backend: disk
-        cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-          || 'READ_ONLY' }}
-    - name: Run Project Task
-      run: mise run build -- --profile ${{ env.PROFILE }}
-      env:
-        CI_OUTPUT_ARCHIVES: '[{"archive":"target/ci/build-product-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst","paths":["target/build/{profile}/{target}/bin","target/build/{profile}/{target}/lib","target/build/{profile}/{target}/product","target/generated/python/pyproject.toml","target/generated/python/src"],"profile":"${{
-          env.PROFILE }}"}]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: build-product-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci/build-product-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst
-        if-no-files-found: error
-        retention-days: 7
-        compression-level: 0
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.sccache-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
-        path: ${{ steps.setup.outputs.sccache-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
-      COMPILER_CACHE_BACKEND: disk
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-        || 'READ_ONLY' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ''
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ''
     needs:
     - freshness
     if: needs.freshness.outputs.build == 'true'
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: build_product
+      profile: release
   build_tests:
-    name: Build / Tests (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-        cache-backend: disk
-        cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-          || 'READ_ONLY' }}
-    - name: Run Project Task
-      run: mise run build -- --artifact tests --profile ${{ env.PROFILE }}
-      env:
-        CI_OUTPUT_ARCHIVES: '[{"archive":"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst","paths":["target/build/{profile}/{target}/fixtures"],"profile":"${{
-          env.PROFILE }}"},{"archive":"target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst","paths":["target/build/{profile}/{target}/tests/archive.tar.zst","target/build/{profile}/{target}/tests/compiler.json"],"profile":"${{
-          env.PROFILE }}"}]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst
-        if-no-files-found: error
-        retention-days: 7
-        compression-level: 0
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: build-tests-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst
-        if-no-files-found: error
-        retention-days: 7
-        compression-level: 0
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.sccache-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
-        path: ${{ steps.setup.outputs.sccache-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
-      COMPILER_CACHE_BACKEND: disk
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-        || 'READ_ONLY' }}
-      CI_CACHE_PROFILE: test
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ''
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ''
     needs:
     - freshness
     if: needs.freshness.outputs.build == 'true'
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: build_tests
+      profile: release
   build_bench:
-    name: Build / Bench
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-        cache-backend: disk
-        cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-          || 'READ_ONLY' }}
-    - name: Run Project Task
-      run: mise run build -- --artifact bench
-      env:
-        CI_OUTPUT_ARCHIVES: '[{"archive":"target/ci/build-bench-bench-unix.tar.zst","paths":["target/build/bench/{target}/bench","target/build/bench/{target}/bin","target/build/bench/{target}/fixtures"],"profile":"bench"}]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: build-bench-bench-unix
-        path: target/ci/build-bench-bench-unix.tar.zst
-        if-no-files-found: error
-        retention-days: 7
-        compression-level: 0
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.sccache-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
-        path: ${{ steps.setup.outputs.sccache-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
-      COMPILER_CACHE_BACKEND: disk
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-        || 'READ_ONLY' }}
-      CI_CACHE_PROFILE: bench
     needs:
     - freshness
     if: needs.freshness.outputs.build == 'true'
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: build_bench
+      profile: release
   check_generated:
-    name: Check / Python${{ matrix.suffix }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-product-${{ env.PROFILE }}-unix
-        path: target/ci
-    - name: Run Project Task
-      run: mise run check -- ${{ matrix.arguments }}
-      env:
-        CI_INPUT_ARCHIVES: '["target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst"]'
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,taplo,uv
     needs:
     - build_product
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - suffix: ''
-          arguments: --language python
-        - suffix: ' / Generated'
-          arguments: --generated
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: check_product
+      profile: release
   prepare_test_fixtures:
-    name: Prepare / Test Fixtures (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-        cache-backend: disk
-        cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-          || 'READ_ONLY' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-product-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-tests-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci
-    - name: Run Project Task
-      run: mise run build -- --artifact fixtures --profile ${{ env.PROFILE }}
-      env:
-        CI_INPUT_ARCHIVES: '["target/ci/build-product-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst", "target/ci/build_rust_tests-fixtures-${{
-          env.PROFILE }}-${{ matrix.platform }}.tar.zst", "target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
-        CI_OUTPUT_ARCHIVES: '[{"archive": "target/ci/build-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst", "paths": ["target/build/{profile}/{target}/fixtures",
-          "target/build/{profile}/{target}/tests/archive.tar.zst", "target/build/{profile}/{target}/tests/compiler.json", "target/build/{profile}/{target}/bin",
-          "target/build/{profile}/{target}/lib", "target/build/{profile}/{target}/product", "target/generated/python/pyproject.toml", "target/generated/python/src"],
-          "profile": "${{ env.PROFILE }}"}]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: build-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci/build-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst
-        if-no-files-found: error
-        retention-days: 7
-        compression-level: 0
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.sccache-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
-        path: ${{ steps.setup.outputs.sccache-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,uv
-      COMPILER_CACHE_BACKEND: disk
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-        || 'READ_ONLY' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ''
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ''
     needs:
     - build_product
     - build_tests
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: prepare_test_fixtures
+      profile: release
   test_unit:
-    name: Test / Rust / ${{ matrix.label }} (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-tests-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci
-    - name: Run Project Task
-      run: mise run test -- --language ${{ matrix.language }} ${{ matrix.arguments }} --profile ${{ env.PROFILE }}
-      env:
-        CI_INPUT_ARCHIVES: '["target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: junit-test_rust_${{ matrix.layer }}-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: |-
-          target/tests/${{ env.PROFILE }}/*/${{ matrix.report_layer }}-rust/
-          target/traces/${{ env.PROFILE }}/*/${{ matrix.report_layer }}-rust/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
-      if: always()
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ''
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ''
-        - layer: unit
-          label: Unit
-          arguments: --layer unit
-          report_layer: unit
-        layer:
-        - unit
-        language:
-        - rust
     needs:
     - build_tests
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: test_unit
+      profile: release
   test:
-    name: Test / Rust / ${{ matrix.label }} (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci
-    - name: Run Project Task
-      run: mise run test -- --language ${{ matrix.language }} ${{ matrix.arguments }} --profile ${{ env.PROFILE }}
-      env:
-        CI_INPUT_ARCHIVES: '["target/ci/build-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: junit-test_rust_${{ matrix.layer }}-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: |-
-          target/tests/${{ env.PROFILE }}/*/${{ matrix.report_layer }}-rust/
-          target/traces/${{ env.PROFILE }}/*/${{ matrix.report_layer }}-rust/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
-      if: always()
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ''
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ''
-        - layer: integration
-          label: Integration
-          arguments: --layer integration
-          report_layer: integration
-        - layer: acceptance
-          label: Acceptance
-          arguments: --layer acceptance
-          report_layer: acceptance
-        - layer: system
-          label: System
-          arguments: --layer system
-          report_layer: system
-        layer:
-        - integration
-        - acceptance
-        - system
-        language:
-        - rust
     needs:
     - prepare_test_fixtures
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: test
+      profile: release
   coverage:
-    name: Test / Rust / Coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-fixtures-${{ env.PROFILE }}-unix
-        path: target/ci
-    - name: Run Project Task
-      run: mise run test -- --coverage --profile release
-      env:
-        CI_INPUT_ARCHIVES: '["target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst"]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: junit-coverage-${{ env.PROFILE }}-unix
-        path: target/tests/${{ env.PROFILE }}/*/coverage/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
-      if: always()
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
     needs:
     - prepare_test_fixtures
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: coverage
+      profile: release
   bench:
-    name: Bench / Rust / ${{ matrix.layer }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-bench-bench-unix
-        path: target/ci
-    - name: Run Project Task
-      run: mise run bench -- --layer ${{ matrix.layer }} --refresh-baseline
-      env:
-        CI_INPUT_ARCHIVES: '["target/ci/build-bench-bench-unix.tar.zst"]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: bench-bench_rust_${{ matrix.layer }}
-        path: target/benchmarks/
-        if-no-files-found: ignore
-        retention-days: 7
-        include-hidden-files: true
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.bench_baselines-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.bench_baselines-cache-primary-key }}
-        path: ${{ steps.setup.outputs.bench_baselines-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
-      CI_BENCH_LAYER: ${{ matrix.layer }}
     needs:
     - build_bench
-    strategy:
-      fail-fast: false
-      matrix:
-        layer:
-        - unit
-        - integration
-        - system
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: bench
+      profile: release
   package:
-    name: Package / Rust (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.minutes }}
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: build-product-${{ env.PROFILE }}-${{ matrix.platform }}
-        path: target/ci
-    - name: Run Project Task
-      run: mise run package -- --language rust --profile ${{ env.PROFILE }}
-      env:
-        CI_INPUT_ARCHIVES: '["target/ci/build-product-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
-        CI_OUTPUT_ARCHIVES: '[{"archive":"target/ci/package-${{ env.PROFILE }}-rust-${{ matrix.platform }}.tar.zst","paths":["target/package/{profile}/{target}"],"profile":"${{
-          env.PROFILE }}"}]'
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-      with:
-        name: package-${{ env.PROFILE }}-rust-${{ matrix.platform }}
-        path: target/ci/package-${{ env.PROFILE }}-rust-${{ matrix.platform }}.tar.zst
-        if-no-files-found: error
-        retention-days: 7
-        compression-level: 0
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ''
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ''
     needs:
     - build_product
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: package_rust
+      profile: release
   release_dry:
-    name: Release / Dry
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-        cache-backend: disk
-        cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-          || 'READ_ONLY' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: package-${{ env.PROFILE }}-rust-unix
-        path: target/ci
-        github-token: ${{ github.token }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: package-${{ env.PROFILE }}-rust-windows
-        path: target/ci
-        github-token: ${{ github.token }}
-    - name: Run Project Task
-      run: mise run release:publish -- --dry
-      env:
-        RELEASE_PROFILE: ${{ env.PROFILE }}
-        CI_INPUT_ARCHIVES: '["target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst","target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst"]'
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.sccache-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
-        path: ${{ steps.setup.outputs.sccache-path }}
-    env:
-      MISE_ENABLE_TOOLS: git-cliff,go,node,python,rust,sccache,uv
-      COMPILER_CACHE_BACKEND: disk
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
-        || 'READ_ONLY' }}
-      RELEASE_PROFILE: release
-    permissions:
-      actions: read
-      contents: read
     needs:
     - package
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: release_dry
+      profile: release
   publish:
-    name: Nightly / Publish
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    needs:
-    - package
+    needs: [package]
     if: always() && github.ref == 'refs/heads/dev' && needs.package.result == 'success'
+    uses: ./.github/workflows/publication.yml
+    with:
+      channel: nightly
+      profile: release
     permissions:
       contents: write
       actions: read
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: package-${{ env.PROFILE }}-rust-unix
-        path: target/ci
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: package-${{ env.PROFILE }}-rust-windows
-        path: target/ci
-    - name: Run Project Task
-      run: mise run ci:nightly-publish --
-      env:
-        GH_TOKEN: ${{ github.token }}
-        GITHUB_TOKEN: ${{ github.token }}
-        CI_INPUT_ARCHIVES: '["target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst","target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst"]'
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    env:
-      MISE_ENABLE_TOOLS: python,uv
-    concurrency:
-      group: nightly-publish
-      cancel-in-progress: false
+      checks: read
+      id-token: write
+      attestations: write
   report:
     name: Nightly / Report
     runs-on: ubuntu-24.04
@@ -942,6 +191,7 @@ jobs:
     - package
     - prepare_test_fixtures
     - publish
+    - verify
     - check_generated
     - test
     - test_unit
@@ -949,6 +199,9 @@ jobs:
     if: always() && needs.publish.result == 'success'
     permissions:
       contents: write
+    concurrency:
+      group: nightly-publication
+      cancel-in-progress: false
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -958,6 +211,21 @@ jobs:
       uses: ./.github/actions/setup
       with:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+    - name: Download Publication Inventory
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: release-manifest
+        path: target/release-assets
+    - name: Download Available Benchmarks
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: bench-*
+        path: target/nightly-reports/benchmarks
+    - name: Download Available Coverage
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: junit-coverage-*
+        path: target/nightly-reports/rust
     - name: Run Project Task
       run: mise run ci:nightly-report --
       env:
@@ -982,3 +250,13 @@ jobs:
         path: ${{ steps.setup.outputs.uv-path }}
     env:
       MISE_ENABLE_TOOLS: python,uv
+  verify:
+    needs: [publish]
+    if: always() && needs.publish.result == 'success'
+    uses: ./.github/workflows/verification.yml
+    with:
+      channel: nightly
+      profile: release
+    permissions:
+      contents: read
+      actions: read

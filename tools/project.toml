@@ -383,6 +383,10 @@ provider = "github"
 repository = "stokker-technologies/harmos"
 targets = ["linux-x86_64", "windows-x86_64"]
 
+[release.target_triples]
+linux-x86_64 = "x86_64-unknown-linux-gnu"
+windows-x86_64 = "x86_64-pc-windows-msvc"
+
 [version]
 files = [
   "Cargo.toml",

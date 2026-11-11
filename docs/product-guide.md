@@ -307,9 +307,27 @@ CI packages retain `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
 `schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
 Wasm backend. Keep its `plugins/` directory beside the executable. Package
-checks run both backends from an isolated extraction. Examples, test reports and
-fixtures remain source or CI artifacts. Release downloads include generated
-`CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
+checks run both backends from an isolated extraction. Examples and fixtures remain source or CI artifacts.
+
+Stable releases attach these downloads:
+
+- `harmos-proto-<version>.zip`: definitions under `harmos/v1/` and their behaviour specification.
+- `harmos-conformance-<version>-<platform>.zip|tar.gz`: reference host and reference plugin;
+  platform names are Rust target triples. Windows uses ZIP; Linux uses tar.gz.
+- `harmos-compliance-<version>.zip`: locked Cargo source SBOMs under `crates/<triple>/`,
+  the locked Python SDK SBOM under `python/any/`, and per-platform notices under `notices/`.
+- `release.json`: release notes, publication date and the `downloads` section. Each download
+  has a kind, OS, architecture, format, URL, size and SHA-256 digest.
+- `SHA256SUMS`: every attached payload and `release.json`; the checksum file omits itself.
+
+The download index omits itself and `SHA256SUMS` to avoid circular hashes. Registry
+packages and example bundles are not release attachments; the changelog is the release body.
+Nightly uses the same layout and adds `harmos-reports-<version>.zip` with available
+benchmark and coverage reports, plus fixed-name `benchmarks.json`. Each benchmark carries
+name, suite, unit, value, baseline value, revision and regression threshold. The final
+notes append coverage per language, benchmark regressions beyond their threshold, all
+suite results and the pipeline URL. Missing or failed reports do not prevent publication;
+the notes retain their suite outcomes. The internal upload inventory is not a download.
 
 `harmos_packaging::package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Each sidecar bundle

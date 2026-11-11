@@ -26,6 +26,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from ..process import spawn_flags
+from . import policy
 # Type Checking Imports
 
 # === Public Exports === #
@@ -143,7 +144,7 @@ def github_release_mode():
     if sha != os.environ["GITHUB_SHA"]:
         raise ValueError("release decision checkout differs from event revision")
     fallback = {"mode": "prepare" if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" else "skip", "sha": ""}
-    with open("tools/project.toml", "rb") as stream:
+    with (policy.root() / "tools/project.toml").open("rb") as stream:
         version = tomllib.load(stream)["version"]["value"]
     tag = f"v{version}"
     if command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
