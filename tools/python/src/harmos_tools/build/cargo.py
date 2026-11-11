@@ -120,7 +120,7 @@ def focused(directory: Path, operation: str, arguments: Sequence[str]) -> int:
     return subprocess.run(
         ["cargo", operation, *arguments],
         cwd=directory,
-        env=dict(os.environ, CARGO_BUILD_WARNINGS="deny"),
+        env=dict(os.environ, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target")),
         stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,

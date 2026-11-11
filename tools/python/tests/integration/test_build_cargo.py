@@ -62,6 +62,16 @@ class FocusedCargoTests(unittest.TestCase):
                 self.assertEqual(command, (["cargo", operation, *arguments],))
                 self.assertEqual(options["cwd"], directory)
                 self.assertEqual(options["env"]["CARGO_BUILD_WARNINGS"], "deny")
+                self.assertEqual(options["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
+
+    def test_nested_manifest_shares_repository_target(self):
+        directory = Path.cwd()
+        with (
+            patch.dict(os.environ, CARGO_TARGET_DIR="elsewhere"),
+            patch.object(cargo.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run,
+        ):
+            cargo.focused(directory, "build", ["--manifest-path", "examples/schematic/Cargo.toml"])
+        self.assertEqual(run.call_args.kwargs["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
 
     def test_rejects_target_redirection_before_dispatch(self):
         with patch.object(cargo.subprocess, "run") as run:
