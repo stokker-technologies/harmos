@@ -261,7 +261,7 @@ the configured per-test hang guards from `[conventions.testing.deadlines]` in
 `tools/project.toml`. Completed story durations remain measurements. It consumes the existing test archive and fixtures:
 
 ```sh
-mise run test -- --language rust --layer integration --filter 'package(=harmos-runtime) & test(=sidecar::observer_demand::demand_survives_reload)' --stress-count 50
+mise run test -- --language rust --layer integration --filter 'package(=harmos-runtime) & test(=plugin_grpc::child_calls::child_calls_reach_host_and_public_peer_without_start_order)' --stress-count 50
 ```
 
 Select `--profile release` to use an archive and fixtures from a Nightly build.

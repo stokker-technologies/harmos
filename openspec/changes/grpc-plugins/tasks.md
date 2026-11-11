@@ -220,20 +220,20 @@
 
 ## 4. Rust SDK
 
-- [ ] 4.1 Make `sdk/rust` the public package and library `harmos`, compiling no host code; delete `crates/harmos-sdk` and the `crates/harmos` facade, move host exports to `harmos-runtime` and migrate every consumer.
+- [x] 4.1 Make `sdk/rust` the public package and library `harmos`, compiling no host code; delete `crates/harmos-sdk` and the `crates/harmos` facade, move host exports to `harmos-runtime` and migrate every consumer.
 - [x] 4.1.1 Implement the native gRPC plugin SDK in `sdk/rust` with conformance fixtures.
-- [ ] 4.2 Integrate the builder surface across consumers with target-selected `serve`; delete plugin, observer and catalog attribute macros with their sidecar variants, retaining macros required for guest or operation/state authoring until `authoring-without-macros`.
+- [x] 4.2 Integrate the builder surface across native consumers with `serve`; delete plugin, observer and catalog attribute macros with their sidecar variants, retaining macros required for guest or operation/state authoring until `authoring-without-macros`.
 - [x] 4.2.1 Add the Rust Message derive and native plugin, operation, stream and observer builder values.
 - [x] 4.3 Implement native plugin SDK observers answering host ticks, route its waits through the host clock, and share publish_on and its error type.
 - [x] 4.4 Migrate the examples and fixtures.
   - [x] 4.4.1 Migrate Schematic advice to SDK protobuf builders and managed placement, host analysis and transfer streaming, native packaging and benchmark selectors.
   - [x] 4.4.2 Migrate the stream-consumer fixture and its host-row journey to SDK unary calls on managed placement.
-  - [x] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
-- [ ] 4.5 Move surviving native invocation, resource and serving engine code from `crates/harmos-sdk` to host owners with narrow resources for operations; isolate guest dispatch, envelopes and authoring support privately in `harmos-guest` and the runtime guest host, with guest protocol migration deferred under 7.1.
-  - [ ] 4.5.1 Separate `OperationFactory` installation from its shared `WireTable` callback in `crates/harmos-operations/src/execution/operations/registration.rs`; move guest-only dispatch, codec and lifecycle ownership into private guest modules and rerun guest integration and system stories before native removal.
+  - [x] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries select `harmos` for SDK builders and `harmos_runtime` for host authoring.
+- [x] 4.5 Move surviving native invocation, resource and serving engine code from `crates/harmos-sdk` to host owners with narrow resources for operations; isolate guest dispatch, envelopes and authoring support privately in `harmos-guest` and the runtime guest host, with guest protocol migration deferred under 7.1.
+  - [x] 4.5.1 Separate `OperationFactory` installation from its shared `WireTable` callback in `crates/harmos-operations/src/execution/operations/registration.rs`; move guest-only dispatch, codec and lifecycle ownership into private guest modules and rerun guest integration and system stories before native removal.
     - [x] 4.5.1.1 Remove the table-install callback; give guests a private table, lifecycle owner and envelope codec, with a guest-only artifact macro crate; retain erased operation preparation in operations and prove guest integration and system stories.
-    - [ ] 4.5.1.2 Finish the runtime guest host extraction: `src/guest/host/{mod,session}.rs` still imports native wire envelopes and `src/plugin/host/guest.rs` still uses shared plugin scopes, generations and admission; move their required guest controls privately before deleting the native owners.
-- [ ] 4.6 Verify plugin and client SDK dependency closures contain no host crates; migrate example/build-script imports to protocol or runtime as appropriate, and update README/product guidance for the public entry point.
+    - [x] 4.5.1.2 Finish the runtime guest host extraction: private `src/guest/host/envelope/` owns its codec and `src/guest/host/plugin/` owns guest lifecycle, child controls and scopes; native placement shares no guest table or generation scope.
+- [x] 4.6 Verify plugin and client SDK dependency closures contain no host crates; migrate example/build-script imports to protocol or runtime as appropriate, and update README/product guidance for the public entry point.
 
 ## 5. Pilot SDKs
 
@@ -243,18 +243,18 @@
 
 ## 6. Removal
 
-- [ ] 6.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
-- [ ] 6.2 Delete publication leases, admission, cadence reports and the native observer runner.
-- [ ] 6.3 Delete the plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing.
+- [x] 6.1 Delete the framed wire, handshake, credits, control pipe and binary carriers.
+- [x] 6.2 Delete publication leases, admission, cadence reports and the native observer runner.
+- [x] 6.3 Delete native plugin graph, start ordering and reload plans; grants and provider selection; generation tokens and stale-call fencing. Deferred guest lifecycle/child controls retain private authority and identity checks under 7.1.
 - [x] 6.4 Delete `crates/harmos-ffi` and its remaining manifest, task and consumer references.
 - [x] 6.4.1 Replace the C ABI bridge under `sdk/cpp` with the gRPC SDK.
-- [ ] 6.5 Migrate remaining host/guest operation payloads and catalogs to protobuf-derived definitions and remove Postcard message encoding from the wire; the native plugin derive is covered by 4.2.1.
-- [ ] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
+- [ ] 6.5 Migrate remaining host/guest operation payloads and catalogs to protobuf-derived definitions and remove Postcard message encoding from the wire; the native plugin derive is covered by 4.2.1. Still open: guest envelopes under 7.1 and internal host operation payload/catalog encoding do not migrate automatically with native placement.
+- [x] 6.6 Migrate the runtime sidecar behaviour tests and delete the transport tests and benches.
   - [x] 6.6.1 Complete targeted proof of the replacement Schematic composition and host-row consumption journeys.
   - [x] 6.6.2 Migrate the remaining retained behaviour under crates/harmos-runtime/tests/{sidecar,observers,operations/wire,application,plugin,runtime,integration} and remove assertions for retired graph/grant/token/lease/cadence mechanisms.
     - [x] 6.6.2.1 Retire the process graph and graph reload-plan stories, the framed plugin upload/download/exchange transport stories and their fixture registrations, and the C ABI prototype story, feature and guide.
   - [x] 6.6.3 Delete framed transport tests and benches in crates/harmos-sidecar and native transport benchmark branches in crates/harmos-runtime/benches, preserving guest-used support.
-- [ ] 6.7 Update the product guide, README and authoring guidance.
+- [x] 6.7 Update the product guide, README and authoring guidance.
 - [ ] 6.8 Replace domain wire mirrors with protocol types and delete dead conversions; retain only native state/recovery, schema/encoding and storage contracts listed in Crate Structure, moving dispatch/resource code to its engine owner.
 - [ ] 6.9 Redirect contract-only operations consumers to protocol/SDK, then remove the operations `runtime` feature without moving handlers out of their operation files; remove the superseded host SDK root after its consumers migrate.
 

@@ -38,14 +38,12 @@ Your application defines each change; Harmos manages its accepted history.
 
 ## Features
 
-- **Managed State** [`runtime`]: Apply typed transactions, inspect history and scope undo or redo to selected changes.
-- **Operations and Services** [`runtime`]: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
-- **Streams and Storage** [`runtime`]: Capture bounded live measurements and supply adapters for history, snapshots and streams.
-- **Crash Recovery** [`runtime`]: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
-- **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload, with automatic stream schema revisions.
+- **Managed State**: Apply typed transactions, inspect history and scope undo or redo to selected changes.
+- **Operations and Services**: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
+- **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
+- **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
-- **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
-- **gRPC Plugin Placement** [`plugin-grpc`]: Invoke managed or remote `harmos.v1` plugins, capture their streams and drive plugin waits and observers from the host clock.
+- **gRPC Plugin Placement**: Invoke managed or remote `harmos.v1` plugins, capture their streams and drive plugin waits and observers from the host clock.
 - **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
@@ -79,13 +77,11 @@ application revision that produced them.
 
 ### Rust
 
-Use the `harmos` facade to compose a runtime and define your application's
-state, transactions and operations. The default facade includes the host runtime
-and managed or remote `harmos.v1` plugin placement. Native plugin authors use the
-builder values in `harmos::sdk`. Portable contract crates select
-`default-features = false`; optional features add guest hosting and simulation.
-The [product guide](docs/product-guide.md)
-shows one operation file where the request implements consuming execution with declared resources and child operations.
+Plugin and client authors depend on `harmos` and import `harmos::prelude::*`.
+Its protobuf messages and operation, stream and observer builders compile without host code.
+Host applications depend explicitly on `harmos-runtime` for state, storage,
+managed or remote `harmos.v1` placement and optional guest hosting.
+See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
 
 Portable messages support standard Rust maps with deterministic key ordering
 and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/product-guide.md)
@@ -138,7 +134,7 @@ target/build/dev/linux-x86_64/bin/schematic-cli
 On Windows, run the corresponding executable under
 `target/build/dev/windows-x86_64/bin/`. For library integration, select a
 [published Harmos version](https://crates.io/crates/harmos) and the
-[Cargo features](crates/harmos/Cargo.toml) your application needs.
+[SDK](sdk/rust/Cargo.toml) or [runtime features](crates/harmos-runtime/Cargo.toml) your application needs.
 
 The [Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
 prerelease provides unsigned release-profile Schematic ZIPs and
@@ -153,7 +149,7 @@ written definitions across shape changes and plugin removal. Wire compatibility
 versions remain explicit.
 
 Built-in operation contracts live in `harmos-operations`, re-exported as
-`harmos::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs
+`harmos_runtime::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs
 and `Builtins::catalog()` are available without runtime dependencies.
 
 ## Contributing

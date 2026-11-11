@@ -41,7 +41,7 @@ initialization starts; the readiness interval covers plugin initialization.
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
 The operations crate exposes contracts with default features. Its `runtime` feature
-enables the host and guest implementations. `plugin-grpc` selects the native protobuf
+enables the host and guest implementations. `authoring` selects the native protobuf
 contracts and host-owned analysis progress.
 
 `SchematicEditor` implements the shared `Lifecycle`. Its async `prepare` opens
@@ -50,10 +50,10 @@ operation catalog. `app::launch` calls `Runtime::launch`; shutdown drains work
 before owner stop and cleanup. Tests can replace prepared resource allocations
 through `Runtime::launch_with` while keeping that preparation path.
 
-The native plugin depends on `harmos-sdk-grpc`; its unary protobuf contracts and
+The native plugin depends on `harmos`; its unary protobuf contracts and
 operation builder values live in `operations/src/native.rs`. It ends in `serve()`.
-The host uses managed `plugin-grpc` placement and checks its `Describe` identity.
-The guest retains its existing `harmos` facade, catalog and preparation path.
+The host uses managed gRPC placement and checks its `Describe` identity.
+The guest retains `harmos-guest`, its catalog and preparation path.
 
 ## Streaming and Native Access
 

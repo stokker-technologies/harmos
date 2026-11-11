@@ -391,12 +391,10 @@ fn main() -> Result<()> {
 The pilot covers Rust (`sdk/rust`), Python (`sdk/python`), C# (`sdk/csharp`) and C++
 (`sdk/cpp`). Go is outside the pilot. Python publishes as `harmos-plugin` and imports as `harmos`.
 The Rust SDK at `sdk/rust` is the public package and library `harmos`. Plugin and client
-authors depend on it and use `harmos::prelude::*;` without compiling host code. Task 4.1
-renames the current temporary package `harmos-sdk-grpc`, deletes `crates/harmos-sdk` and
-the `crates/harmos` facade, and migrates their consumers. Host APIs belong to
-`harmos-runtime`; a host embedder depends on that crate explicitly. This is the owner
-decision for the final entry point; the temporary package and facade still exist until
-task 4.1 is implemented.
+authors depend on it and use `harmos::prelude::*;` without compiling host code.
+Its normal dependency closure contains protocol and SDK support, with no host crates.
+Host APIs belong to `harmos-runtime`; a host embedder depends on that crate explicitly.
+The old `crates/harmos-sdk` and `crates/harmos` facade are removed.
 
 Every SDK, Rust included, is built over the `.proto` files: the authoring layer produces and
 consumes `harmos.v1` messages, and a transport adapter carries them (a gRPC server for a

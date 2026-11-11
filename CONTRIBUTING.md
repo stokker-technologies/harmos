@@ -27,8 +27,7 @@ The root uv workspace owns the Python environment and lockfile. Rust compile
 and coverage tasks use the machine-wide cache-directory lock, including focused
 checks, and share a capped local sccache across independent worktree targets.
 
-Harmos owns its workflows, composite actions and CI/release tooling. The Hub
-renders editable baselines; only explicit `stkr project ci render` overwrites CI.
+Harmos owns its workflows, composite actions and CI/release tooling. Pins, CI, release layout, binding generation and documentation are project-owned.
 PRs run selected suites. Dev pushes run only the quick checks and Product and
 Tests compilation; they package and publish nothing. Merges to dev remain
 ungated.
