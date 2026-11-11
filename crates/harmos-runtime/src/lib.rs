@@ -70,8 +70,7 @@ pub use harmos_guest::guest;
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{artifacts, failure, listeners, message, schema};
 pub use harmos_macros::{
-    Described, lanes, record, records, runtime_catalog as catalog, runtime_operation as operation, stream, streams, transaction,
-    transactions,
+    Described, lanes, record, records, runtime_catalog as catalog, runtime_operation as operation, stream, transaction, transactions,
 };
 
 /* === Imports === */
@@ -130,7 +129,7 @@ pub mod __private {
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that
     // generates them.
-    pub use harmos_domain::streams::{StreamCatalog, StreamRow};
+    pub use harmos_domain::streams::StreamRow;
 
     // How generated code names a type the tokens it was handed cannot spell.
 

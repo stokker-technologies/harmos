@@ -84,7 +84,6 @@ impl Application for Studio {
     type State = State;
     type Transaction = Change;
     type Record = ();
-    type Streams = streams::Studio;
 }
 
 impl harmos_runtime::state::CatalogCodec for Change {
@@ -108,7 +107,7 @@ async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item
 
 async fn studio() -> Runtime<Studio> {
     Runtime::<Studio>::launch_with(State, (), |setup| {
-        setup.settings().register(streams::Studio::catalog());
+        setup.settings().register(streams::stream_definitions());
     })
     .await
     .expect("the generated stream catalog is honorable")
@@ -189,12 +188,6 @@ mod streams {
 
     /* === Enums === */
 
-    #[harmos_runtime::streams]
-    pub enum Studio {
-        Pulse(Pulse),
-        Reading(Reading),
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
@@ -207,6 +200,10 @@ mod streams {
 
     /* === Public Functions === */
 
+    pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+        vec![<Pulse>::definition(), <Reading>::definition()]
+    }
+
     /* === Private Functions === */
 
     /* === Tests === */
@@ -215,8 +212,8 @@ mod streams {
 /* === Tests === */
 
 #[test]
-fn generated_catalog_registers() {
-    let catalog = streams::Studio::catalog();
+fn stream_values_register() {
+    let catalog = streams::stream_definitions();
 
     assert_eq!(catalog.iter().map(|definition| definition.id()).collect::<Vec<_>>(), ["pulse", "reading"]);
     assert_eq!(catalog[0].id(), "pulse");
@@ -227,8 +224,8 @@ fn generated_catalog_registers() {
     .unwrap();
     assert_eq!(catalog[0].version(), harmos_domain::streams::revision(&graph, catalog[0].window()).unwrap());
     assert_eq!(catalog[0].window(), 4);
-    assert_eq!(streams::Studio::definition("reading").expect("the id is in the catalog").window(), 2);
-    assert!(streams::Studio::definition("outside").is_none());
+    assert_eq!(catalog.iter().find(|definition| definition.id() == "reading").expect("the id is in the catalog").window(), 2);
+    assert!(catalog.iter().find(|definition| definition.id() == "outside").is_none());
     assert_eq!(streams::Pulse::definition().id(), "pulse");
     assert_eq!(<streams::Pulse as Stream<Studio>>::ID, "pulse");
 }

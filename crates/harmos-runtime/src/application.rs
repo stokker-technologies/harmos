@@ -49,8 +49,6 @@ pub trait Application: Lifecycle<Context = Startup<Self>> + Sync {
         + 'static;
 
     type Record: crate::state::RecordCatalog + Send + Sync + 'static;
-
-    type Streams: Send + Sync + 'static;
 }
 
 /* === Implementations === */

@@ -93,7 +93,6 @@ impl harmos_runtime::Application for Model {
     type State = i64;
     type Transaction = Transactions;
     type Record = Records;
-    type Streams = ();
 }
 
 impl harmos_runtime::state::Transaction<i64> for Add {

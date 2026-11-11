@@ -207,7 +207,6 @@ impl Application for Model {
     type State = State;
     type Transaction = Changes;
     type Record = Facts;
-    type Streams = ();
     type Lanes = TestLanes;
 }
 

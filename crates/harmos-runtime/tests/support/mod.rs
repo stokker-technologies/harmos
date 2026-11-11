@@ -196,7 +196,6 @@ impl Application for Bank {
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;
-    type Streams = feeds::Bank;
 }
 
 impl Registration<Bank> for Definitions {
@@ -475,7 +474,7 @@ pub fn account(change: &Change) -> Option<Account> {
 }
 
 pub fn streams() -> Vec<Definition> {
-    feeds::Bank::catalog()
+    feeds::stream_definitions()
 }
 
 pub fn pulse(sample: u64) -> Pulse {
@@ -611,17 +610,15 @@ mod feeds {
 
     /* === Enums === */
 
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Pulse(Pulse),
-        Reading(Reading),
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
 
     /* === Public Functions === */
+
+    pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+        vec![<Pulse>::definition(), <Reading>::definition()]
+    }
 
     /* === Private Functions === */
 

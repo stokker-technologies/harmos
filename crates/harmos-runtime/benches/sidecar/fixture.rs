@@ -71,7 +71,6 @@ impl harmos_runtime::Application for Model {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Fixture {

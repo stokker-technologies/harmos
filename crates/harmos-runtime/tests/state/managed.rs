@@ -60,7 +60,6 @@ impl Application for Plain {
     type State = State;
     type Transaction = Never;
     type Record = ();
-    type Streams = ();
 }
 
 /* === Public Functions === */

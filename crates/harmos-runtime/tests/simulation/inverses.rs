@@ -92,7 +92,6 @@ impl Application for Amplifier {
     type State = Model;
     type Transaction = SetGain;
     type Record = ();
-    type Streams = ();
 }
 
 #[derive(Clone)]

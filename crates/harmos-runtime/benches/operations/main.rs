@@ -125,7 +125,6 @@ impl harmos_runtime::Application for App {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
     type Lanes = Lanes;
 }
 

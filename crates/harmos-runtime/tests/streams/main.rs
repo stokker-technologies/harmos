@@ -356,7 +356,7 @@ async fn definitions_refuse_invalid() {
         let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
             setup.settings().register(streams());
-            setup.settings().register(colliding::Bank::catalog());
+            setup.settings().register(colliding::stream_definitions());
         })
         .await;
 
@@ -421,16 +421,15 @@ mod colliding {
 
     /* === Enums === */
 
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Imposter(Imposter),
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
 
     /* === Public Functions === */
+
+    pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+        vec![<Imposter>::definition()]
+    }
 
     /* === Private Functions === */
 

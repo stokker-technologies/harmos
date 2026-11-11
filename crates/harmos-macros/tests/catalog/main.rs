@@ -175,7 +175,6 @@ fn authoring_refusals_compile() {
         ("unsafe_id.rs", "a stream id must be a filesystem-safe dotted name with non-keyword ASCII segments"),
         ("zero_window.rs", "a stream window must retain at least 1 row"),
         ("duplicate_id.rs", "__HARMOS_STREAM_ID_70756c7365"),
-        ("unregistered_row.rs", "Stream<Studio>"),
         ("non_serde_row.rs", "Serialize"),
         ("unpaired_inverse.rs", "the declared inverse of `Place` does not name `Place` back"),
         ("uncatalogued_inverse.rs", "the declared inverse `Remove` is not a member of `Change`"),

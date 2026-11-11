@@ -145,7 +145,6 @@ impl Application for Preparing {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Lifecycle for Preparing {
@@ -177,7 +176,6 @@ impl Application for App {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Lifecycle for App {

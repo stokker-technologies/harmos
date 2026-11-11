@@ -628,7 +628,6 @@ mod tests {
         type State = ();
         type Transaction = crate::state::Never;
         type Record = PageRecord;
-        type Streams = ();
     }
 
     #[test]

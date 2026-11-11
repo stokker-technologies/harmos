@@ -86,6 +86,17 @@ Publication inventories,
 listener sources and `host.publish` do not accept schema ordinals. Listener
 publication binding uses `(id, after)` and `frontier(id)`.
 
+Register stream definitions as owned lists; no stream catalog enum or
+`Application::Streams` selector is required:
+
+```rust
+let streams = vec![Temperature::definition(), Pressure::definition()];
+setup.settings().register(streams);
+```
+
+Startup validates duplicate identities and empty windows. Typed readers and
+publishers resolve the registered identity and row type at runtime.
+
 `#[record]` and `#[transaction]` derive schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
 `harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's

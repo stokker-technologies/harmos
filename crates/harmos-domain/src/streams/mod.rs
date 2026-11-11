@@ -65,8 +65,6 @@ pub trait StreamRow: crate::schema::Described + Clone + Send + Sync + Serialize 
     }
 }
 
-pub trait StreamCatalog<S: StreamRow> {}
-
 /* === Implementations === */
 
 impl Definition {

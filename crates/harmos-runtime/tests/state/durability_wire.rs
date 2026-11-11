@@ -219,7 +219,6 @@ mod other {
         type State = Ledger;
         type Transaction = Movement;
         type Record = Observed;
-        type Streams = ();
     }
 
     impl Wire for Branch {

@@ -91,7 +91,6 @@ impl Application for Model {
     type State = u64;
     type Transaction = Transactions;
     type Record = Records;
-    type Streams = ();
 }
 
 impl harmos_runtime::state::Transaction<u64> for Advance {

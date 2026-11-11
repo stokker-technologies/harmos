@@ -310,7 +310,6 @@ mod sheet {
         type State = Sheet;
         type Transaction = Change;
         type Record = Fact;
-        type Streams = ();
     }
 
     /* === Public Functions === */
@@ -445,7 +444,6 @@ mod counter {
         type State = Tally;
         type Transaction = Step;
         type Record = ();
-        type Streams = ();
     }
 
     /* === Public Functions === */

@@ -51,7 +51,6 @@ impl Application for App {
     type State = ();
     type Transaction = Never;
     type Record = ();
-    type Streams = ();
 }
 
 /* === Public Functions === */

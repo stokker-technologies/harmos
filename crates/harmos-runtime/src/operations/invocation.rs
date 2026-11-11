@@ -315,7 +315,6 @@ mod tests {
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
-        type Streams = ();
     }
 
     const POLICY: crate::OperationPolicy = crate::OperationPolicy {

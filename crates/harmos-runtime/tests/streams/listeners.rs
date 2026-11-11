@@ -108,11 +108,6 @@ enum HandlerOperations {
     Second(HearingSecond),
 }
 
-#[harmos_runtime::streams]
-enum Rows {
-    Fact(Fact),
-}
-
 #[harmos_domain::catalog]
 enum Callbacks {
     First(HearingFirst),
@@ -206,7 +201,6 @@ impl harmos_runtime::Application for Model {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = Rows;
 }
 
 impl<const FIRST: bool> Heard<FIRST> {
@@ -426,6 +420,10 @@ impl PluginLifecycle for Host {
 
 /* === Public Functions === */
 
+fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+    vec![<Fact>::definition()]
+}
+
 /* === Private Functions === */
 
 fn fact(value: u32) -> Fact {
@@ -507,7 +505,7 @@ async fn setup_source(
 ) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
         setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
-        setup.settings().register(if managed { vec![] } else { Rows::catalog() });
+        setup.settings().register(if managed { vec![] } else { stream_definitions() });
         setup.settings().tail(tail);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),

@@ -11,7 +11,6 @@
 
 pub(crate) mod lanes;
 pub(crate) mod operation;
-pub(crate) mod streams;
 pub(crate) mod typed;
 
 /* === Re-Exports === */

@@ -59,11 +59,6 @@ pub struct Payload {
 
 /* === Enums === */
 
-#[harmos_runtime::streams]
-pub enum Streams {
-    Payload(Payload),
-}
-
 #[harmos_runtime::lanes]
 pub enum Lanes {
     #[default]
@@ -89,7 +84,6 @@ impl harmos_runtime::Application for Model {
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = Streams;
 }
 
 impl Fixture {
@@ -105,7 +99,7 @@ impl Fixture {
         // Keep Scenario Time on the Host's Virtual Clock
         let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
         let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-            setup.settings().clock(clock).register(Streams::catalog()).operation_settings(harmos_runtime::operations::Settings {
+            setup.settings().clock(clock).register(stream_definitions()).operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(32 * 1024 * 1024).unwrap()),
                 ..Default::default()
             });
@@ -181,6 +175,10 @@ impl Drop for Fixture {
 }
 
 /* === Public Functions === */
+
+pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+    vec![<Payload>::definition()]
+}
 
 /* === Private Functions === */
 

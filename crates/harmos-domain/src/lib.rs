@@ -53,8 +53,7 @@ pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
 pub use harmos_macros::{
-    Described, domain_catalog as catalog, domain_operation as operation, message, record, records, stream, streams, transaction,
-    transactions,
+    Described, domain_catalog as catalog, domain_operation as operation, message, record, records, stream, transaction, transactions,
 };
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
@@ -112,7 +111,7 @@ pub mod __private {
     };
     pub use crate::postcard_product;
     pub use crate::state::{Catalogued, Mutual, Paired};
-    pub use crate::streams::{StreamCatalog, StreamRow};
+    pub use crate::streams::StreamRow;
     pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
 
     /* === Imports === */

@@ -27,7 +27,7 @@ use crate::error::Error;
 use crate::records::Records;
 use crate::state::Schematic;
 use crate::storage;
-use crate::streams::Streams;
+use crate::streams;
 use crate::transactions::Transactions;
 use harmos_runtime::prelude::*;
 
@@ -82,7 +82,7 @@ impl Lifecycle for SchematicEditor {
         };
         setup.settings().operation_settings(settings);
 
-        setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(Streams::catalog());
+        setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(streams::stream_definitions());
         setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::new(Default::default()));
         setup.resource::<schematic_operations::transfer::Store>(Arc::new(Default::default()));
         Ok(Self { checkpoint })
@@ -98,7 +98,6 @@ impl Application for SchematicEditor {
     type State = Schematic;
     type Transaction = Transactions;
     type Record = Records;
-    type Streams = Streams;
     type Lanes = crate::lanes::Lanes;
 }
 

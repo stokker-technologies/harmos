@@ -44,7 +44,6 @@ impl harmos_runtime::Application for InitializingBank {
     type State = <Bank as harmos_runtime::Application>::State;
     type Transaction = <Bank as harmos_runtime::Application>::Transaction;
     type Record = <Bank as harmos_runtime::Application>::Record;
-    type Streams = <Bank as harmos_runtime::Application>::Streams;
 }
 
 #[cfg(feature = "simulation")]

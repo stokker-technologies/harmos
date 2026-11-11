@@ -113,7 +113,6 @@ impl Application for Model {
     type State = i64;
     type Transaction = Changes;
     type Record = Facts;
-    type Streams = ();
 }
 
 impl JournalCapture<Model> for Consumer {

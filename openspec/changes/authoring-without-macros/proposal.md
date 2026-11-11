@@ -134,8 +134,9 @@ Keep them until their whole family is replaced in tasks 3.1 and 3.2.
 
 The guest aliases are also live through `crates/harmos-guest/src/lib.rs` and
 `crates/harmos-runtime/src/guest/mod.rs`, including guest lifecycle operations,
-the sandbox fixture and schematic guest dependencies. Keep the guest macro crate
-unchanged; its consumers still participate in this workspace migration.
+the sandbox fixture and schematic guest dependencies. Guest registration remains
+deferred; its macro crate may accept explicit constant description values needed
+by the migrated consumers in this workspace.
 
 ### Manifest, Fixture and Guest Ownership
 

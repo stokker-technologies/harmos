@@ -94,7 +94,6 @@ impl Application for Probe {
     type State = ();
     type Transaction = Never;
     type Record = ();
-    type Streams = feeds::Bank;
 }
 
 // The one unsafe block this crate's tests carry: a pass-through allocator is
@@ -271,7 +270,7 @@ fn count_allocation() {
 
 async fn measured_runtime() -> Runtime<Probe> {
     Runtime::<Probe>::launch_with((), (), |setup| {
-        setup.settings().register(feeds::Bank::catalog());
+        setup.settings().register(feeds::stream_definitions());
     })
     .await
     .expect("a memory-only boot recovers nothing")
@@ -328,18 +327,15 @@ mod feeds {
 
     /* === Enums === */
 
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Narrow(Narrow),
-        Wide(Wide),
-        Waveform(Waveform),
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
 
     /* === Public Functions === */
+
+    pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+        vec![<Narrow>::definition(), <Wide>::definition(), <Waveform>::definition()]
+    }
 
     /* === Private Functions === */
 

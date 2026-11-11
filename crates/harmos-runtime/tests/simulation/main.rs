@@ -222,7 +222,6 @@ impl Application for Divergent {
     type State = DivergentState;
     type Transaction = DivergentChange;
     type Record = NoRecord;
-    type Streams = ();
 }
 
 impl Registration<Divergent> for DivergentCatalog {
@@ -431,7 +430,6 @@ mod atomic_records {
         type State = State;
         type Transaction = Changes;
         type Record = Facts;
-        type Streams = ();
     }
 
     /* === Public Functions === */

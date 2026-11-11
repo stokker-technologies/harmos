@@ -245,7 +245,6 @@ impl Application for Bank {
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;
-    type Streams = ();
 }
 
 impl Wire for Bank {

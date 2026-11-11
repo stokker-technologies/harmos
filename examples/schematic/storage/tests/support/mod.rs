@@ -223,7 +223,6 @@ impl Application for Bank {
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;
-    type Streams = ();
     type Lanes = TestLanes;
 }
 

@@ -158,7 +158,6 @@ impl Application for Editor {
     type State = Sheet;
     type Transaction = Change;
     type Record = Note;
-    type Streams = ();
 }
 
 impl harmos_runtime::state::TransactionCatalog<Sheet> for Change {}

@@ -63,7 +63,6 @@ impl Application for Collection {
     type State = ();
     type Transaction = Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Drop for Cleanup {

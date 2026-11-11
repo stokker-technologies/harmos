@@ -54,11 +54,6 @@ pub enum TestLanes {
     Open,
 }
 
-#[harmos_runtime::streams]
-enum Feeds {
-    Reading(Reading),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -77,11 +72,14 @@ impl harmos_runtime::Application for Model {
     type State = support::Ledger;
     type Transaction = support::Change;
     type Record = support::Fact;
-    type Streams = Feeds;
     type Lanes = TestLanes;
 }
 
 /* === Public Functions === */
+
+fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+    vec![<Reading>::definition()]
+}
 
 /* === Private Functions === */
 
@@ -100,7 +98,7 @@ fn contract_scenario() {
                     "a directory nothing has recorded into resumes from the origin"
                 );
                 let runtime = harmos_runtime::Runtime::<Model>::launch_with(support::Ledger::default(), (), |setup| {
-                    setup.settings().register(Feeds::catalog()).attach_streams(capture.select::<Reading>());
+                    setup.settings().register(stream_definitions()).attach_streams(capture.select::<Reading>());
                 })
                 .await
                 .unwrap();

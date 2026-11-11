@@ -507,7 +507,6 @@ mod tests {
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
-        type Streams = ();
     }
 
     #[derive(Default)]

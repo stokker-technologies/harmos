@@ -27,7 +27,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
 use super::window::{Row, Window};
-use crate::streams::{Definition, StreamCatalog, StreamRow};
+use crate::streams::{Definition, StreamRow};
 use crate::{Application, state::Position, storage::Cursor};
 
 /* === Constants === */
@@ -126,7 +126,6 @@ impl<A, S> Stream<A> for S
 where
     A: Application,
     S: StreamRow,
-    A::Streams: StreamCatalog<S>,
 {
     const ID: &'static str = S::ID;
     const WINDOW: usize = S::WINDOW;

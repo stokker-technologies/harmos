@@ -101,11 +101,6 @@ enum NewFacts {
     Changed(Changed),
 }
 
-#[harmos_runtime::streams]
-enum Streams {
-    Sample(Sample),
-}
-
 #[harmos_runtime::lanes]
 enum Lanes {
     #[default]
@@ -196,7 +191,6 @@ impl Application for Model<false> {
     type State = i64;
     type Transaction = Changes;
     type Record = Facts;
-    type Streams = Streams;
 }
 
 impl Application for Model<true> {
@@ -204,7 +198,6 @@ impl Application for Model<true> {
     type State = i64;
     type Transaction = Changes;
     type Record = NewFacts;
-    type Streams = ();
 }
 
 impl Transaction<i64> for Add {
@@ -221,6 +214,10 @@ impl Transaction<i64> for Add {
 }
 
 /* === Public Functions === */
+
+fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+    vec![<Sample>::definition()]
+}
 
 /* === Private Functions === */
 
@@ -250,7 +247,7 @@ async fn original<C>(storage: &StorageManager<C>, snapshot: bool) -> Runtime<Mod
             .storage(storage)
             .register(Changes::catalog())
             .register(Facts::catalog())
-            .register(Streams::catalog())
+            .register(stream_definitions())
             .managed_storage(managed(snapshot));
     })
     .await
@@ -497,7 +494,7 @@ async fn native_stream_round_trip_uses_shared_revision() {
             .storage(&disk)
             .register(Changes::catalog())
             .register(Facts::catalog())
-            .register(Streams::catalog())
+            .register(stream_definitions())
             .managed_storage(managed(false))
             .attach_streams(Recording {
                 borrowed: borrowed.clone(),

@@ -449,7 +449,6 @@ mod tests {
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
-        type Streams = ();
     }
 
     #[crate::operation(harmos_path = crate, resources = [AtomicUsize, crate::operations::HostContext],

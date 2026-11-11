@@ -79,7 +79,6 @@ impl Application for App {
     type State = State;
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Application for InitializingApp {
@@ -87,7 +86,6 @@ impl Application for InitializingApp {
     type State = State;
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Lifecycle for InitializingApp {
