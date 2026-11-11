@@ -27,7 +27,16 @@ bench = false
 [features]
 default = ["grpc"]
 plugin-guest = ["dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime", "dep:postcard"]
-grpc = ["dep:heck", "harmos-operations/grpc", "dep:tonic-reflection", "dep:http-body", "dep:bytes", "tonic/tls-ring", "dep:rustls", "dep:tokio-rustls"]
+grpc = [
+  "dep:heck",
+  "harmos-operations/grpc",
+  "dep:tonic-reflection",
+  "dep:http-body",
+  "dep:bytes",
+  "tonic/tls-ring",
+  "dep:rustls",
+  "dep:tokio-rustls",
+]
 simulation = []
 
 # === Dependencies === #
