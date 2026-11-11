@@ -16,13 +16,13 @@ mod lifecycle;
 /* === Re-Exports === */
 
 pub use boot::{BootstrapCleanup, BootstrapStatus};
-pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
+pub use harmos_macros::runtime_catalog as catalog;
 pub use harmos_operations::execution::StartupError;
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::any::{TypeId, type_name};
+use std::any::type_name;
 use std::collections::HashSet;
 use std::fmt;
 use std::future::Future;
@@ -118,7 +118,7 @@ pub struct Builder<A: Application> {
     origin: Origin<A::State>,
     resources: harmos_operations::execution::__private::ResourceSet,
     configuration_errors: Vec<StartupError>,
-    operation_catalogs: HashSet<TypeId>,
+    operation_catalogs: HashSet<&'static str>,
     inverses: Inverting<A>,
     catalog: Dispatch<A, Payload<A>>,
     definitions: Vec<Definition>,
@@ -477,12 +477,22 @@ impl<A: Application> Builder<A> {
     pub(crate) fn operations<C: harmos_operations::execution::operations::OperationCatalog>(
         &mut self, lane: crate::operations::Lane,
     ) -> &mut Self {
+        self.catalog(C::CATALOG, lane)
+    }
+
+    pub(crate) fn catalog(&mut self, catalog: crate::operations::Catalog, lane: crate::operations::Lane) -> &mut Self {
         use crate::operations::RegistrationExt;
-        if !self.operation_catalogs.insert(TypeId::of::<C>()) {
-            self.configuration_errors.push(StartupError::DuplicateCatalog { name: type_name::<C>() });
+        if !self.operation_catalogs.insert(catalog.name) {
+            self.configuration_errors.push(StartupError::DuplicateCatalog { name: catalog.name });
             return self;
         }
-        self.with_registration(C::batch().lane(lane))
+        match catalog.batch() {
+            Ok(batch) => self.with_registration(batch.lane(lane)),
+            Err(source) => {
+                self.configuration_errors.push(StartupError::Binding { source: Box::new(source) });
+                self
+            }
+        }
     }
 
     // Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.

@@ -86,12 +86,14 @@ impl Session {
             .unwrap();
         WireAnswer::decode(&bytes).unwrap()
     }
-    async fn call<D: harmos_domain::operations::OperationDeclaration>(&mut self, invocation: u64, payload: Vec<u8>) -> Vec<u8> {
+    async fn call<D: harmos_domain::operations::RequestShape>(
+        &mut self, specification: harmos_domain::operations::OperationSpec<D>, invocation: u64, payload: Vec<u8>,
+    ) -> Vec<u8> {
         assert!(matches!(
             self.phase(WireCommand::Prepare {
                 invocation,
-                operation: harmos_domain::QualifiedId::qualify("sandbox_guest", D::ID).unwrap().as_str().to_owned(),
-                fingerprint: (harmos_domain::operations::Entry::of::<D>().fingerprint)().unwrap().0,
+                operation: harmos_domain::QualifiedId::qualify("sandbox_guest", specification.entry().id).unwrap().as_str().to_owned(),
+                fingerprint: D::fingerprint(specification.entry().id).unwrap().0,
                 generation: 1,
                 payload
             })
@@ -153,10 +155,7 @@ async fn sdk_lifecycle_retained() {
                 .phase(WireCommand::Prepare {
                     invocation: 1,
                     operation: "sandbox_guest.schematic.route".to_owned(),
-                    fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::guest::schematic::ProposeRoute>()
-                        .fingerprint)()
-                    .unwrap()
-                    .0,
+                    fingerprint: schematic_operations::guest::schematic::PROPOSE_ROUTE_OPERATION.definition().unwrap().fingerprint.0,
                     generation: 1,
                     payload: route()
                 })
@@ -172,7 +171,7 @@ async fn sdk_lifecycle_retained() {
                 .phase(WireCommand::Prepare {
                     invocation: 7,
                     operation: "sandbox_guest.harmos.initialize".to_owned(),
-                    fingerprint: (harmos_domain::operations::Entry::of::<harmos_guest::lifecycle::Initialize>().fingerprint)().unwrap().0,
+                    fingerprint: harmos_guest::lifecycle::INITIALIZE_OPERATION.declared().unwrap().fingerprint.0,
                     generation: 1,
                     payload: Initialize {
                         config_json: br#""unexpected""#.to_vec(),
@@ -213,10 +212,7 @@ async fn sdk_lifecycle_retained() {
                 .phase(WireCommand::Prepare {
                     invocation: 8,
                     operation: "sandbox_guest.schematic.route".to_owned(),
-                    fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::guest::schematic::ProposeRoute>()
-                        .fingerprint)()
-                    .unwrap()
-                    .0,
+                    fingerprint: schematic_operations::guest::schematic::PROPOSE_ROUTE_OPERATION.definition().unwrap().fingerprint.0,
                     generation: 1,
                     payload: route()
                 })
@@ -230,20 +226,17 @@ async fn sdk_lifecycle_retained() {
         generation_context: Vec::new(),
         assignments: Vec::new(),
     };
-    assert!(session.call::<harmos_guest::lifecycle::Initialize>(2, request.encode()).await.is_empty());
-    let routed = session.call::<schematic_operations::guest::schematic::ProposeRoute>(3, route()).await;
+    assert!(session.call(harmos_guest::lifecycle::INITIALIZE_OPERATION, 2, request.encode()).await.is_empty());
+    let routed = session.call(schematic_operations::guest::schematic::PROPOSE_ROUTE_OPERATION, 3, route()).await;
     assert_eq!(Response::decode(&routed).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 },]);
-    assert!(session.call::<harmos_guest::lifecycle::Shutdown>(4, vec![]).await.is_empty());
+    assert!(session.call(harmos_guest::lifecycle::SHUTDOWN_OPERATION, 4, vec![]).await.is_empty());
     assert!(
         matches!(
             session
                 .phase(WireCommand::Prepare {
                     invocation: 5,
                     operation: "sandbox_guest.schematic.route".to_owned(),
-                    fingerprint: (harmos_domain::operations::Entry::of::<schematic_operations::guest::schematic::ProposeRoute>()
-                        .fingerprint)()
-                    .unwrap()
-                    .0,
+                    fingerprint: schematic_operations::guest::schematic::PROPOSE_ROUTE_OPERATION.definition().unwrap().fingerprint.0,
                     generation: 1,
                     payload: route()
                 })
@@ -253,7 +246,7 @@ async fn sdk_lifecycle_retained() {
         "shutdown revokes ordinary admission"
     );
     assert!(
-        session.call::<harmos_guest::lifecycle::Shutdown>(6, vec![]).await.is_empty(),
+        session.call(harmos_guest::lifecycle::SHUTDOWN_OPERATION, 6, vec![]).await.is_empty(),
         "SDK shutdown is idempotent on the same closed owner"
     );
 }

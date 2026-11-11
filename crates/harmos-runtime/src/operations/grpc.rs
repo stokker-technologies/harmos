@@ -23,7 +23,7 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::{CallContext, Manager, Running, StreamItem};
 use crate::Result;
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 
 /* === Constants === */
 
@@ -110,9 +110,7 @@ impl GrpcBinding {
         Ok((invocation, streams))
     }
 
-    pub(crate) fn submit<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: StreamItem<O::Request>, endpoints: P,
-    ) -> Result<Running<O>> {
+    pub(crate) fn submit<O: RequestShape, P: Send + 'static>(&self, request: StreamItem<O::Request>, endpoints: P) -> Result<Running<O>> {
         self.operations.admit_entry::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
             None,

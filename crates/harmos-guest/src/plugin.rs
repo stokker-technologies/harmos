@@ -73,10 +73,18 @@ pub(crate) fn bind<P: crate::plugin::Plugin>(
         .map_err(harmos_operations::execution::ServingError::from)
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
-        .install_lifecycle::<crate::lifecycle::Initialize>(dependencies.clone(), initialize)
+        .install_lifecycle(
+            crate::lifecycle::initialize_operation().map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?,
+            dependencies.clone(),
+            initialize,
+        )
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?;
     table
-        .install_lifecycle::<crate::lifecycle::Shutdown>(dependencies, shutdown)
+        .install_lifecycle(
+            crate::lifecycle::shutdown_operation().map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))?,
+            dependencies,
+            shutdown,
+        )
         .map_err(|error| crate::plugin::Error::Serving(std::sync::Arc::new(error)))
 }
 

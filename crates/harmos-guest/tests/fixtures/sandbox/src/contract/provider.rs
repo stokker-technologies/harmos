@@ -30,23 +30,30 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
 
 /* === Structs === */
 
-#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "provider.echo", response = Echoed, policy = OperationPolicy {
-        timeout: Duration::from_millis(100),
-        attempt_timeout: Duration::from_millis(100),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }, visibility = Public))]
-#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest, id = "provider.echo", response = Echoed, policy = OperationPolicy {
-        timeout: Duration::from_millis(100),
-        attempt_timeout: Duration::from_millis(100),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }, visibility = Public))]
+#[::harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(::harmos_guest::Request)]
+#[harmos_path(::harmos_guest)]
+#[request(response = Echoed)]
 #[derive(Clone, PartialEq)]
 
 pub struct ProviderEchoOperation {
     pub say: String,
 }
+
+pub static PROVIDER_ECHO_OPERATION_DESCRIPTION: ::harmos_guest::operations::WireDeclaration =
+    ::harmos_guest::operations::WireDeclaration::request::<ProviderEchoOperation>(
+        "provider.echo",
+        OperationPolicy {
+            timeout: Duration::from_millis(100),
+            attempt_timeout: Duration::from_millis(100),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    )
+    .visibility(::harmos_guest::operations::Visibility::Public);
+
+pub const PROVIDER_ECHO_OPERATION_OPERATION: ::harmos_guest::operations::OperationSpec<ProviderEchoOperation> =
+    ::harmos_guest::operations::OperationSpec::<ProviderEchoOperation>::new(&PROVIDER_ECHO_OPERATION_DESCRIPTION);
 
 /* === Enums === */
 

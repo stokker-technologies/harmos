@@ -34,18 +34,23 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::operation(
-    id = "schematic.validate",
-    response = Validation,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Idempotent,
-    grpc(package = "schematic.v1", service = "Schematic", method = "Validate"),
-)]
+#[harmos_operations::message(harmos_path = harmos_operations)]
+#[derive(harmos_operations::Request)]
+#[harmos_path(harmos_operations)]
+#[request(response = Validation)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidateSchematic {
     pub schematic: schematic_domain::model::Snapshot,
 }
+
+pub static VALIDATE_SCHEMATIC_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+    harmos_operations::operations::WireDeclaration::request::<ValidateSchematic>("schematic.validate", POLICY)
+        .visibility(harmos_operations::operations::Visibility::Public)
+        .replay(harmos_operations::operations::ReplaySafety::Idempotent)
+        .grpc(harmos_operations::operations::Grpc::new("schematic.v1", "Schematic", "Validate"));
+
+pub const VALIDATE_SCHEMATIC_OPERATION: harmos_operations::operations::OperationSpec<ValidateSchematic> =
+    harmos_operations::operations::OperationSpec::<ValidateSchematic>::new(&VALIDATE_SCHEMATIC_DESCRIPTION);
 
 #[harmos_operations::message]
 #[derive(Clone, Debug, PartialEq)]
@@ -60,14 +65,30 @@ pub struct Validation {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos_operations::Operation for ValidateSchematic {
-    type Error = crate::Error;
-
-    async fn run(self, _: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Validation>, Self::Error> {
-        let diagnostics = self.schematic.diagnostics();
+mod execution {
+    use super::*;
+    pub async fn validate_schematic_handler(
+        request: ValidateSchematic, _: harmos_operations::execution::operations::FunctionContext<ValidateSchematic>,
+    ) -> Result<harmos_operations::Response<Validation>, crate::Error> {
+        let diagnostics = request.schematic.diagnostics();
         Ok(Validation { diagnostics }.into())
     }
+
+    pub fn validate_schematic_operation() -> ::core::result::Result<
+        harmos_operations::execution::operations::OperationFactory,
+        harmos_operations::execution::operations::ServingError,
+    > {
+        harmos_operations::execution::operations::OperationFactory::function(
+            VALIDATE_SCHEMATIC_OPERATION,
+            const { &[] },
+            validate_schematic_handler,
+            |_| harmos_operations::operations::FailureKind::Permanent,
+        )
+    }
 }
+
+#[cfg(feature = "runtime")]
+pub use execution::validate_schematic_operation;
 
 /* === Public Functions === */
 

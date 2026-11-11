@@ -24,7 +24,6 @@ use crate::support;
 use harmos_runtime::Runtime;
 use harmos_runtime::guest::PluginState;
 use schematic::model::{Connection, Point, Snapshot};
-use schematic_operations::guest::Operations;
 use schematic_operations::guest::schematic::{analyze, propose, validate};
 
 /* === Constants === */
@@ -88,7 +87,22 @@ async fn guest_composition_walks() {
         configuration: b"null".to_vec(),
         ..Default::default()
     };
-    runtime.plugin.register_guest::<Operations>(loaded, settings, harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .plugin
+        .register_guest(
+            harmos_runtime::operations::ComponentCatalog::new()
+                .operation(schematic_operations::guest::VALIDATE_SCHEMATIC_OPERATION)
+                .unwrap()
+                .operation(schematic_operations::guest::PROPOSE_ROUTE_OPERATION)
+                .unwrap()
+                .operation(schematic_operations::guest::ANALYZE_SCHEMATIC_OPERATION)
+                .unwrap(),
+            loaded,
+            settings,
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status(PLUGIN).unwrap();
     assert_eq!(ready.state, PluginState::Ready);

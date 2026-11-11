@@ -16,12 +16,12 @@
 pub use crate::state::{Invertible, Record, RecordEntry, Transaction};
 pub use crate::{Application, Error, Identifier, Lifecycle, Message, Result, Runtime, Setup, Startup};
 pub use crate::{
-    Backoff, Context, EndpointSet, ExecutionContext, Invocation, InvocationExt, Jitter, Lane, Operation, OperationDeclaration,
-    OperationDefinition, OperationHost, OperationPolicy, Portable, QualifiedId, Response, RestartPolicy, RetryPolicy, Running, Service,
+    Backoff, Context, EndpointSet, ExecutionContext, Invocation, InvocationExt, Jitter, Lane, Operation, OperationDefinition,
+    OperationHost, OperationPolicy, Portable, QualifiedId, RequestShape, Response, RestartPolicy, RetryPolicy, Running, Service,
     ServiceContext, ServicePolicy,
 };
+pub use crate::{Request, catalog, message, transaction};
 pub use crate::{Row, StreamEntry};
-pub use crate::{catalog, message, operation, transaction};
 
 /* === Imports === */
 

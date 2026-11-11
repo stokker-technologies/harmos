@@ -54,43 +54,70 @@ struct DispatchGuard(Arc<Signals>);
 
 /* === Enums === */
 
-#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-enum DispatchOperations {
-    Dispatch(Dispatch),
+static DISPATCH_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(DISPATCH_OPERATION.wire())];
+static DISPATCH_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(DISPATCH_OPERATION.callees())];
+
+const DISPATCH_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::DispatchOperations"),
+    &DISPATCH_OPERATIONS_CATALOG_DECLARATIONS,
+    &DISPATCH_OPERATIONS_CATALOG_CALLEES,
+    Some(dispatch_operations_catalog_batch),
+);
+
+fn dispatch_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(dispatch_operation().expect("representable operation"));
+    batch
 }
 
-#[harmos_runtime::operation(
-        resources = [Waiting],
-        response = u64,
-        id = "bench.dispatch",
-        policy = harmos_runtime::OperationPolicy {
-            timeout: Duration::from_secs(30),
-            attempt_timeout: Duration::from_secs(30),
-            cancellation_timeout: std::time::Duration::ZERO,
-            retries: RetryPolicy::Never,
-        },
-    )]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = u64)]
+#[derive(Clone)]
 
 struct Dispatch {
     wait: bool,
 }
 
+static DISPATCH_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos_runtime::operations::WireDeclaration::request::<Dispatch>(
+    "bench.dispatch",
+    harmos_runtime::OperationPolicy {
+        timeout: Duration::from_secs(30),
+        attempt_timeout: Duration::from_secs(30),
+        cancellation_timeout: std::time::Duration::ZERO,
+        retries: RetryPolicy::Never,
+    },
+);
+
+const DISPATCH_OPERATION: harmos_runtime::operations::OperationSpec<Dispatch> =
+    harmos_runtime::operations::OperationSpec::<Dispatch>::new(&DISPATCH_DESCRIPTION);
+
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for Dispatch {
-    type Error = std::convert::Infallible;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
-        let waiting = ctx.resource::<Waiting>();
-        if let (true, Some(signals)) = (self.wait, &waiting.0) {
-            let _guard = DispatchGuard(signals.clone());
-            signals.running.add_permits(1);
-            std::future::pending::<()>().await;
-        }
-        Ok(42.into())
+async fn dispatch_handler(
+    request: Dispatch, ctx: harmos_runtime::operations::FunctionContext<Dispatch>,
+) -> Result<harmos_runtime::Response<u64>, std::convert::Infallible> {
+    let waiting = ctx.resource::<Waiting>().expect("declared resource is registered");
+    if let (true, Some(signals)) = (request.wait, &waiting.0) {
+        let _guard = DispatchGuard(signals.clone());
+        signals.running.add_permits(1);
+        std::future::pending::<()>().await;
     }
+    Ok(42.into())
+}
+
+fn dispatch_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        DISPATCH_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Waiting>()] },
+        dispatch_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for DispatchGuard {
@@ -110,7 +137,7 @@ impl harmos_runtime::Lifecycle for App {
     type Context = harmos_runtime::Startup<Self>;
 
     async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-        setup.operations::<DispatchOperations>(harmos_runtime::operations::Lane::default());
+        setup.catalog(DISPATCH_OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default());
         Ok(Self)
     }
 }

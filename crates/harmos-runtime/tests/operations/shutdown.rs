@@ -55,48 +55,80 @@ enum Mode {
     Sleep,
 }
 
-#[harmos_runtime::operation(resources = [Trace], response = (),
-        id = "shutdown.wait",
-        policy = harmos_runtime::OperationPolicy {
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = ())]
+#[derive(Clone)]
+struct WaitContractDeclaration {
+    mode: Mode,
+}
+
+static WAIT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<WaitContractDeclaration>(
+        "shutdown.wait",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct WaitContractDeclaration {
-    mode: Mode,
-}
+    );
 
-#[harmos_runtime::catalog]
-enum Operations {
-    WaitContractDeclaration(WaitContractDeclaration),
+const WAIT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<WaitContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<WaitContractDeclaration>::new(&WAIT_CONTRACT_DECLARATION_DESCRIPTION);
+
+static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(WAIT_CONTRACT_DECLARATION_OPERATION.wire())];
+static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(WAIT_CONTRACT_DECLARATION_OPERATION.callees())];
+
+const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::Operations"),
+    &OPERATIONS_CATALOG_DECLARATIONS,
+    &OPERATIONS_CATALOG_CALLEES,
+    Some(operations_catalog_batch),
+);
+
+fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(wait_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for WaitContractDeclaration {
-    type Error = std::convert::Infallible;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let trace = ctx.resource::<Trace>();
-        let _guard = AttemptGuard(trace.clone());
-        match self.mode {
-            Mode::Hold => {
-                trace.started.notify_one();
-                trace.release.notified().await;
-            }
-            Mode::Count => {
-                trace.counted.fetch_add(1, Ordering::SeqCst);
-            }
-            Mode::Sleep => {
-                trace.started.notify_one();
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
+async fn wait_contract_declaration_handler(
+    request: WaitContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<WaitContractDeclaration>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    let _guard = AttemptGuard(trace.clone());
+    match request.mode {
+        Mode::Hold => {
+            trace.started.notify_one();
+            trace.release.notified().await;
         }
-        Ok(().into())
+        Mode::Count => {
+            trace.counted.fetch_add(1, Ordering::SeqCst);
+        }
+        Mode::Sleep => {
+            trace.started.notify_one();
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     }
+    Ok(().into())
+}
+
+fn wait_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        WAIT_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>()] },
+        wait_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl Drop for AttemptGuard {
     fn drop(&mut self) {
@@ -115,7 +147,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(OPERATIONS_CATALOG, crate::support::SERIAL).await.unwrap();
     (runtime, trace)
 }
 

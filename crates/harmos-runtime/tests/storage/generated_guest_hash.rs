@@ -44,7 +44,7 @@
 #[tokio::test]
 async fn guest_hash_uses_the_native_protobuf_handler() {
     use super::*;
-    use harmos_domain::operations::WireDeclaration;
+    use harmos_guest::builtins::storage::HASH_FILE_OPERATION;
     use harmos_guest::builtins::storage::HashFile;
     use harmos_runtime::storage::{ByteRange, FileHash, FileSource};
     use sha2::{Digest, Sha256};
@@ -53,7 +53,7 @@ async fn guest_hash_uses_the_native_protobuf_handler() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.bin");
     std::fs::write(&path, b"private guest hash").unwrap();
-    let contract = WireDeclaration::of::<HashFile>().contract().unwrap();
+    let contract = HASH_FILE_OPERATION.wire().contract().unwrap();
     let definitions = PluginDefinitions::new([plugin("reader", vec![Required { contract, grants: vec![] }])], []).unwrap();
     let mut manager = PluginManager::new(definitions).unwrap();
     let mut host = Host {

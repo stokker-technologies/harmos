@@ -116,20 +116,40 @@ pub(crate) mod tests {
         type Record = ();
     }
 
-    #[crate::operation(harmos_path = crate, resources = [crate::operations::HostContext], id = "test.clock_wait", response = (),
-        policy = crate::OperationPolicy {
-            timeout: Duration::from_secs(60), attempt_timeout: Duration::from_secs(60),
-            cancellation_timeout: Duration::ZERO, retries: crate::RetryPolicy::Never,
-        })]
+    #[crate::message(harmos_path = crate)]
+    #[derive(crate::Request)]
+    #[harmos_path(crate)]
+    #[request(response = ())]
+    #[derive(Clone)]
     struct Wait {}
 
-    impl harmos_operations::execution::Operation for Wait {
-        type Error = std::convert::Infallible;
-        async fn run(self, context: harmos_operations::execution::Context<'_, Self>) -> Result<crate::Response<()>, Self::Error> {
-            let host = context.resource::<crate::operations::HostContext>();
-            host.borrow().scope().clock().sleep(Duration::from_secs(5)).await;
-            Ok(().into())
-        }
+    static WAIT_DESCRIPTION: crate::operations::WireDeclaration = crate::operations::WireDeclaration::request::<Wait>(
+        "test.clock_wait",
+        crate::OperationPolicy {
+            timeout: Duration::from_secs(60),
+            attempt_timeout: Duration::from_secs(60),
+            cancellation_timeout: Duration::ZERO,
+            retries: crate::RetryPolicy::Never,
+        },
+    );
+
+    const WAIT_OPERATION: crate::operations::OperationSpec<Wait> = crate::operations::OperationSpec::<Wait>::new(&WAIT_DESCRIPTION);
+
+    async fn wait_handler(
+        _request: Wait, context: crate::operations::FunctionContext<Wait>,
+    ) -> Result<crate::Response<()>, std::convert::Infallible> {
+        let host = context.resource::<crate::operations::HostContext>().expect("declared resource is registered");
+        host.borrow().scope().clock().sleep(Duration::from_secs(5)).await;
+        Ok(().into())
+    }
+
+    fn wait_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
+        crate::operations::OperationFactory::function(
+            WAIT_OPERATION,
+            const { &[crate::Resource::of::<crate::operations::HostContext>()] },
+            wait_handler,
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     struct Evidence(Arc<Mutex<Vec<AttemptObservation>>>);
@@ -189,7 +209,8 @@ pub(crate) mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Wait>();
+        let batch =
+            harmos_operations::execution::__private::RegistrationBatch::new().entry(wait_operation().expect("representable operation"));
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
 
         // Record Evidence Before And After A Host Wait

@@ -118,7 +118,7 @@ impl super::super::Target {
         Ok(Self {
             id: O::ID,
             protobuf_native: true,
-            definition: || OperationFactory::protobuf::<O>().expect("validated protobuf declaration").definition,
+            definition: OperationFactory::protobuf::<O>()?.definition,
             request: TypeId::of::<O::Request>,
             response: TypeId::of::<O::Response>,
             memory: |request| {
@@ -135,9 +135,6 @@ impl super::super::Target {
                     .ok_or_else(|| MessageError::borrowed("callee payload differs"))
             },
             decode_protobuf: decode_response::<O>,
-            grant: |request| {
-                O::grant(request.downcast_ref::<O::Request>().ok_or_else(|| MessageError::borrowed("callee payload differs"))?)
-            },
         })
     }
 }
@@ -349,25 +346,26 @@ impl OperationFactory {
         let declared = contract::<O>(&harmos_domain::config::SchemaSettings::default()).map_err(ServingError::Contract)?;
         Ok(Self {
             definition: declared.operation().clone(),
-            operations: || O::OPERATIONS.iter().map(|dependency| (dependency.definition)()).collect(),
-            declared: || {
+            operations: std::sync::Arc::new(|| O::OPERATIONS.iter().map(|dependency| (dependency.definition)()).collect()),
+            declared: std::sync::Arc::new(|| {
                 contract::<O>(&harmos_domain::config::SchemaSettings::default())
                     .expect("validated protobuf declaration")
                     .operation()
                     .clone()
-            },
-            named: |id| {
+            }),
+            named: std::sync::Arc::new(|id| {
                 contract::<O>(&harmos_domain::config::SchemaSettings::default())
                     .and_then(|contract| contract.with_id(id))
                     .map(|contract| contract.operation().clone())
                     .map_err(ServingError::Contract)
-            },
+            }),
             registered_id: None,
-            grant: |_, grant| grant,
+            grant: std::sync::Arc::new(|_, grant| grant),
+            request_grant: std::sync::Arc::new(|request| request.downcast_ref::<O::Request>().map_or(Ok(None), O::grant)),
             builtin: matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now"),
             resources: O::RESOURCES,
-            contract: contract::<O>,
-            native: |resources, request, endpoints| {
+            contract: std::sync::Arc::new(contract::<O>),
+            native: std::sync::Arc::new(|_definition, resources, request, endpoints| {
                 let request = *request.downcast::<O::Request>().map_err(|_| ServingError::EndpointTypes)?;
                 let endpoints = *endpoints.downcast::<O::Endpoints>().map_err(|_| ServingError::EndpointTypes)?;
                 Ok(Box::new(Instance::<O> {
@@ -378,14 +376,14 @@ impl OperationFactory {
                     epoch: 0,
                     marker: PhantomData,
                 }))
-            },
+            }),
             endpoints_valid: || {
                 let (input, output) = O::Endpoints::descriptors();
                 let types = O::Endpoints::item_types();
                 input.is_some() == types.0.is_some() && output.is_some() == types.1.is_some()
             },
             native_types: || (TypeId::of::<O::Request>(), TypeId::of::<O::Response>(), TypeId::of::<O::Endpoints>()),
-            encoded: |resources, payload, _, limits| {
+            encoded: std::sync::Arc::new(|_definition, resources, payload, _, limits| {
                 let (endpoints, streams) = match O::Endpoints::empty() {
                     Some(endpoints) => (endpoints, None),
                     None => {
@@ -408,7 +406,7 @@ impl OperationFactory {
                     grant,
                     streams,
                 })
-            },
+            }),
             grpc_memory: memory::<O::Request>,
             decoding_memory: memory::<O::Request>,
         })

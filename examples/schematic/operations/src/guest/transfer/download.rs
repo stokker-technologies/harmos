@@ -42,15 +42,22 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::operation(resources = [Store],
-    id = "benchmark.download", response = Receipt, output = Batch,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Unknown,
-)]
+#[harmos_operations::message(harmos_path = harmos_operations)]
+#[derive(harmos_operations::Request)]
+#[harmos_path(harmos_operations)]
+#[request(response = Receipt, output = Batch)]
+#[derive(Clone)]
 pub struct Download {
     pub transfer: u64,
 }
+
+pub static DOWNLOAD_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+    harmos_operations::operations::WireDeclaration::request::<Download>("benchmark.download", POLICY)
+        .visibility(harmos_operations::operations::Visibility::Public)
+        .replay(harmos_operations::operations::ReplaySafety::Unknown);
+
+pub const DOWNLOAD_OPERATION: harmos_operations::operations::OperationSpec<Download> =
+    harmos_operations::operations::OperationSpec::<Download>::new(&DOWNLOAD_DESCRIPTION);
 
 /* === Enums === */
 
@@ -59,13 +66,14 @@ pub struct Download {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos_operations::Operation for Download {
-    type Error = crate::Error;
+mod execution {
+    use super::*;
+    pub async fn download_handler(
+        request: Download, ctx: harmos_operations::execution::operations::FunctionContext<Download>,
+    ) -> Result<harmos_operations::Response<Receipt>, crate::Error> {
+        let store = ctx.resource::<Store>().expect("declared resource is registered");
 
-    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Receipt>, Self::Error> {
-        let store = ctx.resource::<Store>();
-
-        let batches = store.batches.lock().unwrap().remove(&self.transfer).unwrap_or_default();
+        let batches = store.batches.lock().unwrap().remove(&request.transfer).unwrap_or_default();
         let mut receipt = Receipt { records: 0, samples: 0, bytes: 0 };
         for batch in batches.batches {
             receipt.records += batch.records.len() as u64;
@@ -76,7 +84,22 @@ impl harmos_operations::Operation for Download {
         }
         Ok(receipt.into())
     }
+
+    pub fn download_operation() -> ::core::result::Result<
+        harmos_operations::execution::operations::OperationFactory,
+        harmos_operations::execution::operations::ServingError,
+    > {
+        harmos_operations::execution::operations::OperationFactory::function(
+            DOWNLOAD_OPERATION,
+            const { &[harmos_operations::Resource::of::<Store>()] },
+            download_handler,
+            |_| harmos_operations::operations::FailureKind::Permanent,
+        )
+    }
 }
+
+#[cfg(feature = "runtime")]
+pub use execution::download_operation;
 
 /* === Public Functions === */
 

@@ -50,13 +50,11 @@ pub use harmos_domain::{
     StreamSpec, Value, ValueError, btree_map_memory,
 };
 pub use harmos_domain::{
-    Backoff, Digest, Fingerprint, Jitter, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, QualifiedId, RestartPolicy,
+    Backoff, Digest, Fingerprint, Jitter, OperationDefinition, OperationPolicy, Portable, QualifiedId, RequestShape, RestartPolicy,
     RetryPolicy, ServicePolicy,
 };
 pub use harmos_operations::execution::operations::{EndpointSet, OperationHost, Response};
-pub use harmos_operations::execution::{
-    Context, Dependent, Executable, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup,
-};
+pub use harmos_operations::execution::{Context, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
 pub use operations::refusal::Refusal;
 pub use operations::{Catalog, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
@@ -69,7 +67,7 @@ pub use harmos_guest::guest;
 
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, message, schema};
-pub use harmos_macros::{Described, Row, records, runtime_catalog as catalog, runtime_operation as operation, transaction, transactions};
+pub use harmos_macros::{Described, Request, Row, records, runtime_catalog as catalog, transaction, transactions};
 
 /* === Imports === */
 

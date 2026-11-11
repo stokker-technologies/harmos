@@ -26,8 +26,7 @@ use prost_reflect::DescriptorPool;
 
 // Local Imports
 
-use contracts::{Portable, Routes};
-use harmos_domain::operations::Contracts;
+use contracts::{PORTABLE_CATALOG, ROUTES_CATALOG};
 use harmos_packaging::proto::{self, Artifacts};
 
 /* === Constants === */
@@ -53,7 +52,7 @@ use harmos_packaging::proto::{self, Artifacts};
 #[test]
 fn export_removes_retired() {
     let target = tempfile::tempdir().unwrap();
-    let contracts = Contracts::of::<Routes>().unwrap();
+    let contracts = harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap();
     let artifacts = Artifacts::new(&contracts).unwrap();
     let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
     assert_eq!(root, target.path().join("grpc/application"));
@@ -72,8 +71,8 @@ fn independent_schema_catalogs() {
     let target = tempfile::tempdir().unwrap();
     let first = target.path().join("producer-a");
     let second = target.path().join("producer-b");
-    let routes = Artifacts::new(&Contracts::of::<Routes>().unwrap()).unwrap();
-    let portable = Artifacts::new(&Contracts::of::<Portable>().unwrap()).unwrap();
+    let routes = Artifacts::new(&harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap()).unwrap();
+    let portable = Artifacts::new(&harmos_domain::operations::Contracts::from_tree(PORTABLE_CATALOG.declarations).unwrap()).unwrap();
     let native = proto::generate(&routes.operation_contracts().unwrap(), &first.join("grpc/native")).unwrap();
     let guest = proto::generate(&portable.operation_contracts().unwrap(), &first.join("grpc/portable")).unwrap();
     let peer = proto::generate(&portable.operation_contracts().unwrap(), &second.join("grpc/portable")).unwrap();
@@ -96,7 +95,7 @@ fn independent_schema_catalogs() {
 
 #[test]
 fn cancel_final_response_contracts() {
-    let contracts = Contracts::of::<Routes>().unwrap();
+    let contracts = harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap();
     for contract in &contracts {
         let Some(grpc) = contract.grpc() else {
             continue;

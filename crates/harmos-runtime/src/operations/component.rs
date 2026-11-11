@@ -24,10 +24,9 @@ use tokio::sync::mpsc;
 // Local Imports
 use super::Context;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
-use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
+use crate::operations::{ComponentCatalog, FailureKind, OperationDefinition, OperationSpec, RequestShape, WireAnswer, WireCommand};
 use crate::{Error, Identifier, Message, operations::Lane};
 use harmos_operations::execution::operations::Carrier;
 
@@ -51,15 +50,14 @@ struct ComponentState {
     fingerprint: [u8; 32],
 }
 
-pub struct ComponentOperation<O: OperationDeclaration, E = ()> {
+pub struct ComponentOperation<O: RequestShape, E = ()> {
     component: Arc<Component>,
+    specification: Arc<OperationSpec<O>>,
     state: Option<ComponentState>,
     epoch: u64,
     transferred: AtomicBool,
     _operation: PhantomData<fn() -> (O, E)>,
 }
-
-pub struct ComponentBindings;
 
 struct SdkOperation {
     binding: Arc<SdkBinding>,
@@ -160,7 +158,7 @@ impl Component {
 
 impl<O, E> Carrier for ComponentOperation<O, E>
 where
-    O: OperationDeclaration,
+    O: RequestShape,
     E: super::StreamEndpoints,
 {
     type Declaration = O;
@@ -170,8 +168,10 @@ where
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
     async fn bind(context: harmos_operations::execution::ExecutionContext) -> Result<Self, ComponentError> {
         let component = context.resource::<Component>()?;
+        let specification = context.resource::<OperationSpec<O>>()?;
         Ok(Self {
             component,
+            specification,
             state: None,
             epoch: 0,
             transferred: AtomicBool::new(false),
@@ -185,6 +185,7 @@ where
     ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
+        let operation = self.specification.declaration.operation.id;
         let result: ::core::result::Result<O::Response, Self::Error> = async move {
             if self.state.is_none() {
                 let component = &self.component;
@@ -192,9 +193,11 @@ where
                 if !component.endpoint.accepts() {
                     return Err(ComponentError::Unavailable);
                 }
-                let definition = OperationDefinition::of::<O>()?;
+                let definition = self.specification.definition()?;
                 if !component.endpoint.definitions().contains(&definition) {
-                    return Err(ComponentError::Catalog { operation: O::ID });
+                    return Err(ComponentError::Catalog {
+                        operation: self.specification.declaration.operation.id,
+                    });
                 }
                 let state = ComponentState {
                     initialized: false,
@@ -231,7 +234,7 @@ where
             O::Response::decode(payload.as_slice()).map_err(ComponentError::Payload)
         }
         .await;
-        result.map(::core::convert::Into::into).map_err(|error| error.in_operation(O::ID))
+        result.map(::core::convert::Into::into).map_err(|error| error.in_operation(operation))
     }
 
     async fn cleanup(&mut self) -> Result<(), ComponentError> {
@@ -239,7 +242,7 @@ where
             return Ok(());
         };
 
-        self.component.finalize_encoded(state).await.map_err(|error| error.in_operation(O::ID))
+        self.component.finalize_encoded(state).await.map_err(|error| error.in_operation(self.specification.declaration.operation.id))
     }
 
     fn transferred(&self) -> bool {
@@ -251,22 +254,8 @@ where
     }
 }
 
-impl Visitor for ComponentBindings {
-    type Entry = super::Binding<Component>;
-}
-
-impl<O> Member<O> for ComponentBindings
-where
-    O: crate::operations::OperationDeclaration,
-{
-    const ENTRY: super::Binding<Component> = super::Binding { register: register::<O> };
-}
-
 impl super::Bindings<'_> {
-    pub fn register_component_catalog<C>(&mut self, lane: Lane, component: Arc<Component>) -> crate::Result<()>
-    where
-        C: Catalog<Declarations> + Catalog<ComponentBindings>,
-    {
+    pub fn register_component_catalog(&mut self, catalog: &ComponentCatalog, lane: Lane, component: Arc<Component>) -> crate::Result<()> {
         let scope = self.scope.ok_or(Error::InvalidInput {
             field: "component operation scope",
             reason: "component inventory requires stage_plugin",
@@ -277,7 +266,7 @@ impl super::Bindings<'_> {
                 reason: "component endpoint belongs to a different plugin generation",
             });
         }
-        self.project::<C, ComponentBindings, Component>(lane, component)
+        catalog.register(self, lane, component)
     }
 }
 
@@ -520,20 +509,22 @@ impl Carrier for SdkOperation {
 
 /* === Private Functions === */
 
-fn register<O>(bindings: &mut super::Bindings<'_>, lane: &'static str, component: Arc<Component>) -> crate::Result<()>
+pub(super) fn register<O>(
+    bindings: &mut super::Bindings<'_>, specification: OperationSpec<O>, lane: &'static str, component: Arc<Component>,
+) -> crate::Result<()>
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
 {
     use crate::operations::Direction;
-    type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
-    type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
+    type In<O> = super::StreamInput<<<O as crate::operations::RequestShape>::Input as Direction>::Item>;
+    type Out<O> = super::StreamOutput<<<O as crate::operations::RequestShape>::Output as Direction>::Item>;
     let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
     dependencies.insert(component)?;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
-        (false, false) => bindings.stage_implementation::<O, ComponentOperation<O, ()>>(lane, dependencies),
-        (true, false) => bindings.stage_implementation::<O, ComponentOperation<O, In<O>>>(lane, dependencies),
-        (false, true) => bindings.stage_implementation::<O, ComponentOperation<O, Out<O>>>(lane, dependencies),
-        (true, true) => bindings.stage_implementation::<O, ComponentOperation<O, (In<O>, Out<O>)>>(lane, dependencies),
+        (false, false) => bindings.stage_implementation::<O, ComponentOperation<O, ()>>(specification, lane, dependencies),
+        (true, false) => bindings.stage_implementation::<O, ComponentOperation<O, In<O>>>(specification, lane, dependencies),
+        (false, true) => bindings.stage_implementation::<O, ComponentOperation<O, Out<O>>>(specification, lane, dependencies),
+        (true, true) => bindings.stage_implementation::<O, ComponentOperation<O, (In<O>, Out<O>)>>(specification, lane, dependencies),
     }
 }
 

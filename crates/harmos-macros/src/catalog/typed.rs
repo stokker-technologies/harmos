@@ -41,21 +41,21 @@ use crate::path::{self, HarmosPath};
 /* === Public Functions === */
 
 pub(crate) fn declare(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    match expand(attribute, item, true, false, false, true) {
+    match expand(attribute, item, false, false, true, true) {
         Ok(expanded) => expanded,
         Err(error) => error.to_compile_error(),
     }
 }
 
 pub(crate) fn declare_runtime(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    match expand(attribute, item, true, true, false, true) {
+    match expand(attribute, item, false, true, true, true) {
         Ok(expanded) => expanded,
         Err(error) => error.to_compile_error(),
     }
 }
 
 pub(crate) fn declare_domain(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    match expand(attribute, item, true, false, true, true) {
+    match expand(attribute, item, false, false, true, true) {
         Ok(expanded) => expanded,
         Err(error) => error.to_compile_error(),
     }
@@ -94,7 +94,7 @@ fn expand(
     let mut direct = Vec::new();
     let catalog_name = declared.ident.clone();
     let catalog_generics = declared.generics.clone();
-    let gates = crate::operation::configuration(&declared.attrs)?;
+    let gates = crate::configuration::configuration(&declared.attrs)?;
     for variant in &mut declared.variants {
         if !variants.insert(variant.ident.to_string()) {
             return Err(Error::new_spanned(&variant.ident, "a catalog variant name may appear only once"));
@@ -128,7 +128,7 @@ fn expand(
                 nested = true;
             }
         }
-        let member_gates = crate::operation::configuration(&variant.attrs)?;
+        let member_gates = crate::configuration::configuration(&variant.attrs)?;
         if !nested {
             direct.push((member.clone(), member_gates.clone()));
         }

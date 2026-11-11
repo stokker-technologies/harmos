@@ -24,7 +24,7 @@ use super::caller::{Origin, Source};
 use super::execution::{Body, Prepared};
 use super::manager::Entry;
 use crate::Result;
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 
 /* === Constants === */
 
@@ -33,7 +33,7 @@ use crate::operations::OperationDeclaration;
 /* === Type Aliases === */
 
 type Prepare<O, P> = dyn Fn(
-        (Request<<O as OperationDeclaration>::Request>, P),
+        (Request<<O as RequestShape>::Request>, P),
         OperationInstanceId,
         Arc<crate::supervision::instance::Instance>,
         Arc<Entry>,
@@ -41,7 +41,7 @@ type Prepare<O, P> = dyn Fn(
         Source,
         Origin,
         Option<OwnedSemaphorePermit>,
-    ) -> Result<Prepared<super::Response<<O as OperationDeclaration>::Response>>>
+    ) -> Result<Prepared<super::Response<<O as RequestShape>::Response>>>
     + Send
     + Sync;
 
@@ -58,7 +58,7 @@ pub(super) struct Request<T> {
     pub(super) grant: Option<harmos_domain::plugin::Grant>,
 }
 
-pub(super) struct Typed<O: OperationDeclaration, P = ()> {
+pub(super) struct Typed<O: RequestShape, P = ()> {
     pub(super) prepare: Box<Prepare<O, P>>,
 }
 

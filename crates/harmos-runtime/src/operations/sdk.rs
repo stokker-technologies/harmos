@@ -26,8 +26,6 @@ use super::{EncodedInvocation, Manager};
 use crate::guest::host::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
 use harmos_guest::lifecycle::Initialize;
 
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
 use crate::{Error, Message, Result};
 
 /* === Constants === */
@@ -95,18 +93,11 @@ impl crate::MemorySize for Encoded {
 
 // This Adapter Is Never Declared Or Registered By Its Static Identity.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl OperationDeclaration for Encoded {
+impl harmos_domain::operations::RequestShape for Encoded {
     type Request = Self;
     type Response = Vec<u8>;
     type Input = crate::operations::NoStream;
     type Output = crate::operations::NoStream;
-    const ID: &'static str = "harmos.encoded";
-    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
-        timeout: harmos_domain::operations::UNBOUNDED,
-        attempt_timeout: harmos_domain::operations::UNBOUNDED,
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    };
 }
 
 impl PluginSdkRegistration {

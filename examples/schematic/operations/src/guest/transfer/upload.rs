@@ -47,15 +47,22 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::operation(resources = [Store],
-    id = "benchmark.upload", response = Receipt, input = Batch,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Idempotent,
-)]
+#[harmos_operations::message(harmos_path = harmos_operations)]
+#[derive(harmos_operations::Request)]
+#[harmos_path(harmos_operations)]
+#[request(response = Receipt, input = Batch)]
+#[derive(Clone)]
 pub struct Upload {
     pub transfer: u64,
 }
+
+pub static UPLOAD_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+    harmos_operations::operations::WireDeclaration::request::<Upload>("benchmark.upload", POLICY)
+        .visibility(harmos_operations::operations::Visibility::Public)
+        .replay(harmos_operations::operations::ReplaySafety::Idempotent);
+
+pub const UPLOAD_OPERATION: harmos_operations::operations::OperationSpec<Upload> =
+    harmos_operations::operations::OperationSpec::<Upload>::new(&UPLOAD_DESCRIPTION);
 
 /* === Enums === */
 
@@ -64,11 +71,12 @@ pub struct Upload {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos_operations::Operation for Upload {
-    type Error = crate::Error;
-
-    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Receipt>, Self::Error> {
-        let store = ctx.resource::<Store>();
+mod execution {
+    use super::*;
+    pub async fn upload_handler(
+        request: Upload, ctx: harmos_operations::execution::operations::FunctionContext<Upload>,
+    ) -> Result<harmos_operations::Response<Receipt>, crate::Error> {
+        let store = ctx.resource::<Store>().expect("declared resource is registered");
 
         let mut batches = VecDeque::new();
         let mut retained_bytes = 0usize;
@@ -85,14 +93,29 @@ impl harmos_operations::Operation for Upload {
             batches.push_back(batch);
         }
         let mut stores = store.batches.lock().unwrap();
-        let other_bytes: usize = stores.iter().filter(|(id, _)| **id != self.transfer).map(|(_, stored)| stored.bytes).sum();
+        let other_bytes: usize = stores.iter().filter(|(id, _)| **id != request.transfer).map(|(_, stored)| stored.bytes).sum();
         if retained_bytes.saturating_add(other_bytes) > 64 * 1024 * 1024 {
             return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
         }
-        stores.insert(self.transfer, Stored { bytes: retained_bytes, batches });
+        stores.insert(request.transfer, Stored { bytes: retained_bytes, batches });
         Ok(receipt.into())
     }
+
+    pub fn upload_operation() -> ::core::result::Result<
+        harmos_operations::execution::operations::OperationFactory,
+        harmos_operations::execution::operations::ServingError,
+    > {
+        harmos_operations::execution::operations::OperationFactory::function(
+            UPLOAD_OPERATION,
+            const { &[harmos_operations::Resource::of::<Store>()] },
+            upload_handler,
+            |_| harmos_operations::operations::FailureKind::Permanent,
+        )
+    }
 }
+
+#[cfg(feature = "runtime")]
+pub use execution::upload_operation;
 
 /* === Public Functions === */
 

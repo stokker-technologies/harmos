@@ -56,7 +56,7 @@ impl harmos_runtime::Lifecycle for InitializingBank {
     }
 
     async fn initialize(&mut self, context: &Self::Context) -> Result<(), Error> {
-        context.runtime.register::<Operations>(harmos_runtime::operations::Lane::default()).await?;
+        context.runtime.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await?;
         context.resource::<AtomicUsize>().expect("the test registers its initialization counter").fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -75,7 +75,11 @@ async fn retry_retains_invocation_identity() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut invocation = runtime.operation(Request { failures: 2, ..request() }).start().await.unwrap();
     let id = invocation.id();
     let generation = invocation.generation();
@@ -97,7 +101,11 @@ async fn errors_never_retry() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     for failure in [FailureKind::Permanent, FailureKind::Unauthorized, FailureKind::Invalid, FailureKind::Cancelled] {
         assert!(matches!(runtime.operation(Request { failures: 10, failure, ..request() }).await, Err(Error::OperationFailed { .. })));
     }
@@ -112,7 +120,11 @@ async fn ambiguous_timeout_replay() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    runtime.operations.register::<super::Single<Slow>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(slow_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     assert!(matches!(runtime.operation(Slow(request())).await, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
@@ -126,7 +138,11 @@ async fn repeated_calls_execute_handlers() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
 
     // Prepare Invalid Requests
     let invalid = || Request { valid: false, ..request() };
@@ -151,7 +167,11 @@ async fn unregister_reserves_owner() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let opened = Arc::new(Notify::new());
     let gate = Arc::new(Notify::new());
     let invocation = runtime
@@ -164,21 +184,37 @@ async fn unregister_reserves_owner() {
         .unwrap();
     opened.notified().await;
     // One poll reserves the id; dropping the waiter interrupts the unregister.
-    assert!(runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).now_or_never().is_none());
-    assert!(runtime.operations.definition(Compute::ID).is_err());
+    assert!(
+        runtime
+            .operations
+            .unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap())
+            .now_or_never()
+            .is_none()
+    );
+    assert!(runtime.operations.definition(COMPUTE_OPERATION.entry().id).is_err());
     assert!(matches!(
-        runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await,
+        runtime
+            .operations
+            .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .await,
         Err(Error::AlreadyRegistered { .. })
     ));
     gate.notify_one();
     assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     // Settled work does not release an interrupted explicit unregister's reservation.
     assert!(matches!(
-        runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await,
+        runtime
+            .operations
+            .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .await,
         Err(Error::AlreadyRegistered { .. })
     ));
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
     runtime.shutdown().await.unwrap();
@@ -187,11 +223,15 @@ async fn unregister_reserves_owner() {
 #[tokio::test]
 async fn operations_use_structured() {
     let runtime = runtime().await;
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
-    runtime.operations.register::<super::Single<Parent>>(crate::support::SERIAL).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime.operations.register_operation(parent_operation().expect("representable operation"), crate::support::SERIAL).await.unwrap();
     assert_eq!(runtime.operation(Parent(request())).await.unwrap().value, 7);
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
-    runtime.operations.register::<super::Single<Compute>>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap()).await.unwrap();
+    runtime.operations.register_operation(compute_operation().expect("representable operation"), crate::support::SERIAL).await.unwrap();
     assert!(
         matches!(runtime.operation(Parent(request())).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
     );
@@ -205,8 +245,8 @@ async fn concurrent_ancestor_reentry() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    runtime.operations.register::<super::Single<Compute>>(crate::support::CONCURRENT).await.unwrap();
-    runtime.operations.register::<super::Single<Parent>>(crate::support::CONCURRENT).await.unwrap();
+    runtime.operations.register_operation(compute_operation().expect("representable operation"), crate::support::CONCURRENT).await.unwrap();
+    runtime.operations.register_operation(parent_operation().expect("representable operation"), crate::support::CONCURRENT).await.unwrap();
 
     assert!(
         matches!(runtime.operation(Parent(request())).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
@@ -227,7 +267,11 @@ async fn shutdown_releases_bindings() {
     })
     .await;
     let weak = Arc::downgrade(&owner);
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.operation(request()).await.unwrap();
     runtime.shutdown().await.unwrap();
     assert!(matches!(runtime.operation(request()).start().await, Err(Error::Closing { .. })));
@@ -239,9 +283,13 @@ async fn shutdown_releases_bindings() {
 #[tokio::test]
 async fn handler_panic_settles() {
     let runtime = runtime().await;
-    runtime.operations.register::<super::Single<Compute>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     assert!(matches!(runtime.operation(Request { value: usize::MAX, ..request() }).await, Err(Error::OperationPanicked { .. })));
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap()).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
 
@@ -252,21 +300,21 @@ async fn operation_catalog_binding() {
         setup.resource::<Owner>(owner.clone());
     })
     .await;
-    let definitions = harmos_runtime::operations::Declarations::of::<Operations>().unwrap();
-    assert_eq!(definitions[0].id.as_str(), Compute::ID);
-    assert_eq!(definitions[1].id.as_str(), Slow::ID);
-    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    let definitions = OPERATIONS_CATALOG.definitions().unwrap();
+    assert_eq!(definitions[0].id.as_str(), COMPUTE_OPERATION.entry().id);
+    assert_eq!(definitions[1].id.as_str(), SLOW_OPERATION.entry().id);
+    runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
     assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
 
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await.unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap()).await.unwrap();
     assert!(matches!(
-        runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await,
+        runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await,
         Err(Error::AlreadyRegistered { .. })
     ));
-    assert!(runtime.operations.definition(Compute::ID).is_err());
-    assert!(runtime.operations.definition(Slow::ID).is_ok());
+    assert!(runtime.operations.definition(COMPUTE_OPERATION.entry().id).is_err());
+    assert!(runtime.operations.definition(SLOW_OPERATION.entry().id).is_ok());
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
 }
@@ -278,8 +326,8 @@ async fn catalog_boot_atomic() {
         setup.settings().register(catalog());
         setup.resource::<Owner>(owner.clone());
         setup
-            .operations::<Operations>(harmos_runtime::operations::Lane::default())
-            .operations::<Operations>(harmos_runtime::operations::Lane::default());
+            .catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default())
+            .catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default());
     })
     .await;
     assert!(matches!(result, Err(harmos_runtime::StartupError::DuplicateCatalog { .. })));
@@ -291,7 +339,7 @@ async fn catalog_boot_atomic() {
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource::<Owner>(owner.clone());
-        setup.operations::<Operations>(crate::support::SERIAL);
+        setup.catalog(OPERATIONS_CATALOG, crate::support::SERIAL);
     })
     .await
     .unwrap();
@@ -313,7 +361,8 @@ async fn providers_route_explicitly() {
     for id in ["first", "second"] {
         runtime
             .plugin
-            .register_embedded::<Operations>(
+            .register_embedded(
+                OPERATIONS_CATALOG,
                 harmos_runtime::guest::PluginDefinition {
                     id: id.into(),
                     version: "1.0.0".parse().unwrap(),
@@ -332,16 +381,19 @@ async fn providers_route_explicitly() {
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
     assert!(matches!(runtime.operation(request()).start().await, Err(Error::InvalidInput { field: "operation provider", .. })));
     assert!(matches!(
-        runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", Compute::ID).unwrap()).await,
+        runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap()).await,
         Err(Error::NotRegistered { .. })
     ));
-    assert_eq!(runtime.operations.definition_from("first", Compute::ID).unwrap().id.as_str(), Compute::ID);
+    assert_eq!(
+        runtime.operations.definition_from("first", COMPUTE_OPERATION.entry().id).unwrap().id.as_str(),
+        COMPUTE_OPERATION.entry().id
+    );
     let first_result = runtime.operations.submit_from::<Compute>("first", request()).unwrap().await.unwrap();
     let second_result = runtime.operations.submit_from::<Compute>("second", request()).unwrap().await.unwrap();
     assert_eq!(first_result.value, 17);
     assert_eq!(second_result.value, 17);
     assert!(!first_result.ptr_eq(&second_result));
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("first", Compute::ID).unwrap()).await.unwrap();
+    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("first", COMPUTE_OPERATION.entry().id).unwrap()).await.unwrap();
     assert!(matches!(runtime.operations.submit_from::<Compute>("first", request()), Err(Error::NotRegistered { .. })));
     let surviving = runtime.operation(request()).await.unwrap();
     assert_eq!(surviving.value, 17);
@@ -357,7 +409,7 @@ fn simulation_reboot_rebinds() {
     let mut sim = Runtime::<Bank>::simulate_with(Ledger::default(), (), 7, move |setup| {
         setup.settings().register(catalog());
         setup.resource::<Owner>(captured.clone());
-        setup.operations::<Operations>(crate::support::SERIAL);
+        setup.catalog(OPERATIONS_CATALOG, crate::support::SERIAL);
     })
     .unwrap();
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);

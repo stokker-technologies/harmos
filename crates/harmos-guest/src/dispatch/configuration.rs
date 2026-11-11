@@ -77,7 +77,7 @@ impl Table {
             self.configuration_errors.push(StartupError::DuplicateCatalog { name: catalog.name });
             return self;
         }
-        if let Err(source) = self.register(catalog.batch()) {
+        if let Err(source) = catalog.batch().and_then(|batch| self.register(batch)) {
             self.configuration_errors.push(StartupError::Binding { source: Box::new(source) });
         }
         self

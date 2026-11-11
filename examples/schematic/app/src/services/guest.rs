@@ -21,7 +21,6 @@
 use crate::app::{Runtime, SchematicEditor};
 use harmos_runtime::config::PluginSettings;
 use harmos_runtime::guest::{Host, Loaded};
-use schematic_operations::guest::Operations;
 
 /* === Constants === */
 
@@ -48,7 +47,18 @@ pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos
             reason: "the inspected component has a different owner",
         });
     }
-    runtime.plugin.register_guest::<Operations>(loaded, PluginSettings::default(), harmos_runtime::operations::Lane::default()).await?;
+    runtime
+        .plugin
+        .register_guest(
+            harmos_runtime::operations::ComponentCatalog::new()
+                .operation(schematic_operations::guest::VALIDATE_SCHEMATIC_OPERATION)?
+                .operation(schematic_operations::guest::PROPOSE_ROUTE_OPERATION)?
+                .operation(schematic_operations::guest::ANALYZE_SCHEMATIC_OPERATION)?,
+            loaded,
+            PluginSettings::default(),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await?;
     runtime.plugin.initialize().await
 }
 

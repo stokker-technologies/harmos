@@ -41,8 +41,8 @@ use schematic_protocol::{Directories, ListDirectories, Point, ProposeRoute, Rout
 /* === Public Functions === */
 
 pub fn plugin(directory: std::path::PathBuf) -> Plugin {
-    let validate = Operation::new(ValidateSchematic::ID, validate).visibility(Visibility::Public);
-    let route = Operation::new(ProposeRoute::ID, route).visibility(Visibility::Public);
+    let validate = Operation::new(VALIDATE_SCHEMATIC_OPERATION.entry().id, validate).visibility(Visibility::Public);
+    let route = Operation::new(PROPOSE_ROUTE_OPERATION.entry().id, route).visibility(Visibility::Public);
     let directories = Operation::new(ListDirectories::ID, async move |_: &Context, _: ListDirectories| {
         let entries = std::fs::read_dir(&directory)?;
         let mut directories = Vec::new();

@@ -30,23 +30,29 @@ use super::{Duration, Echoed, OperationPolicy, RetryPolicy};
 
 /* === Structs === */
 
-#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain,
-    operations = [super::ProviderEchoOperation], id = "probe.wait", response = Echoed, policy = OperationPolicy {
-        timeout: Duration::from_millis(5),
-        attempt_timeout: Duration::from_millis(5),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }))]
-#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest,
-    operations = [super::ProviderEchoOperation], id = "probe.wait", response = Echoed, policy = OperationPolicy {
-        timeout: Duration::from_millis(5),
-        attempt_timeout: Duration::from_millis(5),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }))]
+#[::harmos_guest::message(harmos_path = ::harmos_guest)]
+#[derive(::harmos_guest::Request)]
+#[harmos_path(::harmos_guest)]
+#[request(response = Echoed)]
 #[derive(Clone, PartialEq)]
 
 pub struct WaitOperation {}
+
+pub static WAIT_OPERATION_DESCRIPTION: ::harmos_guest::operations::WireDeclaration =
+    ::harmos_guest::operations::WireDeclaration::request::<WaitOperation>(
+        "probe.wait",
+        OperationPolicy {
+            timeout: Duration::from_millis(5),
+            attempt_timeout: Duration::from_millis(5),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+static WAIT_OPERATION_CALLEES: [::harmos_guest::operations::WireDeclaration; 1] =
+    [super::provider::PROVIDER_ECHO_OPERATION_DESCRIPTION.copied()];
+pub const WAIT_OPERATION_OPERATION: ::harmos_guest::operations::OperationSpec<WaitOperation> =
+    ::harmos_guest::operations::OperationSpec::<WaitOperation>::new(&WAIT_OPERATION_DESCRIPTION).calls(&WAIT_OPERATION_CALLEES);
 
 /* === Enums === */
 
@@ -77,6 +83,7 @@ mod runtime {
     // Local Imports
     use super::super::ProviderEchoOperation;
     use super::{Echoed, WaitOperation};
+    use crate::contract::{PROVIDER_ECHO_OPERATION_OPERATION, WAIT_OPERATION_OPERATION};
     use harmos_guest::OperationRefusal;
 
     /* === Constants === */
@@ -93,22 +100,26 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for WaitOperation {
-        type Error = OperationRefusal;
-
-        // The Provider Answers Slowly; Nothing Here Burns Fuel While It Waits
-        async fn run(self, sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
-            let result: Result<Echoed, OperationRefusal> = async move {
-                let _ = sdk.operation(ProviderEchoOperation { say: "slow".into() }).await;
-                // Resuming Reaches the Epoch Check a Suspended Guest Could Not
-                for step in 0..4096u32 {
-                    std::hint::black_box(step);
-                }
-                Ok(Echoed { said: "waited".to_owned() })
+    pub async fn wait_operation_handler(
+        _request: WaitOperation, sdk: harmos_guest::operations::FunctionContext<WaitOperation>,
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: Result<Echoed, OperationRefusal> = async move {
+            let _ = sdk.operation(PROVIDER_ECHO_OPERATION_OPERATION, ProviderEchoOperation { say: "slow".into() }).await;
+            // Resuming Reaches the Epoch Check a Suspended Guest Could Not
+            for step in 0..4096u32 {
+                std::hint::black_box(step);
             }
-            .await;
-            result.map(Into::into)
+            Ok(Echoed { said: "waited".to_owned() })
         }
+        .await;
+        result.map(Into::into)
+    }
+
+    pub fn wait_operation_operation()
+    -> ::core::result::Result<harmos_guest::operations::OperationFactory, harmos_guest::operations::ServingError> {
+        harmos_guest::operations::OperationFactory::function(WAIT_OPERATION_OPERATION, const { &[] }, wait_operation_handler, |_| {
+            harmos_guest::operations::FailureKind::Permanent
+        })
     }
 
     /* === Public Functions === */
@@ -117,3 +128,6 @@ mod runtime {
 
     /* === Tests === */
 }
+
+#[cfg(target_arch = "wasm32")]
+pub use runtime::wait_operation_operation;

@@ -25,10 +25,10 @@ pub mod streams;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use error::Error;
 pub use harmos_domain::*;
-pub use harmos_macros::{catalog, operation};
+pub use harmos_macros::{Request, catalog};
 
 #[cfg(feature = "lifecycle")]
-pub use crate::execution::{Context, Dependent, Executable, ExecutionContext, Operation, Resource, ResourceError, Response};
+pub use crate::execution::{Context, ExecutionContext, Operation, Resource, ResourceError, Response};
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use host::Host;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -122,7 +122,7 @@ pub mod operations {
     pub use harmos_domain::operations::*;
 
     #[cfg(feature = "lifecycle")]
-    pub use crate::execution::operations::{Catalog, Executable, OperationCatalog};
+    pub use crate::execution::operations::{Catalog, OperationCatalog};
 
     /* === Imports === */
 

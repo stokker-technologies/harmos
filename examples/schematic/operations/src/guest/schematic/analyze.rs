@@ -42,19 +42,23 @@ pub struct Finding {
     pub text: String,
 }
 
-#[harmos_operations::operation(
-    id = "schematic.analyze",
-    response = Analysis,
-    output = Finding,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Idempotent,
-    grpc(package = "schematic.v1", service = "Schematic", method = "Analyze"),
-)]
+#[harmos_operations::message(harmos_path = harmos_operations)]
+#[derive(harmos_operations::Request)]
+#[harmos_path(harmos_operations)]
+#[request(response = Analysis, output = Finding)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct AnalyzeSchematic {
     pub schematic: schematic_domain::model::Snapshot,
 }
+
+pub static ANALYZE_SCHEMATIC_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+    harmos_operations::operations::WireDeclaration::request::<AnalyzeSchematic>("schematic.analyze", POLICY)
+        .visibility(harmos_operations::operations::Visibility::Public)
+        .replay(harmos_operations::operations::ReplaySafety::Idempotent)
+        .grpc(harmos_operations::operations::Grpc::new("schematic.v1", "Schematic", "Analyze"));
+
+pub const ANALYZE_SCHEMATIC_OPERATION: harmos_operations::operations::OperationSpec<AnalyzeSchematic> =
+    harmos_operations::operations::OperationSpec::<AnalyzeSchematic>::new(&ANALYZE_SCHEMATIC_DESCRIPTION);
 
 #[harmos_operations::message]
 #[derive(Clone, Debug, PartialEq)]
@@ -69,13 +73,14 @@ pub struct Analysis {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos_operations::Operation for AnalyzeSchematic {
-    type Error = crate::Error;
-
-    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Analysis>, Self::Error> {
+mod execution {
+    use super::*;
+    pub async fn analyze_schematic_handler(
+        request: AnalyzeSchematic, ctx: harmos_operations::execution::operations::FunctionContext<AnalyzeSchematic>,
+    ) -> Result<harmos_operations::Response<Analysis>, crate::Error> {
         let findings = [
-            format!("{} symbols", self.schematic.symbols.len()),
-            format!("{} connections", self.schematic.connections.len()),
+            format!("{} symbols", request.schematic.symbols.len()),
+            format!("{} connections", request.schematic.connections.len()),
             "Analysis complete".to_owned(),
         ];
         for text in findings {
@@ -85,7 +90,22 @@ impl harmos_operations::Operation for AnalyzeSchematic {
         }
         Ok(Analysis { checked: 3 }.into())
     }
+
+    pub fn analyze_schematic_operation() -> ::core::result::Result<
+        harmos_operations::execution::operations::OperationFactory,
+        harmos_operations::execution::operations::ServingError,
+    > {
+        harmos_operations::execution::operations::OperationFactory::function(
+            ANALYZE_SCHEMATIC_OPERATION,
+            const { &[] },
+            analyze_schematic_handler,
+            |_| harmos_operations::operations::FailureKind::Permanent,
+        )
+    }
 }
+
+#[cfg(feature = "runtime")]
+pub use execution::analyze_schematic_operation;
 
 /* === Public Functions === */
 

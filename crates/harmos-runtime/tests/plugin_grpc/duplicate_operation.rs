@@ -60,7 +60,9 @@ async fn duplicate_operation_names_both_owners() {
 
     // Host Registration Cannot Replace The Plugin's Identifier Either
     use harmos_runtime::operations::Registration;
-    let batch = Registration::new(harmos_runtime::operations::Lane::default()).operation::<Host>("fixture.echo").unwrap();
+    let batch = Registration::new(harmos_runtime::operations::Lane::default())
+        .operation(host_operation().expect("representable operation"), "fixture.echo")
+        .unwrap();
     let error = host.runtime.register_batch(batch).await.unwrap_err();
     assert!(error.to_string().contains("fixture.echo"));
     assert!(error.to_string().contains("caller"));

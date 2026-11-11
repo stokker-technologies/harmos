@@ -29,7 +29,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
-use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, RestartPolicy, Running};
+use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, RequestShape, RestartPolicy, Running};
 impl<A: Application> harmos_operations::execution::operations::ProtobufHost for ServiceContext<A> {
     type Error = Error;
     async fn call_protobuf<O: crate::operations::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
@@ -391,7 +391,7 @@ impl<A: Application> ServiceContext<A> {
 }
 
 impl<A: Application> harmos_operations::execution::operations::OperationHost for ServiceContext<A> {
-    async fn invoke<O: crate::operations::OperationDeclaration, E: harmos_operations::execution::operations::EndpointSet>(
+    async fn invoke<O: crate::operations::RequestShape, E: harmos_operations::execution::operations::EndpointSet>(
         &self, request: O::Request, retry: Option<crate::RetryPolicy>, endpoints: E,
     ) -> Result<Self::Instance<O>> {
         harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
@@ -407,7 +407,7 @@ impl<A: Application> harmos_operations::execution::operations::OperationHost for
     }
 
     type Error = Error;
-    type Instance<O: OperationDeclaration> = Running<O>;
+    type Instance<O: RequestShape> = Running<O>;
 
     fn context(&self) -> &CallContext {
         harmos_operations::execution::operations::OperationHost::context(&self.operations)
@@ -420,11 +420,11 @@ impl<A: Application> harmos_operations::execution::operations::OperationHost for
         Ok(child)
     }
 
-    fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
+    fn submit<O: RequestShape>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
         harmos_operations::execution::operations::OperationHost::submit::<O>(&self.operations, request)
     }
 
-    fn submit_owned<O: OperationDeclaration>(
+    fn submit_owned<O: RequestShape>(
         &self, request: O::Request, claims: crate::operations::RequestClaims,
     ) -> impl Future<Output = Result<Running<O>>> + Send {
         harmos_operations::execution::operations::OperationHost::submit_owned::<O>(&self.operations, request, claims)

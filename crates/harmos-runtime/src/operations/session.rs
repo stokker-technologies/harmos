@@ -26,7 +26,7 @@ use super::{
     Manager, OperationGeneration, OperationInstanceId, OperationStatus, Running, StreamInput, StreamItem, StreamOutput, StreamSettings,
     stream,
 };
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Refusal, Result};
 use harmos_domain::MemorySize;
@@ -37,18 +37,18 @@ use harmos_domain::MemorySize;
 
 /* === Type Aliases === */
 
-pub type Upload<O> = Session<O, SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>, ()>;
-pub type Download<O> = Session<O, (), SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>>;
+pub type Upload<O> = Session<O, SessionInput<<<O as RequestShape>::Input as crate::operations::Direction>::Item>, ()>;
+pub type Download<O> = Session<O, (), SessionOutput<<<O as RequestShape>::Output as crate::operations::Direction>::Item>>;
 pub type Exchange<O> = Session<
     O,
-    SessionInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
-    SessionOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
+    SessionInput<<<O as RequestShape>::Input as crate::operations::Direction>::Item>,
+    SessionOutput<<<O as RequestShape>::Output as crate::operations::Direction>::Item>,
 >;
 
 /* === Structs === */
 
 #[must_use = "dropping a streaming session requests cancellation"]
-pub struct Session<O: OperationDeclaration, I = (), R = ()> {
+pub struct Session<O: RequestShape, I = (), R = ()> {
     input: I,
     output: R,
     completion: Completion<O>,
@@ -67,7 +67,7 @@ pub struct SessionOutput<T> {
 }
 
 #[must_use = "join completion or explicitly cancel and settle"]
-pub struct Completion<O: OperationDeclaration> {
+pub struct Completion<O: RequestShape> {
     instance: Running<O>,
     ends: Arc<Ends>,
     delivered: bool,
@@ -75,7 +75,7 @@ pub struct Completion<O: OperationDeclaration> {
 
 // Channel Progress Only; Execution And Cleanup Remain On Instance.
 struct Ends {
-    operation: &'static str,
+    operation: String,
     input: AtomicBool,
     output: AtomicBool,
 }
@@ -86,7 +86,7 @@ struct Ends {
 
 /* === Implementations === */
 
-impl<O: OperationDeclaration, I, R> Session<O, I, R> {
+impl<O: RequestShape, I, R> Session<O, I, R> {
     pub fn id(&self) -> OperationInstanceId {
         self.completion.id()
     }
@@ -131,12 +131,12 @@ impl<O: OperationDeclaration, I, R> Session<O, I, R> {
     }
 }
 
-impl<O: OperationDeclaration, T, R> Session<O, SessionInput<T>, R> {
+impl<O: RequestShape, T, R> Session<O, SessionInput<T>, R> {
     pub fn finish_input(&mut self) {
         self.input.finish_input();
     }
 }
-impl<O: OperationDeclaration, T: MemorySize, R> Session<O, SessionInput<T>, R> {
+impl<O: RequestShape, T: MemorySize, R> Session<O, SessionInput<T>, R> {
     pub async fn send(&self, item: T) -> Result<()> {
         self.input.send(item).await
     }
@@ -145,7 +145,7 @@ impl<O: OperationDeclaration, T: MemorySize, R> Session<O, SessionInput<T>, R> {
         self.input.send_with(bytes, make).await
     }
 }
-impl<O: OperationDeclaration, I, T> Session<O, I, SessionOutput<T>> {
+impl<O: RequestShape, I, T> Session<O, I, SessionOutput<T>> {
     pub async fn next(&mut self) -> Result<Option<StreamItem<T>>> {
         self.output.next().await
     }
@@ -166,7 +166,7 @@ impl<T: MemorySize> SessionInput<T> {
         let sender = self.sender.as_ref().ok_or(Error::NotReady { domain: "operation input closed" })?;
         tokio::select! {
             biased;
-            error = ended(&self.control, self.ends.operation) => Err(error),
+            error = ended(&self.control, &self.ends.operation) => Err(error),
             permit = sender.reserve(bytes) => {
                 let permit = permit?;
                 let value = make()?;
@@ -194,7 +194,7 @@ impl<T> SessionOutput<T> {
             if current.cancellation_requested() {
                 self.receiver.close();
                 return Err(Refusal::Cancelled {
-                    operation: self.ends.operation.into(),
+                    operation: self.ends.operation.clone(),
                     attempt: current.attempt() + 1,
                 }
                 .into());
@@ -228,7 +228,7 @@ impl<T> Drop for SessionOutput<T> {
     }
 }
 
-impl<O: OperationDeclaration> Completion<O> {
+impl<O: RequestShape> Completion<O> {
     pub fn id(&self) -> OperationInstanceId {
         self.instance.id()
     }
@@ -275,7 +275,7 @@ impl<O: OperationDeclaration> Completion<O> {
         result
     }
 }
-impl<O: OperationDeclaration> Drop for Completion<O> {
+impl<O: RequestShape> Drop for Completion<O> {
     fn drop(&mut self) {
         if !self.delivered {
             cancel_unsettled(&self.instance.control);
@@ -284,17 +284,15 @@ impl<O: OperationDeclaration> Drop for Completion<O> {
 }
 
 impl Manager {
-    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
+    pub fn upload<O: crate::operations::RequestShape>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(
-        &self, request: O::Request, settings: StreamSettings,
-    ) -> Result<Download<O>> {
+    pub fn download<O: crate::operations::RequestShape>(&self, request: O::Request, settings: StreamSettings) -> Result<Download<O>> {
         download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
-    pub fn exchange<O: crate::operations::OperationDeclaration>(
+    pub fn exchange<O: crate::operations::RequestShape>(
         &self, request: O::Request, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
         exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
@@ -302,17 +300,15 @@ impl Manager {
 }
 
 impl super::Context<'_> {
-    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
+    pub fn upload<O: crate::operations::RequestShape>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(
-        &self, request: O::Request, settings: StreamSettings,
-    ) -> Result<Download<O>> {
+    pub fn download<O: crate::operations::RequestShape>(&self, request: O::Request, settings: StreamSettings) -> Result<Download<O>> {
         download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
-    pub fn exchange<O: crate::operations::OperationDeclaration>(
+    pub fn exchange<O: crate::operations::RequestShape>(
         &self, request: O::Request, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
         exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
@@ -321,17 +317,15 @@ impl super::Context<'_> {
 
 #[cfg(feature = "plugin-guest")]
 impl super::Caller {
-    pub fn upload<O: crate::operations::OperationDeclaration>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
+    pub fn upload<O: crate::operations::RequestShape>(&self, request: O::Request, settings: StreamSettings) -> Result<Upload<O>> {
         upload(request, settings, |request, input| self.submit_endpoints::<O, _>(request, input))
     }
 
-    pub fn download<O: crate::operations::OperationDeclaration>(
-        &self, request: O::Request, settings: StreamSettings,
-    ) -> Result<Download<O>> {
+    pub fn download<O: crate::operations::RequestShape>(&self, request: O::Request, settings: StreamSettings) -> Result<Download<O>> {
         download(request, settings, |request, output| self.submit_endpoints::<O, _>(request, output))
     }
 
-    pub fn exchange<O: crate::operations::OperationDeclaration>(
+    pub fn exchange<O: crate::operations::RequestShape>(
         &self, request: O::Request, input: StreamSettings, output: StreamSettings,
     ) -> Result<Exchange<O>> {
         exchange(request, input, output, |request, endpoints| self.submit_endpoints::<O, _>(request, endpoints))
@@ -342,17 +336,14 @@ impl super::Caller {
 
 /* === Private Functions === */
 
-fn upload<O: crate::operations::OperationDeclaration>(
+fn upload<O: crate::operations::RequestShape>(
     request: O::Request, settings: StreamSettings,
-    submit: impl FnOnce(
-        O::Request,
-        StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
-    ) -> Result<Running<O>>,
+    submit: impl FnOnce(O::Request, StreamInput<<<O as RequestShape>::Input as crate::operations::Direction>::Item>) -> Result<Running<O>>,
 ) -> Result<Upload<O>> {
     let (sender, input) = stream(settings)?;
     let instance = submit(request, input)?;
     let ends = Arc::new(Ends {
-        operation: O::ID,
+        operation: instance.operation().to_owned(),
         input: AtomicBool::new(false),
         output: AtomicBool::new(true),
     });
@@ -366,17 +357,14 @@ fn upload<O: crate::operations::OperationDeclaration>(
         completion: Completion { instance, ends, delivered: false },
     })
 }
-fn download<O: crate::operations::OperationDeclaration>(
+fn download<O: crate::operations::RequestShape>(
     request: O::Request, settings: StreamSettings,
-    submit: impl FnOnce(
-        O::Request,
-        StreamOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
-    ) -> Result<Running<O>>,
+    submit: impl FnOnce(O::Request, StreamOutput<<<O as RequestShape>::Output as crate::operations::Direction>::Item>) -> Result<Running<O>>,
 ) -> Result<Download<O>> {
     let (output, receiver) = stream(settings)?;
     let instance = submit(request, output)?;
     let ends = Arc::new(Ends {
-        operation: O::ID,
+        operation: instance.operation().to_owned(),
         input: AtomicBool::new(true),
         output: AtomicBool::new(false),
     });
@@ -390,13 +378,13 @@ fn download<O: crate::operations::OperationDeclaration>(
         completion: Completion { instance, ends, delivered: false },
     })
 }
-fn exchange<O: crate::operations::OperationDeclaration>(
+fn exchange<O: crate::operations::RequestShape>(
     request: O::Request, input: StreamSettings, output: StreamSettings,
     submit: impl FnOnce(
         O::Request,
         (
-            StreamInput<<<O as OperationDeclaration>::Input as crate::operations::Direction>::Item>,
-            StreamOutput<<<O as OperationDeclaration>::Output as crate::operations::Direction>::Item>,
+            StreamInput<<<O as RequestShape>::Input as crate::operations::Direction>::Item>,
+            StreamOutput<<<O as RequestShape>::Output as crate::operations::Direction>::Item>,
         ),
     ) -> Result<Running<O>>,
 ) -> Result<Exchange<O>> {
@@ -404,7 +392,7 @@ fn exchange<O: crate::operations::OperationDeclaration>(
     let (output, receiver) = stream(output)?;
     let instance = submit(request, (input, output))?;
     let ends = Arc::new(Ends {
-        operation: O::ID,
+        operation: instance.operation().to_owned(),
         input: AtomicBool::new(false),
         output: AtomicBool::new(false),
     });

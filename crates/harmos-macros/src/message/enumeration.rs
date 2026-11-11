@@ -46,7 +46,7 @@ pub(super) fn expand(mut item: ItemEnum, harmos: HarmosPath, skip_debug: bool, s
         return Err(Error::new(item.span(), "a message enum requires non-generic variants"));
     }
     let postcard = super::postcard::declare(&syn::Item::Enum(item.clone()), &harmos);
-    let gates = crate::operation::configuration(&item.attrs)?;
+    let gates = crate::configuration::configuration(&item.attrs)?;
     let name = &item.ident;
     let mut payloads = Vec::new();
     let mut memories = Vec::new();

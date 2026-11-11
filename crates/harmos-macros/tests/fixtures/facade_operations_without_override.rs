@@ -7,98 +7,14 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-use std::time::Duration;
-
-// Third Party Imports
-use facade::__harmos::operations::{OperationPolicy, RetryPolicy};
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-#[facade::operation(
-    response = relative::Reply,
-    id = "test.echo",
-    policy = OperationPolicy {
-    timeout: Duration::from_secs(2),
-    attempt_timeout: Duration::from_secs(1),
-    cancellation_timeout: std::time::Duration::ZERO,
-    retries: RetryPolicy::Never,
-},
-)]
-pub struct Echo {
-    pub value: String,
-}
-
-/* === Enums === */
-
-#[facade::catalog]
-pub enum Operations {
-    Echo(Echo),
-}
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-fn main() {}
-
+#[facade::message(harmos_path = ::harmos)]
+#[derive(facade::Request, Clone)]
+#[harmos_path(::harmos)]
+#[request(response = relative::Reply)]
+pub struct Echo { pub value: String }
 mod relative {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
     pub type Reply = WireReply;
-
-    /* === Structs === */
-
-    #[facade::message]
-    pub struct WireReply {
-        pub value: String,
-    }
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    #[facade::message(harmos_path = ::harmos)]
+    pub struct WireReply { pub value: String }
 }
-
-/* === Tests === */
+fn main() {}

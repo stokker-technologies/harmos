@@ -255,9 +255,7 @@ where
         Ok(())
     }
 
-    pub fn submit<O: crate::operations::OperationDeclaration>(
-        &mut self, request: O::Request,
-    ) -> crate::Result<crate::operations::Running<O>> {
+    pub fn submit<O: crate::operations::RequestShape>(&mut self, request: O::Request) -> crate::Result<crate::operations::Running<O>> {
         let runtime = self.runtime.as_ref().ok_or(Error::Closing { domain: "simulated runtime" })?;
         let operations = runtime.operations.clone();
         let handle = self.executor.block_on(async move { operations.submit(request) });
@@ -265,7 +263,7 @@ where
         handle
     }
 
-    pub fn settle<O: crate::operations::OperationDeclaration>(
+    pub fn settle<O: crate::operations::RequestShape>(
         &mut self, invocation: crate::operations::Running<O>,
     ) -> crate::Result<crate::operations::Response<O::Response>> {
         self.executor.block_on(invocation)

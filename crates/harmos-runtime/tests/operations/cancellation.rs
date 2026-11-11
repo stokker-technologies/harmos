@@ -49,21 +49,45 @@ pub(crate) struct Probe {
 
 struct Guard(Arc<Probe>);
 
-#[harmos_runtime::operation(resources = [Probe], id = "cancel.finish", response = u64, visibility = Public,
-    grpc(package = "fixture.cancellation.v1", service = "Operations", method = "Finish"),
-    policy = OperationPolicy {
-        timeout: Duration::from_secs(5), attempt_timeout: Duration::from_secs(4),
-        cancellation_timeout: Duration::from_millis(100), retries: RetryPolicy::Never,
-    }
-)]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = u64)]
+#[derive(Clone)]
 pub(crate) struct Finish {
     pub(crate) mode: u32,
 }
 
-#[harmos_runtime::operation(resources = [Probe], id = "cancel.exchange", response = u64, input = u64, output = u64, visibility = Public,
-    grpc(package = "fixture.cancellation.v1", service = "Operations", method = "Exchange"), policy = Finish::POLICY
-)]
+pub(crate) static FINISH_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<Finish>(
+        "cancel.finish",
+        OperationPolicy {
+            timeout: Duration::from_secs(5),
+            attempt_timeout: Duration::from_secs(4),
+            cancellation_timeout: Duration::from_millis(100),
+            retries: RetryPolicy::Never,
+        },
+    )
+    .visibility(harmos_runtime::operations::Visibility::Public)
+    .grpc(harmos_runtime::operations::Grpc::new("fixture.cancellation.v1", "Operations", "Finish"));
+
+pub(crate) const FINISH_OPERATION: harmos_runtime::operations::OperationSpec<Finish> =
+    harmos_runtime::operations::OperationSpec::<Finish>::new(&FINISH_DESCRIPTION);
+
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = u64, input = u64, output = u64)]
+#[derive(Clone)]
 pub(crate) struct Exchange {}
+
+pub(crate) static EXCHANGE_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<Exchange>("cancel.exchange", FINISH_OPERATION.entry().policy)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("fixture.cancellation.v1", "Operations", "Exchange"));
+
+pub(crate) const EXCHANGE_OPERATION: harmos_runtime::operations::OperationSpec<Exchange> =
+    harmos_runtime::operations::OperationSpec::<Exchange>::new(&EXCHANGE_DESCRIPTION);
 
 /* === Enums === */
 
@@ -71,34 +95,52 @@ pub(crate) struct Exchange {}
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for Finish {
-    type Error = std::io::Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
-        let probe = ctx.resource::<Probe>();
-        probe.started.fetch_add(1, Ordering::SeqCst);
-        let _guard = Guard(probe.clone());
-        probe.entered.notify_one();
-        if self.mode == 2 {
-            return std::future::pending().await;
-        }
-        ctx.cancelled().await;
-        assert!(ctx.cancellation_requested());
-        match self.mode {
-            0 => Ok(42.into()),
-            1 => std::future::pending().await,
-            _ => Err(std::io::Error::other("cancelled without response")),
-        }
+pub(crate) async fn finish_handler(
+    request: Finish, ctx: harmos_runtime::operations::FunctionContext<Finish>,
+) -> Result<harmos_runtime::Response<u64>, std::io::Error> {
+    let probe = ctx.resource::<Probe>().expect("declared resource is registered");
+    probe.started.fetch_add(1, Ordering::SeqCst);
+    let _guard = Guard(probe.clone());
+    probe.entered.notify_one();
+    if request.mode == 2 {
+        return std::future::pending().await;
+    }
+    ctx.cancelled().await;
+    assert!(ctx.cancellation_requested());
+    match request.mode {
+        0 => Ok(42.into()),
+        1 => std::future::pending().await,
+        _ => Err(std::io::Error::other("cancelled without response")),
     }
 }
 
-impl harmos_runtime::Operation for Exchange {
-    type Error = std::io::Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
-        ctx.streams().1.send_with(8, || Ok(7)).await.map_err(std::io::Error::other)?;
-        while ctx.streams().0.recv().await.is_some() {}
-        ctx.cancelled().await;
-        Ok(42.into())
-    }
+pub(crate) fn finish_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        FINISH_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Probe>()] },
+        finish_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+pub(crate) async fn exchange_handler(
+    _request: Exchange, ctx: harmos_runtime::operations::FunctionContext<Exchange>,
+) -> Result<harmos_runtime::Response<u64>, std::io::Error> {
+    ctx.streams().1.send_with(8, || Ok(7)).await.map_err(std::io::Error::other)?;
+    while ctx.streams().0.recv().await.is_some() {}
+    ctx.cancelled().await;
+    Ok(42.into())
+}
+
+pub(crate) fn exchange_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        EXCHANGE_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Probe>()] },
+        exchange_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for Guard {
@@ -119,8 +161,8 @@ async fn cancel_final_response_in_process() {
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup
             .resource::<Probe>(probe.clone())
-            .operations::<super::Single<Finish>>(harmos_runtime::operations::Lane::default())
-            .operations::<super::Single<Exchange>>(harmos_runtime::operations::Lane::default());
+            .operation(finish_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .operation(exchange_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -159,8 +201,14 @@ pub(crate) async fn remote<A: harmos_runtime::Application>(runtime: &Runtime<A>,
         input: transport.input,
     };
     for mode in 0..4 {
-        let handle =
-            harmos_runtime::grpc::client::start::<Finish>(channel.clone(), tonic::Request::new(Finish { mode }), transport).await.unwrap();
+        let handle = harmos_runtime::grpc::client::start::<Finish>(
+            channel.clone(),
+            FINISH_OPERATION,
+            tonic::Request::new(Finish { mode }),
+            transport,
+        )
+        .await
+        .unwrap();
         probe.entered.notified().await;
         let result = handle.cancel().await;
         if mode == 0 {
@@ -171,7 +219,10 @@ pub(crate) async fn remote<A: harmos_runtime::Application>(runtime: &Runtime<A>,
             assert_eq!(result.unwrap_err().code(), tonic::Code::Cancelled);
         }
     }
-    let mut handle = harmos_runtime::grpc::client::start::<Exchange>(channel, tonic::Request::new(Exchange {}), transport).await.unwrap();
+    let mut handle =
+        harmos_runtime::grpc::client::start::<Exchange>(channel, EXCHANGE_OPERATION, tonic::Request::new(Exchange {}), transport)
+            .await
+            .unwrap();
     assert_eq!(*handle.next().await.unwrap().unwrap(), 7);
     handle.send(9).await.unwrap();
     handle.finish_input().await.unwrap();
@@ -186,8 +237,8 @@ async fn cancel_final_response_grpc() {
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup
             .resource::<Probe>(probe.clone())
-            .operations::<super::Single<Finish>>(harmos_runtime::operations::Lane::default())
-            .operations::<super::Single<Exchange>>(harmos_runtime::operations::Lane::default());
+            .operation(finish_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .operation(exchange_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();

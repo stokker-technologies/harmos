@@ -74,30 +74,62 @@ struct Cancellation {
 
 struct PendingGuard(Arc<Cancellation>);
 
-#[harmos_runtime::operation(resources = [Cancellation], id = "shutdown.pending",
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(3),
-        attempt_timeout: Duration::from_secs(2),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: harmos_runtime::operations::RetryPolicy::Never,
-    },
-    response = (),
-)]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = ())]
+#[derive(Clone)]
 struct PendingContractDeclaration {}
 
-#[harmos_runtime::catalog]
-enum Operations {
-    PendingContractDeclaration(PendingContractDeclaration),
+static PENDING_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<PendingContractDeclaration>(
+        "shutdown.pending",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(3),
+            attempt_timeout: Duration::from_secs(2),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: harmos_runtime::operations::RetryPolicy::Never,
+        },
+    );
+
+const PENDING_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PendingContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<PendingContractDeclaration>::new(&PENDING_CONTRACT_DECLARATION_DESCRIPTION);
+
+static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(PENDING_CONTRACT_DECLARATION_OPERATION.wire())];
+static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(PENDING_CONTRACT_DECLARATION_OPERATION.callees())];
+
+const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::Operations"),
+    &OPERATIONS_CATALOG_DECLARATIONS,
+    &OPERATIONS_CATALOG_CALLEES,
+    Some(operations_catalog_batch),
+);
+
+fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(pending_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
-impl harmos_runtime::Operation for PendingContractDeclaration {
-    type Error = std::convert::Infallible;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let cancellation = ctx.resource::<Cancellation>();
-        let _guard = PendingGuard(cancellation.clone());
-        cancellation.started.notify_one();
-        std::future::pending().await
-    }
+async fn pending_contract_declaration_handler(
+    _request: PendingContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<PendingContractDeclaration>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let cancellation = ctx.resource::<Cancellation>().expect("declared resource is registered");
+    let _guard = PendingGuard(cancellation.clone());
+    cancellation.started.notify_one();
+    std::future::pending().await
+}
+
+fn pending_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PENDING_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Cancellation>()] },
+        pending_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl Drop for PendingGuard {
     fn drop(&mut self) {
@@ -126,7 +158,7 @@ async fn services_stop_first() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
     let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime

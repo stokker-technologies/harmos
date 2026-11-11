@@ -33,15 +33,38 @@ mod wait;
 
 /* === Re-Exports === */
 
-pub use counts::CountsOperation;
+#[cfg(target_arch = "wasm32")]
+pub use counts::counts_operation_operation;
+pub use counts::{COUNTS_OPERATION_OPERATION, CountsOperation};
 pub use decline::DeclineOperation;
-pub use echo::EchoOperation;
+#[cfg(target_arch = "wasm32")]
+pub use decline::decline_operation_operation;
+pub const DECLINE_OPERATION_OPERATION: guest::operations::OperationSpec<DeclineOperation> = decline::DECLINE_OPERATION_OPERATION;
+#[cfg(target_arch = "wasm32")]
+pub use echo::echo_operation_operation;
+pub use echo::{ECHO_OPERATION_OPERATION, EchoOperation};
 pub use fail::FailOperation;
+#[cfg(target_arch = "wasm32")]
+pub use fail::fail_operation_operation;
+pub const FAIL_OPERATION_OPERATION: guest::operations::OperationSpec<FailOperation> = fail::FAIL_OPERATION_OPERATION;
 pub use finish::FinishOperation;
+#[cfg(target_arch = "wasm32")]
+pub use finish::finish_operation_operation;
+pub const FINISH_OPERATION_OPERATION: guest::operations::OperationSpec<FinishOperation> = finish::FINISH_OPERATION_OPERATION;
 pub use provider::ProviderEchoOperation;
-pub use read::ReadOperation;
+pub const PROVIDER_ECHO_OPERATION_OPERATION: guest::operations::OperationSpec<ProviderEchoOperation> =
+    provider::PROVIDER_ECHO_OPERATION_OPERATION;
+#[cfg(target_arch = "wasm32")]
+pub use read::read_operation_operation;
+pub use read::{READ_OPERATION_OPERATION, ReadOperation};
 pub use spin::SpinOperation;
+#[cfg(target_arch = "wasm32")]
+pub use spin::spin_operation_operation;
+pub const SPIN_OPERATION_OPERATION: guest::operations::OperationSpec<SpinOperation> = spin::SPIN_OPERATION_OPERATION;
 pub use wait::WaitOperation;
+#[cfg(target_arch = "wasm32")]
+pub use wait::wait_operation_operation;
+pub const WAIT_OPERATION_OPERATION: guest::operations::OperationSpec<WaitOperation> = wait::WAIT_OPERATION_OPERATION;
 
 /* === Imports === */
 
@@ -109,18 +132,33 @@ impl RetryChoice {
 
 /* === Enums === */
 
-#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::catalog(harmos_path = ::harmos_domain))]
-#[cfg_attr(target_arch = "wasm32", harmos_guest::catalog)]
-pub enum Operations {
-    EchoOperation(EchoOperation),
-    DeclineOperation(DeclineOperation),
-    SpinOperation(SpinOperation),
-    WaitOperation(WaitOperation),
-    FailOperation(FailOperation),
-    ReadOperation(ReadOperation),
-    CountsOperation(CountsOperation),
-    FinishOperation(FinishOperation),
-}
+static OPERATIONS_CATALOG_DECLARATIONS: [harmos_guest::catalog::Node<harmos_guest::operations::WireDeclaration>; 8] = [
+    harmos_guest::catalog::Node::Leaf(ECHO_OPERATION_OPERATION.wire()),
+    harmos_guest::catalog::Node::Leaf(DECLINE_OPERATION_OPERATION.wire()),
+    harmos_guest::catalog::Node::Leaf(SPIN_OPERATION_OPERATION.wire()),
+    harmos_guest::catalog::Node::Leaf(WAIT_OPERATION_OPERATION.wire()),
+    harmos_guest::catalog::Node::Leaf(FAIL_OPERATION_OPERATION.wire()),
+    harmos_guest::catalog::Node::Leaf(READ_OPERATION_OPERATION.wire()),
+    harmos_guest::catalog::Node::Leaf(COUNTS_OPERATION_OPERATION.wire()),
+    harmos_guest::catalog::Node::Leaf(FINISH_OPERATION_OPERATION.wire()),
+];
+static OPERATIONS_CATALOG_CALLEES: [harmos_guest::catalog::Node<&'static [harmos_guest::operations::WireDeclaration]>; 8] = [
+    harmos_guest::catalog::Node::Leaf(ECHO_OPERATION_OPERATION.callees()),
+    harmos_guest::catalog::Node::Leaf(DECLINE_OPERATION_OPERATION.callees()),
+    harmos_guest::catalog::Node::Leaf(SPIN_OPERATION_OPERATION.callees()),
+    harmos_guest::catalog::Node::Leaf(WAIT_OPERATION_OPERATION.callees()),
+    harmos_guest::catalog::Node::Leaf(FAIL_OPERATION_OPERATION.callees()),
+    harmos_guest::catalog::Node::Leaf(READ_OPERATION_OPERATION.callees()),
+    harmos_guest::catalog::Node::Leaf(COUNTS_OPERATION_OPERATION.callees()),
+    harmos_guest::catalog::Node::Leaf(FINISH_OPERATION_OPERATION.callees()),
+];
+
+pub const OPERATIONS_CATALOG: harmos_guest::operations::Catalog = harmos_guest::operations::Catalog::new(
+    concat!(module_path!(), "::Operations"),
+    &OPERATIONS_CATALOG_DECLARATIONS,
+    &OPERATIONS_CATALOG_CALLEES,
+    OPERATIONS_CATALOG_FACTORY,
+);
 
 /* === Traits === */
 
@@ -140,3 +178,32 @@ impl guest::operations::ContextValue for Stage {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(not(target_arch = "wasm32"))]
+use declared_catalogs::OPERATIONS_CATALOG_FACTORY;
+#[cfg(target_arch = "wasm32")]
+use registered_catalogs::OPERATIONS_CATALOG_FACTORY;
+
+#[cfg(target_arch = "wasm32")]
+mod registered_catalogs {
+    use super::*;
+    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_guest::__private::RegistrationBatch> =
+        Some(operations_catalog_batch);
+    fn operations_catalog_batch() -> harmos_guest::__private::RegistrationBatch {
+        let mut batch = harmos_guest::__private::RegistrationBatch::new();
+        batch = batch.entry(echo_operation_operation().expect("representable operation"));
+        batch = batch.entry(decline_operation_operation().expect("representable operation"));
+        batch = batch.entry(spin_operation_operation().expect("representable operation"));
+        batch = batch.entry(wait_operation_operation().expect("representable operation"));
+        batch = batch.entry(fail_operation_operation().expect("representable operation"));
+        batch = batch.entry(read_operation_operation().expect("representable operation"));
+        batch = batch.entry(counts_operation_operation().expect("representable operation"));
+        batch = batch.entry(finish_operation_operation().expect("representable operation"));
+        batch
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+mod declared_catalogs {
+    pub(super) const OPERATIONS_CATALOG_FACTORY: Option<fn() -> harmos_guest::__private::RegistrationBatch> = None;
+}

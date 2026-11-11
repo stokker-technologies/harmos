@@ -232,19 +232,11 @@ pub(crate) trait Settlement: Send + Sync + 'static {
 /* === Implementations === */
 
 // The Resident Activation Of A ServiceContext; It Is Never Declared By Its Identity.
-impl super::OperationDeclaration for Activation {
+impl harmos_domain::operations::RequestShape for Activation {
     type Request = ();
     type Response = ();
     type Input = super::NoStream;
     type Output = super::NoStream;
-
-    const ID: &'static str = "";
-    const POLICY: super::OperationPolicy = super::OperationPolicy {
-        timeout: harmos_domain::operations::UNBOUNDED,
-        attempt_timeout: harmos_domain::operations::UNBOUNDED,
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: super::RetryPolicy::Never,
-    };
 }
 
 impl Key {
@@ -1026,6 +1018,9 @@ impl Report {
 }
 
 impl Lease {
+    pub(crate) fn operation(&self) -> &str {
+        &self.running.report.key.definition
+    }
     fn new(running: Running, demand: u64, generation: OperationGeneration) -> Self {
         Self {
             running,

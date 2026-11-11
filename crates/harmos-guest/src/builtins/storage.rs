@@ -37,19 +37,23 @@ product!(HashFile {
 
 /* === Structs === */
 
-#[harmos_operations::execution::operation(harmos_path = harmos_operations::execution, codec = manual,
-    id = "storage.hash_file",
-    response = FileHash,
-    policy = IO_POLICY,
-    visibility = Public,
-    replay = ReplaySafety::Idempotent,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "HashFile"),
-    grant = Self::grant_for)]
+#[derive(harmos_operations::execution::Request)]
+#[harmos_path(harmos_operations::execution)]
+#[request(response = FileHash)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HashFile {
     pub source: FileSource,
     pub range: ByteRange,
 }
+
+pub static HASH_FILE_DESCRIPTION: harmos_operations::execution::operations::WireDeclaration =
+    harmos_operations::execution::operations::WireDeclaration::request::<HashFile>("storage.hash_file", IO_POLICY)
+        .visibility(harmos_operations::execution::operations::Visibility::Public)
+        .replay(ReplaySafety::Idempotent)
+        .grpc(harmos_operations::execution::operations::Grpc::new("harmos.storage.v1", "Storage", "HashFile"));
+
+pub const HASH_FILE_OPERATION: harmos_operations::execution::operations::OperationSpec<HashFile> =
+    harmos_operations::execution::operations::OperationSpec::<HashFile>::new(&HASH_FILE_DESCRIPTION).grant(HashFile::grant_for);
 
 /* === Enums === */
 
@@ -59,7 +63,7 @@ pub struct HashFile {
 
 impl HashFile {
     fn grant_for(request: &HashFile) -> Option<harmos_domain::plugin::Grant> {
-        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, scope))
+        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(HASH_FILE_OPERATION.entry().id, scope))
     }
 }
 

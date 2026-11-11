@@ -43,18 +43,32 @@ struct Bench {
 
 /* === Enums === */
 
-#[harmos_runtime::operation(resources = [Bench], operations = [ReadContractDeclaration], response = Reading,
-        id = "resources.read", grant = |_: &ReadContractDeclaration| Some(harmos_domain::plugin::Grant::of("resources.read", "device")),
-        policy = harmos_runtime::OperationPolicy {
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = Reading)]
+#[derive(Clone)]
+struct ReadContractDeclaration {
+    nested: bool,
+}
+
+static READ_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ReadContractDeclaration>(
+        "resources.read",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct ReadContractDeclaration {
-    nested: bool,
-}
+    );
+
+static READ_CONTRACT_DECLARATION_CALLEES: [harmos_runtime::operations::WireDeclaration; 1] =
+    [READ_CONTRACT_DECLARATION_DESCRIPTION.copied()];
+const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ReadContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ReadContractDeclaration>::new(&READ_CONTRACT_DECLARATION_DESCRIPTION)
+        .grant(|_: &ReadContractDeclaration| Some(harmos_domain::plugin::Grant::of("resources.read", "device")))
+        .calls(&READ_CONTRACT_DECLARATION_CALLEES);
 
 // The Device A Read Saw And How Many Reads Preceded It.
 #[harmos_runtime::message]
@@ -63,28 +77,49 @@ struct Reading {
     seen: u64,
 }
 
-#[harmos_runtime::catalog]
-enum Operations {
-    ReadContractDeclaration(ReadContractDeclaration),
+static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(READ_CONTRACT_DECLARATION_OPERATION.wire())];
+static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(READ_CONTRACT_DECLARATION_OPERATION.callees())];
+
+const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::Operations"),
+    &OPERATIONS_CATALOG_DECLARATIONS,
+    &OPERATIONS_CATALOG_CALLEES,
+    Some(operations_catalog_batch),
+);
+
+fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(read_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for ReadContractDeclaration {
-    type Error = harmos_runtime::operations::InvocationError;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Reading>, Self::Error> {
-        let resources = ctx.resource::<Bench>();
-        let seen = u64::try_from(resources.reads.fetch_add(1, Ordering::SeqCst)).expect("read counts fit in u64");
-        if self.nested {
-            let child = ctx.operation(ReadContractDeclaration { nested: false }).await?;
-            assert_eq!(child.device, resources.device);
-            assert_eq!(child.seen, seen + 1);
-        }
-        Ok(Reading { device: resources.device.clone(), seen }.into())
+async fn read_contract_declaration_handler(
+    request: ReadContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<ReadContractDeclaration>,
+) -> Result<harmos_runtime::Response<Reading>, harmos_runtime::operations::InvocationError> {
+    let resources = ctx.resource::<Bench>().expect("declared resource is registered");
+    let seen = u64::try_from(resources.reads.fetch_add(1, Ordering::SeqCst)).expect("read counts fit in u64");
+    if request.nested {
+        let child = ctx.operation(READ_CONTRACT_DECLARATION_OPERATION, ReadContractDeclaration { nested: false }).await?;
+        assert_eq!(child.device, resources.device);
+        assert_eq!(child.seen, seen + 1);
     }
+    Ok(Reading { device: resources.device.clone(), seen }.into())
+}
+
+fn read_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        READ_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Bench>()] },
+        read_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 /* === Public Functions === */
@@ -95,9 +130,13 @@ impl harmos_runtime::Operation for ReadContractDeclaration {
 
 #[tokio::test]
 async fn runtime_selected_ids() {
-    use harmos_runtime::operations::{OperationDeclaration, OperationDefinition, Registration};
+    use harmos_runtime::operations::Registration;
 
-    #[harmos_runtime::operation(id = "resources.other", response = Reading, policy = ReadContractDeclaration::POLICY)]
+    #[harmos_runtime::message(harmos_path = harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[harmos_path(harmos_runtime)]
+    #[request(response = Reading)]
+    #[derive(Clone)]
     struct OtherRead {
         nested: bool,
     }
@@ -108,7 +147,7 @@ async fn runtime_selected_ids() {
     });
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<Bench>(resources.clone());
-        setup.operations::<Operations>(harmos_runtime::operations::Lane::default());
+        setup.catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(4096),
             ..Default::default()
@@ -117,13 +156,15 @@ async fn runtime_selected_ids() {
     .await
     .unwrap();
     let id = format!("devices.rig_{}.read", 7);
-    let registration = Registration::new(harmos_runtime::operations::Lane::default()).operation::<ReadContractDeclaration>(&id).unwrap();
+    let registration = Registration::new(harmos_runtime::operations::Lane::default())
+        .operation(read_contract_declaration_operation().expect("representable operation"), &id)
+        .unwrap();
     runtime.register_batch(registration.clone()).await.unwrap();
 
     let definition = runtime.operations.definition(&id).unwrap();
-    assert_eq!(definition, OperationDefinition::named::<ReadContractDeclaration>(&id).unwrap());
-    assert_eq!(definition.policy, ReadContractDeclaration::POLICY);
-    assert_ne!(definition.fingerprint, ReadContractDeclaration::definition().fingerprint);
+    assert_eq!(definition, (&READ_CONTRACT_DECLARATION_OPERATION).named(&id).unwrap());
+    assert_eq!(definition.policy, READ_CONTRACT_DECLARATION_OPERATION.entry().policy);
+    assert_ne!(definition.fingerprint, (&READ_CONTRACT_DECLARATION_OPERATION).definition().expect("valid operation").fingerprint);
     assert!(runtime.operations.definitions().contains(&definition));
     assert!(matches!(
         runtime.operations.submit_at::<OtherRead>(&id, OtherRead { nested: false }),
@@ -142,13 +183,13 @@ async fn runtime_selected_ids() {
 
     assert!(matches!(runtime.register_batch(registration).await, Err(harmos_runtime::Error::AlreadyRegistered { .. })));
     let collision = Registration::new(harmos_runtime::operations::Lane::default())
-        .operation::<ReadContractDeclaration>(ReadContractDeclaration::ID)
+        .operation(read_contract_declaration_operation().expect("representable operation"), READ_CONTRACT_DECLARATION_OPERATION.entry().id)
         .unwrap();
     assert!(matches!(runtime.register_batch(collision).await, Err(harmos_runtime::Error::AlreadyRegistered { .. })));
     let duplicate = Registration::new(harmos_runtime::operations::Lane::default())
-        .operation::<ReadContractDeclaration>("devices.duplicate")
+        .operation(read_contract_declaration_operation().expect("representable operation"), "devices.duplicate")
         .unwrap()
-        .operation::<ReadContractDeclaration>("devices.duplicate")
+        .operation(read_contract_declaration_operation().expect("representable operation"), "devices.duplicate")
         .unwrap();
     assert!(matches!(runtime.register_batch(duplicate).await, Err(harmos_runtime::Error::AlreadyRegistered { .. })));
     assert!(runtime.operations.definition("devices.duplicate").is_err());
@@ -173,7 +214,7 @@ async fn nested_resources_shared() {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
 
     let parent = runtime.operation(ReadContractDeclaration { nested: true }).start().await.unwrap().await.unwrap();
     assert_eq!(parent.device, "sim://rig-a");
@@ -185,42 +226,52 @@ async fn nested_resources_shared() {
 
 #[tokio::test]
 async fn private_grpc_refused() {
-    use harmos_runtime::operations::{Grpc, NoStream, OperationDeclaration, Registration, Resource, WireDeclaration};
+    use harmos_runtime::operations::{Grpc, NoStream, Registration};
 
     #[harmos_runtime::message]
     #[derive(Clone)]
     struct Private;
 
-    impl OperationDeclaration for Private {
+    impl harmos_domain::operations::RequestShape for Private {
         type Request = Self;
         type Response = ();
         type Input = NoStream;
         type Output = NoStream;
-        const ID: &'static str = "resources.private_grpc";
-        const POLICY: harmos_runtime::OperationPolicy = ReadContractDeclaration::POLICY;
-        const GRPC: Option<Grpc> = Some(Grpc::new("resources.v1", "Private", "Call"));
+    }
+    static PRIVATE_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+        harmos_domain::operations::WireDeclaration::request::<Private>(
+            "resources.private_grpc",
+            READ_CONTRACT_DECLARATION_OPERATION.entry().policy,
+        )
+        .grpc(Grpc::new("resources.v1", "Private", "Call"));
+
+    const PRIVATE_OPERATION: harmos_domain::operations::OperationSpec<Private> =
+        harmos_domain::operations::OperationSpec::<Private>::new(&PRIVATE_DESCRIPTION);
+
+    async fn private_handler(
+        _request: Private, _: harmos_runtime::operations::FunctionContext<Private>,
+    ) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+        unreachable!("Private gRPC operations must never activate")
     }
 
-    impl harmos_runtime::Dependent for Private {
-        const RESOURCES: &'static [Resource] = &[];
+    fn private_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError>
+    {
+        harmos_runtime::operations::OperationFactory::function(PRIVATE_OPERATION, &[], private_handler, |_| {
+            harmos_runtime::operations::FailureKind::Permanent
+        })
     }
 
-    impl harmos_runtime::Operation for Private {
-        type Error = std::convert::Infallible;
-        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-            unreachable!("Private gRPC operations must never activate")
-        }
-    }
-
-    assert!(matches!(WireDeclaration::of::<Private>().contract(), Err(harmos_runtime::operations::ContractError::PrivateGrpc { .. })));
+    assert!(matches!(PRIVATE_OPERATION.wire().contract(), Err(harmos_runtime::operations::ContractError::PrivateGrpc { .. })));
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    let registration = Registration::new(harmos_runtime::operations::Lane::default()).operation::<Private>(Private::ID).unwrap();
+    let registration = Registration::new(harmos_runtime::operations::Lane::default())
+        .operation(private_operation().expect("representable operation"), PRIVATE_OPERATION.entry().id)
+        .unwrap();
     let error = runtime.register_batch(registration).await.unwrap_err();
     let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("unexpected error: {error:?}") };
     assert!(matches!(
         source.downcast_ref::<harmos_runtime::operations::ContractError>(),
         Some(harmos_runtime::operations::ContractError::PrivateGrpc { .. })
     ));
-    assert!(runtime.operations.definition(Private::ID).is_err());
+    assert!(runtime.operations.definition(PRIVATE_OPERATION.entry().id).is_err());
     runtime.shutdown().await.unwrap();
 }

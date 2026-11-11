@@ -22,7 +22,7 @@ use std::time::Duration;
 // Local Imports
 use super::app::App;
 use harmos_runtime::operations::middleware::{Enter, Invocation, Middleware, Observation};
-use harmos_runtime::operations::{CallContext, OperationDeclaration, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{CallContext, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
@@ -45,23 +45,63 @@ struct Principal(&'static str);
 struct Stage {
     id: String,
 }
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], operations = [OverlayChildDeclaration], id = "overlay.parent",  response = String, policy = POLICY)]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = String)]
+#[derive(Clone)]
 struct OverlayParentDeclaration {}
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "overlay.child",  response = String, policy = POLICY)]
+static OVERLAY_PARENT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<OverlayParentDeclaration>("overlay.parent", POLICY);
+
+static OVERLAY_PARENT_DECLARATION_CALLEES: [harmos_runtime::operations::WireDeclaration; 1] =
+    [OVERLAY_CHILD_DECLARATION_DESCRIPTION.copied()];
+const OVERLAY_PARENT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<OverlayParentDeclaration> =
+    harmos_runtime::operations::OperationSpec::<OverlayParentDeclaration>::new(&OVERLAY_PARENT_DECLARATION_DESCRIPTION)
+        .calls(&OVERLAY_PARENT_DECLARATION_CALLEES);
+
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = String)]
+#[derive(Clone)]
 struct OverlayChildDeclaration {}
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], operations = [DeclareChildDeclaration], id = "middleware.parent",
-    response = String,
-    policy = POLICY,
-)]
+static OVERLAY_CHILD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<OverlayChildDeclaration>("overlay.child", POLICY);
+
+const OVERLAY_CHILD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<OverlayChildDeclaration> =
+    harmos_runtime::operations::OperationSpec::<OverlayChildDeclaration>::new(&OVERLAY_CHILD_DECLARATION_DESCRIPTION);
+
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = String)]
+#[derive(Clone)]
 struct DeclareParentDeclaration {}
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "middleware.child",
-    response = String,
-    policy = POLICY,
-)]
+static DECLARE_PARENT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<DeclareParentDeclaration>("middleware.parent", POLICY);
+
+static DECLARE_PARENT_DECLARATION_CALLEES: [harmos_runtime::operations::WireDeclaration; 1] =
+    [DECLARE_CHILD_DECLARATION_DESCRIPTION.copied()];
+const DECLARE_PARENT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DeclareParentDeclaration> =
+    harmos_runtime::operations::OperationSpec::<DeclareParentDeclaration>::new(&DECLARE_PARENT_DECLARATION_DESCRIPTION)
+        .calls(&DECLARE_PARENT_DECLARATION_CALLEES);
+
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = String)]
+#[derive(Clone)]
 struct DeclareChildDeclaration {}
+
+static DECLARE_CHILD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<DeclareChildDeclaration>("middleware.child", POLICY);
+
+const DECLARE_CHILD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DeclareChildDeclaration> =
+    harmos_runtime::operations::OperationSpec::<DeclareChildDeclaration>::new(&DECLARE_CHILD_DECLARATION_DESCRIPTION);
 
 struct Policy {
     name: &'static str,
@@ -79,54 +119,86 @@ impl harmos_runtime::operations::ContextValue for Stage {
     const KEY: &'static str = "test.stage";
 }
 
-impl harmos_runtime::Operation for OverlayChildDeclaration {
-    type Error = Error;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let actor = context.context().require::<Principal>()?.0;
-        let stage = context.context().value::<Stage>()?.unwrap();
-        Ok(format!("{actor}:{}", stage.id).into())
-    }
+async fn overlay_child_declaration_handler(
+    _request: OverlayChildDeclaration, ctx: harmos_runtime::operations::FunctionContext<OverlayChildDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let actor = context.context().require::<Principal>()?.0;
+    let stage = context.context().value::<Stage>()?.unwrap();
+    Ok(format!("{actor}:{}", stage.id).into())
 }
 
-impl harmos_runtime::Operation for OverlayParentDeclaration {
-    type Error = Error;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let actor = context.context().require::<Principal>()?.0;
-        let stage = context.context().value::<Stage>()?.unwrap();
-        assert_eq!(stage.id, "parent");
-        let child = context.with_value(Stage { id: "child".into() })?;
-        assert_eq!(child.context().require::<Stage>()?.id, "child");
-        let answer = child.operation::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await?;
-        Ok(format!("{actor}:parent:{answer}").into())
-    }
+fn overlay_child_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        OVERLAY_CHILD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        overlay_child_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
-impl harmos_runtime::Operation for DeclareChildDeclaration {
-    type Error = Error;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        Ok(String::from(context.context().require::<Principal>()?.0).into())
-    }
+async fn overlay_parent_declaration_handler(
+    _request: OverlayParentDeclaration, ctx: harmos_runtime::operations::FunctionContext<OverlayParentDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let actor = context.context().require::<Principal>()?.0;
+    let stage = context.context().value::<Stage>()?.unwrap();
+    assert_eq!(stage.id, "parent");
+    let child = context.with_value(Stage { id: "child".into() })?;
+    assert_eq!(child.context().require::<Stage>()?.id, "child");
+    let answer = child.operation::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await?;
+    Ok(format!("{actor}:parent:{answer}").into())
 }
 
-impl harmos_runtime::Operation for DeclareParentDeclaration {
-    type Error = Error;
+fn overlay_parent_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        OVERLAY_PARENT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        overlay_parent_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
 
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let actor = context.context().require::<Principal>()?.0;
-        let child = context.operation::<DeclareChildDeclaration>(DeclareChildDeclaration {}).await?;
-        Ok(format!("{actor}:{child}").into())
-    }
+async fn declare_child_declaration_handler(
+    _request: DeclareChildDeclaration, ctx: harmos_runtime::operations::FunctionContext<DeclareChildDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    Ok(String::from(context.context().require::<Principal>()?.0).into())
+}
+
+fn declare_child_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        DECLARE_CHILD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        declare_child_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+async fn declare_parent_declaration_handler(
+    _request: DeclareParentDeclaration, ctx: harmos_runtime::operations::FunctionContext<DeclareParentDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::Response<String>> {
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let actor = context.context().require::<Principal>()?.0;
+    let child = context.operation::<DeclareChildDeclaration>(DeclareChildDeclaration {}).await?;
+    Ok(format!("{actor}:{child}").into())
+}
+
+fn declare_parent_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        DECLARE_PARENT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        declare_parent_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Middleware for Policy {
@@ -156,8 +228,22 @@ impl Middleware for Policy {
 
 async fn runtime() -> Runtime<App> {
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
-    runtime.operations.register::<super::Single<DeclareParentDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(
+            declare_child_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(
+            declare_parent_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
     runtime
 }
 
@@ -213,8 +299,22 @@ fn portable_preserves_local() {
 #[tokio::test]
 async fn child_preserves_authority() {
     let runtime = runtime().await;
-    runtime.operations.register::<super::Single<OverlayChildDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
-    runtime.operations.register::<super::Single<OverlayParentDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(
+            overlay_child_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(
+            overlay_parent_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
     let mut original = context("alice");
     original.insert_portable(Stage { id: "parent".into() }).unwrap();
     let operations = runtime.operations.with_context(original.clone());
@@ -324,20 +424,42 @@ async fn cancellation_interrupts_policy() {
 #[tokio::test]
 async fn overrides_preserve_type() {
     let runtime = runtime().await;
-    runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", DeclareChildDeclaration::ID).unwrap()).await.unwrap();
-    runtime.operations.register::<super::Single<DeclareChildDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .unregister(&harmos_runtime::QualifiedId::qualify("host", DECLARE_CHILD_DECLARATION_OPERATION.entry().id).unwrap())
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(
+            declare_child_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
     let operations = runtime.operations.with_context(context("alice"));
-    let result =
-        operations.submit_at::<DeclareChildDeclaration>(DeclareChildDeclaration::ID, DeclareChildDeclaration {}).unwrap().await.unwrap();
+    let result = operations
+        .submit_at::<DeclareChildDeclaration>(DECLARE_CHILD_DECLARATION_OPERATION.entry().id, DeclareChildDeclaration {})
+        .unwrap()
+        .await
+        .unwrap();
     assert_eq!(&*result, "alice");
-    assert!(operations.submit_at::<DeclareParentDeclaration>(DeclareChildDeclaration::ID, DeclareParentDeclaration {}).is_err());
+    assert!(
+        operations
+            .submit_at::<DeclareParentDeclaration>(DECLARE_CHILD_DECLARATION_OPERATION.entry().id, DeclareParentDeclaration {})
+            .is_err()
+    );
     runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test]
 async fn retries_preserve_principal() {
     let runtime = runtime().await;
-    runtime.operations.register::<super::Single<RetryDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(retry_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     runtime
         .operations
@@ -369,28 +491,43 @@ impl Middleware for Wait {
     }
 }
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "middleware.retry",
-    response = String,
-    policy = super::Compute::POLICY
-)]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = String)]
+#[derive(Clone)]
 struct RetryDeclaration {}
 
-impl harmos_runtime::Operation for RetryDeclaration {
-    type Error = std::io::Error;
+static RETRY_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<RetryDeclaration>("middleware.retry", super::COMPUTE_OPERATION.entry().policy);
 
-    fn classify(_: &Self::Error) -> harmos_runtime::operations::FailureKind {
-        harmos_runtime::operations::FailureKind::Transient
-    }
+const RETRY_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<RetryDeclaration> =
+    harmos_runtime::operations::OperationSpec::<RetryDeclaration>::new(&RETRY_DECLARATION_DESCRIPTION);
 
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<String>, Self::Error> {
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let principal = context.context().require::<Principal>().unwrap();
-        assert_eq!(principal.0, "alice");
-        let attempt = context.attempt() + 1;
-        if attempt < 3 {
-            return Err(std::io::Error::other("retry fixture"));
-        }
-        Ok(format!("{}:{attempt}", principal.0).into())
+async fn retry_declaration_handler(
+    _request: RetryDeclaration, ctx: harmos_runtime::operations::FunctionContext<RetryDeclaration>,
+) -> Result<harmos_runtime::Response<String>, std::io::Error> {
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let principal = context.context().require::<Principal>().unwrap();
+    assert_eq!(principal.0, "alice");
+    let attempt = context.attempt() + 1;
+    if attempt < 3 {
+        return Err(std::io::Error::other("retry fixture"));
     }
+    Ok(format!("{}:{attempt}", principal.0).into())
+}
+
+fn retry_declaration_classification(_: &std::io::Error) -> harmos_runtime::operations::FailureKind {
+    harmos_runtime::operations::FailureKind::Transient
+}
+
+fn retry_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        RETRY_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        retry_declaration_handler,
+        retry_declaration_classification,
+    )
 }

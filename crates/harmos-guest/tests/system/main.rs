@@ -188,14 +188,14 @@ impl Session {
             .expect("the bridge accepts the command");
         WireAnswer::decode(&bytes).unwrap()
     }
-    async fn call<D: harmos_domain::operations::OperationDeclaration>(
-        &mut self, invocation: u64, payload: Vec<u8>,
+    async fn call<D: harmos_domain::operations::RequestShape>(
+        &mut self, specification: harmos_domain::operations::OperationSpec<D>, invocation: u64, payload: Vec<u8>,
     ) -> Result<Vec<u8>, String> {
         let prepared = self
             .phase(WireCommand::Prepare {
                 invocation,
-                operation: harmos_domain::QualifiedId::qualify("sandbox_guest", D::ID).unwrap().as_str().to_owned(),
-                fingerprint: (harmos_domain::operations::Entry::of::<D>().fingerprint)().unwrap().0,
+                operation: harmos_domain::QualifiedId::qualify("sandbox_guest", specification.entry().id).unwrap().as_str().to_owned(),
+                fingerprint: D::fingerprint(specification.entry().id).unwrap().0,
                 generation: 1,
                 payload,
             })
@@ -228,25 +228,18 @@ impl Session {
                 operations: vec![
                     harmos_operations::execution::operations::AssignedOperation {
                         operation: "provider.provider.echo".into(),
-                        fingerprint: <sandbox::ProviderEchoOperation as harmos_domain::operations::OperationDeclaration>::definition()
-                            .fingerprint
-                            .0
-                            .to_vec(),
+                        fingerprint: sandbox::PROVIDER_ECHO_OPERATION_OPERATION.definition().unwrap().fingerprint.0.to_vec(),
                         generation: 1,
                     },
                     harmos_operations::execution::operations::AssignedOperation {
                         operation: "host.host.publish".into(),
-                        fingerprint:
-                            <harmos_guest::builtins::streams::Publish as harmos_domain::operations::OperationDeclaration>::definition()
-                                .fingerprint
-                                .0
-                                .to_vec(),
+                        fingerprint: harmos_guest::builtins::streams::PUBLISH_OPERATION.definition().unwrap().fingerprint.0.to_vec(),
                         generation: 1,
                     },
                 ],
             }),
         };
-        self.call::<harmos_guest::lifecycle::Initialize>(1, request.encode()).await.map(|_| ())
+        self.call(harmos_guest::lifecycle::INITIALIZE_OPERATION, 1, request.encode()).await.map(|_| ())
     }
 }
 
@@ -355,7 +348,7 @@ async fn shutdown_current_context() {
     };
     let mut session = instantiate(&support::sandbox(), closing).await;
     session.initialize(r#""dependencies""#).await.expect("the admitted dependency call is accepted");
-    session.call::<harmos_guest::lifecycle::Shutdown>(2, ().encode()).await.expect("shutdown observes the host refusal");
+    session.call(harmos_guest::lifecycle::SHUTDOWN_OPERATION, 2, ().encode()).await.expect("shutdown observes the host refusal");
     assert_eq!(session.store.into_data().calls, [Call::Provider { say: "initialize".into() }, Call::Provider { say: "cleanup".into() },]);
 }
 
@@ -414,7 +407,7 @@ async fn declared_provider_call() {
     let mut session = instantiate(&support::sandbox(), Stub::default()).await;
     session.initialize(r#""normal""#).await.unwrap();
     let request = EchoOperation { say: "dependency:child".into() };
-    let bytes = session.call::<EchoOperation>(2, request.encode()).await.unwrap();
+    let bytes = session.call(sandbox::ECHO_OPERATION_OPERATION, 2, request.encode()).await.unwrap();
     assert_eq!(Echoed::decode(&bytes).unwrap().said, "child");
     assert_eq!(
         session.store.data().calls,
@@ -439,15 +432,17 @@ async fn missing_resource_refusal() {
 #[tokio::test]
 async fn shared_attempt_resources() {
     let _report = crate::report::system();
-    use harmos_guest::OperationDeclaration;
     let mut session = instantiate(&support::sandbox(), Stub::default()).await;
     session.initialize(r#""normal""#).await.unwrap();
     let request = sandbox::ReadOperation { value: "original".into() };
     let prepared = session
         .phase(WireCommand::Prepare {
             invocation: 2,
-            operation: harmos_guest::QualifiedId::qualify("sandbox_guest", sandbox::ReadOperation::ID).unwrap().as_str().into(),
-            fingerprint: sandbox::ReadOperation::definition().fingerprint.0,
+            operation: harmos_guest::QualifiedId::qualify("sandbox_guest", sandbox::READ_OPERATION_OPERATION.entry().id)
+                .unwrap()
+                .as_str()
+                .into(),
+            fingerprint: (&sandbox::READ_OPERATION_OPERATION).definition().expect("valid operation").fingerprint.0,
             generation: 1,
             payload: request.encode(),
         })
@@ -471,6 +466,7 @@ async fn shared_attempt_resources() {
         }
     }
     assert!(matches!(session.phase(WireCommand::Finalize { invocation: 2 }).await, WireAnswer::Ready { .. }));
-    let counts = session.call::<sandbox::CountsOperation>(3, sandbox::CountsOperation { value: "counts".into() }.encode()).await.unwrap();
+    let counts =
+        session.call(sandbox::COUNTS_OPERATION_OPERATION, 3, sandbox::CountsOperation { value: "counts".into() }.encode()).await.unwrap();
     assert_eq!(sandbox::Value::decode(&counts).unwrap().value, "2");
 }

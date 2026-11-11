@@ -45,69 +45,86 @@ pub(crate) struct Payload {
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "read",
-    harmos_path = ::harmos_domain,
-    response = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Read"),
-)]
+#[::harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(::harmos_domain::Request)]
+#[harmos_path(::harmos_domain)]
+#[request(response = Payload)]
+#[derive(Clone)]
 pub(crate) struct ReadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "exchange",
-    harmos_path = ::harmos_domain,
-    response = Payload,
-    input = Payload,
-    output = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Exchange"),
-)]
+pub(crate) static READ_OPERATION_DESCRIPTION: ::harmos_domain::operations::WireDeclaration =
+    ::harmos_domain::operations::WireDeclaration::request::<ReadOperation>("read", POLICY)
+        .visibility(::harmos_domain::operations::Visibility::Public)
+        .grpc(::harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Read"));
+
+pub(crate) const READ_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<ReadOperation> =
+    ::harmos_domain::operations::OperationSpec::<ReadOperation>::new(&READ_OPERATION_DESCRIPTION);
+
+#[::harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(::harmos_domain::Request)]
+#[harmos_path(::harmos_domain)]
+#[request(response = Payload, input = Payload, output = Payload)]
+#[derive(Clone)]
 pub(crate) struct ExchangeOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "upload",
-    harmos_path = ::harmos_domain,
-    response = Payload,
-    input = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Upload"),
-)]
+pub(crate) static EXCHANGE_OPERATION_DESCRIPTION: ::harmos_domain::operations::WireDeclaration =
+    ::harmos_domain::operations::WireDeclaration::request::<ExchangeOperation>("exchange", POLICY)
+        .visibility(::harmos_domain::operations::Visibility::Public)
+        .grpc(::harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Exchange"));
+
+pub(crate) const EXCHANGE_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<ExchangeOperation> =
+    ::harmos_domain::operations::OperationSpec::<ExchangeOperation>::new(&EXCHANGE_OPERATION_DESCRIPTION);
+
+#[::harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(::harmos_domain::Request)]
+#[harmos_path(::harmos_domain)]
+#[request(response = Payload, input = Payload)]
+#[derive(Clone)]
 pub(crate) struct UploadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "download",
-    harmos_path = ::harmos_domain,
-    response = Payload,
-    output = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Download"),
-)]
+pub(crate) static UPLOAD_OPERATION_DESCRIPTION: ::harmos_domain::operations::WireDeclaration =
+    ::harmos_domain::operations::WireDeclaration::request::<UploadOperation>("upload", POLICY)
+        .visibility(::harmos_domain::operations::Visibility::Public)
+        .grpc(::harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Upload"));
+
+pub(crate) const UPLOAD_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<UploadOperation> =
+    ::harmos_domain::operations::OperationSpec::<UploadOperation>::new(&UPLOAD_OPERATION_DESCRIPTION);
+
+#[::harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(::harmos_domain::Request)]
+#[harmos_path(::harmos_domain)]
+#[request(response = Payload, output = Payload)]
+#[derive(Clone)]
 pub(crate) struct DownloadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    harmos_path = ::harmos_domain,
-    id = "annotate",
-    response = AnnotatedOperation,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Portable", method = "Annotate"),
-)]
+pub(crate) static DOWNLOAD_OPERATION_DESCRIPTION: ::harmos_domain::operations::WireDeclaration =
+    ::harmos_domain::operations::WireDeclaration::request::<DownloadOperation>("download", POLICY)
+        .visibility(::harmos_domain::operations::Visibility::Public)
+        .grpc(::harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Download"));
+
+pub(crate) const DOWNLOAD_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<DownloadOperation> =
+    ::harmos_domain::operations::OperationSpec::<DownloadOperation>::new(&DOWNLOAD_OPERATION_DESCRIPTION);
+
+#[::harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(::harmos_domain::Request)]
+#[harmos_path(::harmos_domain)]
+#[request(response = AnnotatedOperation)]
 #[derive(Clone, PartialEq)]
 pub(crate) struct AnnotatedOperation {
     identifier: harmos_domain::Identifier,
@@ -117,33 +134,66 @@ pub(crate) struct AnnotatedOperation {
     values: Vec<harmos_domain::Value>,
 }
 
-#[harmos_domain::operation(
-    harmos_path = ::harmos_domain,
-    id = "wrap",
-    response = Delivered,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Boxed", method = "Wrap"),
-)]
+pub(crate) static ANNOTATED_OPERATION_DESCRIPTION: ::harmos_domain::operations::WireDeclaration =
+    ::harmos_domain::operations::WireDeclaration::request::<AnnotatedOperation>("annotate", POLICY)
+        .visibility(::harmos_domain::operations::Visibility::Public)
+        .grpc(::harmos_domain::operations::Grpc::new("test.v1", "Portable", "Annotate"));
+
+pub(crate) const ANNOTATED_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<AnnotatedOperation> =
+    ::harmos_domain::operations::OperationSpec::<AnnotatedOperation>::new(&ANNOTATED_OPERATION_DESCRIPTION);
+
+#[::harmos_domain::message(harmos_path = ::harmos_domain)]
+#[derive(::harmos_domain::Request)]
+#[harmos_path(::harmos_domain)]
+#[request(response = Delivered)]
 #[derive(Clone, PartialEq)]
 pub(crate) struct EnvelopeOperation {
     pub(crate) inner: Box<AnnotatedOperation>,
     pub(crate) sequence: u64,
 }
 
+pub(crate) static ENVELOPE_OPERATION_DESCRIPTION: ::harmos_domain::operations::WireDeclaration =
+    ::harmos_domain::operations::WireDeclaration::request::<EnvelopeOperation>("wrap", POLICY)
+        .visibility(::harmos_domain::operations::Visibility::Public)
+        .grpc(::harmos_domain::operations::Grpc::new("test.v1", "Boxed", "Wrap"));
+
+pub(crate) const ENVELOPE_OPERATION_OPERATION: ::harmos_domain::operations::OperationSpec<EnvelopeOperation> =
+    ::harmos_domain::operations::OperationSpec::<EnvelopeOperation>::new(&ENVELOPE_OPERATION_DESCRIPTION);
+
 /* === Enums === */
 
-#[harmos_domain::catalog(harmos_path = ::harmos_domain)]
-pub(crate) enum Routes {
-    Read(ReadOperation),
-    Exchange(ExchangeOperation),
-    Upload(UploadOperation),
-    Download(DownloadOperation),
-}
+static ROUTES_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 4] = [
+    harmos_domain::catalog::Node::Leaf(READ_OPERATION_OPERATION.wire()),
+    harmos_domain::catalog::Node::Leaf(EXCHANGE_OPERATION_OPERATION.wire()),
+    harmos_domain::catalog::Node::Leaf(UPLOAD_OPERATION_OPERATION.wire()),
+    harmos_domain::catalog::Node::Leaf(DOWNLOAD_OPERATION_OPERATION.wire()),
+];
+static ROUTES_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 4] = [
+    harmos_domain::catalog::Node::Leaf(READ_OPERATION_OPERATION.callees()),
+    harmos_domain::catalog::Node::Leaf(EXCHANGE_OPERATION_OPERATION.callees()),
+    harmos_domain::catalog::Node::Leaf(UPLOAD_OPERATION_OPERATION.callees()),
+    harmos_domain::catalog::Node::Leaf(DOWNLOAD_OPERATION_OPERATION.callees()),
+];
 
-#[harmos_domain::catalog(harmos_path = ::harmos_domain)]
-pub(crate) enum Portable {
-    Annotate(AnnotatedOperation),
-}
+pub(crate) const ROUTES_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
+    concat!(module_path!(), "::Routes"),
+    &ROUTES_CATALOG_DECLARATIONS,
+    &ROUTES_CATALOG_CALLEES,
+    None,
+);
+
+static PORTABLE_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =
+    [harmos_domain::catalog::Node::Leaf(ANNOTATED_OPERATION_OPERATION.wire())];
+static PORTABLE_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 1] =
+    [harmos_domain::catalog::Node::Leaf(ANNOTATED_OPERATION_OPERATION.callees())];
+
+pub(crate) const PORTABLE_CATALOG: harmos_operations::execution::operations::Catalog =
+    harmos_operations::execution::operations::Catalog::new(
+        concat!(module_path!(), "::Portable"),
+        &PORTABLE_CATALOG_DECLARATIONS,
+        &PORTABLE_CATALOG_CALLEES,
+        None,
+    );
 
 #[harmos_domain::message(harmos_path = ::harmos_domain)]
 #[derive(Clone, PartialEq)]
@@ -152,10 +202,17 @@ pub(crate) enum Delivered {
     Boxed(Box<AnnotatedOperation>),
 }
 
-#[harmos_domain::catalog(harmos_path = ::harmos_domain)]
-pub(crate) enum Boxed {
-    Wrap(EnvelopeOperation),
-}
+static BOXED_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =
+    [harmos_domain::catalog::Node::Leaf(ENVELOPE_OPERATION_OPERATION.wire())];
+static BOXED_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 1] =
+    [harmos_domain::catalog::Node::Leaf(ENVELOPE_OPERATION_OPERATION.callees())];
+
+pub(crate) const BOXED_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
+    concat!(module_path!(), "::Boxed"),
+    &BOXED_CATALOG_DECLARATIONS,
+    &BOXED_CATALOG_CALLEES,
+    None,
+);
 
 /* === Traits === */
 

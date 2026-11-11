@@ -47,14 +47,14 @@ struct Declaration {
 }
 
 struct Listed {
-    member: Type,
+    member: Expr,
     scopes: Vec<LitStr>,
 }
 
 /* === Enums === */
 
 enum Required {
-    Catalog(Box<Type>),
+    Catalog(Box<Expr>),
     Listed(Vec<Listed>),
 }
 
@@ -102,8 +102,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
                 set_once(&mut description, syn::parse2::<LitStr>(named.value.to_token_stream())?, named.span(), "description")?;
             }
             Meta::NameValue(named) if named.path.is_ident("requires") => {
-                let catalog = syn::parse2::<Type>(named.value.to_token_stream())
-                    .map_err(|_| Error::new(named.value.span(), "select a typed catalog or `()` with `requires = Catalog`"))?;
+                let catalog = named.value.clone();
                 set_once(&mut requires, Required::Catalog(Box::new(catalog)), named.span(), "requires")?;
             }
             Meta::List(list) if list.path.is_ident("requires") => {
@@ -158,7 +157,7 @@ fn declaration(attribute: TokenStream) -> Result<Declaration, Error> {
 fn requirements(input: ParseStream) -> Result<Vec<Listed>, Error> {
     let mut listed = Vec::new();
     while !input.is_empty() {
-        let member = input.parse::<Type>()?;
+        let member = input.parse::<Expr>()?;
         let mut scopes = Vec::new();
         if input.peek(Token![:]) && !input.peek(Token![::]) {
             input.parse::<Token![:]>()?;
@@ -239,24 +238,31 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
     let description = crate::description(declared.description, &block.attrs);
     let requirement = quote!(#harmos::__private::PluginRequirement);
     let requires = match &declared.requires {
-        Required::Catalog(catalog) => quote! {
-            <#catalog as #harmos::catalog::InertCatalog<#harmos::__private::PluginRequirements, #requirement>>::ENTRIES
-        },
+        Required::Catalog(catalog) => {
+            if matches!(catalog.as_ref(), Expr::Tuple(tuple) if tuple.elems.is_empty()) {
+                quote!(&[])
+            } else {
+                quote! {
+                    {
+                        const DECLARATIONS: &[#harmos::catalog::Node<#harmos::operations::WireDeclaration>] = (#catalog).declarations;
+                        &#harmos::__private::plugin::catalog_requirements::<{ #harmos::catalog::count(DECLARATIONS) }>(DECLARATIONS)
+                    }
+                }
+            }
+        }
         Required::Listed(listed) => {
             let leaves = listed.iter().map(|entry| {
                 let member = &entry.member;
                 let grants = entry.scopes.iter().map(|scope| {
                     quote!(#harmos::__private::PluginGrant {
                         operation: ::std::borrow::Cow::Borrowed(
-                            <#member as #harmos::OperationDeclaration>::ID,
+                            (#member).entry().id,
                         ),
                         scope: ::core::option::Option::Some(::std::borrow::Cow::Borrowed(#scope)),
                     })
                 });
                 quote! {
-                    #harmos::catalog::Node::Leaf(#requirement::of::<
-                        #member
-                    >(&[#(#grants),*]))
+                    #harmos::catalog::Node::Leaf(#requirement::new((#member).wire(), &[#(#grants),*]))
                 }
             });
             quote!(&[#(#leaves),*])

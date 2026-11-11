@@ -93,7 +93,7 @@ impl harmos_guest::Lifecycle for Sandbox {
         }
         if plugin.config == "mismatch" {
             let extra = harmos_guest::__private::RegistrationBatch::new()
-                .operation_named::<contract::EchoOperation>("unexpected")
+                .entry_named(contract::echo_operation_operation().expect("representable operation"), "unexpected")
                 .map_err(std::io::Error::other)?;
             setup.settings().register(extra).map_err(std::io::Error::other)?;
         }
@@ -160,11 +160,11 @@ impl harmos_guest::Lifecycle for Sandbox {
 #[harmos_guest::guest(
     id = "sandbox_guest",
     description = "Answers the host harness's sandbox probes.",
-    requires(contract::ProviderEchoOperation, streams::Publish),
+    requires(contract::PROVIDER_ECHO_OPERATION_OPERATION, streams::PUBLISH_OPERATION),
     streams(Echoed)
 )]
 impl harmos_guest::Plugin for Sandbox {
-    const CATALOGS: &'static [harmos_guest::operations::Catalog] = &[contract::Operations::CATALOG];
+    const CATALOGS: &'static [harmos_guest::operations::Catalog] = &[contract::OPERATIONS_CATALOG];
 
     fn register(registrar: &mut harmos_guest::Registrar) -> Result<(), harmos_guest::RegistrationError> {
         registrar.register("zeta.catalog", 2, &"second")?;

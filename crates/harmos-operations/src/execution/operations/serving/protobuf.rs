@@ -21,7 +21,6 @@ use std::any::Any;
 use crate::execution::grpc::{self, DecodeInput};
 #[cfg(feature = "streaming")]
 use crate::execution::operations::Direction;
-use crate::execution::operations::OperationDeclaration;
 use crate::execution::{MessageError, Portable};
 
 /* === Constants === */
@@ -66,17 +65,18 @@ pub(super) struct ItemCodec {
 /* === Implementations === */
 
 impl Codec {
-    // The One Protobuf Projection Of A Declaration: Request, Response And The
-    // Item Codec Of Each Direction It Streams.
-    pub(crate) fn of<O: OperationDeclaration>() -> Self {
+    pub(crate) fn request<Q: crate::execution::operations::RequestShape>() -> Self {
         Self {
-            decode: decode::<O::Request>,
+            decode: decode::<Q::Request>,
             #[cfg(feature = "streaming")]
-            input: direction::<O::Input>(),
+            input: direction::<Q::Input>(),
             #[cfg(feature = "streaming")]
-            output: direction::<O::Output>(),
+            output: direction::<Q::Output>(),
         }
     }
+
+    // The One Protobuf Projection Of A Declaration: Request, Response And The
+    // Item Codec Of Each Direction It Streams.
 }
 
 /* === Public Functions === */

@@ -13,7 +13,7 @@ mod requirement;
 
 /* === Re-Exports === */
 
-pub use requirement::{Grant, Requirement, Requirements, aggregate, callee_count};
+pub use requirement::{Grant, Requirement, Requirements, aggregate, callee_count, catalog_requirements};
 
 /* === Imports === */
 
@@ -90,7 +90,7 @@ pub fn schema_markers<P: Declared>(
         crate::catalog::try_for_each(P::PROVIDES, &mut append)?;
         crate::catalog::try_for_each(P::REQUIRES, |requirement| append(&requirement.declaration))?;
         if crate::catalog::count(P::OBSERVERS) != 0 {
-            append(&crate::operations::WireDeclaration::of::<crate::observers::Control>())?;
+            append(&crate::observers::CONTROL_OPERATION.wire())?;
         }
         crate::catalog::try_for_each(P::LISTENERS, |listener| append(&listener.callback))?;
     }

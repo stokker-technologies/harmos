@@ -87,7 +87,24 @@ impl Fixture {
         let loaded = host.load(&bytes).unwrap();
         runtime
             .plugin
-            .register_guest::<schematic_operations::guest::transfer::Guest>(
+            .register_guest(
+                harmos_runtime::operations::ComponentCatalog::new()
+                    .operation(schematic_operations::guest::VALIDATE_SCHEMATIC_OPERATION)
+                    .unwrap()
+                    .operation(schematic_operations::guest::PROPOSE_ROUTE_OPERATION)
+                    .unwrap()
+                    .operation(schematic_operations::guest::ANALYZE_SCHEMATIC_OPERATION)
+                    .unwrap()
+                    .operation(schematic_operations::guest::transfer::UPLOAD_OPERATION)
+                    .unwrap()
+                    .operation(schematic_operations::guest::transfer::DOWNLOAD_OPERATION)
+                    .unwrap()
+                    .operation(schematic_operations::guest::transfer::PUT_OPERATION)
+                    .unwrap()
+                    .operation(schematic_operations::guest::transfer::TAKE_OPERATION)
+                    .unwrap()
+                    .operation(schematic_operations::guest::transfer::HASH_OPERATION)
+                    .unwrap(),
                 loaded,
                 plugin_settings(),
                 harmos_runtime::operations::Lane::default(),

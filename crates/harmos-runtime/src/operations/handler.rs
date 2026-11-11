@@ -30,7 +30,7 @@ use tokio::sync::oneshot;
 use super::Manager;
 use super::admission::Admission;
 use super::caller::{Origin, Source};
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 use crate::{Error, Result, operations::Scope, state::Position};
 
 /* === Constants === */
@@ -52,7 +52,8 @@ pub struct OperationGeneration(u64);
 // (an observer or service activation) holds one lease on its shared instance:
 // dropping it releases that lease and the last release stops the instance.
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
-pub struct Running<O: OperationDeclaration> {
+pub struct Running<O: RequestShape> {
+    pub(crate) operation: String,
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
     pub(crate) outcome: Outcome<O::Response>,
@@ -117,7 +118,10 @@ impl OperationGeneration {
     }
 }
 
-impl<O: OperationDeclaration> Running<O> {
+impl<O: RequestShape> Running<O> {
+    pub fn operation(&self) -> &str {
+        &self.operation
+    }
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
@@ -214,7 +218,7 @@ impl<O: OperationDeclaration> Running<O> {
     }
 }
 
-impl<O: OperationDeclaration> Running<O> {
+impl<O: RequestShape> Running<O> {
     // Encoded invocations keep their own contract: dropping one never
     // cancels, so the typed instance they await must not cancel either.
     pub(super) fn unguarded(mut self) -> Self {
@@ -223,7 +227,7 @@ impl<O: OperationDeclaration> Running<O> {
     }
 }
 
-impl<O: OperationDeclaration> Future for Running<O> {
+impl<O: RequestShape> Future for Running<O> {
     type Output = Result<crate::operations::Response<O::Response>>;
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
         let instance = self.get_mut();
@@ -243,7 +247,7 @@ impl<O: OperationDeclaration> Future for Running<O> {
     }
 }
 
-impl<O: OperationDeclaration> Drop for Running<O> {
+impl<O: RequestShape> Drop for Running<O> {
     fn drop(&mut self) {
         // A resident lease releases itself when dropped.
         if matches!(self.outcome, Outcome::Request(_)) && !self.released && !self.control.is_settled() {
@@ -254,7 +258,7 @@ impl<O: OperationDeclaration> Drop for Running<O> {
 
 impl<O> harmos_operations::execution::operations::Instance<O> for Running<O>
 where
-    O: OperationDeclaration,
+    O: RequestShape,
 {
     type Error = Error;
 
@@ -361,11 +365,11 @@ impl Context<'_> {
         })
     }
 
-    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O::Request) -> Result<Running<O>> {
+    pub fn submit_at<O: RequestShape>(&self, id: &str, request: O::Request) -> Result<Running<O>> {
         self.operations.admit_at::<O, ()>(id, (request.into(), ()), Some(&self.scope), self.admission.held(), &self.source, None)
     }
 
-    pub fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+    pub fn submit<O: RequestShape>(&self, request: O::Request) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, None)
     }
 
@@ -373,7 +377,7 @@ impl Context<'_> {
         self.request_claims.as_ref()
     }
 
-    pub fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+    pub fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>(
             (super::binding::Request::owned(request, claims), ()),
             &self.scope,
@@ -383,11 +387,11 @@ impl Context<'_> {
         )
     }
 
-    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
+    pub fn submit_endpoints<O: RequestShape, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>((request.into(), endpoints), &self.scope, &self.admission, &self.source, None)
     }
 
-    pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub fn submit_charged<O: RequestShape, P: Send + 'static>(
         &self, request: super::StreamItem<O::Request>, endpoints: P,
     ) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>(
@@ -399,13 +403,11 @@ impl Context<'_> {
         )
     }
 
-    pub fn submit_caused<O: OperationDeclaration>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
+    pub fn submit_caused<O: RequestShape>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, Some(cause))
     }
 
-    pub fn operation<O: OperationDeclaration>(
-        &self, request: O::Request,
-    ) -> harmos_operations::execution::operations::Invocation<HostContext, O> {
+    pub fn operation<O: RequestShape>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<HostContext, O> {
         harmos_operations::execution::operations::Invocation::new(self.owned(), request)
     }
 }
@@ -432,7 +434,7 @@ impl HostContext {
 }
 
 impl harmos_operations::execution::operations::OperationHost for HostContext {
-    async fn invoke<O: OperationDeclaration, E: super::EndpointSet>(
+    async fn invoke<O: RequestShape, E: super::EndpointSet>(
         &self, request: O::Request, retry: Option<super::RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
         harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.borrow(), request, retry, endpoints).await
@@ -448,7 +450,7 @@ impl harmos_operations::execution::operations::OperationHost for HostContext {
     }
 
     type Error = Error;
-    type Instance<O: OperationDeclaration> = Running<O>;
+    type Instance<O: RequestShape> = Running<O>;
 
     fn context(&self) -> &super::CallContext {
         self.operations.call_context()
@@ -461,11 +463,11 @@ impl harmos_operations::execution::operations::OperationHost for HostContext {
         Ok(child)
     }
 
-    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+    async fn submit<O: RequestShape>(&self, request: O::Request) -> Result<Running<O>> {
         self.borrow().submit::<O>(request)
     }
 
-    async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+    async fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.borrow().submit_owned::<O>(request, claims)
     }
 }

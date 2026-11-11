@@ -26,8 +26,7 @@ use prost_reflect::DescriptorPool;
 
 // Local Imports
 
-use contracts::{AnnotatedOperation, Boxed, Delivered, EnvelopeOperation, Portable, Routes, annotated};
-use harmos_domain::operations::Contracts;
+use contracts::{AnnotatedOperation, BOXED_CATALOG, Delivered, EnvelopeOperation, PORTABLE_CATALOG, ROUTES_CATALOG, annotated};
 use harmos_operations::execution::grpc::{self, DecodeInput};
 use harmos_packaging::proto::{self, Artifacts};
 
@@ -80,7 +79,7 @@ fn portable_messages_cross() {
     };
     assert!(grpc::decode::<AnnotatedOperation>(DecodeInput::new(&protobuf)).unwrap() == value);
     assert!(grpc::prepare::<AnnotatedOperation>(DecodeInput::new(&protobuf)).map(|prepared| prepared.memory()).is_ok());
-    let contracts = Contracts::of::<Portable>().unwrap();
+    let contracts = harmos_domain::operations::Contracts::from_tree(PORTABLE_CATALOG.declarations).unwrap();
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/portable")).unwrap();
@@ -110,7 +109,7 @@ fn boxed_messages_cross() {
         bytes
     };
     assert!(grpc::decode::<Delivered>(DecodeInput::new(&protobuf)).unwrap() == response);
-    let contracts = Contracts::of::<Boxed>().unwrap();
+    let contracts = harmos_domain::operations::Contracts::from_tree(BOXED_CATALOG.declarations).unwrap();
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/boxed")).unwrap();
@@ -157,7 +156,7 @@ fn boxed_messages_cross() {
 #[test]
 fn exported_sources_compile() {
     let target = tempfile::tempdir().unwrap();
-    let contracts = Contracts::of::<Routes>().unwrap();
+    let contracts = harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap();
     let artifacts = Artifacts::new(&contracts).unwrap();
     let root = proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("grpc/application")).unwrap();
     let compiled = target.path().join("compiled.bin");

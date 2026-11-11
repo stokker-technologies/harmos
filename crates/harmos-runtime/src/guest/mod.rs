@@ -18,11 +18,11 @@ pub(crate) mod host;
 
 pub use host::plugin::*;
 
-pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
+pub use harmos_macros::guest_catalog as catalog;
 
 pub use harmos_guest::{guest as plugin, kit, operations};
 
-pub use harmos_guest::operations::{OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
+pub use harmos_guest::operations::{OperationPolicy, RequestShape, RestartPolicy, RetryPolicy};
 
 pub use harmos_guest::{ConfigError, Plugin, Registrar, Registration, RegistrationError, StreamSpec, inventory, reserved};
 

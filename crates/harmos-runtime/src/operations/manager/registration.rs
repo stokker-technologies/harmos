@@ -166,17 +166,15 @@ impl Manager {
         definition: OperationDefinition, wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>>
     where
-        D: OperationDeclaration,
+        D: RequestShape,
         O: harmos_operations::execution::operations::Carrier<Declaration = D>,
     {
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new().carrier::<D, O>();
-        let factory = batch.operations.pop().expect("one native implementation");
         let resources = harmos_operations::execution::ExecutionContext::new(dependencies, super::super::CallContext::default())
             .with_resources(self.resources().clone())
             .resources()
             .clone();
         let binding = crate::operations::authored::factory_with::<D, O::StreamEndpoints>(self, move |request, endpoints| {
-            factory.prepare_native(resources.clone(), Box::new(request), Box::new(endpoints))
+            Ok(harmos_operations::execution::operations::OperationFactory::prepare_carrier::<O>(resources.clone(), request, endpoints))
         });
         self.binding_erased(owner, lane, Arc::new(binding), definition, wire, plugin)
     }

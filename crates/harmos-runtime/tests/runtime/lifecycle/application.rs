@@ -62,16 +62,46 @@ struct Config {
 
 struct App(Config);
 
-#[harmos_runtime::operation(harmos_path = ::harmos_runtime, resources = [Counter], id = "lifecycle.read", response = u64, policy = POLICY)]
+#[::harmos_runtime::message(harmos_path = ::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
+#[harmos_path(::harmos_runtime)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct Read;
 
-#[harmos_runtime::operation(harmos_path = ::harmos_runtime, resources = [Counter], id = "lifecycle.pending", response = (), policy = POLICY)]
+static READ_DESCRIPTION: ::harmos_runtime::operations::WireDeclaration =
+    ::harmos_runtime::operations::WireDeclaration::request::<Read>("lifecycle.read", POLICY);
+
+const READ_OPERATION: ::harmos_runtime::operations::OperationSpec<Read> =
+    ::harmos_runtime::operations::OperationSpec::<Read>::new(&READ_DESCRIPTION);
+
+#[::harmos_runtime::message(harmos_path = ::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
+#[harmos_path(::harmos_runtime)]
+#[request(response = ())]
+#[derive(Clone)]
 struct Pending;
+
+static PENDING_DESCRIPTION: ::harmos_runtime::operations::WireDeclaration =
+    ::harmos_runtime::operations::WireDeclaration::request::<Pending>("lifecycle.pending", POLICY);
+
+const PENDING_OPERATION: ::harmos_runtime::operations::OperationSpec<Pending> =
+    ::harmos_runtime::operations::OperationSpec::<Pending>::new(&PENDING_DESCRIPTION);
 
 struct PendingGuard(Arc<Counter>);
 
-#[harmos_runtime::operation(harmos_path = ::harmos_runtime, resources = [u64, String], id = "lifecycle.missing", response = (), policy = POLICY)]
+#[::harmos_runtime::message(harmos_path = ::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
+#[harmos_path(::harmos_runtime)]
+#[request(response = ())]
+#[derive(Clone)]
 struct Missing;
+
+static MISSING_DESCRIPTION: ::harmos_runtime::operations::WireDeclaration =
+    ::harmos_runtime::operations::WireDeclaration::request::<Missing>("lifecycle.missing", POLICY);
+
+const MISSING_OPERATION: ::harmos_runtime::operations::OperationSpec<Missing> =
+    ::harmos_runtime::operations::OperationSpec::<Missing>::new(&MISSING_DESCRIPTION);
 
 #[derive(Default)]
 struct PrepareProbe {
@@ -101,15 +131,41 @@ enum Phase {
     Cleanup,
 }
 
-#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-enum Operations {
-    Read(Read),
-    Pending(Pending),
+static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 2] =
+    [harmos_runtime::catalog::Node::Leaf(READ_OPERATION.wire()), harmos_runtime::catalog::Node::Leaf(PENDING_OPERATION.wire())];
+static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 2] =
+    [harmos_runtime::catalog::Node::Leaf(READ_OPERATION.callees()), harmos_runtime::catalog::Node::Leaf(PENDING_OPERATION.callees())];
+
+const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::Operations"),
+    &OPERATIONS_CATALOG_DECLARATIONS,
+    &OPERATIONS_CATALOG_CALLEES,
+    Some(operations_catalog_batch),
+);
+
+fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(read_operation().expect("representable operation"));
+    batch = batch.entry(pending_operation().expect("representable operation"));
+    batch
 }
 
-#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-enum MissingOperations {
-    Missing(Missing),
+static MISSING_OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(MISSING_OPERATION.wire())];
+static MISSING_OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(MISSING_OPERATION.callees())];
+
+const MISSING_OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::MissingOperations"),
+    &MISSING_OPERATIONS_CATALOG_DECLARATIONS,
+    &MISSING_OPERATIONS_CATALOG_CALLEES,
+    Some(missing_operations_catalog_batch),
+);
+
+fn missing_operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(missing_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
@@ -164,10 +220,10 @@ impl Lifecycle for App {
         setup.resource::<Counter>(config.counter.clone());
         if config.invalid {
             setup.resource::<Counter>(config.counter.clone());
-            setup.operations::<MissingOperations>(Lane::new("lifecycle.unknown", Capacity::serial()));
-            setup.operations::<MissingOperations>(Lane::new("lifecycle.open", Capacity::serial()));
+            setup.catalog(MISSING_OPERATIONS_CATALOG, Lane::new("lifecycle.unknown", Capacity::serial()));
+            setup.catalog(MISSING_OPERATIONS_CATALOG, Lane::new("lifecycle.open", Capacity::serial()));
         } else {
-            setup.operations::<Operations>(Lane::new("lifecycle.open", Capacity::serial()));
+            setup.catalog(OPERATIONS_CATALOG, Lane::new("lifecycle.open", Capacity::serial()));
         }
         Ok(Self(config))
     }
@@ -195,33 +251,59 @@ impl Lifecycle for App {
     }
 }
 
-impl harmos_runtime::Operation for Read {
-    type Error = std::convert::Infallible;
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
-        let counter = context.resource::<Counter>();
-        counter.events.lock().unwrap().push(Phase::Serve);
-        Ok(counter.value.load(Ordering::SeqCst).into())
-    }
+async fn read_handler(
+    _request: Read, context: ::harmos_runtime::operations::FunctionContext<Read>,
+) -> Result<harmos_runtime::Response<u64>, std::convert::Infallible> {
+    let counter = context.resource::<Counter>().expect("declared resource is registered");
+    counter.events.lock().unwrap().push(Phase::Serve);
+    Ok(counter.value.load(Ordering::SeqCst).into())
 }
 
-impl harmos_runtime::Operation for Missing {
-    type Error = std::convert::Infallible;
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        Ok(().into())
-    }
+fn read_operation() -> ::core::result::Result<::harmos_runtime::operations::OperationFactory, ::harmos_runtime::operations::ServingError> {
+    ::harmos_runtime::operations::OperationFactory::function(
+        READ_OPERATION,
+        const { &[::harmos_runtime::Resource::of::<Counter>()] },
+        read_handler,
+        |_| ::harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
-impl harmos_runtime::Operation for Pending {
-    type Error = std::convert::Infallible;
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let counter = context.resource::<Counter>();
-        counter.events.lock().unwrap().push(Phase::Serve);
-        let guard = PendingGuard(counter.clone());
-        counter.entered.notify_one();
-        std::future::pending::<()>().await;
-        drop(guard);
-        Ok(().into())
-    }
+async fn missing_handler(
+    _request: Missing, _: ::harmos_runtime::operations::FunctionContext<Missing>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    Ok(().into())
+}
+
+fn missing_operation() -> ::core::result::Result<::harmos_runtime::operations::OperationFactory, ::harmos_runtime::operations::ServingError>
+{
+    ::harmos_runtime::operations::OperationFactory::function(
+        MISSING_OPERATION,
+        const { &[::harmos_runtime::Resource::of::<u64>(), ::harmos_runtime::Resource::of::<String>()] },
+        missing_handler,
+        |_| ::harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+async fn pending_handler(
+    _request: Pending, context: ::harmos_runtime::operations::FunctionContext<Pending>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let counter = context.resource::<Counter>().expect("declared resource is registered");
+    counter.events.lock().unwrap().push(Phase::Serve);
+    let guard = PendingGuard(counter.clone());
+    counter.entered.notify_one();
+    std::future::pending::<()>().await;
+    drop(guard);
+    Ok(().into())
+}
+
+fn pending_operation() -> ::core::result::Result<::harmos_runtime::operations::OperationFactory, ::harmos_runtime::operations::ServingError>
+{
+    ::harmos_runtime::operations::OperationFactory::function(
+        PENDING_OPERATION,
+        const { &[::harmos_runtime::Resource::of::<Counter>()] },
+        pending_handler,
+        |_| ::harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for PendingGuard {

@@ -24,8 +24,8 @@
 /* === Macros === */
 
 harmos_domain::builtin_payload! {
-    #[harmos_operations::execution::operation(harmos_path = harmos_operations::execution, id = "host.publish", policy = harmos_operations::host::POLICY,
-        codec = manual, visibility = Public, )]
+    #[derive(harmos_operations::execution::Request)]
+#[harmos_path(harmos_operations::execution)]
     Publish,
     stream: String => (1, Kind::String, Required),
     sequence: Option<u64> => (3, Kind::U64, Optional),
@@ -77,8 +77,15 @@ where
 }
 
 static DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =
-    [harmos_domain::catalog::Node::Leaf(harmos_domain::operations::WireDeclaration::of::<Publish>())];
+    [harmos_domain::catalog::Node::Leaf(PUBLISH_OPERATION.wire())];
 pub struct Streams;
+
+pub static PUBLISH_DESCRIPTION: harmos_operations::execution::operations::WireDeclaration =
+    harmos_operations::execution::operations::WireDeclaration::request::<Publish>("host.publish", harmos_operations::host::POLICY)
+        .visibility(harmos_operations::execution::operations::Visibility::Public);
+
+pub const PUBLISH_OPERATION: harmos_operations::execution::operations::OperationSpec<Publish> =
+    harmos_operations::execution::operations::OperationSpec::<Publish>::new(&PUBLISH_DESCRIPTION);
 impl harmos_operations::execution::operations::OperationCatalog for Streams {
     const CATALOG: harmos_operations::execution::operations::Catalog =
         harmos_operations::execution::operations::Catalog::of::<Self>("harmos.guest.streams", &DECLARATIONS, &[]);

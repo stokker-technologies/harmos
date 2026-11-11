@@ -30,13 +30,21 @@ harmos_domain::postcard_product!(Initialize { config_json: Vec<u8>, generation_c
 
 /* === Structs === */
 
-#[harmos_operations::execution::operation(harmos_path = harmos_operations::execution, codec = manual, id = "harmos.initialize", response = (), policy = super::POLICY, )]
+#[derive(harmos_operations::execution::Request)]
+#[harmos_path(harmos_operations::execution)]
+#[request(response = ())]
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct Initialize {
     pub config_json: Vec<u8>,
     pub generation_context: Vec<u8>,
     pub assignments: Vec<u8>,
 }
+
+pub static INITIALIZE_DESCRIPTION: harmos_operations::execution::operations::WireDeclaration =
+    harmos_operations::execution::operations::WireDeclaration::request::<Initialize>("harmos.initialize", super::POLICY);
+
+pub const INITIALIZE_OPERATION: harmos_operations::execution::operations::OperationSpec<Initialize> =
+    harmos_operations::execution::operations::OperationSpec::<Initialize>::new(&INITIALIZE_DESCRIPTION);
 
 pub struct Control {
     instance: Box<dyn crate::lifecycle::access::LifecycleInstance>,
@@ -98,11 +106,15 @@ impl harmos_operations::execution::operations::Carrier for Control {
     }
 }
 
-impl harmos_operations::execution::Executable for Initialize {
-    type Carrier = Control;
-}
-
 /* === Public Functions === */
+
+pub fn operation()
+-> Result<harmos_operations::execution::operations::OperationFactory, harmos_operations::execution::operations::ServingError> {
+    Ok(harmos_operations::execution::__private::RegistrationBatch::new()
+        .carrier::<Initialize, Control>(INITIALIZE_OPERATION)?
+        .operations
+        .remove(0))
+}
 
 /* === Private Functions === */
 

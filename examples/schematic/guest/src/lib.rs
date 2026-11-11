@@ -26,7 +26,7 @@ use std::sync::Arc;
 use harmos_guest::kit::Context;
 use harmos_guest::operations::{OperationPolicy, StreamSettings, WireStreamLimits};
 #[cfg(not(feature = "benchmark"))]
-use schematic_operations::guest::Operations;
+use schematic_operations::guest::OPERATIONS_CATALOG;
 #[cfg(feature = "benchmark")]
 use schematic_operations::guest::transfer::Guest as Operations;
 
@@ -86,7 +86,7 @@ impl harmos_guest::Lifecycle for Plugin {
 
 #[harmos_guest::guest(id = "schematic_tools", requires = ())]
 impl harmos_guest::Plugin for Plugin {
-    const CATALOGS: &'static [harmos_guest::Catalog] = &[Operations::CATALOG];
+    const CATALOGS: &'static [harmos_guest::Catalog] = &[OPERATIONS_CATALOG];
 }
 
 /* === Public Functions === */

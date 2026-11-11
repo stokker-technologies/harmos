@@ -160,7 +160,7 @@ impl Encode<Transcoded> for PreparedFrame {
 /* === Public Functions === */
 
 // Prepares The Complete Opening Frame Of A Typed Input Stream Once.
-pub fn prepare_input_request<O: crate::operations::OperationDeclaration>(
+pub fn prepare_input_request<O: crate::operations::RequestShape>(
     request: &O::Request, limit: usize,
 ) -> Result<PreparedFrame, tonic::Status> {
     prepare(1, request, limit)
@@ -171,21 +171,21 @@ pub fn prepare_input_request<O: crate::operations::OperationDeclaration>(
 // Standalone Preparation Uses The Frame Limit Without Claiming An Aggregate Budget.
 // Callers With Native Claims Can Encode Through The Admitted Wire Hook And Supply
 // The Retained Byte Owner Through PreparedFrame::from_owner.
-pub fn prepare_input_item<O: crate::operations::OperationDeclaration>(
+pub fn prepare_input_item<O: crate::operations::RequestShape>(
     item: &<O::Input as crate::operations::Direction>::Item, limit: usize,
 ) -> Result<PreparedFrame, tonic::Status> {
     prepare(2, item, limit)
 }
 
 // Finds A Declared Input Item's Bytes Allowance Including Its Native Envelope.
-pub fn input_payload_limit<O: crate::operations::OperationDeclaration>(
+pub fn input_payload_limit<O: crate::operations::RequestShape>(
     template: &<O::Input as crate::operations::Direction>::Item, path: &[&str], maximum_payload: usize, frame_limit: usize,
 ) -> Result<usize, MessageError> {
     input_payload_limit_admitted::<O>(template, path, maximum_payload, frame_limit, &mut |_| Ok(()))
 }
 
 // Uses Existing Caller Admission For A Declared Input Item's Allowance Template.
-pub fn input_payload_limit_admitted<O: crate::operations::OperationDeclaration>(
+pub fn input_payload_limit_admitted<O: crate::operations::RequestShape>(
     template: &<O::Input as crate::operations::Direction>::Item, path: &[&str], maximum_payload: usize, frame_limit: usize,
     admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {

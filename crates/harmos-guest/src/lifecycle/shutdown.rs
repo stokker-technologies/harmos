@@ -30,9 +30,17 @@ harmos_domain::postcard_product!(Shutdown {});
 
 /* === Structs === */
 
-#[harmos_operations::execution::operation(harmos_path = harmos_operations::execution, codec = manual, id = "harmos.shutdown", response = (), policy = super::POLICY, )]
+#[derive(harmos_operations::execution::Request)]
+#[harmos_path(harmos_operations::execution)]
+#[request(response = ())]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Shutdown {}
+
+pub static SHUTDOWN_DESCRIPTION: harmos_operations::execution::operations::WireDeclaration =
+    harmos_operations::execution::operations::WireDeclaration::request::<Shutdown>("harmos.shutdown", super::POLICY);
+
+pub const SHUTDOWN_OPERATION: harmos_operations::execution::operations::OperationSpec<Shutdown> =
+    harmos_operations::execution::operations::OperationSpec::<Shutdown>::new(&SHUTDOWN_DESCRIPTION);
 
 pub struct Control {
     instance: Box<dyn crate::lifecycle::access::LifecycleInstance>,
@@ -79,11 +87,15 @@ impl harmos_operations::execution::operations::Carrier for Control {
     }
 }
 
-impl harmos_operations::execution::Executable for Shutdown {
-    type Carrier = Control;
-}
-
 /* === Public Functions === */
+
+pub fn operation()
+-> Result<harmos_operations::execution::operations::OperationFactory, harmos_operations::execution::operations::ServingError> {
+    Ok(harmos_operations::execution::__private::RegistrationBatch::new()
+        .carrier::<Shutdown, Control>(SHUTDOWN_OPERATION)?
+        .operations
+        .remove(0))
+}
 
 /* === Private Functions === */
 

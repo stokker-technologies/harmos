@@ -53,33 +53,64 @@ use support::{Bank, Ledger, catalog};
 
 /* === Enums === */
 
-#[harmos_runtime::operation(resources = [], response = u64,
-        id = "service.ping",
-        policy = harmos_runtime::OperationPolicy {
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = u64)]
+#[derive(Clone)]
+struct PingContractDeclaration {}
+
+static PING_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<PingContractDeclaration>(
+        "service.ping",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(120),
             attempt_timeout: Duration::from_secs(120),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct PingContractDeclaration {}
+    );
 
-#[harmos_runtime::catalog]
-enum Operations {
-    PingContractDeclaration(PingContractDeclaration),
+const PING_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PingContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<PingContractDeclaration>::new(&PING_CONTRACT_DECLARATION_DESCRIPTION);
+
+static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(PING_CONTRACT_DECLARATION_OPERATION.wire())];
+static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(PING_CONTRACT_DECLARATION_OPERATION.callees())];
+
+const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::Operations"),
+    &OPERATIONS_CATALOG_DECLARATIONS,
+    &OPERATIONS_CATALOG_CALLEES,
+    Some(operations_catalog_batch),
+);
+
+fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(ping_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::Operation for PingContractDeclaration {
-    type Error = std::convert::Infallible;
+async fn ping_contract_declaration_handler(
+    _request: PingContractDeclaration, _: harmos_runtime::operations::FunctionContext<PingContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<u64>, std::convert::Infallible> {
+    let result: ::core::result::Result<u64, std::convert::Infallible> = async move { Ok(42) }.await;
+    result.map(::core::convert::Into::into)
+}
 
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
-        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(42) }.await;
-        result.map(::core::convert::Into::into)
-    }
+fn ping_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PING_CONTRACT_DECLARATION_OPERATION,
+        const { &[] },
+        ping_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 /* === Public Functions === */
@@ -169,7 +200,7 @@ async fn shutdown_preserves_work() {
     let manager = runtime.operations.clone();
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
-    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(OPERATIONS_CATALOG, harmos_runtime::operations::Lane::default()).await.unwrap();
     assert_eq!(*runtime.operations.operation::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
     runtime.shutdown().await.unwrap();
 }

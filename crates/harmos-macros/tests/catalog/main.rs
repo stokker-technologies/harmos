@@ -168,14 +168,9 @@ fn authoring_refusals_compile() {
 
     for (fixture, expected) in [
         ("serde_refusals.rs", "Serde attribute"),
-        ("operation_on_variant.rs", "catalogs only assemble types"),
-        ("bad_operation_id.rs", "operation id"),
-        ("undeclared_resource.rs", "Requires<u64>"),
-        ("undeclared_operation.rs", "Invokes<Other>"),
         ("non_serde_row.rs", "Serialize"),
         ("unpaired_inverse.rs", "the declared inverse of `Place` does not name `Place` back"),
         ("uncatalogued_inverse.rs", "the declared inverse `Remove` is not a member of `Change`"),
-        ("operation_on_impl.rs", "operation belongs on the implementation struct"),
         // Guest Artifact Declarations Remain Until The Guest Migration.
         ("explicit_version_plugin.rs", "remove `version`"),
         ("plugin_on_struct.rs", "belongs on `impl Plugin for ConcreteType`"),
@@ -229,72 +224,6 @@ fn authoring_refusals_compile() {
                 let diagnostic = format!("Serde attribute `{attribute}` on type `{owner}`");
                 assert!(stderr.contains(&diagnostic), "missing {diagnostic}:\n{stderr}");
             }
-        }
-    }
-}
-
-#[test]
-fn grpc_visibility_compiles() {
-    let sdk = fixtures::library("harmos_operations");
-    let dependencies = fixtures::dependencies();
-    let output = tempfile::tempdir().unwrap();
-    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-    for (index, (visibility, accepted)) in [
-        ("", false),
-        ("visibility = Private,", false),
-        ("visibility = harmos::operations::Visibility::Private,", false),
-        ("visibility = PRIVATE,", false),
-        ("visibility = Public,", true),
-        ("visibility = Host,", false),
-        ("visibility = harmos::operations::Visibility::Host,", false),
-        ("visibility = harmos::operations::Visibility::Public,", true),
-        ("visibility = PUBLIC,", true),
-        ("visibility = Shared,", false),
-        ("visibility = harmos::operations::Visibility::Shared,", false),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let source = output.path().join(format!("visibility_{index}.rs"));
-        fs::write(
-            &source,
-            format!(
-                r#"
-#![allow(dead_code)]
-use harmos_operations::execution as harmos;
-const PRIVATE: harmos::operations::Visibility = harmos::operations::Visibility::Private;
-const PUBLIC: harmos::operations::Visibility = harmos::operations::Visibility::Public;
-#[harmos::operation(harmos_path = ::harmos_operations::execution, id = "visibility.call",
-    policy = harmos::model::operations::lifecycle::POLICY, {visibility}
-    grpc(package = "visibility.v1", service = "Operations", method = "Call"))]
-struct Call;
-fn main() {{}}
-"#
-            ),
-        )
-        .unwrap();
-        let compiled = fixtures::command(&rustc)
-            .args(["--edition=2024", "--crate-type=bin", "--emit=metadata"])
-            .arg(&source)
-            .arg("--extern")
-            .arg(format!("harmos_operations={}", sdk.display()))
-            .arg("-L")
-            .arg(format!("dependency={}", dependencies.display()))
-            .arg("--out-dir")
-            .arg(output.path())
-            .output()
-            .unwrap();
-        let diagnostic = String::from_utf8_lossy(&compiled.stderr);
-        assert_eq!(compiled.status.success(), accepted, "{visibility}:\n{diagnostic}");
-        if !accepted {
-            let expected = if visibility.contains("Shared") {
-                "Shared"
-            } else if visibility.contains("Host") {
-                "Host"
-            } else {
-                "Private operations cannot declare a gRPC binding"
-            };
-            assert!(diagnostic.contains(expected), "{diagnostic}");
         }
     }
 }

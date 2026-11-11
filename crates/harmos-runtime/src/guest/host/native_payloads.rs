@@ -11,7 +11,7 @@
 
 /* === Imports === */
 
-use harmos_domain::operations::{Contract, WireDeclaration};
+use harmos_domain::operations::Contract;
 use harmos_domain::{Message, MessageError};
 use harmos_operations::execution::operations::OperationFactory;
 use prost::Message as _;
@@ -34,9 +34,7 @@ impl Payload {
         match self {
             Self::Publish => PUBLISH.get_or_init(|| {
                 (
-                    WireDeclaration::of::<harmos_guest::builtins::streams::Publish>()
-                        .contract()
-                        .expect("private guest publication contract"),
+                    harmos_guest::builtins::streams::PUBLISH_OPERATION.wire().contract().expect("private guest publication contract"),
                     OperationFactory::protobuf::<harmos_operations::streams::Publish>()
                         .expect("native publication declaration")
                         .contract()
@@ -45,7 +43,7 @@ impl Payload {
             }),
             Self::HashFile => HASH.get_or_init(|| {
                 (
-                    WireDeclaration::of::<harmos_guest::builtins::storage::HashFile>().contract().expect("private guest hash contract"),
+                    harmos_guest::builtins::storage::HASH_FILE_OPERATION.wire().contract().expect("private guest hash contract"),
                     OperationFactory::protobuf::<harmos_operations::storage::HashFile>()
                         .expect("native hash declaration")
                         .contract()

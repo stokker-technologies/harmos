@@ -30,7 +30,7 @@ use std::process::Stdio;
 // Local Imports
 use crate::fixtures;
 use harmos_domain::config::SchemaSettings;
-use harmos_domain::operations::{Codec, Contract, Contracts, Grpc, OperationPolicy, RetryPolicy};
+use harmos_domain::operations::{Codec, Contract, Grpc, OperationPolicy, RetryPolicy};
 use harmos_domain::schema::{
     Cardinality, Described,
     graph::{Field, Kind, Schema},
@@ -70,57 +70,81 @@ struct Payload {
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "read",
-    response = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Read"),
-)]
+#[harmos_domain::message(harmos_path = harmos_domain)]
+#[derive(harmos_domain::Request)]
+#[harmos_path(harmos_domain)]
+#[request(response = Payload)]
+#[derive(Clone)]
 struct ReadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "exchange",
-    response = Payload,
-    input = Payload,
-    output = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Exchange"),
-)]
+static READ_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+    harmos_domain::operations::WireDeclaration::request::<ReadOperation>("read", POLICY)
+        .visibility(harmos_domain::operations::Visibility::Public)
+        .grpc(harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Read"));
+
+const READ_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<ReadOperation> =
+    harmos_domain::operations::OperationSpec::<ReadOperation>::new(&READ_OPERATION_DESCRIPTION);
+
+#[harmos_domain::message(harmos_path = harmos_domain)]
+#[derive(harmos_domain::Request)]
+#[harmos_path(harmos_domain)]
+#[request(response = Payload, input = Payload, output = Payload)]
+#[derive(Clone)]
 struct ExchangeOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "upload",
-    response = Payload,
-    input = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Upload"),
-)]
+static EXCHANGE_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+    harmos_domain::operations::WireDeclaration::request::<ExchangeOperation>("exchange", POLICY)
+        .visibility(harmos_domain::operations::Visibility::Public)
+        .grpc(harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Exchange"));
+
+const EXCHANGE_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<ExchangeOperation> =
+    harmos_domain::operations::OperationSpec::<ExchangeOperation>::new(&EXCHANGE_OPERATION_DESCRIPTION);
+
+#[harmos_domain::message(harmos_path = harmos_domain)]
+#[derive(harmos_domain::Request)]
+#[harmos_path(harmos_domain)]
+#[request(response = Payload, input = Payload)]
+#[derive(Clone)]
 struct UploadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
 
-#[harmos_domain::operation(
-    id = "download",
-    response = Payload,
-    output = Payload,
-    policy = POLICY,
-    visibility = Public, grpc(package = "test.v1", service = "Shapes", method = "Download"),
-)]
+static UPLOAD_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+    harmos_domain::operations::WireDeclaration::request::<UploadOperation>("upload", POLICY)
+        .visibility(harmos_domain::operations::Visibility::Public)
+        .grpc(harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Upload"));
+
+const UPLOAD_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<UploadOperation> =
+    harmos_domain::operations::OperationSpec::<UploadOperation>::new(&UPLOAD_OPERATION_DESCRIPTION);
+
+#[harmos_domain::message(harmos_path = harmos_domain)]
+#[derive(harmos_domain::Request)]
+#[harmos_path(harmos_domain)]
+#[request(response = Payload, output = Payload)]
+#[derive(Clone)]
 struct DownloadOperation {
     text: String,
     optional: Option<u32>,
     values: Vec<i64>,
 }
+
+static DOWNLOAD_OPERATION_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+    harmos_domain::operations::WireDeclaration::request::<DownloadOperation>("download", POLICY)
+        .visibility(harmos_domain::operations::Visibility::Public)
+        .grpc(harmos_domain::operations::Grpc::new("test.v1", "Shapes", "Download"));
+
+const DOWNLOAD_OPERATION_OPERATION: harmos_domain::operations::OperationSpec<DownloadOperation> =
+    harmos_domain::operations::OperationSpec::<DownloadOperation>::new(&DOWNLOAD_OPERATION_DESCRIPTION);
 
 #[harmos_domain::message]
 #[derive(PartialEq)]
@@ -138,13 +162,25 @@ struct Exported {
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
-enum Routes {
-    Read(ReadOperation),
-    Exchange(ExchangeOperation),
-    Upload(UploadOperation),
-    Download(DownloadOperation),
-}
+static ROUTES_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 4] = [
+    harmos_domain::catalog::Node::Leaf(READ_OPERATION_OPERATION.wire()),
+    harmos_domain::catalog::Node::Leaf(EXCHANGE_OPERATION_OPERATION.wire()),
+    harmos_domain::catalog::Node::Leaf(UPLOAD_OPERATION_OPERATION.wire()),
+    harmos_domain::catalog::Node::Leaf(DOWNLOAD_OPERATION_OPERATION.wire()),
+];
+static ROUTES_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 4] = [
+    harmos_domain::catalog::Node::Leaf(READ_OPERATION_OPERATION.callees()),
+    harmos_domain::catalog::Node::Leaf(EXCHANGE_OPERATION_OPERATION.callees()),
+    harmos_domain::catalog::Node::Leaf(UPLOAD_OPERATION_OPERATION.callees()),
+    harmos_domain::catalog::Node::Leaf(DOWNLOAD_OPERATION_OPERATION.callees()),
+];
+
+const ROUTES_CATALOG: harmos_operations::execution::operations::Catalog = harmos_operations::execution::operations::Catalog::new(
+    concat!(module_path!(), "::Routes"),
+    &ROUTES_CATALOG_DECLARATIONS,
+    &ROUTES_CATALOG_CALLEES,
+    None,
+);
 
 /* === Traits === */
 
@@ -156,7 +192,7 @@ enum Routes {
 
 // Four Streaming Shapes Plus a Wide, a Recursive and a Reserved-Name Schema
 fn contracts() -> Vec<Contract> {
-    let mut contracts = Contracts::of::<Routes>().unwrap();
+    let mut contracts = harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap();
     let template = contracts[0].clone();
     let checkpoint: Schema = serde_json::from_str(CHECKPOINT).unwrap();
     let recursive = Schema {
@@ -322,7 +358,7 @@ fn both(name: &str, exported: &Exported, input: &[u8]) -> Vec<Vec<u8>> {
 
 #[test]
 fn export_refuses_invalid() {
-    let contracts = Contracts::of::<Routes>().unwrap();
+    let contracts = harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap();
     let artifacts = Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let output = target.path().join("package");
@@ -507,7 +543,7 @@ fn identity_parity() {
         ("host.read\n".to_owned(), false),
         ("host.read\0".to_owned(), false),
     ];
-    let template = Contracts::of::<Routes>().unwrap()[0].operation().clone();
+    let template = harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap()[0].operation().clone();
     for (value, valid) in &cases {
         let parsed = Identifier::new(value.clone()).is_ok_and(|id| {
             let mut operation = template.clone();
@@ -544,7 +580,7 @@ fn dynamic_refuses_graphs() {
 #[test]
 fn aggregate_members_typed() {
     // The Generated Surface of a Request Carrying Aggregates Is Stable
-    let template = Contracts::of::<Routes>().unwrap()[0].clone();
+    let template = harmos_domain::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap()[0].clone();
     let schema = Schema::from_declaration(Summary::DEFINITION, &SchemaSettings::default()).unwrap();
     let summary = contract(&template, "fixture_aggregate", "Aggregate", schema);
     let artifacts = Artifacts::new([&summary]).unwrap();

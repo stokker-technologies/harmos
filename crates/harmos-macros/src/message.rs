@@ -96,7 +96,7 @@ pub(crate) fn expand(attributes: TokenStream, item: TokenStream) -> Result<Token
     }
     let postcard = postcard::declare(&syn::Item::Struct(item.clone()), &harmos);
     let declaration = composition::declare(&mut item, &harmos, skip_debug, skip_default)?;
-    let gates = crate::operation::configuration(&item.attrs)?;
+    let gates = crate::configuration::configuration(&item.attrs)?;
     let name = &item.ident;
     let schema = described(name, quote!(&[#(#fields),*]), quote!(), &harmos);
     let owned_fields = item.fields.iter().map(|field| {

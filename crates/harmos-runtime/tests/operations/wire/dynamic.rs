@@ -21,7 +21,7 @@ use std::time::Duration;
 use harmos_operations::execution::grpc::{self, DecodeInput};
 use harmos_runtime::grpc::dynamic::{Event, Operation};
 use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-use harmos_runtime::operations::{OperationPolicy, RetryPolicy, WireDeclaration};
+use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -46,24 +46,43 @@ struct Value {
     optional: Option<u32>,
 }
 
-#[harmos_runtime::operation(id = "dynamic.unary", response = Value, policy = POLICY,
-     visibility = Public, grpc(package = "dynamic.v1", service = "External", method = "Unary"),
-)]
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = Value)]
+#[derive(Clone)]
 struct UnaryDeclaration {
     small: u32,
     wide: u64,
     optional: Option<u32>,
 }
 
-#[harmos_runtime::operation(id = "dynamic.exchange", response = Value, input = Value,
-    output = Value, policy = POLICY,
-    visibility = Public, grpc(package = "dynamic.v1", service = "External", method = "Exchange"),
-)]
+static UNARY_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<UnaryDeclaration>("dynamic.unary", POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("dynamic.v1", "External", "Unary"));
+
+const UNARY_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<UnaryDeclaration> =
+    harmos_runtime::operations::OperationSpec::<UnaryDeclaration>::new(&UNARY_DECLARATION_DESCRIPTION);
+
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = Value, input = Value, output = Value)]
+#[derive(Clone)]
 struct ExchangeDeclaration {
     small: u32,
     wide: u64,
     optional: Option<u32>,
 }
+
+static EXCHANGE_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ExchangeDeclaration>("dynamic.exchange", POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("dynamic.v1", "External", "Exchange"));
+
+const EXCHANGE_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ExchangeDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ExchangeDeclaration>::new(&EXCHANGE_DECLARATION_DESCRIPTION);
 
 /* === Enums === */
 
@@ -79,7 +98,7 @@ struct ExchangeDeclaration {
 
 #[test]
 fn dynamic_wire_interop() {
-    let contract = WireDeclaration::of::<UnaryDeclaration>().contract().unwrap();
+    let contract = UNARY_DECLARATION_OPERATION.wire().contract().unwrap();
     let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();
     let json = br#"{"small":7,"wide":"18446744073709551615","optional":0}"#;
     let payload = operation.request(json).unwrap();
@@ -117,7 +136,7 @@ fn dynamic_wire_interop() {
 
 #[test]
 fn dynamic_stream_interop() {
-    let contract = WireDeclaration::of::<ExchangeDeclaration>().contract().unwrap();
+    let contract = EXCHANGE_DECLARATION_OPERATION.wire().contract().unwrap();
     let operation = Operation::new(&contract, NonZeroUsize::new(4096).unwrap()).unwrap();
     let json = br#"{"small":7,"wide":"9"}"#;
     assert!(operation.client_streaming());

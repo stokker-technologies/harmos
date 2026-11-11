@@ -11,11 +11,12 @@
 
 mod artifact;
 mod catalog;
+mod configuration;
 mod identity;
 mod message;
-mod operation;
 mod path;
 mod presentation;
+mod request;
 mod row;
 
 /* === Re-Exports === */
@@ -45,6 +46,11 @@ use identity::Sort;
 /* === Implementations === */
 
 /* === Public Functions === */
+
+#[proc_macro_derive(Request, attributes(request, harmos_path))]
+pub fn request(item: TokenStream) -> TokenStream {
+    request::derive(item.into()).into()
+}
 
 #[proc_macro_derive(Described, attributes(harmos_path, serde))]
 pub fn described(item: TokenStream) -> TokenStream {
@@ -83,26 +89,6 @@ pub fn domain_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream 
 #[proc_macro_attribute]
 pub fn runtime_catalog(attribute: TokenStream, item: TokenStream) -> TokenStream {
     catalog::typed::declare_runtime(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    operation::declare(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn guest_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    operation::declare_runtime(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn domain_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    operation::declare_domain(attribute.into(), item.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn runtime_operation(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    operation::declare_runtime(attribute.into(), item.into()).into()
 }
 
 #[proc_macro_attribute]

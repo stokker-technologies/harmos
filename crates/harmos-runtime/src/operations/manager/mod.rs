@@ -53,7 +53,7 @@ use super::{OperationGeneration, OperationInstanceId, Running};
 use super::instances::Instances;
 #[cfg(feature = "plugin-guest")]
 use crate::guest::host::plugin::PluginScope;
-use crate::operations::{OperationDeclaration, OperationDefinition};
+use crate::operations::{OperationDefinition, RequestShape};
 use crate::supervision::instance::Instance;
 use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, state::Position};
 
@@ -253,6 +253,16 @@ impl OperationManager {
 
     pub(crate) fn execution(&self) -> Manager {
         self.inner.clone()
+    }
+
+    pub async fn register_operation(
+        &self, operation: crate::operations::OperationFactory, lane: crate::operations::Lane,
+    ) -> ::core::result::Result<(), crate::Error> {
+        self.register_batch(crate::operations::Registration::new(lane).entry(operation)).await
+    }
+
+    pub async fn register_catalog(&self, catalog: crate::operations::Catalog, lane: crate::operations::Lane) -> Result<()> {
+        self.register_batch(crate::operations::Registration::catalog(catalog, lane)?).await
     }
 
     pub async fn register<C: harmos_operations::execution::operations::OperationCatalog>(&self, lane: Lane) -> Result<()> {

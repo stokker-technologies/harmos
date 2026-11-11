@@ -66,45 +66,77 @@ struct StopWait(Arc<Cleanup>);
 
 /* === Enums === */
 
-#[harmos_runtime::operation(resources = [Sequence], response = (),
-        id = "shutdown.ordered",
-        policy = harmos_runtime::OperationPolicy {
+#[harmos_runtime::message(harmos_path = harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = ())]
+#[derive(Clone)]
+struct OrderedContractDeclaration {
+    running: bool,
+}
+
+static ORDERED_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<OrderedContractDeclaration>(
+        "shutdown.ordered",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct OrderedContractDeclaration {
-    running: bool,
-}
+    );
 
-#[harmos_runtime::catalog]
-enum Operations {
-    OrderedContractDeclaration(OrderedContractDeclaration),
+const ORDERED_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<OrderedContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<OrderedContractDeclaration>::new(&ORDERED_CONTRACT_DECLARATION_DESCRIPTION);
+
+static OPERATIONS_CATALOG_DECLARATIONS: [harmos_runtime::catalog::Node<harmos_runtime::operations::WireDeclaration>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(ORDERED_CONTRACT_DECLARATION_OPERATION.wire())];
+static OPERATIONS_CATALOG_CALLEES: [harmos_runtime::catalog::Node<&'static [harmos_runtime::operations::WireDeclaration]>; 1] =
+    [harmos_runtime::catalog::Node::Leaf(ORDERED_CONTRACT_DECLARATION_OPERATION.callees())];
+
+const OPERATIONS_CATALOG: harmos_runtime::operations::Catalog = harmos_runtime::operations::Catalog::new(
+    concat!(module_path!(), "::Operations"),
+    &OPERATIONS_CATALOG_DECLARATIONS,
+    &OPERATIONS_CATALOG_CALLEES,
+    Some(operations_catalog_batch),
+);
+
+fn operations_catalog_batch() -> harmos_runtime::__private::RegistrationBatch {
+    let mut batch = harmos_runtime::__private::RegistrationBatch::new();
+    batch = batch.entry(ordered_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for OrderedContractDeclaration {
-    type Error = std::convert::Infallible;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let sequence = ctx.resource::<Sequence>();
-        let _guard = OrderedGuard {
-            running: self.running,
-            sequence: sequence.clone(),
-        };
-        if self.running {
-            sequence.events.lock().unwrap().push("job-start");
-            sequence.started.notify_one();
-            std::future::pending::<()>().await;
-        } else {
-            sequence.events.lock().unwrap().push("queued");
-        }
-        Ok(().into())
+async fn ordered_contract_declaration_handler(
+    request: OrderedContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<OrderedContractDeclaration>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let sequence = ctx.resource::<Sequence>().expect("declared resource is registered");
+    let _guard = OrderedGuard {
+        running: request.running,
+        sequence: sequence.clone(),
+    };
+    if request.running {
+        sequence.events.lock().unwrap().push("job-start");
+        sequence.started.notify_one();
+        std::future::pending::<()>().await;
+    } else {
+        sequence.events.lock().unwrap().push("queued");
     }
+    Ok(().into())
+}
+
+fn ordered_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        ORDERED_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Sequence>()] },
+        ordered_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl Drop for OrderedGuard {
     fn drop(&mut self) {
@@ -493,7 +525,7 @@ async fn domains_outlives_clones() {
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.resource::<Sequence>(sequence);
-        setup.operations::<Operations>(crate::support::SERIAL);
+        setup.catalog(OPERATIONS_CATALOG, crate::support::SERIAL);
         setup.settings().service("resident", move |mut context: harmos_runtime::services::ServiceContext<Bank>| {
             let events = Arc::clone(&service_events);
             async move {

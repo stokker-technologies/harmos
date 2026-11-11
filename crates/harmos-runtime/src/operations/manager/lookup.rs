@@ -35,6 +35,38 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
+    pub(in crate::operations) fn typed_entry<O: crate::operations::RequestShape, P: Send + 'static>(
+        &self, origin: &Origin, owner: Option<&str>,
+    ) -> Result<Arc<Entry>> {
+        let candidates = {
+            let state = self.registry.state.lock().expect("operation registry lock is healthy");
+            state
+                .entries
+                .values()
+                .flat_map(|providers| providers.values())
+                .filter(|entry| {
+                    let selected = owner.is_none_or(|owner| entry.owner.as_str() == owner);
+                    let native = entry
+                        .binding
+                        .downcast_ref::<harmos_operations::execution::operations::OperationFactory>()
+                        .is_some_and(|operation| operation.accepts_native::<O, P>());
+                    selected && (native || entry.binding.is::<super::super::binding::Typed<O, P>>())
+                })
+                .map(|entry| entry.id().to_owned())
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        if candidates.len() != 1 {
+            return Err(Error::NotRegistered {
+                domain: "unambiguous operation request",
+                name: std::any::type_name::<O>().to_owned(),
+            });
+        }
+        let id = candidates.first().expect("one checked request");
+        match owner {
+            Some(owner) => self.capture_provider(id, Some(owner)),
+            None => self.entry_as(id, origin),
+        }
+    }
     pub(in crate::operations) fn capture_routed(&self, id: &str, owner: &str, origin: &Origin) -> Result<Arc<Entry>> {
         if origin.has_lifecycle_loan() {
             let state = self.registry.state.lock().expect("operation registry lock is healthy");

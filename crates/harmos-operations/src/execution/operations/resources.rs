@@ -173,8 +173,18 @@ impl OperationAssignments {
         Ok(entry)
     }
 
-    pub fn resolve<O: super::OperationDeclaration>(&self) -> Result<&AssignedOperation, super::ServingError> {
-        self.resolve_target(&super::Target::of::<O>())
+    pub fn resolve<O: super::RequestShape>(&self) -> Result<&AssignedOperation, super::ServingError> {
+        let mut matches = self.entries.get().into_iter().flatten().filter(|entry| {
+            let Some((_, local)) = entry.operation.split_once('.') else {
+                return false;
+            };
+            O::fingerprint(local).is_ok_and(|fingerprint| entry.fingerprint == fingerprint.0)
+        });
+        let entry = matches.next().ok_or(super::ServingError::Catalog)?;
+        if matches.next().is_some() {
+            return Err(super::ServingError::Catalog);
+        }
+        Ok(entry)
     }
 
     pub fn resolve_target(&self, target: &super::Target) -> Result<&AssignedOperation, super::ServingError> {
@@ -184,7 +194,7 @@ impl OperationAssignments {
             .get()
             .and_then(|entries| entries.iter().find(local))
             .ok_or(super::ServingError::Unassigned { operation: target.id.into() })?;
-        if entry.fingerprint != (target.definition)().fingerprint.0 {
+        if entry.fingerprint != target.definition.fingerprint.0 {
             return Err(super::ServingError::Identity { operation: entry.operation.clone() });
         }
         Ok(entry)

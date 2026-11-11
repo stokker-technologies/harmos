@@ -97,7 +97,7 @@ where
 
 // The gRPC handler of one declaration, selected by the directions it streams.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub(crate) fn handler<O: crate::operations::OperationDeclaration>() -> Handler {
+pub(crate) fn handler<O: crate::operations::RequestShape>() -> Handler {
     use crate::operations::Direction;
     match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
         (false, false) => server::unary::<O, super::Transcoded>,

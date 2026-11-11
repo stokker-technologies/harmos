@@ -20,7 +20,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos::{Lifecycle, Operation};
+use harmos::Lifecycle;
 
 /* === Constants === */
 
@@ -37,45 +37,33 @@ const POLICY: harmos::OperationPolicy = harmos::OperationPolicy {
 
 /* === Structs === */
 
-#[harmos::guest::operation(id = "fixture.guest", response = (), policy = POLICY)]
+#[harmos::message(harmos_path = harmos)]
+#[derive(harmos::Request, Clone)]
+#[harmos_path(harmos)]
 struct GuestOperation;
+static GUEST_DESCRIPTION: harmos::operations::WireDeclaration = harmos::operations::WireDeclaration::request::<GuestOperation>("fixture.guest", POLICY);
 
-#[harmos::runtime::operation(id = "fixture.application", resources = [usize], response = (), policy = POLICY)]
+#[harmos::message(harmos_path = harmos)]
+#[derive(harmos::Request, Clone)]
+#[harmos_path(harmos)]
 struct ApplicationOperation;
+static APPLICATION_DESCRIPTION: harmos::operations::WireDeclaration = harmos::operations::WireDeclaration::request::<ApplicationOperation>("fixture.application", POLICY);
 
 struct GuestPlugin;
 
 /* === Enums === */
 
-#[harmos::guest::catalog]
-enum GuestCatalog {
-    Guest(GuestOperation),
-}
+static GUEST_DECLARATIONS: [harmos::catalog::Node<harmos::operations::WireDeclaration>; 1] = [harmos::catalog::Node::Leaf(GUEST_DESCRIPTION.copied())];
 
-#[harmos::runtime::catalog]
-enum ApplicationCatalog {
-    Application(ApplicationOperation),
-}
+static APPLICATION_DECLARATIONS: [harmos::catalog::Node<harmos::operations::WireDeclaration>; 1] = [harmos::catalog::Node::Leaf(APPLICATION_DESCRIPTION.copied())];
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Operation for GuestOperation {
-    type Error = Infallible;
 
-    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<()>, Self::Error> {
-        Ok(().into())
-    }
-}
 
-impl Operation for ApplicationOperation {
-    type Error = Infallible;
 
-    async fn run(self, _: harmos::Context<'_, Self>) -> Result<harmos::Response<()>, Self::Error> {
-        Ok(().into())
-    }
-}
 
 impl harmos::builtins::lifecycle::Policy for GuestPlugin {
     const INITIALIZATION_POLICY: harmos::OperationPolicy = POLICY;
@@ -111,8 +99,8 @@ impl harmos::guest::Plugin for GuestPlugin {
 /* === Private Functions === */
 
 fn main() {
-    assert_eq!(GuestCatalog::CATALOG.declarations.len(), 1);
-    assert_eq!(ApplicationCatalog::CATALOG.declarations.len(), 1);
+    assert_eq!(GUEST_DECLARATIONS.len(), 1);
+    assert_eq!(APPLICATION_DECLARATIONS.len(), 1);
 
     assert!(<GuestPlugin as harmos::__private::PluginDeclared>::PROVIDES.is_empty());
 

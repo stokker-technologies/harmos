@@ -61,7 +61,7 @@ pub struct Table {
     resources_frozen: bool,
     trusted_resources: ResourceSet,
     pending: Vec<RegistrationBatch>,
-    catalogs: std::collections::HashSet<std::any::TypeId>,
+    catalogs: std::collections::HashSet<&'static str>,
     configuration_errors: Vec<StartupError>,
     binding_failed: bool,
     handlers: BTreeMap<String, Route>,

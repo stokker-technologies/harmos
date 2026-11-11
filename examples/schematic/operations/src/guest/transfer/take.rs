@@ -42,15 +42,22 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::operation(resources = [Store],
-    id = "benchmark.take", response = Batch,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Unknown,
-)]
+#[harmos_operations::message(harmos_path = harmos_operations)]
+#[derive(harmos_operations::Request)]
+#[harmos_path(harmos_operations)]
+#[request(response = Batch)]
+#[derive(Clone)]
 pub struct Take {
     pub transfer: u64,
 }
+
+pub static TAKE_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+    harmos_operations::operations::WireDeclaration::request::<Take>("benchmark.take", POLICY)
+        .visibility(harmos_operations::operations::Visibility::Public)
+        .replay(harmos_operations::operations::ReplaySafety::Unknown);
+
+pub const TAKE_OPERATION: harmos_operations::operations::OperationSpec<Take> =
+    harmos_operations::operations::OperationSpec::<Take>::new(&TAKE_DESCRIPTION);
 
 /* === Enums === */
 
@@ -59,14 +66,15 @@ pub struct Take {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos_operations::Operation for Take {
-    type Error = crate::Error;
-
-    async fn run(self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Batch>, Self::Error> {
-        let store = ctx.resource::<Store>();
+mod execution {
+    use super::*;
+    pub async fn take_handler(
+        request: Take, ctx: harmos_operations::execution::operations::FunctionContext<Take>,
+    ) -> Result<harmos_operations::Response<Batch>, crate::Error> {
+        let store = ctx.resource::<Store>().expect("declared resource is registered");
 
         let mut stores = store.batches.lock().unwrap();
-        let Some(stored) = stores.get_mut(&self.transfer) else {
+        let Some(stored) = stores.get_mut(&request.transfer) else {
             return Ok(Batch {
                 records: Vec::new(),
                 samples: Vec::new(),
@@ -81,11 +89,26 @@ impl harmos_operations::Operation for Take {
         });
         stored.bytes = stored.bytes.saturating_sub(batch.memory_size());
         if stored.batches.is_empty() {
-            stores.remove(&self.transfer);
+            stores.remove(&request.transfer);
         }
         Ok(batch.into())
     }
+
+    pub fn take_operation() -> ::core::result::Result<
+        harmos_operations::execution::operations::OperationFactory,
+        harmos_operations::execution::operations::ServingError,
+    > {
+        harmos_operations::execution::operations::OperationFactory::function(
+            TAKE_OPERATION,
+            const { &[harmos_operations::Resource::of::<Store>()] },
+            take_handler,
+            |_| harmos_operations::operations::FailureKind::Permanent,
+        )
+    }
 }
+
+#[cfg(feature = "runtime")]
+pub use execution::take_operation;
 
 /* === Public Functions === */
 

@@ -18,8 +18,8 @@ use std::borrow::Cow;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use crate::catalog::{Member, Visitor};
-use crate::operations::{OperationDeclaration, WireDeclaration};
+use crate::catalog::Visitor;
+use crate::operations::WireDeclaration;
 
 /* === Constants === */
 
@@ -55,11 +55,8 @@ pub struct Requirements;
 /* === Implementations === */
 
 impl Requirement {
-    pub const fn of<O: OperationDeclaration>(grants: &'static [Grant]) -> Self {
-        Self {
-            declaration: WireDeclaration::of::<O>(),
-            grants,
-        }
+    pub const fn new(declaration: WireDeclaration, grants: &'static [Grant]) -> Self {
+        Self { declaration, grants }
     }
 }
 
@@ -97,14 +94,17 @@ impl Visitor for Requirements {
     type Entry = Requirement;
 }
 
-impl<M> Member<M> for Requirements
-where
-    M: OperationDeclaration,
-{
-    const ENTRY: Requirement = Requirement::of::<M>(&[]);
-}
-
 /* === Public Functions === */
+
+pub const fn catalog_requirements<const N: usize>(
+    declarations: &'static [crate::catalog::Node<WireDeclaration>],
+) -> [crate::catalog::Node<Requirement>; N] {
+    let mut required = [const { crate::catalog::Node::Nested(&[]) }; N];
+    let mut cursor = 0;
+    append_requirements(declarations, &mut required, &mut cursor);
+    assert!(cursor == N, "requirement description count differs");
+    required
+}
 
 // Upper Bound Includes Duplicates; Unused Nodes Are Empty Nested Projections.
 pub const fn callee_count(nodes: &[crate::catalog::Node<&'static [WireDeclaration]>]) -> usize {
@@ -132,6 +132,25 @@ pub const fn aggregate<const N: usize>(
 }
 
 /* === Private Functions === */
+
+const fn append_requirements<const N: usize>(
+    declarations: &'static [crate::catalog::Node<WireDeclaration>], required: &mut [crate::catalog::Node<Requirement>; N],
+    cursor: &mut usize,
+) {
+    let mut index = 0;
+    while index < declarations.len() {
+        match &declarations[index] {
+            crate::catalog::Node::Nested(nested) => append_requirements(nested, required, cursor),
+            crate::catalog::Node::Leaf(declaration) => {
+                let previous =
+                    std::mem::replace(&mut required[*cursor], crate::catalog::Node::Leaf(Requirement::new(declaration.copied(), &[])));
+                std::mem::forget(previous);
+                *cursor += 1;
+            }
+        }
+        index += 1;
+    }
+}
 
 const fn same(left: &str, right: &str) -> bool {
     let left = left.as_bytes();
