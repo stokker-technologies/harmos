@@ -130,7 +130,7 @@ async fn schema_registry_roundtrip() {
     assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(malformed).await.is_err());
     assert_eq!(harmos_protocol::storage::StorageCursor::from(f.storage.cursor_accepted()), accepted);
     let at = f.storage.flush().await.unwrap();
-    let query = Query {
+    let query = harmos_runtime::storage::Query {
         at: at.clone(),
         source: Source::Schemas(SchemaSelection {
             schema: Some(request.schema.as_ref().unwrap().key.clone().unwrap().try_into().unwrap()),
@@ -141,8 +141,8 @@ async fn schema_registry_roundtrip() {
     let mut response = f
         .runtime
         .operations
-        .download::<Query>(
-            query,
+        .download_protobuf::<Query>(
+            query.into(),
             harmos_runtime::operations::StreamSettings {
                 items: NonZeroUsize::MIN,
                 bytes: NonZeroUsize::new(64 * 1024).unwrap(),
@@ -152,7 +152,7 @@ async fn schema_registry_roundtrip() {
     let mut announced = false;
     let mut rows = 0;
     while let Some(output) = response.next().await.unwrap() {
-        match &QueryArrow::try_from(output.into_owned_request().unwrap().0).unwrap() {
+        match &QueryArrow::try_from(output).unwrap() {
             QueryArrow::Schema(_) => {
                 assert!(!announced);
                 announced = true;
@@ -164,7 +164,7 @@ async fn schema_registry_roundtrip() {
         }
     }
     let completed = response.join().await.unwrap();
-    assert_eq!(completed.at, at);
+    assert_eq!(completed.at, Some(at.into()));
     assert_eq!(completed.rows, 1);
     assert_eq!(rows, 1);
     let persisted = f.data.schemas.lock().unwrap().values().next().unwrap().clone();

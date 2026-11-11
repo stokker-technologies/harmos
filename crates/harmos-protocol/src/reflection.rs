@@ -450,3 +450,238 @@ impl ReflectMessage for crate::storage::WriteSchema {
         pool().get_message_by_name("harmos.storage.v1.WriteSchema").expect("generated message")
     }
 }
+impl ReflectMessage for crate::storage::RowSlice {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.RowSlice").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::ObjectSelection {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.ObjectSelection").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::RecordSelection {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.RecordSelection").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StreamSelection {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StreamSelection").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::SchemaSelection {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.SchemaSelection").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::FileSelection {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.FileSelection").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::QuerySource {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.QuerySource").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::QueryCompletion {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.QueryCompletion").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::QueryOutput {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.QueryOutput").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::FieldPath {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.FieldPath").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::ExactNumber {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.ExactNumber").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::ScalarValue {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.ScalarValue").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Comparison {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Comparison").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::ScalarValues {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.ScalarValues").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Condition {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Condition").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Term {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Term").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Clause {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Clause").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Filter {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Filter").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Projection {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Projection").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Project {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Project").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Statistic {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Statistic").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Measure {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Measure").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Aggregate {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Aggregate").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Histogram {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Histogram").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Downsample {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Downsample").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::SortKey {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.SortKey").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Sort {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Sort").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Transform {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Transform").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Query {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Query").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StoredRecord {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StoredRecord").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StoredRow {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StoredRow").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::FollowBoundaries {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.FollowBoundaries").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::Followed {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.Followed").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::FollowRecords {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.FollowRecords").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::FollowStream {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.FollowStream").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::ObjectVersionToken {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.ObjectVersionToken").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::ObjectValue {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.ObjectValue").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::ObjectEntry {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.ObjectEntry").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::FollowObjects {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.FollowObjects").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::DataBatch {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.DataBatch").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::BatchReceipt {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.BatchReceipt").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::WriteReceipt {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.WriteReceipt").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::WriteCompletion {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.WriteCompletion").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::WriteRecords {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.WriteRecords").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::WriteStreams {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.WriteStreams").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::WriteObjects {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.WriteObjects").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::WriteFile {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.WriteFile").expect("generated message")
+    }
+}

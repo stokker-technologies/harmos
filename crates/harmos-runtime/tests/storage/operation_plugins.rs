@@ -31,7 +31,7 @@ use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use harmos_runtime::operations::{OperationDeclaration, OperationManager, WireDeclaration};
+use harmos_runtime::operations::{OperationDeclaration, OperationManager, ProtobufOperation, WireDeclaration};
 use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::query::transform::{
     Transform,
@@ -102,10 +102,14 @@ impl PluginLifecycle for Host {
 
 /* === Private Functions === */
 
-fn required<O>(grants: Vec<Grant>) -> Required
-where
-    O: OperationDeclaration,
-{
+fn required<O: ProtobufOperation>(grants: Vec<Grant>) -> Required {
+    Required {
+        contract: harmos_operations::execution::operations::OperationFactory::protobuf::<O>().unwrap().contract().unwrap(),
+        grants,
+    }
+}
+
+fn required_legacy<O: OperationDeclaration>(grants: Vec<Grant>) -> Required {
     Required {
         contract: WireDeclaration::of::<O>().contract().unwrap(),
         grants,
@@ -126,8 +130,8 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_operations::storage::Query {
-    harmos_operations::storage::Query {
+fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_runtime::storage::Query {
+    harmos_runtime::storage::Query {
         at: fixture.storage.cursor_saved(),
         source: Source::Records(RecordSelection {
             schema,
@@ -185,7 +189,10 @@ async fn write_grants_enforced() {
         callers: BTreeMap::new(),
     };
     let definitions = PluginDefinitions::new(
-        [plugin("writer", vec![required::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
+        [
+            plugin("writer", vec![required_legacy::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]),
+            plugin("bystander", Vec::new()),
+        ],
         [],
     )
     .unwrap();
@@ -263,10 +270,10 @@ async fn query_grants_enforced() {
     let reducer = fixture.runtime.operations.caller(&host.callers["reducer"]).unwrap();
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
-    let mut collected = reducer.download::<Query>(query(&fixture, schema.clone()), super::writes::settings()).unwrap();
+    let mut collected = reducer.download_protobuf::<Query>(query(&fixture, schema.clone()).into(), super::writes::settings()).unwrap();
     let mut count = None;
     while let Some(output) = collected.next().await.unwrap() {
-        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output.into_owned_request().unwrap().0).unwrap() {
+        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output).unwrap() {
             let values =
                 batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
             count = Some(values.value(0));
@@ -284,14 +291,17 @@ async fn query_grants_enforced() {
         source_end: None,
         after: 0,
     });
-    assert!(matches!(reducer.download::<Query>(cross_kind, super::writes::settings()), Err(Error::OperationUnauthorized { .. })));
+    assert!(matches!(
+        reducer.download_protobuf::<Query>(cross_kind.into(), super::writes::settings()),
+        Err(Error::OperationUnauthorized { .. })
+    ));
 
     assert!(matches!(
-        reducer.download::<Query>(query(&fixture, other), super::writes::settings()),
+        reducer.download_protobuf::<Query>(query(&fixture, other).into(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
     assert!(matches!(
-        bystander.download::<Query>(query(&fixture, schema), super::writes::settings()),
+        bystander.download_protobuf::<Query>(query(&fixture, schema).into(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
     manager.shutdown(&mut host).await.unwrap();

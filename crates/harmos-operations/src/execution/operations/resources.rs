@@ -178,6 +178,20 @@ impl OperationAssignments {
         self.entries.set(entries).map_err(|_| super::ServingError::Catalog)
     }
 
+    pub fn resolve_dependency(
+        &self, id: &str, fingerprint: crate::execution::Fingerprint,
+    ) -> Result<&AssignedOperation, super::ServingError> {
+        let entry = self
+            .entries
+            .get()
+            .and_then(|entries| entries.iter().find(|entry| entry.operation.split_once('.').is_some_and(|(_, local)| local == id)))
+            .ok_or_else(|| super::ServingError::Unassigned { operation: id.into() })?;
+        if entry.fingerprint != fingerprint.0 {
+            return Err(super::ServingError::Identity { operation: entry.operation.clone() });
+        }
+        Ok(entry)
+    }
+
     pub fn resolve_contract(&self, contract: &super::Contract) -> Result<&AssignedOperation, super::ServingError> {
         let id = contract.operation().id.as_str();
         let entry = self
@@ -201,7 +215,7 @@ impl OperationAssignments {
             .entries
             .get()
             .and_then(|entries| entries.iter().find(local))
-            .ok_or(super::ServingError::Unassigned { operation: target.id })?;
+            .ok_or(super::ServingError::Unassigned { operation: target.id.into() })?;
         if entry.fingerprint != (target.definition)().fingerprint.0 {
             return Err(super::ServingError::Identity { operation: entry.operation.clone() });
         }

@@ -95,3 +95,57 @@ message SchemaRepresentation {
 message SchemaGraph { uint64 root = 1; repeated SchemaDefinition definitions = 2; repeated SchemaRepresentation representations = 3; }
 message SchemaInput { SchemaKey key = 1; SchemaGraph graph = 2; }
 message WriteSchema { MutationId mutation = 1; SchemaInput schema = 2; }
+
+message RowSlice { uint64 offset = 1; optional uint64 limit = 2; }
+enum ObjectVersions { LATEST = 0; REVISIONS = 1; }
+message ObjectSelection { SchemaKey schema = 1; optional string key = 2; ObjectVersions versions = 3; }
+message RecordSelection { SchemaKey schema = 1; optional string scope = 2; optional string item = 3; google.protobuf.Timestamp source_start = 4; google.protobuf.Timestamp source_end = 5; }
+message StreamSelection { SchemaKey schema = 1; optional string scope = 2; optional string item = 3; optional string stream = 4; google.protobuf.Timestamp source_start = 5; google.protobuf.Timestamp source_end = 6; uint64 after = 7; }
+message SchemaSelection { SchemaKey schema = 1; }
+message FileSelection { optional string scope = 1; optional string item = 2; }
+message QuerySource { oneof source { ObjectSelection objects = 1; RecordSelection records = 2; StreamSelection stream = 3; SchemaSelection schemas = 4; FileSelection files = 5; } }
+message QueryCompletion { StorageCursor at = 1; uint64 rows = 2; }
+message QueryOutput { oneof output { bytes schema = 1; bytes batch = 2; } }
+message FieldPath { repeated string fields = 1; }
+// Wide integer strings use minimal base-10 notation without a leading plus sign.
+message ExactNumber { bool negative = 1; string numerator = 2; string denominator = 3; }
+// Datetime is signed nanoseconds since the Unix epoch. Floats must be finite.
+// Exact fractions must be reduced; their positive denominator is nonzero and zero has no negative sign.
+message ScalarValue { oneof value { Empty missing = 1; Empty null = 2; bool boolean = 3; int64 signed = 4; uint64 unsigned = 5; double floating = 6; string text = 7; string datetime = 8; ExactNumber exact = 9; } }
+enum Compare { EQ = 0; NE = 1; LT = 2; LE = 3; GT = 4; GE = 5; }
+message Comparison { Compare op = 1; ScalarValue value = 2; }
+message ScalarValues { repeated ScalarValue values = 1; }
+message Condition { oneof condition { Comparison compare = 1; ScalarValues in_values = 2; Empty is_null = 3; } }
+message Term { FieldPath field = 1; Condition condition = 2; bool negate = 3; }
+message Clause { repeated Term terms = 1; }
+message Filter { repeated Clause clauses = 1; }
+message Projection { FieldPath field = 1; string name = 2; }
+message Project { repeated Projection fields = 1; }
+message Statistic { oneof statistic { Empty count = 1; Empty sum = 2; Empty mean = 3; Empty median = 4; Empty min = 5; Empty max = 6; Empty rms = 7; Empty std = 8; uint32 percentile = 9; } }
+message Measure { FieldPath field = 1; Statistic statistic = 2; string name = 3; }
+message Aggregate { repeated Projection groups = 1; repeated Measure measures = 2; }
+message Histogram { FieldPath field = 1; repeated double edges = 2; }
+enum DownsampleAlgorithm { DECIMATE = 0; EXTREMA = 1; LTTB = 2; LTTB_LOG = 3; }
+message Downsample { uint64 max_rows = 1; DownsampleAlgorithm algorithm = 2; FieldPath value = 3; FieldPath axis = 4; }
+message SortKey { FieldPath field = 1; bool descending = 2; bool nulls_first = 3; }
+message Sort { repeated SortKey keys = 1; }
+message Transform { oneof transform { Filter filter = 1; Project project = 2; Aggregate aggregate = 3; Histogram histogram = 4; Downsample downsample = 5; Sort sort = 6; } }
+message Query { StorageCursor at = 1; QuerySource source = 2; repeated Transform transforms = 3; RowSlice slice = 4; }
+message StoredRecord { StorageCursor position = 1; SchemaKey schema = 2; optional string scope = 3; string item = 4; optional string source = 5; google.protobuf.Timestamp source_time = 6; bytes payload = 7; }
+message StoredRow { StoredRecord record = 1; string stream = 2; uint64 sequence = 3; }
+message FollowBoundaries { StorageCursor saved = 1; StorageCursor accepted = 2; }
+message Followed { oneof followed { FollowBoundaries boundaries = 1; StoredRecord record = 2; } }
+message FollowRecords { StorageCursor after = 1; RecordSelection selection = 2; }
+message FollowStream { StorageCursor after = 1; StreamSelection selection = 2; }
+message ObjectVersionToken { StoreHistory history = 1; uint64 revision = 2; }
+message ObjectValue { SchemaKey schema = 1; string item = 2; bytes payload = 3; }
+message ObjectEntry { StorageCursor position = 1; ObjectVersionToken version = 2; ObjectValue value = 3; }
+message FollowObjects { StorageCursor after = 1; ObjectSelection selection = 2; }
+message DataBatch { uint64 sequence = 1; string destination = 2; SchemaKey schema = 3; bytes ipc = 4; }
+message BatchReceipt { uint64 sequence = 1; StorageCursor cursor = 2; }
+message WriteReceipt { oneof receipt { BatchReceipt accepted = 1; BatchReceipt durable = 2; } }
+message WriteCompletion { uint64 batches = 1; StorageCursor cursor = 2; }
+message WriteRecords { optional string scope = 1; }
+message WriteStreams { optional string scope = 1; }
+message WriteObjects { optional string scope = 1; }
+message WriteFile { FileMetadata metadata = 1; }

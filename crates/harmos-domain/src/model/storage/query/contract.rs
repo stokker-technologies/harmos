@@ -21,7 +21,6 @@ use std::time::SystemTime;
 // Third Party Imports
 
 // Local Imports
-use crate::model::storage::ArrowIpc;
 use crate::model::storage::codec::{Code, Id, Nested, Optional, Time, Unsigned, coded, product, variants};
 use crate::model::storage::objects::Key;
 use crate::model::storage::{ObjectKey, SchemaKey, StorageCursor};
@@ -103,12 +102,6 @@ pub enum Source {
     Files(FileSelection),
 }
 
-#[derive(Clone, Debug)]
-pub enum QueryOutput {
-    Schema(ArrowIpc),
-    Batch(ArrowIpc),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
@@ -183,11 +176,6 @@ variants!(Source {
     3, 4, "schemas": Self::Schemas(value) => { value: Nested<SchemaSelection> => 1 } => Self::Schemas(value);
     4, 5, "files": Self::Files(value) => { value: Nested<FileSelection> => 1 } => Self::Files(value);
 });
-variants!(QueryOutput {
-    0, 1, "schema": Self::Schema(value) => { value: Nested<ArrowIpc> => 1 } => Self::Schema(value);
-    1, 2, "batch": Self::Batch(value) => { value: Nested<ArrowIpc> => 1 } => Self::Batch(value);
-});
-
 macro_rules! memory {
     ($ty:ty, $($field:ident),+ $(,)?) => {
         impl MemorySize for $ty {
@@ -217,16 +205,6 @@ impl MemorySize for Source {
             }
     }
 }
-impl MemorySize for QueryOutput {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + match self {
-                Self::Schema(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-                Self::Batch(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-            }
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

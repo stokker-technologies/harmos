@@ -228,7 +228,8 @@
     - [x] 3.11.4.1 Migrate storage status, file mutation receipts and directory native streams.
     - [x] 3.11.4.2 Migrate file reads, capture and following, preserving grants and terminal stream closure.
     - [x] 3.11.4.3 Migrate schema registration and delete its Rust wire wrappers.
-    - [ ] 3.11.4.4 Migrate hashing, queries, records, streams and objects.
+    - [x] 3.11.4.4 Migrate queries, generated native downloads and scoped callers; delete the Rust query-output wire mirror.
+    - [ ] 3.11.4.5 Migrate hashing, record/stream/object following and streamed writes.
   - [ ] 3.11.5 Migrate example operations and remove superseded host projections and wire mirrors.
 - [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
 

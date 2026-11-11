@@ -449,6 +449,533 @@ pub struct WriteSchema {
     pub schema: ::core::option::Option<SchemaInput>,
 }
 #[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RowSlice {
+    #[prost(uint64, tag = "1")]
+    pub offset: u64,
+    #[prost(uint64, optional, tag = "2")]
+    pub limit: ::core::option::Option<u64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ObjectSelection {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaKey>,
+    #[prost(string, optional, tag = "2")]
+    pub key: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(enumeration = "ObjectVersions", tag = "3")]
+    pub versions: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct RecordSelection {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaKey>,
+    #[prost(string, optional, tag = "2")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "3")]
+    pub item: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "4")]
+    pub source_start: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(message, optional, tag = "5")]
+    pub source_end: ::core::option::Option<::prost_types::Timestamp>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StreamSelection {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaKey>,
+    #[prost(string, optional, tag = "2")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "3")]
+    pub item: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "4")]
+    pub stream: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "5")]
+    pub source_start: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(message, optional, tag = "6")]
+    pub source_end: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(uint64, tag = "7")]
+    pub after: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SchemaSelection {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaKey>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileSelection {
+    #[prost(string, optional, tag = "1")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "2")]
+    pub item: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QuerySource {
+    #[prost(oneof = "query_source::Source", tags = "1, 2, 3, 4, 5")]
+    pub source: ::core::option::Option<query_source::Source>,
+}
+/// Nested message and enum types in `QuerySource`.
+pub mod query_source {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Source {
+        #[prost(message, tag = "1")]
+        Objects(super::ObjectSelection),
+        #[prost(message, tag = "2")]
+        Records(super::RecordSelection),
+        #[prost(message, tag = "3")]
+        Stream(super::StreamSelection),
+        #[prost(message, tag = "4")]
+        Schemas(super::SchemaSelection),
+        #[prost(message, tag = "5")]
+        Files(super::FileSelection),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QueryCompletion {
+    #[prost(message, optional, tag = "1")]
+    pub at: ::core::option::Option<StorageCursor>,
+    #[prost(uint64, tag = "2")]
+    pub rows: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QueryOutput {
+    #[prost(oneof = "query_output::Output", tags = "1, 2")]
+    pub output: ::core::option::Option<query_output::Output>,
+}
+/// Nested message and enum types in `QueryOutput`.
+pub mod query_output {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Output {
+        #[prost(bytes, tag = "1")]
+        Schema(::prost::alloc::vec::Vec<u8>),
+        #[prost(bytes, tag = "2")]
+        Batch(::prost::alloc::vec::Vec<u8>),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FieldPath {
+    #[prost(string, repeated, tag = "1")]
+    pub fields: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Wide integer strings use minimal base-10 notation without a leading plus sign.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ExactNumber {
+    #[prost(bool, tag = "1")]
+    pub negative: bool,
+    #[prost(string, tag = "2")]
+    pub numerator: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub denominator: ::prost::alloc::string::String,
+}
+/// Datetime is signed nanoseconds since the Unix epoch. Floats must be finite.
+/// Exact fractions must be reduced; their positive denominator is nonzero and zero has no negative sign.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScalarValue {
+    #[prost(oneof = "scalar_value::Value", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
+    pub value: ::core::option::Option<scalar_value::Value>,
+}
+/// Nested message and enum types in `ScalarValue`.
+pub mod scalar_value {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Value {
+        #[prost(message, tag = "1")]
+        Missing(super::Empty),
+        #[prost(message, tag = "2")]
+        Null(super::Empty),
+        #[prost(bool, tag = "3")]
+        Boolean(bool),
+        #[prost(int64, tag = "4")]
+        Signed(i64),
+        #[prost(uint64, tag = "5")]
+        Unsigned(u64),
+        #[prost(double, tag = "6")]
+        Floating(f64),
+        #[prost(string, tag = "7")]
+        Text(::prost::alloc::string::String),
+        #[prost(string, tag = "8")]
+        Datetime(::prost::alloc::string::String),
+        #[prost(message, tag = "9")]
+        Exact(super::ExactNumber),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Comparison {
+    #[prost(enumeration = "Compare", tag = "1")]
+    pub op: i32,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<ScalarValue>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScalarValues {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<ScalarValue>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Condition {
+    #[prost(oneof = "condition::Condition", tags = "1, 2, 3")]
+    pub condition: ::core::option::Option<condition::Condition>,
+}
+/// Nested message and enum types in `Condition`.
+pub mod condition {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Condition {
+        #[prost(message, tag = "1")]
+        Compare(super::Comparison),
+        #[prost(message, tag = "2")]
+        InValues(super::ScalarValues),
+        #[prost(message, tag = "3")]
+        IsNull(super::Empty),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Term {
+    #[prost(message, optional, tag = "1")]
+    pub field: ::core::option::Option<FieldPath>,
+    #[prost(message, optional, tag = "2")]
+    pub condition: ::core::option::Option<Condition>,
+    #[prost(bool, tag = "3")]
+    pub negate: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Clause {
+    #[prost(message, repeated, tag = "1")]
+    pub terms: ::prost::alloc::vec::Vec<Term>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Filter {
+    #[prost(message, repeated, tag = "1")]
+    pub clauses: ::prost::alloc::vec::Vec<Clause>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Projection {
+    #[prost(message, optional, tag = "1")]
+    pub field: ::core::option::Option<FieldPath>,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Project {
+    #[prost(message, repeated, tag = "1")]
+    pub fields: ::prost::alloc::vec::Vec<Projection>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Statistic {
+    #[prost(oneof = "statistic::Statistic", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
+    pub statistic: ::core::option::Option<statistic::Statistic>,
+}
+/// Nested message and enum types in `Statistic`.
+pub mod statistic {
+    #[allow(clippy::all)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Statistic {
+        #[prost(message, tag = "1")]
+        Count(super::Empty),
+        #[prost(message, tag = "2")]
+        Sum(super::Empty),
+        #[prost(message, tag = "3")]
+        Mean(super::Empty),
+        #[prost(message, tag = "4")]
+        Median(super::Empty),
+        #[prost(message, tag = "5")]
+        Min(super::Empty),
+        #[prost(message, tag = "6")]
+        Max(super::Empty),
+        #[prost(message, tag = "7")]
+        Rms(super::Empty),
+        #[prost(message, tag = "8")]
+        Std(super::Empty),
+        #[prost(uint32, tag = "9")]
+        Percentile(u32),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Measure {
+    #[prost(message, optional, tag = "1")]
+    pub field: ::core::option::Option<FieldPath>,
+    #[prost(message, optional, tag = "2")]
+    pub statistic: ::core::option::Option<Statistic>,
+    #[prost(string, tag = "3")]
+    pub name: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Aggregate {
+    #[prost(message, repeated, tag = "1")]
+    pub groups: ::prost::alloc::vec::Vec<Projection>,
+    #[prost(message, repeated, tag = "2")]
+    pub measures: ::prost::alloc::vec::Vec<Measure>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Histogram {
+    #[prost(message, optional, tag = "1")]
+    pub field: ::core::option::Option<FieldPath>,
+    #[prost(double, repeated, tag = "2")]
+    pub edges: ::prost::alloc::vec::Vec<f64>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Downsample {
+    #[prost(uint64, tag = "1")]
+    pub max_rows: u64,
+    #[prost(enumeration = "DownsampleAlgorithm", tag = "2")]
+    pub algorithm: i32,
+    #[prost(message, optional, tag = "3")]
+    pub value: ::core::option::Option<FieldPath>,
+    #[prost(message, optional, tag = "4")]
+    pub axis: ::core::option::Option<FieldPath>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SortKey {
+    #[prost(message, optional, tag = "1")]
+    pub field: ::core::option::Option<FieldPath>,
+    #[prost(bool, tag = "2")]
+    pub descending: bool,
+    #[prost(bool, tag = "3")]
+    pub nulls_first: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Sort {
+    #[prost(message, repeated, tag = "1")]
+    pub keys: ::prost::alloc::vec::Vec<SortKey>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Transform {
+    #[prost(oneof = "transform::Transform", tags = "1, 2, 3, 4, 5, 6")]
+    pub transform: ::core::option::Option<transform::Transform>,
+}
+/// Nested message and enum types in `Transform`.
+pub mod transform {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Transform {
+        #[prost(message, tag = "1")]
+        Filter(super::Filter),
+        #[prost(message, tag = "2")]
+        Project(super::Project),
+        #[prost(message, tag = "3")]
+        Aggregate(super::Aggregate),
+        #[prost(message, tag = "4")]
+        Histogram(super::Histogram),
+        #[prost(message, tag = "5")]
+        Downsample(super::Downsample),
+        #[prost(message, tag = "6")]
+        Sort(super::Sort),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Query {
+    #[prost(message, optional, tag = "1")]
+    pub at: ::core::option::Option<StorageCursor>,
+    #[prost(message, optional, tag = "2")]
+    pub source: ::core::option::Option<QuerySource>,
+    #[prost(message, repeated, tag = "3")]
+    pub transforms: ::prost::alloc::vec::Vec<Transform>,
+    #[prost(message, optional, tag = "4")]
+    pub slice: ::core::option::Option<RowSlice>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StoredRecord {
+    #[prost(message, optional, tag = "1")]
+    pub position: ::core::option::Option<StorageCursor>,
+    #[prost(message, optional, tag = "2")]
+    pub schema: ::core::option::Option<SchemaKey>,
+    #[prost(string, optional, tag = "3")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag = "4")]
+    pub item: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "5")]
+    pub source: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "6")]
+    pub source_time: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(bytes = "vec", tag = "7")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StoredRow {
+    #[prost(message, optional, tag = "1")]
+    pub record: ::core::option::Option<StoredRecord>,
+    #[prost(string, tag = "2")]
+    pub stream: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub sequence: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowBoundaries {
+    #[prost(message, optional, tag = "1")]
+    pub saved: ::core::option::Option<StorageCursor>,
+    #[prost(message, optional, tag = "2")]
+    pub accepted: ::core::option::Option<StorageCursor>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Followed {
+    #[prost(oneof = "followed::Followed", tags = "1, 2")]
+    pub followed: ::core::option::Option<followed::Followed>,
+}
+/// Nested message and enum types in `Followed`.
+pub mod followed {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Followed {
+        #[prost(message, tag = "1")]
+        Boundaries(super::FollowBoundaries),
+        #[prost(message, tag = "2")]
+        Record(super::StoredRecord),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowRecords {
+    #[prost(message, optional, tag = "1")]
+    pub after: ::core::option::Option<StorageCursor>,
+    #[prost(message, optional, tag = "2")]
+    pub selection: ::core::option::Option<RecordSelection>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowStream {
+    #[prost(message, optional, tag = "1")]
+    pub after: ::core::option::Option<StorageCursor>,
+    #[prost(message, optional, tag = "2")]
+    pub selection: ::core::option::Option<StreamSelection>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ObjectVersionToken {
+    #[prost(message, optional, tag = "1")]
+    pub history: ::core::option::Option<StoreHistory>,
+    #[prost(uint64, tag = "2")]
+    pub revision: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ObjectValue {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaKey>,
+    #[prost(string, tag = "2")]
+    pub item: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "3")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ObjectEntry {
+    #[prost(message, optional, tag = "1")]
+    pub position: ::core::option::Option<StorageCursor>,
+    #[prost(message, optional, tag = "2")]
+    pub version: ::core::option::Option<ObjectVersionToken>,
+    #[prost(message, optional, tag = "3")]
+    pub value: ::core::option::Option<ObjectValue>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FollowObjects {
+    #[prost(message, optional, tag = "1")]
+    pub after: ::core::option::Option<StorageCursor>,
+    #[prost(message, optional, tag = "2")]
+    pub selection: ::core::option::Option<ObjectSelection>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct DataBatch {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(string, tag = "2")]
+    pub destination: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub schema: ::core::option::Option<SchemaKey>,
+    #[prost(bytes = "vec", tag = "4")]
+    pub ipc: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct BatchReceipt {
+    #[prost(uint64, tag = "1")]
+    pub sequence: u64,
+    #[prost(message, optional, tag = "2")]
+    pub cursor: ::core::option::Option<StorageCursor>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WriteReceipt {
+    #[prost(oneof = "write_receipt::Receipt", tags = "1, 2")]
+    pub receipt: ::core::option::Option<write_receipt::Receipt>,
+}
+/// Nested message and enum types in `WriteReceipt`.
+pub mod write_receipt {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Receipt {
+        #[prost(message, tag = "1")]
+        Accepted(super::BatchReceipt),
+        #[prost(message, tag = "2")]
+        Durable(super::BatchReceipt),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WriteCompletion {
+    #[prost(uint64, tag = "1")]
+    pub batches: u64,
+    #[prost(message, optional, tag = "2")]
+    pub cursor: ::core::option::Option<StorageCursor>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WriteRecords {
+    #[prost(string, optional, tag = "1")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WriteStreams {
+    #[prost(string, optional, tag = "1")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WriteObjects {
+    #[prost(string, optional, tag = "1")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct WriteFile {
+    #[prost(message, optional, tag = "1")]
+    pub metadata: ::core::option::Option<FileMetadata>,
+}
+#[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum FilePhase {
@@ -685,6 +1212,105 @@ impl SchemaOmission {
         match value {
             "OMIT_NONE" => Some(Self::OmitNone),
             "OMIT_EMPTY" => Some(Self::OmitEmpty),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ObjectVersions {
+    Latest = 0,
+    Revisions = 1,
+}
+impl ObjectVersions {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Latest => "LATEST",
+            Self::Revisions => "REVISIONS",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "LATEST" => Some(Self::Latest),
+            "REVISIONS" => Some(Self::Revisions),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Compare {
+    Eq = 0,
+    Ne = 1,
+    Lt = 2,
+    Le = 3,
+    Gt = 4,
+    Ge = 5,
+}
+impl Compare {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Eq => "EQ",
+            Self::Ne => "NE",
+            Self::Lt => "LT",
+            Self::Le => "LE",
+            Self::Gt => "GT",
+            Self::Ge => "GE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "EQ" => Some(Self::Eq),
+            "NE" => Some(Self::Ne),
+            "LT" => Some(Self::Lt),
+            "LE" => Some(Self::Le),
+            "GT" => Some(Self::Gt),
+            "GE" => Some(Self::Ge),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum DownsampleAlgorithm {
+    Decimate = 0,
+    Extrema = 1,
+    Lttb = 2,
+    LttbLog = 3,
+}
+impl DownsampleAlgorithm {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Decimate => "DECIMATE",
+            Self::Extrema => "EXTREMA",
+            Self::Lttb => "LTTB",
+            Self::LttbLog => "LTTB_LOG",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "DECIMATE" => Some(Self::Decimate),
+            "EXTREMA" => Some(Self::Extrema),
+            "LTTB" => Some(Self::Lttb),
+            "LTTB_LOG" => Some(Self::LttbLog),
             _ => None,
         }
     }

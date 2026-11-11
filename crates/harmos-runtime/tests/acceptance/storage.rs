@@ -22,7 +22,7 @@
 // Local Imports
 use super::fixtures;
 use harmos_operations::storage::Storage;
-use harmos_runtime::operations::Contracts;
+use harmos_runtime::operations::OperationCatalog;
 
 /* === Constants === */
 
@@ -46,7 +46,12 @@ use harmos_runtime::operations::Contracts;
 
 #[test]
 fn grpc_descriptors_compile() {
-    let contracts = Contracts::of::<Storage>().unwrap().into_iter().filter(|contract| contract.grpc().is_some()).collect::<Vec<_>>();
+    let contracts = Storage::batch()
+        .operations
+        .iter()
+        .map(|factory| factory.contract().unwrap())
+        .filter(|contract| contract.grpc().is_some())
+        .collect::<Vec<_>>();
     let artifacts = harmos_packaging::proto::Artifacts::new(&contracts).unwrap();
     let target = tempfile::tempdir().unwrap();
     let root = harmos_packaging::proto::generate(&artifacts.operation_contracts().unwrap(), &target.path().join("storage")).unwrap();

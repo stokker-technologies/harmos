@@ -929,6 +929,8 @@ with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Dec
 Host lifecycle, clock and discovery declarations use the protocol crate's generated messages.
 Storage status, file mutation, read/capture/follow and directory operations also accept generated requests;
 use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for native streams.
+`Manager::download_protobuf` provides typed generated output items through `next` and a generated
+completion through `join`. Plugin-scoped callers use the same helper with their original scope.
 Supply the caller's preparation budget and stream limits in operation settings and submission.
 Storage kernels retain their native storage values and persisted encodings.
 Schema registration uses the generated `SchemaGraph`: references index its definition table,

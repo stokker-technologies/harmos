@@ -259,7 +259,13 @@ impl<T> Deref for ProtobufItem<T> {
 impl<T: ReflectMessage + Default + Send + Sync + 'static> ProtobufOutput<T> {
     pub async fn send(&self, value: T) -> Result<(), super::super::StreamError> {
         let memory = value.encoded_len().checked_add(std::mem::size_of::<Encoded>()).ok_or(super::super::StreamError::Capacity)?;
-        self.0.send_with(memory, || Ok(Encoded(value.encode_to_vec()))).await
+        self.send_with(memory, || Ok(value)).await
+    }
+
+    pub async fn send_with(
+        &self, memory: usize, make: impl FnOnce() -> Result<T, super::super::StreamError>,
+    ) -> Result<(), super::super::StreamError> {
+        self.0.send_with(memory, || Ok(Encoded(make()?.encode_to_vec()))).await
     }
 }
 

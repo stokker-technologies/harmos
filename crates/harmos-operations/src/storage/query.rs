@@ -7,173 +7,71 @@
  * ***
  */
 
-// A Declarative Storage Query: A Source At A Full Cursor, Ordered Transforms
-// And A Final Row Slice. Results Cross The Wire As Arrow IPC.
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::IO_POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::StorageCursor;
-use harmos_domain::model::storage::codec::{Nested, Repeated, product};
-use harmos_domain::model::storage::query::transform::Transform;
-use harmos_domain::model::storage::query::{QueryCompletion, QueryOutput, RowSlice, Source};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
 use crate::execution::operations::access::GrantAccess;
-
-#[cfg(feature = "runtime")]
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
+use harmos_domain::operations::{FailureKind, ReplaySafety};
 use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(Query {
-    at: Nested<StorageCursor> => 1,
-    source: Nested<Source> => 2,
-    transforms: Repeated<Transform> => 3,
-    slice: Nested<RowSlice> => 4,
-});
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos::operation(
-    harmos_path = crate,
-    resources = [StorageManager<ErasedCatalog>, GrantAccess],
-    codec = manual,
-    id = "storage.query",
-    response = QueryCompletion,
-    policy = IO_POLICY,
-    output = QueryOutput,
-    visibility = Public,
-    replay = ReplaySafety::Idempotent,
-    grpc(package = "harmos.storage.v1", service =  "Storage", method =  "Query"),
-    grant = Self::grant_for,
-)]
-#[derive(Clone, Debug)]
-pub struct Query {
-    pub at: StorageCursor,
-    pub source: Source,
-    pub transforms: Vec<Transform>,
-    pub slice: RowSlice,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct Query;
 
 /* === Implementations === */
 
-impl Query {
-    fn grant_for(request: &Query) -> Option<harmos_domain::plugin::Grant> {
-        Some(harmos_domain::plugin::Grant::of(<Self as harmos_domain::OperationDeclaration>::ID, request.source.grant_scope()))
+impl ProtobufOperation for Query {
+    type Request = harmos_protocol::storage::Query;
+    type Response = harmos_protocol::storage::QueryCompletion;
+    type Endpoints = ProtobufOutput<harmos_protocol::storage::QueryOutput>;
+    const ID: &'static str = "storage.query";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "Query"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<GrantAccess>()];
+
+    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+        let source: harmos_domain::model::storage::Source = request
+            .source
+            .clone()
+            .ok_or_else(|| harmos_domain::MessageError::borrowed("source is required"))?
+            .try_into()
+            .map_err(|error: harmos_domain::Error| harmos_domain::MessageError::new(error.to_string()))?;
+        Ok(Some(harmos_domain::plugin::Grant::of(Self::ID, source.grant_scope())))
     }
-}
 
-impl MemorySize for Query {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))
-            .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
-            .saturating_add(self.transforms.memory_size().saturating_sub(std::mem::size_of_val(&self.transforms)))
-            .saturating_add(self.slice.memory_size().saturating_sub(std::mem::size_of_val(&self.slice)))
-    }
-}
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use super::*;
-    use crate::execution::operations::{Operation, OperationDeclaration};
-    use crate::storage::IO_TIMEOUT;
-    use crate::{Error, Result};
-    use harmos_domain::plugin::Grant;
-    use harmos_storage::query::QueryCompletion;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::Query {
-        type Error = Error;
-
-        async fn run(
-            self, context: crate::execution::Context<'_, Self>,
-        ) -> Result<crate::execution::operations::Response<QueryCompletion>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-            let grants = context.resource::<crate::execution::operations::access::GrantAccess>();
-            let output = context.streams();
-
-            let host = grants;
-            let ctx = &host.0;
-            let grant = Grant::of(Query::ID, self.source.grant_scope());
-            ctx.admit(&grant).map_err(Error::Access)?;
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let grants = context.resource::<GrantAccess>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<harmos_domain::model::storage::QueryCompletion> = async {
+            let source: harmos_domain::model::storage::Source =
+                request.source.ok_or(crate::Error::InvalidInput { field: "source", reason: "required" })?.try_into()?;
+            let grant = harmos_domain::plugin::Grant::of(Self::ID, source.grant_scope());
+            grants.0.admit(&grant).map_err(crate::Error::Access)?;
             let mut reader = storage
                 .query(harmos_storage::Query {
-                    at: self.at.clone(),
-                    source: self.source.clone(),
-                    transforms: self.transforms.clone(),
-                    slice: self.slice,
+                    at: request.at.ok_or(crate::Error::InvalidInput { field: "at", reason: "required" })?.try_into()?,
+                    source,
+                    transforms: request.transforms.into_iter().map(TryInto::try_into).collect::<harmos_domain::Result<_>>()?,
+                    slice: request.slice.ok_or(crate::Error::InvalidInput { field: "slice", reason: "required" })?.try_into()?,
                 })
                 .await?;
             while let Some(item) = reader.next().await? {
-                ctx.admit(&grant).map_err(Error::Access)?;
-                let bytes = item.output_memory_size();
+                grants.0.admit(&grant).map_err(crate::Error::Access)?;
                 storage
                     .clock()
-                    .timeout(IO_TIMEOUT, output.send_with(bytes, || Ok(item.output())))
+                    .timeout(super::IO_TIMEOUT, output.send_with(item.output_memory_size(), || Ok(item.output())))
                     .await
-                    .map_err(|_| crate::storage::output_timeout())??;
+                    .map_err(|_| super::output_timeout())??;
             }
-            Ok(reader.completion()?.into())
+            Ok(reader.completion()?)
         }
-        fn classify(error: &Error) -> crate::execution::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map(Into::into).map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+    }
 }
-
-/* === Tests === */

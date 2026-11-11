@@ -43,8 +43,7 @@ pub use mutations::{FileProducer, MutationId, MutationWindow, StorageInfo};
 pub use objects::{ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectVersion, ObjectVersionToken};
 pub use position::{RecoveryPosition, StorageCursor, StoreHistory};
 pub use query::{
-    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection, RowSlice, SchemaSelection, Source,
-    StreamSelection,
+    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
 };
 pub use writes::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
 

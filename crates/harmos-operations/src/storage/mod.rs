@@ -36,6 +36,7 @@ mod follow_stream;
 mod hash_file;
 #[cfg(feature = "runtime")]
 mod list_directory;
+#[cfg(feature = "runtime")]
 mod query;
 #[cfg(feature = "runtime")]
 mod read_file;
@@ -78,6 +79,7 @@ pub use follow_stream::FollowStream;
 pub use hash_file::HashFile;
 #[cfg(feature = "runtime")]
 pub use list_directory::ListDirectory;
+#[cfg(feature = "runtime")]
 pub use query::Query;
 #[cfg(feature = "runtime")]
 pub use read_file::ReadFile;
@@ -140,7 +142,6 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 
 #[harmos::catalog(harmos_path = crate)]
 enum Legacy {
-    Query(Query),
     HashFile(HashFile),
     FollowRecords(FollowRecords),
     FollowStream(FollowStream),

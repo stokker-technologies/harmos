@@ -93,7 +93,7 @@ impl Table {
         #[cfg(not(feature = "streaming"))]
         let limits = None;
         let route = Route {
-            callees: factory.operations,
+            callees: (factory.operations)()?,
             lifecycle,
             builtin: lifecycle,
             resident: false,

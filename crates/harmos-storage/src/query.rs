@@ -34,9 +34,10 @@ pub use source::testing::PayloadDecoder;
 
 pub use accumulate::Accumulator;
 pub use harmos_domain::model::storage::query::{
-    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection, RowSlice, SchemaSelection, Source,
-    StreamSelection, scalar,
+    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
+    scalar,
 };
+pub use harmos_protocol::storage::QueryOutput;
 pub(crate) use reader::schema_at;
 pub use reader::{Query, QueryArrow, QueryReader};
 pub use table::{Table, TableReader, TableWriter};
