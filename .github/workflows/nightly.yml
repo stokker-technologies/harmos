@@ -178,9 +178,6 @@ jobs:
       id-token: write
       attestations: write
   report:
-    name: Nightly / Report
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
     needs:
     - check
     - release_dry
@@ -197,59 +194,18 @@ jobs:
     - test_unit
     - bench
     if: always() && needs.publish.result == 'success'
+    uses: ./.github/workflows/publication.yml
+    with:
+      channel: nightly
+      profile: release
+      report: true
+      results: ${{ toJSON(needs) }}
     permissions:
       contents: write
-    concurrency:
-      group: nightly-publication
-      cancel-in-progress: false
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - id: setup
-      uses: ./.github/actions/setup
-      with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-    - name: Download Publication Inventory
-      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        name: release-manifest
-        path: target/release-assets
-    - name: Download Available Benchmarks
-      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: bench-*
-        path: target/nightly-reports/benchmarks
-    - name: Download Available Coverage
-      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      with:
-        pattern: junit-coverage-*
-        path: target/nightly-reports/rust
-    - name: Run Project Task
-      run: mise run ci:nightly-report --
-      env:
-        GH_TOKEN: ${{ github.token }}
-        NEEDS: ${{ toJSON(needs) }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
-        != 'true'
-      with:
-        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
-        path: ${{ steps.setup.outputs.cargo_downloads-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
-        path: ${{ steps.setup.outputs.mise-path }}
-    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true'
-      with:
-        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
-        path: ${{ steps.setup.outputs.uv-path }}
-    env:
-      MISE_ENABLE_TOOLS: python,uv
+      actions: read
+      checks: read
+      id-token: write
+      attestations: write
   verify:
     needs: [publish]
     if: always() && needs.publish.result == 'success'

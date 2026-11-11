@@ -578,7 +578,7 @@ jobs:
         CI_INPUT_ARCHIVES: '["target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
-        name: junit-test_rust_${{ matrix.layer }}-${{ env.PROFILE }}-${{ matrix.platform }}
+        name: results-test_rust_${{ matrix.layer }}-${{ env.PROFILE }}-${{ matrix.platform }}
         path: |-
           target/tests/${{ env.PROFILE }}/*/${{ matrix.layer }}-rust/
           target/traces/${{ env.PROFILE }}/*/${{ matrix.layer }}-rust/
@@ -649,7 +649,7 @@ jobs:
         CI_INPUT_ARCHIVES: '["target/ci/build-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
-        name: junit-test_rust_${{ matrix.layer }}-${{ env.PROFILE }}-${{ matrix.platform }}
+        name: results-test_rust_${{ matrix.layer }}-${{ env.PROFILE }}-${{ matrix.platform }}
         path: |-
           target/tests/${{ env.PROFILE }}/*/${{ matrix.layer }}-rust/
           target/traces/${{ env.PROFILE }}/*/${{ matrix.layer }}-rust/
@@ -784,7 +784,7 @@ jobs:
         CI_INPUT_ARCHIVES: '["target/ci/build-fixtures-${{ env.PROFILE }}-unix.tar.zst"]'
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
-        name: junit-coverage-${{ env.PROFILE }}-unix
+        name: results-coverage-${{ env.PROFILE }}-unix
         path: target/tests/${{ env.PROFILE }}/*/coverage/
         if-no-files-found: ignore
         retention-days: 7
@@ -832,7 +832,7 @@ jobs:
     - if: always()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
-        name: bench-bench_rust_${{ matrix.layer }}
+        name: results-bench_rust_${{ matrix.layer }}
         path: target/benchmarks/
         if-no-files-found: ignore
         retention-days: 7

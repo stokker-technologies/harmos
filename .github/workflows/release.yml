@@ -161,9 +161,9 @@ jobs:
     with:
       channel: stable
       profile: release
-      build_run: ${{ needs.validated.outputs.review_run }}
-      build_sha: ${{ needs.validated.outputs.review_sha }}
-      build_version: ${{ needs.validated.outputs.review_version }}
+      build-run: ${{ needs.validated.outputs.review_run }}
+      build-sha: ${{ needs.validated.outputs.review_sha }}
+      build-version: ${{ needs.validated.outputs.review_version }}
     permissions:
       contents: write
       actions: read
@@ -228,9 +228,9 @@ jobs:
     with:
       channel: stable
       profile: release
-      build_run: ${{ needs.validated.outputs.review_run }}
-      build_sha: ${{ needs.validated.outputs.review_sha }}
-      build_version: ${{ needs.validated.outputs.review_version }}
+      build-run: ${{ needs.validated.outputs.review_run }}
+      build-sha: ${{ needs.validated.outputs.review_sha }}
+      build-version: ${{ needs.validated.outputs.review_version }}
     permissions:
       contents: read
       actions: read

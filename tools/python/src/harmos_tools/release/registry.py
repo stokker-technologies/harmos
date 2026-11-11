@@ -454,8 +454,8 @@ def upload_generic(settings: dict, package: str, tag: str, item: dict, data: byt
     return {"endpoint": endpoint, "link": {"name": item["name"], "url": f"{base}/projects/{project}/{endpoint}"}}
 
 
-def verify_download(settings: dict, endpoint: str, item: dict) -> bytes:
-    data = request(settings, endpoint, binary=True)
+def verify_download(settings: dict, endpoint: str, item: dict, *, channel: bool = False) -> bytes:
+    data = request(settings, endpoint, binary=True, channel=channel)
     if data is None or len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
         raise policy.ToolError(f"remote release download differs: {item['name']}")
     return data

@@ -324,8 +324,9 @@ not invalidate compiler caches.
 
 Nightly runs every four hours in UTC and on manual dispatch, only on dev.
 Runs never cancel each other. Freshness compares the nightly tag, suppresses duplicate
-queued/running revisions and fails closed on lookup errors. Publication waits only for
-Product Build and Package; suites, benchmarks and coverage may fail independently.
+queued/running revisions only when an older run owns them, and fails closed on lookup
+errors. Publication waits only for Product Build and Package; suites, benchmarks and
+coverage may fail independently.
 
 `validation.yml` owns the shared validation job bodies, selected by `selection`,
 `profile` and `channel`; CI and Nightly call it. `publication.yml` and
@@ -350,12 +351,36 @@ uses the same staging path; add `--channel nightly` to rehearse the Nightly inve
 Neither command builds missing inputs.
 
 Nightly publishes initial report downloads even when no suite has finished. The final
-report job downloads available benchmark and coverage artifacts, then replaces the
-reports ZIP, `benchmarks.json`, `release.json` and checksums. It appends an idempotent
+report job calls the shared publisher with `report: true` and `results: toJSON(needs)`.
+It downloads available `results-*` artifacts (tests, traces, benchmarks and coverage),
+then replaces the reports ZIP, `benchmarks.json`, `release.json` and checksums. It appends an idempotent
 results table and pipeline URL only when the release's CI Run row identifies this run.
-Publication and report updates share noncancelling concurrency; verification checks
-remote asset names and digests. Benchmark exports retain medians and pre-run baselines,
-including results available from a failed benchmark subprocess.
+Publication and report updates share noncancelling concurrency and the draft-and-swap
+publisher; a failed replacement preserves the previous public inventory. Every draft
+and public asset is downloaded, sized and hashed even when the API supplies a digest.
+Native verification consumes `release-manifest` and runs the downloaded conformance
+host. Benchmark exports retain medians and pre-run baselines, including results
+available from a failed benchmark subprocess.
+
+### Dokime Alignment
+
+The shared validation inputs are `channel` and `profile`; Harmos also selects a body
+with `selection`. Publication and verification use `build-run`, `build-sha` and
+`build-version` for stable review evidence, with archive downloads defaulting to the
+current run for Nightly. The report uses the same publication workflow and concurrency
+group, retains the original notes, swaps a complete verified inventory and overwrites
+`release-manifest` only after publication succeeds. Its immutable downloads come from
+the published inventory rather than repeating package staging.
+
+Products keep their own languages, runner matrices, inventories and workflow file
+organization. Harmos retains one validation dispatcher; Dokime splits validation by
+job. The four-hour Nightly schedule is unchanged.
+Dokime should default every package download to `build-run || github.run_id`, including
+Windows Rust packages: its shared publish/verify workflows currently select the
+publication run for those packages and can lose stable review inputs. Its alignment
+notes should reflect the shared contracts above.
+
+### Release Reviews
 
 `ci:runners` preserves the runner allowlist check. `ci:release-mode` emits `mode`
 and `sha` to `GITHUB_OUTPUT`: successful release-review CI completion selects its

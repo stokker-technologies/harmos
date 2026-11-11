@@ -97,7 +97,7 @@ def run(operation: str, arguments: list[str], profile: str) -> int:
                 build = published["object"]["sha"] != os.environ["GITHUB_SHA"]
         for status in ("in_progress", "queued"):
             runs = pages(f"actions/workflows/nightly.yml/runs?head_sha={os.environ['GITHUB_SHA']}&status={status}", "workflow_runs")
-            if any(str(run["id"]) != os.environ["GITHUB_RUN_ID"] for run in runs):
+            if any(int(run["id"]) < int(os.environ["GITHUB_RUN_ID"]) for run in runs):
                 build = False
                 break
         with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
@@ -106,7 +106,9 @@ def run(operation: str, arguments: list[str], profile: str) -> int:
     if operation == "nightly-report":
         from ..release import nightly
 
-        nightly.report(policy.root(), json.loads(os.environ["NEEDS"]), os.environ["RUN_URL"])
+        published = nightly.report(policy.root(), json.loads(os.environ["NEEDS"]), os.environ["RUN_URL"])
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+            output.write(f"published={str(published).lower()}\n")
         return 0
     if operation == "mirror":
         branch = os.environ["GITHUB_REF_NAME"]

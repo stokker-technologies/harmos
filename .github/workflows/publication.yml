@@ -8,15 +8,21 @@ name: Publication
       profile:
         type: string
         default: release
-      build_run:
+      build-run:
         type: string
         default: ''
-      build_sha:
+      build-sha:
         type: string
         default: ''
-      build_version:
+      build-version:
         type: string
         default: ''
+      report:
+        type: boolean
+        default: false
+      results:
+        type: string
+        default: '{}'
 permissions:
   contents: read
 env:
@@ -31,7 +37,7 @@ env:
   GIT_CONFIG_VALUE_0: 'true'
 jobs:
   publish:
-    name: Release / Publish
+    name: ${{ inputs.report && 'Nightly / Report' || 'Release / Publish' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -45,33 +51,58 @@ jobs:
         cache-backend: disk
         cache-mode: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && 'READ_WRITE'
           || 'READ_ONLY' }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+    - if: '!inputs.report'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: package-${{ inputs.profile }}-rust-unix
         path: target/ci
-        run-id: ${{ inputs.build_run }}
+        run-id: ${{ inputs.build-run || github.run_id }}
         github-token: ${{ github.token }}
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+    - if: '!inputs.report'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: package-${{ inputs.profile }}-rust-windows
         path: target/ci
-        run-id: ${{ inputs.build_run }}
+        run-id: ${{ inputs.build-run || github.run_id }}
         github-token: ${{ github.token }}
+    - name: Download Publication Inventory
+      if: inputs.report
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: release-manifest
+        path: target/release-assets
+    - name: Download Available Results
+      if: inputs.report
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        pattern: results-*
+        path: target/nightly-reports
+    - name: Complete Nightly Reports
+      if: inputs.report
+      id: report
+      run: mise run ci:nightly-report --
+      env:
+        GH_TOKEN: ${{ github.token }}
+        NEEDS: ${{ inputs.results }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     - name: Run Project Task
+      if: '!inputs.report'
       run: mise run release:publish -- --channel ${{ inputs.channel }}
       env:
         GH_TOKEN: ${{ github.token }}
         RELEASE_TARGET_SHA: ${{ github.sha }}
         CI_INPUT_ARCHIVES: '["target/ci/package-${{ inputs.profile }}-rust-unix.tar.zst","target/ci/package-${{ inputs.profile }}-rust-windows.tar.zst"]'
     - name: Share Release Manifest
+      if: '!inputs.report || steps.report.outputs.published == ''true'''
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: release-manifest
         path: target/release-assets/upload.json
         if-no-files-found: error
         retention-days: 7
+        overwrite: true
     - name: Attest Release Downloads
-      if: inputs.channel == 'stable'
+      if: inputs.channel == 'stable' && !inputs.report
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
       with:
         subject-checksums: target/release-assets/any/SHA256SUMS
@@ -104,9 +135,9 @@ jobs:
       COMPILER_CACHE_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') && 'READ_WRITE'
         || 'READ_ONLY' }}
       PROFILE: ${{ inputs.profile }}
-      RELEASE_BUILD_RUN_ID: ${{ inputs.build_run }}
-      RELEASE_BUILD_SHA: ${{ inputs.build_sha }}
-      RELEASE_BUILD_VERSION: ${{ inputs.build_version }}
+      RELEASE_BUILD_RUN_ID: ${{ inputs.build-run }}
+      RELEASE_BUILD_SHA: ${{ inputs.build-sha }}
+      RELEASE_BUILD_VERSION: ${{ inputs.build-version }}
     environment: ${{ inputs.channel == 'stable' && 'release' || 'nightly' }}
     permissions:
       checks: read

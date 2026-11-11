@@ -12,6 +12,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import json
 import os
 import subprocess
 import tempfile
@@ -83,13 +84,16 @@ class NightlyRunTests(unittest.TestCase):
                     tasks.main(["ci:nightly-freshness"])
                 request.side_effect = None
 
-                # Dispatch Manually And Suppress An Already Running Or Queued Revision.
+                # Dispatch Manually And Let The Oldest Run Own The Revision.
                 os.environ["GITHUB_EVENT_NAME"] = "workflow_dispatch"
                 lookup.reset_mock()
                 for status in ("in_progress", "queued"):
-                    pages.side_effect = lambda endpoint, key, status=status: [{"id": 8}] if f"status={status}" in endpoint else []
-                    self.assertEqual(tasks.main(["ci:nightly-freshness"]), 0)
-                    self.assertEqual(output.read_text().splitlines()[-1], "build=false")
+                    for identifier, expected in ((6, False), (7, True), (8, True)):
+                        pages.side_effect = lambda endpoint, key, status=status, identifier=identifier: (
+                            [{"id": identifier}] if f"status={status}" in endpoint else []
+                        )
+                        self.assertEqual(tasks.main(["ci:nightly-freshness"]), 0)
+                        self.assertEqual(output.read_text().splitlines()[-1], f"build={str(expected).lower()}")
                 pages.side_effect = None
                 pages.return_value = [{"id": 7}]
                 self.assertEqual(tasks.main(["ci:nightly-freshness"]), 0)
@@ -106,6 +110,19 @@ class NightlyRunTests(unittest.TestCase):
             with patch.object(nightly, "publish") as publish:
                 self.assertEqual(tasks.main(["release:publish", "--channel", "nightly"]), 0)
                 publish.assert_called_once_with(Path.cwd())
+
+            # Only A Successful Report Replacement Publishes A New Manifest.
+            results = {"test": {"result": "failure"}}
+            with (
+                patch.dict(os.environ, {**environment, "NEEDS": json.dumps(results)}, clear=True),
+                patch.object(nightly, "report") as report,
+                patch.object(workflow.policy, "root", return_value=Path(temporary)),
+            ):
+                for published in (True, False):
+                    report.return_value = published
+                    self.assertEqual(tasks.main(["ci:nightly-report"]), 0)
+                    self.assertEqual(output.read_text().splitlines()[-1], f"published={str(published).lower()}")
+                    report.assert_called_with(Path(temporary), results, environment["RUN_URL"])
 
 
 # === Public Functions === #

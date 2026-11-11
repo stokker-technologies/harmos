@@ -271,10 +271,10 @@ class PinTests(unittest.TestCase):
 
 class PublicationTests(unittest.TestCase):
     def test_publication_replaces_previous(self):
-        for previous in (True, False):
-            with self.subTest(previous=previous), tempfile.TemporaryDirectory() as temporary:
+        for previous, metadata in ((True, True), (False, True), (True, False)):
+            with self.subTest(previous=previous, metadata=metadata), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
-                github = FakeGitHub(previous=previous)
+                github = FakeGitHub(previous=previous, faults=set() if metadata else {"no-digest"})
                 github.releases[3] = {"id": 3, "name": "v0.1.2", "tag_name": "v0.1.2", "draft": False, "prerelease": False}
                 github.releases[4] = {"id": 4, "name": nightly.TITLE, "tag_name": "untagged-4", "draft": True, "prerelease": True}
                 github.assets.update({3: [], 4: []})
@@ -288,7 +288,7 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual(set(github.releases), {3, published["id"]})
 
     def test_failure_before_swap_keeps_previous(self):
-        for fault in ("create", "upload:linux.zip", "upload:SHA256SUMS", "size", "pending", "digest"):
+        for fault in ("create", "upload:linux.zip", "upload:SHA256SUMS", "size", "pending", "digest", "bytes"):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
                 github = FakeGitHub(previous=True, faults={fault})
@@ -307,7 +307,7 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(sorted(names), sorted(item["name"] for item in files))
 
     def test_failure_during_swap_restores_previous(self):
-        for fault in ("tag-create", "draft-previous", "publish", "lookup"):
+        for fault in ("tag-create", "draft-previous", "publish", "lookup", "public-bytes"):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
                 github = FakeGitHub(previous=True, faults={fault})
@@ -507,6 +507,7 @@ class FakeGitHub:
         self.workflows = {OLD: "previous-workflows", NEW: "build-workflows"}
         self.releases: dict[int, dict] = {}
         self.assets: dict[int, list[dict]] = {}
+        self.data: dict[int, bytes] = {}
         self.next_id = 10
         if previous:
             self.releases[1] = {
@@ -591,12 +592,24 @@ class FakeGitHub:
         for fault, change in (("size", {"size": 0}), ("pending", {"state": "new"}), ("digest", {"digest": "sha256:" + "0" * 64})):
             if fault in self.faults and assets:
                 assets[0].update(change)
+        if "no-digest" in self.faults:
+            for asset in assets:
+                asset.pop("digest", None)
         return assets
 
     def request(self, settings, endpoint, method="GET", data=None, **kwargs):
         if endpoint == f"git/refs/tags/{nightly.TAG}" and method == "DELETE":
             self.tag = None
             return
+        if endpoint.startswith("releases/assets/") and method == "GET":
+            identity = int(endpoint.rsplit("/", 1)[1])
+            published = any(
+                not release["draft"] and any(asset["id"] == identity for asset in self.assets[release["id"]])
+                for release in self.releases.values()
+            )
+            if "bytes" in self.faults or "public-bytes" in self.faults and published:
+                return b"!" * len(self.data[identity])
+            return self.data[identity]
         if endpoint.startswith("releases/assets/") and method == "DELETE":
             identity = int(endpoint.rsplit("/", 1)[1])
             for assets in self.assets.values():
@@ -620,6 +633,7 @@ class FakeGitHub:
                 "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
             }
         )
+        self.data[self.next_id] = data
         self.next_id += 1
         # The Upload Lands But The Response Is Lost, Leaving A Same-Name Asset For The Retry To Replace.
         self._fault(f"partial:{name}")

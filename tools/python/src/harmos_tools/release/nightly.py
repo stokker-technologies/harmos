@@ -112,14 +112,17 @@ def verify(directory: Path) -> None:
         run.verify_conformance(directory, settings, PROFILE, run.native_target(settings), downloads)
 
 
-def report(directory: Path, results: dict, url: str) -> None:
+def report(directory: Path, results: dict, url: str) -> bool:
     """Append Run-Owned Results And Replace Reports, Index And Checksums Together."""
     settings = policy.policy(directory, "release")
+    sha, identifier, source_url = _github_source()
+    if url != source_url or run._revision(directory) != sha:
+        raise policy.ToolError("Nightly report must match the source CI commit and run")
     current = registry.document(settings, "releases/tags/nightly", channel=True)
-    identity = f"| CI Run | [{os.environ['GITHUB_RUN_ID']}]({url}) |"
-    if not current or identity not in current["body"].splitlines():
+    identity = f"| CI Run | [{identifier}]({url}) |"
+    if not current or identity not in current["body"].splitlines() or _tag(settings) != sha:
         print("A Newer Run Replaced Nightly; Leaving Its Reports Unchanged")
-        return
+        return False
     files = layout.uploads(directory)
     endpoint = f"releases/{current['id']}"
     remote = {item["name"]: item for item in registry.pages(settings, endpoint + "/assets", channel=True)}
@@ -174,14 +177,8 @@ def report(directory: Path, results: dict, url: str) -> None:
     latest = registry.document(settings, "releases/tags/nightly", channel=True)
     if latest["id"] != current["id"] or identity not in latest["body"].splitlines():
         print("A Newer Run Replaced Nightly; Leaving Its Reports Unchanged")
-        return
-    for item in uploads:
-        if item["name"] not in replaced:
-            continue
-        registry.request(settings, f"releases/assets/{remote[item['name']]['id']}", "DELETE", channel=True)
-        _upload(directory, settings, endpoint, item)
-    _verify_assets(settings, endpoint, uploads, "reported inventory differs")
-    registry.document(settings, endpoint, "PATCH", {"body": notes}, channel=True)
+        return False
+    return _github(directory, settings, uploads, sha, identifier, notes)
 
 
 # === Private Functions === #
@@ -303,17 +300,17 @@ def _github(
     sha: str,
     identifier: str,
     notes: str,
-) -> None:
+) -> bool:
     previous = registry.document(settings, f"releases/tags/{TAG}", channel=True)
     if _superseded(previous, identifier, "body"):
         print("nightly already carries a newer run")
-        return
+        return False
     if previous and previous.get("immutable"):
         raise policy.ToolError(IMMUTABLE)
     # The Job Token Cannot Create A Ref Whose Workflows Differ From Dev's Without The Workflows Permission.
     if _workflows_moved(settings, sha):
         print(f"{TAG} superseded by a dev workflow change; the next nightly publishes")
-        return
+        return False
 
     # Stage A Complete Replacement As A Separate Draft; The Published Channel Stays Untouched Until The Swap.
     staged = registry.document(
@@ -377,6 +374,7 @@ def _github(
     for release in registry.pages(settings, "releases", channel=True):
         if release.get("id") != staged["id"] and (release.get("draft") is True and release.get("name") == TITLE):
             registry.request(settings, f"releases/{release['id']}", "DELETE", channel=True)
+    return True
 
 
 def _workflows_moved(settings: dict, sha: str) -> bool:
@@ -425,16 +423,12 @@ def _verify_assets(settings: dict, endpoint: str, files: list[dict], failure: st
         or any(asset.get("state") != "uploaded" for asset in assets)
     ):
         raise policy.ToolError(f"{TAG} {failure}")
+    inventory = {item["name"]: item for item in files}
     for asset in assets:
-        expected_digest = next(item["sha256"] for item in files if item["name"] == asset["name"])
-        digest = asset.get("digest")
-        if digest is None:
-            downloaded = registry.request(settings, f"releases/assets/{asset['id']}", binary=True, channel=True)
-            if downloaded is None:
-                raise policy.ToolError(f"{TAG} upload could not be verified")
-            digest = "sha256:" + hashlib.sha256(downloaded).hexdigest()
-        if digest != "sha256:" + expected_digest:
+        item = inventory[asset["name"]]
+        if asset.get("digest") not in (None, "sha256:" + item["sha256"]):
             raise policy.ToolError(f"{TAG} upload digest differs")
+        registry.verify_download(settings, f"releases/assets/{asset['id']}", item, channel=True)
 
 
 def _point_tag(settings: dict, current: str | None, sha: str) -> None:
