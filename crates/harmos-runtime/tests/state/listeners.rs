@@ -109,9 +109,31 @@ fn handler_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch
 }
 
-#[harmos_runtime::records]
 enum Rows {
     Fact(Fact),
+}
+impl From<Fact> for Rows {
+    fn from(value: Fact) -> Self {
+        Self::Fact(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Rows {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Fact(_) => <Fact as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Fact(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn rows_registry() -> harmos_runtime::state::RecordRegistry<Rows> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Fact as harmos_runtime::state::Record>::ENTRY, Rows::Fact, |value| {
+        let Rows::Fact(value) = value;
+        Some(value)
+    })
 }
 
 static CALLBACKS_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 2] = [
@@ -493,7 +515,7 @@ fn candidate() -> PluginDefinitions {
 async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
         setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
-        setup.settings().register(Rows::catalog());
+        setup.settings().register(rows_registry());
         setup.settings().tail(tail);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),

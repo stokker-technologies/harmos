@@ -98,7 +98,7 @@ async fn another_build_reads() {
     // the ones that wrote this file, and share every definition.
     let recovered = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(other::Movement::catalog());
-        setup.settings().register(other::Observed::catalog());
+        setup.settings().register(other::observed_registry());
         setup.settings().recover(Journal::<other::Branch>::open(&copy));
     })
     .await
@@ -117,7 +117,7 @@ async fn another_build_reads() {
 async fn decode_matches_recovery() {
     let runtime = Runtime::<other::Branch>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(other::Movement::catalog());
-        setup.settings().register(other::Observed::catalog());
+        setup.settings().register(other::observed_registry());
     })
     .await
     .expect("the generated catalogs freeze");
@@ -188,10 +188,32 @@ mod other {
         Put(Deposit),
     }
 
-    #[harmos_runtime::records]
     #[derive(Clone, Debug)]
     pub enum Observed {
         Remark(Noted),
+    }
+    impl From<Noted> for Observed {
+        fn from(value: Noted) -> Self {
+            Self::Remark(value)
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Observed {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Remark(_) => <Noted as harmos_runtime::state::Record>::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Remark(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn observed_registry() -> harmos_runtime::state::RecordRegistry<Observed> {
+        harmos_runtime::state::RecordRegistry::new().entry(<Noted as harmos_runtime::state::Record>::ENTRY, Observed::Remark, |value| {
+            let Observed::Remark(value) = value;
+            Some(value)
+        })
     }
 
     /* === Traits === */
@@ -218,7 +240,7 @@ mod other {
         fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
             match value {
                 Recorded::Transaction(change) => change.identify(),
-                Recorded::Record(fact) => fact.identify(),
+                Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::identify(fact),
                 Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
             }
         }
@@ -226,7 +248,7 @@ mod other {
         fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
             match value {
                 Recorded::Transaction(change) => change.encode_with(serializer),
-                Recorded::Record(fact) => fact.encode_with(serializer),
+                Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::encode(fact, serializer),
                 Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
             }
         }
@@ -241,7 +263,7 @@ mod other {
                     version,
                     value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
                 }),
-                Kind::Record => Observed::restore(id, version, payload)?.map(|fact| Payload {
+                Kind::Record => observed_registry().restore(id, version, payload)?.map(|fact| Payload {
                     prepared: None,
                     id: id.clone(),
                     version,

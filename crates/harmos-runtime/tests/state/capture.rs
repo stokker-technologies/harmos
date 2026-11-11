@@ -61,10 +61,32 @@ enum Changes {
     Add(Add),
 }
 
-#[harmos_runtime::records]
 #[derive(Clone, Debug)]
 enum Facts {
     Observed(Observed),
+}
+impl From<Observed> for Facts {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Facts {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Facts::Observed, |value| {
+        let Facts::Observed(value) = value;
+        Some(value)
+    })
 }
 
 /* === Traits === */
@@ -135,7 +157,7 @@ async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model
     let release = Arc::new(Semaphore::new(0));
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
         setup.settings().register(Changes::catalog());
-        setup.settings().register(Facts::catalog());
+        setup.settings().register(facts_registry());
         setup.settings().tail(tail);
         setup.settings().require_capture(
             CaptureLimits {
@@ -308,7 +330,7 @@ async fn queued_groups_outlive() {
 #[tokio::test]
 async fn panic_fails_capture() {
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().register(Facts::catalog());
+        setup.settings().register(facts_registry());
         setup.settings().require_capture(
             CaptureLimits {
                 pending_bytes: 4096,

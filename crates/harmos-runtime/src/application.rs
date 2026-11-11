@@ -46,7 +46,7 @@ pub trait Application: Lifecycle<Context = Startup<Self>> + Sync {
         + Sync
         + 'static;
 
-    type Record: crate::state::RecordCatalog + Send + Sync + 'static;
+    type Record: crate::state::CatalogCodec + Send + Sync + 'static;
 }
 
 /* === Implementations === */

@@ -35,10 +35,32 @@ struct Model;
 
 /* === Enums === */
 
-#[harmos_runtime::records]
 #[derive(Clone, Debug)]
 enum Records {
     Noted(Noted),
+}
+impl From<Noted> for Records {
+    fn from(value: Noted) -> Self {
+        Self::Noted(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Noted(_) => <Noted as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Noted(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Noted as harmos_runtime::state::Record>::ENTRY, Records::Noted, |value| {
+        let Records::Noted(value) = value;
+        Some(value)
+    })
 }
 
 /* === Traits === */
@@ -84,7 +106,7 @@ async fn undeclared_record_refused() {
 #[tokio::test]
 async fn producers_share_order() {
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-        setup.settings().register(Records::catalog());
+        setup.settings().register(records_registry());
     })
     .await
     .unwrap();

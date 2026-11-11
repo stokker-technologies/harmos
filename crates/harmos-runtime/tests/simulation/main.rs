@@ -296,6 +296,7 @@ impl Registration<Divergent> for DivergentCatalog {
         }
 
         Catalog::Transactions {
+            records: None,
             definitions: vec![(Kind::Transaction, DefinitionId::new("sim.divergent"), 1)],
             decode,
             inverses: None,
@@ -333,12 +334,6 @@ impl harmos_runtime::state::CatalogCodec for NoRecord {
     }
     fn encode<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_unit()
-    }
-}
-
-impl harmos_runtime::state::RecordCatalog for NoRecord {
-    fn restore(_: &DefinitionId, _: u32, _: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        Ok(None)
     }
 }
 
@@ -456,10 +451,32 @@ mod atomic_records {
         Add(Add),
     }
 
-    #[harmos_runtime::records]
     #[derive(Clone, Debug, PartialEq, Eq)]
     enum Facts {
         Observed(Observed),
+    }
+    impl From<Observed> for Facts {
+        fn from(value: Observed) -> Self {
+            Self::Observed(value)
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Facts {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+        harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Facts::Observed, |value| {
+            let Facts::Observed(value) = value;
+            Some(value)
+        })
     }
 
     /* === Traits === */
@@ -517,7 +534,7 @@ mod atomic_records {
     fn records_survive_reboot() {
         let make = || {
             Runtime::<Model>::simulate_with(State::default(), (), 17, |setup| {
-                setup.settings().register(Changes::catalog()).register(Facts::catalog());
+                setup.settings().register(Changes::catalog()).register(facts_registry());
             })
             .unwrap()
         };

@@ -53,6 +53,7 @@ impl Registration<Editor> for Definitions {
         }
 
         Catalog::Transactions {
+            records: Some(crate::runtime::probe::note_registry()),
             definitions: self.0,
             decode,
             inverses: Some(inverses),

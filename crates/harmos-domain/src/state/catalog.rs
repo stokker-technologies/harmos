@@ -38,11 +38,6 @@ pub struct TransactionDefinitions<S, T> {
     pub inverses: Inverse<S, T>,
 }
 
-pub struct RecordDefinitions<R> {
-    pub definitions: Vec<(Kind, DefinitionId, u32)>,
-    pub marker: std::marker::PhantomData<fn() -> R>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -55,15 +50,6 @@ impl<S, T> Clone for TransactionDefinitions<S, T> {
             definitions: self.definitions.clone(),
             decode: self.decode,
             inverses: self.inverses,
-        }
-    }
-}
-
-impl<R> Clone for RecordDefinitions<R> {
-    fn clone(&self) -> Self {
-        Self {
-            definitions: self.definitions.clone(),
-            marker: std::marker::PhantomData,
         }
     }
 }

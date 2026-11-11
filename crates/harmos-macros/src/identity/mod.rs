@@ -42,24 +42,9 @@ struct Declaration {
 
 /* === Enums === */
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Sort {
-    Transaction,
-    Record,
-}
-
 /* === Traits === */
 
 /* === Implementations === */
-
-impl Sort {
-    pub(crate) fn kind(self, harmos: &HarmosPath) -> TokenStream {
-        match self {
-            Self::Transaction => quote!(#harmos::state::Kind::Transaction),
-            Self::Record => quote!(#harmos::state::Kind::Record),
-        }
-    }
-}
 
 /* === Public Functions === */
 

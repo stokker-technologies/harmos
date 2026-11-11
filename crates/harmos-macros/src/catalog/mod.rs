@@ -22,7 +22,6 @@ use syn::parse::Parser;
 use syn::spanned::Spanned;
 use syn::{Error, Ident, ItemEnum, Meta, Path, Token, Type, punctuated::Punctuated};
 // Local Imports
-use crate::identity::Sort;
 use crate::path::{self, HarmosPath};
 
 /* === Constants === */
@@ -52,8 +51,8 @@ struct Member {
 
 /* === Public Functions === */
 
-pub(crate) fn close(attribute: TokenStream, item: TokenStream, sort: Sort) -> TokenStream {
-    match expand(attribute, item.clone(), sort) {
+pub(crate) fn close(attribute: TokenStream, item: TokenStream) -> TokenStream {
+    match expand(attribute, item.clone()) {
         Ok(closed) => closed,
         Err(refused) => {
             let refusal = refused.to_compile_error();
@@ -65,143 +64,62 @@ pub(crate) fn close(attribute: TokenStream, item: TokenStream, sort: Sort) -> To
 
 /* === Private Functions === */
 
-fn expand(attribute: TokenStream, item: TokenStream, sort: Sort) -> Result<TokenStream, Error> {
+fn expand(attribute: TokenStream, item: TokenStream) -> ::core::result::Result<TokenStream, Error> {
     let closing = closing(attribute)?;
     let catalog: ItemEnum = syn::parse2(item)?;
     let members = members(&catalog)?;
     let name = catalog.ident.clone();
     let visibility = catalog.vis.clone();
-
+    let state = closing.state.as_ref().ok_or_else(|| Error::new(catalog.span(), "a transaction catalog names its state"))?;
     let conversions = members.iter().map(|member| {
         let variant = &member.name;
         let definition = &member.definition;
-
         quote! {
-            #[automatically_derived]
             impl ::core::convert::From<#definition> for #name {
-                fn from(definition: #definition) -> Self {
-                    Self::#variant(definition)
-                }
+                fn from(value: #definition) -> Self { Self::#variant(value) }
             }
         }
     });
-    let state = match sort {
-        Sort::Record => None,
-        Sort::Transaction => {
-            let Some(state) = &closing.state else {
-                return Err(Error::new(
-                    catalog.span(),
-                    "a change catalog names the state it changes: `#[harmos::transactions(state = …)]`",
-                ));
-            };
-            Some(state)
-        }
-    };
     let harmos = &closing.harmos;
     let registration = registration(&name, &visibility, &members, state, harmos);
-    let crossing = crossing(&name, &visibility, &members, state, harmos);
-    let projections = if state.is_none() {
-        let unmatched = (members.len() > 1).then(|| quote!(_ => ::core::option::Option::None,));
-        let projections = members.iter().map(|member| {
-            let variant = &member.name;
-            let definition = &member.definition;
-
-            quote! {
-                #[automatically_derived]
-                impl #harmos::state::RecordProjection<#definition> for #name {
-                    fn project(&self) -> ::core::option::Option<&#definition> {
-                        match self {
-                            Self::#variant(record) => ::core::option::Option::Some(record),
-                            #unmatched
-                        }
-                    }
-                }
-            }
-        });
-        quote!(#(#projections)*)
-    } else {
-        TokenStream::new()
-    };
-    let behavior = state.map(|state| behavior(&name, &visibility, &members, state, closing.error.as_ref(), harmos)).unwrap_or_default();
-
-    Ok(quote! {
-        #catalog
-        #(#conversions)*
-        #registration
-        #crossing
-        #projections
-        #behavior
-    })
+    let crossing = crossing(&name, &visibility, &members, harmos);
+    let behavior = behavior(&name, &visibility, &members, state, closing.error.as_ref(), harmos);
+    Ok(quote! { #catalog #(#conversions)* #registration #crossing #behavior })
 }
 
-fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], state: Option<&Path>, harmos: &HarmosPath) -> TokenStream {
+fn crossing(name: &Ident, visibility: &syn::Visibility, members: &[Member], harmos: &HarmosPath) -> TokenStream {
     let identities = members.iter().map(|member| {
         let variant = &member.name;
         let definition = &member.definition;
-
         quote!(Self::#variant(_) => <#definition as #harmos::Identified>::definition(),)
     });
     let encodings = members.iter().map(|member| {
         let variant = &member.name;
-
-        quote!(Self::#variant(definition) => ::serde::Serialize::serialize(definition, serializer),)
+        quote!(Self::#variant(value) => ::serde::Serialize::serialize(value, serializer),)
     });
     let restorations = members.iter().map(|member| {
-        let named = &member.definition;
-        if state.is_some() {
-            quote! { if id.as_str() == <#named>::ID {
-                return Ok(<#named>::restore::<D>(version, payload)?.map(::core::convert::From::from));
-            } }
-        } else {
-            quote! { if id.as_str() == <#named as #harmos::state::Record>::ENTRY.id() {
-                return Ok(<#named as #harmos::state::Record>::ENTRY.restore(version, payload)?.map(::core::convert::From::from));
-            } }
-        }
-    });
-    let restore = quote! {
-        #visibility fn restore<'de, D>(id: &#harmos::DefinitionId, version: u32, payload: D)
-            -> ::core::result::Result<::core::option::Option<Self>, D::Error>
-        where D: ::serde::Deserializer<'de> + ::core::marker::Copy {
-            #(#restorations)*
-            Ok(None)
-        }
-    };
-    let record_catalog = state.is_none().then(|| {
+        let definition = &member.definition;
         quote! {
-            impl #harmos::state::RecordCatalog for #name {
-                fn restore(id: &#harmos::DefinitionId, version: u32, payload: &#harmos::__private::serde_json::Value)
-                    -> ::core::result::Result<::core::option::Option<Self>, #harmos::__private::serde_json::Error> {
-                    Self::restore(id, version, payload)
-                }
+            if id.as_str() == <#definition>::ID {
+                return Ok(<#definition>::restore(version, payload)?.map(::core::convert::Into::into));
             }
         }
     });
-
     quote! {
-        #record_catalog
         impl #harmos::state::CatalogCodec for #name {
             fn identify(&self) -> (#harmos::DefinitionId, u32) { self.identify() }
             fn encode<S: ::serde::Serializer>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error> { self.encode_with(serializer) }
         }
         impl #name {
-
-            #visibility fn identify(&self) -> (#harmos::DefinitionId, u32) {
-                let (id, version) = match self { #(#identities)* };
-
-                (id, version)
-            }
-
-
-
-
-            #visibility fn encode_with<S: ::serde::Serializer>(
-                &self,
-                serializer: S,
-            ) -> ::core::result::Result<S::Ok, S::Error> {
+            #visibility fn identify(&self) -> (#harmos::DefinitionId, u32) { match self { #(#identities)* } }
+            #visibility fn encode_with<S: ::serde::Serializer>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error> {
                 match self { #(#encodings)* }
             }
-
-            #restore
+            #visibility fn restore<'de, D>(id: &#harmos::DefinitionId, version: u32, payload: D) -> ::core::result::Result<Option<Self>, D::Error>
+            where D: ::serde::Deserializer<'de> + Copy {
+                #(#restorations)*
+                Ok(None)
+            }
         }
     }
 }
@@ -355,61 +273,31 @@ fn inverses(name: &Ident, members: &[Member], state: &Path, harmos: &HarmosPath)
     }
 }
 
-fn registration(name: &Ident, visibility: &syn::Visibility, members: &[Member], state: Option<&Path>, harmos: &HarmosPath) -> TokenStream {
-    let kind = if state.is_some() { Sort::Transaction.kind(harmos) } else { Sort::Record.kind(harmos) };
-    let declared = members.iter().map(|member| {
+fn registration(name: &Ident, visibility: &syn::Visibility, members: &[Member], state: &Path, harmos: &HarmosPath) -> TokenStream {
+    let definitions = members.iter().map(|member| {
         let definition = &member.definition;
-
         quote! {
-            {
-                let (id, version) = <#definition as #harmos::Identified>::definition();
-                catalogued.push((#kind, id, version));
-
-            }
+            let (id, version) = <#definition as #harmos::Identified>::definition();
+            definitions.push((#harmos::state::Kind::Transaction, id, version));
         }
     });
-    let (output, construct) = match state {
-        Some(state) => (
-            quote!(#harmos::state::TransactionDefinitions<#state, #name>),
-            quote! {
-                fn decode(
-                    id: &#harmos::DefinitionId,
-                    version: u32,
-                    bytes: &[u8],
-                ) -> ::core::result::Result<::core::option::Option<#name>, #harmos::state::DecodeError> {
-                    let malformed = || #harmos::state::DecodeError::Malformed { id: id.clone(), version };
-                    let payload: #harmos::__private::serde_json::Value =
-                        #harmos::__private::serde_json::from_slice(bytes).map_err(|_| malformed())?;
-                    let restored = #name::restore(id, version, &payload).map_err(|_| malformed())?;
-                    Ok(restored)
-                }
-                #harmos::state::TransactionDefinitions {
-                    definitions: catalogued,
-                    decode,
-                    inverses: #name::__harmos_inverses,
-                }
-            },
-        ),
-        None => (
-            quote!(#harmos::state::RecordDefinitions<#name>),
-            quote!(#harmos::state::RecordDefinitions {
-                definitions: catalogued,
-                marker: ::core::marker::PhantomData,
-            }),
-        ),
-    };
     quote! {
         impl #name {
-            #visibility fn catalog() -> #output {
-                let mut catalogued = ::std::vec::Vec::new();
-                #(#declared)*
-                #construct
+            #visibility fn catalog() -> #harmos::state::TransactionDefinitions<#state, #name> {
+                fn decode(id: &#harmos::DefinitionId, version: u32, bytes: &[u8]) -> ::core::result::Result<Option<#name>, #harmos::state::DecodeError> {
+                    let malformed = || #harmos::state::DecodeError::Malformed { id: id.clone(), version };
+                    let payload: #harmos::__private::serde_json::Value = #harmos::__private::serde_json::from_slice(bytes).map_err(|_| malformed())?;
+                    #name::restore(id, version, &payload).map_err(|_| malformed())
+                }
+                let mut definitions = ::std::vec::Vec::new();
+                #(#definitions)*
+                #harmos::state::TransactionDefinitions { definitions, decode, inverses: #name::__harmos_inverses }
             }
         }
     }
 }
 
-fn closing(attribute: TokenStream) -> Result<Closing, Error> {
+fn closing(attribute: TokenStream) -> ::core::result::Result<Closing, Error> {
     let arguments = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(attribute)?;
     let mut state = None;
     let mut error = None;
@@ -444,7 +332,7 @@ fn closing(attribute: TokenStream) -> Result<Closing, Error> {
     })
 }
 
-fn members(catalog: &ItemEnum) -> Result<Vec<Member>, Error> {
+fn members(catalog: &ItemEnum) -> ::core::result::Result<Vec<Member>, Error> {
     let mut members = Vec::new();
 
     for variant in &catalog.variants {

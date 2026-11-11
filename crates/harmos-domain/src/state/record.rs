@@ -16,7 +16,7 @@
 // Standard Library Imports
 
 // Third Party Imports
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 // Local Imports
 use super::envelope::{DefinitionId, FactSource, SystemFact};
 use crate::Identified;
@@ -34,6 +34,11 @@ pub type PreparedMembers = Vec<(Option<SystemFact>, Prepared)>;
 pub struct RecordEntry<R> {
     id: &'static str,
     row: std::marker::PhantomData<fn() -> R>,
+}
+
+struct EntryValue<'a, R> {
+    entry: RecordEntry<R>,
+    value: &'a R,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,17 +82,9 @@ pub trait Record: crate::schema::Described + Serialize + Sized {
     const ENTRY: RecordEntry<Self>;
 }
 
-pub trait RecordProjection<R> {
-    fn project(&self) -> Option<&R>;
-}
-
 pub trait CatalogCodec {
     fn identify(&self) -> (DefinitionId, u32);
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error>;
-}
-
-pub trait RecordCatalog: CatalogCodec + Sized {
-    fn restore(id: &DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error>;
 }
 
 /* === Implementations === */
@@ -118,6 +115,13 @@ impl<R: crate::schema::Described> RecordEntry<R> {
         (DefinitionId::new(self.id), revision)
     }
 
+    pub fn prepare(self, value: &R) -> Result<Prepared, PreparationError>
+    where
+        R: Serialize,
+    {
+        Prepared::typed_record(&EntryValue { entry: self, value })
+    }
+
     pub fn restore<'de, D>(self, revision: u32, payload: D) -> Result<Option<R>, D::Error>
     where
         R: Deserialize<'de>,
@@ -130,17 +134,20 @@ impl<R: crate::schema::Described> RecordEntry<R> {
     }
 }
 
+impl<R: crate::schema::Described + Serialize> CatalogCodec for EntryValue<'_, R> {
+    fn identify(&self) -> (DefinitionId, u32) {
+        self.entry.definition()
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.value.serialize(serializer)
+    }
+}
+
 impl<R: Record> Identified for R {
     const ID: &'static str = R::ENTRY.id();
 
     fn definition() -> (DefinitionId, u32) {
         R::ENTRY.definition()
-    }
-}
-
-impl<R> RecordProjection<R> for R {
-    fn project(&self) -> Option<&R> {
-        Some(self)
     }
 }
 
@@ -151,21 +158,6 @@ impl<T: Identified + Serialize> CatalogCodec for T {
 
     fn encode<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.serialize(serializer)
-    }
-}
-
-impl<T: Record + DeserializeOwned> RecordCatalog for T {
-    fn restore(id: &DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        if (id, version) != (&T::definition().0, T::definition().1) {
-            return Ok(None);
-        }
-        T::deserialize(payload).map(Some)
-    }
-}
-
-impl RecordCatalog for () {
-    fn restore(_: &DefinitionId, _: u32, _: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        Ok(None)
     }
 }
 

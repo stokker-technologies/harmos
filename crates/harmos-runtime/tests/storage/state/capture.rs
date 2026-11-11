@@ -75,10 +75,32 @@ enum Transactions {
     Advance(Advance),
 }
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Records {
     Observed(Observed),
+}
+impl From<Observed> for Records {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Records::Observed, |value| {
+        let Records::Observed(value) = value;
+        Some(value)
+    })
 }
 
 /* === Traits === */
@@ -191,7 +213,7 @@ impl Store {
                 .settings()
                 .storage(storage)
                 .register(Transactions::catalog())
-                .register(Records::catalog())
+                .register(records_registry())
                 .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(1, 64 * 1024),
                     capture,
@@ -408,7 +430,7 @@ async fn reconciliation_saves_capture() {
             .settings()
             .storage(&storage)
             .register(Transactions::catalog())
-            .register(Records::catalog())
+            .register(records_registry())
             .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(1, 64 * 1024),
                 capture: limits(4, 16 * 1024),
@@ -582,7 +604,7 @@ async fn partial_projection_refused() {
                 .settings()
                 .storage(&storage)
                 .register(Transactions::catalog())
-                .register(Records::catalog())
+                .register(records_registry())
                 .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(1, 64 * 1024),
                     capture: limits(8, 4 * 1024 * 1024),

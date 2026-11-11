@@ -122,12 +122,6 @@ impl super::record::CatalogCodec for Never {
     }
 }
 
-impl super::record::RecordCatalog for Never {
-    fn restore(_: &DefinitionId, _: u32, _: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        Ok(None)
-    }
-}
-
 impl<S> Transaction<S> for Never {
     type Error = Infallible;
 

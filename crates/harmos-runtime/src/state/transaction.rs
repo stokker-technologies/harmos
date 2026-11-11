@@ -76,6 +76,7 @@ pub(crate) mod dispatch {
         transactions: BTreeMap<(DefinitionId, u32), Restore<A, W>>,
         decoders: BTreeMap<(DefinitionId, u32), Decode<A>>,
         records: BTreeMap<(DefinitionId, u32), Upgrade<A, W>>,
+        pub(crate) record_registry: harmos_domain::state::RecordRegistry<A::Record>,
     }
 
     /* === Enums === */
@@ -152,6 +153,7 @@ pub(crate) mod dispatch {
                 transactions: BTreeMap::new(),
                 decoders: BTreeMap::new(),
                 records: BTreeMap::new(),
+                record_registry: harmos_domain::state::RecordRegistry::new(),
             }
         }
     }

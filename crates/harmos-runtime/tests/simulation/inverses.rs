@@ -101,6 +101,7 @@ fn decode_nothing(_id: &DefinitionId, _version: u32, _bytes: &[u8]) -> Result<Op
 impl Registration<Amplifier> for Faithful {
     fn register(self) -> Catalog<Amplifier> {
         Catalog::Transactions {
+            records: None,
             definitions: declared(),
             decode: decode_nothing,
             inverses: Some(|_change, before| Some(SetGain(before.gain))),
@@ -111,6 +112,7 @@ impl Registration<Amplifier> for Faithful {
 impl Registration<Amplifier> for Wrong {
     fn register(self) -> Catalog<Amplifier> {
         Catalog::Transactions {
+            records: None,
             definitions: declared(),
             decode: decode_nothing,
             inverses: Some(|change, _before| Some(SetGain(change.0))),

@@ -62,10 +62,32 @@ enum Transactions {
     Add(Add),
 }
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Records {
     Seen(Seen),
+}
+impl From<Seen> for Records {
+    fn from(value: Seen) -> Self {
+        Self::Seen(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Seen(_) => <Seen as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Seen(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Seen as harmos_runtime::state::Record>::ENTRY, Records::Seen, |value| {
+        let Records::Seen(value) = value;
+        Some(value)
+    })
 }
 
 /* === Traits === */
@@ -562,7 +584,7 @@ async fn keyed_group_retained() {
 
     let key = RequestKey::new("group");
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().storage(&storage).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+        setup.settings().storage(&storage).register(Transactions::catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -580,7 +602,7 @@ async fn keyed_group_retained() {
 
     let storage = store.manager(config());
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().storage(&storage).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+        setup.settings().storage(&storage).register(Transactions::catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),

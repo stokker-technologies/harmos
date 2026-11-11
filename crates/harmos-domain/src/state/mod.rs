@@ -13,14 +13,16 @@ mod catalog;
 mod entry;
 mod envelope;
 mod record;
+mod record_registry;
 mod transaction;
 
 /* === Re-Exports === */
 
-pub use catalog::{RecordDefinitions, TransactionDefinitions};
+pub use catalog::TransactionDefinitions;
 pub use entry::{At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 pub use envelope::{DefinitionId, Envelope, FactSource, Kind, SystemFact};
-pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordEntry, RecordProjection, Records};
+pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordEntry, Records};
+pub use record_registry::RecordRegistry;
 pub use transaction::{Catalogued, DecodeError, Invertible, Mutual, Never, Paired, Transaction, TransactionCatalog};
 
 /* === Imports === */

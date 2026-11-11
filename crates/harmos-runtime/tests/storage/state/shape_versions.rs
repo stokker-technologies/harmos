@@ -90,16 +90,60 @@ enum Changes {
     Add(Add),
 }
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Facts {
     Observed(Observed),
 }
+impl From<Observed> for Facts {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Facts {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Facts::Observed, |value| {
+        let Facts::Observed(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum NewFacts {
     Changed(Changed),
+}
+impl From<Changed> for NewFacts {
+    fn from(value: Changed) -> Self {
+        Self::Changed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for NewFacts {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Changed(_) => <Changed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Changed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn new_facts_registry() -> harmos_runtime::state::RecordRegistry<NewFacts> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Changed as harmos_runtime::state::Record>::ENTRY, NewFacts::Changed, |value| {
+        let NewFacts::Changed(value) = value;
+        Some(value)
+    })
 }
 
 fn plugin_objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
@@ -249,7 +293,7 @@ async fn original(storage: &StorageManager, snapshot: bool) -> Runtime<Model<fal
             .settings()
             .storage(storage)
             .register(Changes::catalog())
-            .register(Facts::catalog())
+            .register(facts_registry())
             .register(stream_definitions())
             .managed_storage(managed(snapshot));
     })
@@ -273,7 +317,7 @@ async fn plugin_runtime(storage: &StorageManager, snapshot: bool) -> Runtime<Mod
     let mut settings = managed(snapshot);
     settings.journal_tail = 16;
     Runtime::<Model<false>>::launch_with(0, (), |setup| {
-        setup.settings().storage(storage).register(Changes::catalog()).register(Facts::catalog()).managed_storage(settings);
+        setup.settings().storage(storage).register(Changes::catalog()).register(facts_registry()).managed_storage(settings);
     })
     .await
     .unwrap()
@@ -397,7 +441,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         // The Same Root Still Refuses A Changed Host Record Definition.
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
-            setup.settings().storage(&disk).register(Changes::catalog()).register(NewFacts::catalog()).managed_storage(managed(snapshot));
+            setup.settings().storage(&disk).register(Changes::catalog()).register(new_facts_registry()).managed_storage(managed(snapshot));
         })
         .await;
         let error = match result {
@@ -458,7 +502,7 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
 
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
-            setup.settings().storage(&disk).register(Changes::catalog()).register(NewFacts::catalog()).managed_storage(managed(snapshot));
+            setup.settings().storage(&disk).register(Changes::catalog()).register(new_facts_registry()).managed_storage(managed(snapshot));
         })
         .await;
         let error = match result {
@@ -496,7 +540,7 @@ async fn native_stream_round_trip_uses_shared_revision() {
             .settings()
             .storage(&disk)
             .register(Changes::catalog())
-            .register(Facts::catalog())
+            .register(facts_registry())
             .register(stream_definitions())
             .managed_storage(managed(false))
             .attach_streams(Recording {
@@ -552,6 +596,6 @@ fn label_only_change_keeps_revision() {
     let value = Observed { before: 9 };
     let (id, revision) = value.identify();
     let encoded = serde_json::to_value(&value).unwrap();
-    assert!(Facts::restore(&id, revision, &encoded).unwrap().is_some());
-    assert!(Facts::restore(&id, Changed::definition().1, &encoded).unwrap().is_none());
+    assert!(facts_registry().restore(&id, revision, &encoded).unwrap().is_some());
+    assert!(facts_registry().restore(&id, Changed::definition().1, &encoded).unwrap().is_none());
 }

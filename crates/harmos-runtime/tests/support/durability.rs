@@ -110,10 +110,32 @@ pub enum Change {
     Explode(Explode),
 }
 
-#[harmos_runtime::records]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum Fact {
     Noted(Noted),
+}
+impl From<Noted> for Fact {
+    fn from(value: Noted) -> Self {
+        Self::Noted(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Fact {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Noted(_) => <Noted as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Noted(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+pub fn fact_registry() -> harmos_runtime::state::RecordRegistry<Fact> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Noted as harmos_runtime::state::Record>::ENTRY, Fact::Noted, |value| {
+        let Fact::Noted(value) = value;
+        Some(value)
+    })
 }
 
 /* === Traits === */
@@ -242,7 +264,7 @@ impl Wire for Bank {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
         match value {
             Recorded::Transaction(change) => change.identify(),
-            Recorded::Record(fact) => fact.identify(),
+            Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::identify(fact),
             Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
         }
     }
@@ -250,7 +272,7 @@ impl Wire for Bank {
     fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
         match value {
             Recorded::Transaction(change) => change.encode_with(serializer),
-            Recorded::Record(fact) => fact.encode_with(serializer),
+            Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::encode(fact, serializer),
             Recorded::System(_) => unreachable!("system facts are encoded by the journal"),
         }
     }
@@ -265,7 +287,7 @@ impl Wire for Bank {
                 version,
                 value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
             }),
-            Kind::Record => Fact::restore(id, version, payload)?.map(|fact| Payload {
+            Kind::Record => fact_registry().restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
@@ -282,6 +304,7 @@ impl Registration<Bank> for Definitions {
         }
 
         Catalog::Transactions {
+            records: Some(fact_registry()),
             definitions: self.0,
             decode,
             inverses: Some(Change::__harmos_inverses),
@@ -344,7 +367,7 @@ impl JournalConsumer<Bank> for Payouts {
 /* === Public Functions === */
 
 pub fn catalog() -> impl Registration<Bank> {
-    Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(Fact::catalog())).collect())
+    Definitions(definitions_of::<Bank>(Change::catalog()).into_iter().chain(definitions_of::<Bank>(fact_registry())).collect())
 }
 
 pub fn deposit(amount: i64) -> Deposit {
@@ -365,7 +388,7 @@ pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Ru
 
 pub async fn opened(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Result<Runtime<Bank>, StartupError> {
     Runtime::<Bank>::launch_with(origin, (), |setup| {
-        setup.settings().register(Change::catalog()).register(Fact::catalog());
+        setup.settings().register(Change::catalog()).register(fact_registry());
         attach(setup);
     })
     .await

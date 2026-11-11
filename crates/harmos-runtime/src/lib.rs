@@ -67,7 +67,7 @@ pub use harmos_guest::guest;
 
 // `message` Names Both The Contract Module And Its Same-Named Attribute.
 pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, message, schema};
-pub use harmos_macros::{Described, Request, Row, records, transaction, transactions};
+pub use harmos_macros::{Described, Request, Row, transaction, transactions};
 
 /* === Imports === */
 

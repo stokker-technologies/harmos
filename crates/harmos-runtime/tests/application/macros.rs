@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 // Third Party Imports
 
 // Local Imports
-use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled};
+use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled, fact_registry};
 use crate::application::support;
 use harmos_runtime::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position, state::Transaction};
 
@@ -93,7 +93,7 @@ async fn catalog_declares_records() {
     {
         let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(Change::catalog())
             .into_iter()
-            .chain(definitions_of::<Studio>(Fact::catalog()))
+            .chain(definitions_of::<Studio>(fact_registry()))
             .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
             .collect();
 
@@ -176,7 +176,7 @@ async fn studio() -> Runtime<Studio> {
 
     Runtime::<Studio>::launch_with(origin, (), |setup| {
         setup.settings().register(Change::catalog());
-        setup.settings().register(Fact::catalog());
+        setup.settings().register(fact_registry());
     })
     .await
     .expect("a memory-only boot recovers nothing")
@@ -244,10 +244,32 @@ mod sheet {
         Erase(Erase),
     }
 
-    #[harmos_runtime::records]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum Fact {
         Noted(Noted),
+    }
+    impl From<Noted> for Fact {
+        fn from(value: Noted) -> Self {
+            Self::Noted(value)
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Fact {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Noted(_) => <Noted as harmos_runtime::state::Record>::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Noted(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn fact_registry() -> harmos_runtime::state::RecordRegistry<Fact> {
+        harmos_runtime::state::RecordRegistry::new().entry(<Noted as harmos_runtime::state::Record>::ENTRY, Fact::Noted, |value| {
+            let Fact::Noted(value) = value;
+            Some(value)
+        })
     }
 
     /* === Traits === */
@@ -790,22 +812,56 @@ fn catalog_projects_borrowed() {
         const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("projection.second");
     }
 
-    #[harmos_runtime::records]
     enum Facts {
         First(First),
         Second(Second),
     }
+    impl From<First> for Facts {
+        fn from(value: First) -> Self {
+            Self::First(value)
+        }
+    }
+    impl From<Second> for Facts {
+        fn from(value: Second) -> Self {
+            Self::Second(value)
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Facts {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::First(_) => <First as harmos_runtime::state::Record>::ENTRY.definition(),
+                Self::Second(_) => <Second as harmos_runtime::state::Record>::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::First(value) => serde::Serialize::serialize(value, serializer),
+                Self::Second(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+        harmos_runtime::state::RecordRegistry::new()
+            .entry(<First as harmos_runtime::state::Record>::ENTRY, Facts::First, |value| match value {
+                Facts::First(value) => Some(value),
+                _ => None,
+            })
+            .entry(<Second as harmos_runtime::state::Record>::ENTRY, Facts::Second, |value| match value {
+                Facts::Second(value) => Some(value),
+                _ => None,
+            })
+    }
 
     let first = Facts::First(First("first".to_owned()));
-    let projected = harmos_runtime::state::RecordProjection::<First>::project(&first).unwrap();
+    let projected = facts_registry().project::<First>(&first).unwrap();
     let Facts::First(original) = &first else { unreachable!("the selected record variant") };
     assert!(std::ptr::eq(projected, original));
-    assert!(harmos_runtime::state::RecordProjection::<Second>::project(&first).is_none());
+    assert!(facts_registry().project::<Second>(&first).is_none());
 
     let second = Facts::Second(Second("second".to_owned()));
-    assert!(harmos_runtime::state::RecordProjection::<First>::project(&second).is_none());
-    assert_eq!(harmos_runtime::state::RecordProjection::<Second>::project(&second).unwrap().0, "second",);
+    assert!(facts_registry().project::<First>(&second).is_none());
+    assert_eq!(facts_registry().project::<Second>(&second).unwrap().0, "second",);
 
     let single = sheet::Fact::Noted(sheet::Noted("single".to_owned()));
-    assert_eq!(harmos_runtime::state::RecordProjection::<sheet::Noted>::project(&single).unwrap().0, "single",);
+    assert_eq!(sheet::fact_registry().project::<sheet::Noted>(&single).unwrap().0, "single",);
 }

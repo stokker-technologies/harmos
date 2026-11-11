@@ -29,7 +29,6 @@ mod row;
 use proc_macro::TokenStream;
 use syn::Error;
 // Local Imports
-use identity::Sort;
 
 /* === Constants === */
 
@@ -83,12 +82,7 @@ pub fn row(item: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn transactions(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::close(attribute.into(), item.into(), Sort::Transaction).into()
-}
-
-#[proc_macro_attribute]
-pub fn records(attribute: TokenStream, item: TokenStream) -> TokenStream {
-    catalog::close(attribute.into(), item.into(), Sort::Record).into()
+    catalog::close(attribute.into(), item.into()).into()
 }
 
 #[proc_macro_attribute]

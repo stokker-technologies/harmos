@@ -20,7 +20,7 @@ use serde::{Deserializer, Serializer};
 
 // Local Imports
 use crate::app::SchematicEditor;
-use crate::records::Records;
+use crate::records::{Records, records_registry};
 use crate::transactions::Transactions;
 use harmos_runtime::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
 use schematic_storage::Wire;
@@ -43,7 +43,7 @@ impl Wire for SchematicEditor {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
         match value {
             Recorded::Transaction(change) => change.identify(),
-            Recorded::Record(fact) => fact.identify(),
+            Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::identify(fact),
             Recorded::System(_) => unreachable!("system facts are encoded by the adapter"),
         }
     }
@@ -51,7 +51,7 @@ impl Wire for SchematicEditor {
     fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
         match value {
             Recorded::Transaction(change) => change.encode_with(serializer),
-            Recorded::Record(fact) => fact.encode_with(serializer),
+            Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::encode(fact, serializer),
             Recorded::System(_) => unreachable!("system facts are encoded by the adapter"),
         }
     }
@@ -66,7 +66,7 @@ impl Wire for SchematicEditor {
                 version,
                 value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
             }),
-            Kind::Record => Records::restore(id, version, payload)?.map(|fact| Payload {
+            Kind::Record => records_registry().restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,
                 id: id.clone(),
                 version,

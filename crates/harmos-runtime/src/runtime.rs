@@ -197,6 +197,7 @@ pub enum Catalog<A: Application> {
         definitions: Vec<(Kind, DefinitionId, u32)>,
         decode: fn(&DefinitionId, u32, &[u8]) -> Result<Option<A::Transaction>, DecodeError>,
         inverses: Option<fn(&A::Transaction, &A::State) -> Option<A::Transaction>>,
+        records: Option<harmos_domain::state::RecordRegistry<A::Record>>,
     },
     Streams(Vec<Definition>),
 }
@@ -260,19 +261,21 @@ where
             definitions: self.definitions,
             decode: self.decode,
             inverses: Some(self.inverses),
+            records: None,
         }
     }
 }
 
-impl<A, R> Registration<A> for harmos_domain::state::RecordDefinitions<R>
+impl<A, R: 'static> Registration<A> for harmos_domain::state::RecordRegistry<R>
 where
     A: Application<Record = R>,
 {
     fn register(self) -> Catalog<A> {
         Catalog::Transactions {
-            definitions: self.definitions,
+            definitions: self.definitions(),
             decode: |_, _, _| Ok(None),
             inverses: None,
+            records: Some(self),
         }
     }
 }
@@ -499,7 +502,15 @@ impl<A: Application> Builder<A> {
         self.simulation.register(catalog.clone());
 
         match catalog.register() {
-            Catalog::Transactions { definitions, decode, inverses } => {
+            Catalog::Transactions { definitions, decode, inverses, records } => {
+                if let Some(records) = records {
+                    self.catalog.record_registry = self.catalog.record_registry.clone().extend(records);
+                    if let Err(source) = self.catalog.record_registry.validate() {
+                        self.configuration_errors.push(StartupError::Binding {
+                            source: Box::new(harmos_operations::execution::ServingError::Declaration(source)),
+                        });
+                    }
+                }
                 if let Some(inverses) = inverses {
                     self.inverses = inverses;
                 }

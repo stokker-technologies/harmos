@@ -27,12 +27,12 @@ pub use crate::error::Error;
 pub use capture::{CaptureError, CaptureLimits, JournalCapture};
 pub use entry::{At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 pub use envelope::{DefinitionId, Envelope, FactSource, Kind, Recorded, SystemFact};
-pub use harmos_domain::state::{RecordDefinitions, TransactionDefinitions};
+pub use harmos_domain::state::TransactionDefinitions;
 pub use history::{Focus, Origin, Reversals};
 pub use managed::ManagedState;
 pub use manager::StateManager;
 pub(crate) use manager::{Context, Feed, TrackedState};
-pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordEntry, RecordProjection, Records};
+pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordEntry, RecordRegistry, Records};
 pub use snapshot::SnapshotPolicy;
 pub use transaction::{DecodeError, Invertible, Never, Transaction, TransactionCatalog};
 
