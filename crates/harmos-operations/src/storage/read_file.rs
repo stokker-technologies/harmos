@@ -11,7 +11,7 @@
 
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 use harmos_domain::operations::{FailureKind, ReplaySafety};
-use harmos_storage::{ErasedCatalog, StorageManager};
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
@@ -29,7 +29,7 @@ impl ProtobufOperation for ReadFile {
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] =
-        &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<crate::execution::operations::access::GrantAccess>()];
+        &[Resource::of::<StorageManager>(), Resource::of::<crate::execution::operations::access::GrantAccess>()];
 
     fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
         let source = request
@@ -47,7 +47,7 @@ impl ProtobufOperation for ReadFile {
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
-        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<harmos_domain::model::storage::FileCompletion> = async {
             let source: harmos_domain::model::storage::FileSource =
                 request.source.ok_or(crate::Error::InvalidInput { field: "source", reason: "required" })?.try_into()?;

@@ -44,27 +44,39 @@ struct Trace {
 
 struct AttemptGuard(Arc<Trace>);
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Answer {
     value: u64,
 }
 
-#[harmos_runtime::operation(resources = [Trace], id = "authored.read", response = Answer,
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: harmos_runtime::RetryPolicy::Never,
-    },
-)]
+#[derive(harmos_runtime::Message, Debug)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Answer)]
+#[derive(Clone)]
 struct ReadContractDeclaration {
     mode: Mode,
 }
 
+static READ_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ReadContractDeclaration>(
+        "authored.read",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(2),
+            attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: harmos_runtime::RetryPolicy::Never,
+        },
+    );
+
+const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ReadContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ReadContractDeclaration>::new(&READ_CONTRACT_DECLARATION_DESCRIPTION);
+
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Mode {
+    #[default]
     Complete,
     Wait,
     Panic,
@@ -74,20 +86,28 @@ enum Mode {
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for ReadContractDeclaration {
-    type Error = std::convert::Infallible;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Answer>, Self::Error> {
-        let trace = ctx.resource::<Trace>();
-        let _guard = AttemptGuard(trace.clone());
-        trace.entered.fetch_add(1, Ordering::SeqCst);
-        trace.running.notify_one();
-        match self.mode {
-            Mode::Complete => Ok(Answer { value: 7 }.into()),
-            Mode::Wait => std::future::pending().await,
-            Mode::Panic => panic!("scripted attempt panic"),
-        }
+async fn read_contract_declaration_handler(
+    request: ReadContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<ReadContractDeclaration>,
+) -> Result<harmos_runtime::Response<Answer>, std::convert::Infallible> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    let _guard = AttemptGuard(trace.clone());
+    trace.entered.fetch_add(1, Ordering::SeqCst);
+    trace.running.notify_one();
+    match request.mode {
+        Mode::Complete => Ok(Answer { value: 7 }.into()),
+        Mode::Wait => std::future::pending().await,
+        Mode::Panic => panic!("scripted attempt panic"),
     }
+}
+
+fn read_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        READ_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>()] },
+        read_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for AttemptGuard {
@@ -103,9 +123,10 @@ impl Drop for AttemptGuard {
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup
-            .resource::<Trace>(trace.clone())
-            .operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
+        setup.resource::<Trace>(trace.clone()).operation(
+            read_contract_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        );
     })
     .await
     .unwrap();
@@ -160,7 +181,7 @@ mod listed {
 
     // Local Imports
     use super::App;
-    use harmos_runtime::operations::{Contracts, Declarations, OperationPolicy, RetryPolicy};
+    use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 
     /* === Constants === */
 
@@ -177,31 +198,65 @@ mod listed {
 
     /* === Structs === */
 
-    #[harmos_runtime::operation(id = "authored.doubling",  response = u32, policy = POLICY)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = u32)]
+    #[derive(Clone)]
     pub struct DoublingDeclaration {
         value: u32,
     }
 
-    #[harmos_runtime::operation(resources = [u32], id = "authored.inferred_owned",
-        response = u32,
-        policy = POLICY
-    )]
+    pub static DOUBLING_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<DoublingDeclaration>("authored.doubling", POLICY);
+
+    pub const DOUBLING_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DoublingDeclaration> =
+        harmos_runtime::operations::OperationSpec::<DoublingDeclaration>::new(&DOUBLING_DECLARATION_DESCRIPTION);
+
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = u32)]
+    #[derive(Clone)]
     struct InferredOwnedDeclaration {
         value: u32,
     }
 
-    #[harmos_runtime::operation(resources = [BorrowOwner], id = "authored.borrow_owner",
-        response = u32,
-        policy = POLICY,
-    )]
+    static INFERRED_OWNED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<InferredOwnedDeclaration>("authored.inferred_owned", POLICY);
+
+    const INFERRED_OWNED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<InferredOwnedDeclaration> =
+        harmos_runtime::operations::OperationSpec::<InferredOwnedDeclaration>::new(&INFERRED_OWNED_DECLARATION_DESCRIPTION);
+
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = u32)]
+    #[derive(Clone)]
     struct BorrowOwnerDeclaration {
         value: u32,
     }
 
-    #[harmos_runtime::operation(resources = [u32], id = "authored.declared_owned", response = u32, policy = POLICY)]
+    static BORROW_OWNER_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<BorrowOwnerDeclaration>("authored.borrow_owner", POLICY);
+
+    const BORROW_OWNER_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<BorrowOwnerDeclaration> =
+        harmos_runtime::operations::OperationSpec::<BorrowOwnerDeclaration>::new(&BORROW_OWNER_DECLARATION_DESCRIPTION);
+
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = u32)]
+    #[derive(Clone)]
     struct DeclaredOwnedDeclaration {
         value: u32,
     }
+
+    static DECLARED_OWNED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<DeclaredOwnedDeclaration>("authored.declared_owned", POLICY);
+
+    const DECLARED_OWNED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DeclaredOwnedDeclaration> =
+        harmos_runtime::operations::OperationSpec::<DeclaredOwnedDeclaration>::new(&DECLARED_OWNED_DECLARATION_DESCRIPTION);
 
     struct BorrowOwner {
         value: u32,
@@ -212,37 +267,66 @@ mod listed {
 
     /* === Enums === */
 
-    #[harmos_runtime::catalog]
-    pub enum Declared {
-        Doubling(DoublingDeclaration),
+    pub fn declared_catalog() -> harmos_runtime::operations::Catalog {
+        declared_catalog_batch().named(concat!(module_path!(), "::Declared"))
+    }
+
+    fn declared_catalog_batch() -> harmos_runtime::__private::Catalog {
+        let mut batch = harmos_runtime::__private::Catalog::new();
+        batch = batch.entry(doubling_declaration_operation().expect("representable operation"));
+        batch
     }
 
     /* === Traits === */
 
     /* === Implementations === */
 
-    impl harmos_runtime::Operation for DoublingDeclaration {
-        type Error = harmos_runtime::Error;
-
-        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u32>, Self::Error> {
-            Ok((self.value * 2).into())
-        }
+    pub async fn doubling_declaration_handler(
+        request: DoublingDeclaration, _: harmos_runtime::operations::FunctionContext<DoublingDeclaration>,
+    ) -> Result<harmos_runtime::Response<u32>, harmos_runtime::Error> {
+        Ok((request.value * 2).into())
     }
 
-    impl harmos_runtime::Operation for InferredOwnedDeclaration {
-        type Error = harmos_runtime::Error;
-
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u32>, Self::Error> {
-            Ok(harmos_runtime::Response::from_owner(ctx.resource::<u32>()))
-        }
+    pub fn doubling_declaration_operation()
+    -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+        harmos_runtime::operations::OperationFactory::function(
+            DOUBLING_DECLARATION_OPERATION,
+            const { &[] },
+            doubling_declaration_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
     }
 
-    impl harmos_runtime::Operation for DeclaredOwnedDeclaration {
-        type Error = harmos_runtime::Error;
+    async fn inferred_owned_declaration_handler(
+        _request: InferredOwnedDeclaration, ctx: harmos_runtime::operations::FunctionContext<InferredOwnedDeclaration>,
+    ) -> Result<harmos_runtime::Response<u32>, harmos_runtime::Error> {
+        Ok(harmos_runtime::Response::from_owner(ctx.resource::<u32>().expect("declared resource is registered")))
+    }
 
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u32>, Self::Error> {
-            Ok(harmos_runtime::Response::from_owner(ctx.resource::<u32>()))
-        }
+    fn inferred_owned_declaration_operation()
+    -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+        harmos_runtime::operations::OperationFactory::function(
+            INFERRED_OWNED_DECLARATION_OPERATION,
+            const { &[harmos_runtime::Resource::of::<u32>()] },
+            inferred_owned_declaration_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
+    }
+
+    async fn declared_owned_declaration_handler(
+        _request: DeclaredOwnedDeclaration, ctx: harmos_runtime::operations::FunctionContext<DeclaredOwnedDeclaration>,
+    ) -> Result<harmos_runtime::Response<u32>, harmos_runtime::Error> {
+        Ok(harmos_runtime::Response::from_owner(ctx.resource::<u32>().expect("declared resource is registered")))
+    }
+
+    fn declared_owned_declaration_operation()
+    -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+        harmos_runtime::operations::OperationFactory::function(
+            DECLARED_OWNED_DECLARATION_OPERATION,
+            const { &[harmos_runtime::Resource::of::<u32>()] },
+            declared_owned_declaration_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
     }
 
     impl std::borrow::Borrow<u32> for BorrowOwner {
@@ -253,14 +337,22 @@ mod listed {
         }
     }
 
-    impl harmos_runtime::Operation for BorrowOwnerDeclaration {
-        type Error = harmos_runtime::Error;
+    async fn borrow_owner_declaration_handler(
+        _request: BorrowOwnerDeclaration, ctx: harmos_runtime::operations::FunctionContext<BorrowOwnerDeclaration>,
+    ) -> Result<harmos_runtime::Response<u32>, harmos_runtime::Error> {
+        let owner = ctx.resource::<BorrowOwner>().expect("declared resource is registered");
+        owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(harmos_runtime::Response::from_owner(owner))
+    }
 
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u32>, Self::Error> {
-            let owner = ctx.resource::<BorrowOwner>();
-            owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(harmos_runtime::Response::from_owner(owner))
-        }
+    fn borrow_owner_declaration_operation()
+    -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+        harmos_runtime::operations::OperationFactory::function(
+            BORROW_OWNER_DECLARATION_OPERATION,
+            const { &[harmos_runtime::Resource::of::<BorrowOwner>()] },
+            borrow_owner_declaration_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
     }
 
     /* === Public Functions === */
@@ -276,9 +368,10 @@ mod listed {
             operations: std::sync::OnceLock::new(),
         });
         let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
-            setup
-                .resource::<BorrowOwner>(owner.clone())
-                .operations::<crate::operations::Single<BorrowOwnerDeclaration>>(harmos_runtime::operations::Lane::default());
+            setup.resource::<BorrowOwner>(owner.clone()).operation(
+                borrow_owner_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            );
         })
         .await
         .unwrap();
@@ -305,8 +398,14 @@ mod listed {
         let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
             setup
                 .resource::<u32>(original.clone())
-                .operations::<crate::operations::Single<InferredOwnedDeclaration>>(harmos_runtime::operations::Lane::default())
-                .operations::<crate::operations::Single<DeclaredOwnedDeclaration>>(harmos_runtime::operations::Lane::default());
+                .operation(
+                    inferred_owned_declaration_operation().expect("representable operation"),
+                    harmos_runtime::operations::Lane::default(),
+                )
+                .operation(
+                    declared_owned_declaration_operation().expect("representable operation"),
+                    harmos_runtime::operations::Lane::default(),
+                );
         })
         .await
         .unwrap();
@@ -327,10 +426,9 @@ mod listed {
 
     #[test]
     fn catalogs_project_declarations() {
-        let projected = Declared::catalog();
-        assert_eq!(projected, Declarations::of::<Declared>().unwrap());
+        let projected = declared_catalog().definitions().expect("valid catalog");
         assert_eq!(projected[0].id.as_str(), "authored.doubling");
-        let contracts = Contracts::of::<Declared>().unwrap();
+        let contracts = declared_catalog().contracts().unwrap();
         assert_eq!(contracts[0].fingerprint(), projected[0].fingerprint);
     }
 }

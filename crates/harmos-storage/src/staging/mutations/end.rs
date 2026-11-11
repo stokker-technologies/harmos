@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.mutations.end.finish_file_once", level = "debug", skip_all)]
     pub async fn finish_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileReference> {
         self.inner.primary.history().check(&token.history)?;

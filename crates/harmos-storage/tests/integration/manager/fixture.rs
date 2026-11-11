@@ -90,7 +90,7 @@ impl Fixture {
 
 /* === Public Functions === */
 
-pub(crate) async fn start<C>(storage: &StorageManager<C>) {
+pub(crate) async fn start(storage: &StorageManager) {
     storage
         .start_with(Arc::new(()), |mut worker| {
             let task = tokio::spawn(async move {
@@ -139,7 +139,7 @@ pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pi
     std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }
 
-pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
+pub(crate) async fn write(storage: &StorageManager, id: &str) -> StorageCursor {
     storage.write_records(vec![record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
 

@@ -27,7 +27,7 @@ use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
 };
-use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy, WireDeclaration};
+use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolicy};
 use harmos_runtime::records::PluginListenerRegistration;
 use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime, state::Position};
@@ -52,7 +52,7 @@ struct Fact {
     dropped: Arc<AtomicUsize>,
 }
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct WireFact {
     value: u32,
 }
@@ -98,22 +98,59 @@ struct Host {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum HandlerOperations {
-    First(HearingFirst),
-    Second(HearingSecond),
+fn handler_operations_catalog() -> harmos_runtime::operations::Catalog {
+    handler_operations_catalog_batch().named(concat!(module_path!(), "::HandlerOperations"))
 }
 
-#[harmos_runtime::records]
+fn handler_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(hearing_first_operation().expect("representable operation"));
+    batch = batch.entry(hearing_second_operation().expect("representable operation"));
+    batch
+}
+
 enum Rows {
     Fact(Fact),
 }
-
-#[harmos_domain::catalog]
-enum Callbacks {
-    First(HearingFirst),
-    Second(HearingSecond),
+impl From<Fact> for Rows {
+    fn from(value: Fact) -> Self {
+        Self::Fact(value)
+    }
 }
+impl harmos_runtime::state::CatalogCodec for Rows {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Fact(_) => <Fact as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Fact(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn rows_registry() -> harmos_runtime::state::RecordRegistry<Rows> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Fact as harmos_runtime::state::Record>::ENTRY, Rows::Fact, |value| {
+        let Rows::Fact(value) = value;
+        Some(value)
+    })
+}
+
+static CALLBACKS_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 2] = [
+    harmos_domain::catalog::Node::Leaf(HEARING_FIRST_OPERATION.wire()),
+    harmos_domain::catalog::Node::Leaf(HEARING_SECOND_OPERATION.wire()),
+];
+static CALLBACKS_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 2] = [
+    harmos_domain::catalog::Node::Leaf(HEARING_FIRST_OPERATION.callees()),
+    harmos_domain::catalog::Node::Leaf(HEARING_SECOND_OPERATION.callees()),
+];
+
+const CALLBACKS_CATALOG: harmos_runtime::operations::CatalogDescription = harmos_runtime::operations::CatalogDescription::new(
+    concat!(module_path!(), "::Callbacks"),
+    &CALLBACKS_CATALOG_DECLARATIONS,
+    &CALLBACKS_CATALOG_CALLEES,
+    None,
+);
 
 #[derive(Debug, thiserror::Error)]
 enum Failed {
@@ -199,10 +236,18 @@ impl Drop for AttemptGuard {
         self.0.settled.notify_one();
     }
 }
-#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = Heard::<true>::CALLBACK, response = (),
-    policy = Heard::<true>::POLICY, visibility = Public)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = ())]
 #[derive(Clone)]
 struct HearingFirst(Delivery<WireFact>);
+
+static HEARING_FIRST_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<HearingFirst>(Heard::<true>::CALLBACK, Heard::<true>::POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const HEARING_FIRST_OPERATION: harmos_runtime::operations::OperationSpec<HearingFirst> =
+    harmos_runtime::operations::OperationSpec::<HearingFirst>::new(&HEARING_FIRST_DESCRIPTION);
 
 impl harmos_runtime::Message for HearingFirst {
     const CODEC: &'static str = <Delivery<WireFact> as harmos_runtime::Message>::CODEC;
@@ -229,39 +274,56 @@ impl harmos_runtime::schema::Described for HearingFirst {
     const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<WireFact> as harmos_runtime::schema::Described>::FIELDS;
     const MARKER: &'static [u8] = <Delivery<WireFact> as harmos_runtime::schema::Described>::MARKER;
 }
-impl harmos_runtime::Operation for HearingFirst {
-    type Error = Failed;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
-        let owner = ctx.resource::<OwnerResource>();
-        let resources = owner.0.get().expect("listener owner configured before registration").clone();
-        let _guard = AttemptGuard(resources.clone());
-        let request = self.0;
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
-            resources.seen.lock().unwrap().push((true, request.row().value, position));
-            resources.observed.notify_one();
-            if true && request.row().value == 0 {
-                if resources.reenter {
-                    resources.records.publish(fact(9)).await?;
-                }
-                if resources.block {
-                    resources.started.notify_one();
-                    resources.resume.notified().await;
-                }
-                if resources.fail_attempt.load(Ordering::SeqCst) {
-                    return Err(Failed::Scripted);
-                }
+async fn hearing_first_handler(
+    request: HearingFirst, ctx: harmos_runtime::operations::FunctionContext<HearingFirst>,
+) -> std::result::Result<harmos_runtime::Response<()>, Failed> {
+    let owner = ctx.resource::<OwnerResource>().expect("declared resource is registered");
+    let resources = owner.0.get().expect("listener owner configured before registration").clone();
+    let _guard = AttemptGuard(resources.clone());
+    let request = request.0;
+    let result: ::core::result::Result<(), Failed> = async move {
+        let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
+        resources.seen.lock().unwrap().push((true, request.row().value, position));
+        resources.observed.notify_one();
+        if true && request.row().value == 0 {
+            if resources.reenter {
+                resources.records.publish(fact(9)).await?;
             }
-            Ok(())
+            if resources.block {
+                resources.started.notify_one();
+                resources.resume.notified().await;
+            }
+            if resources.fail_attempt.load(Ordering::SeqCst) {
+                return Err(Failed::Scripted);
+            }
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(())
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
-#[harmos_runtime::operation(codec = manual, resources = [OwnerResource], id = Heard::<false>::CALLBACK, response = (),
-    policy = Heard::<false>::POLICY, visibility = Public)]
+
+fn hearing_first_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        HEARING_FIRST_OPERATION,
+        const { &[harmos_runtime::Resource::of::<OwnerResource>()] },
+        hearing_first_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = ())]
 #[derive(Clone)]
 struct HearingSecond(Delivery<WireFact>);
+
+static HEARING_SECOND_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<HearingSecond>(Heard::<false>::CALLBACK, Heard::<false>::POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const HEARING_SECOND_OPERATION: harmos_runtime::operations::OperationSpec<HearingSecond> =
+    harmos_runtime::operations::OperationSpec::<HearingSecond>::new(&HEARING_SECOND_DESCRIPTION);
 
 impl harmos_runtime::Message for HearingSecond {
     const CODEC: &'static str = <Delivery<WireFact> as harmos_runtime::Message>::CODEC;
@@ -288,34 +350,43 @@ impl harmos_runtime::schema::Described for HearingSecond {
     const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<WireFact> as harmos_runtime::schema::Described>::FIELDS;
     const MARKER: &'static [u8] = <Delivery<WireFact> as harmos_runtime::schema::Described>::MARKER;
 }
-impl harmos_runtime::Operation for HearingSecond {
-    type Error = Failed;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::result::Result<harmos_runtime::Response<()>, Self::Error> {
-        let owner = ctx.resource::<OwnerResource>();
-        let resources = owner.0.get().expect("listener owner configured before registration").clone();
-        let _guard = AttemptGuard(resources.clone());
-        let request = self.0;
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
-            resources.seen.lock().unwrap().push((false, request.row().value, position));
-            resources.observed.notify_one();
-            if false && request.row().value == 0 {
-                if resources.reenter {
-                    resources.records.publish(fact(9)).await?;
-                }
-                if resources.block {
-                    resources.started.notify_one();
-                    resources.resume.notified().await;
-                }
-                if resources.fail_attempt.load(Ordering::SeqCst) {
-                    return Err(Failed::Scripted);
-                }
+async fn hearing_second_handler(
+    request: HearingSecond, ctx: harmos_runtime::operations::FunctionContext<HearingSecond>,
+) -> std::result::Result<harmos_runtime::Response<()>, Failed> {
+    let owner = ctx.resource::<OwnerResource>().expect("declared resource is registered");
+    let resources = owner.0.get().expect("listener owner configured before registration").clone();
+    let _guard = AttemptGuard(resources.clone());
+    let request = request.0;
+    let result: ::core::result::Result<(), Failed> = async move {
+        let DeliveryContext::Record { position } = request.context() else { panic!("original record coordinate") };
+        resources.seen.lock().unwrap().push((false, request.row().value, position));
+        resources.observed.notify_one();
+        if false && request.row().value == 0 {
+            if resources.reenter {
+                resources.records.publish(fact(9)).await?;
             }
-            Ok(())
+            if resources.block {
+                resources.started.notify_one();
+                resources.resume.notified().await;
+            }
+            if resources.fail_attempt.load(Ordering::SeqCst) {
+                return Err(Failed::Scripted);
+            }
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(())
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn hearing_second_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        HEARING_SECOND_OPERATION,
+        const { &[harmos_runtime::Resource::of::<OwnerResource>()] },
+        hearing_second_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl PluginLifecycle for Host {
@@ -338,10 +409,10 @@ impl PluginLifecycle for Host {
         resources.endpoint = Some(router.enter("listener").unwrap());
         let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
         self.scope = Some(scope.clone());
-        resources.operations = Some(
-            self.operations
-                .stage_plugin(scope, |bindings| bindings.operations::<HandlerOperations>(harmos_runtime::operations::Lane::default()))?,
-        );
+        resources.operations =
+            Some(self.operations.stage_plugin(scope, |bindings| {
+                bindings.catalog(handler_operations_catalog(), harmos_runtime::operations::Lane::default())
+            })?);
         if !self.skip_sources {
             let original = Arc::new(tokio::sync::Mutex::new(self.owner.records.stage_listeners(
                 scope,
@@ -404,8 +475,8 @@ fn fact(value: u32) -> Fact {
 fn candidate() -> PluginDefinitions {
     let mut listeners = Vec::new();
     for (id, callback) in [
-        ("listener.first", WireDeclaration::of::<HearingFirst>().contract().unwrap()),
-        ("listener.second", WireDeclaration::of::<HearingSecond>().contract().unwrap()),
+        ("listener.first", HEARING_FIRST_OPERATION.wire().contract().unwrap()),
+        ("listener.second", HEARING_SECOND_OPERATION.wire().contract().unwrap()),
     ] {
         listeners.push(
             harmos_domain::listeners::Definition::new(
@@ -431,7 +502,7 @@ fn candidate() -> PluginDefinitions {
             requires: vec![],
             configuration: b"null".to_vec(),
             contributions: PluginContributions {
-                operations: harmos_runtime::operations::Declarations::of::<Callbacks>().unwrap(),
+                operations: CALLBACKS_CATALOG.definitions().unwrap(),
                 listeners,
                 ..PluginContributions::default()
             },
@@ -444,7 +515,7 @@ fn candidate() -> PluginDefinitions {
 async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
         setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
-        setup.settings().register(Rows::catalog());
+        setup.settings().register(rows_registry());
         setup.settings().tail(tail);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),

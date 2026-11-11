@@ -49,16 +49,15 @@ struct State {
 /* === Implementations === */
 
 impl Table {
-    pub(crate) fn install_lifecycle<D: harmos_operations::execution::operations::Executable>(
-        &mut self, resources: harmos_operations::execution::__private::ResourceSet, descriptor: crate::lifecycle::Descriptor,
+    pub(crate) fn install_lifecycle(
+        &mut self, factory: harmos_operations::execution::operations::OperationFactory,
+        resources: harmos_operations::execution::__private::ResourceSet, descriptor: crate::lifecycle::Descriptor,
     ) -> Result<(), ServingError> {
-        if descriptor.action().id() != D::ID
-            || descriptor.contract().fingerprint()
-                != (harmos_domain::operations::Entry::of::<D>().fingerprint)().map_err(|_| ServingError::Catalog)?
+        if descriptor.action().id() != factory.definition.id.as_str()
+            || descriptor.contract().fingerprint() != factory.definition.fingerprint
         {
             return Err(ServingError::Catalog);
         }
-        let factory = harmos_operations::execution::__private::RegistrationBatch::new().operation::<D>().operations.remove(0);
         let saved = std::mem::replace(&mut self.resources, resources);
         let result = self.install_contract(factory, descriptor.into(), true);
         self.resources = saved;

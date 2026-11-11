@@ -24,7 +24,7 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
-use super::waveforms::{self, Experiment, Objects, Sample};
+use super::waveforms::{self, Experiment, Sample, objects_catalog};
 use harmos_storage::Error;
 use harmos_storage::Query;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
@@ -48,9 +48,10 @@ use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, Stora
 
 /* === Private Functions === */
 
-async fn manager(settings: StorageSettings) -> (StorageManager<Objects>, Arc<Data<Objects>>) {
-    let data = Arc::new(Data::<Objects>::with_catalog(history()));
-    let storage = StorageManager::<Objects>::new(
+async fn manager(settings: StorageSettings) -> (StorageManager, Arc<Data>) {
+    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+    let storage = StorageManager::with_catalog(
+        objects_catalog(),
         StorageBackends {
             primary: data.clone(),
             state: Arc::new(Recovery::new(history())),
@@ -68,7 +69,7 @@ fn paged() -> StorageSettings {
     settings
 }
 
-async fn write(storage: &StorageManager<Objects>, id: &str, label: &str) -> ObjectReceipt {
+async fn write(storage: &StorageManager, id: &str, label: &str) -> ObjectReceipt {
     let receipt = storage.write_object(&Experiment { id: id.into(), label: label.into() }).await.unwrap();
     storage.flush_until(&receipt.position).await.unwrap();
     receipt
@@ -84,7 +85,7 @@ fn samples() -> RecordSelection {
     }
 }
 
-async fn labels(storage: &StorageManager<Objects>, read: ObjectRead<'_, Experiment>) -> Vec<(String, ObjectReceipt)> {
+async fn labels(storage: &StorageManager, read: ObjectRead<'_, Experiment>) -> Vec<(String, ObjectReceipt)> {
     let pages = storage.read_objects(read).await.unwrap().collect().await.unwrap();
     pages
         .iter()

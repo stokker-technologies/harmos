@@ -41,16 +41,19 @@ pub const POLICY: OperationPolicy = OperationPolicy {
 
 pub struct Control;
 
-impl crate::operations::OperationDeclaration for Control {
+impl harmos_domain::operations::RequestShape for Control {
     type Request = ControlRequest;
     type Response = ();
     type Input = crate::operations::NoStream;
     type Output = crate::operations::NoStream;
-    const ID: &'static str = "harmos_observe";
-    const POLICY: crate::operations::OperationPolicy = POLICY;
-    const VISIBILITY: crate::operations::Visibility = Visibility::Private;
-    const REPLAY: crate::operations::ReplaySafety = ReplaySafety::Idempotent;
 }
+pub static CONTROL_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+    harmos_domain::operations::WireDeclaration::request::<Control>("harmos_observe", POLICY)
+        .visibility(Visibility::Private)
+        .replay(ReplaySafety::Idempotent);
+
+pub const CONTROL_OPERATION: harmos_domain::operations::OperationSpec<Control> =
+    harmos_domain::operations::OperationSpec::<Control>::new(&CONTROL_DESCRIPTION);
 
 /* === Type Aliases === */
 
@@ -101,7 +104,7 @@ impl Described for ControlRequest {
 
 // The Contract Every Observer-Declaring Sidecar Serves.
 pub fn contract() -> Result<Contract, ContractError> {
-    Contract::reserved::<Control>(POLICY)
+    Contract::reserved(&CONTROL_OPERATION)
 }
 
 /* === Private Functions === */

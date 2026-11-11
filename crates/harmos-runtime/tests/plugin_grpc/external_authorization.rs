@@ -55,29 +55,39 @@ struct Bearers;
 // Bearers Are Denied.
 struct Holdings;
 
-#[harmos_runtime::message]
-#[derive(Clone)]
+#[derive(harmos_runtime::Message, Debug, Default, Clone)]
 struct Fetch {
     value: u32,
 }
 
-#[harmos_runtime::operation(resources = [Runs], id = "gated.local",
-    policy = POLICY,
-    response = Fetch,
-    visibility = Public,
-    grpc(package = "fixture.gated.v1", service = "Local", method = "Fetch"),
-    grant = |request: &LocalFetchDeclaration| scoped("gated.local", request.value),
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Fetch)]
 #[derive(Clone)]
 struct LocalFetchDeclaration {
     value: u32,
 }
 
+static LOCAL_FETCH_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<LocalFetchDeclaration>("gated.local", POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("fixture.gated.v1", "Local", "Fetch"));
+
+const LOCAL_FETCH_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<LocalFetchDeclaration> =
+    harmos_runtime::operations::OperationSpec::<LocalFetchDeclaration>::new(&LOCAL_FETCH_DECLARATION_DESCRIPTION)
+        .grant(|request: &LocalFetchDeclaration| scoped("gated.local", request.value));
+
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum LocalOperations {
-    Fetch(LocalFetchDeclaration),
+fn local_operations_catalog() -> harmos_runtime::operations::Catalog {
+    local_operations_catalog_batch().named(concat!(module_path!(), "::LocalOperations"))
+}
+
+fn local_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(local_fetch_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
@@ -117,14 +127,22 @@ impl harmos_runtime::operations::authorization::Authorizer for Holdings {
     }
 }
 
-impl harmos_runtime::Operation for LocalFetchDeclaration {
-    type Error = harmos_runtime::Error;
+async fn local_fetch_declaration_handler(
+    request: LocalFetchDeclaration, ctx: harmos_runtime::operations::FunctionContext<LocalFetchDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Fetch>> {
+    let runs = ctx.resource::<Runs>().expect("declared resource is registered");
+    runs.0.fetch_add(1, Ordering::SeqCst);
+    Ok(Fetch { value: request.value + 1 }.into())
+}
 
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Fetch>> {
-        let runs = ctx.resource::<Runs>();
-        runs.0.fetch_add(1, Ordering::SeqCst);
-        Ok(Fetch { value: self.value + 1 }.into())
-    }
+fn local_fetch_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        LOCAL_FETCH_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Runs>()] },
+        local_fetch_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 /* === Public Functions === */
@@ -170,7 +188,7 @@ async fn external_request_grants() {
         });
     })
     .await;
-    runtime.operations.register::<LocalOperations>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(local_operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.operations.register_authorizer(Arc::new(Holdings)).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Bearers)))).unwrap();
 

@@ -25,7 +25,7 @@ use tokio::sync::watch;
 use super::super::caller::Identity;
 use super::super::handler::Outcome;
 use super::super::resident::{self, Activation, Definition, Key, Kind, Lease, Snapshot};
-use super::super::{OperationDeclaration, OperationInstanceId, Response, Running};
+use super::super::{OperationInstanceId, RequestShape, Response, Running};
 use super::Manager;
 use crate::services::{Resident, ServiceDefinition};
 use crate::{Application, Result};
@@ -123,12 +123,13 @@ impl Manager {
         self.resident.hold(lease);
     }
 
-    pub(crate) fn resident_instance<O: OperationDeclaration<Response = ()>>(lease: Lease) -> Running<O> {
+    pub(crate) fn resident_instance<O: RequestShape<Response = ()>>(lease: Lease) -> Running<O> {
         let id = lease.id();
         let generation = lease.generation();
         let control = lease.lifecycle();
         let settled = lease.settlement();
         Running {
+            operation: lease.operation().to_owned(),
             id,
             generation,
             outcome: Outcome::Resident {

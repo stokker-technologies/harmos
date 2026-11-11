@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.writes.write_schema", level = "debug", skip_all)]
     pub async fn write_schema(&self, key: SchemaKey, schema: impl Into<Arc<crate::schema::graph::Schema>>) -> Result<StorageCursor> {
         self.admit_schema(key, schema.into(), None).await

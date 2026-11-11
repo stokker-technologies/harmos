@@ -48,7 +48,7 @@ struct Output(Arc<Mutex<Vec<u8>>>);
 struct Unwritable;
 
 #[cfg(feature = "grpc")]
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct CodecTrace {
     bytes: Vec<u8>,
 }

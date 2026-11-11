@@ -29,7 +29,7 @@ use std::{
 
 // Local Imports
 use super::instance::Instance;
-use super::{CallContext, ContextError, ContextValue, EndpointSet, OperationDeclaration, Response, RetryPolicy};
+use super::{CallContext, ContextError, ContextValue, EndpointSet, RequestShape, Response, RetryPolicy};
 use crate::execution::{Message, StreamSpec};
 
 /* === Constants === */
@@ -47,7 +47,7 @@ pub struct RequestClaims {
 }
 
 #[must_use = "an invocation runs when awaited or started"]
-pub struct Invocation<H: OperationHost, O: OperationDeclaration, E: EndpointSet = ()> {
+pub struct Invocation<H: OperationHost, O: RequestShape, E: EndpointSet = ()> {
     host: H,
     request: O::Request,
     retry: Option<RetryPolicy>,
@@ -62,20 +62,20 @@ pub struct Invocation<H: OperationHost, O: OperationDeclaration, E: EndpointSet 
 pub trait OperationHost: Send + Sync + Sized {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    type Instance<O: OperationDeclaration>: Instance<O, Error = Self::Error>;
+    type Instance<O: RequestShape>: Instance<O, Error = Self::Error>;
 
-    fn operation<O: OperationDeclaration<Request = O>>(&self, request: O) -> Invocation<Self, O>
+    fn operation<O: RequestShape<Request = O>>(&self, request: O) -> Invocation<Self, O>
     where
         Self: Clone,
     {
         Invocation::new(self.clone(), request)
     }
 
-    fn invoke<O: OperationDeclaration, E: EndpointSet>(
+    fn invoke<O: RequestShape, E: EndpointSet>(
         &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
     ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
 
-    fn resolve<O: OperationDeclaration, E: EndpointSet>(
+    fn resolve<O: RequestShape, E: EndpointSet>(
         &self, request: O::Request, retry: Option<RetryPolicy>, endpoints: E,
     ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
         async move { self.invoke::<O, E>(request, retry, endpoints).await?.join().await }
@@ -85,15 +85,15 @@ pub trait OperationHost: Send + Sync + Sized {
 
     fn with_value<T: ContextValue>(&self, value: T) -> Result<Self, ContextError>;
 
-    fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
+    fn submit<O: RequestShape>(&self, request: O::Request) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
 
     // The caller admits the owner before allocating the request payload. Native
     // hosts retain it with accepted work; remote hosts refuse local ownership.
-    fn submit_owned<O: OperationDeclaration>(
+    fn submit_owned<O: RequestShape>(
         &self, request: O::Request, claims: RequestClaims,
     ) -> impl Future<Output = Result<Self::Instance<O>, Self::Error>> + Send;
 
-    fn call_owned<O: OperationDeclaration>(
+    fn call_owned<O: RequestShape>(
         &self, request: O::Request, claims: RequestClaims,
     ) -> impl Future<Output = Result<Response<O::Response>, Self::Error>> + Send {
         async move { self.submit_owned::<O>(request, claims).await?.join().await }
@@ -111,7 +111,7 @@ pub trait OperationHost: Send + Sync + Sized {
 
 /* === Implementations === */
 
-impl<H: OperationHost, O: OperationDeclaration> Invocation<H, O> {
+impl<H: OperationHost, O: RequestShape> Invocation<H, O> {
     pub fn new(host: H, request: O::Request) -> Self {
         Self {
             host,
@@ -122,7 +122,7 @@ impl<H: OperationHost, O: OperationDeclaration> Invocation<H, O> {
     }
 }
 
-impl<H: OperationHost, O: OperationDeclaration, E: EndpointSet> Invocation<H, O, E> {
+impl<H: OperationHost, O: RequestShape, E: EndpointSet> Invocation<H, O, E> {
     pub fn retry(mut self, policy: RetryPolicy) -> Self {
         self.retry = Some(policy);
         self
@@ -147,7 +147,7 @@ impl<H: OperationHost, O: OperationDeclaration, E: EndpointSet> Invocation<H, O,
     }
 }
 
-impl<H: OperationHost + 'static, O: OperationDeclaration, E: EndpointSet> IntoFuture for Invocation<H, O, E> {
+impl<H: OperationHost + 'static, O: RequestShape, E: EndpointSet> IntoFuture for Invocation<H, O, E> {
     type Output = Result<Response<O::Response>, H::Error>;
     type IntoFuture = std::pin::Pin<Box<dyn Future<Output = Self::Output> + Send>>;
     fn into_future(self) -> Self::IntoFuture {

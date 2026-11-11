@@ -23,7 +23,7 @@ use std::sync::Arc;
 // Local Imports
 use crate::execution::Lifecycle;
 use crate::execution::lifecycle::Context;
-use crate::execution::operations::{OperationCatalog, StartupError};
+use crate::execution::operations::StartupError;
 
 /* === Constants === */
 
@@ -54,7 +54,9 @@ pub trait ApplicationConfiguration: SetupConfiguration {
     type LaneSettings;
 
     fn lane(&mut self, lane: Self::Lane, settings: Self::LaneSettings);
-    fn operations<C: OperationCatalog>(&mut self, lane: Self::Lane);
+
+    fn catalog(&mut self, catalog: crate::execution::operations::Catalog, lane: Self::Lane);
+    fn operation(&mut self, operation: crate::execution::operations::OperationFactory, lane: Self::Lane);
 }
 
 /* === Implementations === */
@@ -96,18 +98,26 @@ impl<L: Lifecycle> Setup<L>
 where
     <L::Context as Context>::Configuration: ApplicationConfiguration,
 {
+    pub fn operation(
+        &mut self, operation: crate::execution::operations::OperationFactory,
+        lane: <<L::Context as Context>::Configuration as ApplicationConfiguration>::Lane,
+    ) -> &mut Self {
+        self.configuration.operation(operation, lane);
+        self
+    }
+
+    pub fn catalog(
+        &mut self, catalog: crate::execution::operations::Catalog,
+        lane: <<L::Context as Context>::Configuration as ApplicationConfiguration>::Lane,
+    ) -> &mut Self {
+        self.configuration.catalog(catalog, lane);
+        self
+    }
     pub fn lane(
         &mut self, lane: <<L::Context as Context>::Configuration as ApplicationConfiguration>::Lane,
         settings: <<L::Context as Context>::Configuration as ApplicationConfiguration>::LaneSettings,
     ) -> &mut Self {
         self.configuration.lane(lane, settings);
-        self
-    }
-
-    pub fn operations<C: OperationCatalog>(
-        &mut self, lane: <<L::Context as Context>::Configuration as ApplicationConfiguration>::Lane,
-    ) -> &mut Self {
-        self.configuration.operations::<C>(lane);
         self
     }
 }

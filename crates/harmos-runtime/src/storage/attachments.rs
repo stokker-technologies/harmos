@@ -421,19 +421,31 @@ pub(crate) fn declare<A: Application>(
     catalog: &mut Dispatch<A, Payload<A>>, kind: Kind, id: DefinitionId, version: u32, decode: Decode<A>,
 ) {
     match kind {
-        Kind::Transaction => catalog.set_transaction(id, version, apply, decode),
+        Kind::Transaction => {
+            let states = catalog.states.clone();
+            catalog.set_transaction(id, version, Arc::new(move |payload, state| apply(payload, state, &states)), decode);
+        }
         Kind::Record => catalog.set_record(id, version, retain),
     }
 }
 
 /* === Private Functions === */
 
-fn apply<A: Application>(payload: Payload<A>, state: &mut A::State) -> Result<(), DecodeError> {
+fn apply<A: Application>(
+    payload: Payload<A>, state: &mut A::State, states: &crate::state::StateCatalog<A::State, A::Transaction>,
+) -> Result<(), DecodeError> {
     let Payload { prepared, id, version, value } = payload;
     match value {
         Recorded::Transaction(transaction) => {
             if let Some(prepared) = prepared {
-                crate::state::TransactionCatalog::replay(&*transaction, &prepared, state)
+                if !states.is_empty() {
+                    return states.replay(&prepared, state);
+                }
+                if crate::state::CatalogCodec::identify(&*transaction) != (prepared.id.clone(), prepared.version) {
+                    return Err(mismatched(prepared.id, prepared.version));
+                }
+                transaction.apply(state);
+                Ok(())
             } else {
                 transaction.apply(state);
                 Ok(())

@@ -45,14 +45,33 @@ use std::sync::Arc;
 use std::{sync::Mutex, time::Duration};
 
 // The Request Carries The Shared Event Log, So It Stays In Process.
-#[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext], id = "borrowed.request", response = u32, policy = OperationPolicy { timeout: Duration::from_secs(2), attempt_timeout: Duration::from_secs(1),
-    cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::OnTransient { max_retries: 1,
-        backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None } } })]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = u32)]
 #[derive(Clone)]
 struct Request {
     value: u32,
     events: Arc<Mutex<Vec<&'static str>>>,
 }
+
+static REQUEST_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos_runtime::operations::WireDeclaration::request::<Request>(
+    "borrowed.request",
+    OperationPolicy {
+        timeout: Duration::from_secs(2),
+        attempt_timeout: Duration::from_secs(1),
+        cancellation_timeout: std::time::Duration::ZERO,
+        retries: RetryPolicy::OnTransient {
+            max_retries: 1,
+            backoff: Backoff::Fixed {
+                delay: Duration::from_millis(1),
+                jitter: Jitter::None,
+            },
+        },
+    },
+);
+
+const REQUEST_OPERATION: harmos_runtime::operations::OperationSpec<Request> =
+    harmos_runtime::operations::OperationSpec::<Request>::new(&REQUEST_DESCRIPTION);
 crate::operations::in_process!(Request);
 impl harmos_runtime::MemorySize for Request {
     fn memory_size(&self) -> usize {
@@ -65,21 +84,30 @@ impl Drop for Request {
     }
 }
 
-impl harmos_runtime::Operation for Request {
-    type Error = std::io::Error;
-    async fn run(mut self, ctx: harmos_runtime::Context<'_, Self>) -> std::io::Result<harmos_runtime::Response<u32>> {
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        self.events.lock().unwrap().push("run");
-        assert_eq!(self.value, 19);
-        self.value += 1;
-        if host.borrow().attempt() == 0 {
-            return Err(std::io::Error::other("retry"));
-        }
-        Ok(self.value.into())
+async fn request_handler(
+    mut request: Request, ctx: harmos_runtime::operations::FunctionContext<Request>,
+) -> std::io::Result<harmos_runtime::Response<u32>> {
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    request.events.lock().unwrap().push("run");
+    assert_eq!(request.value, 19);
+    request.value += 1;
+    if host.borrow().attempt() == 0 {
+        return Err(std::io::Error::other("retry"));
     }
-    fn classify(_: &Self::Error) -> FailureKind {
-        FailureKind::Transient
-    }
+    Ok(request.value.into())
+}
+
+fn request_classification(_: &std::io::Error) -> FailureKind {
+    FailureKind::Transient
+}
+
+fn request_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        REQUEST_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        request_handler,
+        request_classification,
+    )
 }
 
 #[tokio::test(start_paused = true)]
@@ -87,7 +115,7 @@ async fn retries_clone_the_original_request() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let runtime =
         harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
-            setup.operations::<crate::operations::Single<Request>>(harmos_runtime::operations::Lane::default());
+            setup.operation(request_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();
@@ -109,7 +137,7 @@ async fn transfer_blocks_retry() {
         harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
             setup
                 .resource::<AtomicUsize>(runs.clone())
-                .operations::<crate::operations::Single<Streaming>>(harmos_runtime::operations::Lane::default());
+                .operation(streaming_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();
@@ -142,28 +170,43 @@ async fn transfer_blocks_retry() {
     runtime.shutdown().await.unwrap();
 }
 
-#[harmos_runtime::operation(harmos_path = harmos_runtime, resources = [std::sync::atomic::AtomicUsize],
-    id = "borrowed.streaming",
-    response = (),
-    policy = Request::POLICY,
-    input = u32,
-    output = u32
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = (), input = u32, output = u32)]
+#[derive(Clone)]
 struct Streaming {
     mode: u32,
 }
 
-impl harmos_runtime::Operation for Streaming {
-    type Error = std::io::Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> std::io::Result<harmos_runtime::Response<()>> {
-        ctx.resource::<std::sync::atomic::AtomicUsize>().fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let (_, output) = ctx.streams();
-        if self.mode == 1 {
-            output.send_with(4, || Ok(7)).await.map_err(std::io::Error::other)?;
-        }
-        Err(std::io::Error::other("transient stream failure"))
+static STREAMING_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<Streaming>("borrowed.streaming", REQUEST_OPERATION.entry().policy);
+
+const STREAMING_OPERATION: harmos_runtime::operations::OperationSpec<Streaming> =
+    harmos_runtime::operations::OperationSpec::<Streaming>::new(&STREAMING_DESCRIPTION);
+
+async fn streaming_handler(
+    request: Streaming, ctx: harmos_runtime::operations::FunctionContext<Streaming>,
+) -> std::io::Result<harmos_runtime::Response<()>> {
+    ctx.resource::<std::sync::atomic::AtomicUsize>()
+        .expect("declared resource is registered")
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let (_, output) = ctx.streams();
+    if request.mode == 1 {
+        output.send_with(4, || Ok(7)).await.map_err(std::io::Error::other)?;
     }
-    fn classify(_: &Self::Error) -> FailureKind {
-        FailureKind::Transient
-    }
+    Err(std::io::Error::other("transient stream failure"))
+}
+
+fn streaming_classification(_: &std::io::Error) -> FailureKind {
+    FailureKind::Transient
+}
+
+fn streaming_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        STREAMING_OPERATION,
+        const { &[harmos_runtime::Resource::of::<std::sync::atomic::AtomicUsize>()] },
+        streaming_handler,
+        streaming_classification,
+    )
 }

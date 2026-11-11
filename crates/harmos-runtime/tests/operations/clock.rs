@@ -33,21 +33,31 @@ use harmos_runtime::operations::RetryPolicy;
 
 /* === Structs === */
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = Measured,
-    id = "clock.measure",
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(600),
-        attempt_timeout: Duration::from_secs(600),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    },
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Measured)]
+#[derive(Clone)]
 struct MeasureContractDeclaration {
     wait_nanos: u64,
 }
 
+static MEASURE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<MeasureContractDeclaration>(
+        "clock.measure",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(600),
+            attempt_timeout: Duration::from_secs(600),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const MEASURE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<MeasureContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<MeasureContractDeclaration>::new(&MEASURE_CONTRACT_DECLARATION_DESCRIPTION);
+
 // The Host's Monotonic And Date Readings Across One Wait.
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Measured {
     scoped_nanos: u64,
     wall_nanos: u64,
@@ -55,34 +65,47 @@ struct Measured {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum Operations {
-    MeasureContractDeclaration(MeasureContractDeclaration),
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
+
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(measure_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::Operation for MeasureContractDeclaration {
-    type Error = std::convert::Infallible;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Measured>, Self::Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<Measured, Self::Error> = async move {
-            let scope = context.scope();
-            let scoped = scope.now();
-            let wall = scope.clock().date();
-            scope.clock().sleep(Duration::from_nanos(self.wait_nanos)).await;
-            Ok(Measured {
-                scoped_nanos: nanos(scope.now() - scoped),
-                wall_nanos: nanos(scope.clock().date().duration_since(wall).unwrap()),
-            })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn measure_contract_declaration_handler(
+    request: MeasureContractDeclaration, context: harmos_runtime::operations::FunctionContext<MeasureContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<Measured>, std::convert::Infallible> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<Measured, std::convert::Infallible> = async move {
+        let scope = context.scope();
+        let scoped = scope.now();
+        let wall = scope.clock().date();
+        scope.clock().sleep(Duration::from_nanos(request.wait_nanos)).await;
+        Ok(Measured {
+            scoped_nanos: nanos(scope.now() - scoped),
+            wall_nanos: nanos(scope.clock().date().duration_since(wall).unwrap()),
+        })
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn measure_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        MEASURE_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        measure_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 /* === Public Functions === */
@@ -134,7 +157,7 @@ fn sources_avoid_tokio() {
 #[tokio::test(start_paused = true)]
 async fn clock_measures_script() {
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<Operations>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let scripted = Duration::from_secs(300);
 
     let answer = runtime

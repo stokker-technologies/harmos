@@ -59,112 +59,160 @@ struct FreeGuard {
 
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Mode {
+    #[default]
     Leaf,
     HandleCycle,
     PropagateCycle,
     FullLane,
 }
 
-#[harmos_runtime::operation(resources = [Trace, harmos_runtime::operations::HostContext], response = u64, id = "scoped.parent",  policy = POLICY)]
+#[derive(harmos_runtime::Message, Debug)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct ParentContractDeclaration {
     mode: Mode,
 }
 
-#[harmos_runtime::operation(resources = [Trace, harmos_runtime::operations::HostContext], response = u64, id = "scoped.bound",  policy = POLICY)]
+static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ParentContractDeclaration>("scoped.parent", POLICY);
+
+const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct BoundContractDeclaration {
     hold: bool,
 }
 
-#[harmos_runtime::operation(resources = [Trace], response = u64, id = "scoped.free",  policy = POLICY)]
+static BOUND_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<BoundContractDeclaration>("scoped.bound", POLICY);
+
+const BOUND_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<BoundContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<BoundContractDeclaration>::new(&BOUND_CONTRACT_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct FreeContractDeclaration {
     wait: bool,
 }
 
-#[harmos_runtime::catalog]
-enum Operations {
-    ParentContractDeclaration(ParentContractDeclaration),
-    BoundContractDeclaration(BoundContractDeclaration),
-    FreeContractDeclaration(FreeContractDeclaration),
-}
+static FREE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<FreeContractDeclaration>("scoped.free", POLICY);
+
+const FREE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<FreeContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<FreeContractDeclaration>::new(&FREE_CONTRACT_DECLARATION_DESCRIPTION);
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for ParentContractDeclaration {
-    type Error = Error;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Error> {
-        let trace = ctx.resource::<Trace>();
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        trace.parent_constructions.fetch_add(1, Ordering::SeqCst);
-        let result: ::core::result::Result<u64, Self::Error> = async move {
-            match self.mode {
-                Mode::Leaf => Ok(7),
-                Mode::HandleCycle => {
-                    assert!(matches!(context.submit::<ParentContractDeclaration>(ParentContractDeclaration { mode: Mode::Leaf }),
+async fn parent_contract_declaration_handler(
+    request: ParentContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<ParentContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<u64>, Error> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    trace.parent_constructions.fetch_add(1, Ordering::SeqCst);
+    let result: ::core::result::Result<u64, Error> = async move {
+        match request.mode {
+            Mode::Leaf => Ok(7),
+            Mode::HandleCycle => {
+                assert!(matches!(context.submit::<ParentContractDeclaration>(ParentContractDeclaration { mode: Mode::Leaf }),
                     Err(Error::OperationLaneCycle { parent, child }) if parent == trace.lane && child == trace.lane));
-                    let free = context.submit::<FreeContractDeclaration>(FreeContractDeclaration { wait: false })?.await?;
-                    assert_eq!(*free, 1);
-                    Ok(7)
-                }
-                Mode::PropagateCycle => {
-                    let answer = context.submit::<ParentContractDeclaration>(ParentContractDeclaration { mode: Mode::Leaf })?.await?;
-                    Ok(*answer)
-                }
-                Mode::FullLane => {
-                    let _queued = context.submit::<BoundContractDeclaration>(BoundContractDeclaration { hold: false })?;
-                    let _free = context.submit::<FreeContractDeclaration>(FreeContractDeclaration { wait: true })?;
-                    trace.free_started.notified().await;
-                    Ok(u64::try_from(trace.queued_runs.load(Ordering::SeqCst)).expect("run counts fit in u64"))
-                }
+                let free = context.submit::<FreeContractDeclaration>(FreeContractDeclaration { wait: false })?.await?;
+                assert_eq!(*free, 1);
+                Ok(7)
+            }
+            Mode::PropagateCycle => {
+                let answer = context.submit::<ParentContractDeclaration>(ParentContractDeclaration { mode: Mode::Leaf })?.await?;
+                Ok(*answer)
+            }
+            Mode::FullLane => {
+                let _queued = context.submit::<BoundContractDeclaration>(BoundContractDeclaration { hold: false })?;
+                let _free = context.submit::<FreeContractDeclaration>(FreeContractDeclaration { wait: true })?;
+                trace.free_started.notified().await;
+                Ok(u64::try_from(trace.queued_runs.load(Ordering::SeqCst)).expect("run counts fit in u64"))
             }
         }
-        .await;
-        result.map(::core::convert::Into::into)
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-impl harmos_runtime::Operation for BoundContractDeclaration {
-    type Error = std::convert::Infallible;
-
-    async fn run(self, _context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
-        let trace = _context.resource::<Trace>();
-        let host = _context.resource::<harmos_runtime::operations::HostContext>();
-        let _context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move {
-            if self.hold {
-                trace.bound_started.notify_one();
-                trace.release.notified().await;
-            } else {
-                trace.queued_runs.fetch_add(1, Ordering::SeqCst);
-            }
-            Ok(7)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
+fn parent_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PARENT_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        parent_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
-impl harmos_runtime::Operation for FreeContractDeclaration {
-    type Error = std::convert::Infallible;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
-        let trace = ctx.resource::<Trace>();
-        let _guard = FreeGuard { trace: trace.clone() };
-        let result: ::core::result::Result<u64, Self::Error> = async move {
-            trace.free_started.notify_one();
-            if self.wait {
-                std::future::pending::<()>().await;
-            }
-            Ok(1)
+async fn bound_contract_declaration_handler(
+    request: BoundContractDeclaration, _context: harmos_runtime::operations::FunctionContext<BoundContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<u64>, std::convert::Infallible> {
+    let trace = _context.resource::<Trace>().expect("declared resource is registered");
+    let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let _context = host.borrow();
+    let result: ::core::result::Result<u64, std::convert::Infallible> = async move {
+        if request.hold {
+            trace.bound_started.notify_one();
+            trace.release.notified().await;
+        } else {
+            trace.queued_runs.fetch_add(1, Ordering::SeqCst);
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(7)
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn bound_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        BOUND_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        bound_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+async fn free_contract_declaration_handler(
+    request: FreeContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<FreeContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<u64>, std::convert::Infallible> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    let _guard = FreeGuard { trace: trace.clone() };
+    let result: ::core::result::Result<u64, std::convert::Infallible> = async move {
+        trace.free_started.notify_one();
+        if request.wait {
+            std::future::pending::<()>().await;
+        }
+        Ok(1)
+    }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn free_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        FREE_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>()] },
+        free_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for FreeGuard {
@@ -192,9 +240,24 @@ async fn runtime(parent_lane: harmos_runtime::operations::Lane) -> (Runtime<App>
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<ParentContractDeclaration>>(parent_lane).await.unwrap();
-    runtime.operations.register::<super::Single<BoundContractDeclaration>>(crate::support::SERIAL).await.unwrap();
-    runtime.operations.register::<super::Single<FreeContractDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(parent_contract_declaration_operation().expect("representable operation"), parent_lane)
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(bound_contract_declaration_operation().expect("representable operation"), crate::support::SERIAL)
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(
+            free_contract_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
     (runtime, trace)
 }
 

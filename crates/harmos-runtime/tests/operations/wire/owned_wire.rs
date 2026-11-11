@@ -22,7 +22,7 @@ use std::time::Duration;
 // Local Imports
 use super::app::App;
 use harmos_runtime::Runtime;
-use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationInstanceId, OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -40,56 +40,73 @@ struct Resources {
 
 struct AttemptGuard(Arc<Resources>);
 
-#[harmos_runtime::message]
-#[derive(Debug)]
+#[derive(harmos_runtime::Message, Clone, Default, Debug)]
 struct Text {
     value: String,
 }
 
 /* === Enums === */
 
-#[harmos_runtime::operation(resources = [Resources, harmos_runtime::operations::HostContext], response = Text,
-        id = "owned.read",
-        policy = OperationPolicy {
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Text)]
+#[derive(Clone)]
+struct ReadContractDeclaration {
+    value: String,
+}
+
+static READ_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ReadContractDeclaration>(
+        "owned.read",
+        OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
                 max_retries: 1,
-                backoff: Backoff::Fixed { delay: Duration::from_millis(1), jitter: Jitter::None },
+                backoff: Backoff::Fixed {
+                    delay: Duration::from_millis(1),
+                    jitter: Jitter::None,
+                },
             },
         },
-    )]
-struct ReadContractDeclaration {
-    value: String,
-}
+    );
 
-#[harmos_runtime::catalog]
-enum Operations {
-    ReadContractDeclaration(ReadContractDeclaration),
-}
+const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ReadContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ReadContractDeclaration>::new(&READ_CONTRACT_DECLARATION_DESCRIPTION);
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for ReadContractDeclaration {
-    type Error = std::io::Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Text>, Self::Error> {
-        let resources = ctx.resource::<Resources>();
-        let _guard = AttemptGuard(resources.clone());
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        resources.events.lock().unwrap().push("run");
-        resources.ids.lock().unwrap().push(context.id());
-        Ok(Text {
-            value: format!("{}:{}", self.value, context.attempt() + 1),
-        }
-        .into())
+async fn read_contract_declaration_handler(
+    request: ReadContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<ReadContractDeclaration>,
+) -> Result<harmos_runtime::Response<Text>, std::io::Error> {
+    let resources = ctx.resource::<Resources>().expect("declared resource is registered");
+    let _guard = AttemptGuard(resources.clone());
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    resources.events.lock().unwrap().push("run");
+    resources.ids.lock().unwrap().push(context.id());
+    Ok(Text {
+        value: format!("{}:{}", request.value, context.attempt() + 1),
     }
-    fn classify(_: &Self::Error) -> FailureKind {
-        FailureKind::Transient
-    }
+    .into())
+}
+
+fn read_contract_declaration_classification(_: &std::io::Error) -> FailureKind {
+    FailureKind::Transient
+}
+
+fn read_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        READ_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Resources>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        read_contract_declaration_handler,
+        read_contract_declaration_classification,
+    )
 }
 impl Drop for AttemptGuard {
     fn drop(&mut self) {
@@ -109,7 +126,10 @@ async fn runtime() -> (Runtime<App>, Arc<Resources>) {
             preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
             ..Default::default()
         });
-        setup.operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
+        setup.operation(
+            read_contract_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        );
     })
     .await
     .unwrap();
@@ -127,14 +147,17 @@ async fn wire_bindings_execute() {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
                 ..Default::default()
             });
-            setup.operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
+            setup.operation(
+                read_contract_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            );
         })
         .await
         .unwrap();
         assert!(resources.events.lock().unwrap().is_empty());
         let invocation = runtime
             .operations
-            .submit_encoded(&format!("host.{}", ReadContractDeclaration::ID), protobuf(&Text { value: "hello".into() }))
+            .submit_encoded(&format!("host.{}", READ_CONTRACT_DECLARATION_OPERATION.entry().id), protobuf(&Text { value: "hello".into() }))
             .unwrap();
         let response = invocation.await.unwrap();
         assert_eq!(decode_protobuf::<Text>(&response).value, "hello:1");
@@ -145,7 +168,7 @@ async fn wire_bindings_execute() {
         let (runtime, resources) = runtime().await;
         let encoded = runtime
             .operations
-            .submit_encoded(&format!("host.{}", ReadContractDeclaration::ID), payload("complete"))
+            .submit_encoded(&format!("host.{}", READ_CONTRACT_DECLARATION_OPERATION.entry().id), payload("complete"))
             .unwrap()
             .await
             .unwrap();
@@ -163,7 +186,10 @@ async fn contracts_guard_identity() {
     assert!(
         runtime
             .operations
-            .register::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default())
+            .register_operation(
+                read_contract_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default()
+            )
             .await
             .is_err()
     );
@@ -179,7 +205,7 @@ async fn owner_assignments_isolate_instances() {
     for owner in ["camera", "simulator"] {
         runtime
             .plugin
-            .register_embedded::<crate::operations::Single<ReadContractDeclaration>>(
+            .register_embedded_batch(
                 harmos_runtime::guest::PluginDefinition {
                     id: owner.into(),
                     version: "1.0.0".parse().unwrap(),
@@ -189,7 +215,8 @@ async fn owner_assignments_isolate_instances() {
                     contributions: Default::default(),
                 },
                 Default::default(),
-                harmos_runtime::operations::Lane::default(),
+                harmos_runtime::operations::Registration::new(harmos_runtime::operations::Lane::default())
+                    .entry(read_contract_declaration_operation().unwrap()),
             )
             .await
             .unwrap();
@@ -231,13 +258,13 @@ fn decode_protobuf<T: harmos_runtime::Portable>(bytes: &[u8]) -> T {
 
 #[tokio::test]
 async fn wire_registration_uses_supplied_schema_snapshot() {
-    use harmos_runtime::operations::{Contract, WireDeclaration};
-    let declaration = WireDeclaration::of::<ReadContractDeclaration>().contract().unwrap();
+    use harmos_runtime::operations::Contract;
+    let declaration = READ_CONTRACT_DECLARATION_OPERATION.wire().contract().unwrap();
     let tiny = harmos_runtime::config::SchemaSettings {
         preparation_bytes: std::num::NonZeroUsize::MIN,
         ..Default::default()
     };
-    assert!(WireDeclaration::of::<ReadContractDeclaration>().contract_with_settings(&tiny).is_err());
+    assert!(READ_CONTRACT_DECLARATION_OPERATION.wire().contract_with_settings(&tiny).is_err());
     assert!(
         Contract::new_with_settings(
             declaration.operation().clone(),
@@ -259,24 +286,30 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
                 setup.resource::<Resources>(resources.clone());
                 setup.settings().schema_settings(settings);
                 if initial {
-                    setup.operations::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default());
+                    setup.operation(
+                        read_contract_declaration_operation().expect("representable operation"),
+                        harmos_runtime::operations::Lane::default(),
+                    );
                 }
             })
             .await;
             if initial {
                 assert_eq!(runtime.is_ok(), accepted);
                 if let Ok(runtime) = runtime {
-                    assert!(runtime.operations.definition(ReadContractDeclaration::ID).is_ok());
+                    assert!(runtime.operations.definition(READ_CONTRACT_DECLARATION_OPERATION.entry().id).is_ok());
                     runtime.shutdown().await.unwrap();
                 }
             } else {
                 let runtime = runtime.unwrap();
                 let result = runtime
                     .operations
-                    .register::<crate::operations::Single<ReadContractDeclaration>>(harmos_runtime::operations::Lane::default())
+                    .register_operation(
+                        read_contract_declaration_operation().expect("representable operation"),
+                        harmos_runtime::operations::Lane::default(),
+                    )
                     .await;
                 assert_eq!(result.is_ok(), accepted);
-                assert_eq!(runtime.operations.definition(ReadContractDeclaration::ID).is_ok(), accepted);
+                assert_eq!(runtime.operations.definition(READ_CONTRACT_DECLARATION_OPERATION.entry().id).is_ok(), accepted);
                 runtime.shutdown().await.unwrap();
             }
         }

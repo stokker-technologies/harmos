@@ -34,16 +34,14 @@ pub const SAMPLES_PER_PERIOD: usize = 64;
 
 /* === Structs === */
 
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_domain::Message, Default, Clone, Debug, PartialEq)]
 pub struct Sample {
     pub phase: u32,
     pub ordinal: u64,
     pub value: f64,
 }
 
-#[harmos_domain::message]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(harmos_domain::Message, Default, Clone, Debug, PartialEq)]
 pub struct Experiment {
     pub id: String,
     pub label: String,
@@ -51,10 +49,10 @@ pub struct Experiment {
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
-pub enum Objects {
-    Experiment(Experiment),
+pub fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<Experiment>())
 }
+
 /* === Traits === */
 
 /* === Implementations === */

@@ -95,8 +95,6 @@ impl harmos_runtime::state::CatalogCodec for Change {
     }
 }
 
-impl harmos_runtime::state::TransactionCatalog<State> for Change {}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

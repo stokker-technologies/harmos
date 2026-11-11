@@ -36,40 +36,57 @@ use harmos_runtime::{Error, Runtime};
 
 /* === Macros === */
 
-macro_rules! operation {
-    ($name:ident, $id:literal) => {
-        #[harmos_runtime::operation(resources = [Trace], id = $id, response = u32, input = u32, output = u32,
-                                                    policy = OperationPolicy {
-                                                        timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(2),
-                                                        cancellation_timeout: std::time::Duration::ZERO, retries: RetryPolicy::Never,
-                                                    })]
-        struct $name {
-            consume: bool,
-        }
-        impl harmos_runtime::Operation for $name {
-            type Error = Error;
-            async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
-                let trace = ctx.resource::<Trace>();
-                trace.new.fetch_add(1, Ordering::SeqCst);
-                let _guard = AttemptGuard(trace.clone());
-                if !self.consume {
-                    return Ok(0.into());
-                }
-                let (input, output) = ctx.streams();
-                let mut total = 0;
-                while let Some(item) = input.recv().await {
-                    trace.sending.fetch_add(1, Ordering::SeqCst);
-                    trace.changed.notify_one();
-                    output.send_with(4, || Ok(*item + 1)).await?;
-                    total += *item;
-                }
-                Ok(total.into())
-            }
-        }
-    };
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u32, input = u32, output = u32)]
+#[derive(Clone)]
+struct ForwardDeclaration {
+    consume: bool,
 }
 
-operation!(ForwardDeclaration, "endpoints.forward");
+static FORWARD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ForwardDeclaration>(
+        "endpoints.forward",
+        OperationPolicy {
+            timeout: Duration::from_secs(3),
+            attempt_timeout: Duration::from_secs(2),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const FORWARD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ForwardDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ForwardDeclaration>::new(&FORWARD_DECLARATION_DESCRIPTION);
+async fn forward_declaration_handler(
+    request: ForwardDeclaration, ctx: harmos_runtime::operations::FunctionContext<ForwardDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    trace.new.fetch_add(1, Ordering::SeqCst);
+    let _guard = AttemptGuard(trace.clone());
+    if !request.consume {
+        return Ok(0.into());
+    }
+    let (input, output) = ctx.streams();
+    let mut total = 0;
+    while let Some(item) = input.recv().await {
+        trace.sending.fetch_add(1, Ordering::SeqCst);
+        trace.changed.notify_one();
+        output.send_with(4, || Ok(*item + 1)).await?;
+        total += *item;
+    }
+    Ok(total.into())
+}
+
+fn forward_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        FORWARD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>()] },
+        forward_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
 
 /* === Type Aliases === */
 
@@ -92,16 +109,38 @@ struct AttemptGuard(Arc<Trace>);
 struct Gate(Notify);
 
 #[cfg(feature = "grpc")]
-#[harmos_runtime::operation(resources = [Gate], id = "endpoints.slow", response = u32, input = u32, policy = ForwardDeclaration::POLICY, visibility = Public)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u32, input = u32)]
+#[derive(Clone)]
 struct SlowDeclaration {}
 
-#[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext],
-    operations = [ForwardDeclaration], id = "endpoints.parent", response = u32, policy = ForwardDeclaration::POLICY)]
+static SLOW_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<SlowDeclaration>("endpoints.slow", FORWARD_DECLARATION_OPERATION.entry().policy)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const SLOW_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<SlowDeclaration> =
+    harmos_runtime::operations::OperationSpec::<SlowDeclaration>::new(&SLOW_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = u32)]
 #[derive(Clone)]
 struct ParentDeclaration {
     endpoints: Arc<Mutex<Option<StreamEndpoints>>>,
     charged: bool,
 }
+
+static PARENT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ParentDeclaration>(
+        "endpoints.parent",
+        FORWARD_DECLARATION_OPERATION.entry().policy,
+    );
+
+static PARENT_DECLARATION_CALLEES: [harmos_runtime::operations::WireDeclaration; 1] = [FORWARD_DECLARATION_DESCRIPTION.copied()];
+const PARENT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ParentDeclaration>::new(&PARENT_DECLARATION_DESCRIPTION).calls(&PARENT_DECLARATION_CALLEES);
 
 /* === Enums === */
 
@@ -117,41 +156,59 @@ impl harmos_runtime::MemorySize for ParentDeclaration {
     }
 }
 
-impl harmos_runtime::Operation for ParentDeclaration {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let endpoints = self.endpoints.lock().unwrap().take().expect("one transfer of original endpoints");
-        let child = if self.charged {
-            let (requests, decoded) = stream::<ForwardDeclaration>(StreamSettings {
-                items: NonZeroUsize::new(1).unwrap(),
-                bytes: NonZeroUsize::new(1).unwrap(),
-            })?;
-            requests.send_with(1, || Ok(ForwardDeclaration { consume: true })).await?;
-            context.submit_charged::<ForwardDeclaration, _>(decoded.recv().await.unwrap(), endpoints)?
-        } else {
-            context.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, endpoints)?
-        };
-        Ok((*child.await?).into())
-    }
+async fn parent_declaration_handler(
+    request: ParentDeclaration, ctx: harmos_runtime::operations::FunctionContext<ParentDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let endpoints = request.endpoints.lock().unwrap().take().expect("one transfer of original endpoints");
+    let child = if request.charged {
+        let (requests, decoded) = stream::<ForwardDeclaration>(StreamSettings {
+            items: NonZeroUsize::new(1).unwrap(),
+            bytes: NonZeroUsize::new(1).unwrap(),
+        })?;
+        requests.send_with(1, || Ok(ForwardDeclaration { consume: true })).await?;
+        context.submit_charged::<ForwardDeclaration, _>(decoded.recv().await.unwrap(), endpoints)?
+    } else {
+        context.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, endpoints)?
+    };
+    Ok((*child.await?).into())
+}
+
+fn parent_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PARENT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        parent_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 #[cfg(feature = "grpc")]
-impl harmos_runtime::Operation for SlowDeclaration {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
-        let gate = ctx.resource::<Gate>();
-        let input = ctx.streams();
-        // Consume Nothing Until The Forwarder Has Handed Off A Full Window.
-        gate.0.notified().await;
-        let mut total = 0;
-        while let Some(item) = input.recv().await {
-            tokio::task::yield_now().await;
-            total += *item;
-        }
-        Ok(total.into())
+async fn slow_declaration_handler(
+    _request: SlowDeclaration, ctx: harmos_runtime::operations::FunctionContext<SlowDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+    let gate = ctx.resource::<Gate>().expect("declared resource is registered");
+    let input = ctx.streams();
+    // Consume Nothing Until The Forwarder Has Handed Off A Full Window.
+    gate.0.notified().await;
+    let mut total = 0;
+    while let Some(item) = input.recv().await {
+        tokio::task::yield_now().await;
+        total += *item;
     }
+    Ok(total.into())
+}
+
+fn slow_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        SLOW_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Gate>()] },
+        slow_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for AttemptGuard {
@@ -261,7 +318,11 @@ async fn decoded_charge_releases_on_hand_off() {
 
     let gate = Arc::new(Gate::default());
     let runtime = runtime_with_resource(gate.clone()).await;
-    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(slow_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut codec = SlowCodec::new(decode, encode).unwrap();
     let opened = gate.clone();
     let frames = futures_util::stream::iter(0..=FRAMES).map(move |index| {
@@ -291,7 +352,7 @@ async fn endpoint_admission_contract() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -316,7 +377,7 @@ async fn cancellation_settles_owner() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -353,7 +414,7 @@ async fn half_close_joins() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (producer, decoded) = channel();
@@ -380,7 +441,7 @@ async fn settlement_never_wait() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -400,7 +461,7 @@ async fn input_failure_settles_attempt() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -431,7 +492,7 @@ async fn input_drop_cancels() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -452,7 +513,7 @@ async fn deadline_settles_peer() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -475,7 +536,7 @@ async fn grpc_exchange_polls() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (producer, decoded) = stream::<u32>(StreamSettings {
@@ -513,7 +574,7 @@ async fn exchange_failure_settles_attempt() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -549,7 +610,7 @@ async fn exchange_drop_cancels() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -569,7 +630,7 @@ async fn charged_request_ownership() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (requests, decoded) = stream::<ForwardDeclaration>(StreamSettings {
@@ -619,7 +680,7 @@ async fn opening_admission_exchange() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let frames = futures_util::stream::iter([
@@ -644,10 +705,14 @@ async fn parent_cancellation<const CHARGED: bool>() {
     let runtime = runtime_with_resource(trace.clone()).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    runtime.operations.register::<crate::operations::Single<ParentDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(parent_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let (sending, output) = channel();
     let parent = runtime
@@ -676,7 +741,7 @@ async fn stream_progress_outlives_total_timeout() {
     let runtime = runtime_with_resource(trace).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -700,7 +765,7 @@ async fn stream_stall_expires_after_progress() {
     let runtime = runtime_with_resource(trace).await;
     runtime
         .operations
-        .register::<crate::operations::Single<ForwardDeclaration>>(harmos_runtime::operations::Lane::default())
+        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let (input, receiving) = channel();
@@ -716,20 +781,43 @@ async fn stream_stall_expires_after_progress() {
 
 #[tokio::test(start_paused = true)]
 async fn unary_keeps_total_deadline() {
-    #[harmos_runtime::operation(id = "deadlines.unary", response = (), policy = OperationPolicy {
-        timeout: Duration::from_secs(3), attempt_timeout: Duration::from_secs(3),
-        cancellation_timeout: Duration::ZERO, retries: RetryPolicy::Never,
-    })]
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = ())]
+    #[derive(Clone)]
     struct Unary;
-    impl harmos_runtime::Operation for Unary {
-        type Error = Error;
-        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
-            tokio::time::sleep(Duration::from_secs(8)).await;
-            Ok(().into())
-        }
+
+    static UNARY_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos_runtime::operations::WireDeclaration::request::<Unary>(
+        "deadlines.unary",
+        OperationPolicy {
+            timeout: Duration::from_secs(3),
+            attempt_timeout: Duration::from_secs(3),
+            cancellation_timeout: Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+    const UNARY_OPERATION: harmos_runtime::operations::OperationSpec<Unary> =
+        harmos_runtime::operations::OperationSpec::<Unary>::new(&UNARY_DESCRIPTION);
+    async fn unary_handler(
+        _request: Unary, _: harmos_runtime::operations::FunctionContext<Unary>,
+    ) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
+        tokio::time::sleep(Duration::from_secs(8)).await;
+        Ok(().into())
+    }
+
+    fn unary_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+        harmos_runtime::operations::OperationFactory::function(UNARY_OPERATION, const { &[] }, unary_handler, |_| {
+            harmos_runtime::operations::FailureKind::Permanent
+        })
     }
     let runtime = runtime_with_resource(Arc::new(Trace::default())).await;
-    runtime.operations.register::<crate::operations::Single<Unary>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(unary_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let instance = runtime.operations.submit::<Unary>(Unary).unwrap();
     instance.ready().await.unwrap();
     tokio::time::advance(Duration::from_secs(4)).await;
@@ -739,19 +827,41 @@ async fn unary_keeps_total_deadline() {
 
 #[tokio::test(start_paused = true)]
 async fn stream_final_response_wait_is_idle_bounded() {
-    #[harmos_runtime::operation(resources = [Notify], id = "deadlines.final", response = (), input = u32, policy = ForwardDeclaration::POLICY)]
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = (), input = u32)]
+    #[derive(Clone)]
     struct Final;
-    impl harmos_runtime::Operation for Final {
-        type Error = Error;
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
-            while ctx.streams().recv().await.is_some() {}
-            ctx.resource::<Notify>().notify_one();
-            std::future::pending().await
-        }
+
+    static FINAL_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<Final>("deadlines.final", FORWARD_DECLARATION_OPERATION.entry().policy);
+
+    const FINAL_OPERATION: harmos_runtime::operations::OperationSpec<Final> =
+        harmos_runtime::operations::OperationSpec::<Final>::new(&FINAL_DESCRIPTION);
+    async fn final_handler(
+        _request: Final, ctx: harmos_runtime::operations::FunctionContext<Final>,
+    ) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
+        while ctx.streams().recv().await.is_some() {}
+        ctx.resource::<Notify>().expect("declared resource is registered").notify_one();
+        std::future::pending().await
+    }
+
+    fn final_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+        harmos_runtime::operations::OperationFactory::function(
+            FINAL_OPERATION,
+            const { &[harmos_runtime::Resource::of::<Notify>()] },
+            final_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
     }
     let finished_input = Arc::new(Notify::new());
     let runtime = runtime_with_resource(finished_input.clone()).await;
-    runtime.operations.register::<crate::operations::Single<Final>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(final_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let (input, receiving) = channel();
     let instance = runtime.operations.submit_endpoints::<Final, _>(Final, receiving).unwrap();
     instance.ready().await.unwrap();
@@ -771,7 +881,11 @@ async fn stream_final_response_wait_is_idle_bounded() {
 async fn grpc_stall_names_operation() {
     use harmos_runtime::grpc::{DecodeSettings, EncodeSettings, InputEnvelope};
     let runtime = runtime_with_resource(Arc::new(Gate::default())).await;
-    runtime.operations.register::<crate::operations::Single<SlowDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(slow_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let capacity = NonZeroUsize::new(4096).unwrap();
     let settings = harmos_runtime::grpc::server::Settings {
         calls: NonZeroUsize::new(1).unwrap(),
@@ -802,6 +916,6 @@ async fn grpc_stall_names_operation() {
     .await;
     let status = tonic::Status::from_header_map(response.headers()).expect("deadline status");
     assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
-    assert!(status.message().contains(<SlowDeclaration as harmos_runtime::operations::OperationDeclaration>::ID), "{status}");
+    assert!(status.message().contains(SLOW_DECLARATION_OPERATION.entry().id), "{status}");
     runtime.shutdown().await.unwrap();
 }

@@ -65,7 +65,6 @@ impl Transaction<Model> for SetGain {
     }
 }
 
-impl harmos_runtime::state::TransactionCatalog<Model> for SetGain {}
 impl Identified for SetGain {
     const ID: &'static str = "sim.gain";
 }
@@ -101,9 +100,11 @@ fn decode_nothing(_id: &DefinitionId, _version: u32, _bytes: &[u8]) -> Result<Op
 impl Registration<Amplifier> for Faithful {
     fn register(self) -> Catalog<Amplifier> {
         Catalog::Transactions {
+            states: None,
+            records: None,
             definitions: declared(),
-            decode: decode_nothing,
-            inverses: Some(|_change, before| Some(SetGain(before.gain))),
+            decode: std::sync::Arc::new(decode_nothing),
+            inverses: Some(std::sync::Arc::new(|_change, before| Some(SetGain(before.gain)))),
         }
     }
 }
@@ -111,9 +112,11 @@ impl Registration<Amplifier> for Faithful {
 impl Registration<Amplifier> for Wrong {
     fn register(self) -> Catalog<Amplifier> {
         Catalog::Transactions {
+            states: None,
+            records: None,
             definitions: declared(),
-            decode: decode_nothing,
-            inverses: Some(|change, _before| Some(SetGain(change.0))),
+            decode: std::sync::Arc::new(decode_nothing),
+            inverses: Some(std::sync::Arc::new(|change, _before| Some(SetGain(change.0)))),
         }
     }
 }

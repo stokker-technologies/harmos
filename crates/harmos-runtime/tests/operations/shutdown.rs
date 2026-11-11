@@ -48,55 +48,80 @@ struct AttemptGuard(Arc<Trace>);
 
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Mode {
+    #[default]
     Hold,
     Count,
     Sleep,
 }
 
-#[harmos_runtime::operation(resources = [Trace], response = (),
-        id = "shutdown.wait",
-        policy = harmos_runtime::OperationPolicy {
+#[derive(harmos_runtime::Message, Debug)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
+struct WaitContractDeclaration {
+    mode: Mode,
+}
+
+static WAIT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<WaitContractDeclaration>(
+        "shutdown.wait",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(2),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct WaitContractDeclaration {
-    mode: Mode,
+    );
+
+const WAIT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<WaitContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<WaitContractDeclaration>::new(&WAIT_CONTRACT_DECLARATION_DESCRIPTION);
+
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
 }
 
-#[harmos_runtime::catalog]
-enum Operations {
-    WaitContractDeclaration(WaitContractDeclaration),
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(wait_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for WaitContractDeclaration {
-    type Error = std::convert::Infallible;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let trace = ctx.resource::<Trace>();
-        let _guard = AttemptGuard(trace.clone());
-        match self.mode {
-            Mode::Hold => {
-                trace.started.notify_one();
-                trace.release.notified().await;
-            }
-            Mode::Count => {
-                trace.counted.fetch_add(1, Ordering::SeqCst);
-            }
-            Mode::Sleep => {
-                trace.started.notify_one();
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
+async fn wait_contract_declaration_handler(
+    request: WaitContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<WaitContractDeclaration>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    let _guard = AttemptGuard(trace.clone());
+    match request.mode {
+        Mode::Hold => {
+            trace.started.notify_one();
+            trace.release.notified().await;
         }
-        Ok(().into())
+        Mode::Count => {
+            trace.counted.fetch_add(1, Ordering::SeqCst);
+        }
+        Mode::Sleep => {
+            trace.started.notify_one();
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     }
+    Ok(().into())
+}
+
+fn wait_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        WAIT_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>()] },
+        wait_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl Drop for AttemptGuard {
     fn drop(&mut self) {
@@ -115,7 +140,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     (runtime, trace)
 }
 

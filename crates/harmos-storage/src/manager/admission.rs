@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.admission.admit", level = "debug", skip_all)]
     pub(crate) async fn admit(
         &self, domain: Domain, bytes: usize, count: usize, build: impl FnOnce(u64) -> Result<Operation>,

@@ -22,7 +22,6 @@ publish = true
 harmos-domain = { path = "crates/harmos-domain", version = "=0.1.14", default-features = false }
 harmos-guest-macros = { path = "crates/harmos-guest-macros", version = "=0.1.14" }
 harmos-guest = { path = "crates/harmos-guest", version = "=0.1.14", default-features = false }
-harmos-macros = { path = "crates/harmos-macros", version = "=0.1.14" }
 harmos-operations = { path = "crates/harmos-operations", version = "=0.1.14", default-features = false }
 harmos-packaging = { path = "crates/harmos-packaging", version = "=0.1.14", default-features = false }
 harmos-protocol = { path = "crates/harmos-protocol", version = "=0.1.14", default-features = false }

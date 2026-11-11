@@ -21,7 +21,7 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
-use super::{OperationDeclaration, Response};
+use super::{RequestShape, Response};
 
 /* === Constants === */
 
@@ -37,7 +37,7 @@ use super::{OperationDeclaration, Response};
 
 // One submitted operation. Dropping an unsettled instance requests its
 // cancellation; `detach` hands the instance to the host and keeps it running.
-pub trait Instance<O: OperationDeclaration>: Send + Sized {
+pub trait Instance<O: RequestShape>: Send + Sized {
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn id(&self) -> Id;

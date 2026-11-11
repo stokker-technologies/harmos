@@ -11,7 +11,7 @@
 
 use crate::execution::operations::{ExecutionContext, ProtobufOperation, Resource, ServingError};
 use harmos_domain::operations::{FailureKind, ReplaySafety};
-use harmos_storage::{ErasedCatalog, StorageManager};
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
@@ -26,10 +26,10 @@ impl ProtobufOperation for FinishFile {
     const ID: &'static str = "storage.finish_file";
     const POLICY: crate::OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
-        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<harmos_storage::FileReference> = async {
             let mutation: harmos_storage::MutationId =
                 request.mutation.ok_or(crate::Error::InvalidInput { field: "mutation", reason: "required" })?.try_into()?;

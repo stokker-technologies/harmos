@@ -28,7 +28,7 @@ use tokio::sync::{Notify, Semaphore};
 // Local Imports
 use super::app::App;
 use harmos_runtime::operations::instance::{Outcome, Phase};
-use harmos_runtime::operations::{Instance, OperationDeclaration, OperationHost, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Instance, OperationHost, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -47,10 +47,20 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
 /* === Structs === */
 
 // The declaration is its own request, so `call` and `submit` infer it.
-#[harmos_runtime::operation(resources = [Gate, harmos_runtime::operations::HostContext], id = "fixture.hold",  response = u64, policy = POLICY)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct HoldDeclaration {
     value: u64,
 }
+
+static HOLD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<HoldDeclaration>("fixture.hold", POLICY);
+
+const HOLD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<HoldDeclaration> =
+    harmos_runtime::operations::OperationSpec::<HoldDeclaration>::new(&HOLD_DECLARATION_DESCRIPTION);
 
 struct Gate {
     started: Notify,
@@ -64,11 +74,18 @@ struct Gate {
 struct CompletionGuard(Arc<Gate>);
 
 // A resident service activated through the host by its identity.
-#[harmos_runtime::operation(id = "fixture.ticker",
-    response = (),
-    policy = POLICY
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct TickerDeclaration {}
+
+static TICKER_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<TickerDeclaration>("fixture.ticker", POLICY);
+
+const TICKER_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<TickerDeclaration> =
+    harmos_runtime::operations::OperationSpec::<TickerDeclaration>::new(&TICKER_DECLARATION_DESCRIPTION);
 
 /* === Enums === */
 
@@ -76,18 +93,27 @@ struct TickerDeclaration {}
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for HoldDeclaration {
-    type Error = Error;
+async fn hold_declaration_handler(
+    request: HoldDeclaration, ctx: harmos_runtime::operations::FunctionContext<HoldDeclaration>,
+) -> Result<harmos_runtime::Response<u64>, Error> {
+    let gate = ctx.resource::<Gate>().expect("declared resource is registered");
+    *gate.request.lock().unwrap() =
+        ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered").request_claims().cloned();
+    let _guard = CompletionGuard(gate.clone());
+    gate.started.notify_one();
+    gate.release.acquire().await.unwrap().forget();
+    gate.completed.fetch_add(1, Ordering::SeqCst);
+    Ok((request.value * 2).into())
+}
 
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Error> {
-        let gate = ctx.resource::<Gate>();
-        *gate.request.lock().unwrap() = ctx.resource::<harmos_runtime::operations::HostContext>().request_claims().cloned();
-        let _guard = CompletionGuard(gate.clone());
-        gate.started.notify_one();
-        gate.release.acquire().await.unwrap().forget();
-        gate.completed.fetch_add(1, Ordering::SeqCst);
-        Ok((self.value * 2).into())
-    }
+fn hold_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        HOLD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Gate>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        hold_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for CompletionGuard {
@@ -119,8 +145,12 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<HoldDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
-    runtime.operations.register::<harmos_operations::Lifecycle>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(hold_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, gate)
 }
 
@@ -259,23 +289,26 @@ async fn resident_leases_watched() {
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     operations
-        .register_service::<App, _, _>(harmos_runtime::services::ServiceDefinition::new(TickerDeclaration::ID), |resources| {
-            let gate = resources.resource::<Gate>().unwrap();
-            move |mut context: harmos_runtime::services::ServiceContext<App>| {
-                let gate = gate.clone();
-                async move {
-                    context.ready();
-                    context.stopping().await;
-                    gate.cleaned.fetch_add(1, Ordering::SeqCst);
-                    Ok::<(), std::io::Error>(())
+        .register_service::<App, _, _>(
+            harmos_runtime::services::ServiceDefinition::new(TICKER_DECLARATION_OPERATION.entry().id),
+            |resources| {
+                let gate = resources.resource::<Gate>().unwrap();
+                move |mut context: harmos_runtime::services::ServiceContext<App>| {
+                    let gate = gate.clone();
+                    async move {
+                        context.ready();
+                        context.stopping().await;
+                        gate.cleaned.fetch_add(1, Ordering::SeqCst);
+                        Ok::<(), std::io::Error>(())
+                    }
                 }
-            }
-        })
+            },
+        )
         .unwrap();
 
     // Activations over the Same Resources Share One Instance
-    let first = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
-    let second = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
+    let first = operations.submit_resident(TICKER_DECLARATION_OPERATION.entry().id).await.unwrap();
+    let second = operations.submit_resident(TICKER_DECLARATION_OPERATION.entry().id).await.unwrap();
     assert_eq!(first.id(), second.id());
     first.ready().await.unwrap();
     let id = first.id();

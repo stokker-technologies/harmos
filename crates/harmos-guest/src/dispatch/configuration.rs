@@ -72,12 +72,12 @@ impl Table {
         Ok(())
     }
 
-    pub(crate) fn catalog(&mut self, catalog: &harmos_operations::execution::operations::Catalog) -> &mut Self {
+    pub(crate) fn catalog(&mut self, catalog: &harmos_operations::execution::operations::CatalogDescription) -> &mut Self {
         if !self.catalogs.insert(catalog.identity()) {
             self.configuration_errors.push(StartupError::DuplicateCatalog { name: catalog.name });
             return self;
         }
-        if let Err(source) = self.register(catalog.batch()) {
+        if let Err(source) = catalog.build().and_then(|batch| self.register(batch)) {
             self.configuration_errors.push(StartupError::Binding { source: Box::new(source) });
         }
         self

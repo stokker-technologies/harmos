@@ -25,7 +25,7 @@ from higher-level operations to lower-level operations without cycles. Driver
 results cross the operation boundary as plugin-owned messages.
 
 Orchestration reads top to bottom under Title Case action comments: construct
-`let request = ...;`, then invoke `ctx.operation(request).await?;`. Repeat actions
+`let request = ...;`, then invoke `ctx.operation(OPERATION, request).await?;` in a native function handler. Repeat actions
 in the flow; keep reusable library logic with its owner. Compute named checks
 before combining them, and suffix physical quantities with their units. Callees
 own timeouts, delays and retries; callers override policy only for one call.

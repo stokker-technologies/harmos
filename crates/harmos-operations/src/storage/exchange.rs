@@ -49,8 +49,8 @@ pub(crate) enum WriteKind {
 /* === Private Functions === */
 
 #[tracing::instrument(target = "harmos::storage", name = "storage.exchange", level = "debug", skip_all)]
-pub(crate) async fn exchange<C>(
-    storage: &StorageManager<C>, ctx: &std::sync::Arc<dyn crate::execution::operations::access::GrantAuthority>,
+pub(crate) async fn exchange(
+    storage: &StorageManager, ctx: &std::sync::Arc<dyn crate::execution::operations::access::GrantAuthority>,
     scope: Option<&crate::Identifier>,
     endpoints: &(ProtobufInput<harmos_protocol::storage::DataBatch>, ProtobufOutput<harmos_protocol::storage::WriteReceipt>),
     kind: WriteKind, operation: &'static str,

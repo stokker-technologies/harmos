@@ -54,9 +54,9 @@ pub mod operations {
     /* === Private Functions === */
     /* === Tests === */
 }
-pub use harmos_operations::execution::operations::{Backoff, Jitter, OperationDeclaration, OperationPolicy, RestartPolicy, RetryPolicy};
-pub use harmos_operations::execution::operations::{Catalog, OperationHost};
-pub use harmos_operations::execution::{Context, Dependent, Executable, Lifecycle, Operation, Resource, Response, Service, Setup};
+pub use harmos_operations::execution::operations::{Backoff, Jitter, OperationPolicy, RequestShape, RestartPolicy, RetryPolicy};
+pub use harmos_operations::execution::operations::{Catalog, CatalogDescription, OperationHost};
+pub use harmos_operations::execution::{Context, Lifecycle, Operation, Resource, Response, Service, Setup};
 
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
@@ -70,12 +70,10 @@ pub use harmos_operations::execution::__private;
 pub use kit::{OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};
 
 #[cfg(feature = "derive")]
-pub use harmos_domain::{Row, StreamEntry, message};
+pub use harmos_domain::{Request, Row, StreamEntry};
 
 #[cfg(feature = "derive")]
 pub use harmos_guest_macros::plugin as guest;
-#[cfg(feature = "derive")]
-pub use harmos_macros::{guest_catalog as catalog, guest_operation as operation};
 #[cfg(feature = "kit")]
 pub use plugin::Plugin;
 

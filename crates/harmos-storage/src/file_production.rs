@@ -18,7 +18,7 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
-use super::{ErasedCatalog, FileBatch, FilePhase, FileProgress, StagedFile, StorageManager};
+use super::{FileBatch, FilePhase, FileProgress, StagedFile, StorageManager};
 use crate::FileReadBatch;
 use crate::{Error, Result};
 
@@ -32,7 +32,7 @@ use crate::{Error, Result};
 
 pub struct ProductionFollower {
     context: crate::execution::Context,
-    manager: StorageManager<ErasedCatalog>,
+    manager: StorageManager,
     file: StagedFile,
     offset: u64,
     progress: FileProgress,
@@ -45,7 +45,7 @@ pub struct ProductionFollower {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.file_production.follow_production", level = "debug", skip_all)]
     pub async fn follow_production(&self, file: &StagedFile, offset: u64) -> Result<ProductionFollower> {
         self.open_production_follower(file, offset).await
@@ -65,7 +65,7 @@ impl<C> StorageManager<C> {
         }
         Ok(ProductionFollower {
             context: crate::execution::Context::current(),
-            manager: self.erased(),
+            manager: self.clone(),
             file: file.clone(),
             offset,
             progress,

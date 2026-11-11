@@ -47,8 +47,9 @@ struct ChildGuard(Arc<Trace>);
 
 /* === Enums === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Exit {
+    #[default]
     Return,
     Fail,
     Wait,
@@ -67,84 +68,118 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos_runtime::operation(resources = [Trace, harmos_runtime::operations::HostContext], response = (),
-        id = "children.parent",
-        policy = OperationPolicy {
+#[derive(harmos_runtime::Message, Debug)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
+struct ParentContractDeclaration {
+    exit: Exit,
+}
+
+static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ParentContractDeclaration>(
+        "children.parent",
+        OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
                 max_retries: 1,
-                backoff: Backoff::Fixed { delay: Duration::from_millis(10), jitter: Jitter::None },
+                backoff: Backoff::Fixed {
+                    delay: Duration::from_millis(10),
+                    jitter: Jitter::None,
+                },
             },
         },
-    )]
-struct ParentContractDeclaration {
-    exit: Exit,
-}
+    );
 
-#[harmos_runtime::operation(resources = [Trace], response = (),
-        id = "children.child",
-        policy = harmos_runtime::OperationPolicy {
+const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
+struct ChildContractDeclaration {}
+
+static CHILD_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ChildContractDeclaration>(
+        "children.child",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(5),
             attempt_timeout: Duration::from_secs(5),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct ChildContractDeclaration {}
+    );
 
-#[harmos_runtime::catalog]
-enum Operations {
-    ParentContractDeclaration(ParentContractDeclaration),
-    ChildContractDeclaration(ChildContractDeclaration),
-}
+const CHILD_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ChildContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ChildContractDeclaration>::new(&CHILD_CONTRACT_DECLARATION_DESCRIPTION);
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for ParentContractDeclaration {
-    type Error = Failed;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Failed> {
-        let trace = context.resource::<Trace>();
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            trace.attempts.fetch_add(1, Ordering::SeqCst);
-            trace.events.lock().unwrap().push("parent-attempt");
-            let _child = context.submit::<ChildContractDeclaration>(ChildContractDeclaration {})?;
-            trace.child_started.notified().await;
-            trace.parent_ready.notify_one();
-            match self.exit {
-                Exit::Return => Ok(()),
-                Exit::Fail => Err(Failed::Attempt),
-                Exit::Wait => std::future::pending().await,
-                Exit::Retry => Err(Failed::Retry),
-            }
+async fn parent_contract_declaration_handler(
+    request: ParentContractDeclaration, context: harmos_runtime::operations::FunctionContext<ParentContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<()>, Failed> {
+    let trace = context.resource::<Trace>().expect("declared resource is registered");
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<(), Failed> = async move {
+        trace.attempts.fetch_add(1, Ordering::SeqCst);
+        trace.events.lock().unwrap().push("parent-attempt");
+        let _child = context.submit::<ChildContractDeclaration>(ChildContractDeclaration {})?;
+        trace.child_started.notified().await;
+        trace.parent_ready.notify_one();
+        match request.exit {
+            Exit::Return => Ok(()),
+            Exit::Fail => Err(Failed::Attempt),
+            Exit::Wait => std::future::pending().await,
+            Exit::Retry => Err(Failed::Retry),
         }
-        .await;
-        result.map(::core::convert::Into::into)
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
 
-    fn classify(error: &Failed) -> FailureKind {
-        match error {
-            Failed::Retry => FailureKind::Transient,
-            _ => FailureKind::Permanent,
-        }
+fn parent_contract_declaration_classification(error: &Failed) -> FailureKind {
+    match error {
+        Failed::Retry => FailureKind::Transient,
+        _ => FailureKind::Permanent,
     }
 }
 
-impl harmos_runtime::Operation for ChildContractDeclaration {
-    type Error = std::convert::Infallible;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let trace = ctx.resource::<Trace>();
-        let _guard = ChildGuard(trace.clone());
-        trace.events.lock().unwrap().push("child-started");
-        trace.child_started.notify_one();
-        std::future::pending().await
-    }
+fn parent_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PARENT_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        parent_contract_declaration_handler,
+        parent_contract_declaration_classification,
+    )
+}
+
+async fn child_contract_declaration_handler(
+    _request: ChildContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<ChildContractDeclaration>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    let _guard = ChildGuard(trace.clone());
+    trace.events.lock().unwrap().push("child-started");
+    trace.child_started.notify_one();
+    std::future::pending().await
+}
+
+fn child_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        CHILD_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>()] },
+        child_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl Drop for ChildGuard {
     fn drop(&mut self) {
@@ -168,8 +203,19 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<ParentContractDeclaration>>(crate::support::SERIAL).await.unwrap();
-    runtime.operations.register::<super::Single<ChildContractDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime
+        .operations
+        .register_operation(parent_contract_declaration_operation().expect("representable operation"), crate::support::SERIAL)
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(
+            child_contract_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
     (runtime, trace)
 }
 

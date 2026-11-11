@@ -55,7 +55,7 @@ fn main() {
         };
         let runtime = harmos_runtime::Runtime::<protocol::Model>::launch_with((), (), |setup| {
             setup.settings().operation_settings(settings);
-            setup.operations::<protocol::Operations>(harmos_runtime::operations::Lane::default());
+            setup.catalog(protocol::operations_catalog(), harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();

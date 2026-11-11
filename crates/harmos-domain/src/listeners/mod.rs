@@ -265,23 +265,26 @@ fn collect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::{NoStream, OperationDeclaration};
+    use crate::operations::NoStream;
 
     struct Heard;
 
-    impl OperationDeclaration for Heard {
+    impl harmos_domain::operations::RequestShape for Heard {
         type Request = Delivery<()>;
         type Response = ();
         type Input = NoStream;
         type Output = NoStream;
-        const ID: &'static str = "fixture.heard";
-        const POLICY: crate::operations::OperationPolicy = crate::model::operations::lifecycle::POLICY;
-        const VISIBILITY: Visibility = Visibility::Public;
     }
+    static HEARD_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+        harmos_domain::operations::WireDeclaration::request::<Heard>("fixture.heard", crate::model::operations::lifecycle::POLICY)
+            .visibility(Visibility::Public);
+
+    const HEARD_OPERATION: harmos_domain::operations::OperationSpec<Heard> =
+        harmos_domain::operations::OperationSpec::<Heard>::new(&HEARD_DESCRIPTION);
 
     #[test]
     fn values_validate_sources_and_callback_shapes() {
-        let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", WireDeclaration::of::<Heard>());
+        let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", HEARD_OPERATION.wire());
         let definition = listener.definition().unwrap();
         assert_eq!(definition.source().id(), "fixture.samples");
         assert_eq!(definition.callback().operation().id.as_str(), "fixture.heard");
@@ -290,15 +293,15 @@ mod tests {
             Err(crate::inventory::listeners::Error::Callback { id }) if id == "fixture.heard"
         ));
 
-        let listener = Entry::record::<()>("fixture.rows", "", WireDeclaration::of::<Heard>());
+        let listener = Entry::record::<()>("fixture.rows", "", HEARD_OPERATION.wire());
         assert!(matches!(listener.definition(), Err(Error::Source { .. })));
 
-        let mut callback = WireDeclaration::of::<Heard>();
+        let mut callback = HEARD_OPERATION.wire();
         callback.operation.visibility = Visibility::Private;
         let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", callback);
         assert!(matches!(listener.definition(), Err(Error::Callback { .. })));
 
-        let mut callback = WireDeclaration::of::<Heard>();
+        let mut callback = HEARD_OPERATION.wire();
         callback.request = <() as crate::schema::Described>::DEFINITION;
         let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", callback);
         assert!(listener.definition().is_err());
@@ -307,8 +310,8 @@ mod tests {
     #[test]
     fn duplicate_callbacks_are_refused_when_values_are_composed() {
         const ENTRIES: &[crate::catalog::Node<Entry>] = &[
-            crate::catalog::Node::Leaf(Entry::stream::<()>("fixture.first", "fixture.samples", WireDeclaration::of::<Heard>())),
-            crate::catalog::Node::Leaf(Entry::record::<()>("fixture.second", "fixture.record", WireDeclaration::of::<Heard>())),
+            crate::catalog::Node::Leaf(Entry::stream::<()>("fixture.first", "fixture.samples", HEARD_OPERATION.wire())),
+            crate::catalog::Node::Leaf(Entry::record::<()>("fixture.second", "fixture.record", HEARD_OPERATION.wire())),
         ];
         assert!(matches!(Declarations::from_tree(ENTRIES), Err(Error::Duplicate { id }) if id == "fixture.heard"));
     }

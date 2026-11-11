@@ -94,7 +94,7 @@ impl Session {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.session.produce_file", level = "debug", skip_all)]
     pub async fn produce_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
         if !self.inner.primary.supports_file_sessions() {
@@ -142,7 +142,7 @@ impl<C> StorageManager<C> {
                     let mut token = token.clone();
                     token.generation = next;
                     Some(StorageFile {
-                        manager: self.erased(),
+                        manager: self.clone(),
                         id: *id,
                         progress: file.progress.clone(),
                         session: Some(token),

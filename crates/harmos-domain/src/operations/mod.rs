@@ -18,6 +18,7 @@ pub mod instance;
 #[doc(hidden)]
 pub mod payload;
 mod protobuf;
+mod specification;
 
 /* === Re-Exports === */
 
@@ -31,6 +32,7 @@ pub use direction::{Direction, NoStream, Stream, item_types};
 pub use grpc::Grpc;
 pub use harmos_protocol::host::Protobuf;
 pub use protobuf::ProtobufExt;
+pub use specification::{OperationSpec, RequestShape};
 
 /* === Imports === */
 
@@ -89,36 +91,9 @@ pub enum Visibility {
 
 /* === Traits === */
 
-pub trait OperationDeclaration: 'static {
-    type Request: crate::Portable;
-    type Response: crate::Portable;
-    type Input: Direction;
-    type Output: Direction;
-
-    const ID: &'static str;
-    const POLICY: OperationPolicy;
-    const DESCRIPTION: &'static str = "";
-    const VISIBILITY: Visibility = Visibility::Private;
-    const REPLAY: ReplaySafety = ReplaySafety::Unknown;
-    const GRPC: Option<Grpc> = None;
-
-    // The operations this one invokes; catalogs aggregate them into plugin requirements.
-    const OPERATIONS: &'static [WireDeclaration] = &[];
-
-    fn definition() -> OperationDefinition {
-        Entry::of::<Self>().declared().expect("representable operation declaration")
-    }
-
-    fn grant(_request: &Self::Request) -> Option<crate::plugin::Grant> {
-        None
-    }
-}
-
 // The Execution Resource Types An Operation Declares With `resources = [..]`.
-pub trait Requires<T: ?Sized> {}
 
 // The Operations An Operation Declares With `operations = [..]`.
-pub trait Invokes<T: OperationDeclaration> {}
 
 /* === Implementations === */
 
@@ -131,17 +106,6 @@ impl<'de> Deserialize<'de> for OperationDefinition {
 }
 
 impl OperationDefinition {
-    pub fn named<O: OperationDeclaration + ?Sized>(id: impl Into<String>) -> crate::Result<Self> {
-        let id = crate::Identifier::new(id.into())?;
-        let mut definition = O::definition();
-        if definition.id != id {
-            definition.fingerprint = catalog::fingerprint_at::<O>(id.as_str())?;
-            definition.id = id;
-        }
-        definition.validate()?;
-        Ok(definition)
-    }
-
     pub fn validate(&self) -> crate::Result<()> {
         if crate::reserved(self.id.as_str()) {
             return Err(crate::Error::ReservedOperation { id: self.id.as_str().to_owned() });
@@ -151,10 +115,6 @@ impl OperationDefinition {
         }
         self.policy.validate()?;
         Ok(())
-    }
-
-    pub fn of<O: OperationDeclaration + ?Sized>() -> crate::Result<Self> {
-        Entry::of::<O>().definition()
     }
 }
 
@@ -170,23 +130,26 @@ mod tests {
 
     struct Published;
 
-    impl OperationDeclaration for Published {
+    impl harmos_domain::operations::RequestShape for Published {
         type Request = ();
         type Response = ();
         type Input = NoStream;
         type Output = NoStream;
-        const ID: &'static str = "visibility.public";
-        const POLICY: OperationPolicy = crate::model::operations::lifecycle::POLICY;
-        const VISIBILITY: Visibility = Visibility::Public;
     }
+    static PUBLISHED_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+        harmos_domain::operations::WireDeclaration::request::<Published>("visibility.public", crate::model::operations::lifecycle::POLICY)
+            .visibility(Visibility::Public);
+
+    const PUBLISHED_OPERATION: harmos_domain::operations::OperationSpec<Published> =
+        harmos_domain::operations::OperationSpec::<Published>::new(&PUBLISHED_DESCRIPTION);
 
     #[test]
     fn public_metadata_roundtrip() {
-        let contract = WireDeclaration::of::<Published>().contract().unwrap();
+        let contract = PUBLISHED_OPERATION.wire().contract().unwrap();
         let encoded = serde_json::to_value(&contract).unwrap();
         assert_eq!(encoded["operation"]["visibility"], "public");
         assert_eq!(serde_json::from_value::<Contract>(encoded.clone()).unwrap(), contract);
-        assert_eq!(contract.fingerprint(), Published::definition().fingerprint);
+        assert_eq!(contract.fingerprint(), PUBLISHED_OPERATION.definition().expect("valid operation").fingerprint);
 
         for visibility in ["shared", "host"] {
             let mut obsolete = encoded.clone();
@@ -196,8 +159,8 @@ mod tests {
 
         use crate::catalog::Node;
         use crate::inventory::contracts::{encode_fragments, encoded_fragments_len};
-        const OPERATIONS: &[Node<WireDeclaration>] = &[Node::Leaf(WireDeclaration::of::<Published>())];
-        const LIFECYCLE: &[OperationPolicy; 2] = &[Published::POLICY; 2];
+        const OPERATIONS: &[Node<WireDeclaration>] = &[Node::Leaf(PUBLISHED_OPERATION.wire())];
+        const LIFECYCLE: &[OperationPolicy; 2] = &[PUBLISHED_OPERATION.entry().policy; 2];
         const SIZE: usize = encoded_fragments_len("sidecar", "fixture", OPERATIONS, &[], LIFECYCLE);
         const METADATA: [u8; SIZE] = encode_fragments("sidecar", "fixture", OPERATIONS, &[], LIFECYCLE);
         let metadata = crate::artifacts::fragments::<serde_json::Value>(&METADATA, &["contracts"]).unwrap();
@@ -209,7 +172,7 @@ mod tests {
     fn grpc_visibility_contracts() {
         let binding = Grpc::new("visibility.v1", "Operations", "Call");
         for visibility in [Visibility::Private, Visibility::Public] {
-            let mut declaration = WireDeclaration::of::<Published>();
+            let mut declaration = PUBLISHED_OPERATION.wire();
             declaration.operation.visibility = visibility;
             declaration.grpc = Some(binding.clone());
             let result = declaration.contract();

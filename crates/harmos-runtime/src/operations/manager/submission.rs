@@ -35,59 +35,61 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    pub fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+    pub fn submit<O: RequestShape>(&self, request: O::Request) -> Result<Running<O>> {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, None)
     }
 
-    pub fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::super::RequestClaims) -> Result<Running<O>> {
+    pub fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::super::RequestClaims) -> Result<Running<O>> {
         self.admit::<O, ()>((crate::operations::binding::Request::owned(request, claims), ()), None, &[], &Source::Host, None)
     }
 
-    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
+    pub fn submit_endpoints<O: RequestShape, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.admit::<O, P>((request.into(), endpoints), None, &[], &Source::Host, None)
     }
 
-    pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub fn submit_charged<O: RequestShape, P: Send + 'static>(
         &self, request: crate::operations::StreamItem<O::Request>, endpoints: P,
     ) -> Result<Running<O>> {
         self.admit::<O, P>((crate::operations::binding::Request::charged(request)?, endpoints), None, &[], &Source::Host, None)
     }
 
-    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O::Request) -> Result<Running<O>> {
+    pub fn submit_at<O: RequestShape>(&self, id: &str, request: O::Request) -> Result<Running<O>> {
         self.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Host, None)
     }
 
-    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<Self, O> {
+    pub fn operation<O: RequestShape>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<Self, O> {
         harmos_operations::execution::operations::Invocation::new(self.clone(), request)
     }
 
-    pub fn submit_caused<O: OperationDeclaration>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
+    pub fn submit_caused<O: RequestShape>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
         self.admit::<O, ()>((request.into(), ()), None, &[], &Source::Host, Some(cause))
     }
 
     #[cfg(feature = "plugin-guest")]
-    pub(in crate::operations) fn submit_by<O: OperationDeclaration, P: Send + 'static>(
+    pub(in crate::operations) fn submit_by<O: RequestShape, P: Send + 'static>(
         &self, input: (crate::operations::binding::Request<O::Request>, P), source: &Source,
     ) -> Result<Running<O>> {
         self.admit::<O, P>(input, None, &[], source, None)
     }
 
-    pub(in crate::operations) fn submit_scoped<O: OperationDeclaration, P: Send + 'static>(
+    pub(in crate::operations) fn submit_scoped<O: RequestShape, P: Send + 'static>(
         &self, input: (crate::operations::binding::Request<O::Request>, P), scope: &Scope<'_>, admission: &Admission, source: &Source,
         cause: Option<Position>,
     ) -> Result<Running<O>> {
         self.admit::<O, P>(input, Some(scope), admission.held(), source, cause)
     }
 
-    pub(in crate::operations) fn admit<O: OperationDeclaration, P: Send + 'static>(
+    pub(in crate::operations) fn admit<O: RequestShape, P: Send + 'static>(
         &self, input: (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>, ancestors: &[&'static str],
         source: &Source, cause: Option<Position>,
     ) -> Result<Running<O>> {
-        self.admit_at::<O, P>(O::ID, input, scope, ancestors, source, cause)
+        let entry = self.typed_entry::<O, P>(&source.check()?, None)?;
+        let id = entry.id().to_owned();
+        self.admit_at::<O, P>(&id, input, scope, ancestors, source, cause)
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.admit_at", level = "debug", skip_all, fields(operation = %id))]
-    pub(in crate::operations) fn admit_at<O: OperationDeclaration, P: Send + 'static>(
+    pub(in crate::operations) fn admit_at<O: RequestShape, P: Send + 'static>(
         &self, id: &str, input: (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>,
         ancestors: &[&'static str], source: &Source, cause: Option<Position>,
     ) -> Result<Running<O>> {
@@ -109,7 +111,7 @@ impl Manager {
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.admit_entry", level = "debug", skip_all, fields(operation = %submission.entry.definition.id, provider = %submission.entry.owner, generation = ?submission.entry.generation, lane = submission.entry.lane, outcome = "refused"))]
-    pub(in crate::operations) fn admit_entry<O: OperationDeclaration, P: Send + 'static>(
+    pub(in crate::operations) fn admit_entry<O: RequestShape, P: Send + 'static>(
         &self, (mut request, endpoints): (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>,
         ancestors: &[&'static str], source: &Source, submission: Submission,
     ) -> Result<Running<O>> {
@@ -125,9 +127,14 @@ impl Manager {
         entry.authorize(&origin)?;
         let authorization = self.authorize_external(&entry, &origin)?;
         let authority = entry.grant_authority(&origin, authorization);
-        let grant = O::grant(&request.value).or(request.grant.take());
+        let grant = request.grant.take();
         let grant = match entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>() {
-            Some(factory) => factory.grant(grant),
+            Some(factory) => {
+                let requested = factory
+                    .request_grant(&request.value)
+                    .map_err(|source| Error::OperationPayload { operation: entry.id().to_owned(), source })?;
+                factory.grant(requested.or(grant))
+            }
             None => grant,
         };
         authority.admit(grant.as_ref())?;
@@ -146,10 +153,8 @@ impl Manager {
             let Some(factory) = original.downcast_ref::<harmos_operations::execution::operations::OperationFactory>() else {
                 return Err(original);
             };
-            let expected = crate::operations::OperationDefinition::named::<O>(entry.id());
-            if !expected.is_ok_and(|definition| factory.definition.fingerprint == definition.fingerprint)
-                || !factory.accepts_native::<O, P>()
-            {
+            let expected = O::fingerprint(entry.id());
+            if !expected.is_ok_and(|fingerprint| factory.definition.fingerprint == fingerprint) || !factory.accepts_native::<O, P>() {
                 return Err(original);
             }
             let binding = crate::operations::authored::factory::<O, P>(self, &entry, factory.clone());
@@ -260,6 +265,7 @@ impl Manager {
         let outcome = reservation.submit(job, cause);
         tracing::Span::current().record("outcome", "admitted");
         Ok(Running {
+            operation: entry.id().to_owned(),
             id,
             generation: entry.generation,
             outcome: crate::operations::handler::Outcome::Request(outcome),

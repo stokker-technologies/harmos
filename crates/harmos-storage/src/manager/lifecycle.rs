@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     // Acquire Backends Before Giving One Worker To The Host's Supervisor.
     #[tracing::instrument(name = "storage.manager.lifecycle.start_with", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn start_with(&self, owner: Arc<()>, spawn: impl FnOnce(Worker) -> Result<Box<dyn WorkerOwner>>) -> Result<()> {
@@ -62,7 +62,7 @@ impl<C> StorageManager<C> {
             if state.status.closing {
                 return Err(Error::Closing { domain: "storage" });
             }
-            let worker = spawn(Worker(self.erased()))?;
+            let worker = spawn(Worker(self.clone()))?;
             state.ready = true;
             state.status.running = true;
             drop(state);
@@ -133,7 +133,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    pub fn same_instance<D>(&self, other: &StorageManager<D>) -> bool {
+    pub fn same_instance(&self, other: &StorageManager) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
 

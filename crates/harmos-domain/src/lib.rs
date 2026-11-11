@@ -52,13 +52,11 @@ pub use registration::{CATALOG_EXPORT_FLAG, Registrar, Registration, Registratio
 pub use value::{VALUE_DEPTH, Value, ValueError};
 
 #[cfg(feature = "derive")]
-pub use harmos_macros::{
-    Described, Row, domain_catalog as catalog, domain_operation as operation, message, records, transaction, transactions,
-};
+pub use harmos_sdk_derive::{Described, Request, Row, StoredMessage as Message};
 pub use message::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, Storable, btree_map_memory};
 pub use model::operations::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 pub use model::services::policy::{RestartPolicy, ServicePolicy};
-pub use operations::{Invokes, OperationDeclaration, OperationDefinition, Requires};
+pub use operations::{OperationDefinition, OperationSpec, RequestShape};
 pub use presentation::{RowMetadata, StreamField};
 pub use streams::{Definition, StreamEntry};
 
@@ -110,7 +108,7 @@ pub mod __private {
         Requirements as PluginRequirements,
     };
     pub use crate::postcard_product;
-    pub use crate::state::{Catalogued, Mutual, Paired};
+
     pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
 
     /* === Imports === */

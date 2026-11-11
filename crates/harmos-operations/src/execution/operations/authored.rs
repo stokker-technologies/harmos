@@ -19,7 +19,7 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
-use super::{ExecutionContext, FailureKind, OperationDeclaration};
+use super::{ExecutionContext, FailureKind, RequestShape};
 
 /* === Constants === */
 
@@ -88,20 +88,19 @@ pub trait OutputEndpoint: Send + Sized + 'static {
     }
 }
 
-// The Instance Contract Behind Every Registered Operation: Carrier Proxies,
-// Lifecycle Built-Ins And Authored Operations Through `Authored`.
+// Physical Instances for Carrier Proxies and Guest Lifecycle Operations.
 #[doc(hidden)]
 pub trait Carrier: Send + Sized + 'static {
-    type Declaration: OperationDeclaration;
+    type Declaration: RequestShape;
     type Error: std::error::Error + Send + Sync + 'static;
     type StreamEndpoints: EndpointSet;
 
     fn bind(context: ExecutionContext) -> impl Future<Output = Result<Self, Self::Error>> + Send;
 
     fn attempt(
-        &mut self, context: ExecutionContext, request: &mut <Self::Declaration as OperationDeclaration>::Request,
+        &mut self, context: ExecutionContext, request: &mut <Self::Declaration as RequestShape>::Request,
         endpoints: &mut Self::StreamEndpoints,
-    ) -> impl Future<Output = Result<super::Response<<Self::Declaration as OperationDeclaration>::Response>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<super::Response<<Self::Declaration as RequestShape>::Response>, Self::Error>> + Send;
 
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
@@ -118,14 +117,6 @@ pub trait Carrier: Send + Sized + 'static {
     fn classify(_error: &Self::Error) -> FailureKind {
         FailureKind::Permanent
     }
-}
-
-// Selects The Carrier That Executes A Declaration.
-pub trait Executable: OperationDeclaration {
-    type Carrier: Carrier<Declaration = Self>;
-
-    // Registration Verifies The Carrier Resources.
-    const RESOURCES: &'static [super::Resource] = &[];
 }
 
 /* === Implementations === */

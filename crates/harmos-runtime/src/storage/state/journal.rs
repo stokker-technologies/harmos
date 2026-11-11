@@ -36,7 +36,7 @@ use crate::{Result, state::Kind};
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(target = "harmos::storage", name = "storage.reserve_group", level = "debug", skip_all)]
     pub(crate) async fn reserve_group(
         &self, group: &Group<&serde_json::Value>, projection: Option<&crate::storage::capture::Projection>,

@@ -708,23 +708,39 @@ mod tests {
         type Record = ();
     }
 
-    #[crate::operation(harmos_path = crate, resources = [AtomicUsize], id = "test.read", response = u64,
-        policy = crate::OperationPolicy {
+    #[derive(crate::Message, Debug, Default)]
+    #[harmos_path(crate)]
+    #[derive(crate::Request)]
+    #[request(response = u64)]
+    #[derive(Clone)]
+    struct Read;
+
+    static READ_DESCRIPTION: crate::operations::WireDeclaration = crate::operations::WireDeclaration::request::<Read>(
+        "test.read",
+        crate::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
-    )]
-    struct Read;
+    );
 
-    impl crate::Operation for Read {
-        type Error = std::convert::Infallible;
+    const READ_OPERATION: crate::operations::OperationSpec<Read> = crate::operations::OperationSpec::<Read>::new(&READ_DESCRIPTION);
 
-        async fn run(self, ctx: crate::Context<'_, Self>) -> std::result::Result<crate::Response<u64>, Self::Error> {
-            ctx.resource::<AtomicUsize>().fetch_add(1, Ordering::SeqCst);
-            Ok(7.into())
-        }
+    async fn read_handler(
+        _request: Read, ctx: crate::operations::FunctionContext<Read>,
+    ) -> std::result::Result<crate::Response<u64>, std::convert::Infallible> {
+        ctx.resource::<AtomicUsize>().expect("declared resource is registered").fetch_add(1, Ordering::SeqCst);
+        Ok(7.into())
+    }
+
+    fn read_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
+        crate::operations::OperationFactory::function(
+            READ_OPERATION,
+            const { &[crate::Resource::of::<AtomicUsize>()] },
+            read_handler,
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     struct Worker(Arc<AtomicUsize>);
@@ -762,8 +778,8 @@ mod tests {
         assert!(scope.commit());
         scope
             .register_batch(
-                harmos_operations::execution::__private::RegistrationBatch::new()
-                    .operation::<Read>()
+                harmos_operations::execution::__private::Catalog::new()
+                    .entry(read_operation().expect("representable operation"))
                     .service::<Worker>("service", crate::services::POLICY)
                     .lane(crate::operations::Lane::default()),
             )
@@ -790,7 +806,7 @@ mod tests {
         .unwrap();
         let mut receipt = runtime.operations.stage_plugin(&scope, |_| Ok(())).unwrap();
         assert!(scope.commit());
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Read>();
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(read_operation().expect("representable operation"));
         let invocation = scope.operation::<Read>(Read);
         scope.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
         assert_eq!(initialized.load(Ordering::SeqCst), 0);

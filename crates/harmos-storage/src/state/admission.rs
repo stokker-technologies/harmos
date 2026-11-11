@@ -54,7 +54,7 @@ pub struct Permit {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.state.admission.reserve_transition", level = "debug", skip_all)]
     pub async fn reserve_transition(&self, payload_bytes: usize, records: Option<ReadLimits>) -> Result<Permit> {
         self.reserve_recovery(payload_bytes, records, false).await

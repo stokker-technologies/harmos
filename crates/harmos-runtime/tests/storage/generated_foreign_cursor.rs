@@ -46,7 +46,12 @@ use super::*;
 async fn foreign_cursor_refused() {
     use harmos_operations::storage::FollowStream;
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut foreign = fixture.storage.cursor_accepted();
     foreign.history.epoch = harmos_runtime::Identifier::new("foreign").unwrap();
     let request = harmos_protocol::storage::FollowStream {

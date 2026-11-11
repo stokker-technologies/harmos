@@ -16,7 +16,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -26,11 +25,10 @@ use std::time::Duration;
 
 // Local Imports
 use super::{Execution, Factory, LifecycleFuture, PluginHost};
-use crate::catalog::Catalog;
 use crate::config::PluginSettings;
 use crate::guest::host::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::guest::{Loaded, Serving};
-use crate::operations::{ComponentBindings, Declarations, EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
+use crate::operations::{ComponentCatalog, EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
 use crate::{Application, Error, Result};
 
 /* === Constants === */
@@ -41,7 +39,7 @@ use crate::{Application, Error, Result};
 
 /* === Structs === */
 
-struct Guest<A: Application, C> {
+struct Guest<A: Application> {
     loaded: Option<Loaded<A>>,
     serving: Option<Serving<A>>,
     exited: Option<LifecycleFuture<'static>>,
@@ -56,7 +54,7 @@ struct Guest<A: Application, C> {
     shutdown_timeout: Duration,
     encoding_memory_bytes: NonZeroUsize,
     lane: Lane,
-    catalog: PhantomData<fn() -> C>,
+    catalog: ComponentCatalog,
 }
 
 /* === Enums === */
@@ -66,30 +64,21 @@ struct Guest<A: Application, C> {
 /* === Implementations === */
 
 impl<A: Application> PluginHost<A> {
-    pub async fn register_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()>
-    where
-        C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
-    {
-        self.guest::<C>(loaded, settings, lane, false).await
+    pub async fn register_guest(&self, catalog: ComponentCatalog, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()> {
+        self.guest(catalog, loaded, settings, lane, false).await
     }
 
-    pub async fn reload_guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()>
-    where
-        C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
-    {
-        self.guest::<C>(loaded, settings, lane, true).await
+    pub async fn reload_guest(&self, catalog: ComponentCatalog, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()> {
+        self.guest(catalog, loaded, settings, lane, true).await
     }
 
-    async fn guest<C>(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane, replace: bool) -> Result<()>
-    where
-        C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
-    {
+    async fn guest(&self, catalog: ComponentCatalog, loaded: Loaded<A>, settings: PluginSettings, lane: Lane, replace: bool) -> Result<()> {
         settings.validate()?;
         loaded.validate_publications().map_err(|source| failed(&loaded.declaration().id, source))?;
         let mut definition = PluginDefinition::guest(&loaded, settings.configuration.clone())
             .map_err(|source| failed(loaded.declaration().id.as_str(), source))?;
         definition.requires = settings.requires.clone();
-        let declarations = Declarations::of::<C>().map_err(|source| failed(&definition.id, source))?;
+        let declarations = catalog.definitions();
         harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
             Error::InvalidInput {
                 field: "guest operation catalog",
@@ -103,7 +92,7 @@ impl<A: Application> PluginHost<A> {
         let encoding_memory_bytes = settings.encoding_memory_bytes;
         let factory: Factory = Arc::new(move || {
             let inspected = loaded.duplicate().map_err(|source| failed(&loaded.declaration().id, source))?;
-            Ok(Box::new(Guest::<A, C> {
+            Ok(Box::new(Guest::<A> {
                 loaded: Some(inspected),
                 serving: None,
                 exited: None,
@@ -118,18 +107,14 @@ impl<A: Application> PluginHost<A> {
                 shutdown_timeout,
                 encoding_memory_bytes,
                 lane,
-                catalog: PhantomData,
+                catalog: catalog.clone(),
             }))
         });
         self.register(definition, factory, grants, settings.restart, replace).await
     }
 }
 
-impl<A, C> Execution for Guest<A, C>
-where
-    A: Application,
-    C: Catalog<Declarations> + Catalog<ComponentBindings> + 'static,
-{
+impl<A: Application> Execution for Guest<A> {
     fn start<'a>(
         &'a mut self, definition: &'a PluginDefinition, router: &'a Router, authority: &'a PluginLifecycleAuthority<'a>,
     ) -> LifecycleFuture<'a> {
@@ -149,7 +134,7 @@ where
                 self.exited = Some(Box::pin(async move { exited.await.map_err(|source| failed(&owner, source)) }));
                 let component = Arc::new(serving.operations().map_err(|source| failed(&definition.id, source))?);
                 self.registration = Some(self.operations.stage_plugin(serving.scope().unwrap(), |bindings| {
-                    bindings.register_component_catalog::<C>(self.lane, component.clone())
+                    bindings.register_component_catalog(&self.catalog, self.lane, component.clone())
                 })?);
                 self.sdk = Some(component.stage_sdk(&self.operations, self.lane)?);
                 self.initializing =

@@ -53,9 +53,11 @@ impl Registration<Editor> for Definitions {
         }
 
         Catalog::Transactions {
+            states: None,
+            records: Some(crate::runtime::probe::note_registry()),
             definitions: self.0,
-            decode,
-            inverses: Some(inverses),
+            decode: std::sync::Arc::new(decode),
+            inverses: Some(std::sync::Arc::new(inverses)),
         }
     }
 }

@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.shutdown.close", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn close(&self) -> Result<()> {
         let result = async {

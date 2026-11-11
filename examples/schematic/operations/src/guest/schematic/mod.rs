@@ -17,9 +17,15 @@ pub mod validate;
 
 /* === Re-Exports === */
 
-pub use analyze::AnalyzeSchematic;
-pub use propose::ProposeRoute;
-pub use validate::ValidateSchematic;
+#[cfg(feature = "runtime")]
+pub use analyze::analyze_schematic_operation;
+pub use analyze::{ANALYZE_SCHEMATIC_DESCRIPTION, ANALYZE_SCHEMATIC_OPERATION, AnalyzeSchematic};
+#[cfg(feature = "runtime")]
+pub use propose::propose_route_operation;
+pub use propose::{PROPOSE_ROUTE_DESCRIPTION, PROPOSE_ROUTE_OPERATION, ProposeRoute};
+#[cfg(feature = "runtime")]
+pub use validate::validate_schematic_operation;
+pub use validate::{VALIDATE_SCHEMATIC_DESCRIPTION, VALIDATE_SCHEMATIC_OPERATION, ValidateSchematic};
 
 /* === Imports === */
 

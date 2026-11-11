@@ -10,7 +10,7 @@
 /* === Imports === */
 
 use crate::execution::operations::{ExecutionContext, ProtobufOperation, ProtobufOutput, Resource, ServingError};
-use harmos_storage::{ErasedCatalog, StorageManager};
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
@@ -24,10 +24,10 @@ impl ProtobufOperation for FollowObjects {
     type Endpoints = ProtobufOutput<harmos_protocol::storage::ObjectEntry>;
     const ID: &'static str = "storage.follow_objects";
     const POLICY: crate::OperationPolicy = super::STREAM_POLICY;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
-        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<harmos_storage::StorageCursor> = async {
             let selection: harmos_domain::model::storage::ObjectSelection =
                 request.selection.ok_or(crate::Error::InvalidInput { field: "selection", reason: "required" })?.try_into()?;

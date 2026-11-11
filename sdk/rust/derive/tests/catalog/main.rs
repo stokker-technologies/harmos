@@ -1,0 +1,227 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::fs;
+// Third Party Imports
+
+// Local Imports
+use crate::fixtures;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */
+
+#[test]
+fn feature_catalog_compiles() {
+    let sdk = fixtures::library("harmos_operations");
+    let dependencies = fixtures::dependencies();
+
+    let source = fixtures::manifest().join("tests/fixtures/feature_catalog.rs");
+    let directory = format!("harmos-cfg-catalog-{}", std::process::id());
+    let output = std::env::temp_dir().join(directory);
+    let rustc = std::env::var_os("RUSTC");
+    let rustc = rustc.unwrap_or("rustc".into());
+    fs::create_dir_all(&output).unwrap();
+
+    let executable = output.join(if cfg!(windows) { "feature_catalog.exe" } else { "feature_catalog" });
+    for features in [&[][..], &["--cfg", "feature=\"optional_operation\""][..]] {
+        let mut compiler = fixtures::command(&rustc);
+        compiler
+            .args(["--edition=2024", "--crate-type=bin", "--crate-name=feature_catalog"])
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos_operations={}", sdk.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(&output)
+            .args(features);
+
+        let compiled = compiler.output().unwrap();
+        let diagnostic = String::from_utf8_lossy(&compiled.stderr);
+        assert!(compiled.status.success(), "catalog features {features:?} failed:\n{diagnostic}");
+
+        let executed = fixtures::command(&executable).status().unwrap();
+        assert!(executed.success(), "catalog features {features:?} inventory and registration failed");
+    }
+    fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
+fn owner_ids_compile() {
+    let harmos = fixtures::library("harmos_runtime");
+    let dependencies = fixtures::dependencies();
+    let output = std::env::temp_dir().join(format!("harmos-owner-ui-{}", std::process::id()));
+    fs::create_dir_all(&output).unwrap();
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let cases: Vec<(String, bool)> =
+        serde_json::from_str(include_str!("../../../../../crates/harmos-domain/tests/fixtures/owner-identities.json")).unwrap();
+    for (index, (owner, valid)) in cases.into_iter().enumerate() {
+        let source = output.join(format!("owner_{index}.rs"));
+        let literal = format!("{owner:?}");
+        let authored = format!(
+            r#"
+use harmos;
+struct Example;
+impl harmos::builtins::lifecycle::Policy for Example {{
+    const INITIALIZATION_POLICY: harmos::OperationPolicy = harmos::OperationPolicy {{
+        timeout: std::time::Duration::from_secs(10),
+        attempt_timeout: std::time::Duration::from_secs(10),
+        cancellation_timeout: std::time::Duration::ZERO,
+        retries: harmos::RetryPolicy::Never,
+    }};
+    const SHUTDOWN_POLICY: harmos::OperationPolicy = Self::INITIALIZATION_POLICY;
+}}
+impl harmos::Lifecycle for Example {{
+    type Config = ();
+    type Context = harmos::guest::kit::Context;
+    type Error = std::convert::Infallible;
+    async fn prepare(_: (), _: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {{ Ok(Self) }}
+    async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {{ Ok(()) }}
+    async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {{ Ok(()) }}
+    async fn cleanup(&mut self) -> Result<(), Self::Error> {{ Ok(()) }}
+}}
+#[harmos::guest(harmos_path = ::harmos, id = {literal}, requires = ())]
+impl harmos::guest::Plugin for Example {{
+    const CATALOGS: &'static [harmos::operations::CatalogDescription] = &[];
+}}
+fn main() {{}}
+"#
+        );
+        fs::write(&source, authored).unwrap();
+        let compiled = fixtures::command(&rustc)
+            .args(["--edition=2024", "--crate-type=bin", "--emit=metadata"])
+            .env("CARGO_PKG_VERSION", env!("CARGO_PKG_VERSION"))
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos={}", harmos.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(&output)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&compiled.stderr);
+        assert_eq!(compiled.status.success(), valid, "plugin {owner:?}:\n{stderr}");
+        if !valid {
+            assert!(stderr.contains("plugin id must match"), "plugin {owner:?}:\n{stderr}");
+        }
+    }
+    let source = fixtures::manifest().join("tests/fixtures/facade_runtime_catalogs.rs");
+    let compiled = fixtures::command(&rustc)
+        .args(["--edition=2024", "--crate-type=bin", "--crate-name=facade_runtime_catalogs"])
+        .env("CARGO_PKG_VERSION", env!("CARGO_PKG_VERSION"))
+        .arg(source)
+        .arg("--extern")
+        .arg(format!("harmos={}", harmos.display()))
+        .arg("-L")
+        .arg(format!("dependency={}", dependencies.display()))
+        .arg("--out-dir")
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(compiled.status.success(), "facade role catalogs failed to build:\n{}", String::from_utf8_lossy(&compiled.stderr));
+    let executable = output.join(if cfg!(windows) { "facade_runtime_catalogs.exe" } else { "facade_runtime_catalogs" });
+    let executed = fixtures::command(&executable).status().unwrap();
+    assert!(executed.success(), "facade role inventory fixture failed at runtime");
+    fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
+fn authoring_refusals_compile() {
+    let harmos = fixtures::library("harmos_runtime");
+    let serde = fixtures::library("serde");
+    let dependencies = fixtures::dependencies();
+    let fixtures = fixtures::manifest().join("tests/fixtures");
+    let output = std::env::temp_dir().join(format!("harmos-stream-ui-{}", std::process::id()));
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    fs::create_dir_all(&output).expect("the compile-test output directory is available");
+
+    for (fixture, expected) in [
+        ("serde_refusals.rs", "Serde attribute"),
+        ("non_serde_row.rs", "Serialize"),
+        // Guest Artifact Declarations Remain Until The Guest Migration.
+        ("explicit_version_plugin.rs", "remove `version`"),
+        ("plugin_on_struct.rs", "belongs on `impl Plugin for ConcreteType`"),
+        // A requirement grants its own operation, scoped by name; an empty
+        // or unknown scope declares nothing a planner could read.
+        ("empty_grant.rs", "grant scopes are nonempty"),
+        ("unknown_grant.rs", "a requirement scopes its operation's grant"),
+        ("malformed_harmos_path.rs", "`harmos_path` names the crate path"),
+        // A message field owns a nested message directly or through one
+        // `Box<T>`; every other boxed or shared shape is refused.
+        ("boxed_scalar_field.rs", "unsupported boxed message field"),
+        ("boxed_container_field.rs", "unsupported boxed message field"),
+        ("nested_box_field.rs", "unsupported boxed message field"),
+        ("optional_box_field.rs", "unsupported boxed message field"),
+        ("repeated_box_field.rs", "unsupported boxed message field"),
+        ("shared_message_field.rs", "unsupported boxed message field"),
+    ] {
+        let source = fixtures.join(fixture);
+        let compiled = fixtures::command(&rustc)
+            .arg("--edition=2024")
+            .arg("--crate-type=bin")
+            .arg("--emit=metadata")
+            .arg(&source)
+            .arg("--extern")
+            .arg(format!("harmos={}", harmos.display()))
+            .arg("--extern")
+            .arg(format!("serde={}", serde.display()))
+            .arg("-L")
+            .arg(format!("dependency={}", dependencies.display()))
+            .arg("--out-dir")
+            .arg(&output)
+            .output()
+            .expect("rustc runs the compile-fail fixture");
+        let stderr = String::from_utf8_lossy(&compiled.stderr);
+
+        assert!(!compiled.status.success(), "{fixture} unexpectedly compiled successfully");
+        assert!(stderr.contains(expected), "{fixture} did not report `{expected}`:\n{stderr}");
+        if fixture == "serde_refusals.rs" {
+            for (attribute, owner) in [
+                ("flatten", "Flatten"),
+                ("serialize_with", "Serializer"),
+                ("with", "Module"),
+                ("into", "Conversion"),
+                ("remote", "Remote"),
+                ("skip_serializing_if", "Predicate"),
+                ("skip", "Positional"),
+                ("transparent", "Transparent"),
+                ("tag", "TaggedScalar"),
+                ("untagged", "MixedVariant"),
+            ] {
+                let diagnostic = format!("Serde attribute `{attribute}` on type `{owner}`");
+                assert!(stderr.contains(&diagnostic), "missing {diagnostic}:\n{stderr}");
+            }
+        }
+    }
+}

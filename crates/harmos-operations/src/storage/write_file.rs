@@ -11,7 +11,7 @@
 
 use crate::execution::operations::access::GrantAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufInput, ProtobufOperation, Resource, ServingError, Visibility};
-use harmos_storage::{ErasedCatalog, StorageManager};
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
@@ -27,7 +27,7 @@ impl ProtobufOperation for WriteFile {
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "WriteFile"));
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<GrantAccess>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
 
     fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
         let metadata = request.metadata.as_ref().ok_or_else(|| harmos_domain::MessageError::borrowed("metadata is required"))?;
@@ -35,7 +35,7 @@ impl ProtobufOperation for WriteFile {
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, input: &Self::Endpoints) -> Result<Self::Response, ServingError> {
-        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
         let grants = context.resource::<GrantAccess>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<harmos_storage::FileReference> = async {
             let metadata: harmos_storage::FileMetadata =

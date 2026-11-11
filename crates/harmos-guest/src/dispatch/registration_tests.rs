@@ -11,7 +11,7 @@
 
 use super::Table as WireTable;
 use harmos_domain::ServicePolicy;
-use harmos_operations::execution::__private::{RegistrationBatch, ResourceSet, ServiceFuture};
+use harmos_operations::execution::__private::{Catalog, ResourceSet, ServiceFuture};
 use harmos_operations::execution::operations::*;
 use harmos_operations::execution::services::Service;
 use std::sync::{
@@ -21,33 +21,49 @@ use std::sync::{
 
 struct Worker(Arc<AtomicUsize>);
 
-struct ReadCatalog;
+pub const READ_CATALOG_CATALOG: CatalogDescription = CatalogDescription::new("ReadCatalog", &[], &[], Some(read_catalog_catalog_batch));
 
-impl OperationCatalog for ReadCatalog {
-    const CATALOG: Catalog = Catalog::of::<Self>("ReadCatalog", &[], &[]);
-    fn batch() -> RegistrationBatch {
-        RegistrationBatch::new().operation::<Read>()
-    }
+pub fn read_catalog_catalog_batch() -> Catalog {
+    Catalog::new().entry(read_operation().expect("representable operation"))
 }
 
-#[harmos_operations::execution::operation(harmos_path = harmos_operations::execution, resources = [u64], id = "fixture.read", response = u64,
-        policy = harmos_operations::execution::OperationPolicy {
+#[derive(harmos_operations::execution::Message, Debug, Default)]
+#[harmos_path(harmos_operations::execution)]
+#[derive(harmos_operations::execution::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
+struct Read;
+
+static READ_DESCRIPTION: harmos_operations::execution::operations::WireDeclaration =
+    harmos_operations::execution::operations::WireDeclaration::request::<Read>(
+        "fixture.read",
+        harmos_operations::execution::OperationPolicy {
             timeout: std::time::Duration::from_secs(1),
             attempt_timeout: std::time::Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: harmos_operations::execution::RetryPolicy::Never,
         },
-    )]
-struct Read;
+    );
 
-impl harmos_operations::execution::Operation for Read {
-    type Error = std::convert::Infallible;
+const READ_OPERATION: harmos_operations::execution::operations::OperationSpec<Read> =
+    harmos_operations::execution::operations::OperationSpec::<Read>::new(&READ_DESCRIPTION);
 
-    async fn run(
-        self, ctx: harmos_operations::execution::Context<'_, Self>,
-    ) -> Result<harmos_operations::execution::Response<u64>, Self::Error> {
-        Ok(harmos_operations::execution::Response::from_owner(ctx.resource::<u64>()))
-    }
+async fn read_handler(
+    _request: Read, ctx: harmos_operations::execution::operations::FunctionContext<Read>,
+) -> Result<harmos_operations::execution::Response<u64>, std::convert::Infallible> {
+    Ok(harmos_operations::execution::Response::from_owner(ctx.resource::<u64>().expect("declared resource is registered")))
+}
+
+fn read_operation() -> ::core::result::Result<
+    harmos_operations::execution::operations::OperationFactory,
+    harmos_operations::execution::operations::ServingError,
+> {
+    harmos_operations::execution::operations::OperationFactory::function(
+        READ_OPERATION,
+        const { &[harmos_operations::execution::Resource::of::<u64>()] },
+        read_handler,
+        |_| harmos_operations::execution::operations::FailureKind::Permanent,
+    )
 }
 
 fn ready<T>(mut future: ServiceFuture<'_, T>) -> T {
@@ -61,16 +77,16 @@ fn ready<T>(mut future: ServiceFuture<'_, T>) -> T {
 #[test]
 fn named_factory_contract() {
     let id = format!("fixture.device_{}", 7);
-    let batch = RegistrationBatch::new().operation_named::<Read>(&id).unwrap();
+    let batch = Catalog::new().entry_named(read_operation().expect("representable operation"), &id).unwrap();
     let factory = &batch.operations[0];
-    let definition = OperationDefinition::named::<Read>(&id).unwrap();
+    let definition = READ_OPERATION.named(&id).unwrap();
     assert_eq!(factory.definition, definition);
-    assert_ne!(definition.fingerprint, Read::definition().fingerprint);
+    assert_ne!(definition.fingerprint, READ_OPERATION.definition().expect("valid operation").fingerprint);
     let contract = factory.contract().unwrap();
     assert_eq!(contract.operation(), &definition);
-    assert_eq!(contract.schema(), WireDeclaration::of::<Read>().contract().unwrap().schema());
-    assert_eq!(contract.operation().policy, Read::POLICY);
-    let granted = factory.grant(Some(harmos_domain::plugin::Grant::of(Read::ID, "device"))).unwrap();
+    assert_eq!(contract.schema(), READ_OPERATION.wire().contract().unwrap().schema());
+    assert_eq!(contract.operation().policy, READ_OPERATION.entry().policy);
+    let granted = factory.grant(Some(harmos_domain::plugin::Grant::of(READ_OPERATION.entry().id, "device"))).unwrap();
     assert_eq!((granted.operation(), granted.scope()), (id.as_str(), Some("device")));
     let foreign = harmos_domain::plugin::Grant::of("foreign.operation", "device");
     assert_eq!(factory.grant(Some(foreign.clone())), Some(foreign));
@@ -89,11 +105,11 @@ fn named_factory_contract() {
     changed.definition.fingerprint.0[0] ^= 1;
     assert!(changed.validate().is_err());
     let mut changed = factory.clone();
-    changed.definition.policy.timeout += Read::POLICY.attempt_timeout;
+    changed.definition.policy.timeout += READ_OPERATION.entry().policy.attempt_timeout;
     assert!(changed.validate().is_err());
 
     for id in ["", "bad-name", "harmos.initialize"] {
-        assert!(RegistrationBatch::new().operation_named::<Read>(id).is_err());
+        assert!(Catalog::new().entry_named(read_operation().expect("representable operation"), id).is_err());
     }
 }
 
@@ -102,8 +118,8 @@ fn carrier_assignments_are_immutable() {
     use harmos_operations::execution::operations::{AssignedOperation, OperationAssignments};
     use prost::Message as _;
     let first = AssignedOperation {
-        operation: format!("fixture.{}", Read::ID),
-        fingerprint: Read::definition().fingerprint.0.to_vec(),
+        operation: format!("fixture.{}", READ_OPERATION.entry().id),
+        fingerprint: READ_OPERATION.definition().expect("valid operation").fingerprint.0.to_vec(),
         generation: 1,
     };
     let assignments = OperationAssignments::default();
@@ -121,7 +137,7 @@ fn carrier_assignments_are_immutable() {
     incompatible.install(&harmos_protocol::host::OperationAssignments { operations: vec![wrong] }.encode_to_vec()).unwrap();
     assert!(incompatible.resolve::<Read>().is_err());
     let duplicate = AssignedOperation {
-        operation: format!("other.{}", Read::ID),
+        operation: format!("other.{}", READ_OPERATION.entry().id),
         ..first.clone()
     };
     assert!(
@@ -137,7 +153,7 @@ fn encoded_factory_preserves_response() {
 
     let mut dependencies = ResourceSet::new();
     dependencies.insert(Arc::new(42u64)).unwrap();
-    let batch = RegistrationBatch::new().operation::<Read>();
+    let batch = Catalog::new().entry(read_operation().expect("representable operation"));
     let mut prepared = batch.operations[0].prepare_encoded(dependencies, &Read.encode()).unwrap();
     let context = ExecutionContext::new(ResourceSet::new(), harmos_operations::execution::operations::CallContext::default());
     ready(prepared.instance.initialize(context.clone()));
@@ -164,7 +180,7 @@ impl Service for Worker {
 
 #[test]
 fn factory_rejects_a_substituted_declaration() {
-    let mut batch = RegistrationBatch::new().operation::<Read>();
+    let mut batch = Catalog::new().entry(read_operation().expect("representable operation"));
     batch.operations[0].definition.id = harmos_operations::execution::Identifier::new("different").unwrap();
     assert!(matches!(batch.operations[0].validate(), Err(ServingError::Catalog)));
 }
@@ -173,8 +189,8 @@ fn factory_rejects_a_substituted_declaration() {
 fn wire_identity_fences_replacement_before_decoding() {
     use harmos_operations::execution::operations::ServingError;
     use harmos_operations::execution::{Message, QualifiedId};
-    let batch = RegistrationBatch::new().operation::<Read>();
-    let fingerprint = harmos_operations::execution::OperationDefinition::of::<Read>().unwrap().fingerprint.0;
+    let batch = Catalog::new().entry(read_operation().expect("representable operation"));
+    let fingerprint = READ_OPERATION.definition().unwrap().fingerprint.0;
     let mut table = WireTable::new("fixture").unwrap();
     table.resource(42u64);
     table.capacity(std::num::NonZeroUsize::MIN);
@@ -201,7 +217,7 @@ fn service_factory_reconstructs_from_its_snapshot() {
         stop_timeout: std::time::Duration::from_secs(1),
         restart: harmos_operations::execution::RestartPolicy::Never,
     };
-    let batch = RegistrationBatch::new().service::<Worker>("worker", policy);
+    let batch = Catalog::new().service::<Worker>("worker", policy);
     let factory = &batch.services[0];
     let context = ExecutionContext::new(dependencies, harmos_operations::execution::operations::CallContext::default());
     let mut first = factory.initialize(context.clone());
@@ -217,7 +233,7 @@ fn binding_errors_aggregate() {
     use harmos_operations::execution::StartupError;
     let mut table = WireTable::new("fixture").unwrap();
     table.resource(7u32).resource(8u32);
-    table.catalog(&ReadCatalog::CATALOG).catalog(&ReadCatalog::CATALOG);
+    table.catalog(&READ_CATALOG_CATALOG).catalog(&READ_CATALOG_CATALOG);
     assert!(table.definitions().is_empty());
 
     let Err(ServingError::Startup(error)) = table.validate_binding() else {
@@ -242,7 +258,7 @@ fn frozen_dynamic_resources() {
     table.validate_binding().unwrap();
     assert!(Arc::ptr_eq(&owner, &table.context().resource::<u32>().unwrap()));
 
-    let error = table.register(ReadCatalog::batch()).unwrap_err();
+    let error = table.register(read_catalog_catalog_batch()).unwrap_err();
     assert!(matches!(error, ServingError::Resource { .. }));
     table.resource(42u64);
     assert!(table.validate_binding().is_err());
@@ -253,7 +269,7 @@ fn frozen_dynamic_resources() {
 #[test]
 fn resource_order_independence() {
     let mut table = WireTable::new("fixture").unwrap();
-    table.catalog(&ReadCatalog::CATALOG).resource(42u64);
+    table.catalog(&READ_CATALOG_CATALOG).resource(42u64);
     assert!(table.definitions().is_empty());
     table.validate_binding().unwrap();
     assert_eq!(table.definitions().len(), 1);

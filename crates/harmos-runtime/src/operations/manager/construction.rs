@@ -78,7 +78,7 @@ impl Manager {
     }
 
     #[cfg(feature = "grpc")]
-    pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub(crate) fn submit_external_charged<O: RequestShape, P: Send + 'static>(
         &self, request: crate::operations::StreamItem<O::Request>, endpoints: P,
     ) -> Result<Running<O>> {
         self.admit::<O, P>((crate::operations::binding::Request::charged(request)?, endpoints), None, &[], &Source::Host.external()?, None)

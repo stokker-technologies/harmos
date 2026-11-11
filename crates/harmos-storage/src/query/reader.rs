@@ -180,7 +180,7 @@ impl MemorySize for QueryArrow {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
         let result = async {

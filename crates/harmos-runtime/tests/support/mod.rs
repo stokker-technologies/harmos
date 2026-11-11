@@ -215,9 +215,11 @@ impl Registration<Bank> for Definitions {
         }
 
         Catalog::Transactions {
+            states: None,
+            records: Some(fact_registry()),
             definitions: self.0,
-            decode,
-            inverses: Some(inverses),
+            decode: std::sync::Arc::new(decode),
+            inverses: Some(std::sync::Arc::new(inverses)),
         }
     }
 }
@@ -421,17 +423,6 @@ impl harmos_runtime::state::CatalogCodec for Fact {
     }
 }
 
-impl harmos_runtime::state::RecordCatalog for Fact {
-    fn restore(id: &harmos_runtime::DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        if id.as_str() != "ledger.noted" || version != NOTED.2 {
-            return Ok(None);
-        }
-        serde::Deserialize::deserialize(payload).map(|v| Some(Self::Noted(v)))
-    }
-}
-
-impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
-
 /* === Public Functions === */
 
 fn revision<T: harmos_runtime::schema::Described>() -> u32 {
@@ -625,3 +616,14 @@ mod feeds {
 }
 
 /* === Tests === */
+
+pub fn fact_registry() -> harmos_runtime::state::RecordRegistry<Fact> {
+    harmos_runtime::state::RecordRegistry::new().entry(
+        harmos_runtime::state::RecordEntry::<Noted>::new("ledger.noted"),
+        Fact::Noted,
+        |value| {
+            let Fact::Noted(value) = value;
+            Some(value)
+        },
+    )
+}

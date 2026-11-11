@@ -30,11 +30,19 @@ use super::{Echoed, PROBE};
 
 /* === Structs === */
 
-#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "probe.decline", response = Echoed, policy = PROBE))]
-#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest, id = "probe.decline", response = Echoed, policy = PROBE))]
+#[derive(::harmos_guest::Message, Debug, Default)]
+#[harmos_path(::harmos_guest)]
+#[derive(::harmos_guest::Request)]
+#[request(response = Echoed)]
 #[derive(Clone, PartialEq)]
 
 pub struct DeclineOperation {}
+
+pub static DECLINE_OPERATION_DESCRIPTION: ::harmos_guest::operations::WireDeclaration =
+    ::harmos_guest::operations::WireDeclaration::request::<DeclineOperation>("probe.decline", PROBE);
+
+pub const DECLINE_OPERATION_OPERATION: ::harmos_guest::operations::OperationSpec<DeclineOperation> =
+    ::harmos_guest::operations::OperationSpec::<DeclineOperation>::new(&DECLINE_OPERATION_DESCRIPTION);
 
 /* === Enums === */
 
@@ -64,6 +72,7 @@ mod runtime {
 
     // Local Imports
     use super::{DeclineOperation, Echoed};
+    use crate::contract::DECLINE_OPERATION_OPERATION;
     use harmos_guest::OperationRefusal;
 
     /* === Constants === */
@@ -80,13 +89,18 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for DeclineOperation {
-        type Error = OperationRefusal;
+    pub async fn decline_operation_handler(
+        _request: DeclineOperation, _sdk: harmos_guest::operations::FunctionContext<DeclineOperation>,
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: Result<Echoed, OperationRefusal> = async move { Err(OperationRefusal::new(7, "the probe declines")) }.await;
+        result.map(Into::into)
+    }
 
-        async fn run(self, _sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
-            let result: Result<Echoed, OperationRefusal> = async move { Err(OperationRefusal::new(7, "the probe declines")) }.await;
-            result.map(Into::into)
-        }
+    pub fn decline_operation_operation()
+    -> ::core::result::Result<harmos_guest::operations::OperationFactory, harmos_guest::operations::ServingError> {
+        harmos_guest::operations::OperationFactory::function(DECLINE_OPERATION_OPERATION, const { &[] }, decline_operation_handler, |_| {
+            harmos_guest::operations::FailureKind::Permanent
+        })
     }
 
     /* === Public Functions === */
@@ -95,3 +109,6 @@ mod runtime {
 
     /* === Tests === */
 }
+
+#[cfg(target_arch = "wasm32")]
+pub use runtime::decline_operation_operation;

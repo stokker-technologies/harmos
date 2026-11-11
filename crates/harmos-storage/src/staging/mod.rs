@@ -48,7 +48,7 @@ static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 /* === Structs === */
 
 pub struct StorageFile {
-    manager: StorageManager<super::manager::ErasedCatalog>,
+    manager: StorageManager,
     id: u64,
     progress: Arc<Mutex<Progress>>,
     session: Option<FileSession>,
@@ -56,7 +56,7 @@ pub struct StorageFile {
 }
 
 struct CancelProduction {
-    manager: StorageManager<super::manager::ErasedCatalog>,
+    manager: StorageManager,
     id: u64,
     armed: bool,
     generation: Option<u64>,

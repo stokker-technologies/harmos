@@ -1,0 +1,132 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::ffi::OsStr;
+use std::fs;
+use std::path::Path;
+use std::process::Output;
+// Third Party Imports
+
+// Local Imports
+use crate::fixtures;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+fn author(rustc: &OsStr, fixtures: &Path, dependencies: &Path, output: &Path, facade: &Path, fixture: &str, features: &[&str]) -> Output {
+    let mut command = fixtures::command(rustc);
+    command
+        .arg("--edition=2024")
+        .arg("--crate-type=bin")
+        .arg("--emit=metadata")
+        .arg(fixtures.join(fixture))
+        .arg("--extern")
+        .arg(format!("facade={}", facade.display()))
+        .arg("-L")
+        .arg(format!("dependency={}", dependencies.display()))
+        .arg("--out-dir")
+        .arg(output);
+    for feature in features {
+        command.arg("--cfg").arg(format!("feature=\"{feature}\""));
+    }
+    command.output().unwrap_or_else(|error| panic!("rustc runs {fixture}: {error}"))
+}
+
+/* === Tests === */
+
+#[test]
+fn crate_builds_against() {
+    let harmos = fixtures::library("harmos_runtime");
+    let serde = fixtures::library("serde");
+    let operations = fixtures::library("harmos_operations");
+    let dependencies = fixtures::dependencies();
+    let fixtures = fixtures::manifest().join("tests/fixtures");
+    let output = std::env::temp_dir().join(format!("harmos-facade-ui-{}", std::process::id()));
+    let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    fs::create_dir_all(&output).expect("the compile-test output directory is available");
+
+    // Built once against Harmos and serde — never harmos-sdk-derive directly, since
+    // the facade re-exports the derives through harmos, exactly as
+    // a host embedding crate does.
+    let compiled = fixtures::command(&rustc)
+        .arg("--edition=2024")
+        .arg("--crate-type=rlib")
+        .arg("--crate-name=facade")
+        .arg("--cfg")
+        .arg("feature=\"runtime\"")
+        .arg(fixtures.join("facade/lib.rs"))
+        .arg("--extern")
+        .arg(format!("harmos={}", harmos.display()))
+        .arg("--extern")
+        .arg(format!("serde={}", serde.display()))
+        .arg("--extern")
+        .arg(format!("harmos_operations={}", operations.display()))
+        .arg("-L")
+        .arg(format!("dependency={}", dependencies.display()))
+        .arg("--out-dir")
+        .arg(&output)
+        .output()
+        .expect("rustc builds the facade fixture");
+    assert!(compiled.status.success(), "the facade fixture failed to build:\n{}", String::from_utf8_lossy(&compiled.stderr));
+    let facade = output.join("libfacade.rlib");
+    assert!(facade.is_file(), "the facade build did not produce {}", facade.display());
+
+    for fixture in ["facade_message_with_override.rs", "facade_operations_with_override.rs"] {
+        let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture, &[]);
+        assert!(
+            compiled.status.success(),
+            "{fixture} failed to build against the facade alone:\n{}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+    }
+
+    let runtime = author(&rustc, &fixtures, &dependencies, &output, &facade, "facade_catalog_with_override.rs", &["runtime"]);
+    assert!(runtime.status.success(), "runtime registration failed:\n{}", String::from_utf8_lossy(&runtime.stderr));
+    let mismatched =
+        author(&rustc, &fixtures, &dependencies, &output, &facade, "facade_catalog_with_override.rs", &["runtime", "mismatched_payload"]);
+    let stderr = String::from_utf8_lossy(&mismatched.stderr);
+    assert!(!mismatched.status.success(), "mismatched response payload unexpectedly compiled");
+    assert!(
+        stderr.contains("error[E0271]") && stderr.contains("Result<Response<()>") && stderr.contains("Result<Response<u64>"),
+        "unexpected payload diagnostic:\n{stderr}"
+    );
+
+    for fixture in ["facade_message_without_override.rs", "facade_operations_without_override.rs", "facade_catalog_without_override.rs"] {
+        let compiled = author(&rustc, &fixtures, &dependencies, &output, &facade, fixture, &[]);
+        let stderr = String::from_utf8_lossy(&compiled.stderr);
+        assert!(
+            !compiled.status.success(),
+            "{fixture} unexpectedly built against the facade alone: the default `::harmos` path \
+             must fail to resolve when `harmos` is not linked, or the override is not load-bearing"
+        );
+        assert!(stderr.contains("harmos"), "{fixture} failed for a reason other than the unresolved default path:\n{stderr}");
+    }
+}

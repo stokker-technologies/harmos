@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::response::ErasedResponse;
-use super::{OperationDeclaration, OperationDefinition, Response};
+use super::{OperationDefinition, Response};
 use crate::execution::{Message, MessageError};
 
 /* === Constants === */
@@ -50,11 +50,11 @@ pub struct OperationDependency {
 pub struct Calls(pub Arc<dyn Caller>);
 
 // A Child Operation Erased For Carrier Dispatch; Every Function Is Monomorphized For The Callee.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Target {
     pub id: &'static str,
     pub protobuf_native: bool,
-    pub definition: fn() -> OperationDefinition,
+    pub definition: OperationDefinition,
     pub request: fn() -> TypeId,
     pub memory: fn(&(dyn Any + Send)) -> usize,
     pub response: fn() -> TypeId,
@@ -66,13 +66,18 @@ pub struct Target {
 
     #[cfg(feature = "grpc")]
     pub decode_protobuf: fn(&[u8]) -> Result<ErasedResponse, MessageError>,
-    pub grant: fn(&(dyn Any + Send)) -> Result<Option<harmos_domain::plugin::Grant>, MessageError>,
 }
 
 /* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum InvocationError {
+    #[error("operation `{caller}` called undeclared operation `{operation}`")]
+    Undeclared { caller: String, operation: &'static str },
+
+    #[error("operation `{operation}` used undeclared resource `{resource}`")]
+    Resource { operation: String, resource: &'static str },
+
     #[error("operation `{operation}` cannot be invoked from this carrier")]
     Unavailable { operation: &'static str },
 
@@ -83,7 +88,7 @@ pub enum InvocationError {
     Response { operation: &'static str },
 
     #[error("operation `{operation}` failed: {source}")]
-    Failed { operation: &'static str, source: Arc<dyn std::error::Error + Send + Sync> },
+    Failed { operation: String, source: Arc<dyn std::error::Error + Send + Sync> },
 }
 
 /* === Traits === */
@@ -107,40 +112,41 @@ pub trait Caller: Send + Sync + 'static {
 /* === Implementations === */
 
 impl Target {
-    pub fn of<T: OperationDeclaration>() -> Self {
-        Self {
-            id: T::ID,
+    pub fn request<Q: super::RequestShape>(specification: super::OperationSpec<Q>) -> Result<Self, super::ServingError> {
+        let id = specification.declaration.operation.id;
+        Ok(Self {
+            id,
             protobuf_native: false,
-            definition: T::definition,
-            request: TypeId::of::<T::Request>,
-            memory: |request| request.downcast_ref::<T::Request>().map_or(0, crate::execution::MemorySize::memory_size),
-            response: TypeId::of::<T::Response>,
-            encode: |request| request.downcast_ref::<T::Request>().map(Message::encode),
-            decode: decode::<T>,
+            definition: specification.definition().map_err(super::ServingError::Declaration)?,
+            request: TypeId::of::<Q::Request>,
+            memory: |request| request.downcast_ref::<Q::Request>().map_or(0, crate::execution::MemorySize::memory_size),
+            response: TypeId::of::<Q::Response>,
+            encode: |request| request.downcast_ref::<Q::Request>().map(Message::encode),
+            decode: |bytes| Ok(Response::new(Q::Response::decode(bytes)?).into_erased()),
             #[cfg(feature = "grpc")]
             encode_protobuf: |request| {
-                let request = request.downcast_ref::<T::Request>().ok_or_else(|| MessageError::borrowed("callee payload differs"))?;
+                let request = request.downcast_ref::<Q::Request>().ok_or_else(|| MessageError::borrowed("callee payload differs"))?;
                 let mut bytes = Vec::new();
                 crate::execution::grpc::encode(request, &mut bytes)?;
                 Ok(bytes)
             },
             #[cfg(feature = "grpc")]
             decode_protobuf: |bytes| {
-                let response = crate::execution::grpc::decode::<T::Response>(crate::execution::grpc::DecodeInput::new(bytes))?;
+                let response = crate::execution::grpc::decode::<Q::Response>(crate::execution::grpc::DecodeInput::new(bytes))?;
                 Ok(Response::new(response).into_erased())
             },
-            grant: |request| Ok(request.downcast_ref::<T::Request>().and_then(T::grant)),
-        }
+        })
     }
 }
 
 impl From<InvocationError> for crate::execution::Refusal {
     fn from(error: InvocationError) -> Self {
         let operation = match &error {
+            InvocationError::Undeclared { operation, .. } => *operation,
+            InvocationError::Resource { operation, .. } | InvocationError::Failed { operation, .. } => operation.as_str(),
             InvocationError::Unavailable { operation }
             | InvocationError::Response { operation }
-            | InvocationError::Options { operation }
-            | InvocationError::Failed { operation, .. } => *operation,
+            | InvocationError::Options { operation } => *operation,
         };
         let failure =
             crate::execution::Failure::originate(super::FailureKind::Permanent, &error, crate::execution::failure::Origin::Plugin)
@@ -150,19 +156,17 @@ impl From<InvocationError> for crate::execution::Refusal {
 }
 
 impl InvocationError {
-    pub fn failed(operation: &'static str, source: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self::Failed { operation, source: Arc::new(source) }
+    pub fn failed(operation: impl Into<String>, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Failed {
+            operation: operation.into(),
+            source: Arc::new(source),
+        }
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn decode<T: OperationDeclaration>(bytes: &[u8]) -> Result<ErasedResponse, MessageError> {
-    let response = T::Response::decode(bytes)?;
-    Ok(Response::new(response).into_erased())
-}
 
 /* === Tests === */
 

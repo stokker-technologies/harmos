@@ -28,7 +28,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
 use super::{Codec, Event, InputEnvelope, InputError, Wire};
-use crate::operations::{OperationDeclaration, Running, StreamItem};
+use crate::operations::{RequestShape, Running, StreamItem};
 use crate::{Error, Refusal, operations::Manager};
 
 /* === Constants === */
@@ -99,7 +99,7 @@ impl Authority {
         }
     }
 
-    pub(super) fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub(super) fn submit_charged<O: RequestShape, P: Send + 'static>(
         &self, request: StreamItem<O::Request>, endpoints: P,
     ) -> crate::Result<Running<O>> {
         match self {
@@ -127,7 +127,7 @@ impl Settings {
 
 impl<O> tonic::server::UnaryService<StreamItem<O::Request>> for Endpoint<O>
 where
-    O: OperationDeclaration,
+    O: RequestShape,
 {
     type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
@@ -141,7 +141,7 @@ where
 }
 impl<O> tonic::server::ServerStreamingService<StreamItem<O::Request>> for Endpoint<O>
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
 {
     type Response = Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>;
     type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
@@ -152,7 +152,8 @@ where
         Box::pin(async move {
             let (output, items) = crate::operations::stream(settings.output).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request.into_inner(), output).map_err(status)?;
-            let output = super::stream(instance, items).map(|result| result.map_err(|error| in_operation(status(error), O::ID)));
+            let operation = instance.operation().to_owned();
+            let output = super::stream(instance, items).map(move |result| result.map_err(|error| in_operation(status(error), &operation)));
             Ok(Response::new(Box::pin(output) as Self::ResponseStream))
         })
     }
@@ -160,7 +161,7 @@ where
 impl<O> tonic::server::ClientStreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>
     for Endpoint<O>
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
 {
     type Response = crate::operations::Response<O::Response>;
     type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
@@ -177,14 +178,15 @@ where
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
             let (input, endpoint) = crate::operations::stream(settings.input).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request, endpoint).map_err(status)?;
-            super::input(instance, input, incoming).await.map(Response::new).map_err(|error| in_operation(input_status(error), O::ID))
+            let operation = instance.operation().to_owned();
+            super::input(instance, input, incoming).await.map(Response::new).map_err(|error| in_operation(input_status(error), &operation))
         })
     }
 }
 impl<O> tonic::server::StreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>
     for Endpoint<O>
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
 {
     type Response = Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>;
     type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
@@ -203,8 +205,9 @@ where
             let (input, receiving) = crate::operations::stream(settings.input).map_err(status)?;
             let (sending, output) = crate::operations::stream(settings.output).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request, (receiving, sending)).map_err(status)?;
+            let operation = instance.operation().to_owned();
             let output = super::exchange(instance, input, incoming, output)
-                .map(|result| result.map_err(|error| in_operation(input_status(error), O::ID)));
+                .map(move |result| result.map_err(|error| in_operation(input_status(error), &operation)));
             Ok(Response::new(Box::pin(output) as Self::ResponseStream))
         })
     }
@@ -214,7 +217,7 @@ where
 
 pub fn unary<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
-    O: OperationDeclaration,
+    O: RequestShape,
     W: Wire<O::Request>
         + Wire<<O::Input as crate::operations::Direction>::Item>
         + Wire<<O::Output as crate::operations::Direction>::Item>
@@ -241,7 +244,7 @@ where
 }
 pub fn download<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
     W: Wire<O::Request>
         + Wire<<O::Input as crate::operations::Direction>::Item>
         + Wire<<O::Output as crate::operations::Direction>::Item>
@@ -273,7 +276,7 @@ where
 }
 pub fn upload<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
     W: Wire<O::Request>
         + Wire<<O::Input as crate::operations::Direction>::Item>
         + Wire<<O::Output as crate::operations::Direction>::Item>
@@ -305,7 +308,7 @@ where
 }
 pub fn exchange<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
     W: Wire<O::Request>
         + Wire<<O::Input as crate::operations::Direction>::Item>
         + Wire<<O::Output as crate::operations::Direction>::Item>

@@ -22,11 +22,11 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::lifecycle::{GuestOperations, Lifecycle, Resources};
-use super::sandbox::{EchoOperation, Echoed, ProviderEchoOperation};
+use super::lifecycle::{Lifecycle, Resources, guest_catalog};
+use super::sandbox::{ECHO_OPERATION_OPERATION, EchoOperation, Echoed, PROVIDER_ECHO_OPERATION_OPERATION, ProviderEchoOperation};
 use super::{Bank, component_error, retire_failed_guest};
 use harmos_runtime::Runtime;
-use harmos_runtime::operations::{OperationDeclaration, OperationHost as _};
+use harmos_runtime::operations::OperationHost as _;
 
 /* === Constants === */
 
@@ -49,12 +49,23 @@ struct ProviderOwner {
 
 struct Cancelled(Arc<tokio::sync::Notify>);
 
-#[harmos_runtime::operation(resources = [NativeClient], operations = [EchoOperation], id = "client.forward",
-    response = Echoed, policy = super::sandbox::EchoOperation::POLICY, visibility = Public)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Echoed)]
 #[derive(Clone)]
 struct ForwardDeclaration {
     say: String,
 }
+
+static FORWARD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ForwardDeclaration>("client.forward", ECHO_OPERATION_OPERATION.entry().policy)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+static FORWARD_DECLARATION_CALLEES: [harmos_runtime::operations::WireDeclaration; 1] = [ECHO_OPERATION_OPERATION.wire()];
+const FORWARD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ForwardDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ForwardDeclaration>::new(&FORWARD_DECLARATION_DESCRIPTION)
+        .calls(&FORWARD_DECLARATION_CALLEES);
 
 struct NativeClient;
 
@@ -71,24 +82,45 @@ struct DependencyHost {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum ProviderOperations {
-    EchoOperation(ProviderRead),
+fn provider_operations_catalog() -> harmos_runtime::operations::Catalog {
+    provider_operations_catalog_batch().named(concat!(module_path!(), "::ProviderOperations"))
 }
 
-#[harmos_runtime::catalog]
-enum ForwardOperations {
-    ForwardDeclaration(ForwardDeclaration),
+fn provider_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(provider_read_operation().expect("representable operation"));
+    batch
+}
+
+fn forward_operations_catalog() -> harmos_runtime::operations::Catalog {
+    forward_operations_catalog_batch().named(concat!(module_path!(), "::ForwardOperations"))
+}
+
+fn forward_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(forward_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-#[harmos_runtime::operation(codec = manual, resources = [ProviderOwner], id = ProviderEchoOperation::ID, response = Echoed,
-    policy = ProviderEchoOperation::POLICY, visibility = Public)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = Echoed)]
 #[derive(Clone)]
 struct ProviderRead(ProviderEchoOperation);
+
+static PROVIDER_READ_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ProviderRead>(
+        PROVIDER_ECHO_OPERATION_OPERATION.entry().id,
+        PROVIDER_ECHO_OPERATION_OPERATION.entry().policy,
+    )
+    .visibility(harmos_runtime::operations::Visibility::Public);
+
+const PROVIDER_READ_OPERATION: harmos_runtime::operations::OperationSpec<ProviderRead> =
+    harmos_runtime::operations::OperationSpec::<ProviderRead>::new(&PROVIDER_READ_DESCRIPTION);
 
 impl harmos_runtime::Message for ProviderRead {
     const CODEC: &'static str = <ProviderEchoOperation as harmos_runtime::Message>::CODEC;
@@ -116,19 +148,37 @@ impl harmos_runtime::schema::Described for ProviderRead {
     const MARKER: &'static [u8] = <ProviderEchoOperation as harmos_runtime::schema::Described>::MARKER;
 }
 
-impl harmos_runtime::Operation for ProviderRead {
-    type Error = harmos_domain::Refusal;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Echoed>, Self::Error> {
-        let resources = ctx.resource::<ProviderOwner>();
-        resources.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        resources.answer(&self.0).await.map(Into::into)
-    }
+async fn provider_read_handler(
+    request: ProviderRead, ctx: harmos_runtime::operations::FunctionContext<ProviderRead>,
+) -> Result<harmos_runtime::Response<Echoed>, harmos_domain::Refusal> {
+    let resources = ctx.resource::<ProviderOwner>().expect("declared resource is registered");
+    resources.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    resources.answer(&request.0).await.map(Into::into)
 }
-impl harmos_runtime::Operation for ForwardDeclaration {
-    type Error = harmos_domain::Refusal;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Echoed>, Self::Error> {
-        ctx.operation(EchoOperation { say: self.say }).await.map_err(Self::Error::from)
-    }
+
+fn provider_read_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PROVIDER_READ_OPERATION,
+        const { &[harmos_runtime::Resource::of::<ProviderOwner>()] },
+        provider_read_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+async fn forward_declaration_handler(
+    request: ForwardDeclaration, ctx: harmos_runtime::operations::FunctionContext<ForwardDeclaration>,
+) -> Result<harmos_runtime::Response<Echoed>, harmos_domain::Refusal> {
+    ctx.operation(ECHO_OPERATION_OPERATION, EchoOperation { say: request.say }).await.map_err(harmos_domain::Refusal::from)
+}
+
+fn forward_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        FORWARD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<NativeClient>()] },
+        forward_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for Cancelled {
@@ -192,15 +242,15 @@ impl harmos_runtime::guest::PluginLifecycle for DependencyHost {
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration = Some(self.operations.stage_plugin(scope, |bindings| {
                     if definition.id == "provider" {
-                        bindings.operations::<ProviderOperations>(harmos_runtime::operations::Lane::default())
+                        bindings.catalog(provider_operations_catalog(), harmos_runtime::operations::Lane::default())
                     } else {
-                        bindings.operations::<ForwardOperations>(harmos_runtime::operations::Lane::default())
+                        bindings.catalog(forward_operations_catalog(), harmos_runtime::operations::Lane::default())
                     }
                 })?);
             }
             harmos_runtime::guest::PluginBackend::Guest(resources) => {
                 resources
-                    .start::<GuestOperations>(&self.operations, definition, router, authority, harmos_runtime::operations::Lane::default())
+                    .start(&guest_catalog(), &self.operations, definition, router, authority, harmos_runtime::operations::Lane::default())
                     .await?;
             }
         }
@@ -248,8 +298,8 @@ async fn dependency_candidate(lifecycle: &mut DependencyHost, configuration: &st
 async fn dependency_candidate_with_client(lifecycle: &mut DependencyHost, configuration: &str) -> harmos_runtime::guest::PluginDefinitions {
     use harmos_runtime::guest::{PluginArtifact, PluginContributions, PluginDefinition, PluginDefinitions, Requirement};
     let mut definitions: Vec<_> = dependency_candidate(lifecycle, configuration).await.definitions().cloned().collect();
-    let provided = harmos_runtime::operations::WireDeclaration::of::<ForwardDeclaration>().contract().unwrap();
-    let required = harmos_runtime::operations::WireDeclaration::of::<EchoOperation>().contract().unwrap();
+    let provided = FORWARD_DECLARATION_OPERATION.wire().contract().unwrap();
+    let required = super::sandbox::ECHO_OPERATION_OPERATION.wire().contract().unwrap();
     definitions.push(PluginDefinition {
         id: "client".into(),
         version: "1.0.0".parse().unwrap(),

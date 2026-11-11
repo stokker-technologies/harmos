@@ -12,7 +12,7 @@
 use crate::execution::operations::access::GrantAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 use harmos_domain::operations::{FailureKind, ReplaySafety};
-use harmos_storage::{ErasedCatalog, StorageManager};
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
@@ -29,7 +29,7 @@ impl ProtobufOperation for Query {
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager<ErasedCatalog>>(), Resource::of::<GrantAccess>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
 
     fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
         let source: harmos_domain::model::storage::Source = request
@@ -42,7 +42,7 @@ impl ProtobufOperation for Query {
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
-        let storage = context.resource::<StorageManager<ErasedCatalog>>().map_err(|_| ServingError::Catalog)?;
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
         let grants = context.resource::<GrantAccess>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<harmos_domain::model::storage::QueryCompletion> = async {
             let source: harmos_domain::model::storage::Source =

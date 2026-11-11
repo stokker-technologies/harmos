@@ -33,7 +33,7 @@ use crate::Result;
 use crate::guest::host::plugin::{PluginCaller, PluginGeneration, PluginScope};
 
 #[cfg(feature = "plugin-guest")]
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 
 /* === Constants === */
 
@@ -137,12 +137,12 @@ impl Manager {
 
 #[cfg(feature = "plugin-guest")]
 impl Caller {
-    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O::Request) -> Result<super::Running<O>> {
+    pub fn submit_at<O: RequestShape>(&self, id: &str, request: O::Request) -> Result<super::Running<O>> {
         self.operations.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Plugin(self.source.clone()), None)
     }
 
     #[cfg(feature = "grpc")]
-    pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub(crate) fn submit_external_charged<O: RequestShape, P: Send + 'static>(
         &self, request: super::StreamItem<O::Request>, endpoints: P,
     ) -> Result<super::Running<O>> {
         self.operations
@@ -175,21 +175,21 @@ impl Caller {
         self.submit_encoded(operation, payload)?.await
     }
 
-    pub fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+    pub fn submit<O: RequestShape>(&self, request: O::Request) -> Result<Running<O>> {
         self.operations.submit_by::<O, ()>((request.into(), ()), &Source::Plugin(self.source.clone()))
     }
 
-    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
+    pub fn submit_endpoints<O: RequestShape, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.operations.submit_by::<O, P>((request.into(), endpoints), &Source::Plugin(self.source.clone()))
     }
 
-    pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub fn submit_charged<O: RequestShape, P: Send + 'static>(
         &self, request: super::StreamItem<O::Request>, endpoints: P,
     ) -> Result<Running<O>> {
         self.operations.submit_by::<O, P>((super::binding::Request::charged(request)?, endpoints), &Source::Plugin(self.source.clone()))
     }
 
-    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<Self, O> {
+    pub fn operation<O: RequestShape>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<Self, O> {
         harmos_operations::execution::operations::Invocation::new(self.clone(), request)
     }
 }
@@ -197,7 +197,7 @@ impl Caller {
 #[cfg(feature = "plugin-guest")]
 impl harmos_operations::execution::operations::OperationHost for Caller {
     type Error = Error;
-    type Instance<O: OperationDeclaration> = Running<O>;
+    type Instance<O: RequestShape> = Running<O>;
     fn context(&self) -> &super::CallContext {
         self.operations.call_context()
     }
@@ -207,7 +207,7 @@ impl harmos_operations::execution::operations::OperationHost for Caller {
             source: self.source.clone(),
         })
     }
-    async fn invoke<O: OperationDeclaration, E: super::EndpointSet>(
+    async fn invoke<O: RequestShape, E: super::EndpointSet>(
         &self, request: O::Request, retry: Option<super::RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
         super::surface::validate_endpoints::<O, E>()?;
@@ -215,10 +215,10 @@ impl harmos_operations::execution::operations::OperationHost for Caller {
         request.retry = retry;
         self.operations.submit_by::<O, E>((request, endpoints), &Source::Plugin(self.source.clone()))
     }
-    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+    async fn submit<O: RequestShape>(&self, request: O::Request) -> Result<Running<O>> {
         Caller::submit::<O>(self, request)
     }
-    async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+    async fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.operations.submit_by::<O, ()>((super::binding::Request::owned(request, claims), ()), &Source::Plugin(self.source.clone()))
     }
     async fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> Result<()>

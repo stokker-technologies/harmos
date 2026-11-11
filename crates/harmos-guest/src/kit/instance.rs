@@ -31,9 +31,7 @@ use crate::envelope::{WireChildAction, WireChildCall, WireChildControl};
 use crate::lifecycle::InstanceState;
 use harmos_domain::Message;
 use harmos_domain::operations::instance::{Id, Status};
-use harmos_operations::execution::operations::{
-    CallContext, ContextError, ContextValue, Instance, OperationDeclaration, OperationHost, Response,
-};
+use harmos_operations::execution::operations::{CallContext, ContextError, ContextValue, Instance, OperationHost, RequestShape, Response};
 
 /* === Constants === */
 
@@ -75,7 +73,7 @@ impl Context {
         })
     }
 
-    async fn child_call<O: OperationDeclaration>(
+    async fn child_call<O: RequestShape>(
         &self, request: &O::Request, submit: bool, retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.calling_context()?;
@@ -128,6 +126,7 @@ impl harmos_operations::execution::operations::Caller for Context {
         retry: Option<harmos_operations::execution::operations::RetryPolicy>, endpoints: Box<dyn std::any::Any + Send>, call: CallContext,
     ) -> harmos_operations::execution::operations::StartFuture<'_> {
         Box::pin(async move {
+            let id = target.id;
             let result = async move {
                 if !endpoints.is::<()>() {
                     return Err(OperationRefusal::new(UNKNOWN, "native endpoints are unavailable across the guest boundary"));
@@ -156,12 +155,12 @@ impl harmos_operations::execution::operations::Caller for Context {
                 }) as Box<dyn harmos_operations::execution::operations::ChildInstance>)
             }
             .await;
-            result.map_err(|error| harmos_operations::execution::operations::InvocationError::failed(target.id, error))
+            result.map_err(|error| harmos_operations::execution::operations::InvocationError::failed(id, error))
         })
     }
 }
 
-impl<O: OperationDeclaration> OperationInstance<O> {
+impl<O: RequestShape> OperationInstance<O> {
     pub fn id(&self) -> Id {
         self.id
     }
@@ -207,7 +206,7 @@ impl<O> Drop for OperationInstance<O> {
     }
 }
 
-impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
+impl<O: RequestShape> Instance<O> for OperationInstance<O> {
     type Error = OperationRefusal;
 
     fn id(&self) -> Id {
@@ -232,7 +231,7 @@ impl<O: OperationDeclaration> Instance<O> for OperationInstance<O> {
 }
 
 impl OperationHost for Context {
-    async fn resolve<O: OperationDeclaration, E: harmos_operations::execution::operations::EndpointSet>(
+    async fn resolve<O: RequestShape, E: harmos_operations::execution::operations::EndpointSet>(
         &self, request: O::Request, retry: Option<harmos_operations::execution::operations::RetryPolicy>, _endpoints: E,
     ) -> Result<Response<O::Response>, OperationRefusal> {
         if E::item_types() != (None, None) {
@@ -242,7 +241,7 @@ impl OperationHost for Context {
         O::Response::decode(&bytes).map(Response::new).map_err(OperationRefusal::of)
     }
 
-    async fn invoke<O: OperationDeclaration, E: harmos_operations::execution::operations::EndpointSet>(
+    async fn invoke<O: RequestShape, E: harmos_operations::execution::operations::EndpointSet>(
         &self, request: O::Request, retry: Option<harmos_operations::execution::operations::RetryPolicy>, _endpoints: E,
     ) -> Result<Self::Instance<O>, OperationRefusal> {
         if E::item_types() != (None, None) {
@@ -266,7 +265,7 @@ impl OperationHost for Context {
     }
 
     type Error = OperationRefusal;
-    type Instance<O: OperationDeclaration> = OperationInstance<O>;
+    type Instance<O: RequestShape> = OperationInstance<O>;
 
     fn context(&self) -> &CallContext {
         Context::context(self)
@@ -276,7 +275,7 @@ impl OperationHost for Context {
         Context::with_value(self, value)
     }
 
-    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<OperationInstance<O>, OperationRefusal> {
+    async fn submit<O: RequestShape>(&self, request: O::Request) -> Result<OperationInstance<O>, OperationRefusal> {
         let bytes = self.child_call::<O>(&request, true, None).await?;
         let id = u64::decode(&bytes).map_err(OperationRefusal::of)?;
         Ok(OperationInstance {
@@ -287,10 +286,10 @@ impl OperationHost for Context {
         })
     }
 
-    async fn submit_owned<O: OperationDeclaration>(
+    async fn submit_owned<O: RequestShape>(
         &self, _: O::Request, _: harmos_operations::execution::operations::RequestClaims,
     ) -> Result<OperationInstance<O>, OperationRefusal> {
-        Err(OperationRefusal::of(format!("`{}` needs process-local request ownership a guest cannot carry", O::ID)))
+        Err(OperationRefusal::of("a guest cannot carry process-local request ownership"))
     }
 }
 

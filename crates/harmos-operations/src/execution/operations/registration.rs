@@ -9,10 +9,14 @@
 
 /* === Modules === */
 
+mod function;
+
 #[cfg(all(feature = "grpc", feature = "streaming"))]
 pub mod generated;
 
 /* === Re-Exports === */
+
+pub use function::{FunctionContext, FunctionHandle, FunctionInvocation};
 
 /* === Imports === */
 
@@ -24,10 +28,7 @@ use std::pin::Pin;
 // Third Party Imports
 
 // Local Imports
-use super::{
-    Carrier, Contract, Executable, ExecutionContext, OperationDeclaration, OperationDefinition, Resource, ResourceSet, ServingError,
-    WireDeclaration,
-};
+use super::{Carrier, Contract, ExecutionContext, OperationDefinition, RequestShape, Resource, ResourceSet, ServingError, WireDeclaration};
 use crate::execution::services::Service;
 use crate::execution::{Message, ServicePolicy};
 
@@ -39,22 +40,40 @@ use crate::execution::{Message, ServicePolicy};
 
 pub type ServiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, ServingError>> + Send + 'a>>;
 type InitializeService = fn(ExecutionContext) -> ServiceFuture<'static, Box<dyn ServiceInstance>>;
-type PrepareNative = fn(ResourceSet, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>;
-type PrepareEncoded = fn(ResourceSet, &[u8], bool, Option<super::WireStreamLimits>) -> Result<PreparedNative, ServingError>;
+type PrepareNative = std::sync::Arc<
+    dyn Fn(&OperationDefinition, ResourceSet, Box<dyn Any + Send>, Box<dyn Any + Send>) -> Result<Box<dyn NativeInstance>, ServingError>
+        + Send
+        + Sync,
+>;
+type PrepareEncoded = std::sync::Arc<
+    dyn Fn(&OperationDefinition, ResourceSet, &[u8], bool, Option<super::WireStreamLimits>) -> Result<PreparedNative, ServingError>
+        + Send
+        + Sync,
+>;
+
+type OperationDependencies = std::sync::Arc<dyn Fn() -> Result<Vec<super::calls::OperationDependency>, ServingError> + Send + Sync>;
+type DeclaredOperation = std::sync::Arc<dyn Fn() -> OperationDefinition + Send + Sync>;
+type NamedOperation = std::sync::Arc<dyn Fn(&str) -> Result<OperationDefinition, ServingError> + Send + Sync>;
+type GrantMapping =
+    std::sync::Arc<dyn Fn(&str, Option<harmos_domain::plugin::Grant>) -> Option<harmos_domain::plugin::Grant> + Send + Sync>;
+type RequestGrant =
+    std::sync::Arc<dyn Fn(&(dyn Any + Send)) -> Result<Option<harmos_domain::plugin::Grant>, crate::execution::MessageError> + Send + Sync>;
+type ContractProjection =
+    std::sync::Arc<dyn Fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError> + Send + Sync>;
 
 /* === Structs === */
 
 #[derive(Clone, Copy)]
-pub struct Catalog {
+pub struct CatalogDescription {
     pub name: &'static str,
     pub declarations: &'static [crate::execution::catalog::Node<WireDeclaration>],
     pub callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>],
-    identity: fn() -> std::any::TypeId,
-    factory: fn() -> RegistrationBatch,
+    factory: Option<fn() -> Catalog>,
 }
 
 #[derive(Clone, Default)]
-pub struct RegistrationBatch {
+pub struct Catalog {
+    pub name: &'static str,
     pub operations: Vec<OperationFactory>,
     pub services: Vec<ServiceFactory>,
 }
@@ -70,14 +89,15 @@ pub struct PreparedNative {
 #[derive(Clone)]
 pub struct OperationFactory {
     pub definition: OperationDefinition,
-    pub operations: fn() -> Result<Vec<super::calls::OperationDependency>, ServingError>,
-    declared: fn() -> OperationDefinition,
-    named: fn(&str) -> Result<OperationDefinition, ServingError>,
+    pub operations: OperationDependencies,
+    declared: DeclaredOperation,
+    named: NamedOperation,
     registered_id: Option<crate::execution::Identifier>,
-    grant: fn(&str, Option<harmos_domain::plugin::Grant>) -> Option<harmos_domain::plugin::Grant>,
+    grant: GrantMapping,
+    request_grant: RequestGrant,
     pub(super) builtin: bool,
     resources: &'static [Resource],
-    contract: fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError>,
+    contract: ContractProjection,
     native: PrepareNative,
     endpoints_valid: fn() -> bool,
     native_types: fn() -> (std::any::TypeId, std::any::TypeId, std::any::TypeId),
@@ -103,7 +123,7 @@ struct InitializedService<S: Service> {
 struct NativeOperation<O: Carrier> {
     dependencies: ResourceSet,
     operation: Option<O>,
-    request: <O::Declaration as OperationDeclaration>::Request,
+    request: <O::Declaration as super::RequestShape>::Request,
     endpoints: O::StreamEndpoints,
     stopped: bool,
     encoded: bool,
@@ -121,13 +141,6 @@ struct NativeOperation<O: Carrier> {
 /* === Enums === */
 
 /* === Traits === */
-
-pub trait OperationCatalog: 'static {
-    const CATALOG: Catalog;
-
-    #[doc(hidden)]
-    fn batch() -> RegistrationBatch;
-}
 
 pub trait ServiceInstance: Send {
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
@@ -154,91 +167,139 @@ pub trait NativeInstance: Send {
 
 /* === Implementations === */
 
-impl Catalog {
-    pub const fn of<C: OperationCatalog>(
+impl CatalogDescription {
+    pub const fn new(
         name: &'static str, declarations: &'static [crate::execution::catalog::Node<WireDeclaration>],
-        callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>],
+        callees: &'static [crate::execution::catalog::Node<&'static [WireDeclaration]>], factory: Option<fn() -> Catalog>,
     ) -> Self {
-        Self {
-            name,
-            declarations,
-            callees,
-            identity: std::any::TypeId::of::<C>,
-            factory: C::batch,
+        Self { name, declarations, callees, factory }
+    }
+
+    pub fn definitions(&self) -> Result<Vec<OperationDefinition>, harmos_domain::Error> {
+        if let Some(factory) = self.factory {
+            let batch = factory();
+            let mut names = std::collections::BTreeSet::new();
+            for operation in &batch.operations {
+                if !names.insert(operation.definition.id.clone()) {
+                    return Err(harmos_domain::Error::DuplicateOperation { id: operation.definition.id.to_string() });
+                }
+            }
+            return Ok(batch.operations.into_iter().map(|operation| operation.definition).collect());
         }
+        let mut entries = Vec::new();
+        let result: Result<(), std::convert::Infallible> = crate::execution::catalog::try_for_each(self.declarations, |declaration| {
+            entries.push(crate::execution::catalog::Node::Leaf(declaration.operation));
+            Ok(())
+        });
+        match result {
+            Ok(()) => {}
+            Err(error) => match error {},
+        }
+        super::Declarations::from_tree(&entries)
     }
 
     #[doc(hidden)]
-    pub fn identity(&self) -> std::any::TypeId {
-        (self.identity)()
+    pub fn identity(&self) -> &'static str {
+        self.name
     }
 
     #[doc(hidden)]
-    pub fn batch(&self) -> RegistrationBatch {
-        (self.factory)()
+    pub fn build(&self) -> Result<Catalog, ServingError> {
+        let factory = self.factory.ok_or_else(|| ServingError::Unknown { operation: self.name.into() })?;
+        Ok(factory())
     }
 }
 
-impl RegistrationBatch {
+impl Catalog {
+    pub fn named(mut self, name: &'static str) -> Self {
+        self.name = name;
+        self
+    }
+    pub fn build(self) -> Result<Self, ServingError> {
+        let mut names = std::collections::BTreeSet::new();
+        for operation in &self.operations {
+            if !operation.builtin {
+                operation.definition.validate().map_err(ServingError::Declaration)?;
+            }
+            if !names.insert(operation.definition.id.clone()) {
+                return Err(ServingError::Declaration(harmos_domain::Error::DuplicateOperation {
+                    id: operation.definition.id.to_string(),
+                }));
+            }
+        }
+        Ok(self)
+    }
+    pub fn contracts(&self) -> Result<Vec<Contract>, super::ContractError> {
+        self.operations.iter().map(OperationFactory::contract).collect()
+    }
+    pub fn definitions(&self) -> Result<Vec<OperationDefinition>, harmos_domain::Error> {
+        Ok(self.operations.iter().map(|operation| operation.definition.clone()).collect())
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn operation<O: Executable>(self) -> Self {
-        self.with::<O, O::Carrier>(O::RESOURCES)
+    pub fn entry(mut self, operation: OperationFactory) -> Self {
+        self.operations.push(operation);
+        self
     }
 
-    pub fn operation_named<O: Executable>(self, id: &str) -> Result<Self, ServingError> {
-        let mut batch = self.operation::<O>();
-        let factory = batch.operations.last_mut().expect("one appended operation");
-        factory.definition = (factory.named)(id)?;
-        factory.registered_id = Some(factory.definition.id.clone());
-        Ok(batch)
+    pub fn entry_named(self, operation: OperationFactory, id: &str) -> Result<Self, ServingError> {
+        Ok(self.entry(operation.with_id(id)?))
+    }
+
+    pub fn extend(mut self, catalog: Catalog) -> Result<Self, ServingError> {
+        let batch = catalog.build()?;
+        self.operations.extend(batch.operations);
+        self.services.extend(batch.services);
+        Ok(self)
     }
 
     #[doc(hidden)]
-    pub fn carrier<D, O>(self) -> Self
+    pub fn carrier<D, O>(mut self, specification: super::OperationSpec<D>) -> Result<Self, ServingError>
     where
-        D: OperationDeclaration,
+        D: super::RequestShape,
         O: Carrier<Declaration = D>,
     {
-        self.with::<D, O>(&[])
-    }
-
-    fn with<D, O>(mut self, resources: &'static [Resource]) -> Self
-    where
-        D: OperationDeclaration,
-        O: Carrier<Declaration = D>,
-    {
+        let definition = specification.declared().map_err(ServingError::Declaration)?;
+        let declared = definition.clone();
+        let named = specification;
+        let original_id = specification.declaration.operation.id;
+        let grant = specification.grant;
+        let contract = specification.declaration;
+        let callees = specification.callees;
         self.operations.push(OperationFactory {
-            resources,
-            operations: || {
-                D::OPERATIONS
+            resources: &[],
+            operations: std::sync::Arc::new(move || {
+                callees
                     .iter()
                     .map(|declaration| {
                         Ok(super::calls::OperationDependency {
                             id: declaration.operation.id.to_owned(),
-                            fingerprint: (declaration.operation.fingerprint)().map_err(ServingError::Declaration)?,
+                            fingerprint: (declaration.operation.fingerprint)(declaration.operation.id)
+                                .map_err(ServingError::Declaration)?,
                         })
                     })
                     .collect()
-            },
-            definition: D::definition(),
-            declared: D::definition,
-            named: |id| OperationDefinition::named::<D>(id).map_err(ServingError::from),
+            }),
+            definition,
+            declared: std::sync::Arc::new(move || declared.clone()),
+            named: std::sync::Arc::new(move |id| named.named(id).map_err(ServingError::Declaration)),
             registered_id: None,
-            grant: registered_grant::<D>,
-            builtin: std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::execution::observers::Control>(),
-            contract: |settings| {
-                if std::any::TypeId::of::<D>() == std::any::TypeId::of::<crate::execution::observers::Control>() {
+            grant: std::sync::Arc::new(move |id, grant| registered_grant(original_id, id, grant)),
+            request_grant: std::sync::Arc::new(move |request| Ok(request.downcast_ref::<D::Request>().and_then(grant))),
+            builtin: matches!(original_id, "harmos_observe" | "harmos.initialize" | "harmos.shutdown"),
+            contract: std::sync::Arc::new(move |settings| {
+                if original_id == "harmos_observe" {
                     return crate::execution::observers::contract();
                 }
-                WireDeclaration::of::<D>().contract_with_settings(settings)
-            },
+                contract.contract_with_settings(settings)
+            }),
             native_types: || {
                 (
-                    std::any::TypeId::of::<<O::Declaration as OperationDeclaration>::Request>(),
-                    std::any::TypeId::of::<<O::Declaration as OperationDeclaration>::Response>(),
+                    std::any::TypeId::of::<<O::Declaration as super::RequestShape>::Request>(),
+                    std::any::TypeId::of::<<O::Declaration as super::RequestShape>::Response>(),
                     std::any::TypeId::of::<O::StreamEndpoints>(),
                 )
             },
@@ -246,12 +307,12 @@ impl RegistrationBatch {
                 use super::EndpointSet;
                 O::StreamEndpoints::item_types() == super::item_types::<D>()
             },
-            native: |dependencies, request, endpoints| {
+            native: std::sync::Arc::new(|_definition, dependencies, request, endpoints| {
                 use super::EndpointSet;
                 if O::StreamEndpoints::item_types() != super::item_types::<D>() {
                     return Err(ServingError::Catalog);
                 }
-                let request = request.downcast::<<O::Declaration as OperationDeclaration>::Request>().map_err(|_| ServingError::Catalog)?;
+                let request = request.downcast::<<O::Declaration as super::RequestShape>::Request>().map_err(|_| ServingError::Catalog)?;
                 let endpoints = endpoints.downcast::<O::StreamEndpoints>().map_err(|_| ServingError::Catalog)?;
                 Ok(Box::new(NativeOperation::<O> {
                     dependencies,
@@ -267,8 +328,8 @@ impl RegistrationBatch {
                     #[cfg(feature = "streaming")]
                     epoch: 0,
                 }))
-            },
-            encoded: |dependencies, payload, protobuf, limits| {
+            }),
+            encoded: std::sync::Arc::new(move |_definition, dependencies, payload, protobuf, limits| {
                 use super::EndpointSet;
                 #[cfg(not(feature = "streaming"))]
                 let _ = limits;
@@ -287,7 +348,7 @@ impl RegistrationBatch {
                     return Err(ServingError::StreamUnsupported);
                 }
                 #[cfg(feature = "grpc")]
-                let codec = protobuf.then(super::serving::protobuf::Codec::of::<D>);
+                let codec = protobuf.then(super::serving::protobuf::Codec::request::<D>);
                 #[cfg(feature = "grpc")]
                 let request = if let Some(codec) = codec {
                     let mut request = None::<D::Request>;
@@ -303,7 +364,7 @@ impl RegistrationBatch {
                     (Some(streams), Some(codec)) => Some(streams.protobuf(codec)?),
                     (streams, _) => streams,
                 };
-                let grant = D::grant(&request);
+                let grant = grant(&request);
                 let instance = NativeOperation::<O> {
                     dependencies,
                     operation: None,
@@ -324,17 +385,17 @@ impl RegistrationBatch {
                     #[cfg(feature = "streaming")]
                     streams,
                 })
-            },
+            }),
             #[cfg(all(feature = "grpc", feature = "streaming"))]
             grpc_memory: |payload| {
-                crate::execution::grpc::prepare::<<O::Declaration as OperationDeclaration>::Request>(
+                crate::execution::grpc::prepare::<<O::Declaration as super::RequestShape>::Request>(
                     crate::execution::grpc::DecodeInput::new(payload),
                 )
                 .map(|prepared| prepared.memory())
             },
             decoding_memory: <D::Request as crate::execution::Message>::decoding_memory,
         });
-        self
+        Ok(self)
     }
 
     pub fn service<S: Service>(mut self, local_id: &str, policy: ServicePolicy) -> Self {
@@ -353,11 +414,42 @@ impl RegistrationBatch {
 }
 
 impl OperationFactory {
+    #[doc(hidden)]
+    pub fn prepare_carrier<C: Carrier>(
+        dependencies: ResourceSet, request: <C::Declaration as RequestShape>::Request, endpoints: C::StreamEndpoints,
+    ) -> Box<dyn NativeInstance> {
+        Box::new(NativeOperation::<C> {
+            dependencies,
+            operation: None,
+            request,
+            endpoints,
+            stopped: false,
+            encoded: false,
+            #[cfg(feature = "grpc")]
+            protobuf: false,
+            #[cfg(feature = "streaming")]
+            streams: None,
+            #[cfg(feature = "streaming")]
+            epoch: 0,
+        })
+    }
+
+    pub fn with_id(mut self, id: &str) -> Result<Self, ServingError> {
+        self.definition = (self.named)(id)?;
+        self.registered_id = Some(self.definition.id.clone());
+        Ok(self)
+    }
+
+    pub fn request_grant(
+        &self, request: &(dyn Any + Send),
+    ) -> Result<Option<harmos_domain::plugin::Grant>, crate::execution::MessageError> {
+        (self.request_grant)(request)
+    }
     pub fn accepts_target(&self, target: &super::Target, endpoints: std::any::TypeId) -> bool {
         (self.native_types)() == ((target.request)(), (target.response)(), endpoints)
     }
 
-    pub fn accepts_native<D: OperationDeclaration, P: 'static>(&self) -> bool {
+    pub fn accepts_native<D: RequestShape, P: 'static>(&self) -> bool {
         (self.native_types)() == (std::any::TypeId::of::<D::Request>(), std::any::TypeId::of::<D::Response>(), std::any::TypeId::of::<P>())
     }
 
@@ -410,13 +502,13 @@ impl OperationFactory {
     pub fn prepare_envelope(
         &self, resources: ResourceSet, payload: &[u8], protobuf: bool, limits: Option<super::WireStreamLimits>,
     ) -> Result<PreparedNative, ServingError> {
-        let mut prepared = (self.encoded)(resources, payload, protobuf, limits)?;
+        let mut prepared = (self.encoded)(&self.definition, resources, payload, protobuf, limits)?;
         prepared.grant = self.grant(prepared.grant);
         Ok(prepared)
     }
 
     pub fn prepare_encoded(&self, resources: ResourceSet, payload: &[u8]) -> Result<PreparedNative, ServingError> {
-        let mut prepared = (self.encoded)(resources, payload, false, None)?;
+        let mut prepared = (self.encoded)(&self.definition, resources, payload, false, None)?;
         prepared.grant = self.grant(prepared.grant);
         Ok(prepared)
     }
@@ -425,7 +517,7 @@ impl OperationFactory {
     pub fn prepare_grpc(
         &self, resources: ResourceSet, payload: &[u8], limits: super::WireStreamLimits,
     ) -> Result<PreparedNative, ServingError> {
-        let mut prepared = (self.encoded)(resources, payload, true, Some(limits))?;
+        let mut prepared = (self.encoded)(&self.definition, resources, payload, true, Some(limits))?;
         prepared.grant = self.grant(prepared.grant);
         Ok(prepared)
     }
@@ -441,7 +533,7 @@ impl OperationFactory {
     pub fn prepare_native(
         &self, resources: ResourceSet, request: Box<dyn Any + Send>, endpoints: Box<dyn Any + Send>,
     ) -> Result<Box<dyn NativeInstance>, ServingError> {
-        (self.native)(resources, request, endpoints)
+        (self.native)(&self.definition, resources, request, endpoints)
     }
 
     pub fn contract(&self) -> Result<Contract, super::ContractError> {
@@ -565,11 +657,11 @@ impl<S: Service> ServiceInstance for InitializedService<S> {
 
 /* === Private Functions === */
 
-pub(crate) fn registered_grant<D: OperationDeclaration>(
-    id: &str, grant: Option<harmos_domain::plugin::Grant>,
+pub(crate) fn registered_grant(
+    original: &str, id: &str, grant: Option<harmos_domain::plugin::Grant>,
 ) -> Option<harmos_domain::plugin::Grant> {
     grant.map(|mut grant| {
-        if grant.operation() == D::ID && id != D::ID {
+        if grant.operation() == original && id != original {
             grant.operation = id.to_owned().into();
         }
         grant

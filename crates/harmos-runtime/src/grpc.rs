@@ -71,13 +71,13 @@ type Settlement<R, E> = Pin<Box<dyn Future<Output = Result<crate::operations::Re
 
 /* === Structs === */
 
-pub struct ResponseStream<O: crate::operations::OperationDeclaration, T, E = crate::Error> {
+pub struct ResponseStream<O: crate::operations::RequestShape, T, E = crate::Error> {
     pending: Settlement<O::Response, E>,
     items: Option<mpsc::Receiver<crate::operations::StreamItem<T>>>,
     result: Option<Result<crate::operations::Response<O::Response>, E>>,
 }
 
-struct Pending<O: crate::operations::OperationDeclaration> {
+struct Pending<O: crate::operations::RequestShape> {
     instance: crate::operations::Running<O>,
     delivered: bool,
 }
@@ -109,7 +109,7 @@ enum State<R> {
 
 /* === Implementations === */
 
-impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for ResponseStream<O, T, E> {
+impl<O: crate::operations::RequestShape, T, E: Unpin> Stream for ResponseStream<O, T, E> {
     type Item = Result<Event<crate::operations::StreamItem<T>, crate::operations::Response<O::Response>>, E>;
 
     fn poll_next(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -144,7 +144,7 @@ impl<O: crate::operations::OperationDeclaration, T, E: Unpin> Stream for Respons
     }
 }
 
-impl<O: crate::operations::OperationDeclaration> Drop for Pending<O> {
+impl<O: crate::operations::RequestShape> Drop for Pending<O> {
     fn drop(&mut self) {
         if !self.delivered {
             self.instance.request_cancel();
@@ -261,7 +261,7 @@ impl Opening {
 
 /* === Public Functions === */
 
-pub fn stream<O: crate::operations::OperationDeclaration>(
+pub fn stream<O: crate::operations::RequestShape>(
     instance: crate::operations::Running<O>, items: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item> {
     ResponseStream {
@@ -276,7 +276,7 @@ pub fn exchange<O, S>(
     incoming: S, output: crate::operations::StreamInput<<O::Output as crate::operations::Direction>::Item>,
 ) -> ResponseStream<O, <O::Output as crate::operations::Direction>::Item, InputError>
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
     S: Stream<Item = Result<crate::operations::StreamItem<<O::Input as crate::operations::Direction>::Item>, tonic::Status>>
         + Send
         + 'static,
@@ -288,7 +288,7 @@ where
     }
 }
 
-pub fn response<O: crate::operations::OperationDeclaration>(
+pub fn response<O: crate::operations::RequestShape>(
     instance: crate::operations::Running<O>,
 ) -> impl std::future::Future<Output = crate::Result<crate::operations::Response<O::Response>>> + Send {
     let pending = Pending { instance, delivered: false };

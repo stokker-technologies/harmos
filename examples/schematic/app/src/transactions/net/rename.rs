@@ -31,11 +31,14 @@ use harmos_runtime::{state::Invertible, state::Transaction};
 
 /* === Structs === */
 
-#[harmos_runtime::transaction(id = "net.rename", inverse = Self)]
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct RenameNet {
     pub net: NetId,
     pub to: NetName,
+}
+impl RenameNet {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("net.rename").reversible::<Self>();
 }
 
 /* === Enums === */

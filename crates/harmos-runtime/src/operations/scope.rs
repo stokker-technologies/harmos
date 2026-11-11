@@ -123,7 +123,7 @@ impl<'a> Scope<'a> {
         crate::records::RecordManager::new(self.state::<A>())
     }
 
-    pub fn storage<A: crate::Application>(&self) -> Option<&'a crate::storage::StorageManager<crate::storage::ErasedCatalog>> {
+    pub fn storage<A: crate::Application>(&self) -> Option<&'a crate::storage::StorageManager> {
         self.core.instances.handles_of::<A>().storage.get()
     }
 

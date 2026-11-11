@@ -11,6 +11,14 @@
 
 /* === Modules === */
 
+mod artifact;
+mod configuration;
+mod path;
+mod presentation;
+mod request;
+mod row;
+mod stored_message;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -20,7 +28,7 @@
 // Third Party Imports
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Type, parse_macro_input};
+use syn::{Data, DeriveInput, Error, Fields, GenericArgument, PathArguments, Type, parse_macro_input};
 
 // Local Imports
 
@@ -43,6 +51,40 @@ use syn::{Data, DeriveInput, Fields, GenericArgument, PathArguments, Type, parse
 #[proc_macro_derive(Message, attributes(harmos))]
 pub fn message(input: TokenStream) -> TokenStream {
     expand(parse_macro_input!(input as DeriveInput)).unwrap_or_else(syn::Error::into_compile_error).into()
+}
+
+#[proc_macro_derive(Request, attributes(request, harmos_path))]
+pub fn request(item: TokenStream) -> TokenStream {
+    request::derive(item.into()).into()
+}
+
+#[proc_macro_derive(Described, attributes(harmos_path, serde))]
+pub fn described(item: TokenStream) -> TokenStream {
+    let result = (|| {
+        let item: syn::Item = syn::parse(item)?;
+        let attributes = match &item {
+            syn::Item::Struct(item) => &item.attrs,
+            syn::Item::Enum(item) => &item.attrs,
+            _ => unreachable!(),
+        };
+        let explicit = attributes
+            .iter()
+            .find(|attribute| attribute.path().is_ident("harmos_path"))
+            .map(|attribute| attribute.parse_args::<syn::Path>())
+            .transpose()?;
+        stored_message::shape(&item, &path::HarmosPath::resolve(explicit))
+    })();
+    result.unwrap_or_else(|error: syn::Error| error.to_compile_error()).into()
+}
+
+#[proc_macro_derive(Row, attributes(row, harmos_path, serde))]
+pub fn row(item: TokenStream) -> TokenStream {
+    row::derive(item.into()).into()
+}
+
+#[proc_macro_derive(StoredMessage, attributes(harmos_path, row))]
+pub fn stored_message_derive(item: TokenStream) -> TokenStream {
+    stored_message::derive(item.into()).into()
 }
 
 /* === Private Functions === */
@@ -276,6 +318,14 @@ fn inner<'a>(ty: &'a Type, container: &str) -> Option<&'a Type> {
         GenericArgument::Type(ty) => Some(ty),
         _ => None,
     }
+}
+
+fn set_once<T>(place: &mut Option<T>, value: T, span: proc_macro2::Span, name: &str) -> Result<(), Error> {
+    if place.replace(value).is_some() {
+        return Err(Error::new(span, format!("`{name}` is declared only once")));
+    }
+
+    Ok(())
 }
 
 /* === Tests === */

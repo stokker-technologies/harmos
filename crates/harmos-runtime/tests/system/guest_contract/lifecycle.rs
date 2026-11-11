@@ -14,7 +14,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,9 +27,7 @@ use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginLifecycle, PluginLifecycleAuthority,
     PluginManager, PluginScope, PluginTransition, Router,
 };
-use harmos_runtime::operations::{
-    Context, EncodedInvocation, OperationDeclaration, PluginRegistration, PluginSdkRegistration, WireDeclaration,
-};
+use harmos_runtime::operations::{Context, EncodedInvocation, PluginRegistration, PluginSdkRegistration};
 
 /* === Constants === */
 
@@ -43,10 +40,20 @@ pub(super) type Manager = PluginManager<Resources, Resources>;
 
 /* === Structs === */
 
-#[harmos_runtime::operation(codec = manual, id = <wire::ProviderEchoOperation as OperationDeclaration>::ID, response = wire::Echoed,
-    policy = <wire::ProviderEchoOperation as OperationDeclaration>::POLICY, visibility = Public)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = wire::Echoed)]
 #[derive(Clone)]
 struct Echo(wire::ProviderEchoOperation);
+
+static ECHO_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos_runtime::operations::WireDeclaration::request::<Echo>(
+    wire::PROVIDER_ECHO_OPERATION_OPERATION.entry().id,
+    wire::PROVIDER_ECHO_OPERATION_OPERATION.entry().policy,
+)
+.visibility(harmos_runtime::operations::Visibility::Public);
+
+const ECHO_OPERATION: harmos_runtime::operations::OperationSpec<Echo> =
+    harmos_runtime::operations::OperationSpec::<Echo>::new(&ECHO_DESCRIPTION);
 
 impl harmos_runtime::Message for Echo {
     const CODEC: &'static str = <wire::ProviderEchoOperation as harmos_runtime::Message>::CODEC;
@@ -74,10 +81,20 @@ impl harmos_runtime::schema::Described for Echo {
     const MARKER: &'static [u8] = <wire::ProviderEchoOperation as harmos_runtime::schema::Described>::MARKER;
 }
 
-#[harmos_runtime::operation(codec = manual, resources = [harmos_runtime::operations::HostContext], id = <harmos_guest::builtins::streams::Publish as OperationDeclaration>::ID, response = (),
-    policy = <harmos_guest::builtins::streams::Publish as OperationDeclaration>::POLICY, visibility = Public)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = ())]
 #[derive(Clone)]
 struct Publish(harmos_guest::builtins::streams::Publish);
+
+static PUBLISH_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos_runtime::operations::WireDeclaration::request::<Publish>(
+    harmos_guest::builtins::streams::PUBLISH_DESCRIPTION.operation.id,
+    harmos_guest::builtins::streams::PUBLISH_DESCRIPTION.operation.policy,
+)
+.visibility(harmos_runtime::operations::Visibility::Public);
+
+const PUBLISH_OPERATION: harmos_runtime::operations::OperationSpec<Publish> =
+    harmos_runtime::operations::OperationSpec::<Publish>::new(&PUBLISH_DESCRIPTION);
 
 impl harmos_runtime::Message for Publish {
     const CODEC: &'static str = <harmos_guest::builtins::streams::Publish as harmos_runtime::Message>::CODEC;
@@ -119,103 +136,125 @@ pub(super) struct Resources {
     shutdown_attempted: bool,
 }
 
-pub(super) struct Lifecycle<C = GuestOperations> {
+pub(super) struct Lifecycle {
     loader: Host<Bank>,
     operations: harmos_runtime::operations::OperationManager,
     prepared: Option<harmos_runtime::guest::Registered<Bank>>,
     bytes: Vec<u8>,
     lane: harmos_runtime::operations::Lane,
     provider: Option<PluginDefinition>,
-    catalog: PhantomData<fn() -> C>,
+    catalog: harmos_runtime::operations::ComponentCatalog,
 }
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum EchoOperations {
-    Echo(Echo),
+fn echo_operations_catalog() -> harmos_runtime::operations::Catalog {
+    echo_operations_catalog_batch().named(concat!(module_path!(), "::EchoOperations"))
 }
 
-#[harmos_runtime::catalog]
-enum PublicationOperations {
-    Publish(Publish),
+fn echo_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(echo_operation().expect("representable operation"));
+    batch
 }
 
-#[harmos_domain::catalog]
-pub(super) enum GuestOperations {
-    Echo(wire::EchoOperation),
-    Decline(wire::DeclineOperation),
-    Spin(wire::SpinOperation),
-    Wait(wire::WaitOperation),
-    Fail(wire::FailOperation),
-    Read(wire::ReadOperation),
-    Counts(wire::CountsOperation),
-    Finish(wire::FinishOperation),
+fn publication_operations_catalog() -> harmos_runtime::operations::Catalog {
+    publication_operations_catalog_batch().named(concat!(module_path!(), "::PublicationOperations"))
 }
 
-#[harmos_domain::catalog]
-enum ProviderOperations {
-    Echo(wire::ProviderEchoOperation),
+fn publication_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(publish_operation().expect("representable operation"));
+    batch
+}
+
+pub(super) fn guest_catalog() -> harmos_runtime::operations::ComponentCatalog {
+    harmos_runtime::operations::ComponentCatalog::new()
+        .operation(wire::ECHO_OPERATION_OPERATION)
+        .unwrap()
+        .operation(wire::DECLINE_OPERATION_OPERATION)
+        .unwrap()
+        .operation(wire::SPIN_OPERATION_OPERATION)
+        .unwrap()
+        .operation(wire::WAIT_OPERATION_OPERATION)
+        .unwrap()
+        .operation(wire::FAIL_OPERATION_OPERATION)
+        .unwrap()
+        .operation(wire::READ_OPERATION_OPERATION)
+        .unwrap()
+        .operation(wire::COUNTS_OPERATION_OPERATION)
+        .unwrap()
+        .operation(wire::FINISH_OPERATION_OPERATION)
+        .unwrap()
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for Echo {
-    type Error = harmos_runtime::Error;
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<wire::Echoed>> {
-        let request = self.0;
-        let result: ::core::result::Result<wire::Echoed, Self::Error> = async move {
-            // The Waiting Probe Asks for an Answer That Never Comes Before Its Deadline
-            if request.say == "slow" {
-                std::future::pending::<()>().await;
-            }
-            Ok(wire::Echoed {
-                said: format!("provider:{}", request.say),
-            })
+async fn echo_handler(
+    request: Echo, _: harmos_runtime::operations::FunctionContext<Echo>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<wire::Echoed>> {
+    let request = request.0;
+    let result: ::core::result::Result<wire::Echoed, harmos_runtime::Error> = async move {
+        // The Waiting Probe Asks for an Answer That Never Comes Before Its Deadline
+        if request.say == "slow" {
+            std::future::pending::<()>().await;
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(wire::Echoed {
+            said: format!("provider:{}", request.say),
+        })
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-impl harmos_runtime::Operation for Publish {
-    type Error = harmos_runtime::Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
-        let mut row = self.0;
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-            let context = host.borrow();
-            let scope = guest_scope(&context)?;
-            if row.sequence.is_some() || row.published_unix_micros.is_some() || row.context.is_some() || !row.following.is_empty() {
-                return Err(harmos_runtime::Error::InvalidInput {
-                    field: "guest publication",
-                    reason: "sequence, batch and publication metadata are host-derived",
-                });
-            }
-            let lease = scope.publication(&row.stream)?;
-            let row = harmos_runtime::streams::PublicationRow {
-                payload: std::mem::take(&mut row.payload),
-                published_unix_micros: None,
-                context: None,
-            };
-            lease.stage_derived_row(row, 0).map_err(|source| harmos_runtime::Error::OperationFailed {
-                operation: <harmos_guest::builtins::streams::Publish as OperationDeclaration>::ID.into(),
-                source: Arc::new(source),
-            })?;
-            Ok(())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
+fn echo_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(ECHO_OPERATION, const { &[] }, echo_handler, |_| {
+        harmos_runtime::operations::FailureKind::Permanent
+    })
 }
 
-impl<C> PluginLifecycle for Lifecycle<C>
-where
-    C: harmos_runtime::catalog::Catalog<harmos_runtime::operations::Declarations>
-        + harmos_runtime::catalog::Catalog<harmos_runtime::operations::ComponentBindings>,
-{
+async fn publish_handler(
+    request: Publish, ctx: harmos_runtime::operations::FunctionContext<Publish>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<()>> {
+    let mut row = request.0;
+    let result: ::core::result::Result<(), harmos_runtime::Error> = async move {
+        let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+        let context = host.borrow();
+        let scope = guest_scope(&context)?;
+        if row.sequence.is_some() || row.published_unix_micros.is_some() || row.context.is_some() || !row.following.is_empty() {
+            return Err(harmos_runtime::Error::InvalidInput {
+                field: "guest publication",
+                reason: "sequence, batch and publication metadata are host-derived",
+            });
+        }
+        let lease = scope.publication(&row.stream)?;
+        let row = harmos_runtime::streams::PublicationRow {
+            payload: std::mem::take(&mut row.payload),
+            published_unix_micros: None,
+            context: None,
+        };
+        lease.stage_derived_row(row, 0).map_err(|source| harmos_runtime::Error::OperationFailed {
+            operation: harmos_guest::builtins::streams::PUBLISH_DESCRIPTION.operation.id.into(),
+            source: Arc::new(source),
+        })?;
+        Ok(())
+    }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn publish_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PUBLISH_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        publish_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+impl PluginLifecycle for Lifecycle {
     type Guest = Resources;
 
     type Embedded = Resources;
@@ -239,10 +278,10 @@ where
                 resources.endpoint = Some(router.enter(&definition.id).unwrap());
                 let scope = resources.endpoint.as_ref().unwrap().scope().unwrap();
                 resources.registration =
-                    Some(self.operations.stage_plugin(scope, |bindings| bindings.operations::<EchoOperations>(self.lane))?);
+                    Some(self.operations.stage_plugin(scope, |bindings| bindings.catalog(echo_operations_catalog(), self.lane))?);
             }
             PluginBackend::Guest(resources) => {
-                resources.start::<C>(&self.operations, definition, router, authority, self.lane).await?;
+                resources.start(&self.catalog, &self.operations, definition, router, authority, self.lane).await?;
             }
         }
         Ok(())
@@ -256,22 +295,18 @@ where
 }
 
 impl Resources {
-    pub(super) async fn start<C>(
-        &mut self, operations: &harmos_runtime::operations::OperationManager, definition: &PluginDefinition, router: &Router,
-        authority: &PluginLifecycleAuthority<'_>, lane: harmos_runtime::operations::Lane,
-    ) -> harmos_runtime::Result<Arc<harmos_runtime::operations::Component>>
-    where
-        C: harmos_runtime::catalog::Catalog<harmos_runtime::operations::Declarations>
-            + harmos_runtime::catalog::Catalog<harmos_runtime::operations::ComponentBindings>,
-    {
+    pub(super) async fn start(
+        &mut self, catalog: &harmos_runtime::operations::ComponentCatalog, operations: &harmos_runtime::operations::OperationManager,
+        definition: &PluginDefinition, router: &Router, authority: &PluginLifecycleAuthority<'_>, lane: harmos_runtime::operations::Lane,
+    ) -> harmos_runtime::Result<Arc<harmos_runtime::operations::Component>> {
         let registered = self.registered.take().unwrap().routed(router).map_err(guest_error)?;
         self.serving = Some(registered.serve_sdk().await.map_err(guest_error)?);
         let serving = self.serving.as_ref().unwrap();
         let component = Arc::new(serving.operations().map_err(guest_error)?);
-        self.registration = Some(
-            operations
-                .stage_plugin(serving.scope().unwrap(), |bindings| bindings.register_component_catalog::<C>(lane, component.clone()))?,
-        );
+        self.registration =
+            Some(operations.stage_plugin(serving.scope().unwrap(), |bindings| {
+                bindings.register_component_catalog(catalog, lane, component.clone())
+            })?);
         self.sdk = Some(component.stage_sdk(operations, lane)?);
         self.initializing = Some(
             self.sdk.as_ref().unwrap().submit_initialize(
@@ -345,18 +380,18 @@ impl Lifecycle {
     }
 }
 
-impl Lifecycle<schematic_operations::guest::Operations> {
+impl Lifecycle {
     pub(super) fn schematic(runtime: &Runtime<Bank>) -> Self {
-        Self::for_component(runtime, super::schematic(), harmos_runtime::operations::Lane::default())
+        Self::for_component(schematic_catalog(), runtime, super::schematic(), harmos_runtime::operations::Lane::default())
     }
 }
 
-impl Lifecycle<GuestOperations> {
+impl Lifecycle {
     // The Sandbox Requires Host Publication and an Embedded Provider in Its Own Lane
     pub(super) async fn sandbox_in(runtime: &Runtime<Bank>, lane: harmos_runtime::operations::Lane) -> Self {
-        runtime.operations.register::<PublicationOperations>(lane).await.unwrap();
-        let mut lifecycle = Self::for_component(runtime, super::sandbox(), lane);
-        let contract = WireDeclaration::of::<wire::ProviderEchoOperation>().contract().unwrap();
+        runtime.operations.register_catalog(publication_operations_catalog(), lane).await.unwrap();
+        let mut lifecycle = Self::for_component(guest_catalog(), runtime, super::sandbox(), lane);
+        let contract = wire::PROVIDER_ECHO_OPERATION_OPERATION.wire().contract().unwrap();
         lifecycle.provider = Some(PluginDefinition {
             id: "provider".into(),
             version: "1.0.0".parse().unwrap(),
@@ -374,8 +409,11 @@ impl Lifecycle<GuestOperations> {
     }
 }
 
-impl<C> Lifecycle<C> {
-    pub(super) fn for_component(runtime: &Runtime<Bank>, bytes: Vec<u8>, lane: harmos_runtime::operations::Lane) -> Self {
+impl Lifecycle {
+    pub(super) fn for_component(
+        catalog: harmos_runtime::operations::ComponentCatalog, runtime: &Runtime<Bank>, bytes: Vec<u8>,
+        lane: harmos_runtime::operations::Lane,
+    ) -> Self {
         Self {
             loader: Host::new(runtime).unwrap(),
             operations: runtime.operations.clone(),
@@ -383,7 +421,7 @@ impl<C> Lifecycle<C> {
             bytes,
             lane,
             provider: None,
-            catalog: PhantomData,
+            catalog,
         }
     }
     pub(super) fn guest_seed(&mut self) -> Resources {
@@ -428,8 +466,8 @@ impl<C> Lifecycle<C> {
 
 // Serves the Sandbox's Requirements from the Host When No Plugin Provides Them
 pub(super) async fn serve_host(runtime: &Runtime<Bank>, lane: harmos_runtime::operations::Lane) {
-    runtime.operations.register::<PublicationOperations>(lane).await.unwrap();
-    runtime.operations.register::<EchoOperations>(lane).await.unwrap();
+    runtime.operations.register_catalog(publication_operations_catalog(), lane).await.unwrap();
+    runtime.operations.register_catalog(echo_operations_catalog(), lane).await.unwrap();
 }
 
 fn guest_error(source: harmos_runtime::guest::Error) -> harmos_runtime::Error {
@@ -447,3 +485,13 @@ fn guest_scope<'a>(context: &'a Context<'_>) -> harmos_runtime::Result<&'a Plugi
 }
 
 /* === Tests === */
+
+pub(super) fn schematic_catalog() -> harmos_runtime::operations::ComponentCatalog {
+    harmos_runtime::operations::ComponentCatalog::new()
+        .operation(schematic_operations::guest::VALIDATE_SCHEMATIC_OPERATION)
+        .unwrap()
+        .operation(schematic_operations::guest::PROPOSE_ROUTE_OPERATION)
+        .unwrap()
+        .operation(schematic_operations::guest::ANALYZE_SCHEMATIC_OPERATION)
+        .unwrap()
+}

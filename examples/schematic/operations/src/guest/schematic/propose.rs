@@ -34,22 +34,26 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::operation(
-    id = "schematic.route",
-    response = Route,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Idempotent,
-    grpc(package = "schematic.v1", service = "Schematic", method = "ProposeRoute"),
-)]
+#[derive(harmos_operations::Message)]
+#[harmos_path(harmos_operations)]
+#[derive(harmos_operations::Request)]
+#[request(response = Route)]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProposeRoute {
     pub from: schematic_domain::model::Point,
     pub to: schematic_domain::model::Point,
 }
 
-#[harmos_operations::message]
-#[derive(Clone, Debug, PartialEq)]
+pub static PROPOSE_ROUTE_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+    harmos_operations::operations::WireDeclaration::request::<ProposeRoute>("schematic.route", POLICY)
+        .visibility(harmos_operations::operations::Visibility::Public)
+        .replay(harmos_operations::operations::ReplaySafety::Idempotent)
+        .grpc(harmos_operations::operations::Grpc::new("schematic.v1", "Schematic", "ProposeRoute"));
+
+pub const PROPOSE_ROUTE_OPERATION: harmos_operations::operations::OperationSpec<ProposeRoute> =
+    harmos_operations::operations::OperationSpec::<ProposeRoute>::new(&PROPOSE_ROUTE_DESCRIPTION);
+
+#[derive(harmos_operations::Message, Default, Clone, Debug, PartialEq)]
 pub struct Route {
     pub points: Vec<schematic_domain::model::Point>,
 }
@@ -61,16 +65,32 @@ pub struct Route {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos_operations::Operation for ProposeRoute {
-    type Error = crate::Error;
-
-    async fn run(self, _: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Route>, Self::Error> {
-        let corner = schematic_domain::model::Point { x: self.to.x, y: self.from.y };
-        let mut points = vec![self.from.clone(), corner, self.to.clone()];
+mod execution {
+    use super::*;
+    pub async fn propose_route_handler(
+        request: ProposeRoute, _: harmos_operations::execution::operations::FunctionContext<ProposeRoute>,
+    ) -> Result<harmos_operations::Response<Route>, crate::Error> {
+        let corner = schematic_domain::model::Point { x: request.to.x, y: request.from.y };
+        let mut points = vec![request.from.clone(), corner, request.to.clone()];
         points.dedup();
         Ok(Route { points }.into())
     }
+
+    pub fn propose_route_operation() -> ::core::result::Result<
+        harmos_operations::execution::operations::OperationFactory,
+        harmos_operations::execution::operations::ServingError,
+    > {
+        harmos_operations::execution::operations::OperationFactory::function(
+            PROPOSE_ROUTE_OPERATION,
+            const { &[] },
+            propose_route_handler,
+            |_| harmos_operations::operations::FailureKind::Permanent,
+        )
+    }
 }
+
+#[cfg(feature = "runtime")]
+pub use execution::propose_route_operation;
 
 /* === Public Functions === */
 

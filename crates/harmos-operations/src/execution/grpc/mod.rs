@@ -232,14 +232,18 @@ mod tests {
     use harmos_domain::MemorySize;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug, Default)]
+    #[harmos_path(::harmos_domain)]
     struct Row {
         bytes: Vec<u8>,
         label: String,
     }
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug)]
+    #[harmos_path(::harmos_domain)]
+    #[derive(Default)]
     enum Frame {
+        #[default]
         Empty,
         Bytes(Row),
     }

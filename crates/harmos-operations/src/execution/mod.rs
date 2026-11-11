@@ -22,13 +22,13 @@ pub mod services;
 pub use harmos_domain::*;
 pub use lifecycle::Lifecycle;
 pub use operations::{
-    Catalog, Context, Dependent, EndpointSet, Executable, ExecutionContext, InputEndpoint, Instance, Invocation, Operation,
-    OperationCatalog, OperationHost, OutputEndpoint, Resource, ResourceError, Response, ServingError, StartupError,
+    Catalog, CatalogDescription, Context, EndpointSet, ExecutionContext, InputEndpoint, Instance, Invocation, Operation, OperationHost,
+    OutputEndpoint, Resource, ResourceError, Response, ServingError, StartupError,
 };
 pub use services::Service;
 pub use setup::Setup;
 
-pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
+pub use harmos_sdk_derive::Request;
 
 /* === Imports === */
 
@@ -98,7 +98,7 @@ pub mod __private {
 
     /* === Re-Exports === */
 
-    pub use crate::execution::operations::registration::{PreparedNative, RegistrationBatch, ServiceFuture};
+    pub use crate::execution::operations::registration::{Catalog, PreparedNative, ServiceFuture};
     pub use crate::execution::operations::resources::ResourceSet;
     pub use crate::execution::operations::response::ErasedResponse;
     pub use harmos_domain::__private::*;

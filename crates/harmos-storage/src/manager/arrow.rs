@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.arrow.lookup_schema", level = "debug", skip_all)]
     pub async fn lookup_schema(&self, key: &SchemaKey) -> Result<StorageSchema> {
         let snapshot = self.snapshot(&self.cursor_saved()).await?;
@@ -73,7 +73,7 @@ impl<C> StorageManager<C> {
             });
         }
         let _writer = tracing::Instrument::instrument(self.inner.object_writes.lock(), tracing::trace_span!("storage.lock.wait")).await;
-        let definition = (self.inner.object_definition)(&batch.schema)?;
+        let definition = self.inner.catalog.definition(&batch.schema)?;
         let graph = definition.graph(&harmos_domain::config::SchemaSettings::default())?;
         let values = crate::writes::convert::objects(batch, &graph, self.inner.settings.max_batch_bytes())?;
         let count = std::num::NonZeroUsize::new(values.len()).ok_or(Error::InvalidInput {

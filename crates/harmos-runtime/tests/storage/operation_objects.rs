@@ -33,9 +33,7 @@ use arrow_schema::{DataType, Field, Fields};
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use harmos_operations::storage::WriteObjects;
 use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
-use harmos_runtime::storage::{
-    MutationId, ObjectCatalog, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject,
-};
+use harmos_runtime::storage::{MutationId, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject};
 use harmos_runtime::{Identified, Identifier, Runtime};
 use harmos_storage::writes::DataBatch;
 
@@ -47,8 +45,7 @@ use harmos_storage::writes::DataBatch;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_runtime::Message, Debug, Default, Clone, PartialEq)]
 struct Document {
     id: String,
     text: String,
@@ -56,9 +53,8 @@ struct Document {
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
-enum Objects {
-    Document(Document),
+fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<Document>())
 }
 
 /* === Traits === */
@@ -82,14 +78,15 @@ impl StoredObject for Document {
 /* === Private Functions === */
 
 fn value(key: &str, text: &str) -> ObjectValue {
-    Objects::encode(&Document { id: key.into(), text: text.into() }, NonZeroUsize::new(4096).unwrap()).unwrap()
+    objects_catalog().encode(&Document { id: key.into(), text: text.into() }, NonZeroUsize::new(4096).unwrap()).unwrap()
 }
 
 #[tokio::test]
 async fn object_batch_atomic() {
-    let storage = StorageManager::<Objects>::new(
+    let storage = StorageManager::with_catalog(
+        objects_catalog(),
         StorageBackends {
-            primary: Arc::new(Data::<Objects>::with_catalog(history())),
+            primary: Arc::new(Data::with_catalog(objects_catalog(), history())),
             state: Arc::new(Recovery::new(history())),
         },
         config(),
@@ -124,9 +121,10 @@ async fn object_batch_atomic() {
     runtime.shutdown().await.unwrap();
 }
 
-async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Objects>>) {
-    let data = Arc::new(Data::<Objects>::with_catalog(history()));
-    let storage = StorageManager::new(
+async fn query_fixture() -> (Runtime<Bank>, StorageManager, Arc<Data>) {
+    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+    let storage = StorageManager::with_catalog(
+        objects_catalog(),
         StorageBackends {
             primary: data.clone(),
             state: Arc::new(Recovery::new(history())),
@@ -142,7 +140,7 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager<Objects>, Arc<Data<Ob
     })
     .await
     .unwrap();
-    runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, storage, data)
 }
 

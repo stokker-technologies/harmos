@@ -30,21 +30,29 @@ use super::{Duration, OperationPolicy, RetryPolicy, Value};
 
 /* === Structs === */
 
-#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain,
-    resources = [crate::Owner], id = "fixture.finish", response = Value, policy = OperationPolicy {
-        timeout: Duration::from_secs(5), attempt_timeout: Duration::from_secs(5),
-        cancellation_timeout: Duration::from_millis(100), retries: RetryPolicy::Never,
-    }))]
-#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest,
-    resources = [crate::Owner], id = "fixture.finish", response = Value, policy = OperationPolicy {
-        timeout: Duration::from_secs(5), attempt_timeout: Duration::from_secs(5),
-        cancellation_timeout: Duration::from_millis(100), retries: RetryPolicy::Never,
-    }))]
+#[derive(::harmos_guest::Message, Debug, Default)]
+#[harmos_path(::harmos_guest)]
+#[derive(::harmos_guest::Request)]
+#[request(response = Value)]
 #[derive(Clone, PartialEq)]
 
 pub struct FinishOperation {
     pub mode: u32,
 }
+
+pub static FINISH_OPERATION_DESCRIPTION: ::harmos_guest::operations::WireDeclaration =
+    ::harmos_guest::operations::WireDeclaration::request::<FinishOperation>(
+        "fixture.finish",
+        OperationPolicy {
+            timeout: Duration::from_secs(5),
+            attempt_timeout: Duration::from_secs(5),
+            cancellation_timeout: Duration::from_millis(100),
+            retries: RetryPolicy::Never,
+        },
+    );
+
+pub const FINISH_OPERATION_OPERATION: ::harmos_guest::operations::OperationSpec<FinishOperation> =
+    ::harmos_guest::operations::OperationSpec::<FinishOperation>::new(&FINISH_OPERATION_DESCRIPTION);
 
 /* === Enums === */
 
@@ -74,6 +82,7 @@ mod runtime {
 
     // Local Imports
     use super::{FinishOperation, Value};
+    use crate::contract::FINISH_OPERATION_OPERATION;
 
     /* === Constants === */
 
@@ -89,21 +98,29 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for FinishOperation {
-        type Error = std::io::Error;
-
-        async fn run(self, sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Value>, std::io::Error> {
-            let owner = sdk.resource::<crate::Owner>();
-            owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            if self.mode == 2 {
-                return std::future::pending().await;
-            }
-            sdk.cancelled().await;
-            if self.mode == 1 {
-                return std::future::pending().await;
-            }
-            Ok(Value { value: "42".into() }.into())
+    pub async fn finish_operation_handler(
+        request: FinishOperation, sdk: harmos_guest::operations::FunctionContext<FinishOperation>,
+    ) -> Result<harmos_guest::operations::Response<Value>, std::io::Error> {
+        let owner = sdk.resource::<crate::Owner>().expect("declared resource is registered");
+        owner.ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if request.mode == 2 {
+            return std::future::pending().await;
         }
+        sdk.cancelled().await;
+        if request.mode == 1 {
+            return std::future::pending().await;
+        }
+        Ok(Value { value: "42".into() }.into())
+    }
+
+    pub fn finish_operation_operation()
+    -> ::core::result::Result<harmos_guest::operations::OperationFactory, harmos_guest::operations::ServingError> {
+        harmos_guest::operations::OperationFactory::function(
+            FINISH_OPERATION_OPERATION,
+            const { &[harmos_guest::Resource::of::<crate::Owner>()] },
+            finish_operation_handler,
+            |_| harmos_guest::operations::FailureKind::Permanent,
+        )
     }
 
     /* === Public Functions === */
@@ -112,3 +129,6 @@ mod runtime {
 
     /* === Tests === */
 }
+
+#[cfg(target_arch = "wasm32")]
+pub use runtime::finish_operation_operation;

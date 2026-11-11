@@ -17,4 +17,4 @@ pub mod streams;
 /* === Re-Exports === */
 
 pub use crate::lifecycle;
-pub use streams::Streams;
+pub use streams::STREAMS_CATALOG;

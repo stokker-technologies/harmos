@@ -24,11 +24,11 @@ use std::sync::Arc;
 use crate::config::{LaunchConfig, Settings};
 use crate::document::Document;
 use crate::error::Error;
-use crate::records::Records;
+use crate::records::{Records, records_registry};
 use crate::state::Schematic;
 use crate::storage;
 use crate::streams;
-use crate::transactions::Transactions;
+use crate::transactions::{Transactions, transactions_state_catalog};
 use harmos_runtime::prelude::*;
 
 /* === Constants === */
@@ -85,7 +85,7 @@ impl Lifecycle for SchematicEditor {
             .operation_settings(settings)
             .lanes(harmos_runtime::operations::LaneSet::new([crate::lanes::ANALYSIS]).map_err(std::io::Error::other)?);
 
-        setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(streams::stream_definitions());
+        setup.settings().register(transactions_state_catalog()).register(records_registry()).register(streams::stream_definitions());
         setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::new(Default::default()));
         setup.resource::<schematic_operations::transfer::Store>(Arc::new(Default::default()));
         Ok(Self { checkpoint })

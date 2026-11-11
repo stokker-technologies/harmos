@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.recovery.write_recovery", level = "debug", skip_all)]
     pub async fn write_recovery(&self, payloads: Vec<Vec<u8>>) -> Result<RecoveryPosition> {
         self.check_raw_recovery()?;

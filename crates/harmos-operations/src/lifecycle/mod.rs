@@ -53,30 +53,24 @@ const WATCH_POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPol
 
 /* === Enums === */
 
-pub struct Lifecycle;
-
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Lifecycle {
-    pub const CATALOG: crate::execution::operations::Catalog = <Self as crate::execution::operations::OperationCatalog>::CATALOG;
-    pub fn catalog() -> Vec<harmos_domain::OperationDefinition> {
-        <Self as crate::execution::operations::OperationCatalog>::batch().operations.into_iter().map(|factory| factory.definition).collect()
-    }
+pub fn lifecycle_catalog() -> crate::execution::operations::Catalog {
+    lifecycle_catalog_batch().named("harmos.lifecycle")
 }
-impl crate::execution::operations::OperationCatalog for Lifecycle {
-    const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>("harmos.lifecycle", &[], &[]);
-    fn batch() -> crate::execution::__private::RegistrationBatch {
-        use crate::execution::operations::OperationFactory;
-        crate::execution::__private::RegistrationBatch {
-            operations: vec![
-                OperationFactory::protobuf::<Status>().expect("status declaration"),
-                OperationFactory::protobuf::<Cancel>().expect("cancel declaration"),
-                OperationFactory::protobuf::<Watch>().expect("watch declaration"),
-            ],
-            services: vec![],
-        }
+
+pub fn lifecycle_catalog_batch() -> crate::execution::__private::Catalog {
+    use crate::execution::operations::OperationFactory;
+    crate::execution::__private::Catalog {
+        name: "",
+        operations: vec![
+            OperationFactory::protobuf::<Status>().expect("status declaration"),
+            OperationFactory::protobuf::<Cancel>().expect("cancel declaration"),
+            OperationFactory::protobuf::<Watch>().expect("watch declaration"),
+        ],
+        services: vec![],
     }
 }
 

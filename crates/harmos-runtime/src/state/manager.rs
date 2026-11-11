@@ -115,7 +115,7 @@ impl<A: Application> StateManager<A> {
     pub(crate) fn start(
         origin: At<A::State>, inverses: Inverting<A>, undos: Undos<A>, requests: usize, tail: Tail<A>,
         durability: Option<watch::Receiver<Position>>, catalog: Arc<dispatch::Dispatch<A, crate::storage::Payload<A>>>,
-        capture: Option<capture::Declaration<A>>, storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
+        capture: Option<capture::Declaration<A>>, storage: Option<crate::storage::StorageManager>,
         schema_settings: Arc<crate::config::SchemaSettings>, clock: crate::clock::Clock,
     ) -> (Self, JoinHandle<()>, mpsc::Receiver<ReadRequest<A>>) {
         let position = origin.position;
@@ -411,7 +411,7 @@ impl<A: Application> StateManager<A> {
         if self.capture_status().is_err() { Error::CaptureFailed } else { Error::Unavailable }
     }
 
-    async fn request<E>(
+    pub(crate) async fn request<E>(
         &self, key: Option<RequestKey>, transaction: crate::operations::Response<A::Transaction>,
     ) -> Result<Receipt, Error<E>>
     where

@@ -75,7 +75,7 @@ enum Failure {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.follow.follow", level = "debug", skip_all)]
     pub async fn follow<T: Entry>(&self, after: Option<&StorageCursor>, selection: T::Selection) -> Result<Follower<T>> {
         if let Some(after) = after {
@@ -123,7 +123,7 @@ impl<C> StorageManager<C> {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.follow.page", level = "debug", skip_all)]
     pub async fn page<T: Entry>(&self, selection: &T::Selection, after: u64, limits: ReadLimits) -> Result<FollowPage<T>> {
         let rows = limits.rows.min(SCAN_ROWS);

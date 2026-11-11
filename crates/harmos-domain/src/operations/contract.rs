@@ -20,8 +20,8 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use super::ProtobufExt;
-use super::{Direction, Entry, OperationDeclaration, OperationDefinition};
-use crate::catalog::{Catalog, Member, Projection, Visitor};
+use super::{Direction, Entry, OperationDefinition};
+use crate::catalog::Visitor;
 use crate::config::SchemaSettings;
 use crate::schema::declaration::Definition as SchemaDefinition;
 use crate::schema::graph::{Kind, Schema, View};
@@ -138,6 +138,43 @@ impl Codec {
 }
 
 impl WireDeclaration {
+    pub const fn visibility(mut self, visibility: super::Visibility) -> Self {
+        self.operation.visibility = visibility;
+        self
+    }
+
+    pub const fn description(mut self, description: &'static str) -> Self {
+        self.operation.description = description;
+        self
+    }
+
+    pub const fn replay(mut self, replay: super::ReplaySafety) -> Self {
+        self.operation.replay = replay;
+        self
+    }
+
+    pub const fn grpc(mut self, grpc: super::Grpc) -> Self {
+        assert!(self.grpc.is_none(), "gRPC binding is declared only once");
+        let previous = self.grpc.replace(grpc);
+        std::mem::forget(previous);
+        self
+    }
+
+    pub const fn request<Q: super::RequestShape>(id: &'static str, policy: super::OperationPolicy) -> Self {
+        Self {
+            operation: Entry::request::<Q>(id, policy),
+            codec: <Q::Request as crate::Message>::CODEC,
+            response_codec: <Q::Response as crate::Message>::CODEC,
+            input_codec: if Q::Input::STREAMED { Some(<<Q::Input as Direction>::Item as crate::Message>::CODEC) } else { None },
+            output_codec: if Q::Output::STREAMED { Some(<<Q::Output as Direction>::Item as crate::Message>::CODEC) } else { None },
+            request: <Q::Request as Described>::DEFINITION,
+            response: <Q::Response as Described>::DEFINITION,
+            input: direction::<Q::Input>(),
+            output: direction::<Q::Output>(),
+            grpc: None,
+        }
+    }
+
     pub const fn copied(&self) -> Self {
         let grpc = match &self.grpc {
             None => None,
@@ -161,21 +198,6 @@ impl WireDeclaration {
             input: self.input,
             output: self.output,
             grpc,
-        }
-    }
-
-    pub const fn of<O: OperationDeclaration>() -> Self {
-        Self {
-            operation: Entry::of::<O>(),
-            codec: <O::Request as crate::Message>::CODEC,
-            response_codec: <O::Response as crate::Message>::CODEC,
-            input_codec: if O::Input::STREAMED { Some(<<O::Input as super::Direction>::Item as crate::Message>::CODEC) } else { None },
-            output_codec: if O::Output::STREAMED { Some(<<O::Output as super::Direction>::Item as crate::Message>::CODEC) } else { None },
-            request: <O::Request as Described>::DEFINITION,
-            response: <O::Response as Described>::DEFINITION,
-            input: direction::<O::Input>(),
-            output: direction::<O::Output>(),
-            grpc: O::GRPC,
         }
     }
 
@@ -405,16 +427,9 @@ impl Contract {
 
     // The Contract Of A Built-In Operation Under The Reserved `harmos.` Namespace,
     // Which Ordinary Declarations Cannot Claim.
-    pub(crate) fn reserved<O: OperationDeclaration>(policy: super::OperationPolicy) -> Result<Self, ContractError> {
-        policy.validate().map_err(crate::Error::from)?;
-        let operation = OperationDefinition {
-            id: crate::Identifier::new(O::ID).map_err(crate::Error::from)?,
-            description: O::DESCRIPTION.to_owned(),
-            policy,
-            visibility: O::VISIBILITY,
-            replay: O::REPLAY,
-            fingerprint: (Entry::of::<O>().fingerprint)()?,
-        };
+    pub(crate) fn reserved<O: super::RequestShape>(specification: &super::OperationSpec<O>) -> Result<Self, ContractError> {
+        let operation = specification.declared()?;
+        operation.policy.validate().map_err(crate::Error::from)?;
         let schema = Schema::from_declarations(
             &[("request", <O::Request as Described>::DEFINITION), ("response", <O::Response as Described>::DEFINITION)],
             &SchemaSettings::default(),
@@ -550,7 +565,7 @@ impl TryFrom<DecodedContract> for Contract {
         use crate::model::operations::lifecycle::{Action, Descriptor};
         let refused = || crate::Error::ReservedOperation { id: decoded.operation.id.to_string() }.into();
         let expected = match decoded.operation.id.as_str() {
-            crate::observers::Control::ID => crate::observers::contract()?,
+            id if id == crate::observers::CONTROL_OPERATION.entry().id => crate::observers::contract()?,
             "harmos.initialize" => Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
             "harmos.shutdown" => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
             _ => return Err(refused()),
@@ -569,26 +584,11 @@ impl Visitor for Contracts {
     type Entry = WireDeclaration;
 }
 
-impl<M: OperationDeclaration> Member<M> for Contracts {
-    const ENTRY: WireDeclaration = WireDeclaration::of::<M>();
-}
-
 impl Contracts {
-    pub fn of<C: Catalog<Self>>() -> Result<Vec<Contract>, ContractError> {
-        Self::from_projection(&C::ENTRIES)
-    }
-
     pub fn from_tree(entries: &[crate::catalog::Node<WireDeclaration>]) -> Result<Vec<Contract>, ContractError> {
         let mut ids = BTreeSet::new();
         let mut contracts = Vec::new();
         crate::catalog::try_for_each(entries, |declaration| append(declaration, &mut ids, &mut contracts))?;
-        Ok(contracts)
-    }
-
-    pub fn from_projection<P: Projection<WireDeclaration>>(entries: &P) -> Result<Vec<Contract>, ContractError> {
-        let mut ids = BTreeSet::new();
-        let mut contracts = Vec::with_capacity(P::LEN);
-        entries.try_for_each(|declaration| append(declaration, &mut ids, &mut contracts))?;
         Ok(contracts)
     }
 }

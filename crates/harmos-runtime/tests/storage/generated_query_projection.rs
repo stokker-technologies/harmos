@@ -44,9 +44,10 @@ use super::*;
 
 #[tokio::test]
 async fn query_heterogeneous_projection() {
-    let storage = StorageManager::<Objects>::new(
+    let storage = StorageManager::with_catalog(
+        objects_catalog(),
         StorageBackends {
-            primary: Arc::new(Data::<Objects>::with_catalog(history())),
+            primary: Arc::new(Data::with_catalog(objects_catalog(), history())),
             state: Arc::new(Recovery::new(history())),
         },
         config(),

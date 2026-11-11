@@ -49,44 +49,72 @@ static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);
 
 /* === Structs === */
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.pending",
-    response = (),
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(5),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct PendingDeclaration {}
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.answering",
-    response = u64,
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(50),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }
-)]
+static PENDING_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<PendingDeclaration>(
+        "sim.pending",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_millis(5),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const PENDING_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PendingDeclaration> =
+    harmos_runtime::operations::OperationSpec::<PendingDeclaration>::new(&PENDING_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct AnsweringDeclaration {
     answer: u64,
 }
 
+static ANSWERING_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<AnsweringDeclaration>(
+        "sim.answering",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_millis(50),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const ANSWERING_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<AnsweringDeclaration> =
+    harmos_runtime::operations::OperationSpec::<AnsweringDeclaration>::new(&ANSWERING_DECLARATION_DESCRIPTION);
+
 // The Draw Log Is Shared With The Scenario, So The Request Stays In Process.
-#[harmos_runtime::operation(codec = manual, id = "sim.drawing",
-    response = u64,
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(100),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }
-)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = u64)]
 #[derive(Clone)]
 struct DrawingDeclaration {
     draws: Arc<Mutex<Vec<u64>>>,
 }
+
+static DRAWING_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<DrawingDeclaration>(
+        "sim.drawing",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_millis(100),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const DRAWING_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DrawingDeclaration> =
+    harmos_runtime::operations::OperationSpec::<DrawingDeclaration>::new(&DRAWING_DECLARATION_DESCRIPTION);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct DivergentState(usize);
@@ -102,52 +130,83 @@ struct Divergent;
 #[derive(Clone)]
 struct DivergentCatalog;
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "sim.timingitsownwait",
-    response = u64,
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(30),
-        attempt_timeout: Duration::from_millis(10000),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct TimingItsOwnWaitDeclaration {
     wait_ms: u64,
 }
 
+static TIMING_ITS_OWN_WAIT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<TimingItsOwnWaitDeclaration>(
+        "sim.timingitsownwait",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_millis(10000),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const TIMING_ITS_OWN_WAIT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<TimingItsOwnWaitDeclaration> =
+    harmos_runtime::operations::OperationSpec::<TimingItsOwnWaitDeclaration>::new(&TIMING_ITS_OWN_WAIT_DECLARATION_DESCRIPTION);
+
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum SimOperations {
-    Pending(PendingDeclaration),
-    Answering(AnsweringDeclaration),
-    Drawing(DrawingDeclaration),
-    Timing(TimingItsOwnWaitDeclaration),
+fn sim_operations_catalog() -> harmos_runtime::operations::Catalog {
+    sim_operations_catalog_batch().named(concat!(module_path!(), "::SimOperations"))
+}
+
+fn sim_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(pending_declaration_operation().expect("representable operation"));
+    batch = batch.entry(answering_declaration_operation().expect("representable operation"));
+    batch = batch.entry(drawing_declaration_operation().expect("representable operation"));
+    batch = batch.entry(timing_its_own_wait_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for PendingDeclaration {
-    type Error = Infallible;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        host.borrow().scope().clock().sleep(Duration::from_secs(30)).await;
-        Ok(().into())
-    }
+async fn pending_declaration_handler(
+    _request: PendingDeclaration, context: harmos_runtime::operations::FunctionContext<PendingDeclaration>,
+) -> Result<harmos_runtime::Response<()>, Infallible> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    host.borrow().scope().clock().sleep(Duration::from_secs(30)).await;
+    Ok(().into())
 }
 
-impl harmos_runtime::operations::Operation for AnsweringDeclaration {
-    type Error = Infallible;
+fn pending_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PENDING_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        pending_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
 
-    async fn run(self, _context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = _context.resource::<harmos_runtime::operations::HostContext>();
-        let _context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(self.answer) }.await;
-        result.map(::core::convert::Into::into)
-    }
+async fn answering_declaration_handler(
+    request: AnsweringDeclaration, _context: harmos_runtime::operations::FunctionContext<AnsweringDeclaration>,
+) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
+    let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let _context = host.borrow();
+    let result: ::core::result::Result<u64, Infallible> = async move { Ok(request.answer) }.await;
+    result.map(::core::convert::Into::into)
+}
+
+fn answering_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        ANSWERING_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        answering_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl harmos_runtime::Message for DrawingDeclaration {
@@ -180,14 +239,22 @@ impl harmos_runtime::schema::Described for DrawingDeclaration {
     >(Self::NAME, Self::FIELDS);
 }
 
-impl harmos_runtime::Operation for DrawingDeclaration {
-    type Error = Infallible;
+async fn drawing_declaration_handler(
+    request: DrawingDeclaration, _: harmos_runtime::operations::FunctionContext<DrawingDeclaration>,
+) -> Result<harmos_runtime::Response<u64>, Infallible> {
+    let draw = entropy();
+    request.draws.lock().expect("draw lock is healthy").push(draw);
+    Ok(draw.into())
+}
 
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
-        let draw = entropy();
-        self.draws.lock().expect("draw lock is healthy").push(draw);
-        Ok(draw.into())
-    }
+fn drawing_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        DRAWING_DECLARATION_OPERATION,
+        const { &[] },
+        drawing_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Transaction<DivergentState> for DivergentChange {
@@ -229,27 +296,37 @@ impl Registration<Divergent> for DivergentCatalog {
         }
 
         Catalog::Transactions {
+            states: None,
+            records: None,
             definitions: vec![(Kind::Transaction, DefinitionId::new("sim.divergent"), 1)],
-            decode,
+            decode: std::sync::Arc::new(decode),
             inverses: None,
         }
     }
 }
 
-impl harmos_runtime::operations::Operation for TimingItsOwnWaitDeclaration {
-    type Error = Infallible;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move {
-            let started = context.scope().now();
-            context.scope().clock().sleep(Duration::from_millis(self.wait_ms)).await;
-            Ok(u64::try_from((context.scope().now() - started).as_nanos()).expect("the scripted wait fits in u64 nanoseconds"))
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn timing_its_own_wait_declaration_handler(
+    request: TimingItsOwnWaitDeclaration, context: harmos_runtime::operations::FunctionContext<TimingItsOwnWaitDeclaration>,
+) -> Result<harmos_runtime::operations::Response<u64>, Infallible> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<u64, Infallible> = async move {
+        let started = context.scope().now();
+        context.scope().clock().sleep(Duration::from_millis(request.wait_ms)).await;
+        Ok(u64::try_from((context.scope().now() - started).as_nanos()).expect("the scripted wait fits in u64 nanoseconds"))
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn timing_its_own_wait_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        TIMING_ITS_OWN_WAIT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        timing_its_own_wait_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl harmos_runtime::state::CatalogCodec for NoRecord {
@@ -261,21 +338,13 @@ impl harmos_runtime::state::CatalogCodec for NoRecord {
     }
 }
 
-impl harmos_runtime::state::RecordCatalog for NoRecord {
-    fn restore(_: &DefinitionId, _: u32, _: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        Ok(None)
-    }
-}
-
-impl harmos_runtime::state::TransactionCatalog<DivergentState> for DivergentChange {}
-
 /* === Public Functions === */
 
 /* === Private Functions === */
 
 fn bank(seed: u64, configure: impl Fn(&mut Setup<Bank>) + Send + Sync + 'static) -> SimulatedRuntime<Bank> {
     Runtime::<Bank>::simulate_with(Ledger::default(), (), seed, move |setup| {
-        setup.operations::<SimOperations>(crate::support::SERIAL);
+        setup.catalog(sim_operations_catalog(), crate::support::SERIAL);
         setup.settings().register(catalog()).register(streams());
         configure(setup);
     })
@@ -326,7 +395,7 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
 #[tokio::test]
 async fn start_stays_send() {
     let runtime = tokio::spawn(Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.operations::<SimOperations>(crate::support::SERIAL);
+        setup.catalog(sim_operations_catalog(), crate::support::SERIAL);
         setup.settings().register(catalog()).register(streams());
     }))
     .await
@@ -367,24 +436,89 @@ mod atomic_records {
         amount: i64,
     }
 
-    #[harmos_runtime::transaction(id = "sim.add",  inverse = Self)]
     #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
     struct Add(i64);
+    impl Add {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<State, Self> =
+            harmos_runtime::state::TransactionEntry::new("sim.add").reversible::<Self>();
+    }
 
     struct Model;
 
     /* === Enums === */
 
-    #[harmos_runtime::transactions(state = State, error = Infallible)]
     #[derive(Clone, Debug)]
     enum Changes {
         Add(Add),
     }
+    impl From<Add> for Changes {
+        fn from(value: Add) -> Self {
+            Self::Add(value)
+        }
+    }
+    impl harmos_runtime::state::Transaction<State> for Changes {
+        type Error = Infallible;
+        fn check(&self, state: &State) -> std::result::Result<(), Self::Error> {
+            match self {
+                Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
+            }
+        }
+        fn apply(&self, state: &mut State) {
+            match self {
+                Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+            }
+        }
+        fn records(&self, state: &State, records: &mut harmos_runtime::state::Records) {
+            match self {
+                Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            }
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Changes {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Add(_) => Add::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Add(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<State, Changes> {
+        harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+            let Changes::Add(value) = value;
+            Some(value)
+        })
+    }
 
-    #[harmos_runtime::records]
     #[derive(Clone, Debug, PartialEq, Eq)]
     enum Facts {
         Observed(Observed),
+    }
+    impl From<Observed> for Facts {
+        fn from(value: Observed) -> Self {
+            Self::Observed(value)
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Facts {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+        harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Facts::Observed, |value| {
+            let Facts::Observed(value) = value;
+            Some(value)
+        })
     }
 
     /* === Traits === */
@@ -442,7 +576,7 @@ mod atomic_records {
     fn records_survive_reboot() {
         let make = || {
             Runtime::<Model>::simulate_with(State::default(), (), 17, |setup| {
-                setup.settings().register(Changes::catalog()).register(Facts::catalog());
+                setup.settings().register(changes_state_catalog()).register(facts_registry());
             })
             .unwrap()
         };

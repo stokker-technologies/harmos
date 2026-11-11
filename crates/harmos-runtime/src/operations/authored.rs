@@ -28,7 +28,7 @@ use super::execution::{Attempt, Body};
 use super::finalization::{Finalize, Finalizer};
 use super::manager::Entry;
 use super::{Context, Manager, OperationInstanceId};
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 use crate::supervision::instance::{Instance, Phase};
 use crate::{Error, Result, operations::Scope};
 
@@ -38,7 +38,7 @@ use crate::{Error, Result, operations::Scope};
 
 /* === Type Aliases === */
 
-type Payload<D> = <D as OperationDeclaration>::Response;
+type Payload<D> = <D as RequestShape>::Response;
 
 /* === Structs === */
 
@@ -46,7 +46,7 @@ struct Physical {
     instance: Box<dyn harmos_operations::execution::operations::NativeInstance>,
     _request: Option<super::RequestClaims>,
 }
-struct Bound<D: OperationDeclaration> {
+struct Bound<D: RequestShape> {
     physical: Physical,
     project: fn(harmos_operations::execution::__private::ErasedResponse) -> Option<super::Response<Payload<D>>>,
     entry: Arc<Entry>,
@@ -88,7 +88,7 @@ impl Physical {
         guarded(name, self.instance.cleanup()).await
     }
 }
-impl<D: OperationDeclaration> Bound<D> {
+impl<D: RequestShape> Bound<D> {
     fn context<'s>(&self, scope: Scope<'s>, attempt: usize) -> Result<Context<'s>> {
         let mut origin = self.source.check()?;
         self.entry.available_to(&origin)?;
@@ -108,7 +108,7 @@ impl<D: OperationDeclaration> Bound<D> {
     }
 }
 
-impl<D: OperationDeclaration> Body<super::Response<Payload<D>>> for Bound<D> {
+impl<D: RequestShape> Body<super::Response<Payload<D>>> for Bound<D> {
     fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
         self.physical.instance.progress()
     }
@@ -193,14 +193,14 @@ impl Finalizer for Owned {
 
 /* === Public Functions === */
 
-pub(super) fn factory<D: OperationDeclaration, P: Send + 'static>(
+pub(super) fn factory<D: RequestShape, P: Send + 'static>(
     operations: &Manager, entry: &Entry, factory: harmos_operations::execution::operations::OperationFactory,
 ) -> Typed<D, P> {
     let resources = operations.resources_for(entry);
     factory_with(operations, move |request, endpoints| factory.prepare_native(resources.clone(), Box::new(request), Box::new(endpoints)))
 }
 
-pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
+pub(super) fn factory_with<D: RequestShape, P: Send + 'static>(
     operations: &Manager,
     prepare: impl Fn(
         D::Request,
@@ -215,7 +215,7 @@ pub(super) fn factory_with<D: OperationDeclaration, P: Send + 'static>(
     factory_projected::<D, P>(operations, prepare, harmos_operations::execution::__private::ErasedResponse::restore::<D::Response>)
 }
 
-pub(super) fn factory_projected<D: OperationDeclaration, P: Send + 'static>(
+pub(super) fn factory_projected<D: RequestShape, P: Send + 'static>(
     operations: &Manager,
     prepare: impl Fn(
         D::Request,

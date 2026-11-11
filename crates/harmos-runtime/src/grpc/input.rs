@@ -94,7 +94,7 @@ pub fn input<O, S>(
     instance: Running<O>, output: StreamOutput<<O::Input as crate::operations::Direction>::Item>, incoming: S,
 ) -> impl Future<Output = Result<crate::operations::Response<O::Response>, InputError>> + Send
 where
-    O: crate::operations::OperationDeclaration,
+    O: crate::operations::RequestShape,
     S: Stream<Item = Result<StreamItem<<O::Input as crate::operations::Direction>::Item>, tonic::Status>> + Send,
 {
     let pending = Pending { instance, delivered: false };

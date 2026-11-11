@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     // Waits passively for a strictly newer durable primary frontier.
     //
     // Intermediate frontiers may coalesce. This does not request persistence or
@@ -136,7 +136,7 @@ impl<C> StorageManager<C> {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub(crate) fn position(&self, sequence: u64) -> StorageCursor {
         StorageCursor {
             history: self.inner.primary.history().clone(),
@@ -166,7 +166,7 @@ mod tests {
     fn storage() -> StorageManager {
         StorageManager::new(
             crate::StorageBackends {
-                primary: Arc::new(Data::<()>::new(history())),
+                primary: Arc::new(Data::new(history())),
                 state: Arc::new(Recovery::new(history())),
             },
             storage_settings(),

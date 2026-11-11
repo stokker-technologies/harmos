@@ -50,15 +50,13 @@ pub use harmos_domain::{
     StreamSpec, Value, ValueError, btree_map_memory,
 };
 pub use harmos_domain::{
-    Backoff, Digest, Fingerprint, Jitter, OperationDeclaration, OperationDefinition, OperationPolicy, Portable, QualifiedId, RestartPolicy,
+    Backoff, Digest, Fingerprint, Jitter, OperationDefinition, OperationPolicy, Portable, QualifiedId, RequestShape, RestartPolicy,
     RetryPolicy, ServicePolicy,
 };
 pub use harmos_operations::execution::operations::{EndpointSet, OperationHost, Response};
-pub use harmos_operations::execution::{
-    Context, Dependent, Executable, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup,
-};
+pub use harmos_operations::execution::{Context, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
 pub use operations::refusal::Refusal;
-pub use operations::{Catalog, Invocation, InvocationExt, Lane, Running};
+pub use operations::{Catalog, CatalogDescription, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
 pub use services::{ServiceContext, ServiceManager};
 
@@ -67,9 +65,8 @@ pub use harmos_guest::guest;
 
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
-// `message` Names Both The Contract Module And Its Same-Named Attribute.
-pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, message, schema};
-pub use harmos_macros::{Described, Row, records, runtime_catalog as catalog, runtime_operation as operation, transaction, transactions};
+pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, schema};
+pub use harmos_sdk_derive::{Described, Request, Row};
 
 /* === Imports === */
 
@@ -122,7 +119,7 @@ pub mod __private {
         Requirements as PluginRequirements,
     };
     pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-    pub use harmos_operations::execution::__private::RegistrationBatch;
+    pub use harmos_operations::execution::__private::Catalog;
 
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that
@@ -133,7 +130,7 @@ pub mod __private {
     // Ungated on purpose: a hand-written contribution in a crate that compiles
 
     // no authoring attributes at all still resolves the same paths.
-    pub use crate::state::{Catalogued, Mutual, Paired};
+
     pub use harmos_domain::__private::Answer;
 
     /* === Imports === */

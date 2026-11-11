@@ -21,8 +21,7 @@
 
 // Local Imports
 use super::fixtures;
-use harmos_operations::storage::Storage;
-use harmos_runtime::operations::OperationCatalog;
+use harmos_operations::storage::storage_catalog;
 
 /* === Constants === */
 
@@ -46,7 +45,7 @@ use harmos_runtime::operations::OperationCatalog;
 
 #[test]
 fn grpc_descriptors_compile() {
-    let contracts = Storage::batch()
+    let contracts = storage_catalog()
         .operations
         .iter()
         .map(|factory| factory.contract().unwrap())

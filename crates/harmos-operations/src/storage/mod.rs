@@ -96,7 +96,7 @@ pub use query::Query;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use read_file::ReadFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use registration::Storage;
+pub use registration::storage_catalog;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use resume_file::ResumeFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]

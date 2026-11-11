@@ -38,20 +38,28 @@ use harmos_runtime::{Error, Refusal, Runtime};
 /* === Structs === */
 
 // The Hold Request Carries A Shared Notification, So It Stays In Process.
-#[harmos_runtime::operation(resources = [Counts], codec = manual, response = (),
-    id = "queue.hold",
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    },
-)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = ())]
 #[derive(Clone)]
 struct HoldContractDeclaration {
     blocked: bool,
     started: Arc<Notify>,
 }
+
+static HOLD_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<HoldContractDeclaration>(
+        "queue.hold",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(2),
+            attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const HOLD_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<HoldContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<HoldContractDeclaration>::new(&HOLD_CONTRACT_DECLARATION_DESCRIPTION);
 
 struct AttemptGuard {
     counts: Arc<Counts>,
@@ -65,9 +73,14 @@ struct Counts {
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum Operations {
-    HoldContractDeclaration(HoldContractDeclaration),
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
+
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(hold_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
@@ -82,18 +95,27 @@ impl harmos_runtime::MemorySize for HoldContractDeclaration {
     }
 }
 
-impl harmos_runtime::Operation for HoldContractDeclaration {
-    type Error = std::io::Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let counts = ctx.resource::<Counts>();
-        counts.constructed.fetch_add(1, Ordering::SeqCst);
-        let _guard = AttemptGuard { counts };
-        self.started.notify_one();
-        if self.blocked {
-            std::future::pending::<()>().await;
-        }
-        Ok(().into())
+async fn hold_contract_declaration_handler(
+    request: HoldContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<HoldContractDeclaration>,
+) -> Result<harmos_runtime::Response<()>, std::io::Error> {
+    let counts = ctx.resource::<Counts>().expect("declared resource is registered");
+    counts.constructed.fetch_add(1, Ordering::SeqCst);
+    let _guard = AttemptGuard { counts };
+    request.started.notify_one();
+    if request.blocked {
+        std::future::pending::<()>().await;
     }
+    Ok(().into())
+}
+
+fn hold_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        HOLD_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Counts>()] },
+        hold_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for AttemptGuard {
@@ -132,7 +154,7 @@ fn request(blocked: bool) -> HoldContractDeclaration {
 async fn queue_refuses_construction() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register::<Operations>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -151,7 +173,7 @@ async fn queue_refuses_construction() {
 async fn queued_cancel_unbuilt() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register::<Operations>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -186,7 +208,7 @@ async fn queued_cancel_unbuilt() {
 async fn instances_leave_lookup() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register::<Operations>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     for _ in 0..64 {
         let instance = runtime.operation(request(false)).start().await.unwrap();
         let id = instance.id();
@@ -201,7 +223,7 @@ async fn instances_leave_lookup() {
 async fn thread_submission_works() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register::<Operations>(crate::support::SERIAL).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
     let operations = runtime.operations.clone();
     let instance = std::thread::spawn(move || operations.submit::<HoldContractDeclaration>(request(false))).join().unwrap().unwrap();
     instance.join().await.unwrap();

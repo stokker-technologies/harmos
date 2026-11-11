@@ -30,11 +30,19 @@ use super::{Echoed, PROBE};
 
 /* === Structs === */
 
-#[cfg_attr(not(target_arch = "wasm32"), harmos_domain::operation(harmos_path = ::harmos_domain, id = "probe.fail", response = Echoed, policy = PROBE))]
-#[cfg_attr(target_arch = "wasm32", harmos_guest::operation(harmos_path = ::harmos_guest, id = "probe.fail", response = Echoed, policy = PROBE))]
+#[derive(::harmos_guest::Message, Debug, Default)]
+#[harmos_path(::harmos_guest)]
+#[derive(::harmos_guest::Request)]
+#[request(response = Echoed)]
 #[derive(Clone, PartialEq)]
 
 pub struct FailOperation {}
+
+pub static FAIL_OPERATION_DESCRIPTION: ::harmos_guest::operations::WireDeclaration =
+    ::harmos_guest::operations::WireDeclaration::request::<FailOperation>("probe.fail", PROBE);
+
+pub const FAIL_OPERATION_OPERATION: ::harmos_guest::operations::OperationSpec<FailOperation> =
+    ::harmos_guest::operations::OperationSpec::<FailOperation>::new(&FAIL_OPERATION_DESCRIPTION);
 
 /* === Enums === */
 
@@ -64,6 +72,7 @@ mod runtime {
 
     // Local Imports
     use super::{Echoed, FailOperation};
+    use crate::contract::FAIL_OPERATION_OPERATION;
     use harmos_guest::OperationRefusal;
 
     /* === Constants === */
@@ -80,13 +89,18 @@ mod runtime {
 
     /* === Implementations === */
 
-    impl harmos_guest::Operation for FailOperation {
-        type Error = OperationRefusal;
+    pub async fn fail_operation_handler(
+        _request: FailOperation, _sdk: harmos_guest::operations::FunctionContext<FailOperation>,
+    ) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
+        let result: Result<Echoed, OperationRefusal> = async move { panic!("requested guest trap") }.await;
+        result.map(Into::into)
+    }
 
-        async fn run(self, _sdk: harmos_guest::Context<'_, Self>) -> Result<harmos_guest::operations::Response<Echoed>, OperationRefusal> {
-            let result: Result<Echoed, OperationRefusal> = async move { panic!("requested guest trap") }.await;
-            result.map(Into::into)
-        }
+    pub fn fail_operation_operation()
+    -> ::core::result::Result<harmos_guest::operations::OperationFactory, harmos_guest::operations::ServingError> {
+        harmos_guest::operations::OperationFactory::function(FAIL_OPERATION_OPERATION, const { &[] }, fail_operation_handler, |_| {
+            harmos_guest::operations::FailureKind::Permanent
+        })
     }
 
     /* === Public Functions === */
@@ -95,3 +109,6 @@ mod runtime {
 
     /* === Tests === */
 }
+
+#[cfg(target_arch = "wasm32")]
+pub use runtime::fail_operation_operation;

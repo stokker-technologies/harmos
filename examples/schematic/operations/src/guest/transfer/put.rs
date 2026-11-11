@@ -42,17 +42,24 @@ const POLICY: harmos_operations::operations::OperationPolicy = harmos_operations
 
 /* === Structs === */
 
-#[harmos_operations::operation(resources = [Store],
-    id = "benchmark.put", response = Receipt,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos_operations::operations::ReplaySafety::Unknown,
-)]
+#[derive(harmos_operations::Message, Debug)]
+#[harmos_path(harmos_operations)]
+#[derive(harmos_operations::Request)]
+#[request(response = Receipt)]
+#[derive(Clone)]
 pub struct Put {
     pub transfer: u64,
     pub first: bool,
     pub batch: Batch,
 }
+
+pub static PUT_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+    harmos_operations::operations::WireDeclaration::request::<Put>("benchmark.put", POLICY)
+        .visibility(harmos_operations::operations::Visibility::Public)
+        .replay(harmos_operations::operations::ReplaySafety::Unknown);
+
+pub const PUT_OPERATION: harmos_operations::operations::OperationSpec<Put> =
+    harmos_operations::operations::OperationSpec::<Put>::new(&PUT_DESCRIPTION);
 
 /* === Enums === */
 
@@ -61,18 +68,19 @@ pub struct Put {
 /* === Implementations === */
 
 #[cfg(feature = "runtime")]
-impl harmos_operations::Operation for Put {
-    type Error = crate::Error;
-
-    async fn run(mut self, ctx: harmos_operations::Context<'_, Self>) -> Result<harmos_operations::Response<Receipt>, Self::Error> {
-        let store = ctx.resource::<Store>();
+mod execution {
+    use super::*;
+    pub async fn put_handler(
+        mut request: Put, ctx: harmos_operations::execution::operations::FunctionContext<Put>,
+    ) -> Result<harmos_operations::Response<Receipt>, crate::Error> {
+        let store = ctx.resource::<Store>().expect("declared resource is registered");
 
         let mut stores = store.batches.lock().unwrap();
-        if self.first {
-            stores.remove(&self.transfer);
+        if request.first {
+            stores.remove(&request.transfer);
         }
         let retained_bytes: usize = stores.values().map(|stored| stored.bytes).sum();
-        let bytes = retained_bytes.saturating_add(self.batch.memory_size());
+        let bytes = retained_bytes.saturating_add(request.batch.memory_size());
         if bytes > 64 * 1024 * 1024 {
             return Err(crate::Error::Stream(harmos_operations::execution::operations::StreamError::Capacity));
         }
@@ -81,18 +89,33 @@ impl harmos_operations::Operation for Put {
             samples: Vec::new(),
             bytes: Vec::new(),
         };
-        let batch = std::mem::replace(&mut self.batch, empty);
+        let batch = std::mem::replace(&mut request.batch, empty);
         let receipt = Receipt {
             records: batch.records.len() as u64,
             samples: batch.samples.len() as u64,
             bytes: batch.bytes.len() as u64,
         };
-        let stored = stores.entry(self.transfer).or_default();
+        let stored = stores.entry(request.transfer).or_default();
         stored.bytes += batch.memory_size();
         stored.batches.push_back(batch);
         Ok(receipt.into())
     }
+
+    pub fn put_operation() -> ::core::result::Result<
+        harmos_operations::execution::operations::OperationFactory,
+        harmos_operations::execution::operations::ServingError,
+    > {
+        harmos_operations::execution::operations::OperationFactory::function(
+            PUT_OPERATION,
+            const { &[harmos_operations::Resource::of::<Store>()] },
+            put_handler,
+            |_| harmos_operations::operations::FailureKind::Permanent,
+        )
+    }
 }
+
+#[cfg(feature = "runtime")]
+pub use execution::put_operation;
 
 /* === Public Functions === */
 

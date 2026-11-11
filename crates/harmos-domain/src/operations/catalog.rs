@@ -18,8 +18,8 @@ use std::collections::BTreeSet;
 // Third Party Imports
 
 // Local Imports
-use super::{Direction, OperationDeclaration, OperationDefinition, OperationPolicy, ReplaySafety, Visibility};
-use crate::catalog::{self, Catalog, Member, Node, Projection, Visitor};
+use super::{Direction, OperationDefinition, OperationPolicy, ReplaySafety, Visibility};
+use crate::catalog::{self, Node, Visitor};
 use crate::{Error, Identifier, Result};
 
 /* === Constants === */
@@ -37,7 +37,7 @@ pub struct Entry {
     pub policy: OperationPolicy,
     pub visibility: Visibility,
     pub replay: ReplaySafety,
-    pub fingerprint: fn() -> Result<crate::Fingerprint>,
+    pub fingerprint: fn(&str) -> Result<crate::Fingerprint>,
 }
 
 pub struct Declarations;
@@ -57,21 +57,21 @@ impl PartialEq for Entry {
             && self.policy == other.policy
             && self.visibility == other.visibility
             && self.replay == other.replay
-            && (self.fingerprint)().ok() == (other.fingerprint)().ok()
+            && (self.fingerprint)(self.id).ok() == (other.fingerprint)(other.id).ok()
     }
 }
 
 impl Eq for Entry {}
 
 impl Entry {
-    pub const fn of<O: OperationDeclaration + ?Sized>() -> Self {
+    pub const fn request<Q: super::RequestShape>(id: &'static str, policy: OperationPolicy) -> Self {
         Self {
-            id: O::ID,
-            description: O::DESCRIPTION,
-            policy: O::POLICY,
-            visibility: O::VISIBILITY,
-            replay: O::REPLAY,
-            fingerprint: fingerprint::<O>,
+            id,
+            description: "",
+            policy,
+            visibility: Visibility::Private,
+            replay: ReplaySafety::Unknown,
+            fingerprint: request_fingerprint::<Q>,
         }
     }
 
@@ -89,7 +89,7 @@ impl Entry {
             policy: self.policy,
             visibility: self.visibility,
             replay: self.replay,
-            fingerprint: (self.fingerprint)()?,
+            fingerprint: (self.fingerprint)(self.id)?,
         };
         Ok(definition)
     }
@@ -99,36 +99,17 @@ impl Visitor for Declarations {
     type Entry = Entry;
 }
 
-impl<M: OperationDeclaration> Member<M> for Declarations {
-    const ENTRY: Entry = Entry::of::<M>();
-}
-
 impl Declarations {
-    pub fn of<C: Catalog<Self>>() -> Result<Vec<OperationDefinition>> {
-        Self::from_projection(&C::ENTRIES)
-    }
-
     pub fn from_tree(entries: &[Node<Entry>]) -> Result<Vec<OperationDefinition>> {
         let mut names = BTreeSet::new();
         let mut definitions = Vec::with_capacity(catalog::count(entries));
         catalog::try_for_each(entries, |declaration| append(declaration, &mut names, &mut definitions))?;
         Ok(definitions)
     }
-
-    pub fn from_projection<P: Projection<Entry>>(entries: &P) -> Result<Vec<OperationDefinition>> {
-        let mut names = BTreeSet::new();
-        let mut definitions = Vec::with_capacity(P::LEN);
-        entries.try_for_each(|declaration| append(declaration, &mut names, &mut definitions))?;
-        Ok(definitions)
-    }
 }
 
 impl Visitor for Callees {
     type Entry = &'static [super::WireDeclaration];
-}
-
-impl<M: OperationDeclaration> Member<M> for Callees {
-    const ENTRY: Self::Entry = M::OPERATIONS;
 }
 
 /* === Public Functions === */
@@ -143,14 +124,10 @@ pub(super) fn payload<T: crate::Portable>() -> Result<crate::Fingerprint> {
         .map_err(|error| crate::MessageError::new(error.to_string()).into())
 }
 
-fn fingerprint<O: OperationDeclaration + ?Sized>() -> Result<crate::Fingerprint> {
-    fingerprint_at::<O>(O::ID)
-}
-
-pub(super) fn fingerprint_at<O: OperationDeclaration + ?Sized>(id: &str) -> Result<crate::Fingerprint> {
-    let input = if O::Input::STREAMED { Some(payload::<<O::Input as super::Direction>::Item>()?) } else { None };
-    let output = if O::Output::STREAMED { Some(payload::<<O::Output as super::Direction>::Item>()?) } else { None };
-    Ok(crate::schema::identity::operation(id, payload::<O::Request>()?, payload::<O::Response>()?, input, output))
+pub(super) fn request_fingerprint<Q: super::RequestShape>(id: &str) -> Result<crate::Fingerprint> {
+    let input = if Q::Input::STREAMED { Some(payload::<<Q::Input as super::Direction>::Item>()?) } else { None };
+    let output = if Q::Output::STREAMED { Some(payload::<<Q::Output as super::Direction>::Item>()?) } else { None };
+    Ok(crate::schema::identity::operation(id, payload::<Q::Request>()?, payload::<Q::Response>()?, input, output))
 }
 
 fn append(declaration: &Entry, names: &mut BTreeSet<Identifier>, definitions: &mut Vec<OperationDefinition>) -> Result<()> {

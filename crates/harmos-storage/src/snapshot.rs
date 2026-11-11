@@ -73,7 +73,7 @@ impl Drop for SnapshotState {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub(super) async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
         let result = async {

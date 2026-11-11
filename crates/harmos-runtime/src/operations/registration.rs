@@ -18,24 +18,16 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use super::Binding;
+
 use super::Manager;
 #[cfg(feature = "plugin-guest")]
 use super::manager::Entry;
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::catalog::Projection;
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::catalog::{Catalog, Visitor};
 
 #[cfg(feature = "plugin-guest")]
 use crate::guest::host::plugin::PluginScope;
+
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::Declarations;
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::OperationDeclaration;
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::OperationDefinition;
+use crate::operations::RequestShape;
 
 #[cfg(feature = "plugin-guest")]
 use crate::Error;
@@ -53,7 +45,7 @@ type BindCatalog = dyn Fn(&Manager) -> Result<()> + Send + Sync;
 
 #[derive(Clone)]
 pub struct Registration {
-    pub(crate) batch: harmos_operations::execution::__private::RegistrationBatch,
+    pub(crate) batch: harmos_operations::execution::__private::Catalog,
     pub(crate) lane: Option<Lane>,
     pub(crate) defaults: std::collections::BTreeMap<&'static str, Lane>,
 }
@@ -95,8 +87,20 @@ pub(crate) trait RegistrationExt {
 /* === Implementations === */
 
 impl Registration {
+    pub fn entry(mut self, operation: harmos_operations::execution::operations::OperationFactory) -> Self {
+        self.batch.operations.push(operation);
+        self
+    }
+    pub fn catalog(catalog: crate::operations::Catalog, lane: Lane) -> Result<Self> {
+        let name = catalog.name;
+        catalog.build().map(|batch| batch.lane(lane)).map_err(|source| crate::Error::OperationFailed {
+            operation: name.into(),
+            source: Arc::new(source),
+        })
+    }
+
     pub fn new(lane: Lane) -> Self {
-        harmos_operations::execution::__private::RegistrationBatch::new().lane(lane)
+        harmos_operations::execution::__private::Catalog::new().lane(lane)
     }
 
     #[cfg(feature = "grpc")]
@@ -111,16 +115,17 @@ impl Registration {
         Ok(self)
     }
 
-    pub fn operation<O: harmos_operations::execution::operations::Executable>(mut self, id: impl AsRef<str>) -> Result<Self> {
-        self.batch = self.batch.operation_named::<O>(id.as_ref()).map_err(|source| crate::Error::OperationFailed {
+    pub fn operation(mut self, operation: harmos_operations::execution::operations::OperationFactory, id: impl AsRef<str>) -> Result<Self> {
+        let operation = operation.with_id(id.as_ref()).map_err(|source| crate::Error::OperationFailed {
             operation: id.as_ref().to_owned(),
             source: Arc::new(source),
         })?;
+        self.batch.operations.push(operation);
         Ok(self)
     }
 }
 
-impl RegistrationExt for harmos_operations::execution::__private::RegistrationBatch {
+impl RegistrationExt for harmos_operations::execution::__private::Catalog {
     fn lane(self, lane: Lane) -> Registration {
         Registration {
             batch: self,
@@ -217,8 +222,8 @@ impl Manager {
 
 #[cfg(feature = "plugin-guest")]
 impl Bindings<'_> {
-    pub fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: Lane) -> Result<()> {
-        self.register(C::batch().lane(lane))
+    pub fn catalog(&mut self, catalog: crate::operations::Catalog, lane: Lane) -> Result<()> {
+        self.register(Registration::catalog(catalog, lane)?)
     }
 
     pub fn register(&mut self, registration: Registration) -> Result<()> {
@@ -229,23 +234,31 @@ impl Bindings<'_> {
 
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(super) fn stage_implementation<D, O>(
-        &mut self, lane: &'static str, dependencies: harmos_operations::execution::__private::ResourceSet,
+        &mut self, specification: harmos_domain::operations::OperationSpec<D>, lane: &'static str,
+        mut dependencies: harmos_operations::execution::__private::ResourceSet,
     ) -> Result<()>
     where
-        D: OperationDeclaration,
+        D: RequestShape,
         O: harmos_operations::execution::operations::Carrier<Declaration = D>,
     {
-        let contract = harmos_operations::execution::operations::WireDeclaration::of::<D>()
-            .contract_with_settings(&self.operations.schema_settings)
-            .map_err(|source| Error::OperationFailed {
-                operation: D::ID.to_owned(),
+        let definition = specification.definition().map_err(|source| Error::OperationDeclaration { source })?;
+        let contract = specification.declaration.contract_with_settings(&self.operations.schema_settings).map_err(|source| {
+            Error::OperationFailed {
+                operation: definition.id.to_string(),
                 source: Arc::new(source),
-            })?;
+            }
+        })?;
         let wire = (contract.input().is_none() && contract.output().is_none())
             .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new().carrier::<D, O>();
+        dependencies.insert(Arc::new(specification))?;
+        let mut batch = harmos_operations::execution::__private::Catalog::new().carrier::<D, O>(specification).map_err(|source| {
+            Error::OperationFailed {
+                operation: definition.id.to_string(),
+                source: Arc::new(source),
+            }
+        })?;
         let factory = batch.operations.pop().expect("one native implementation");
-        let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), D::definition(), wire, self.scope.cloned())?;
+        let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), definition, wire, self.scope.cloned())?;
         Arc::get_mut(&mut entry).expect("new native entry").carrier = dependencies;
         #[cfg(feature = "grpc")]
         if contract.grpc().is_some() {
@@ -253,49 +266,6 @@ impl Bindings<'_> {
         }
         Arc::get_mut(&mut entry).expect("new native entry").contract = Some(contract);
         self.entries.push(entry);
-        Ok(())
-    }
-}
-
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl Bindings<'_> {
-    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    pub(super) fn project<C, V, H>(&mut self, lane: Lane, handler: Arc<H>) -> Result<()>
-    where
-        C: Catalog<Declarations> + Catalog<V>,
-        V: Visitor<Entry = Binding<H>>,
-        H: Send + Sync + 'static,
-    {
-        self.project_at::<C, V, H>(lane.name(), handler)
-    }
-
-    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    fn project_at<C, V, H>(&mut self, lane: &'static str, handler: Arc<H>) -> Result<()>
-    where
-        C: Catalog<Declarations> + Catalog<V>,
-        V: Visitor<Entry = Binding<H>>,
-        H: Send + Sync + 'static,
-    {
-        let definitions = Declarations::of::<C>().map_err(|source| Error::OperationDeclaration { source })?;
-        self.apply_projection(lane, handler, &definitions, &<C as Catalog<V>>::ENTRIES)
-    }
-
-    fn apply_projection<H: Send + Sync + 'static>(
-        &mut self, lane: &'static str, handler: Arc<H>, definitions: &[OperationDefinition], entries: &impl Projection<Binding<H>>,
-    ) -> Result<()> {
-        let previous = self.entries.len();
-        if let Err(error) = entries.try_for_each(|entry| entry.apply(self, lane, Arc::clone(&handler))) {
-            self.entries.truncate(previous);
-            return Err(error);
-        }
-        let projected = &self.entries[previous..];
-        if projected.len() != definitions.len() || projected.iter().zip(definitions).any(|(entry, declared)| entry.declared() != declared) {
-            self.entries.truncate(previous);
-            return Err(Error::InvalidInput {
-                field: "operation catalog",
-                reason: "metadata and handler projections differ",
-            });
-        }
         Ok(())
     }
 }

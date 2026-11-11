@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.creation.create_file", level = "debug", skip_all)]
     pub async fn create_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
         self.create(metadata, false).await
@@ -115,13 +115,13 @@ impl<C> StorageManager<C> {
                 })
                 .await?;
             let mut cancel = CancelProduction {
-                manager: self.erased(),
+                manager: self.clone(),
                 id,
                 armed: true,
                 generation: token.as_ref().map(|token| token.generation),
             };
             let file = StorageFile {
-                manager: self.erased(),
+                manager: self.clone(),
                 id,
                 progress,
                 session: token,

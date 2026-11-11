@@ -24,7 +24,7 @@ use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
 // Local Imports
 use harmos_domain::config::SchemaSettings;
 use harmos_domain::schema::{Cardinality, Described, graph::Schema};
-use harmos_domain::{MemorySize, Message, Portable, message};
+use harmos_domain::{MemorySize, Message, Portable};
 use harmos_operations::execution::grpc::{self, DecodeInput};
 
 /* === Constants === */
@@ -35,32 +35,37 @@ use harmos_operations::execution::grpc::{self, DecodeInput};
 
 /* === Structs === */
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Hashed {
     values: HashMap<String, String>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Ordered {
     values: BTreeMap<String, String>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Seeded {
     values: HashMap<String, String, BuildHasherDefault<DefaultHasher>>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Row {
     values: HashMap<i32, super::Original>,
     bytes: BTreeMap<u64, Vec<u8>>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Recursive {
     children: HashMap<String, Recursive>,

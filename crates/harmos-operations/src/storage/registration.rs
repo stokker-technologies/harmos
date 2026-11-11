@@ -35,51 +35,44 @@ use super::{
 
 /* === Structs === */
 
-pub struct Storage;
-
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl Storage {
-    pub const CATALOG: crate::execution::operations::Catalog = <Self as crate::execution::operations::OperationCatalog>::CATALOG;
-    pub fn catalog() -> Vec<crate::OperationDefinition> {
-        <Self as crate::execution::operations::OperationCatalog>::batch().operations.into_iter().map(|factory| factory.definition).collect()
-    }
+pub fn storage_catalog() -> crate::execution::operations::Catalog {
+    storage_catalog_batch().named("harmos.storage")
 }
-impl crate::execution::operations::OperationCatalog for Storage {
-    const CATALOG: crate::execution::operations::Catalog = crate::execution::operations::Catalog::of::<Self>("harmos.storage", &[], &[]);
-    fn batch() -> crate::execution::__private::RegistrationBatch {
-        let mut batch = crate::execution::__private::RegistrationBatch::new();
-        batch.operations.extend([
-            crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<WriteStreams>().expect("WriteStreams declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<WriteObjects>().expect("WriteObjects declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<FollowRecords>().expect("FollowRecords declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<FollowStream>().expect("FollowStream declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<FollowObjects>().expect("FollowObjects declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<Query>().expect("Query declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<WriteSchema>().expect("WriteSchema declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<ReadFile>().expect("ReadFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<CaptureFile>().expect("CaptureFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<FollowFile>().expect("FollowFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<FollowProduction>().expect("FollowProduction declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<StorageStatus>().expect("StorageStatus declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<CreateFile>().expect("CreateFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<AppendFile>().expect("AppendFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<ResumeFile>().expect("ResumeFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<FinishFile>().expect("FinishFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<AbandonFile>().expect("AbandonFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<DeleteFile>().expect("DeleteFile declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<ListDirectory>().expect("ListDirectory declaration"),
-            crate::execution::operations::OperationFactory::protobuf::<WatchDirectory>().expect("WatchDirectory declaration"),
-        ]);
-        batch
-    }
+
+pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
+    let mut batch = crate::execution::__private::Catalog::new();
+    batch.operations.extend([
+        crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<WriteStreams>().expect("WriteStreams declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<WriteObjects>().expect("WriteObjects declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<FollowRecords>().expect("FollowRecords declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<FollowStream>().expect("FollowStream declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<FollowObjects>().expect("FollowObjects declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<Query>().expect("Query declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<WriteSchema>().expect("WriteSchema declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<ReadFile>().expect("ReadFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<CaptureFile>().expect("CaptureFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<FollowFile>().expect("FollowFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<FollowProduction>().expect("FollowProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<StorageStatus>().expect("StorageStatus declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<CreateFile>().expect("CreateFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<AppendFile>().expect("AppendFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<ResumeFile>().expect("ResumeFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<FinishFile>().expect("FinishFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<AbandonFile>().expect("AbandonFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<DeleteFile>().expect("DeleteFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<ListDirectory>().expect("ListDirectory declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<WatchDirectory>().expect("WatchDirectory declaration"),
+    ]);
+    batch
 }
 
 /* === Public Functions === */

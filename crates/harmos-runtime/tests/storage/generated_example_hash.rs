@@ -16,7 +16,12 @@ async fn example_hash_invokes_generated_storage() {
     use harmos_protocol::storage::{ByteRange, FileSource, HashFile, file_source};
     use sha2::{Digest, Sha256};
     let fixture = super::Fixture::new(super::config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     fixture
         .runtime
         .operations

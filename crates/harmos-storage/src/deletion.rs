@@ -59,7 +59,7 @@ impl Drop for DeleteWork {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.deletion.delete_file_once", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn delete_file_once(&self, mutation: &MutationId, file: &StagedFile) -> Result<StagedFile> {
         let result = async {

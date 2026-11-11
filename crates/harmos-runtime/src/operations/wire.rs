@@ -26,7 +26,6 @@ use tokio::sync::OwnedSemaphorePermit;
 use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::{Manager, OperationInstanceId};
-use crate::operations::OperationDeclaration;
 #[cfg(test)]
 use crate::supervision::executor;
 use crate::{Error, Refusal, Result, operations::Scope};
@@ -82,18 +81,11 @@ pub struct EncodedInvocation {
 
 /* === Implementations === */
 
-impl OperationDeclaration for Encoded {
+impl harmos_domain::operations::RequestShape for Encoded {
     type Request = Vec<u8>;
     type Response = Vec<u8>;
     type Input = super::NoStream;
     type Output = super::NoStream;
-    const ID: &'static str = "encoded";
-    const POLICY: super::OperationPolicy = super::OperationPolicy {
-        timeout: harmos_domain::operations::UNBOUNDED,
-        attempt_timeout: harmos_domain::operations::UNBOUNDED,
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: super::RetryPolicy::Never,
-    };
 }
 
 impl EncodedInvocation {
@@ -631,24 +623,35 @@ mod tests {
         type Record = ();
     }
 
-    #[crate::operation(harmos_path = crate, resources = [], id = "fenced.probe", response = u64,
-        policy = crate::OperationPolicy {
+    #[derive(crate::Message, Debug, Default)]
+    #[harmos_path(crate)]
+    #[derive(crate::Request)]
+    #[request(response = u64)]
+    #[derive(Clone)]
+    struct Probe {
+        value: u64,
+    }
+
+    static PROBE_DESCRIPTION: crate::operations::WireDeclaration = crate::operations::WireDeclaration::request::<Probe>(
+        "fenced.probe",
+        crate::OperationPolicy {
             timeout: Duration::from_secs(1),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
-    )]
-    struct Probe {
-        value: u64,
+    );
+
+    const PROBE_OPERATION: crate::operations::OperationSpec<Probe> = crate::operations::OperationSpec::<Probe>::new(&PROBE_DESCRIPTION);
+
+    async fn probe_handler(request: Probe, _: crate::operations::FunctionContext<Probe>) -> std::io::Result<crate::Response<u64>> {
+        Ok(request.value.into())
     }
 
-    impl crate::Operation for Probe {
-        type Error = std::io::Error;
-
-        async fn run(self, _: crate::Context<'_, Self>) -> std::io::Result<crate::Response<u64>> {
-            Ok(self.value.into())
-        }
+    fn probe_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
+        crate::operations::OperationFactory::function(PROBE_OPERATION, const { &[] }, probe_handler, |_| {
+            crate::operations::FailureKind::Permanent
+        })
     }
 
     #[cfg(feature = "grpc")]
@@ -662,7 +665,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
 
         let source = Source::Host.external().unwrap();
@@ -681,9 +684,9 @@ mod tests {
     #[tokio::test]
     async fn assigned_identity_fences_before_decoding() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().operation::<Probe>();
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
         runtime.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
-        let entry = runtime.operations.entry(Probe::ID).unwrap();
+        let entry = runtime.operations.entry(PROBE_OPERATION.entry().id).unwrap();
         let fingerprint = entry.declared().fingerprint.0;
         let generation = entry.generation.value();
         let mut wrong = fingerprint;

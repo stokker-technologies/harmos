@@ -19,11 +19,10 @@ use std::num::NonZeroUsize;
 // Local Imports
 use super::manager::{Domain, Operation};
 use super::{
-    ObjectCatalog, ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, StorageManager,
-    StorageSchema, StoredObject,
+    ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, StorageManager, StorageSchema,
+    StoredObject,
 };
 use crate::Result;
-use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
 
@@ -35,8 +34,8 @@ use harmos_domain::model::storage::object_key;
 
 /* === Structs === */
 
-pub struct ObjectGroup<'a, C> {
-    manager: &'a StorageManager<C>,
+pub struct ObjectGroup<'a> {
+    manager: &'a StorageManager,
     first: u64,
     count: usize,
     allowance: usize,
@@ -52,11 +51,9 @@ pub struct ObjectGroup<'a, C> {
 
 /* === Implementations === */
 
-impl<C: ObjectCatalog> ObjectGroup<'_, C> {
-    pub fn write<T: StoredObject>(&mut self, value: &T) -> Result<()>
-    where
-        C: Contains<T>,
-    {
+impl ObjectGroup<'_> {
+    pub fn write<T: StoredObject>(&mut self, value: &T) -> Result<()> {
+        self.manager.inner.catalog.handle::<T>()?;
         if self.objects.len() == self.count {
             return Err(invalid("object group contains too many objects"));
         }
@@ -73,7 +70,7 @@ impl<C: ObjectCatalog> ObjectGroup<'_, C> {
     }
 }
 
-impl<C> ObjectGroup<'_, C> {
+impl ObjectGroup<'_> {
     pub fn remaining_bytes(&self) -> usize {
         self.allowance - self.used
     }
@@ -82,7 +79,7 @@ impl<C> ObjectGroup<'_, C> {
         if self.objects.len() == self.count {
             return Err(invalid("object group contains too many objects"));
         }
-        let definition = (self.manager.inner.object_definition)(&value.schema)?;
+        let definition = self.manager.inner.catalog.definition(&value.schema)?;
         let settings = harmos_domain::config::SchemaSettings::default();
         let graph = definition.graph(&settings)?;
         definition.validate_admitted(&value, self.manager.inner.settings.max_batch_bytes(), settings.preparation_bytes.get())?;
@@ -114,32 +111,28 @@ impl<C> ObjectGroup<'_, C> {
     }
 }
 
-impl<C: ObjectCatalog> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.objects.write_object", level = "debug", skip_all)]
-    pub async fn write_object<T: StoredObject>(&self, value: &T) -> Result<ObjectReceipt>
-    where
-        C: Contains<T>,
-    {
+    pub async fn write_object<T: StoredObject>(&self, value: &T) -> Result<ObjectReceipt> {
+        self.inner.catalog.handle::<T>()?;
         let receipts = self.write_object_group(self.object_admission_bytes(), NonZeroUsize::MIN, |group| group.write(value)).await?;
         Ok(receipts.into_iter().next().unwrap())
     }
 
     #[tracing::instrument(name = "storage.objects.write_object_group", level = "debug", skip_all)]
     pub async fn write_object_group(
-        &self, max_bytes: NonZeroUsize, count: NonZeroUsize, build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
+        &self, max_bytes: NonZeroUsize, count: NonZeroUsize, build: impl FnOnce(&mut ObjectGroup<'_>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         self.admit_object_group(max_bytes, count, None, build).await
     }
 }
 
-impl<C: ObjectCatalog> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.read_object", level = "debug", skip_all)]
     pub async fn read_object<T: StoredObject>(
         &self, key: &T::Key, version: ObjectVersion,
-    ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>>
-    where
-        C: Contains<T>,
-    {
+    ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>> {
+        self.inner.catalog.handle::<T>()?;
         let schema = object_schema::<T>()?;
         let budget = self.inner.settings.scan_bytes();
         let point = ObjectPoint {
@@ -172,7 +165,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub(super) fn object_admission_bytes(&self) -> NonZeroUsize {
         NonZeroUsize::new(
             self.inner.settings.max_batch_bytes().get().saturating_mul(4).min(self.inner.settings.request.max_pending_write_bytes.get()),
@@ -183,7 +176,7 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.objects.admit_object_group", level = "debug", skip_all)]
     pub(super) async fn admit_object_group(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
-        build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
+        build: impl FnOnce(&mut ObjectGroup<'_>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         let _writer = tracing::Instrument::instrument(self.inner.object_writes.lock(), tracing::trace_span!("storage.lock.wait")).await;
         self.admit_object_group_locked(max_bytes, count, mutation, build).await
@@ -192,7 +185,7 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.objects.admit_object_group_locked", level = "debug", skip_all)]
     pub(super) async fn admit_object_group_locked(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
-        build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
+        build: impl FnOnce(&mut ObjectGroup<'_>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         let positions = count.get().checked_mul(2).ok_or_else(|| invalid("object group count overflow"))?;
         let mut receipts = None;

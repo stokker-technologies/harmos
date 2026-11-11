@@ -43,12 +43,12 @@ type Backends = PluginBackend<Resources, Resources>;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Number {
     value: u64,
 }
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Text {
     value: String,
 }

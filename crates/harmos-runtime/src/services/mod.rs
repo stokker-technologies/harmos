@@ -29,7 +29,7 @@ use std::time::Duration;
 use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
-use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, RestartPolicy, Running};
+use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, RequestShape, RestartPolicy, Running};
 impl<A: Application> harmos_operations::execution::operations::ProtobufHost for ServiceContext<A> {
     type Error = Error;
     async fn call_protobuf<O: crate::operations::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
@@ -95,7 +95,7 @@ pub struct ServiceDefinition {
 
 // The runtime managers a service context lends as typed values.
 pub(crate) struct Handles<A: Application> {
-    pub(crate) storage: Arc<std::sync::OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    pub(crate) storage: Arc<std::sync::OnceLock<crate::storage::StorageManager>>,
     pub(crate) state: StateManager<A>,
     pub(crate) records: crate::records::RecordManager<A>,
     pub(crate) streams: StreamManager<A>,
@@ -187,18 +187,18 @@ impl ServiceManager {
     }
 
     pub async fn register<S: harmos_operations::execution::Service>(&self, id: &str, policy: crate::ServicePolicy) -> Result<()> {
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().service::<S>(id, policy);
+        let batch = harmos_operations::execution::__private::Catalog::new().service::<S>(id, policy);
         self.register_batch(batch).await
     }
 
-    pub(crate) async fn register_batch(&self, batch: harmos_operations::execution::__private::RegistrationBatch) -> Result<()> {
+    pub(crate) async fn register_batch(&self, batch: harmos_operations::execution::__private::Catalog) -> Result<()> {
         let (staged, ids) = self.stage(batch)?;
         staged.commit()?;
         self.activate(&ids).await
     }
 
     pub(crate) fn stage(
-        &self, batch: harmos_operations::execution::__private::RegistrationBatch,
+        &self, batch: harmos_operations::execution::__private::Catalog,
     ) -> Result<(crate::operations::resident::Staged, Vec<String>)> {
         if !batch.operations.is_empty() {
             return Err(Error::InvalidInput {
@@ -391,7 +391,7 @@ impl<A: Application> ServiceContext<A> {
 }
 
 impl<A: Application> harmos_operations::execution::operations::OperationHost for ServiceContext<A> {
-    async fn invoke<O: crate::operations::OperationDeclaration, E: harmos_operations::execution::operations::EndpointSet>(
+    async fn invoke<O: crate::operations::RequestShape, E: harmos_operations::execution::operations::EndpointSet>(
         &self, request: O::Request, retry: Option<crate::RetryPolicy>, endpoints: E,
     ) -> Result<Self::Instance<O>> {
         harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
@@ -407,7 +407,7 @@ impl<A: Application> harmos_operations::execution::operations::OperationHost for
     }
 
     type Error = Error;
-    type Instance<O: OperationDeclaration> = Running<O>;
+    type Instance<O: RequestShape> = Running<O>;
 
     fn context(&self) -> &CallContext {
         harmos_operations::execution::operations::OperationHost::context(&self.operations)
@@ -420,11 +420,11 @@ impl<A: Application> harmos_operations::execution::operations::OperationHost for
         Ok(child)
     }
 
-    fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
+    fn submit<O: RequestShape>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
         harmos_operations::execution::operations::OperationHost::submit::<O>(&self.operations, request)
     }
 
-    fn submit_owned<O: OperationDeclaration>(
+    fn submit_owned<O: RequestShape>(
         &self, request: O::Request, claims: crate::operations::RequestClaims,
     ) -> impl Future<Output = Result<Running<O>>> + Send {
         harmos_operations::execution::operations::OperationHost::submit_owned::<O>(&self.operations, request, claims)
@@ -570,7 +570,7 @@ mod tests {
                 },
             },
         };
-        let batch = harmos_operations::execution::__private::RegistrationBatch::new().service::<Worker>("worker", policy);
+        let batch = harmos_operations::execution::__private::Catalog::new().service::<Worker>("worker", policy);
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         executor::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);

@@ -51,13 +51,18 @@ struct AttemptGuard(Arc<Counts>);
 
 /* === Enums === */
 
-#[harmos_runtime::message]
-#[derive(Clone, Copy)]
+#[derive(harmos_runtime::Message, Debug, Clone, Copy)]
 enum Mode {
     Value(u64),
     Reject,
     Wait,
     Retry,
+}
+
+impl Default for Mode {
+    fn default() -> Self {
+        Self::Value(Default::default())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -72,70 +77,95 @@ enum Failed {
     Child(#[from] Error),
 }
 
-#[harmos_runtime::operation(resources = [Counts, harmos_runtime::operations::HostContext], response = u64,
-        id = "outcomes.compute",
-        policy = OperationPolicy {
+#[derive(harmos_runtime::Message, Debug)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
+struct ComputeContractDeclaration {
+    mode: Mode,
+}
+
+static COMPUTE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ComputeContractDeclaration>(
+        "outcomes.compute",
+        OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
                 max_retries: 2,
-                backoff: Backoff::Fixed { delay: Duration::from_millis(10), jitter: Jitter::None },
+                backoff: Backoff::Fixed {
+                    delay: Duration::from_millis(10),
+                    jitter: Jitter::None,
+                },
             },
         },
-    )]
-struct ComputeContractDeclaration {
+    );
+
+const COMPUTE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ComputeContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ComputeContractDeclaration>::new(&COMPUTE_CONTRACT_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
+struct ParentContractDeclaration {
     mode: Mode,
 }
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = u64,
-        id = "outcomes.parent",
-        policy = harmos_runtime::OperationPolicy {
+static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ParentContractDeclaration>(
+        "outcomes.parent",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(3),
             attempt_timeout: Duration::from_secs(3),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct ParentContractDeclaration {
-    mode: Mode,
-}
+    );
 
-#[harmos_runtime::catalog]
-enum Operations {
-    ComputeContractDeclaration(ComputeContractDeclaration),
-    ParentContractDeclaration(ParentContractDeclaration),
-}
+const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for ComputeContractDeclaration {
-    type Error = Failed;
+async fn compute_contract_declaration_handler(
+    request: ComputeContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<ComputeContractDeclaration>,
+) -> Exported<harmos_runtime::Response<u64>> {
+    let counts = ctx.resource::<Counts>().expect("declared resource is registered");
+    counts.started.fetch_add(1, Ordering::SeqCst);
+    let _guard = AttemptGuard(counts);
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let attempt = host.borrow().attempt() + 1;
+    let value = match request.mode {
+        Mode::Value(value) => value,
+        Mode::Reject => return Err(Failed::Instrument),
+        Mode::Wait => std::future::pending().await,
+        Mode::Retry if attempt < 3 => return Err(Failed::Backlog),
+        Mode::Retry => u64::try_from(attempt).expect("attempts fit in u64"),
+    };
+    Ok(value.into())
+}
 
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Exported<harmos_runtime::Response<u64>> {
-        let counts = ctx.resource::<Counts>();
-        counts.started.fetch_add(1, Ordering::SeqCst);
-        let _guard = AttemptGuard(counts);
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let attempt = host.borrow().attempt() + 1;
-        let value = match self.mode {
-            Mode::Value(value) => value,
-            Mode::Reject => return Err(Failed::Instrument),
-            Mode::Wait => std::future::pending().await,
-            Mode::Retry if attempt < 3 => return Err(Failed::Backlog),
-            Mode::Retry => u64::try_from(attempt).expect("attempts fit in u64"),
-        };
-        Ok(value.into())
+fn compute_contract_declaration_classification(error: &Failed) -> FailureKind {
+    match error {
+        Failed::Backlog => FailureKind::Transient,
+        _ => FailureKind::Permanent,
     }
+}
 
-    fn classify(error: &Failed) -> FailureKind {
-        match error {
-            Failed::Backlog => FailureKind::Transient,
-            _ => FailureKind::Permanent,
-        }
-    }
+fn compute_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        COMPUTE_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Counts>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        compute_contract_declaration_handler,
+        compute_contract_declaration_classification,
+    )
 }
 
 impl Drop for AttemptGuard {
@@ -144,19 +174,27 @@ impl Drop for AttemptGuard {
     }
 }
 
-impl harmos_runtime::operations::Operation for ParentContractDeclaration {
-    type Error = Failed;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Answered<harmos_runtime::operations::Response<u64>> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<u64, Self::Error> = async move {
-            let answer = context.submit::<ComputeContractDeclaration>(ComputeContractDeclaration { mode: self.mode })?.await?;
-            Ok(*answer)
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn parent_contract_declaration_handler(
+    request: ParentContractDeclaration, context: harmos_runtime::operations::FunctionContext<ParentContractDeclaration>,
+) -> Answered<harmos_runtime::operations::Response<u64>> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<u64, Failed> = async move {
+        let answer = context.submit::<ComputeContractDeclaration>(ComputeContractDeclaration { mode: request.mode })?.await?;
+        Ok(*answer)
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn parent_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PARENT_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        parent_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 /* === Public Functions === */
@@ -170,8 +208,19 @@ async fn runtime() -> (Runtime<App>, Arc<Counts>) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<ComputeContractDeclaration>>(harmos_runtime::operations::Lane::default()).await.unwrap();
-    runtime.operations.register::<super::Single<ParentContractDeclaration>>(crate::support::SERIAL).await.unwrap();
+    runtime
+        .operations
+        .register_operation(
+            compute_contract_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(parent_contract_declaration_operation().expect("representable operation"), crate::support::SERIAL)
+        .await
+        .unwrap();
     (runtime, counts)
 }
 
@@ -228,7 +277,10 @@ async fn failure_never_emit() {
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource(Counts::default());
-        setup.operations::<super::Single<ComputeContractDeclaration>>(harmos_runtime::operations::Lane::default());
+        setup.operation(
+            compute_contract_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        );
     })
     .await
     .unwrap();

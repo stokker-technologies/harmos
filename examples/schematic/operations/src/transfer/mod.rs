@@ -47,19 +47,18 @@ pub use upload::Upload;
 
 /* === Enums === */
 
-pub struct Transfers;
-impl harmos_operations::execution::operations::OperationCatalog for Transfers {
-    const CATALOG: harmos_operations::execution::operations::Catalog =
-        harmos_operations::execution::operations::Catalog::of::<Self>("schematic.transfers", &[], &[]);
-    fn batch() -> harmos_operations::execution::__private::RegistrationBatch {
-        let mut batch = harmos_operations::execution::__private::RegistrationBatch::new();
-        batch.operations.extend([
-            harmos_operations::execution::operations::OperationFactory::protobuf::<Upload>().expect("Upload declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<Download>().expect("Download declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<Put>().expect("Put declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<Take>().expect("Take declaration"),
-            harmos_operations::execution::operations::OperationFactory::protobuf::<Hash>().expect("Hash declaration"),
-        ]);
-        batch
-    }
+pub fn transfers_catalog() -> harmos_operations::execution::operations::Catalog {
+    transfers_catalog_batch().named("schematic.transfers")
+}
+
+pub fn transfers_catalog_batch() -> harmos_operations::execution::__private::Catalog {
+    let mut batch = harmos_operations::execution::__private::Catalog::new();
+    batch.operations.extend([
+        harmos_operations::execution::operations::OperationFactory::protobuf::<Upload>().expect("Upload declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<Download>().expect("Download declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<Put>().expect("Put declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<Take>().expect("Take declaration"),
+        harmos_operations::execution::operations::OperationFactory::protobuf::<Hash>().expect("Hash declaration"),
+    ]);
+    batch
 }

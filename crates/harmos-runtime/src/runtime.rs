@@ -16,13 +16,12 @@ mod lifecycle;
 /* === Re-Exports === */
 
 pub use boot::{BootstrapCleanup, BootstrapStatus};
-pub use harmos_macros::{runtime_catalog as catalog, runtime_operation as operation};
 pub use harmos_operations::execution::StartupError;
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::any::{TypeId, type_name};
+use std::any::type_name;
 use std::collections::HashSet;
 use std::fmt;
 use std::future::Future;
@@ -89,7 +88,7 @@ pub struct Runtime<A: Application> {
 
     stopping: Mutex<Stopping<A>>,
     closing: AtomicBool,
-    storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    storage: Arc<OnceLock<crate::storage::StorageManager>>,
     journal_handles: Weak<()>,
     participants: Participants,
     notices: watch::Sender<Option<String>>,
@@ -107,7 +106,7 @@ pub struct Handle<A: Application> {
     #[cfg(feature = "grpc")]
     grpc: crate::grpc::GrpcManager,
 
-    storage: Arc<OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    storage: Arc<OnceLock<crate::storage::StorageManager>>,
 }
 
 #[doc(hidden)]
@@ -118,13 +117,13 @@ pub struct Builder<A: Application> {
     origin: Origin<A::State>,
     resources: harmos_operations::execution::__private::ResourceSet,
     configuration_errors: Vec<StartupError>,
-    operation_catalogs: HashSet<TypeId>,
+    operation_catalogs: HashSet<&'static str>,
     inverses: Inverting<A>,
     catalog: Dispatch<A, Payload<A>>,
     definitions: Vec<Definition>,
     attachments: Attachments<A>,
     managed_storage: Option<crate::config::ManagedStorageSettings>,
-    startup_storage: Option<crate::storage::StorageManager<crate::storage::ErasedCatalog>>,
+    startup_storage: Option<crate::storage::StorageManager>,
     record_projection: Option<Box<dyn crate::storage::RecordProjection>>,
     reconciliation: Option<boot::Reconciliation<A>>,
     initializers: Vec<boot::Initializer<A>>,
@@ -196,8 +195,10 @@ enum Stopping<A: Application> {
 pub enum Catalog<A: Application> {
     Transactions {
         definitions: Vec<(Kind, DefinitionId, u32)>,
-        decode: fn(&DefinitionId, u32, &[u8]) -> Result<Option<A::Transaction>, DecodeError>,
-        inverses: Option<fn(&A::Transaction, &A::State) -> Option<A::Transaction>>,
+        decode: harmos_domain::state::StateDecoder<A::Transaction>,
+        inverses: Option<Inverting<A>>,
+        records: Option<harmos_domain::state::RecordRegistry<A::Record>>,
+        states: Option<harmos_domain::state::StateCatalog<A::State, A::Transaction>>,
     },
     Streams(Vec<Definition>),
 }
@@ -252,28 +253,34 @@ pub trait Registration<A: Application>: Clone + Send {
 
 /* === Implementations === */
 
-impl<A, S, T> Registration<A> for harmos_domain::state::TransactionDefinitions<S, T>
+impl<A, S: 'static, T: 'static> Registration<A> for harmos_domain::state::StateCatalog<S, T>
 where
     A: Application<State = S, Transaction = T>,
 {
     fn register(self) -> Catalog<A> {
+        let decoder = self.clone();
+        let inverses = self.clone();
         Catalog::Transactions {
-            definitions: self.definitions,
-            decode: self.decode,
-            inverses: Some(self.inverses),
+            definitions: self.definitions(),
+            decode: Arc::new(move |id, version, bytes| decoder.decode(id, version, bytes)),
+            inverses: Some(Arc::new(move |change, before| inverses.inverse(change, before))),
+            records: None,
+            states: Some(self),
         }
     }
 }
 
-impl<A, R> Registration<A> for harmos_domain::state::RecordDefinitions<R>
+impl<A, R: 'static> Registration<A> for harmos_domain::state::RecordRegistry<R>
 where
     A: Application<Record = R>,
 {
     fn register(self) -> Catalog<A> {
         Catalog::Transactions {
-            definitions: self.definitions,
-            decode: |_, _, _| Ok(None),
+            definitions: self.definitions(),
+            decode: Arc::new(|_, _, _| Ok(None)),
             inverses: None,
+            records: Some(self),
+            states: None,
         }
     }
 }
@@ -381,7 +388,7 @@ impl<A: Application> Runtime<A> {
             resources: harmos_operations::execution::__private::ResourceSet::new(),
             configuration_errors: Vec::new(),
             operation_catalogs: HashSet::new(),
-            inverses: none::<A>,
+            inverses: Arc::new(none::<A>),
             catalog: Dispatch::default(),
             definitions: Vec::new(),
             attachments: Attachments::new(),
@@ -415,7 +422,7 @@ impl<A: Application> Runtime<A> {
         let anchor = origin.position;
         let mut state = At { value: origin.value, position: anchor };
         let entries = recovery.entries.into_iter().filter(|entry| entry.position > anchor).collect();
-        replay(None, entries, &mut state, &mut Undos::default(), none::<A>, 0).map_err(Incompatible::of)?;
+        replay(None, entries, &mut state, &mut Undos::default(), Arc::new(none::<A>), 0).map_err(Incompatible::of)?;
         state.position = state.position.max(recovery.frontier).max(anchor);
 
         let (reads, requests) = crate::state::Reads::channel(REQUESTS);
@@ -474,15 +481,19 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub(crate) fn operations<C: harmos_operations::execution::operations::OperationCatalog>(
-        &mut self, lane: crate::operations::Lane,
-    ) -> &mut Self {
+    pub(crate) fn catalog(&mut self, catalog: crate::operations::Catalog, lane: crate::operations::Lane) -> &mut Self {
         use crate::operations::RegistrationExt;
-        if !self.operation_catalogs.insert(TypeId::of::<C>()) {
-            self.configuration_errors.push(StartupError::DuplicateCatalog { name: type_name::<C>() });
+        if !catalog.name.is_empty() && !self.operation_catalogs.insert(catalog.name) {
+            self.configuration_errors.push(StartupError::DuplicateCatalog { name: catalog.name });
             return self;
         }
-        self.with_registration(C::batch().lane(lane))
+        match catalog.build() {
+            Ok(batch) => self.with_registration(batch.lane(lane)),
+            Err(source) => {
+                self.configuration_errors.push(StartupError::Binding { source: Box::new(source) });
+                self
+            }
+        }
     }
 
     // Configures Schema Preparation For Runtime-Owned Record And Stream Registrations.
@@ -496,12 +507,29 @@ impl<A: Application> Builder<A> {
         self.simulation.register(catalog.clone());
 
         match catalog.register() {
-            Catalog::Transactions { definitions, decode, inverses } => {
+            Catalog::Transactions {
+                definitions,
+                decode,
+                inverses,
+                records,
+                states,
+            } => {
+                if let Some(states) = states {
+                    self.catalog.states = self.catalog.states.clone().extend(states);
+                }
+                if let Some(records) = records {
+                    self.catalog.record_registry = self.catalog.record_registry.clone().extend(records);
+                    if let Err(source) = self.catalog.record_registry.validate() {
+                        self.configuration_errors.push(StartupError::Binding {
+                            source: Box::new(harmos_operations::execution::ServingError::Declaration(source)),
+                        });
+                    }
+                }
                 if let Some(inverses) = inverses {
                     self.inverses = inverses;
                 }
                 for (kind, id, version) in definitions {
-                    declare(&mut self.catalog, kind, id, version, decode);
+                    declare(&mut self.catalog, kind, id, version, decode.clone());
                 }
             }
             Catalog::Streams(definitions) => self.definitions.extend(definitions),
@@ -643,9 +671,9 @@ impl<A: Application> Builder<A> {
         self
     }
 
-    pub fn storage<C>(&mut self, storage: &crate::storage::StorageManager<C>) -> &mut Self {
-        self.resource(storage.engine_erased());
-        self.startup_storage = Some(storage.erased());
+    pub fn storage(&mut self, storage: &crate::storage::StorageManager) -> &mut Self {
+        self.resource(storage.engine());
+        self.startup_storage = Some(storage.clone());
         self
     }
 
@@ -670,7 +698,7 @@ impl<A: Application> Builder<A> {
 
     pub fn reconcile<F, Fut>(&mut self, reconcile: F) -> &mut Self
     where
-        F: FnOnce(StateManager<A>, crate::storage::StorageManager<crate::storage::ErasedCatalog>) -> Fut + Send + 'static,
+        F: FnOnce(StateManager<A>, crate::storage::StorageManager) -> Fut + Send + 'static,
         Fut: Future<Output = crate::Result<()>> + Send + 'static,
     {
         self.reconciliation = Some(Box::new(move |journal, storage| Box::pin(reconcile(journal, storage))));
@@ -725,6 +753,11 @@ impl<A: Application> Builder<A> {
                 source: Box::new(Incompatible::simulation(self.live_only.join(", "))),
             });
         }
+        if let Err(source) = self.catalog.states.validate() {
+            self.configuration_errors.push(StartupError::Binding {
+                source: Box::new(harmos_operations::execution::ServingError::Declaration(source)),
+            });
+        }
         for binding in &self.operations {
             self.configuration_errors.extend(binding.validate(&self.resources, &self.lanes));
         }
@@ -738,7 +771,7 @@ impl<A: Application> Builder<A> {
     }
 
     async fn boot(
-        mut self, storage: Option<&crate::storage::StorageManager<crate::storage::ErasedCatalog>>, cleanup: BootstrapCleanup,
+        mut self, storage: Option<&crate::storage::StorageManager>, cleanup: BootstrapCleanup,
     ) -> Result<Runtime<A>, Incompatible> {
         let application = {
             let _clock = crate::clock::enter(self.clock.clone());
@@ -803,13 +836,14 @@ impl<A: Application> Builder<A> {
         let mut state = At { value: origin.value, position: anchor };
         let mut undos = Undos::default();
         let entries = recovery.entries.into_iter().filter(|entry| entry.position > anchor).collect();
-        let mut recovered = replay(Some(&catalog), entries, &mut state, &mut undos, inverses, tail).map_err(Incompatible::of)?;
+        let mut recovered = replay(Some(&catalog), entries, &mut state, &mut undos, inverses.clone(), tail).map_err(Incompatible::of)?;
         let stored = recovery.encoded.into_iter().filter(|(position, _)| *position > anchor).collect();
         state.position = state.position.max(recovery.frontier).max(anchor);
         let mut managed_durable = None;
         if let Some(settings) = managed_storage {
             let storage = boot.storage.as_ref().expect("managed state requires storage");
-            let loaded = StateManager::recover(storage, state, &catalog, inverses, tail, settings.replay, snapshots.as_ref()).await?;
+            let loaded =
+                StateManager::recover(storage, state, &catalog, inverses.clone(), tail, settings.replay, snapshots.as_ref()).await?;
             state = loaded.state;
             undos = loaded.undos;
             recovered = loaded.tail;
@@ -830,7 +864,7 @@ impl<A: Application> Builder<A> {
         let catalog = Arc::new(catalog);
         let (journal, writer, requests) = StateManager::start(
             state,
-            inverses,
+            inverses.clone(),
             undos,
             REQUESTS,
             tail,
@@ -1125,7 +1159,7 @@ async fn supervise<A: Application>(supervision: Supervision<A>) -> Position {
                     deliver(&mut consumers, &streams).await;
                 }
             }
-            Turn::Read(request) => answer(request, &mut consumers, Some(&catalog), inverses).await,
+            Turn::Read(request) => answer(request, &mut consumers, Some(&catalog), inverses.clone()).await,
             Turn::Stopped => break,
         }
     }
@@ -1242,7 +1276,7 @@ async fn answer<A: Application>(
 
 async fn inspect_reads<A: Application>(mut consumers: Consumers<A>, mut requests: mpsc::Receiver<ReadRequest<A>>) {
     while let Some(request) = requests.recv().await {
-        answer(request, &mut consumers, None, none::<A>).await;
+        answer(request, &mut consumers, None, Arc::new(none::<A>)).await;
     }
 }
 

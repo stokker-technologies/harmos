@@ -46,7 +46,12 @@ async fn create_append_resume_finish_and_delete() {
     use harmos_operations::storage::{AbandonFile, AppendFile, CreateFile, DeleteFile, FinishFile, ResumeFile};
     use harmos_protocol::storage as wire;
     let fixture = super::Fixture::new(super::config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    fixture
+        .runtime
+        .operations
+        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let operations = &fixture.runtime.operations;
     let window = fixture.storage.mutation_window().unwrap().id.to_string();
     let mutation = |key: &str| Some(wire::MutationId { window: window.clone(), key: key.into() });

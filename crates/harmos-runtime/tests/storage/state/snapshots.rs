@@ -56,10 +56,13 @@ struct SnapshotWarning {
     replay_entries: u64,
 }
 
-#[harmos_runtime::transaction(id = "snapshot.add")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
+}
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<i64, Self> =
+        harmos_runtime::state::TransactionEntry::new("snapshot.add").barrier();
 }
 
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
@@ -69,16 +72,78 @@ struct Seen {
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
     Add(Add),
 }
+impl From<Add> for Transactions {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<i64> for Transactions {
+    type Error = Refusal;
+    fn check(&self, state: &i64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut i64) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &i64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Transactions {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn transactions_state_catalog() -> harmos_runtime::state::StateCatalog<i64, Transactions> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Transactions::Add, |value| {
+        let Transactions::Add(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Records {
     Seen(Seen),
+}
+impl From<Seen> for Records {
+    fn from(value: Seen) -> Self {
+        Self::Seen(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Seen(_) => <Seen as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Seen(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Seen as harmos_runtime::state::Record>::ENTRY, Records::Seen, |value| {
+        let Records::Seen(value) = value;
+        Some(value)
+    })
 }
 
 /* === Traits === */
@@ -396,7 +461,7 @@ async fn snapshot_keeps_tail() {
 
     let storage = store.manager(config());
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().storage(&storage).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+        setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -411,7 +476,7 @@ async fn snapshot_keeps_tail() {
     runtime.shutdown().await.unwrap();
     let storage = store.manager(config());
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().storage(&storage).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+        setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -426,11 +491,11 @@ async fn snapshot_keeps_tail() {
     runtime.shutdown().await.unwrap();
     let snapshot: serde_json::Value = serde_json::from_reader(store.snapshot().payload.reader().unwrap()).unwrap();
     assert_eq!(snapshot["tail"].as_array().unwrap().len(), 2);
-    assert_eq!(snapshot["tail"][0]["version"], <Add as harmos_runtime::Identified>::definition().1);
+    assert_eq!(snapshot["tail"][0]["version"], Add::ENTRY.definition().1);
     store.recovery.entries.lock().unwrap().clear();
     let storage = store.manager(config());
     let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().storage(&storage).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+        setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),

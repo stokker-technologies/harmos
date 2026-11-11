@@ -148,8 +148,6 @@ impl Application for Editor {
     type Record = Note;
 }
 
-impl harmos_runtime::state::TransactionCatalog<Sheet> for Change {}
-
 impl harmos_runtime::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
         match self {
@@ -176,15 +174,6 @@ impl harmos_runtime::state::CatalogCodec for Note {
     }
 }
 
-impl harmos_runtime::state::RecordCatalog for Note {
-    fn restore(id: &harmos_runtime::DefinitionId, version: u32, _payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        if id.as_str() != "sheet.exported" || version != EXPORTED.2 {
-            return Ok(None);
-        }
-        Ok(Some(Self::Exported))
-    }
-}
-
 /* === Public Functions === */
 
 pub(crate) fn rename(title: &str) -> Change {
@@ -205,3 +194,11 @@ pub(crate) fn inverses(change: &Change, sheet: &Sheet) -> Option<Change> {
 /* === Private Functions === */
 
 /* === Tests === */
+
+pub(crate) fn note_registry() -> harmos_runtime::state::RecordRegistry<Note> {
+    harmos_runtime::state::RecordRegistry::new().entry(
+        harmos_runtime::state::RecordEntry::<()>::new("sheet.exported"),
+        |()| Note::Exported,
+        |_| Some(&()),
+    )
+}

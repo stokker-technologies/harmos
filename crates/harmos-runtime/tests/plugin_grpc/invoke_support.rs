@@ -31,7 +31,7 @@ use tokio::{
 use super::support;
 use harmos_runtime::{
     Runtime,
-    operations::{OperationPolicy, Registration, RetryPolicy, WireDeclaration},
+    operations::{OperationPolicy, Registration, RetryPolicy},
 };
 
 /* === Constants === */
@@ -42,13 +42,12 @@ use harmos_runtime::{
 
 /* === Structs === */
 
-#[harmos_runtime::message]
-#[derive(Clone)]
+#[derive(harmos_runtime::Message, Debug, Default, Clone)]
 pub struct Host {
     pub value: Vec<u8>,
 }
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 pub struct Reply {
     pub value: Vec<u8>,
 }
@@ -112,34 +111,42 @@ pub struct Sdk {
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::OperationDeclaration for Host {
+impl harmos_domain::operations::RequestShape for Host {
     type Request = Self;
     type Response = Reply;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
-    const ID: &'static str = "fixture.host";
-    const VISIBILITY: harmos_runtime::operations::Visibility = harmos_runtime::operations::Visibility::Public;
-    const GRPC: Option<harmos_runtime::operations::Grpc> = Some(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Host", "Call"));
-    const POLICY: OperationPolicy = OperationPolicy {
+}
+static HOST_DESCRIPTION: harmos_domain::operations::WireDeclaration = harmos_domain::operations::WireDeclaration::request::<Host>(
+    "fixture.host",
+    OperationPolicy {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_secs(30),
         cancellation_timeout: Duration::ZERO,
         retries: RetryPolicy::Never,
-    };
+    },
+)
+.visibility(harmos_runtime::operations::Visibility::Public)
+.grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Host", "Call"));
+
+const HOST_OPERATION: harmos_domain::operations::OperationSpec<Host> =
+    harmos_domain::operations::OperationSpec::<Host>::new(&HOST_DESCRIPTION);
+
+pub(crate) async fn host_handler(
+    request: Host, context: harmos_runtime::operations::FunctionContext<Host>,
+) -> Result<harmos_runtime::Response<Reply>, std::convert::Infallible> {
+    context.resource::<Signals>().expect("declared resource is registered").entered.notify_one();
+    Ok(Reply { value: request.value }.into())
 }
 
-impl harmos_runtime::Dependent for Host {
-    const RESOURCES: &'static [harmos_runtime::operations::Resource] = &[harmos_runtime::operations::Resource::of::<Signals>()];
-}
-
-impl harmos_runtime::operations::Requires<Signals> for Host {}
-
-impl harmos_runtime::Operation for Host {
-    type Error = std::convert::Infallible;
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Reply>, Self::Error> {
-        context.resource::<Signals>().entered.notify_one();
-        Ok(Reply { value: self.value }.into())
-    }
+pub(crate) fn host_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        HOST_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Signals>()] },
+        host_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl HostFixture {
@@ -157,9 +164,11 @@ impl HostFixture {
             setup.settings().attach_streams(Store(stored.clone(), harmos_runtime::storage::Cursor::ORIGIN, signals.clone()));
         })
         .await;
-        let registration = Registration::new(harmos_runtime::operations::Lane::default()).operation::<Host>("fixture.host").unwrap();
+        let registration = Registration::new(harmos_runtime::operations::Lane::default())
+            .operation(host_operation().expect("representable operation"), "fixture.host")
+            .unwrap();
         runtime.register_batch(registration).await.unwrap();
-        let contract = WireDeclaration::of::<Host>().contract().unwrap();
+        let contract = HOST_OPERATION.wire().contract().unwrap();
         let binding = contract.grpc().unwrap();
         let service = harmos_runtime::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, &contract)]).unwrap();
         let method = service.methods().find(|method| method.name() == "Call").unwrap();

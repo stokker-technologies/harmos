@@ -38,10 +38,13 @@ type Refusal = std::convert::Infallible;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "capture.advance")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Advance {
     panic: bool,
+}
+impl Advance {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<u64, Self> =
+        harmos_runtime::state::TransactionEntry::new("capture.advance").barrier();
 }
 
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
@@ -69,16 +72,78 @@ struct Store {
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = u64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
     Advance(Advance),
 }
+impl From<Advance> for Transactions {
+    fn from(value: Advance) -> Self {
+        Self::Advance(value)
+    }
+}
+impl harmos_runtime::state::Transaction<u64> for Transactions {
+    type Error = Refusal;
+    fn check(&self, state: &u64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut u64) {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &u64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Transactions {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Advance(_) => Advance::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Advance(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn transactions_state_catalog() -> harmos_runtime::state::StateCatalog<u64, Transactions> {
+    harmos_runtime::state::StateCatalog::new().transaction(Advance::ENTRY, Transactions::Advance, |value| {
+        let Transactions::Advance(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Records {
     Observed(Observed),
+}
+impl From<Observed> for Records {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Records::Observed, |value| {
+        let Records::Observed(value) = value;
+        Some(value)
+    })
 }
 
 /* === Traits === */
@@ -190,8 +255,8 @@ impl Store {
             setup
                 .settings()
                 .storage(storage)
-                .register(Transactions::catalog())
-                .register(Records::catalog())
+                .register(transactions_state_catalog())
+                .register(records_registry())
                 .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(1, 64 * 1024),
                     capture,
@@ -407,8 +472,8 @@ async fn reconciliation_saves_capture() {
         setup
             .settings()
             .storage(&storage)
-            .register(Transactions::catalog())
-            .register(Records::catalog())
+            .register(transactions_state_catalog())
+            .register(records_registry())
             .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(1, 64 * 1024),
                 capture: limits(4, 16 * 1024),
@@ -581,8 +646,8 @@ async fn partial_projection_refused() {
             setup
                 .settings()
                 .storage(&storage)
-                .register(Transactions::catalog())
-                .register(Records::catalog())
+                .register(transactions_state_catalog())
+                .register(records_registry())
                 .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(1, 64 * 1024),
                     capture: limits(8, 4 * 1024 * 1024),
@@ -624,7 +689,7 @@ async fn partial_projection_refused() {
 async fn registration_stores_schema() {
     use harmos_runtime::schema::{Described, Validator};
 
-    #[harmos_runtime::message]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default)]
     struct Message {
         value: String,
     }

@@ -25,7 +25,7 @@ use crate::state::{Inverting, Undos, dispatch::Dispatch, replay};
 use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{
     Application, runtime::Incompatible, state::At, state::Entry, state::Envelope, state::Kind, state::Position, state::Prepared,
-    state::Receipt, state::RecordCatalog, state::Recorded, state::RequestKey, state::StateManager, state::SystemFact, storage::Payload,
+    state::Receipt, state::Recorded, state::RequestKey, state::StateManager, state::SystemFact, storage::Payload,
 };
 
 /* === Constants === */
@@ -91,8 +91,8 @@ impl<P> Group<P> {
 }
 
 impl<A: Application> StateManager<A> {
-    pub(crate) async fn recover<C>(
-        storage: &StorageManager<C>, mut state: At<A::State>, catalog: &Dispatch<A, Payload<A>>, inverses: Inverting<A>, tail: usize,
+    pub(crate) async fn recover(
+        storage: &StorageManager, mut state: At<A::State>, catalog: &Dispatch<A, Payload<A>>, inverses: Inverting<A>, tail: usize,
         limits: ReadLimits, snapshots: Option<&super::snapshot::Snapshots<A>>,
     ) -> std::result::Result<Recovered<A>, Incompatible> {
         if state.position != Position::ORIGIN {
@@ -152,7 +152,8 @@ impl<A: Application> StateManager<A> {
                         decoded.push(envelope);
                     }
                 }
-                let recovered = replay(Some(catalog), decoded, &mut state, &mut undos, inverses, tail).map_err(Incompatible::unreadable)?;
+                let recovered =
+                    replay(Some(catalog), decoded, &mut state, &mut undos, inverses.clone(), tail).map_err(Incompatible::unreadable)?;
                 state.position = frontier;
                 if !recovered.is_empty() {
                     while retained.len() + recovered.len() > tail && !retained.is_empty() {
@@ -277,7 +278,9 @@ fn decode_json<A: Application>(
                 (Recorded::System(system), payload.value().map_err(Incompatible::unreadable)?)
             } else if catalog.has_record(&id, version).map_err(Incompatible::of)? {
                 let payload = payload.value().map_err(Incompatible::unreadable)?;
-                let record = A::Record::restore(&id, version, &payload)
+                let record = catalog
+                    .record_registry
+                    .restore(&id, version, &payload)
                     .map_err(Incompatible::unreadable)?
                     .ok_or_else(|| Incompatible::unreadable("declared record could not be restored"))?;
                 (Recorded::Record(record), payload)

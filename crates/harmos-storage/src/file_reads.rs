@@ -76,7 +76,7 @@ enum Source {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.file_reads.read_file", level = "debug", skip_all)]
     pub async fn read_file(&self, request: FileRead) -> Result<FileReader> {
         let context = crate::execution::Context::current();

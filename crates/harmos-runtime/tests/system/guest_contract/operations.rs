@@ -18,7 +18,7 @@
 // Third Party Imports
 
 // Local Imports
-use super::lifecycle::{GuestOperations, Lifecycle, Manager, serve_host};
+use super::lifecycle::{Lifecycle, Manager, guest_catalog, serve_host};
 use super::sandbox::{CountsOperation, ReadOperation, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
 use super::{corner, route, runtime, sandbox, support};
@@ -140,8 +140,16 @@ async fn wrong_catalog_refused() {
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let bytes = sandbox();
     let loaded = host.load(&bytes).unwrap();
-    let refused =
-        runtime.plugin.register_guest::<()>(loaded, pending_settings(), harmos_runtime::operations::Lane::default()).await.unwrap_err();
+    let refused = runtime
+        .plugin
+        .register_guest(
+            harmos_runtime::operations::ComponentCatalog::new(),
+            loaded,
+            pending_settings(),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap_err();
     assert!(matches!(refused, harmos_runtime::Error::InvalidInput { field: "guest operation catalog", .. }));
     assert!(runtime.plugin.status("sandbox_guest").is_none());
     runtime.shutdown().await.unwrap();
@@ -156,11 +164,7 @@ async fn shutdown_retains_cleanup() {
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let bytes = sandbox();
     let loaded = host.load(&bytes).unwrap();
-    runtime
-        .plugin
-        .register_guest::<GuestOperations>(loaded, pending_settings(), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
+    runtime.plugin.register_guest(guest_catalog(), loaded, pending_settings(), harmos_runtime::operations::Lane::default()).await.unwrap();
     runtime.plugin.initialize().await.unwrap();
     let ready = runtime.plugin.status("sandbox_guest").unwrap();
     assert_eq!(ready.attempts, 1);

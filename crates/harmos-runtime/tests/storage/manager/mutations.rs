@@ -74,7 +74,7 @@ async fn resume_receipt_replays() {
 #[tokio::test(start_paused = true)]
 async fn operation_retries_three() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    f.runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
     let request = harmos_protocol::storage::ResumeFile {
         mutation: Some(identity(&f.storage, "resume").into()),
@@ -139,7 +139,7 @@ async fn duplicate_resumes_share() {
 #[tokio::test(start_paused = true)]
 async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(harmos_runtime::operations::Lane::default()).await.unwrap();
+    f.runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
     let request = harmos_protocol::storage::ResumeFile {
         mutation: Some(identity(&f.storage, "resume").into()),

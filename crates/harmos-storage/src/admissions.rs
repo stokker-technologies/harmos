@@ -44,7 +44,7 @@ pub(super) struct Mutation<'a> {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.admissions.write_schema_once", level = "debug", skip_all)]
     pub async fn write_schema_once(
         &self, mutation: &MutationId, key: super::SchemaKey, schema: impl Into<std::sync::Arc<crate::schema::graph::Schema>>,

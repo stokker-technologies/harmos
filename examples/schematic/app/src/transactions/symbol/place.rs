@@ -31,13 +31,16 @@ use harmos_runtime::state::Transaction;
 
 /* === Structs === */
 
-#[harmos_runtime::transaction(id = "symbol.place")]
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct PlaceSymbol {
     pub symbol: SymbolId,
     pub reference: String,
     pub at: Point,
     pub rotation: Rotation,
+}
+impl PlaceSymbol {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("symbol.place").barrier();
 }
 
 /* === Enums === */

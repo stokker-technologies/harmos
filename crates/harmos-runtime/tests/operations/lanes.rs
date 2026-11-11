@@ -44,47 +44,70 @@ struct Gauge {
     release: Semaphore,
 }
 
-#[harmos_runtime::operation(resources = [Gauge, harmos_runtime::operations::HostContext], response = (),
-        id = "lanes.measure",
-        policy = harmos_runtime::OperationPolicy {
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
+struct MeasureContractDeclaration {}
+
+static MEASURE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<MeasureContractDeclaration>(
+        "lanes.measure",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(2),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct MeasureContractDeclaration {}
+    );
+
+const MEASURE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<MeasureContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<MeasureContractDeclaration>::new(&MEASURE_CONTRACT_DECLARATION_DESCRIPTION);
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-enum Operations {
-    MeasureContractDeclaration(MeasureContractDeclaration),
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
+}
+
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(measure_contract_declaration_operation().expect("representable operation"));
+    batch
 }
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for MeasureContractDeclaration {
-    type Error = std::io::Error;
-
-    async fn run(self, _context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-        let resources = _context.resource::<Gauge>();
-        let host = _context.resource::<harmos_runtime::operations::HostContext>();
-        let _context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            resources.ran.fetch_add(1, Ordering::SeqCst);
-            let active = resources.active.fetch_add(1, Ordering::SeqCst) + 1;
-            resources.maximum.fetch_max(active, Ordering::SeqCst);
-            resources.entered.send(()).await.unwrap();
-            resources.release.acquire().await.unwrap().forget();
-            resources.active.fetch_sub(1, Ordering::SeqCst);
-            Ok(())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn measure_contract_declaration_handler(
+    _request: MeasureContractDeclaration, _context: harmos_runtime::operations::FunctionContext<MeasureContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<()>, std::io::Error> {
+    let resources = _context.resource::<Gauge>().expect("declared resource is registered");
+    let host = _context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let _context = host.borrow();
+    let result: ::core::result::Result<(), std::io::Error> = async move {
+        resources.ran.fetch_add(1, Ordering::SeqCst);
+        let active = resources.active.fetch_add(1, Ordering::SeqCst) + 1;
+        resources.maximum.fetch_max(active, Ordering::SeqCst);
+        resources.entered.send(()).await.unwrap();
+        resources.release.acquire().await.unwrap().forget();
+        resources.active.fetch_sub(1, Ordering::SeqCst);
+        Ok(())
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn measure_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        MEASURE_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Gauge>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        measure_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 /* === Public Functions === */
@@ -105,7 +128,7 @@ async fn assert_admission(lane: Lane, count: usize, admitted: usize) {
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(lane).await.unwrap();
+    runtime.operations.register_catalog(operations_catalog(), lane).await.unwrap();
     let mut instances = Vec::new();
     for _ in 0..count {
         instances.push(runtime.operation(MeasureContractDeclaration {}).start().await.unwrap());

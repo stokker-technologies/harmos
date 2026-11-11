@@ -84,23 +84,23 @@ assumed.
 ## Impact
 
 - Breaking for every application and plugin: about 230 operations, 230 catalogs, 110
-  transactions and records, and 840 messages in Dokime alone. Dokime's own macro crate depends on
+  transactions and records, and 840 messages in the external application alone. Its macro crate depends on
   several of these and migrates in the same delivery.
 - Schema revisions keep being computed from the fields; no hand-maintained version is introduced.
 
 ## Source Inventory
 
-This inventory covers attribute sites in Harmos source, examples, test fixtures and
+This locked starting inventory covers attribute sites in Harmos source, examples, test fixtures and
 quoted generator tests. Counts are textual sites, including macro_rules templates;
 they are not expanded declaration counts. Domain, runtime and guest aliases are
 grouped with their operation/catalog family. External application adoption remains
 the Workflow Follow-Up in tasks.md and is outside this worktree's ownership.
 
 The host-protobuf cutover replaces built-in and native example request/result declarations
-with generated messages. Core operations no longer has a `runtime` feature. Private guest
-operation/catalog attributes moved to `crates/harmos-guest/src/builtins/` and
-`examples/schematic/operations/src/guest/`; they remain owned by the deferred guest path.
-The inventory below reflects these moves and is locked for implementation. External
+with generated messages. Core operations no longer has a `runtime` feature. At inventory
+time, guest operation/catalog attributes had moved to `crates/harmos-guest/src/builtins/`
+and `examples/schematic/operations/src/guest/`; their families migrate in steps 7–8 above.
+The inventory below records those starting moves and is retained as the locked implementation worklist. External
 application adoption remains a follow-up outside this repository task.
 
 ### Projections and Replacement Owners

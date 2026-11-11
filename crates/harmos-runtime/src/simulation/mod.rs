@@ -40,7 +40,7 @@ use crate::{
 
 /* === Type Aliases === */
 
-type Inverting<A> = fn(&<A as Application>::Transaction, &<A as Application>::State) -> Option<<A as Application>::Transaction>;
+type Inverting<A> = harmos_domain::state::StateInverse<<A as Application>::State, <A as Application>::Transaction>;
 type Configure<A> = Arc<dyn Fn(&mut Setup<A>) + Send + Sync>;
 type UndoResult<A> = Result<Receipt, Error<<<A as Application>::Transaction as Transaction<<A as Application>::State>>::Error>>;
 
@@ -221,12 +221,23 @@ where
 {
     pub fn commit<T>(&mut self, principal: PrincipalId, transaction: T) -> Result<Receipt, Error<T::Error>>
     where
-        T: Identified + Transaction<A::State> + Into<A::Transaction>,
+        T: Transaction<A::State> + Into<A::Transaction>,
         T::Error: From<<A::Transaction as Transaction<A::State>>::Error>,
     {
-        let identity = T::definition();
+        let transaction = transaction.into();
         let journal = self.runtime.as_ref().ok_or(Error::Unavailable)?.state.as_principal(principal);
-        let receipt = self.executor.block_on(journal.commit(transaction))?;
+        let (catalog, _) = journal.record_resources();
+        let identity = if catalog.states.is_empty() {
+            crate::state::CatalogCodec::identify(&transaction)
+        } else {
+            let prepared = catalog
+                .states
+                .prepare(&transaction)
+                .map_err(Error::Preparation)?
+                .ok_or(Error::Preparation(crate::state::PreparationError::Membership))?;
+            (prepared.id, prepared.version)
+        };
+        let receipt = self.executor.block_on(journal.request::<T::Error>(None, crate::operations::Response::new(transaction)))?;
         self.memory.identify(receipt.position, identity, self.executor.elapsed_ms());
         self.executor.block_on(journal.wait_until_stored(receipt.frontier));
         self.executor.drive();
@@ -255,9 +266,7 @@ where
         Ok(())
     }
 
-    pub fn submit<O: crate::operations::OperationDeclaration>(
-        &mut self, request: O::Request,
-    ) -> crate::Result<crate::operations::Running<O>> {
+    pub fn submit<O: crate::operations::RequestShape>(&mut self, request: O::Request) -> crate::Result<crate::operations::Running<O>> {
         let runtime = self.runtime.as_ref().ok_or(Error::Closing { domain: "simulated runtime" })?;
         let operations = runtime.operations.clone();
         let handle = self.executor.block_on(async move { operations.submit(request) });
@@ -265,7 +274,7 @@ where
         handle
     }
 
-    pub fn settle<O: crate::operations::OperationDeclaration>(
+    pub fn settle<O: crate::operations::RequestShape>(
         &mut self, invocation: crate::operations::Running<O>,
     ) -> crate::Result<crate::operations::Response<O::Response>> {
         self.executor.block_on(invocation)
@@ -351,7 +360,7 @@ where
     }
 
     fn inverses_restore(&self) -> Result<(), Divergence<A::State>> {
-        let Some(inverses) = self.inverses else {
+        let Some(inverses) = &self.inverses else {
             // Nothing declared an inverse, so every entry is a barrier and the
             // law has no subject.
             return Ok(());

@@ -652,19 +652,22 @@ const fn backoff<const N: usize>(out: &mut Encoder<N>, value: Backoff) {
 mod tests {
     use super::*;
     use crate::inventory::{Declaration, Facility};
-    use crate::operations::{NoStream, OperationDeclaration};
+    use crate::operations::NoStream;
     use serde_json::{Value, json};
 
     struct Read;
 
-    impl OperationDeclaration for Read {
+    impl harmos_domain::operations::RequestShape for Read {
         type Request = ();
         type Response = ();
         type Input = NoStream;
         type Output = NoStream;
-        const ID: &'static str = "fixture.read";
-        const POLICY: OperationPolicy = lifecycle::POLICY;
     }
+    static READ_DESCRIPTION: harmos_domain::operations::WireDeclaration =
+        harmos_domain::operations::WireDeclaration::request::<Read>("fixture.read", lifecycle::POLICY);
+
+    const READ_OPERATION: harmos_domain::operations::OperationSpec<Read> =
+        harmos_domain::operations::OperationSpec::<Read>::new(&READ_DESCRIPTION);
 
     const SDK: [OperationPolicy; 2] = [lifecycle::POLICY; 2];
     const DESCRIPTION: &str = match str::from_utf8(&[b'x'; 9000]) {
@@ -673,7 +676,7 @@ mod tests {
     };
     const IDS: [&str; 4] = ["fixture.one", "fixture.two", "fixture.three", "fixture.four"];
     const PROVIDED: &[Node<WireDeclaration>] = &{
-        let mut entries = [const { Node::Leaf(WireDeclaration::of::<Read>()) }; 4];
+        let mut entries = [const { Node::Leaf(READ_OPERATION.wire()) }; 4];
         let mut index = 0;
         while index < entries.len() {
             let Node::Leaf(entry) = &mut entries[index] else {
@@ -688,7 +691,7 @@ mod tests {
     const REQUIRED: &[Node<Requirement>] = &{
         let mut entries = [const {
             Node::Leaf(Requirement {
-                declaration: WireDeclaration::of::<Read>(),
+                declaration: READ_OPERATION.wire(),
                 grants: &[],
             })
         }; 4];
@@ -732,8 +735,7 @@ mod tests {
             json!({"kind":"publications","facility":facility,"owner":"fixture","streams":[]}),
             json!({"kind":"observers","facility":facility,"owner":"fixture","observers":[]}),
         ]));
-        let schemas =
-            crate::schema::declaration::markers_many([WireDeclaration::of::<Read>().request], &SchemaSettings::default()).unwrap();
+        let schemas = crate::schema::declaration::markers_many([READ_OPERATION.wire().request], &SchemaSettings::default()).unwrap();
         for schema in schemas {
             artifact.extend_from_slice(schema);
         }
@@ -849,7 +851,7 @@ mod tests {
                 preparation_bytes: std::num::NonZeroUsize::new(usize::MAX).unwrap(),
                 preparation_work: std::num::NonZeroUsize::new(usize::MAX).unwrap(),
             };
-            let markers = crate::schema::declaration::markers_many([WireDeclaration::of::<Read>().request], &settings).unwrap();
+            let markers = crate::schema::declaration::markers_many([READ_OPERATION.wire().request], &settings).unwrap();
             let schemas = crate::artifacts::fragments::<Named>(&markers.concat(), &["schema"]).unwrap();
             assert!(matches!(select(fragments, "sidecar", "fixture", &schemas, &mut settings), Err(Error::Budget)));
         }
@@ -890,7 +892,7 @@ mod tests {
         artifact.extend(oversized);
         artifact.push(0);
         assert!(matches!(crate::artifacts::fragments::<Value>(&artifact, &["contracts"]), Err(crate::ScanError::Oversized)));
-        let mut provided = WireDeclaration::of::<Read>();
+        let mut provided = READ_OPERATION.wire();
         provided.operation.description = str::from_utf8(&[b'x'; crate::FRAGMENT_LIMIT]).unwrap();
         assert!(std::panic::catch_unwind(|| encoded_fragments_len("sidecar", "fixture", &[Node::Leaf(provided)], &[], &SDK)).is_err());
     }
