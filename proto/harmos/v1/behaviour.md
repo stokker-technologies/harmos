@@ -122,7 +122,20 @@ or credentials. The host is always the client.
     its typed section and both interval sources. It MUST answer only host ticks,
     preserving each tick's timestamp and per-call sequence, and close on input EOF.
     Resolution and invalid-setting admission remain host-runtime responsibilities.
-    Cases 17 and 18 run before case 16 so managed Stop remains the last RPC.
+    Cases 17, 18 and 19 run before case 16 so managed Stop remains the last RPC.
+19. **Built-In Clock Fingerprints.** Every fixture MUST require `harmos.clock.sleep`
+    and `harmos.clock.now` with the canonical fingerprints below. The case checks
+    advertised requirements, projects their descriptors and compares the host's
+    shared clock definitions. `conformance.clock` MUST call now, sleep for 3600
+    seconds, then now, using child IDs 1, 2 and 3, with no policy overrides. Return
+    the difference in whole seconds as eight little-endian signed bytes in Value.
+    The reference host supplies times 100 and 3700 and answers sleep immediately;
+    the runtime story instead executes the sleep through its virtual clock.
+
+    | Operation | SHA-256 (Hex) |
+    | --- | --- |
+    | `harmos.clock.sleep` | `e184a4f9506abaa5a9d9a5dc89d37e42efac5dfed21e1d136037fdf71b079cab` |
+    | `harmos.clock.now` | `cd0dbe186ee5a060fac74d88f8ef333444a7899b57da53ecb1fd14d3c92abc81` |
 
 ## Host Stream Settings and Evidence
 
@@ -139,9 +152,9 @@ this conversion does not change the protobuf-only transport contract.
 
 ## Schema Fingerprints
 
-The following general rule extends the fixture hash rule without changing any
-fixture bytes or hashes. All operations, including host operations and required
-operations, MUST use it. `crates/harmos-protocol/src/schema.rs` is the shared Rust
+The following general rule preserves the original minimal Value fixture hashes.
+File options do not participate, including in imported well-known types. All
+operations, including host operations and required operations, MUST use it. `crates/harmos-protocol/src/schema.rs` is the shared Rust
 implementation; other language implementations MUST produce the same bytes.
 
 For each request and response message, independently, project `Catalog.types`
@@ -155,8 +168,11 @@ into a data-only FileDescriptorSet as follows:
   duplicate file name or duplicate message/enum name is invalid. Recursive message
   graphs are valid and each enclosing declaration is selected only once.
 - Retain only selected top-level messages and enums and their files. Remove file
-  services, file-level extensions, source_code_info and each field's json_name,
-  including nested fields. Retain all other descriptor fields and options exactly
+  services, file-level extensions, file options, source_code_info and each field's json_name,
+  including nested fields. This applies equally to imported well-known types:
+  retain their file name, package, syntax, selected declarations and reachable imports;
+  discard all file options, including language package and code-generation options.
+  Retain message, enum, field and oneof options and all other descriptor fields exactly
   as declared; authors using different compilers must agree on those definitions.
 - Sort files by name, and top-level messages and enums within each file by name,
   using ascending UTF-8 byte order. Preserve all other repeated declaration order.
@@ -232,7 +248,7 @@ messages in the same fixture.proto and the imported google/protobuf/duration.pro
 The three SDK fixture.proto copies are identical. The normalized reachable Graph
 projection is stored as crates/harmos-conformance/fixtures/schema.bin for the
 hand-written plugin and Rust SDK fixture; case 17 compares it against each SDK's
-advertised graph. It retains Duration's declared file options.
+advertised graph. It retains message options and omits Duration's file options.
 
 ```proto
 import "google/protobuf/duration.proto";
@@ -261,6 +277,11 @@ Append Public operations with empty descriptions and absent policies, in order:
   (including explicit zero presence) and next equal to the request.
 - conformance.nested: Graph.Nested to Graph. Return next, or an empty Graph.
 - conformance.projected: Graph to Value. Return tail.value, or an empty Value.
+
+Append `conformance.clock` (Value to Value, Public, absent policy and empty
+description) after these operations. Append requirements `harmos.clock.sleep`
+then `harmos.clock.now` after `conformance.host.schema`. Include their reachable
+clock types from `harmos/v1/plugin.proto`, Duration and Timestamp in Catalog.types.
 
 Append conformance.settings after the original streams, with row Value, default
 interval one second and interval_setting harmos.conformance.v1.Graph.interval.

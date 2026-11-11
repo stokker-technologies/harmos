@@ -78,6 +78,7 @@ internal static class Descriptors
       file.Service.Clear();
       file.Extension.Clear();
       file.SourceCodeInfo = null;
+      file.Options = null;
       file.PublicDependency.Clear();
       file.WeakDependency.Clear();
       file.Dependency.Clear();

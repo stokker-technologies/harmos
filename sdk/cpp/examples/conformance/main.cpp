@@ -108,6 +108,19 @@ int main(int argc, char** argv) {
             return request.tail().value();
         }).visibility(harmos::wire::VISIBILITY_PUBLIC));
 
+        plugin.requires_operation(harmos::SLEEP).requires_operation(harmos::NOW);
+        plugin.operation(Operation("conformance.clock", [](Context& ctx, Value) {
+            const auto before = ctx.now();
+            google::protobuf::Duration duration;
+            duration.set_seconds(3600);
+            ctx.sleep(duration);
+            const auto after = ctx.now();
+            const auto elapsed = static_cast<std::uint64_t>(after.seconds() - before.seconds());
+            std::string bytes(8, '\0');
+            for (unsigned index = 0; index < 8; ++index) bytes[index] = static_cast<char>(elapsed >> (8 * index));
+            return value(bytes);
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC));
+
         // Compose a Host-Ticked Observer and a Device-Driven Stream.
         harmos::Stream<Value> ticks("conformance.ticks");
         harmos::Observer<Value> observer(ticks, [](Context& ctx) {

@@ -18,7 +18,7 @@ import asyncio
 from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
-from harmos import Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
+from harmos import NOW, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
 from harmos.conformance.v1.fixture_pb2 import Graph, Value
 from harmos.v1 import plugin_pb2 as wire
 
@@ -100,6 +100,13 @@ class Fixture:
     async def projected(self, ctx: Context, request: Graph) -> Value:
         return request.tail.value
 
+    @operation("conformance.clock", request=Value, response=Value)
+    async def clock(self, ctx: Context, request: Value) -> Value:
+        before = await ctx.now()
+        await ctx.sleep(Duration(seconds=3600))
+        after = await ctx.now()
+        return Value(value=(after.seconds - before.seconds).to_bytes(8, "little", signed=True))
+
     @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
     async def ticks(self, ctx: Context) -> Value:
         return Value(value=ctx.sequence.to_bytes(8, "little"))
@@ -114,6 +121,12 @@ class Fixture:
         return Value(value=ctx.sequence.to_bytes(8, "little"))
 
 
+class ClockFixture:
+    """Reuse the Clock Journey Without External Device Demand."""
+
+    clock = Fixture.clock
+
+
 # === Public Functions === #
 
 
@@ -122,7 +135,7 @@ def plugin() -> Plugin:
         Fixture(),
         id="conformance",
         version="1.0.0",
-        requires=[HOST_ECHO, HOST_PENDING, HOST_FAIL, HOST_SCHEMA],
+        requires=[HOST_ECHO, HOST_PENDING, HOST_FAIL, HOST_SCHEMA, SLEEP, NOW],
         sections=[Graph(interval=Duration(seconds=2))],
     )
 
@@ -133,8 +146,10 @@ def plugin() -> Plugin:
 async def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
+    parser.add_argument("--clock-only", action="store_true", help="Serve Only the Host Clock Journey")
     options = parser.parse_args()
-    endpoint = await plugin().start(options.address)
+    selected = Plugin(ClockFixture(), id="conformance", version="1.0.0", requires=[SLEEP, NOW]) if options.clock_only else plugin()
+    endpoint = await selected.start(options.address)
     print(f"harmos listening {endpoint.address}", flush=True)
     try:
         await endpoint.server.wait_for_termination()

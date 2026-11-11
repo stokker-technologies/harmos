@@ -51,6 +51,7 @@ pub const CASES: &[&str] = &[
     "Stop and Cleanup",
     "Schema Fingerprints",
     "Interval Setting",
+    "Built-In Clock Fingerprints",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -510,6 +511,41 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             tick(&send, &mut input, 2, 102).await?;
             drop(send);
             require(input.message().await?.is_none(), "Setting Observer Survived Demand Closure")?;
+        }
+        19 => {
+            // Check Both Advertised Clock Requirements Against Fixed Fingerprints.
+            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let types = catalog.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            for ((id, expected), (request, response)) in fixture::CLOCK_FINGERPRINTS
+                .into_iter()
+                .zip([("harmos.v1.Sleep", "harmos.v1.SleepResponse"), ("harmos.v1.Now", "harmos.v1.Time")])
+            {
+                let requirement = catalog
+                    .requires
+                    .iter()
+                    .find(|item| item.id == id)
+                    .ok_or_else(|| Error::Invalid(format!("Missing Clock Requirement: {id}")))?;
+                let actual = harmos_protocol::schema::fingerprint(id, types, request, response)
+                    .map_err(|error| Error::Invalid(error.to_string()))?;
+                let host = harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
+                    .map_err(|error| Error::Invalid(error.to_string()))?;
+                require(requirement.fingerprint == expected && actual == expected && host == expected, "Clock Fingerprint Differs")?;
+            }
+            // Answer Host Clock Calls Without Any Local Timer.
+            let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(&[])).await?;
+            for (id, operation, payload, reply) in [
+                (1, "harmos.clock.now", vec![], vec![0x0a, 2, 8, 100]),
+                (2, "harmos.clock.sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
+                (3, "harmos.clock.now", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
+            ] {
+                child(&mut input, id, operation, &payload).await?;
+                send_child(&send, id, child_response::Result::Payload(reply)).await?;
+            }
+            drop(send);
+            require(
+                terminal(&mut input).await? == response::Result::Payload(fixture::payload(&3600_i64.to_le_bytes())),
+                "Clock Result Differs",
+            )?;
         }
         16 => {
             client.stop(v1::StopRequest { reason: "Conformance Complete".into() }).await?;

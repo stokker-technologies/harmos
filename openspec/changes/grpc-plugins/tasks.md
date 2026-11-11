@@ -10,6 +10,7 @@
 - [x] 2.1 Add `crates/harmos-protocol` exposing the `harmos.v1` definitions as `harmos_protocol::v1`, with checked-in `proto/` files and generated Rust, and a drift check that needs no installed `protoc`.
 - [x] 2.2 Write the behaviour spec: describe, activation, invoke frames, child calls, cancellation, failures and streams.
 - [x] 2.3 Add the conformance suite with a reference host usable by non-Rust SDKs.
+- [x] 2.4 Canonicalize file options across SDK fingerprints, share Rust clock descriptors and pin both built-in clock fingerprints in conformance.
 
 ## 3. Host
 
@@ -21,6 +22,7 @@
 - [x] 3.6 Serve `harmos.clock.sleep` and `harmos.clock.now`, and drive observer ticks from host timers.
 - [x] 3.7 Add the virtual mode: its own timer queue, activity accounting for calls, ticks and host work, and a controller that advances while a condition is unmet, with simulation's existing tests kept passing.
 - [x] 3.8 Reduce visibility to `Private` and `Public`.
+- [ ] 3.9 Prove Python conformance plugin admission and host-clock sleep through the real runtime under virtual time.
 
 ## 4. Rust SDK
 

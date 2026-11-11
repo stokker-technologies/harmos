@@ -125,10 +125,13 @@ fn main() -> Result<()> {
         .operation(Operation::new("conformance.schema", schema).visibility(Visibility::Public))
         .operation(Operation::new("conformance.nested", nested).visibility(Visibility::Public))
         .operation(Operation::new("conformance.projected", projected).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.clock", clock).visibility(Visibility::Public))
         .requires::<HostEcho>()
         .requires::<HostPending>()
         .requires::<HostFail>()
         .requires::<Graph>()
+        .requires::<harmos_sdk_grpc::clock::Sleep>()
+        .requires::<harmos_sdk_grpc::clock::Now>()
         .stream(ticks)
         .stream(device)
         .stream(settings)
@@ -139,6 +142,15 @@ fn main() -> Result<()> {
             ..Default::default()
         });
     if std::env::args().any(|argument| argument == "--remote") { plugin.remote().serve() } else { plugin.serve() }
+}
+
+async fn clock(ctx: &Context, _: Value) -> Result<Value> {
+    let before = ctx.now().await?;
+    ctx.sleep(std::time::Duration::from_secs(3600)).await?;
+    let after = ctx.now().await?;
+    Ok(Value {
+        value: (after.seconds - before.seconds).to_le_bytes().to_vec(),
+    })
 }
 
 async fn policy(ctx: &Context, request: Value) -> Result<Value> {

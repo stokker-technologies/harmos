@@ -12,6 +12,7 @@
 
 /* === Modules === */
 
+pub mod clock;
 pub mod schema;
 
 // Checked-In Output of the Generator Exercised by the Integration Drift Check.
