@@ -92,6 +92,12 @@ impl harmos_runtime::storage::StreamConsumer<support::App> for Store {
     }
 }
 
+pub struct Python {
+    pub address: String,
+    process: tokio::process::Child,
+    drain: JoinHandle<()>,
+}
+
 pub struct Sdk {
     pub address: String,
     process: tokio::process::Child,
@@ -240,6 +246,44 @@ impl HostFixture {
             proxy,
             disconnect,
         }
+    }
+}
+
+impl Python {
+    pub async fn start(arguments: &[&str]) -> Self {
+        let sdk = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/python");
+        let python = sdk.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
+        let mut process = tokio::process::Command::new(python)
+            .args(["-m", "harmos.conformance", "--address", "127.0.0.1:0", "--shutdown-on-stdin"])
+            .args(arguments)
+            .current_dir(sdk)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("Python SDK Environment: Run mise run prepare");
+        let mut stdout = BufReader::new(process.stdout.take().unwrap()).lines();
+        let address = loop {
+            let line = stdout.next_line().await.unwrap().expect("Python SDK Readiness");
+            if let Some(address) = line.strip_prefix("harmos listening ") {
+                break format!("http://{address}");
+            }
+        };
+        let drain = tokio::spawn(async move { while stdout.next_line().await.ok().flatten().is_some() {} });
+        Self { address, process, drain }
+    }
+
+    pub async fn close(mut self) -> std::process::ExitStatus {
+        drop(self.process.stdin.take());
+        self.process.wait().await.unwrap()
+    }
+}
+
+impl Drop for Python {
+    fn drop(&mut self) {
+        let _ = self.process.start_kill();
+        self.drain.abort();
     }
 }
 

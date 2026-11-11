@@ -24,6 +24,7 @@ mod interval_stream;
 mod invoke_support;
 mod managed_lifecycle;
 mod private_refusal;
+mod python_clock;
 mod remote_reconnect;
 mod remote_stop;
 mod stream_reconnect;

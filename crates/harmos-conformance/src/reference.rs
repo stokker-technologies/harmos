@@ -180,6 +180,43 @@ async fn invoke(
     request: v1::Request, input: &mut Streaming<v1::HostFrame>, output: &mpsc::Sender<std::result::Result<v1::PluginFrame, Status>>,
 ) -> std::result::Result<(), Status> {
     let result = match request.operation.as_str() {
+        "conformance.clock" => {
+            let mut readings = Vec::new();
+            for (call, operation, payload) in [
+                (1, "harmos.clock.now", vec![]),
+                (
+                    2,
+                    "harmos.clock.sleep",
+                    v1::Sleep {
+                        duration: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
+                    }
+                    .encode_to_vec(),
+                ),
+                (3, "harmos.clock.now", vec![]),
+            ] {
+                send_child(output, call, operation, payload).await?;
+                let Some(host_frame::Frame::Child(v1::ChildResponse {
+                    call: received,
+                    result: Some(child_response::Result::Payload(payload)),
+                })) = input.message().await?.and_then(|frame| frame.frame)
+                else {
+                    return Err(Status::invalid_argument("Expected Clock Reply"));
+                };
+                if received != call {
+                    return Err(Status::invalid_argument("Unexpected Clock Reply"));
+                }
+                if operation == "harmos.clock.now" {
+                    readings.push(
+                        v1::Time::decode(payload.as_slice())
+                            .map_err(|_| Status::invalid_argument("Invalid Time"))?
+                            .now
+                            .ok_or_else(|| Status::invalid_argument("Missing Time"))?
+                            .seconds,
+                    );
+                }
+            }
+            response::Result::Payload(fixture::payload(&(readings[1] - readings[0]).to_le_bytes()))
+        }
         "conformance.projected" => {
             let graph = Graph::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Graph"))?;
             response::Result::Payload(graph.tail.and_then(|tail| tail.value).unwrap_or_default().encode_to_vec())

@@ -148,6 +148,7 @@ google::protobuf::FileDescriptorSet types(const google::protobuf::Descriptor* de
         file->clear_service();
         file->clear_extension();
         file->clear_source_code_info();
+        file->clear_options();
         file->clear_public_dependency();
         file->clear_weak_dependency();
         file->clear_dependency();

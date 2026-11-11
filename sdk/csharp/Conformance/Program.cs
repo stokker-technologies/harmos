@@ -31,14 +31,27 @@ internal sealed class ConformancePlugin
           (context, request) => Task.FromResult(request.Next ?? new Graph()))
       .Operation(new Operation<Graph, Value>("conformance.projected", Visibility.Public),
           (context, request) => Task.FromResult(request.Tail?.Value ?? new Value()))
+      .Operation(new Operation<Value, Value>("conformance.clock", Visibility.Public), ClockCall)
       .Requires(hostEcho)
       .Requires(hostPending)
       .Requires(hostFail)
       .Requires(new Operation<Graph, Value>("conformance.host.schema", Visibility.Public))
+      .Requires(Clock.Sleep)
+      .Requires(Clock.Now)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
       .Stream<Value>("conformance.device", Device)
       .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "harmos.conformance.v1.Graph.interval")
       .Section(new Graph { Interval = new Duration { Seconds = 2 } });
+
+  private async Task<Value> ClockCall(Context context, Value request)
+  {
+    var before = await context.NowAsync();
+    await context.SleepAsync(new Duration { Seconds = 3600 });
+    var after = await context.NowAsync();
+    var bytes = new byte[sizeof(long)];
+    BinaryPrimitives.WriteInt64LittleEndian(bytes, after.Seconds - before.Seconds);
+    return new Value { Value_ = ByteString.CopyFrom(bytes) };
+  }
 
   private Task<Value> Echo(Context context, Value request) => Task.FromResult(request);
 

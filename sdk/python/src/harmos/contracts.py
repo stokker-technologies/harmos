@@ -170,7 +170,7 @@ def message_types(message: type[Message]) -> descriptor_pb2.FileDescriptorSet:
         for item in sorted(source.enum_type, key=lambda item: item.name.encode()):
             if item.name in selected[name]:
                 definition.enum_type.add().CopyFrom(item)
-        for field in ("service", "extension", "source_code_info", "public_dependency", "weak_dependency", "dependency"):
+        for field in ("options", "service", "extension", "source_code_info", "public_dependency", "weak_dependency", "dependency"):
             definition.ClearField(field)
         definition.dependency.extend(sorted(set(source.dependency) & files.keys()))
         for item in definition.message_type:
