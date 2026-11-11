@@ -23,6 +23,7 @@ mod host_consumption;
 mod host_invoke;
 mod interval_stream;
 mod invoke_support;
+mod managed_environment;
 mod managed_lifecycle;
 mod private_refusal;
 mod python_clock;

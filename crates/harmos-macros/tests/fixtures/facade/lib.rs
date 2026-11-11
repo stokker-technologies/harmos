@@ -61,11 +61,11 @@ pub mod __harmos {
     pub use harmos::runtime;
 
     #[cfg(feature = "runtime")]
-    pub use harmos::{Context, Dependent, Operation, ExecutionContext, Resource, Response};
+    pub use harmos::{Context, Dependent, ExecutionContext, Operation, Resource, Response};
 
     #[cfg(feature = "runtime")]
     pub use harmos::operations::OperationCatalog;
-    pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, sidecar, streams};
+    pub use harmos::{builtins, catalog, guest, listeners, model, operations, plugin, schema, streams};
 
     /* === Imports === */
 

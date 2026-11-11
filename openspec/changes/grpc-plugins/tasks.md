@@ -8,12 +8,12 @@
   - `Cargo.lock` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
   - `Cargo.toml` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
   - `README.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
-  - `crates/harmos-macros/tests/artifact/main.rs` — Migrate native artifact/catalog checks to SDK catalog construction; delete removed plugin macro/grant refusal cases; retain guest/host macro coverage (outside this slice).
-  - `crates/harmos-macros/tests/catalog/main.rs` — Migrate native artifact/catalog checks to SDK catalog construction; delete removed plugin macro/grant refusal cases; retain guest/host macro coverage (outside this slice).
+  - `crates/harmos-macros/tests/artifact/main.rs` — Replace native embedded-catalog assertions with SDK catalog construction; retain guest embedded-metadata assertions.
+  - `crates/harmos-macros/tests/catalog/main.rs` — Retire native plugin/observer macro refusal cases and inspect guest/host catalogs; retain guest-required macro diagnostics until 7.1.
   - `crates/harmos-macros/tests/fixtures/empty_grant.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
   - `crates/harmos-macros/tests/fixtures/explicit_version_plugin.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/facade/lib.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
-  - `crates/harmos-macros/tests/fixtures/facade_runtime_catalogs.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
+  - `crates/harmos-macros/tests/fixtures/facade/lib.rs` — Remove the native sidecar re-export; retain guest and host macro-path coverage.
+  - `crates/harmos-macros/tests/fixtures/facade_runtime_catalogs.rs` — Remove native plugin/catalog fixture declarations; retain guest and host catalog inspection.
   - `crates/harmos-macros/tests/fixtures/plugin_on_struct.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
   - `crates/harmos-macros/tests/fixtures/plugin_setup_operations.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
   - `crates/harmos-macros/tests/fixtures/synchronous_activation.rs` — Delete removed plugin/observer/catalog macro and grant checks when their production macros are removed; keep guest-required variants until 7.1 (outside this slice).
@@ -55,6 +55,8 @@
   - `crates/harmos-runtime/tests/plugin/activation.rs` — Delete plugin graph, reload-plan and generation-token/stale-call fencing coverage with those features; preserve required guest behaviour until 7.1.
   - `crates/harmos-runtime/tests/plugin/main.rs` — Delete plugin graph, reload-plan and generation-token/stale-call fencing coverage with those features; preserve required guest behaviour until 7.1.
   - `crates/harmos-runtime/tests/plugin/owners.rs` — Delete plugin graph, reload-plan and generation-token/stale-call fencing coverage with those features; preserve required guest behaviour until 7.1.
+  - `crates/harmos-runtime/tests/plugin/reload.rs` — Delete graph reload ordering, plan preflight and generation guards; retain ordinary reconnect and call-lifetime behaviour on `plugin_grpc`.
+  - `crates/harmos-runtime/tests/plugin/retirement.rs` — Replace retained stop, cleanup failure and peer isolation journeys with `plugin_grpc` stories; delete graph-dependent retirement and provider retention mechanics.
   - `crates/harmos-runtime/tests/runtime/main.rs` — Migrate native registrations/catalog inspection and integration wiring to `Describe`/SDK builders; delete old plugin/observer/catalog attribute-macro assertions; retain host/guest coverage.
   - `crates/harmos-runtime/tests/runtime/plugin.rs` — Migrate native registrations/catalog inspection and integration wiring to `Describe`/SDK builders; delete old plugin/observer/catalog attribute-macro assertions; retain host/guest coverage.
   - `crates/harmos-runtime/tests/sidecar/admission.rs` — Migrate retained lifecycle, call, failure and stream behaviour to one-journey `plugin_grpc` stories using the host virtual clock; delete assertions for removed mechanisms.
@@ -114,6 +116,9 @@
   - `crates/harmos-sidecar/tests/kit/task.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
   - `crates/harmos-sidecar/tests/system/environment.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
   - `crates/harmos-sidecar/tests/system/main.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
+  - `crates/harmos-runtime/tests/plugin_grpc/managed_environment.rs` — Replace the removed Windows control-pipe environment story with managed SDK launch-value and inherited Windows-path coverage under the host virtual clock.
+  - `sdk/rust/src/bin/host-fixture.rs` — Serve lifecycle and environment fixture operations as SDK builder values; retain cleanup evidence for managed shutdown.
+  - `sdk/rust/src/plugin.rs` — Replace native embedded catalog fixture assertions with inert SDK catalog construction and typed section round-trip coverage.
   - `crates/harmos-sidecar/tests/transport/capacity.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
   - `crates/harmos-sidecar/tests/transport/channels.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
   - `crates/harmos-sidecar/tests/transport/main.rs` — Delete with framed transport, handshake, binary/control carriers and the old kit; retained lifecycle/catalog behaviour is covered through SDK-backed `plugin-grpc` stories.
@@ -211,10 +216,10 @@
 - [ ] 4.1 Move `crates/harmos-sdk` to `sdk/rust`, keeping its crate name, and serve `harmos.v1` from it in place of the framed wire.
 - [ ] 4.2 Replace attribute-macro authoring with derives for data and builder values for plugins, operations, streams and observers, with a target-selected `serve`; delete the plugin, observer and catalog macros and their sidecar and guest variants.
 - [ ] 4.3 Rebuild observers as functions that answer host ticks, route every SDK wait through the host clock, and share `publish_on` and its error type.
-- [ ] 4.4 Migrate the examples and fixtures.
+- [x] 4.4 Migrate the examples and fixtures.
   - [x] 4.4.1 Migrate Schematic advice to SDK protobuf builders and managed placement, host analysis and transfer streaming, native packaging and benchmark selectors.
   - [x] 4.4.2 Migrate the stream-consumer fixture and its host-row journey to SDK unary calls on managed placement.
-  - [ ] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
+  - [x] 4.4.3 Retire or migrate crates/harmos-sidecar/tests/fixtures/catalog_sidecar.rs, crates/harmos-runtime/tests/fixtures/process_client.rs and process_provider.rs, and the native macro fixture consumers under crates/harmos-macros/tests; authoring fixture libraries now select harmos_sdk_grpc instead of harmos_sidecar.
 
 ## 5. Pilot SDKs
 

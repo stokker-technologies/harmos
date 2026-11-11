@@ -21,9 +21,6 @@ mod admission;
 #[path = "../sidecar/grants.rs"]
 mod grants;
 
-#[path = "../sidecar/graph.rs"]
-mod graph;
-
 #[path = "../sidecar/listeners.rs"]
 mod listeners;
 

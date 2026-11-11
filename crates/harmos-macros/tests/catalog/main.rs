@@ -103,14 +103,14 @@ impl harmos::builtins::lifecycle::Policy for Example {{
 }}
 impl harmos::Lifecycle for Example {{
     type Config = ();
-    type Context = harmos::sidecar::Supervisor;
+    type Context = harmos::guest::kit::Context;
     type Error = std::convert::Infallible;
     async fn prepare(_: (), _: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {{ Ok(Self) }}
     async fn initialize(&mut self, _: &Self::Context) -> Result<(), Self::Error> {{ Ok(()) }}
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {{ Ok(()) }}
     async fn cleanup(&mut self) -> Result<(), Self::Error> {{ Ok(()) }}
 }}
-#[harmos::sidecar::plugin(id = {literal}, requires = ())]
+#[harmos::guest(id = {literal}, requires = ())]
 impl harmos::Plugin for Example {{
     const CATALOGS: &'static [harmos::operations::Catalog] = &[];
 }}
@@ -159,7 +159,6 @@ fn main() {{}}
 #[test]
 fn authoring_refusals_compile() {
     let harmos = fixtures::library("harmos");
-    let harmos_sidecar = fixtures::library("harmos_sidecar");
     let serde = fixtures::library("serde");
     let dependencies = fixtures::dependencies();
     let fixtures = fixtures::manifest().join("tests/fixtures");
@@ -186,14 +185,9 @@ fn authoring_refusals_compile() {
         ("defaultless_lanes.rs", "exactly one lane `#[default]`"),
         ("doubly_defaulted_lanes.rs", "exactly one lane `#[default]`"),
         ("operation_on_impl.rs", "operation belongs on the implementation struct"),
-        // Direct artifact declaration failures.
+        // Guest Artifact Declarations Remain Until The Guest Migration.
         ("explicit_version_plugin.rs", "remove `version`"),
         ("plugin_on_struct.rs", "belongs on `impl Plugin for ConcreteType`"),
-        ("plugin_setup_operations.rs", "ApplicationConfiguration"),
-        ("synchronous_activation.rs", "initializing awaits"),
-        ("synchronous_deactivation.rs", "stopping awaits"),
-        ("undeclared_observer_output.rs", "observer outputs must be a subset"),
-        ("undeclared_custom_observer_output.rs", "observer outputs must be a subset"),
         // A requirement grants its own operation, scoped by name; an empty
         // or unknown scope declares nothing a planner could read.
         ("empty_grant.rs", "grant scopes are nonempty"),
@@ -216,8 +210,6 @@ fn authoring_refusals_compile() {
             .arg(&source)
             .arg("--extern")
             .arg(format!("harmos={}", harmos.display()))
-            .arg("--extern")
-            .arg(format!("harmos_sidecar={}", harmos_sidecar.display()))
             .arg("--extern")
             .arg(format!("serde={}", serde.display()))
             .arg("-L")

@@ -52,15 +52,24 @@ struct Output {
 
 fn main() -> Result<()> {
     let cleanup = std::env::args().nth(1).expect("Cleanup Evidence Path");
-    let plugin = Plugin::new("placement", "1.0.0").operation(Operation::new("placement.echo", echo)).on_stop(move || {
-        std::fs::write(&cleanup, b"stopped")?;
-        Ok(())
-    });
+    let plugin = Plugin::new("placement", "1.0.0")
+        .operation(Operation::new("placement.echo", echo))
+        .operation(Operation::new("placement.environment", environment))
+        .on_stop(move || {
+            std::fs::write(&cleanup, b"stopped")?;
+            Ok(())
+        });
     plugin.serve()
 }
 
 async fn echo(_: &Context, input: Input) -> Result<Output> {
     Ok(Output { value: input.value })
+}
+
+async fn environment(_: &Context, input: Input) -> Result<Output> {
+    let name = String::from_utf8(input.value).expect("Environment Variable Name Is UTF-8");
+    let value = std::env::var(name).expect("Requested Environment Variable Exists");
+    Ok(Output { value: value.into_bytes() })
 }
 
 /* === Tests === */

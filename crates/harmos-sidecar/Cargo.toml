@@ -12,13 +12,6 @@ version = { workspace = true }
 
 # === Package Targets === #
 
-[[bin]]
-name = "harmos-sidecar-catalog-fixture"
-path = "tests/fixtures/catalog_sidecar.rs"
-required-features = ["kit", "derive"]
-test = false
-bench = false
-
 # === Features === #
 
 [features]
@@ -230,11 +223,6 @@ windows-sys = { workspace = true, default-features = true, optional = true }
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
-
-[[test]]
-name = "system"
-path = "tests/system/main.rs"
-required-features = ["kit", "derive"]
 
 # === Bench Targets === #
 

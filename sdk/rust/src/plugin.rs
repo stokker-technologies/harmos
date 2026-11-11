@@ -242,6 +242,29 @@ mod tests {
         Ok(())
     }
 
+    #[derive(crate::Message)]
+    struct Settings {
+        interval_ms: u64,
+    }
+
+    async fn not_called(_: &Context, _: ()) -> Result<()> {
+        panic!("Catalog Inspection Entered A Handler");
+    }
+
+    #[test]
+    fn catalog_describes_values_without_running_handlers_or_cleanup() {
+        let plugin = Plugin::new("catalog_fixture", "1.0.0")
+            .operation(Operation::new("catalog.read", not_called))
+            .section(Settings { interval_ms: 250 })
+            .on_stop(|| panic!("Catalog Inspection Entered Cleanup"));
+        let catalog = plugin.catalog().unwrap();
+        assert_eq!(catalog.operations.len(), 1);
+        assert_eq!(catalog.operations[0].id, "catalog.read");
+        assert_eq!(catalog.sections.len(), 1);
+        let settings = <Settings as prost::Message>::decode(catalog.sections[0].payload.as_slice()).unwrap();
+        assert_eq!(settings.interval_ms, 250);
+    }
+
     #[test]
     fn duplicate_operations_are_rejected_at_catalog_construction() {
         let plugin = Plugin::new("test", "1.0.0")

@@ -12,8 +12,6 @@
 // Exercise The Original Helper Without Selecting The Authoring Kit.
 #[path = "../../src/kit/task.rs"]
 mod observer;
-#[path = "../../../harmos-runtime/tests/support/fixtures.rs"]
-mod prepared_fixtures;
 #[path = "../kit/task.rs"]
 mod task;
 
@@ -84,33 +82,4 @@ fn owner_registration_records() {
         let mut records = Records::default();
         assert_eq!(records.push_system(fact).is_ok(), valid, "records {owner:?}");
     }
-}
-
-#[test]
-fn inert_native_metadata() {
-    use harmos_domain::model::operations::lifecycle::Action;
-
-    let root = tempfile::tempdir().unwrap();
-    let artifact = root.path().join("plugin.data");
-    // A Non-Executable Copy Suffices; The Plugin Lifecycle Panics If Entered.
-    let fixture = prepared_fixtures::binary("harmos-sidecar-catalog-fixture", option_env!("CARGO_BIN_EXE_harmos-sidecar-catalog-fixture"));
-    let executable = std::fs::read(fixture).unwrap();
-    std::fs::write(&artifact, executable).unwrap();
-    let bytes = std::fs::read(&artifact).unwrap();
-    let declaration = harmos_sidecar::inventory::Declaration::inspect(&bytes, harmos_sidecar::inventory::Facility::Sidecar).unwrap();
-    assert_eq!(declaration.id, "catalog_fixture");
-    let contracts = &declaration.contracts;
-    assert_eq!(contracts.provides.len(), 1);
-    assert_eq!(contracts.provides[0].operation().id.as_str(), "catalog.read");
-    assert_eq!(contracts.requires.len(), 1);
-    assert_eq!(contracts.requires[0].contract, contracts.provides[0]);
-    for (descriptor, action) in contracts.lifecycle.iter().zip([Action::Initialize, Action::Shutdown]) {
-        assert_eq!(descriptor.action(), action);
-        assert_eq!(descriptor.contract().operation().policy.timeout, std::time::Duration::from_secs(120));
-    }
-
-    let fragments = harmos_domain::artifacts::fragments::<serde_json::Value>(&bytes, &["contracts"]).unwrap();
-    assert_eq!(fragments.len(), 3);
-    assert_eq!(fragments.iter().filter(|fragment| fragment["entry"]["direction"] == "lifecycle").count(), 1);
-    assert!(fragments.iter().all(|fragment| serde_json::to_vec(fragment).unwrap().len() <= harmos_domain::artifacts::FRAGMENT_LIMIT));
 }
