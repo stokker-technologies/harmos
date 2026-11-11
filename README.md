@@ -80,9 +80,10 @@ application revision that produced them.
 ### Rust
 
 Use the `harmos` facade to compose a runtime and define your application's
-state, transactions and operations. Optional Cargo features select plugin,
-transport and simulation capabilities. The default facade exposes portable contracts;
-enable `runtime` for SDK execution and, on native targets, host runtime facilities.
+state, transactions and operations. The default facade includes the host runtime
+and managed or remote `harmos.v1` plugin placement. Native plugin authors use the
+builder values in `harmos::sdk`. Portable contract crates select
+`default-features = false`; optional features add guest hosting and simulation.
 The [product guide](docs/product-guide.md)
 shows one operation file where the request implements consuming execution with declared resources and child operations.
 

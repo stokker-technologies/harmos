@@ -184,13 +184,15 @@ under `examples/schematic/` and is also the system fixture of the Harmos test su
 
 ## Cargo Features
 
-The default facade exposes portable models and authoring macros. Enable `runtime`
-for SDK execution on all targets, plus managed state, streams, storage and recovery on native targets. Other execution
-features imply `runtime`.
+The default facade enables `runtime`: managed state, streams, storage, recovery
+and `harmos.v1` plugin placement on native targets. Native plugin builders are
+available through `harmos::sdk`. Portable contract crates use
+`default-features = false`. Other execution features imply `runtime`.
 
 | Feature | Enables |
 | --- | --- |
-| `runtime` | SDK lifecycle, registration and host runtime facilities. |
+| `runtime` | SDK execution and native host runtime facilities, including gRPC plugin placement; enabled by default. |
+| `plugin-grpc` | Managed or remote `harmos.v1` placement; included by `runtime` on native targets. |
 | `plugin` | Shared plugin management, activation, routing, and reload. |
 | `sidecar` | Native process authoring and hosting with matching module attributes. |
 | `guest` | Wasm guest authoring and native sandbox hosting with matching module attributes. |
@@ -1016,7 +1018,7 @@ this owner for both plugin backends.
 
 ### gRPC Plugin Placement
 
-Enable `plugin-grpc` to attach a `harmos.v1` endpoint with
+With the default facade, attach a `harmos.v1` endpoint with
 `runtime.attach_grpc(placement, settings).await`. The types live in
 `harmos::plugin::grpc`. `Placement::Managed(Managed { executable, arguments,
 environment })` starts an executable, hashes its bytes with SHA-256, reads its

@@ -17,8 +17,8 @@ version = { workspace = true }
 
 [features]
 plugin-grpc = ["runtime", "harmos-runtime/plugin-grpc"]
-default = []
-runtime = ["dep:harmos-runtime", "dep:harmos-sdk"]
+default = ["runtime"]
+runtime = ["dep:harmos-runtime", "harmos-runtime?/plugin-grpc", "dep:harmos-sdk", "dep:harmos-sdk-grpc"]
 plugin = ["runtime", "harmos-runtime/plugin"]
 sidecar = [
   "runtime",
@@ -89,6 +89,7 @@ harmos-operations = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Local
 harmos-runtime = { workspace = true, optional = true }
+harmos-sdk-grpc = { workspace = true, optional = true }
 harmos-sidecar = { workspace = true, optional = true, default-features = false }
 
 # Git

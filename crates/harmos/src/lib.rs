@@ -7,7 +7,7 @@
  * ***
  */
 
-// Portable Contracts Are Available Without The Execution Runtime.
+// Host Execution and Plugin Placement Are Available by Default.
 
 /* === Modules === */
 
@@ -18,6 +18,9 @@ pub use harmos_operations as builtins;
 
 #[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
 pub use harmos_runtime::*;
+
+#[cfg(all(feature = "runtime", not(target_arch = "wasm32")))]
+pub use harmos_sdk_grpc as sdk;
 
 #[cfg(all(feature = "runtime", target_arch = "wasm32"))]
 pub use harmos_sdk::*;

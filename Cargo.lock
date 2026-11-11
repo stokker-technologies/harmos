@@ -1200,6 +1200,7 @@ dependencies = [
  "harmos-operations",
  "harmos-runtime",
  "harmos-sdk",
+ "harmos-sdk-grpc",
  "harmos-sidecar",
 ]
 

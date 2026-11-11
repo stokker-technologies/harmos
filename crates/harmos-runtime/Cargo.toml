@@ -24,7 +24,7 @@ bench = false
 
 # Core Runtime and Authoring Are Always Available
 [features]
-default = []
+default = ["plugin-grpc"]
 plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
 plugin-grpc = [
   "plugin",
