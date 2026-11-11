@@ -12,8 +12,6 @@
 
 /* === Modules === */
 
-pub mod operations;
-pub mod services;
 pub mod storage;
 
 /* === Re-Exports === */

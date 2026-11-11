@@ -259,8 +259,8 @@ mod facade {
 #[cfg(feature = "plugin-guest")]
 #[test]
 fn guest_inventory_contains() {
-    use harmos_domain::inventory::{Declaration, Facility};
-    use harmos_domain::plugin::Declared;
+    use harmos_operations::inventory::{Declaration, Facility};
+    use harmos_operations::plugin::Declared;
 
     let bytes = <Guest as Declared>::markers().unwrap().concat();
     let inspected = Declaration::inspect(&bytes, Facility::Guest).unwrap();

@@ -67,7 +67,7 @@ static READ_CONTRACT_DECLARATION_CALLEES: [harmos_runtime::operations::WireDecla
     [READ_CONTRACT_DECLARATION_DESCRIPTION.copied()];
 const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ReadContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ReadContractDeclaration>::new(&READ_CONTRACT_DECLARATION_DESCRIPTION)
-        .grant(|_: &ReadContractDeclaration| Some(harmos_domain::plugin::Grant::of("resources.read", "device")))
+        .grant(|_: &ReadContractDeclaration| Some(harmos_operations::plugin::Grant::of("resources.read", "device")))
         .calls(&READ_CONTRACT_DECLARATION_CALLEES);
 
 // The Device A Read Saw And How Many Reads Preceded It.
@@ -223,21 +223,21 @@ async fn private_grpc_refused() {
     #[derive(harmos_runtime::Message, Debug, Default, Clone)]
     struct Private;
 
-    impl harmos_domain::operations::RequestShape for Private {
+    impl harmos_operations::operations::RequestShape for Private {
         type Request = Self;
         type Response = ();
         type Input = NoStream;
         type Output = NoStream;
     }
-    static PRIVATE_DESCRIPTION: harmos_domain::operations::WireDeclaration =
-        harmos_domain::operations::WireDeclaration::request::<Private>(
+    static PRIVATE_DESCRIPTION: harmos_operations::operations::WireDeclaration =
+        harmos_operations::operations::WireDeclaration::request::<Private>(
             "resources.private_grpc",
             READ_CONTRACT_DECLARATION_OPERATION.entry().policy,
         )
         .grpc(Grpc::new("resources.v1", "Private", "Call"));
 
-    const PRIVATE_OPERATION: harmos_domain::operations::OperationSpec<Private> =
-        harmos_domain::operations::OperationSpec::<Private>::new(&PRIVATE_DESCRIPTION);
+    const PRIVATE_OPERATION: harmos_operations::operations::OperationSpec<Private> =
+        harmos_operations::operations::OperationSpec::<Private>::new(&PRIVATE_DESCRIPTION);
 
     async fn private_handler(
         _request: Private, _: harmos_runtime::operations::FunctionContext<Private>,

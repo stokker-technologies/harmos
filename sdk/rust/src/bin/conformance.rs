@@ -11,7 +11,7 @@
 
 /* === Modules === */
 
-#[path = "../../../../crates/harmos-conformance/src/schema_fixture.rs"]
+#[path = "../../../../tools/conformance/src/schema_fixture.rs"]
 mod schema_fixture;
 
 /* === Re-Exports === */

@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::model::services::policy::{RestartPolicy, ServicePolicy};
+pub use harmos_protocol::service::{RestartPolicy, ServicePolicy};
 
 /* === Imports === */
 

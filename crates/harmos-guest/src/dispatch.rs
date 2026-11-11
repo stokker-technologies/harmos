@@ -832,7 +832,7 @@ fn wire_answer(result: Result<Vec<u8>, ServingError>) -> WireAnswer {
         Err(error) => WireAnswer::Failed {
             failure: match &error {
                 ServingError::Startup(startup) => startup.report().into_failure(),
-                _ => harmos_domain::Failure::originate(error.classification(), &error, harmos_domain::failure::Origin::Plugin),
+                _ => harmos_operations::Failure::originate(error.classification(), &error, harmos_operations::failure::Origin::Plugin),
             },
         },
     }

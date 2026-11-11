@@ -227,7 +227,7 @@ impl OperationFactory {
             declared: Arc::new(move || declared.clone()),
             named: Arc::new(move |id| {
                 let mut definition = named.operation.definition().map_err(ServingError::Declaration)?;
-                definition.id = crate::execution::Identifier::new(id).map_err(harmos_domain::Error::from)?;
+                definition.id = crate::execution::Identifier::new(id).map_err(crate::operations::Error::from)?;
                 definition.fingerprint = (named.operation.fingerprint)(id).map_err(ServingError::Declaration)?;
                 definition.validate().map_err(ServingError::Declaration)?;
                 Ok(definition)

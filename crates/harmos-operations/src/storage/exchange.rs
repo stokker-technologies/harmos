@@ -98,7 +98,7 @@ pub(crate) async fn exchange(
                         reason: "empty batches are not accepted",
                     });
                 }
-                let grant = harmos_domain::plugin::Grant::of(operation, batch.destination.as_str().to_owned());
+                let grant = harmos_operations::plugin::Grant::of(operation, batch.destination.as_str().to_owned());
                 ctx.admit(&grant).map_err(Error::Access)?;
                 let admitted = match kind {
                     WriteKind::Streams => storage.admit_arrow_streams(scope, &batch).await?,

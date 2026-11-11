@@ -397,7 +397,7 @@ impl<A: Application> harmos_operations::execution::operations::OperationHost for
         harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(
+    fn publish_on<S: harmos_operations::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
     where

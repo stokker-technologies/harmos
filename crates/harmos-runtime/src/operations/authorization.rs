@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::inventory::contracts::Required;
+pub use harmos_operations::inventory::contracts::Required;
 
 /* === Imports === */
 

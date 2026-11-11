@@ -26,7 +26,7 @@ use crate::operations::{EncodedInvocation, Manager, PluginCallback};
 use crate::schema::Described;
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record, state::Recorded};
-use harmos_domain::listeners::{Context, Source};
+use harmos_operations::listeners::{Context, Source};
 
 /* === Constants === */
 
@@ -310,14 +310,14 @@ where
             reason: "projection differs from the original native catalog member",
         });
     }
-    let bytes = harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(|source| Error::OperationFailed {
+    let bytes = harmos_operations::listeners::encoding_memory_bytes(context, row).map_err(|source| Error::OperationFailed {
         operation: callback.contract().operation().id.to_string(),
         source: Arc::new(source),
     })?;
     let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted { resource: "record callback encoding" })?;
     callback
         .submit_with(bytes, |budget| {
-            harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(|source| Error::OperationFailed {
+            harmos_operations::listeners::encode_borrowed(context, row, budget).map_err(|source| Error::OperationFailed {
                 operation: callback.contract().operation().id.to_string(),
                 source: Arc::new(source),
             })

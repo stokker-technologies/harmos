@@ -16,7 +16,7 @@
 // Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
-use harmos_domain::model::operations::lifecycle::Action;
+use harmos_operations::model::operations::lifecycle::Action;
 // Local Imports
 use harmos_operations::execution::operations::{ExecutionContext, access::AccessError};
 

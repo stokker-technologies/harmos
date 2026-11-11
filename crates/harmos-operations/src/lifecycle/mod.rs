@@ -16,7 +16,7 @@ mod watch;
 /* === Re-Exports === */
 
 pub use cancel::Cancel;
-pub use harmos_domain::model::operations::lifecycle::*;
+pub use harmos_operations::model::operations::lifecycle::*;
 
 pub use harmos_protocol::host::InstanceState;
 pub use status::Status;
@@ -32,15 +32,15 @@ pub use watch::Watch;
 
 /* === Constants === */
 
-pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
+pub const POLICY: harmos_operations::OperationPolicy = harmos_operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(30),
     attempt_timeout: std::time::Duration::from_secs(30),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos_domain::RetryPolicy::Never,
+    retries: harmos_operations::RetryPolicy::Never,
 };
-const WATCH_POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
-    timeout: harmos_domain::operations::UNBOUNDED,
-    attempt_timeout: harmos_domain::operations::UNBOUNDED,
+const WATCH_POLICY: harmos_operations::OperationPolicy = harmos_operations::OperationPolicy {
+    timeout: harmos_operations::operations::UNBOUNDED,
+    attempt_timeout: harmos_operations::operations::UNBOUNDED,
     cancellation_timeout: std::time::Duration::ZERO,
     ..POLICY
 };
@@ -78,10 +78,10 @@ pub fn lifecycle_catalog_batch() -> crate::execution::__private::Catalog {
 
 /* === Private Functions === */
 
-fn state(status: harmos_domain::operations::instance::Status) -> InstanceState {
+fn state(status: harmos_operations::operations::instance::Status) -> InstanceState {
     InstanceState {
         phase: status.phase.as_str().to_owned(),
-        outcome: status.outcome.map(harmos_domain::operations::instance::Outcome::as_str).unwrap_or_default().to_owned(),
+        outcome: status.outcome.map(harmos_operations::operations::instance::Outcome::as_str).unwrap_or_default().to_owned(),
         cancellation_requested: status.cancellation_requested,
         attempt: status.attempt,
     }

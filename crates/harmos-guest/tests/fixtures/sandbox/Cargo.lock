@@ -525,14 +525,12 @@ dependencies = [
 name = "harmos-domain"
 version = "0.1.14"
 dependencies = [
- "harmos-sdk-derive",
  "harmos-protocol",
- "memchr",
+ "harmos-sdk-derive",
  "postcard",
  "prost",
  "prost-reflect",
  "prost-types",
- "semver",
  "serde",
  "serde_json",
  "sha2",
@@ -567,29 +565,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-sdk-derive"
-version = "0.1.14"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "serde_json",
- "syn 3.0.9",
-]
-
-[[package]]
 name = "harmos-operations"
 version = "0.1.14"
 dependencies = [
  "harmos-domain",
- "harmos-sdk-derive",
  "harmos-protocol",
+ "harmos-sdk-derive",
  "harmos-storage",
+ "memchr",
+ "postcard",
  "prost",
  "prost-reflect",
  "prost-types",
+ "semver",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "tokio",
  "tracing",
@@ -614,6 +605,17 @@ name = "harmos-sandbox-guest"
 version = "0.1.14"
 dependencies = [
  "harmos-guest",
+]
+
+[[package]]
+name = "harmos-sdk-derive"
+version = "0.1.14"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn 3.0.9",
 ]
 
 [[package]]

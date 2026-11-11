@@ -53,10 +53,10 @@ pub struct Control {
 /* === Implementations === */
 
 impl Described for Shutdown {
-    const NAME: &'static str = <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::NAME;
+    const NAME: &'static str = <harmos_operations::model::operations::lifecycle::ShutdownSchema as Described>::NAME;
     const FIELDS: &'static [harmos_domain::schema::declaration::Field] =
-        <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::FIELDS;
-    const MARKER: &'static [u8] = <harmos_domain::model::operations::lifecycle::ShutdownSchema as Described>::MARKER;
+        <harmos_operations::model::operations::lifecycle::ShutdownSchema as Described>::FIELDS;
+    const MARKER: &'static [u8] = <harmos_operations::model::operations::lifecycle::ShutdownSchema as Described>::MARKER;
 }
 
 impl MemorySize for Shutdown {

@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::config::StreamSettings;
+pub use harmos_operations::config::StreamSettings;
 
 /* === Imports === */
 

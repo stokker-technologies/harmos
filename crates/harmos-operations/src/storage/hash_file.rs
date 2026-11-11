@@ -10,7 +10,7 @@
 /* === Imports === */
 
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-use harmos_domain::operations::{FailureKind, ReplaySafety};
+use harmos_operations::operations::{FailureKind, ReplaySafety};
 use harmos_storage::StorageManager;
 
 /* === Structs === */
@@ -30,7 +30,7 @@ impl ProtobufOperation for HashFile {
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
-    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+    fn grant(request: &Self::Request) -> Result<Option<harmos_operations::plugin::Grant>, harmos_domain::MessageError> {
         let source = request
             .source
             .as_ref()
@@ -42,7 +42,7 @@ impl ProtobufOperation for HashFile {
             }
             harmos_protocol::storage::file_source::Source::Local(_) => None,
         };
-        Ok(scope.map(|scope| harmos_domain::plugin::Grant::of(Self::ID, scope)))
+        Ok(scope.map(|scope| harmos_operations::plugin::Grant::of(Self::ID, scope)))
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {

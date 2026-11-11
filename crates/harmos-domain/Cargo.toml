@@ -2,7 +2,7 @@
 
 [package]
 name = "harmos-domain"
-description = "Harmos domain model: identifiers, contracts, catalogs and storage identities."
+description = "Harmos domain model: stored schemas, identities, state recovery and storage contracts."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true
@@ -38,7 +38,6 @@ thiserror = { workspace = true, default-features = true }
 # Logging
 
 # Utilities
-semver = { workspace = true, default-features = true }
 sha2 = { workspace = true }
 time = { workspace = true, default-features = true }
 
@@ -55,7 +54,6 @@ serde_json = { workspace = true, default-features = true }
 # Filesystem
 
 # Parsing
-memchr = { workspace = true, default-features = true }
 
 # Concurrency
 
@@ -77,7 +75,7 @@ memchr = { workspace = true, default-features = true }
 [dev-dependencies]
 # Local
 harmos-sdk-derive = { path = "../../sdk/rust/derive" }
-harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"] }
+harmos-packaging = { path = "../../tools/packaging", features = ["generate-proto"] }
 harmos-operations = { path = "../harmos-operations", features = ["grpc"] }
 
 # Git

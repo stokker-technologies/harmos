@@ -66,10 +66,10 @@ pub enum ControlError {
 /* === Implementations === */
 
 impl Described for Initialize {
-    const NAME: &'static str = <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::NAME;
+    const NAME: &'static str = <harmos_operations::model::operations::lifecycle::InitializationSchema as Described>::NAME;
     const FIELDS: &'static [harmos_domain::schema::declaration::Field] =
-        <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::FIELDS;
-    const MARKER: &'static [u8] = <harmos_domain::model::operations::lifecycle::InitializationSchema as Described>::MARKER;
+        <harmos_operations::model::operations::lifecycle::InitializationSchema as Described>::FIELDS;
+    const MARKER: &'static [u8] = <harmos_operations::model::operations::lifecycle::InitializationSchema as Described>::MARKER;
 }
 
 impl MemorySize for Initialize {

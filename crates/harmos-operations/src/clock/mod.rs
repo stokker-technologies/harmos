@@ -32,8 +32,8 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 /* === Constants === */
 
 const POLICY: crate::OperationPolicy = crate::OperationPolicy {
-    timeout: harmos_domain::operations::UNBOUNDED,
-    attempt_timeout: harmos_domain::operations::UNBOUNDED,
+    timeout: harmos_operations::operations::UNBOUNDED,
+    attempt_timeout: harmos_operations::operations::UNBOUNDED,
     cancellation_timeout: Duration::ZERO,
     retries: crate::RetryPolicy::Never,
 };

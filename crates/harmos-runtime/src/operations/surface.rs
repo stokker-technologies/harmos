@@ -110,7 +110,7 @@ impl harmos_operations::execution::operations::OperationHost for RuntimeOperatio
     async fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.manager()?.admit::<O, ()>((super::binding::Request::owned(request, claims), ()), None, &[], &self.source, None)
     }
-    async fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> Result<()>
+    async fn publish_on<S: harmos_operations::StreamSpec>(&self, row: &S::Row) -> Result<()>
     where
         S::Row: harmos_domain::Message,
     {
@@ -288,7 +288,7 @@ impl harmos_operations::execution::operations::OperationHost for super::Operatio
         self.execution().invoke::<O, E>(request, retry, endpoints).await
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(
+    fn publish_on<S: harmos_operations::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
     where
@@ -330,7 +330,7 @@ impl harmos_operations::execution::operations::OperationHost for Manager {
         self.admit::<O, E>((request, endpoints), None, &[], &Source::Host, None)
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(
+    fn publish_on<S: harmos_operations::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
     where
@@ -372,7 +372,7 @@ impl harmos_operations::execution::operations::OperationHost for Context<'_> {
         self.operations.submit_scoped::<O, E>((request, endpoints), &self.scope, &self.admission, &self.source, None)
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(
+    fn publish_on<S: harmos_operations::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
     where

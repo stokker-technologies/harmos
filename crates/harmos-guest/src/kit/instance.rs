@@ -30,8 +30,8 @@ use crate::OperationRefusal;
 use crate::envelope::{WireChildAction, WireChildCall, WireChildControl};
 use crate::lifecycle::InstanceState;
 use harmos_domain::Message;
-use harmos_domain::operations::instance::{Id, Status};
 use harmos_operations::execution::operations::{CallContext, ContextError, ContextValue, Instance, OperationHost, RequestShape, Response};
+use harmos_operations::operations::instance::{Id, Status};
 
 /* === Constants === */
 
@@ -66,7 +66,7 @@ impl Context {
     async fn child(&self, payload: Vec<u8>) -> Result<Vec<u8>, OperationRefusal> {
         super::plugin::__bindings::harmos::guest::operation_context::child(payload).await.map_err(|error| {
             let code = error.code.parse().unwrap_or(UNKNOWN);
-            match harmos_domain::Failure::decode(&error.failure) {
+            match harmos_operations::Failure::decode(&error.failure) {
                 Ok(failure) => OperationRefusal::failed(code, failure),
                 Err(source) => OperationRefusal::new(code, source),
             }
@@ -257,7 +257,9 @@ impl OperationHost for Context {
         })
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send
+    fn publish_on<S: harmos_operations::StreamSpec>(
+        &self, row: &S::Row,
+    ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send
     where
         S::Row: harmos_domain::Message,
     {

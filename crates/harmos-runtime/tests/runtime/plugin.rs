@@ -18,8 +18,8 @@
 // Third Party Imports
 use serde_json::json;
 // Local Imports
-use harmos_domain::Registrar;
-use harmos_domain::inventory::{Declaration, Facility as Inspected};
+use harmos_operations::Registrar;
+use harmos_operations::inventory::{Declaration, Facility as Inspected};
 use harmos_packaging::bundle::Source;
 use harmos_runtime::bundle::{Bundle, Executable, Facility, Identity, Limits};
 
@@ -412,7 +412,14 @@ fn paths_stay_portable() {
         assert!(Bundle::inspect(&archive(&manifest, &[(path, b"abc", tar::EntryType::Regular)]), Limits::default()).is_err(), "{path}");
     }
     for paths in [["a", "a"], ["A", "a"], ["A", "a/b"], ["a/b", "a"]] {
-        assert!(harmos_packaging::bundle::build(identity(), &paths.map(|path| Source { path, bytes: b"abc", executable: None }), Limits::default()).is_err());
+        assert!(
+            harmos_packaging::bundle::build(
+                identity(),
+                &paths.map(|path| Source { path, bytes: b"abc", executable: None }),
+                Limits::default()
+            )
+            .is_err()
+        );
     }
 }
 

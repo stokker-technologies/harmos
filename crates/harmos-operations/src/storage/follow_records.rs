@@ -27,13 +27,13 @@ impl ProtobufOperation for FollowRecords {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "FollowRecords"));
     const VISIBILITY: Visibility = Visibility::Public;
-    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+    fn grant(request: &Self::Request) -> Result<Option<harmos_operations::plugin::Grant>, harmos_domain::MessageError> {
         let schema = request
             .selection
             .as_ref()
             .and_then(|selection| selection.schema.as_ref())
             .ok_or_else(|| harmos_domain::MessageError::borrowed("selection schema is required"))?;
-        Ok(Some(harmos_domain::plugin::Grant::of(Self::ID, schema.id.clone())))
+        Ok(Some(harmos_operations::plugin::Grant::of(Self::ID, schema.id.clone())))
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {

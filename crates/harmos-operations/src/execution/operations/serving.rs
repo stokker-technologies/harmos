@@ -38,8 +38,8 @@ use super::{ContractError, FailureKind, StartupError};
 
 #[derive(Clone, Copy)]
 pub struct WireStreamLimits {
-    pub input: harmos_domain::config::StreamSettings,
-    pub output: harmos_domain::config::StreamSettings,
+    pub input: harmos_operations::config::StreamSettings,
+    pub output: harmos_operations::config::StreamSettings,
 }
 
 /* === Enums === */
@@ -78,13 +78,16 @@ pub enum ServingError {
     StreamPhase,
 
     #[error(transparent)]
-    Lifecycle(#[from] harmos_domain::model::operations::lifecycle::Error),
+    Lifecycle(#[from] harmos_operations::model::operations::lifecycle::Error),
 
     #[error(transparent)]
     Contract(#[from] ContractError),
 
     #[error(transparent)]
-    Declaration(#[from] crate::execution::Error),
+    Declaration(#[from] crate::operations::Error),
+
+    #[error(transparent)]
+    Foundation(#[from] harmos_domain::Error),
 
     #[error("operation `{operation}` declares resource `{resource}` that its registration does not provide")]
     Resource { operation: String, resource: &'static str },

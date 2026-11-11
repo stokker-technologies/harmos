@@ -16,7 +16,13 @@ pub mod json;
 mod payload;
 pub mod wire;
 
+#[doc(hidden)]
+pub mod marker;
+mod stream_revision;
+
 /* === Re-Exports === */
+
+pub use stream_revision::revision as stream_revision;
 
 pub use declaration::{Field, Kind};
 pub use payload::{Event, PathElement, PayloadError, Scalar, Validator, VisitError};

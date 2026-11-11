@@ -59,7 +59,7 @@ pub fn streams_catalog_batch() -> crate::execution::__private::Catalog {
 pub async fn publish_on<H, S>(host: &H, row: &S::Row) -> Result<(), H::Error>
 where
     H: crate::execution::operations::ProtobufHost,
-    S: harmos_domain::StreamSpec,
+    S: harmos_operations::StreamSpec,
     S::Row: harmos_domain::Message,
 {
     host.call_protobuf::<Publish>(harmos_protocol::host::Publish {

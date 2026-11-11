@@ -278,12 +278,12 @@ impl<A: Application> PluginHost<A> {
             });
         }
         if !definition.contributions.operations.is_empty() {
-            harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
-                Error::InvalidInput {
+            harmos_operations::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(
+                |_| Error::InvalidInput {
                     field: "embedded plugin catalog",
                     reason: "the catalog differs from the supplied definition",
-                }
-            })?;
+                },
+            )?;
         }
         contracts.sort_by(|a, b| a.operation().id.cmp(&b.operation().id));
         if !definition.contributions.wire_contracts.is_empty() {

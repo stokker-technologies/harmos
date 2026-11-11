@@ -22,7 +22,7 @@ use std::fmt;
 
 // Local Imports
 use super::{FailureKind, ServingError};
-use harmos_domain::{Failure, failure::Origin};
+use harmos_operations::{Failure, failure::Origin};
 
 /* === Constants === */
 
@@ -207,7 +207,7 @@ mod tests {
     fn structured_roots() {
         let original = Failure::originate(FailureKind::Permanent, &std::io::Error::other("token unavailable"), Origin::Plugin)
             .with_detail("dokime.secret", "api_token");
-        let refusal = harmos_domain::Refusal::failed(10001, original);
+        let refusal = harmos_operations::Refusal::failed(10001, original);
         let original = refusal.failure().clone();
         let error = StartupError::aggregate(vec![
             StartupError::Runtime { source: Box::new(refusal) },
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn single_secret_root() {
-        let refusal = harmos_domain::Refusal::failed(
+        let refusal = harmos_operations::Refusal::failed(
             10001,
             Failure::new(FailureKind::Permanent, "secret unavailable").with_detail("dokime.secret", "api_token"),
         );
@@ -255,7 +255,7 @@ mod tests {
                     resource: "Workflow",
                 })
                 .collect::<Vec<_>>();
-            let refusal = harmos_domain::Refusal::failed(
+            let refusal = harmos_operations::Refusal::failed(
                 10001,
                 Failure::new(FailureKind::Permanent, "token unavailable").with_detail("dokime.secret", "api_token"),
             );

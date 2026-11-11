@@ -22,7 +22,7 @@ harmos-operations = { path = "../../crates/harmos-operations", default-features 
 harmos-guest = { path = "../../crates/harmos-guest", default-features = false }
 harmos-protocol = { path = "../../crates/harmos-protocol" }
 harmos-domain = { path = "../../crates/harmos-domain", default-features = false }
-harmos-packaging = { path = "../../crates/harmos-packaging", default-features = false }
+harmos-packaging = { path = "../../tools/packaging", default-features = false }
 harmos = { path = "../../sdk/rust" }
 
 # Git

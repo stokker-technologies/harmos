@@ -77,7 +77,7 @@ static GUARDED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclarat
 
 const GUARDED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<GuardedDeclaration> =
     harmos_runtime::operations::OperationSpec::<GuardedDeclaration>::new(&GUARDED_DECLARATION_DESCRIPTION)
-        .grant(|_: &GuardedDeclaration| Some(harmos_domain::plugin::Grant::of(GUARDED_DECLARATION_OPERATION.entry().id, "reading")));
+        .grant(|_: &GuardedDeclaration| Some(harmos_operations::plugin::Grant::of(GUARDED_DECLARATION_OPERATION.entry().id, "reading")));
 
 #[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
@@ -341,7 +341,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
     fn authorize(
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
     ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
-        use harmos_domain::plugin::Grant;
+        use harmos_operations::plugin::Grant;
         use harmos_runtime::operations::authorization::{Authorization, Required};
         // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(self.operations.upgrade().unwrap().owner(provider.definition.id.as_str())?, *provider.owner);

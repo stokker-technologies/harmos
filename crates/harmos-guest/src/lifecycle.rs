@@ -16,7 +16,7 @@ mod state;
 
 /* === Re-Exports === */
 
-pub use harmos_domain::model::operations::lifecycle::*;
+pub use harmos_operations::model::operations::lifecycle::*;
 pub use initialize::operation as initialize_operation;
 pub use initialize::{ControlError, INITIALIZE_DESCRIPTION, INITIALIZE_OPERATION, Initialize};
 pub use shutdown::operation as shutdown_operation;

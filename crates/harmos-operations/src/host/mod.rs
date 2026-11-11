@@ -33,11 +33,11 @@ pub use registration::host_catalog;
 
 /* === Constants === */
 
-pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
+pub const POLICY: harmos_operations::OperationPolicy = harmos_operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(30),
     attempt_timeout: std::time::Duration::from_secs(30),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos_domain::RetryPolicy::Never,
+    retries: harmos_operations::RetryPolicy::Never,
 };
 
 /* === Macros === */

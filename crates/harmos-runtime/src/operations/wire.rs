@@ -81,7 +81,7 @@ pub struct EncodedInvocation {
 
 /* === Implementations === */
 
-impl harmos_domain::operations::RequestShape for Encoded {
+impl harmos_operations::operations::RequestShape for Encoded {
     type Request = Vec<u8>;
     type Response = Vec<u8>;
     type Input = super::NoStream;

@@ -122,7 +122,7 @@ use std::time::Duration;
 
 // Local Imports
 
-use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
+use harmos_operations::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -148,8 +148,8 @@ pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
 };
 
 pub const IO_POLICY: OperationPolicy = OperationPolicy {
-    timeout: harmos_domain::operations::UNBOUNDED,
-    attempt_timeout: harmos_domain::operations::UNBOUNDED,
+    timeout: harmos_operations::operations::UNBOUNDED,
+    attempt_timeout: harmos_operations::operations::UNBOUNDED,
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
@@ -185,19 +185,19 @@ fn output_timeout() -> crate::Error {
 }
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-fn classify(error: &crate::Error) -> harmos_domain::operations::FailureKind {
+fn classify(error: &crate::Error) -> harmos_operations::operations::FailureKind {
     match error {
         crate::Error::Storage(source) if source.backend_failure() == Some(harmos_storage::BackendFailure::Transient) => {
-            harmos_domain::operations::FailureKind::Transient
+            harmos_operations::operations::FailureKind::Transient
         }
-        _ => harmos_domain::operations::FailureKind::Permanent,
+        _ => harmos_operations::operations::FailureKind::Permanent,
     }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod tests {
     use super::classify;
-    use harmos_domain::operations::FailureKind;
+    use harmos_operations::operations::FailureKind;
     use harmos_storage::{BackendFailure, Error as StorageError};
 
     #[test]

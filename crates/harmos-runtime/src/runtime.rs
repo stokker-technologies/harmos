@@ -521,7 +521,7 @@ impl<A: Application> Builder<A> {
                     self.catalog.record_registry = self.catalog.record_registry.clone().extend(records);
                     if let Err(source) = self.catalog.record_registry.validate() {
                         self.configuration_errors.push(StartupError::Binding {
-                            source: Box::new(harmos_operations::execution::ServingError::Declaration(source)),
+                            source: Box::new(harmos_operations::execution::ServingError::Foundation(source)),
                         });
                     }
                 }
@@ -755,7 +755,7 @@ impl<A: Application> Builder<A> {
         }
         if let Err(source) = self.catalog.states.validate() {
             self.configuration_errors.push(StartupError::Binding {
-                source: Box::new(harmos_operations::execution::ServingError::Declaration(source)),
+                source: Box::new(harmos_operations::execution::ServingError::Foundation(source)),
             });
         }
         for binding in &self.operations {

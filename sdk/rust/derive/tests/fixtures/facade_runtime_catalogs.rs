@@ -106,8 +106,8 @@ fn main() {
 
     assert!(<GuestPlugin as harmos::__private::PluginDeclared>::PROVIDES.is_empty());
 
-    let guest = <GuestPlugin as harmos::domain::plugin::Declared>::markers().unwrap().concat();
-    let guest = harmos::domain::inventory::Declaration::inspect(&guest, harmos::domain::inventory::Facility::Guest).unwrap();
+    let guest = <GuestPlugin as harmos::builtins::plugin::Declared>::markers().unwrap().concat();
+    let guest = harmos::builtins::inventory::Declaration::inspect(&guest, harmos::builtins::inventory::Facility::Guest).unwrap();
     assert!(guest.operations.is_empty());
 }
 

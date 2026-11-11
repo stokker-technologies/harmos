@@ -34,7 +34,7 @@ pub use authored::Carrier;
 pub use authored::{EndpointSet, InputEndpoint, OutputEndpoint};
 pub use calls::{CallFuture, Caller, Calls, ChildInstance, ControlFuture, InvocationError, OperationDependency, StartFuture, Target};
 pub use cancellation::Cancellation;
-pub use harmos_domain::operations::*;
+pub use harmos_operations::operations::*;
 pub use instance::Instance;
 pub use operation::{Resource, Shape, Streams};
 #[cfg(all(feature = "grpc", feature = "streaming"))]

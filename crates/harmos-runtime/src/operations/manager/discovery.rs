@@ -26,7 +26,7 @@ use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::{Error, Identifier, Result};
-use harmos_domain::plugin::Grant;
+use harmos_operations::plugin::Grant;
 use harmos_protocol::host::{Catalog, CatalogPage};
 
 /* === Constants === */
@@ -135,7 +135,7 @@ impl Manager {
                 #[cfg(feature = "plugin-guest")]
                 let plugin_required = origin.scope.as_ref().and_then(|caller| caller.requirement(&entry.definition.id));
                 #[cfg(not(feature = "plugin-guest"))]
-                let plugin_required: Option<&harmos_domain::inventory::contracts::Required> = None;
+                let plugin_required: Option<&harmos_operations::inventory::contracts::Required> = None;
 
                 selected_grants = required
                     .grants

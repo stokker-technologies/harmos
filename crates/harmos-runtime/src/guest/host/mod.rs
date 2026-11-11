@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
-use harmos_domain::Refusal as OperationRefusal;
+use harmos_operations::Refusal as OperationRefusal;
 use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, InstancePre, Linker};
 use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuilder};
@@ -38,7 +38,7 @@ use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuil
 use super::Registration;
 use crate::config::PluginGuestSettings;
 use crate::{Application, Runtime, streams::StreamManager};
-use harmos_domain::inventory::{Declaration, DeclarationError, Facility};
+use harmos_operations::inventory::{Declaration, DeclarationError, Facility};
 
 /* === Constants === */
 
@@ -260,7 +260,7 @@ impl<A: Application> Host<A> {
                                             Some(endpoint) => endpoint.background(call, submitted).await.map_err(|error| {
                                                 let refusal = match error {
                                                     Error::OperationCaller(error) => crate::operations::children::refused(error),
-                                                    error => harmos_domain::Refusal::new(-32_606, error),
+                                                    error => harmos_operations::Refusal::new(-32_606, error),
                                                 };
                                                 Bridge::<A>::forwarded(&refusal)
                                             }),
@@ -462,7 +462,7 @@ impl<A: Application> Bridge<A> {
     }
 
     fn refusal(code: &str, message: impl Into<String>) -> sdk::capabilities::Refusal {
-        let failure = harmos_domain::Failure::new(crate::operations::FailureKind::Permanent, message);
+        let failure = harmos_operations::Failure::new(crate::operations::FailureKind::Permanent, message);
         sdk::capabilities::Refusal {
             code: code.to_owned(),
             failure: failure.encode(),
@@ -494,16 +494,16 @@ pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
 }
 
 fn refused(refusal: sdk::capabilities::Refusal) -> OperationRefusal {
-    let failure = match harmos_domain::Failure::decode(&refusal.failure) {
+    let failure = match harmos_operations::Failure::decode(&refusal.failure) {
         Ok(failure) => failure,
         Err(source) => {
             let cause = format!("the guest refusal is unreadable: {source}");
-            harmos_domain::Failure::new(crate::operations::FailureKind::Invalid, cause)
+            harmos_operations::Failure::new(crate::operations::FailureKind::Invalid, cause)
         }
     };
     match refusal.code.parse::<i64>() {
         Ok(code) => OperationRefusal::failed(code, failure),
-        Err(_) => OperationRefusal::failed(harmos_domain::FAILED, failure),
+        Err(_) => OperationRefusal::failed(harmos_operations::FAILED, failure),
     }
 }
 

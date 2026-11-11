@@ -136,8 +136,8 @@ impl Status {
     }
 
     // Project onto the status every host binding reports.
-    pub fn portable(&self) -> harmos_domain::operations::instance::Status {
-        use harmos_domain::operations::instance;
+    pub fn portable(&self) -> harmos_operations::operations::instance::Status {
+        use harmos_operations::operations::instance;
         let phase = match self.phase {
             Phase::Queued => instance::Phase::Queued,
             Phase::Initializing => instance::Phase::Initializing,

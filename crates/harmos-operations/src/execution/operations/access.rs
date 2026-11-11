@@ -43,7 +43,7 @@ pub trait Discovery: Send + Sync {
     fn discover(&self, after: Option<&str>, rows: usize, bytes: usize) -> Result<DiscoveryPage, AccessError>;
 }
 pub trait GrantAuthority: Send + Sync {
-    fn admit(&self, grant: &harmos_domain::plugin::Grant) -> Result<(), AccessError>;
+    fn admit(&self, grant: &harmos_operations::plugin::Grant) -> Result<(), AccessError>;
 }
 
 /* === Implementations === */

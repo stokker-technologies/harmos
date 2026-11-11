@@ -606,7 +606,7 @@ async fn native_stream_round_trip_uses_shared_revision() {
     let mut rows = runtime.streams.query::<Sample>(..).await.unwrap();
     assert_eq!(rows.next_back().unwrap().value.value, 41);
     let definition = Sample::definition();
-    let revision = harmos_domain::streams::revision(definition.schema(), definition.window()).unwrap();
+    let revision = harmos_domain::schema::stream_revision(definition.schema(), definition.window()).unwrap();
     assert_eq!(definition.version(), revision);
     let stored = runtime.streams.definitions().into_iter().find(|item| item.id() == Sample::ID).unwrap();
     assert_eq!(stored.version(), revision);

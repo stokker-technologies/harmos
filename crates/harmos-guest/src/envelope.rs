@@ -96,7 +96,7 @@ pub enum WireCommand {
 pub enum WireAnswer {
     Stream { epoch: u64, transferred: bool, payload: Option<Vec<u8>> },
     Ready { payload: Vec<u8> },
-    Failed { failure: harmos_domain::Failure },
+    Failed { failure: harmos_operations::Failure },
 }
 
 /* === Traits === */
@@ -110,7 +110,7 @@ impl WireCommand {
 
 // A Prepare answer is empty when the request needs no grant, else the grant as JSON.
 #[cfg(feature = "kit")]
-pub fn encode_prepared_grant(grant: Option<&harmos_domain::plugin::Grant>) -> Vec<u8> {
+pub fn encode_prepared_grant(grant: Option<&harmos_operations::plugin::Grant>) -> Vec<u8> {
     grant.map_or_else(Vec::new, |grant| serde_json::to_vec(grant).expect("a grant serializes to JSON"))
 }
 

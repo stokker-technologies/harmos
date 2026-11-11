@@ -89,8 +89,8 @@ impl Session {
             .unwrap();
         WireAnswer::decode(&bytes).unwrap()
     }
-    async fn call<D: harmos_domain::operations::RequestShape>(
-        &mut self, specification: harmos_domain::operations::OperationSpec<D>, invocation: u64, payload: Vec<u8>,
+    async fn call<D: harmos_operations::operations::RequestShape>(
+        &mut self, specification: harmos_operations::operations::OperationSpec<D>, invocation: u64, payload: Vec<u8>,
     ) -> Vec<u8> {
         assert!(matches!(
             self.phase(WireCommand::Prepare {

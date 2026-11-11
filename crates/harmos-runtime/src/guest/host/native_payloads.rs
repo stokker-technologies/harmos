@@ -11,9 +11,9 @@
 
 /* === Imports === */
 
-use harmos_domain::operations::Contract;
 use harmos_domain::{Message, MessageError};
 use harmos_operations::execution::operations::OperationFactory;
+use harmos_operations::operations::Contract;
 use prost::Message as _;
 use std::sync::OnceLock;
 

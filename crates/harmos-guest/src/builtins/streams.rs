@@ -23,7 +23,7 @@
 
 /* === Macros === */
 
-harmos_domain::builtin_payload! {
+harmos_operations::builtin_payload! {
     #[derive(harmos_operations::execution::Request)]
 #[harmos_path(harmos_operations::execution)]
     Publish,
@@ -35,7 +35,7 @@ harmos_domain::builtin_payload! {
     following: Vec<FollowingRow> => (7, Kind::Message { definition: FollowingRow::DEFINITION }, Repeated),
 }
 
-harmos_domain::builtin_payload! { FollowingRow,
+harmos_operations::builtin_payload! { FollowingRow,
     payload: Vec<u8> => (1, Kind::Bytes, Required),
     published_delta_micros: Option<i64> => (2, Kind::I64, Optional),
 }
@@ -54,7 +54,7 @@ harmos_domain::builtin_payload! { FollowingRow,
 pub fn publish_on<H, S>(host: &H, row: &S::Row) -> impl std::future::Future<Output = std::result::Result<(), H::Error>> + Send
 where
     H: harmos_operations::execution::operations::OperationHost,
-    S: harmos_domain::StreamSpec,
+    S: harmos_operations::StreamSpec,
     S::Row: harmos_domain::Message,
 {
     use harmos_domain::Message;
@@ -76,8 +76,8 @@ where
     }
 }
 
-static DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =
-    [harmos_domain::catalog::Node::Leaf(PUBLISH_OPERATION.wire())];
+static DECLARATIONS: [harmos_operations::catalog::Node<harmos_operations::operations::WireDeclaration>; 1] =
+    [harmos_operations::catalog::Node::Leaf(PUBLISH_OPERATION.wire())];
 
 pub static PUBLISH_DESCRIPTION: harmos_operations::execution::operations::WireDeclaration =
     harmos_operations::execution::operations::WireDeclaration::request::<Publish>("host.publish", harmos_operations::host::POLICY)

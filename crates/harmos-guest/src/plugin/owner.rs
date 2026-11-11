@@ -23,9 +23,9 @@ use std::sync::{Arc, Mutex, Weak};
 // Local Imports
 use super::{Context as PluginContext, Error, Plugin};
 use crate::dispatch::Table as WireTable;
-use harmos_domain::model::operations::lifecycle;
 use harmos_operations::execution::Setup;
 use harmos_operations::execution::operations::{Contract, ExecutionContext, ServingError, StartupError};
+use harmos_operations::model::operations::lifecycle;
 
 /* === Constants === */
 

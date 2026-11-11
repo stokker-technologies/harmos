@@ -20,8 +20,9 @@ use std::fmt;
 use semver::Version;
 // Local Imports
 use super::Requirement;
-use harmos_domain::inventory::{StreamDeclaration, operations, publications};
-use harmos_domain::{ConfigError, Registration, RegistrationError, artifact_subset};
+use harmos_operations::inventory::{StreamDeclaration, operations, publications};
+use harmos_operations::{ConfigError, artifact_subset};
+use harmos_operations::{Registration, RegistrationError};
 
 /* === Constants === */
 
@@ -44,14 +45,14 @@ pub struct PluginDefinition {
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct PluginContributions {
     pub lifecycle: Option<[harmos_operations::lifecycle::Descriptor; 2]>,
-    pub operations: Vec<harmos_domain::operations::OperationDefinition>,
-    pub wire_contracts: Vec<harmos_domain::operations::Contract>,
-    pub required_contracts: Option<Vec<harmos_domain::inventory::contracts::Required>>,
-    pub observers: Vec<harmos_domain::inventory::observers::Declaration>,
+    pub operations: Vec<harmos_operations::operations::OperationDefinition>,
+    pub wire_contracts: Vec<harmos_operations::operations::Contract>,
+    pub required_contracts: Option<Vec<harmos_operations::inventory::contracts::Required>>,
+    pub observers: Vec<harmos_operations::inventory::observers::Declaration>,
     pub streams: Vec<StreamDeclaration>,
-    pub listeners: Vec<harmos_domain::listeners::Definition>,
+    pub listeners: Vec<harmos_operations::listeners::Definition>,
     pub registrations: Vec<Registration>,
-    pub sections: Vec<harmos_domain::inventory::Section>,
+    pub sections: Vec<harmos_operations::inventory::Section>,
 }
 
 /* === Enums === */
@@ -83,7 +84,7 @@ pub enum PluginDefinitionError {
     Operations(#[from] operations::Error),
 
     #[error(transparent)]
-    Listeners(#[from] harmos_domain::inventory::listeners::Error),
+    Listeners(#[from] harmos_operations::inventory::listeners::Error),
 
     #[error(transparent)]
     Registration(#[from] RegistrationError),
@@ -175,7 +176,7 @@ impl PluginDefinition {
 
     #[cfg(feature = "plugin-guest")]
     fn inspected(
-        declaration: &harmos_domain::inventory::Declaration, artifact: PluginArtifact, configuration: Vec<u8>,
+        declaration: &harmos_operations::inventory::Declaration, artifact: PluginArtifact, configuration: Vec<u8>,
     ) -> Result<Self, PluginDefinitionError> {
         let mut definition = Self {
             id: declaration.id.clone(),
@@ -215,7 +216,7 @@ impl PluginDefinition {
             return Err(invalid("identity", "identity is outside the portable subset"));
         }
         self.artifact.validate()?;
-        harmos_domain::validate_config(&self.configuration)?;
+        harmos_operations::validate_config(&self.configuration)?;
 
         operations::validate(&self.contributions.operations)?;
         self.contributions.operations.sort_by(|a, b| a.id.cmp(&b.id));
@@ -246,21 +247,21 @@ impl PluginDefinition {
             }
         }
 
-        harmos_domain::inventory::observers::validate(&self.contributions.observers, &self.contributions.streams)
+        harmos_operations::inventory::observers::validate(&self.contributions.observers, &self.contributions.streams)
             .map_err(|_| invalid("observers", "invalid observer inventory or publication grant"))?;
 
         if self.contributions.listeners.len() > 4096 {
-            return Err(harmos_domain::inventory::listeners::Error::Inventory.into());
+            return Err(harmos_operations::inventory::listeners::Error::Inventory.into());
         }
         let mut listeners = BTreeSet::new();
         let mut callbacks = BTreeSet::new();
         for listener in &self.contributions.listeners {
             let callback = listener.callback().operation();
             if !listeners.insert(listener.id()) || !callbacks.insert(&callback.id) {
-                return Err(harmos_domain::inventory::listeners::Error::Entry { id: listener.id().to_string() }.into());
+                return Err(harmos_operations::inventory::listeners::Error::Entry { id: listener.id().to_string() }.into());
             }
             if !self.contributions.operations.contains(callback) {
-                return Err(harmos_domain::inventory::listeners::Error::Callback { id: callback.id.to_string() }.into());
+                return Err(harmos_operations::inventory::listeners::Error::Callback { id: callback.id.to_string() }.into());
             }
         }
 
@@ -291,7 +292,7 @@ impl PluginDefinition {
                 }
                 .into());
             }
-            harmos_domain::validate_config(&registration.payload).map_err(|source| PluginDefinitionError::RegistrationPayload {
+            harmos_operations::validate_config(&registration.payload).map_err(|source| PluginDefinitionError::RegistrationPayload {
                 namespace: registration.namespace.clone(),
                 source,
             })?;

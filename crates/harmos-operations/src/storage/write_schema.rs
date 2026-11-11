@@ -10,7 +10,7 @@
 /* === Imports === */
 
 use crate::execution::operations::{ExecutionContext, ProtobufOperation, Resource, ServingError};
-use harmos_domain::operations::{FailureKind, ReplaySafety};
+use harmos_operations::operations::{FailureKind, ReplaySafety};
 use harmos_storage::StorageManager;
 
 /* === Structs === */

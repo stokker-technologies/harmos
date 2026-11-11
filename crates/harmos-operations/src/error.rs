@@ -32,6 +32,9 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    Declaration(#[from] crate::operations::Error),
+
+    #[error(transparent)]
     Domain(#[from] harmos_domain::Error),
 
     #[error("host state access failed: {0}")]

@@ -150,7 +150,7 @@ impl harmos_runtime::schema::Described for ProviderRead {
 
 async fn provider_read_handler(
     request: ProviderRead, ctx: harmos_runtime::operations::FunctionContext<ProviderRead>,
-) -> Result<harmos_runtime::Response<Echoed>, harmos_domain::Refusal> {
+) -> Result<harmos_runtime::Response<Echoed>, harmos_operations::Refusal> {
     let resources = ctx.resource::<ProviderOwner>().expect("declared resource is registered");
     resources.prepared.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     resources.answer(&request.0).await.map(Into::into)
@@ -167,8 +167,8 @@ fn provider_read_operation()
 }
 async fn forward_declaration_handler(
     request: ForwardDeclaration, ctx: harmos_runtime::operations::FunctionContext<ForwardDeclaration>,
-) -> Result<harmos_runtime::Response<Echoed>, harmos_domain::Refusal> {
-    ctx.operation(ECHO_OPERATION_OPERATION, EchoOperation { say: request.say }).await.map_err(harmos_domain::Refusal::from)
+) -> Result<harmos_runtime::Response<Echoed>, harmos_operations::Refusal> {
+    ctx.operation(ECHO_OPERATION_OPERATION, EchoOperation { say: request.say }).await.map_err(harmos_operations::Refusal::from)
 }
 
 fn forward_declaration_operation()
@@ -188,7 +188,7 @@ impl Drop for Cancelled {
 }
 
 impl ProviderOwner {
-    async fn answer(&self, state: &ProviderEchoOperation) -> Result<Echoed, harmos_domain::Refusal> {
+    async fn answer(&self, state: &ProviderEchoOperation) -> Result<Echoed, harmos_operations::Refusal> {
         if state.say == "cancel" {
             let _cancelled = Cancelled(self.cancelled.clone());
             self.started.notify_one();
@@ -198,7 +198,7 @@ impl ProviderOwner {
             std::future::pending::<()>().await;
         }
         if state.say == "refuse" {
-            return Err(harmos_domain::Refusal::new(73, "provider refusal"));
+            return Err(harmos_operations::Refusal::new(73, "provider refusal"));
         }
         self.observed.lock().unwrap().push(state.say.clone());
         Ok(Echoed { said: state.say.clone() })
@@ -308,7 +308,7 @@ async fn dependency_candidate_with_client(lifecycle: &mut DependencyHost, config
         contributions: PluginContributions {
             operations: vec![provided.operation().clone()],
             wire_contracts: vec![provided],
-            required_contracts: Some(vec![harmos_domain::inventory::contracts::Required { contract: required, grants: vec![] }]),
+            required_contracts: Some(vec![harmos_operations::inventory::contracts::Required { contract: required, grants: vec![] }]),
             ..Default::default()
         },
         requires: vec![Requirement {

@@ -102,10 +102,16 @@ pub enum Error<E = Infallible> {
     #[error("operation `{operation}` panicked")]
     OperationPanicked { operation: String },
 
+    #[error("native foundation is invalid: {source}")]
+    Foundation {
+        #[source]
+        source: harmos_domain::Error,
+    },
+
     #[error("operation declaration is invalid: {source}")]
     OperationDeclaration {
         #[source]
-        source: harmos_domain::Error,
+        source: harmos_operations::operations::Error,
     },
 
     #[error(transparent)]
@@ -269,14 +275,14 @@ impl<E> From<harmos_domain::Error> for Error<E> {
             harmos_domain::Error::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
             harmos_domain::Error::DifferentHistory => Self::DifferentHistory,
             harmos_domain::Error::Corrupt { operation, source } => Self::backend(operation, BackendFailure::Corrupt, source),
-            source => Self::OperationDeclaration { source },
+            source => Self::Foundation { source },
         }
     }
 }
 
-impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
-    fn from(error: harmos_domain::operations::ContextError) -> Self {
-        use harmos_domain::operations::ContextError;
+impl<E> From<harmos_operations::operations::ContextError> for Error<E> {
+    fn from(error: harmos_operations::operations::ContextError) -> Self {
+        use harmos_operations::operations::ContextError;
         match error {
             ContextError::Duplicate { name } => Self::AlreadyRegistered { domain: "call context", name },
             ContextError::Missing { name } => Self::NotRegistered { domain: "call context", name },
@@ -295,7 +301,7 @@ impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
 impl<E> Error<E> {
     // The structured failure this error carries from a plugin, with its cause
     // written once at the origin and the operation frame the host added.
-    pub fn failure(&self) -> Option<&harmos_domain::Failure> {
+    pub fn failure(&self) -> Option<&harmos_operations::Failure> {
         match self {
             Self::ApplicationLifecycle { stop, cleanup } => stop.failure().or_else(|| cleanup.failure()),
             Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => carried(source.as_ref()),
@@ -324,7 +330,7 @@ impl<E> Error<E> {
 
 // The first failure along a source chain, read through the carrier that
 // transported it where that carrier hides it behind a transparent line.
-fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harmos_domain::Failure> {
+fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harmos_operations::Failure> {
     std::iter::successors(Some(source), |link| link.source()).find_map(|link| {
         if let Some(error) = link.downcast_ref::<Error>() {
             return error.failure();
@@ -334,7 +340,7 @@ fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harm
         if let Some(error) = link.downcast_ref::<crate::operations::ComponentError>() {
             return error.failure();
         }
-        harmos_domain::Failure::find(link)
+        harmos_operations::Failure::find(link)
     })
 }
 

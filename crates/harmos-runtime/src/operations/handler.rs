@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::operations::instance::Id as OperationInstanceId;
+pub use harmos_operations::operations::instance::Id as OperationInstanceId;
 
 /* === Imports === */
 
@@ -266,7 +266,7 @@ where
         self.id
     }
 
-    fn status(&self) -> impl Future<Output = Result<harmos_domain::operations::instance::Status>> + Send {
+    fn status(&self) -> impl Future<Output = Result<harmos_operations::operations::instance::Status>> + Send {
         std::future::ready(Ok(self.control.status().portable()))
     }
 
@@ -334,7 +334,7 @@ impl Context<'_> {
     }
 
     // Revalidate the Caller Before Every Streamed Destination
-    pub(crate) fn admit_stream_grant(&self, grant: &harmos_domain::plugin::Grant) -> Result<()> {
+    pub(crate) fn admit_stream_grant(&self, grant: &harmos_operations::plugin::Grant) -> Result<()> {
         self.source.check()?;
         match &self.origin.grants {
             Some(authority) => authority.admit(Some(grant)),
@@ -345,7 +345,7 @@ impl Context<'_> {
 
     // Refuse a provider-prepared grant the admitted caller does not hold.
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    pub(super) fn admit_grant(&self, grant: Option<&harmos_domain::plugin::Grant>) -> Result<()> {
+    pub(super) fn admit_grant(&self, grant: Option<&harmos_operations::plugin::Grant>) -> Result<()> {
         match (&self.origin.grants, grant) {
             (Some(authority), grant) => authority.admit(grant),
             (None, None) => Ok(()),
@@ -440,7 +440,7 @@ impl harmos_operations::execution::operations::OperationHost for HostContext {
         harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.borrow(), request, retry, endpoints).await
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(
+    fn publish_on<S: harmos_operations::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
     where
@@ -492,7 +492,7 @@ impl harmos_operations::execution::operations::instances::Instances for HostCont
     }
 }
 impl harmos_operations::execution::operations::instances::InstanceControl for crate::supervision::instance::Instance {
-    fn status(&self) -> harmos_domain::operations::instance::Status {
+    fn status(&self) -> harmos_operations::operations::instance::Status {
         self.status().portable()
     }
     fn request_cancel(&self) {
@@ -504,7 +504,7 @@ impl harmos_operations::execution::operations::instances::InstanceControl for cr
 }
 struct InstanceChanges(tokio::sync::watch::Receiver<super::OperationStatus>);
 impl harmos_operations::execution::operations::instances::InstanceChanges for InstanceChanges {
-    fn current(&mut self) -> harmos_domain::operations::instance::Status {
+    fn current(&mut self) -> harmos_operations::operations::instance::Status {
         self.0.borrow_and_update().portable()
     }
     fn changed(&mut self) -> harmos_operations::execution::operations::instances::Changed<'_> {
@@ -533,7 +533,7 @@ impl harmos_operations::execution::operations::access::Discovery for HostContext
 }
 impl harmos_operations::execution::operations::access::GrantAuthority for HostContext {
     fn admit(
-        &self, grant: &harmos_domain::plugin::Grant,
+        &self, grant: &harmos_operations::plugin::Grant,
     ) -> std::result::Result<(), harmos_operations::execution::operations::access::AccessError> {
         self.borrow().admit_stream_grant(grant).map_err(Into::into)
     }

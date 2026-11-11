@@ -863,7 +863,10 @@ mod guest_plugins {
         assert_eq!(declaration.description, P::DESCRIPTION);
         assert!(!declaration.config.is_empty());
         let contracts = declaration.contracts;
-        assert_eq!(contracts.provides, harmos_domain::operations::Contracts::from_tree(SELECTED_CATALOG_DESCRIPTION.declarations).unwrap());
+        assert_eq!(
+            contracts.provides,
+            harmos_operations::operations::Contracts::from_tree(SELECTED_CATALOG_DESCRIPTION.declarations).unwrap()
+        );
         assert_eq!(contracts.requires.len(), requires);
         if requires != 0 {
             let required = contracts.requires.iter().map(|required| required.contract.clone()).collect::<Vec<_>>();
@@ -896,7 +899,7 @@ mod guest_plugins {
         let declaration =
             harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
         assert!(declaration.listeners.is_empty());
-        let mut parts = harmos_domain::artifacts::fragments::<serde_json::Value>(
+        let mut parts = harmos_operations::artifacts::fragments::<serde_json::Value>(
             &ListeningGuest::markers().unwrap().concat(),
             &["contracts", "listeners", "plugin", "contributions", "publications", "observers", "schema"],
         )

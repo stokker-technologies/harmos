@@ -29,9 +29,9 @@ impl ProtobufOperation for WriteFile {
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
 
-    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+    fn grant(request: &Self::Request) -> Result<Option<harmos_operations::plugin::Grant>, harmos_domain::MessageError> {
         let metadata = request.metadata.as_ref().ok_or_else(|| harmos_domain::MessageError::borrowed("metadata is required"))?;
-        Ok(Some(harmos_domain::plugin::Grant::of(Self::ID, metadata.id.clone())))
+        Ok(Some(harmos_operations::plugin::Grant::of(Self::ID, metadata.id.clone())))
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, input: &Self::Endpoints) -> Result<Self::Response, ServingError> {
@@ -40,7 +40,7 @@ impl ProtobufOperation for WriteFile {
         let result: crate::Result<harmos_storage::FileReference> = async {
             let metadata: harmos_storage::FileMetadata =
                 request.metadata.ok_or(crate::Error::InvalidInput { field: "metadata", reason: "required" })?.try_into()?;
-            let grant = harmos_domain::plugin::Grant::of(Self::ID, metadata.id.to_string());
+            let grant = harmos_operations::plugin::Grant::of(Self::ID, metadata.id.to_string());
             grants.0.admit(&grant).map_err(crate::Error::Access)?;
             storage.retry_transient_persistence();
             let mut file = storage.create_file(metadata).await?;

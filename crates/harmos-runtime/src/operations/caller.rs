@@ -221,7 +221,7 @@ impl harmos_operations::execution::operations::OperationHost for Caller {
     async fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.operations.submit_by::<O, ()>((super::binding::Request::owned(request, claims), ()), &Source::Plugin(self.source.clone()))
     }
-    async fn publish_on<S: harmos_domain::StreamSpec>(&self, row: &S::Row) -> Result<()>
+    async fn publish_on<S: harmos_operations::StreamSpec>(&self, row: &S::Row) -> Result<()>
     where
         S::Row: harmos_domain::Message,
     {

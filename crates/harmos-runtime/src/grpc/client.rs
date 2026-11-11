@@ -156,7 +156,7 @@ impl<O: RequestShape> Running<O> {
 
 // Starts A Managed Call With Consumer-Supplied Transport And Buffer Limits.
 pub async fn start<O: RequestShape>(
-    channel: Channel, operation: harmos_domain::operations::OperationSpec<O>, request: Request<O::Request>, settings: Settings,
+    channel: Channel, operation: harmos_operations::operations::OperationSpec<O>, request: Request<O::Request>, settings: Settings,
 ) -> Result<Running<O>, Status> {
     settings.decode.validate()?;
     settings.encode.validate()?;

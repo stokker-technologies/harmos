@@ -21,7 +21,7 @@
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::codec::{Nested, product};
 use harmos_domain::model::storage::files::{ByteRange, FileHash, FileSource};
-use harmos_domain::operations::ReplaySafety;
+use harmos_operations::operations::ReplaySafety;
 use harmos_operations::storage::IO_POLICY;
 
 /* === Constants === */
@@ -62,8 +62,8 @@ pub const HASH_FILE_OPERATION: harmos_operations::execution::operations::Operati
 /* === Implementations === */
 
 impl HashFile {
-    fn grant_for(request: &HashFile) -> Option<harmos_domain::plugin::Grant> {
-        request.source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(HASH_FILE_OPERATION.entry().id, scope))
+    fn grant_for(request: &HashFile) -> Option<harmos_operations::plugin::Grant> {
+        request.source.grant_scope().map(|scope| harmos_operations::plugin::Grant::of(HASH_FILE_OPERATION.entry().id, scope))
     }
 }
 

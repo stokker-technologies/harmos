@@ -42,20 +42,21 @@ mod supervision;
 pub use application::{Application, Startup};
 pub use error::{BackendFailure, Error};
 pub use harmos_domain as domain;
-pub use harmos_domain::model;
 pub use harmos_domain::{DefinitionId, Identified};
 pub use harmos_operations as builtins;
+pub use harmos_operations::model;
 
 pub use harmos_domain::{
-    Aggregate, Failure, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata, Storable, StreamField,
-    StreamSpec, Value, ValueError, btree_map_memory,
+    Aggregate, Identifier, IdentifierError, MemorySize, Message, MessageError, Metadata, RowMetadata, Storable, StreamField, Value,
+    ValueError, btree_map_memory,
 };
-pub use harmos_domain::{
-    Backoff, Digest, Fingerprint, Jitter, OperationDefinition, OperationPolicy, Portable, QualifiedId, RequestShape, RestartPolicy,
-    RetryPolicy, ServicePolicy,
-};
+pub use harmos_domain::{Digest, Fingerprint, Portable, QualifiedId};
 pub use harmos_operations::execution::operations::{EndpointSet, OperationHost, Response};
 pub use harmos_operations::execution::{Context, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
+pub use harmos_operations::{
+    Backoff, Jitter, OperationDefinition, OperationPolicy, RequestShape, RestartPolicy, RetryPolicy, ServicePolicy,
+};
+pub use harmos_operations::{Failure, StreamSpec};
 pub use operations::refusal::Refusal;
 pub use operations::{Catalog, CatalogDescription, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
@@ -66,7 +67,8 @@ pub use harmos_guest::guest;
 
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
-pub use harmos_domain::{StreamEntry, artifacts, failure, listeners, schema};
+pub use harmos_operations::{StreamEntry, failure, listeners};
+pub use harmos_operations::{artifacts, schema};
 pub use harmos_sdk_derive::{Described, Request, Row};
 
 /* === Imports === */
@@ -105,22 +107,22 @@ pub mod __private {
 
     /* === Re-Exports === */
 
-    pub use harmos_domain::plugin;
+    pub use harmos_operations::plugin;
 
-    pub use harmos_domain::__private::CarrierContext;
     pub use harmos_domain::__private::{
-        MapEntry, MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, operation_identity,
-        owner_segment, postcard_product, stream_identity,
+        MapEntry, MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, postcard_product,
     };
     pub use harmos_domain::config::SchemaSettings;
-    pub use harmos_domain::inventory as PluginInventory;
-    pub use harmos_domain::plugin::schema_markers as PluginSchemaMarkers;
-    pub use harmos_domain::plugin::{
+    pub use harmos_domain::identity::{dotted as operation_identity, segment as owner_segment, stream_subset as stream_identity};
+    pub use harmos_operations::__private::CarrierContext;
+    pub use harmos_operations::execution::__private::Catalog;
+    pub use harmos_operations::inventory as PluginInventory;
+    pub use harmos_operations::plugin::schema_markers as PluginSchemaMarkers;
+    pub use harmos_operations::plugin::{
         Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
         Requirements as PluginRequirements,
     };
-    pub use harmos_domain::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-    pub use harmos_operations::execution::__private::Catalog;
+    pub use harmos_operations::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
 
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that
@@ -132,7 +134,7 @@ pub mod __private {
 
     // no authoring attributes at all still resolves the same paths.
 
-    pub use harmos_domain::__private::Answer;
+    pub use harmos_operations::__private::Answer;
 
     /* === Imports === */
 
@@ -170,7 +172,7 @@ pub mod catalog {
 
     /* === Re-Exports === */
 
-    pub use harmos_domain::catalog::*;
+    pub use harmos_operations::catalog::*;
 
     /* === Imports === */
 

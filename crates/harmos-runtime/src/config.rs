@@ -96,7 +96,7 @@ pub struct OperationSettings {
 #[derive(Clone, Debug)]
 pub struct PluginSettings {
     pub configuration: Vec<u8>,
-    pub requires: Vec<harmos_domain::Requirement>,
+    pub requires: Vec<harmos_operations::Requirement>,
     pub host_operations: Vec<crate::Identifier>,
     pub initialization_timeout: Duration,
     pub shutdown_timeout: Duration,

@@ -41,7 +41,7 @@ pub(crate) struct ConnectionStreams {
 /* === Implementations === */
 impl<A: Application> StreamManager<A> {
     pub(crate) fn connect_publications(
-        &self, owner: &str, declarations: impl IntoIterator<Item = harmos_domain::StreamDeclaration>,
+        &self, owner: &str, declarations: impl IntoIterator<Item = harmos_operations::StreamDeclaration>,
     ) -> Result<ConnectionStreams, StreamRegistrationError> {
         let definitions = publication_definitions(owner, declarations)?;
         let validations = definitions

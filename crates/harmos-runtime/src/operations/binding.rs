@@ -55,7 +55,7 @@ pub(super) struct Request<T> {
     pub(super) context: Arc<std::sync::OnceLock<super::CallContext>>,
     pub(super) retention: Option<super::RequestClaims>,
     pub(super) binding: Option<Arc<dyn std::any::Any + Send + Sync>>,
-    pub(super) grant: Option<harmos_domain::plugin::Grant>,
+    pub(super) grant: Option<harmos_operations::plugin::Grant>,
 }
 
 pub(super) struct Typed<O: RequestShape, P = ()> {

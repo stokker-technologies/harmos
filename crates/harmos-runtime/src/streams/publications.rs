@@ -25,8 +25,8 @@ use tokio::sync::watch;
 use super::definition::{Contract, Windows};
 use super::{Demand, Holding, Item, Query, StreamManager, Wired, window};
 use crate::{Application, state::Position, streams::Definition};
-use harmos_domain::StreamDeclaration;
-use harmos_domain::inventory::publications;
+use harmos_operations::StreamDeclaration;
+use harmos_operations::inventory::publications;
 
 /* === Constants === */
 
@@ -513,7 +513,7 @@ mod tests {
                 cardinality: Cardinality::Required,
             }]],
         };
-        let revision = harmos_domain::streams::revision(&schema, 4).unwrap();
+        let revision = harmos_domain::schema::stream_revision(&schema, 4).unwrap();
         let proposed = Definition::declared::<PublicationRow>("samples", schema.clone(), 4).unwrap().publication("owner");
         let mut revisions = Revisions::default();
         revisions.definitions.insert(revision, Contract::of(&Definition::declared::<u64>("samples", schema.clone(), 4).unwrap()));

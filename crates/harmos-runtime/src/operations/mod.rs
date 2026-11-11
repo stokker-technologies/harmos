@@ -96,9 +96,9 @@ pub use component::{Component, ComponentError, ComponentOperation};
 #[cfg(feature = "plugin-guest")]
 pub use encoded::EncodedBinding;
 pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
-pub use harmos_domain::observers;
 pub use harmos_operations::execution::operations::StreamError;
 pub use harmos_operations::execution::operations::{EndpointSet, InputEndpoint, OutputEndpoint};
+pub use harmos_operations::observers;
 pub(crate) use manager::Manager;
 pub use manager::OperationManager;
 #[cfg(feature = "plugin-guest")]

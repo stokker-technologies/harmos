@@ -111,13 +111,13 @@ pub struct Sdk {
 
 /* === Implementations === */
 
-impl harmos_domain::operations::RequestShape for Host {
+impl harmos_operations::operations::RequestShape for Host {
     type Request = Self;
     type Response = Reply;
     type Input = harmos_runtime::operations::NoStream;
     type Output = harmos_runtime::operations::NoStream;
 }
-static HOST_DESCRIPTION: harmos_domain::operations::WireDeclaration = harmos_domain::operations::WireDeclaration::request::<Host>(
+static HOST_DESCRIPTION: harmos_operations::operations::WireDeclaration = harmos_operations::operations::WireDeclaration::request::<Host>(
     "fixture.host",
     OperationPolicy {
         timeout: Duration::from_secs(30),
@@ -129,8 +129,8 @@ static HOST_DESCRIPTION: harmos_domain::operations::WireDeclaration = harmos_dom
 .visibility(harmos_runtime::operations::Visibility::Public)
 .grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Host", "Call"));
 
-const HOST_OPERATION: harmos_domain::operations::OperationSpec<Host> =
-    harmos_domain::operations::OperationSpec::<Host>::new(&HOST_DESCRIPTION);
+const HOST_OPERATION: harmos_operations::operations::OperationSpec<Host> =
+    harmos_operations::operations::OperationSpec::<Host>::new(&HOST_DESCRIPTION);
 
 pub(crate) async fn host_handler(
     request: Host, context: harmos_runtime::operations::FunctionContext<Host>,

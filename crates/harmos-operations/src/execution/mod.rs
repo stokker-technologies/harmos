@@ -19,6 +19,8 @@ pub mod services;
 
 /* === Re-Exports === */
 
+pub use crate::{Backoff, Jitter, OperationDefinition, OperationPolicy, Requirement, RestartPolicy, RetryPolicy};
+pub use crate::{FAILED, Failure, Refusal, Registrar, RegistrationError, ServicePolicy, StreamSpec, failure, inventory, observers, plugin};
 pub use harmos_domain::*;
 pub use lifecycle::Lifecycle;
 pub use operations::{
@@ -61,7 +63,7 @@ pub mod catalog {
 
     /* === Re-Exports === */
 
-    pub use harmos_domain::catalog::*;
+    pub use harmos_operations::catalog::*;
 
     /* === Imports === */
 
@@ -98,10 +100,10 @@ pub mod __private {
 
     /* === Re-Exports === */
 
+    pub use crate::__private::*;
     pub use crate::execution::operations::registration::{Catalog, PreparedNative, ServiceFuture};
     pub use crate::execution::operations::resources::ResourceSet;
     pub use crate::execution::operations::response::ErasedResponse;
-    pub use harmos_domain::__private::*;
 
     /* === Imports === */
 

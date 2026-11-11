@@ -10,7 +10,7 @@
 /* === Imports === */
 
 use super::Table as WireTable;
-use harmos_domain::ServicePolicy;
+use harmos_operations::ServicePolicy;
 use harmos_operations::execution::__private::{Catalog, ResourceSet, ServiceFuture};
 use harmos_operations::execution::operations::*;
 use harmos_operations::execution::services::Service;
@@ -86,9 +86,9 @@ fn named_factory_contract() {
     assert_eq!(contract.operation(), &definition);
     assert_eq!(contract.schema(), READ_OPERATION.wire().contract().unwrap().schema());
     assert_eq!(contract.operation().policy, READ_OPERATION.entry().policy);
-    let granted = factory.grant(Some(harmos_domain::plugin::Grant::of(READ_OPERATION.entry().id, "device"))).unwrap();
+    let granted = factory.grant(Some(harmos_operations::plugin::Grant::of(READ_OPERATION.entry().id, "device"))).unwrap();
     assert_eq!((granted.operation(), granted.scope()), (id.as_str(), Some("device")));
-    let foreign = harmos_domain::plugin::Grant::of("foreign.operation", "device");
+    let foreign = harmos_operations::plugin::Grant::of("foreign.operation", "device");
     assert_eq!(factory.grant(Some(foreign.clone())), Some(foreign));
 
     let mut table = WireTable::new("fixture").unwrap();

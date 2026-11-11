@@ -72,7 +72,7 @@ impl Publications {
             let descriptor = pool.get_message_by_name(stream.row.trim_start_matches('.')).ok_or_else(|| invalid("Missing Stream Row"))?;
             let row = Row::new(descriptor)?;
             let interval = interval(stream, catalog, &pool)?;
-            declarations.push(harmos_domain::StreamDeclaration {
+            declarations.push(harmos_operations::StreamDeclaration {
                 id: stream.id.clone(),
                 window: settings.stream_window.get(),
                 row: row.schema.clone(),

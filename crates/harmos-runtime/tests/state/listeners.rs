@@ -22,7 +22,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery, Source};
+use harmos_operations::listeners::{Context as DeliveryContext, Delivery, Source};
 use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
@@ -136,13 +136,13 @@ fn rows_registry() -> harmos_runtime::state::RecordRegistry<Rows> {
     })
 }
 
-static CALLBACKS_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 2] = [
-    harmos_domain::catalog::Node::Leaf(HEARING_FIRST_OPERATION.wire()),
-    harmos_domain::catalog::Node::Leaf(HEARING_SECOND_OPERATION.wire()),
+static CALLBACKS_CATALOG_DECLARATIONS: [harmos_operations::catalog::Node<harmos_operations::operations::WireDeclaration>; 2] = [
+    harmos_operations::catalog::Node::Leaf(HEARING_FIRST_OPERATION.wire()),
+    harmos_operations::catalog::Node::Leaf(HEARING_SECOND_OPERATION.wire()),
 ];
-static CALLBACKS_CATALOG_CALLEES: [harmos_domain::catalog::Node<&'static [harmos_domain::operations::WireDeclaration]>; 2] = [
-    harmos_domain::catalog::Node::Leaf(HEARING_FIRST_OPERATION.callees()),
-    harmos_domain::catalog::Node::Leaf(HEARING_SECOND_OPERATION.callees()),
+static CALLBACKS_CATALOG_CALLEES: [harmos_operations::catalog::Node<&'static [harmos_operations::operations::WireDeclaration]>; 2] = [
+    harmos_operations::catalog::Node::Leaf(HEARING_FIRST_OPERATION.callees()),
+    harmos_operations::catalog::Node::Leaf(HEARING_SECOND_OPERATION.callees()),
 ];
 
 const CALLBACKS_CATALOG: harmos_runtime::operations::CatalogDescription = harmos_runtime::operations::CatalogDescription::new(
@@ -479,7 +479,7 @@ fn candidate() -> PluginDefinitions {
         ("listener.second", HEARING_SECOND_OPERATION.wire().contract().unwrap()),
     ] {
         listeners.push(
-            harmos_domain::listeners::Definition::new(
+            harmos_operations::listeners::Definition::new(
                 harmos_runtime::Identifier::new(id).unwrap(),
                 Source::Record {
                     id: "listener.fact".into(),

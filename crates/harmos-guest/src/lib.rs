@@ -23,12 +23,11 @@ pub mod kit;
 /* === Re-Exports === */
 
 pub use error::{Error, Result};
-pub use harmos_domain::inventory;
-pub use harmos_domain::listeners;
-pub use harmos_domain::model;
-pub use harmos_domain::{
-    ConfigError, Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec, encode_config, reserved, validate_config,
-};
+pub use harmos_operations::inventory;
+pub use harmos_operations::listeners;
+pub use harmos_operations::model;
+pub use harmos_operations::{ConfigError, encode_config, validate_config};
+pub use harmos_operations::{Failure, Refusal, Registrar, Registration, RegistrationError, StreamSpec, reserved};
 pub mod builtins;
 
 pub mod operations {
@@ -60,17 +59,18 @@ pub use harmos_operations::execution::{Context, Lifecycle, Operation, Resource, 
 
 pub use harmos_domain::schema;
 pub use harmos_domain::streams;
-pub use harmos_domain::{
-    Digest, Fingerprint, MemorySize, Message, MessageError, OperationDefinition, Portable, QualifiedId, RowMetadata, ServicePolicy,
-    Storable,
-};
+pub use harmos_domain::{Digest, Fingerprint, MemorySize, Message, MessageError, Portable, QualifiedId, RowMetadata, Storable};
 pub use harmos_domain::{Metadata, StreamField};
 pub use harmos_operations::execution::__private;
+pub use harmos_operations::{OperationDefinition, ServicePolicy};
 #[cfg(feature = "kit")]
 pub use kit::{OperationInstance, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT};
 
 #[cfg(feature = "derive")]
-pub use harmos_domain::{Request, Row, StreamEntry};
+pub use harmos_domain::Row;
+pub use harmos_domain::StreamEntry;
+#[cfg(feature = "derive")]
+pub use harmos_operations::Request;
 
 #[cfg(feature = "derive")]
 pub use harmos_guest_macros::plugin as guest;
@@ -102,7 +102,7 @@ extern crate self as harmos_guest;
 /* === Implementations === */
 
 #[cfg(feature = "kit")]
-impl harmos_domain::__private::CarrierContext for kit::Context {
+impl harmos_operations::__private::CarrierContext for kit::Context {
     const FACILITY: &'static str = "guest";
 }
 
@@ -115,7 +115,7 @@ pub mod catalog {
 
     /* === Re-Exports === */
 
-    pub use harmos_domain::catalog::*;
+    pub use harmos_operations::catalog::*;
 
     /* === Imports === */
 

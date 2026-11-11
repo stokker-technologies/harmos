@@ -55,9 +55,10 @@ type OperationDependencies = std::sync::Arc<dyn Fn() -> Result<Vec<super::calls:
 type DeclaredOperation = std::sync::Arc<dyn Fn() -> OperationDefinition + Send + Sync>;
 type NamedOperation = std::sync::Arc<dyn Fn(&str) -> Result<OperationDefinition, ServingError> + Send + Sync>;
 type GrantMapping =
-    std::sync::Arc<dyn Fn(&str, Option<harmos_domain::plugin::Grant>) -> Option<harmos_domain::plugin::Grant> + Send + Sync>;
-type RequestGrant =
-    std::sync::Arc<dyn Fn(&(dyn Any + Send)) -> Result<Option<harmos_domain::plugin::Grant>, crate::execution::MessageError> + Send + Sync>;
+    std::sync::Arc<dyn Fn(&str, Option<harmos_operations::plugin::Grant>) -> Option<harmos_operations::plugin::Grant> + Send + Sync>;
+type RequestGrant = std::sync::Arc<
+    dyn Fn(&(dyn Any + Send)) -> Result<Option<harmos_operations::plugin::Grant>, crate::execution::MessageError> + Send + Sync,
+>;
 type ContractProjection =
     std::sync::Arc<dyn Fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError> + Send + Sync>;
 
@@ -83,7 +84,7 @@ pub struct PreparedNative {
     pub streams: Option<super::WireStreams>,
 
     pub instance: Box<dyn NativeInstance>,
-    pub grant: Option<harmos_domain::plugin::Grant>,
+    pub grant: Option<harmos_operations::plugin::Grant>,
 }
 
 #[derive(Clone)]
@@ -175,13 +176,13 @@ impl CatalogDescription {
         Self { name, declarations, callees, factory }
     }
 
-    pub fn definitions(&self) -> Result<Vec<OperationDefinition>, harmos_domain::Error> {
+    pub fn definitions(&self) -> Result<Vec<OperationDefinition>, crate::operations::Error> {
         if let Some(factory) = self.factory {
             let batch = factory();
             let mut names = std::collections::BTreeSet::new();
             for operation in &batch.operations {
                 if !names.insert(operation.definition.id.clone()) {
-                    return Err(harmos_domain::Error::DuplicateOperation { id: operation.definition.id.to_string() });
+                    return Err(crate::operations::Error::DuplicateOperation { id: operation.definition.id.to_string() });
                 }
             }
             return Ok(batch.operations.into_iter().map(|operation| operation.definition).collect());
@@ -222,7 +223,7 @@ impl Catalog {
                 operation.definition.validate().map_err(ServingError::Declaration)?;
             }
             if !names.insert(operation.definition.id.clone()) {
-                return Err(ServingError::Declaration(harmos_domain::Error::DuplicateOperation {
+                return Err(ServingError::Declaration(crate::operations::Error::DuplicateOperation {
                     id: operation.definition.id.to_string(),
                 }));
             }
@@ -232,7 +233,7 @@ impl Catalog {
     pub fn contracts(&self) -> Result<Vec<Contract>, super::ContractError> {
         self.operations.iter().map(OperationFactory::contract).collect()
     }
-    pub fn definitions(&self) -> Result<Vec<OperationDefinition>, harmos_domain::Error> {
+    pub fn definitions(&self) -> Result<Vec<OperationDefinition>, crate::operations::Error> {
         Ok(self.operations.iter().map(|operation| operation.definition.clone()).collect())
     }
 
@@ -442,7 +443,7 @@ impl OperationFactory {
 
     pub fn request_grant(
         &self, request: &(dyn Any + Send),
-    ) -> Result<Option<harmos_domain::plugin::Grant>, crate::execution::MessageError> {
+    ) -> Result<Option<harmos_operations::plugin::Grant>, crate::execution::MessageError> {
         (self.request_grant)(request)
     }
     pub fn accepts_target(&self, target: &super::Target, endpoints: std::any::TypeId) -> bool {
@@ -522,7 +523,7 @@ impl OperationFactory {
         Ok(prepared)
     }
 
-    pub fn grant(&self, grant: Option<harmos_domain::plugin::Grant>) -> Option<harmos_domain::plugin::Grant> {
+    pub fn grant(&self, grant: Option<harmos_operations::plugin::Grant>) -> Option<harmos_operations::plugin::Grant> {
         (self.grant)(self.definition.id.as_str(), grant)
     }
     #[cfg(all(feature = "grpc", feature = "streaming"))]
@@ -658,8 +659,8 @@ impl<S: Service> ServiceInstance for InitializedService<S> {
 /* === Private Functions === */
 
 pub(crate) fn registered_grant(
-    original: &str, id: &str, grant: Option<harmos_domain::plugin::Grant>,
-) -> Option<harmos_domain::plugin::Grant> {
+    original: &str, id: &str, grant: Option<harmos_operations::plugin::Grant>,
+) -> Option<harmos_operations::plugin::Grant> {
     grant.map(|mut grant| {
         if grant.operation() == original && id != original {
             grant.operation = id.to_owned().into();

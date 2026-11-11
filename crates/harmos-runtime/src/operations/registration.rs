@@ -234,7 +234,7 @@ impl Bindings<'_> {
 
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(super) fn stage_implementation<D, O>(
-        &mut self, specification: harmos_domain::operations::OperationSpec<D>, lane: &'static str,
+        &mut self, specification: harmos_operations::operations::OperationSpec<D>, lane: &'static str,
         mut dependencies: harmos_operations::execution::__private::ResourceSet,
     ) -> Result<()>
     where

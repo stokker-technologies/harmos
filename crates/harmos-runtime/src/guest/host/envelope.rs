@@ -96,7 +96,7 @@ pub enum WireCommand {
 pub enum WireAnswer {
     Stream { epoch: u64, transferred: bool, payload: Option<Vec<u8>> },
     Ready { payload: Vec<u8> },
-    Failed { failure: harmos_domain::Failure },
+    Failed { failure: harmos_operations::Failure },
 }
 
 /* === Traits === */
@@ -108,7 +108,7 @@ impl WireCommand {
 
 /* === Public Functions === */
 
-pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<harmos_domain::plugin::Grant>, serde_json::Error> {
+pub fn decode_prepared_grant(payload: &[u8]) -> Result<Option<harmos_operations::plugin::Grant>, serde_json::Error> {
     if payload.is_empty() {
         return Ok(None);
     }

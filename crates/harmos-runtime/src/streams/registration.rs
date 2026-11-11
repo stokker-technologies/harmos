@@ -23,7 +23,7 @@ use super::publications::{publication_definitions, validate_existing};
 use super::{PublishedStream, StreamManager, StreamRegistrationError, StreamWriter, window};
 use crate::guest::host::plugin::PluginScope;
 use crate::{Application, state::Position};
-use harmos_domain::StreamDeclaration;
+use harmos_operations::StreamDeclaration;
 
 /* === Constants === */
 

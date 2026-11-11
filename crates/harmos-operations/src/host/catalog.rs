@@ -15,7 +15,7 @@
 
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 use crate::{Error, Identifier, MessageError};
-use harmos_domain::plugin::Grant;
+use harmos_operations::plugin::Grant;
 use harmos_protocol::host::{CatalogKind as Kind, CatalogPage};
 use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
 use serde::Serialize;

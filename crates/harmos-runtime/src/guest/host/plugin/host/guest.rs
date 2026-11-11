@@ -79,7 +79,7 @@ impl<A: Application> PluginHost<A> {
             .map_err(|source| failed(loaded.declaration().id.as_str(), source))?;
         definition.requires = settings.requires.clone();
         let declarations = catalog.definitions();
-        harmos_domain::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
+        harmos_operations::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
             Error::InvalidInput {
                 field: "guest operation catalog",
                 reason: "catalog must match the inspected component",

@@ -27,7 +27,7 @@ use crate::execution::operations::{
     EndpointSet, Grpc, OperationPolicy, ReplaySafety, StreamInput, StreamItem, StreamOutput, Visibility, WireEndpoints, WireStreams,
 };
 use crate::execution::{MemorySize, MessageError};
-use harmos_domain::operations::ProtobufExt;
+use harmos_operations::operations::ProtobufExt;
 
 /* === Constants === */
 
@@ -81,7 +81,7 @@ pub trait ProtobufOperation: Send + Sync + 'static {
     const RESOURCES: &'static [Resource] = &[];
     const OPERATIONS: &'static [ProtobufDependency] = &[];
 
-    fn grant(_request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, MessageError> {
+    fn grant(_request: &Self::Request) -> Result<Option<harmos_operations::plugin::Grant>, MessageError> {
         Ok(None)
     }
 
@@ -491,7 +491,7 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
     let descriptors =
         harmos_protocol::schema::operation_types(&prost_types::FileDescriptorSet { file: files.into_values().collect() }, &roots)
             .map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
-    let protobuf = harmos_domain::operations::Protobuf {
+    let protobuf = harmos_operations::operations::Protobuf {
         descriptors: descriptors.encode_to_vec(),
         request: request.full_name().into(),
         response: response.full_name().into(),
@@ -499,7 +499,7 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         output: output.map(|message| message.full_name().into()),
     };
     let operation = OperationDefinition {
-        id: crate::execution::Identifier::new(O::ID).map_err(crate::execution::Error::from)?,
+        id: crate::execution::Identifier::new(O::ID).map_err(crate::operations::Error::from)?,
         description: O::DESCRIPTION.into(),
         policy: O::POLICY,
         visibility: O::VISIBILITY,

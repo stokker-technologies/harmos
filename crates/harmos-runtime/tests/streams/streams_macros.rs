@@ -232,7 +232,7 @@ fn stream_values_register() {
         &harmos_runtime::config::SchemaSettings::default(),
     )
     .unwrap();
-    assert_eq!(catalog[0].version(), harmos_domain::streams::revision(&graph, catalog[0].window()).unwrap());
+    assert_eq!(catalog[0].version(), harmos_domain::schema::stream_revision(&graph, catalog[0].window()).unwrap());
     assert_eq!(catalog[0].window(), 4);
     assert_eq!(catalog.iter().find(|definition| definition.id() == "reading").expect("the id is in the catalog").window(), 2);
     assert!(catalog.iter().find(|definition| definition.id() == "outside").is_none());
@@ -275,12 +275,12 @@ fn stream_values_validate_identity_window_and_presentation() {
     assert_eq!(valid.build().unwrap().metadata().label, "Samples");
     assert!(matches!(
         harmos_runtime::StreamEntry::<PresentedSample>::new("bad/path", 4).build(),
-        Err(harmos_domain::inventory::publications::Error::InvalidId { .. })
+        Err(harmos_domain::streams::Error::InvalidId { .. })
     ));
     assert!(matches!(
         harmos_runtime::StreamEntry::<PresentedSample>::new("values.samples", 0).build(),
-        Err(harmos_domain::inventory::publications::Error::ZeroWindow { .. })
+        Err(harmos_domain::streams::Error::ZeroWindow { .. })
     ));
-    assert!(matches!(valid.attributes_json("broken").build(), Err(harmos_domain::inventory::publications::Error::Metadata { .. })));
-    assert!(matches!(valid.tags(&["duplicate", "duplicate"]).build(), Err(harmos_domain::inventory::publications::Error::Metadata { .. })));
+    assert!(matches!(valid.attributes_json("broken").build(), Err(harmos_domain::streams::Error::Metadata { .. })));
+    assert!(matches!(valid.tags(&["duplicate", "duplicate"]).build(), Err(harmos_domain::streams::Error::Metadata { .. })));
 }

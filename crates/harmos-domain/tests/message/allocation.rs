@@ -21,8 +21,8 @@ use std::cell::Cell;
 // Local Imports
 use harmos_domain::Message;
 use harmos_domain::journal::Position;
-use harmos_domain::listeners::{Context, Delivery};
 use harmos_operations::execution::grpc::{self, DecodeInput, prost};
+use harmos_operations::listeners::{Context, Delivery};
 
 /* === Constants === */
 
@@ -244,8 +244,8 @@ fn rows_retain_output() {
 fn peak_fits_preflight() {
     let row = selection();
     let context = Context::Record { position: Position(7) };
-    let budget = harmos_domain::listeners::encoding_memory_bytes(context, &row).unwrap();
-    let (encoded, measured) = measure(|| harmos_domain::listeners::encode_borrowed(context, &row, budget).unwrap());
+    let budget = harmos_operations::listeners::encoding_memory_bytes(context, &row).unwrap();
+    let (encoded, measured) = measure(|| harmos_operations::listeners::encode_borrowed(context, &row, budget).unwrap());
     assert_eq!(measured.allocations, 2, "{measured:?}");
     assert!(measured.peak <= budget, "{measured:?}, budget {budget}");
     assert_eq!(measured.peak, harmos_domain::Message::encoded_size(&row) + encoded.capacity());
@@ -345,8 +345,8 @@ fn strings_fit_bound() {
 fn listener_decode_borrows() {
     let row = Leaf { payload: vec![9; 32768] };
     let context = Context::Record { position: Position(7) };
-    let encoding = harmos_domain::listeners::encoding_memory_bytes(context, &row).unwrap();
-    let encoded = harmos_domain::listeners::encode_borrowed(context, &row, encoding).unwrap();
+    let encoding = harmos_operations::listeners::encoding_memory_bytes(context, &row).unwrap();
+    let encoded = harmos_operations::listeners::encode_borrowed(context, &row, encoding).unwrap();
     let (bound, inspected) = measure(|| <Delivery<Leaf> as harmos_domain::Message>::decoding_memory(&encoded).unwrap());
     assert_eq!(inspected.allocations, 0, "{inspected:?}");
     let (decoded, allocated) = measure(|| <Delivery<Leaf> as harmos_domain::Message>::decode(&encoded).unwrap());

@@ -62,7 +62,7 @@ impl PluginDefinitions {
         self.inventory.ordered().iter()
     }
 
-    pub fn host_requirements(&self) -> impl Iterator<Item = (&PluginDefinition, &harmos_domain::inventory::contracts::Required)> {
+    pub fn host_requirements(&self) -> impl Iterator<Item = (&PluginDefinition, &harmos_operations::inventory::contracts::Required)> {
         self.definitions().flat_map(move |definition| {
             let selected = self.inventory.required_providers(&definition.id);
             definition

@@ -22,7 +22,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::plugin::Grant;
+use harmos_operations::plugin::Grant;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};

@@ -19,8 +19,9 @@ use std::marker::PhantomData;
 
 // Local Imports
 use super::Context;
-use harmos_domain::{Message, StreamSpec, plugin::Declared};
+use harmos_domain::Message;
 use harmos_operations::execution::operations::OperationHost;
+use harmos_operations::{StreamSpec, plugin::Declared};
 
 /* === Constants === */
 
@@ -43,7 +44,7 @@ pub enum PublishError {
     UndeclaredStream,
 
     #[error(transparent)]
-    Call(#[from] harmos_domain::Refusal),
+    Call(#[from] harmos_operations::Refusal),
 }
 
 /* === Traits === */
@@ -51,7 +52,7 @@ pub enum PublishError {
 /* === Implementations === */
 
 // A refused publication forwards the host's failure unchanged.
-impl From<PublishError> for harmos_domain::Refusal {
+impl From<PublishError> for harmos_operations::Refusal {
     fn from(error: PublishError) -> Self {
         match error {
             PublishError::Call(refusal) => refusal,

@@ -220,11 +220,11 @@ impl Drop for EncodedChild {
     }
 }
 
-impl harmos_domain::operations::RequestShape for NativeCall {
+impl harmos_operations::operations::RequestShape for NativeCall {
     type Request = Request;
     type Response = Answer;
-    type Input = harmos_domain::operations::NoStream;
-    type Output = harmos_domain::operations::NoStream;
+    type Input = harmos_operations::operations::NoStream;
+    type Output = harmos_operations::operations::NoStream;
 }
 
 impl MemorySize for Request {

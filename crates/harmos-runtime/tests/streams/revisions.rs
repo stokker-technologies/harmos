@@ -137,7 +137,7 @@ fn candidate(text: bool, label: &str) -> PluginDefinitions {
     } else {
         <Number as harmos_runtime::schema::Described>::DEFINITION
     };
-    let stream = harmos_domain::StreamDeclaration {
+    let stream = harmos_operations::StreamDeclaration {
         id: "revision.samples".into(),
         metadata: harmos_runtime::Metadata::new(harmos_runtime::Identifier::new("revision.samples").unwrap(), label, None),
         row_metadata: Vec::new(),

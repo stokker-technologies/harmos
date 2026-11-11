@@ -93,7 +93,7 @@ impl crate::MemorySize for Encoded {
 
 // This Adapter Is Never Declared Or Registered By Its Static Identity.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl harmos_domain::operations::RequestShape for Encoded {
+impl harmos_operations::operations::RequestShape for Encoded {
     type Request = Self;
     type Response = Vec<u8>;
     type Input = crate::operations::NoStream;
@@ -136,7 +136,7 @@ impl PluginSdkRegistration {
     ) -> Result<EncodedInvocation> {
         self.authorize(authority, 0)?;
         let generation_context = self.entries[0].plugin().expect("SDK retains its original scope").issue_generation_context()?;
-        harmos_domain::validate_config(config_json).map_err(|source| Error::OperationFailed {
+        harmos_operations::validate_config(config_json).map_err(|source| Error::OperationFailed {
             operation: self.entries[0].id().to_owned(),
             source: Arc::new(source),
         })?;

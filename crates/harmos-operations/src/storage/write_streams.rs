@@ -13,7 +13,7 @@ use crate::execution::operations::access::GrantAccess;
 use crate::execution::operations::{
     ExecutionContext, Grpc, ProtobufInput, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility,
 };
-use harmos_domain::operations::FailureKind;
+use harmos_operations::operations::FailureKind;
 use harmos_storage::StorageManager;
 
 /* === Structs === */

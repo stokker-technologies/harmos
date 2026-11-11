@@ -31,11 +31,12 @@ use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store};
 // Local Imports
 use harmos::guest::capabilities::Refusal as BridgeRefusal;
-use harmos_domain::inventory::{Declaration, Facility};
-use harmos_domain::{Message, Refusal};
+use harmos_domain::Message;
 use harmos_guest::lifecycle::Initialize;
 use harmos_guest::lifecycle::InstanceState;
 use harmos_guest::operations::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
+use harmos_operations::Refusal;
+use harmos_operations::inventory::{Declaration, Facility};
 use sandbox::{EchoOperation, Echoed};
 
 /* === Constants === */
@@ -188,8 +189,8 @@ impl Session {
             .expect("the bridge accepts the command");
         WireAnswer::decode(&bytes).unwrap()
     }
-    async fn call<D: harmos_domain::operations::RequestShape>(
-        &mut self, specification: harmos_domain::operations::OperationSpec<D>, invocation: u64, payload: Vec<u8>,
+    async fn call<D: harmos_operations::operations::RequestShape>(
+        &mut self, specification: harmos_operations::operations::OperationSpec<D>, invocation: u64, payload: Vec<u8>,
     ) -> Result<Vec<u8>, String> {
         let prepared = self
             .phase(WireCommand::Prepare {

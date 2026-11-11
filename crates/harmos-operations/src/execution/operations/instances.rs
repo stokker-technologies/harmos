@@ -16,7 +16,7 @@
 // Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
-use harmos_domain::operations::instance::{Id, Status};
+use harmos_operations::operations::instance::{Id, Status};
 // Local Imports
 
 /* === Constants === */

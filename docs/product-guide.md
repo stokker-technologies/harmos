@@ -315,9 +315,14 @@ Host embedders depend explicitly on `harmos-runtime`. Managed and remote
 | `grpc` | External host gRPC listener, reflection and TLS; enabled by default. |
 | `simulation` | Deterministic runtime simulation. |
 
-Shared operation and state authoring still uses `harmos-domain`,
-`harmos-operations` with operation and catalog values. State entries and record
-registries are owned values. Native plugin authoring uses SDK builder values. Guests depend on `harmos-guest` and retain guest-specific
+`harmos-domain` is the native foundation: stored schemas and canonical revisions,
+identities, typed records and transactions, preparation/restoration and inverse pairing,
+journal positions, native stream row identity, and storage catalogs, selections and transforms.
+Lightweight application models can use it without Arrow, filesystem, async or host dependencies.
+`harmos-operations` owns operation declarations, typed dispatch and call context, streaming,
+policy admission and the retained guest artifact inventories and failure codecs.
+Portable policy values live in `harmos-protocol`; listener activation stays in runtime.
+State entries and record registries are owned values. Native plugin authoring uses SDK builder values. Guests depend on `harmos-guest` and retain guest-specific
 macros and setup; their lifecycle and child controls await a separate protocol decision.
 `harmos-storage` owns persistence and queries; `harmos-runtime` composes it with
 host lifecycle and managed state. Build tools use `harmos-packaging` from `tools/packaging`; it sits outside the six-library core.

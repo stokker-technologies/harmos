@@ -58,6 +58,28 @@ pub fn fingerprint(id: &str, types: &FileDescriptorSet, request: &str, response:
     Ok(hash.finalize().to_vec())
 }
 
+/// Fingerprint A Host Operation, Including Its Optional Stream Message Graphs.
+pub fn host_fingerprint(id: &str, contract: &crate::host::Protobuf) -> Result<Vec<u8>, Error> {
+    let descriptors = FileDescriptorSet::decode(contract.descriptors.as_slice()).map_err(|error| Error(error.to_string()))?;
+    let fingerprint = fingerprint(id, &descriptors, &contract.request, &contract.response)?;
+    if contract.input.is_none() && contract.output.is_none() {
+        return Ok(fingerprint);
+    }
+    let mut hash = Sha256::new();
+    hash.update(b"harmos.protobuf.stream.v1\0");
+    hash.update(fingerprint);
+    for message in [&contract.input, &contract.output] {
+        match message {
+            None => hash.update([0]),
+            Some(message) => {
+                hash.update([1]);
+                hash.update(self::fingerprint(id, &descriptors, message, message)?);
+            }
+        }
+    }
+    Ok(hash.finalize().to_vec())
+}
+
 /// Compute the wire catalog digest without its advertised digest field.
 pub fn catalog_digest(catalog: &crate::v1::Catalog) -> Vec<u8> {
     let mut catalog = catalog.clone();

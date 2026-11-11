@@ -232,7 +232,7 @@ pub(crate) trait Settlement: Send + Sync + 'static {
 /* === Implementations === */
 
 // The Resident Activation Of A ServiceContext; It Is Never Declared By Its Identity.
-impl harmos_domain::operations::RequestShape for Activation {
+impl harmos_operations::operations::RequestShape for Activation {
     type Request = ();
     type Response = ();
     type Input = super::NoStream;

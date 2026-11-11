@@ -63,7 +63,7 @@ impl Drop for Cleanup {
         if let Some(runtime) = self.runtime.take() {
             self.executor.spawn(async move {
                 if let Err(error) = runtime.shutdown().await {
-                    let error = harmos_domain::failure::Report(&error);
+                    let error = harmos_operations::failure::Report(&error);
                     tracing::error!(%error, "catalog runtime shutdown failed after cancellation");
                 }
             });

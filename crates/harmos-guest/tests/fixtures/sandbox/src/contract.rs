@@ -73,11 +73,11 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::StreamSpec;
-use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 use harmos_guest as guest;
 #[cfg(target_arch = "wasm32")]
 use harmos_guest as harmos_domain;
+use harmos_operations::StreamSpec;
+use harmos_operations::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 

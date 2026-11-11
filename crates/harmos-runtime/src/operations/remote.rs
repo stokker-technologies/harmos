@@ -53,7 +53,7 @@ pub enum RemoteStreamError {
 
     // The provider's stream failure crosses unchanged.
     #[error(transparent)]
-    Remote(harmos_domain::Failure),
+    Remote(harmos_operations::Failure),
 }
 
 /* === Traits === */
@@ -87,7 +87,7 @@ impl RemoteStreamError {
         }
     }
 
-    pub(super) fn failure(&self) -> Option<&harmos_domain::Failure> {
+    pub(super) fn failure(&self) -> Option<&harmos_operations::Failure> {
         match self {
             Self::Remote(failure) => Some(failure),
             _ => None,

@@ -16,7 +16,7 @@
 use crate::Error;
 use crate::execution::operations::instances::InstanceAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
-use harmos_domain::operations::instance::Id;
+use harmos_operations::operations::instance::Id;
 
 /* === Constants === */
 

@@ -21,8 +21,8 @@ pub use harmos_operations::execution::{Operation, Service};
 
 pub use crate::export_plugin;
 pub use context::Context;
-pub use harmos_domain::Refusal as OperationRefusal;
-pub use harmos_domain::{UNKNOWN, UNREADABLE};
+pub use harmos_operations::Refusal as OperationRefusal;
+pub use harmos_operations::{UNKNOWN, UNREADABLE};
 pub use instance::OperationInstance;
 pub use publisher::{PublishError, Publisher};
 

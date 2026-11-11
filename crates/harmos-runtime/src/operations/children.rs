@@ -24,7 +24,8 @@ use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use crate::Error;
 use crate::operations::{EncodedInvocation, WireChildAction, WireChildCall, WireChildControl};
-use harmos_domain::{Message, Refusal};
+use harmos_domain::Message;
+use harmos_operations::Refusal;
 
 /* === Constants === */
 
@@ -186,21 +187,25 @@ pub(crate) fn refused(error: Error) -> Refusal {
             }
             // A Carried Failure Keeps Its Cause and Any Frame Closer to the Origin
             let failure = error.failure().cloned().unwrap_or_else(|| {
-                harmos_domain::Failure::originate(crate::operations::FailureKind::Permanent, &error, harmos_domain::failure::Origin::Host)
+                harmos_operations::Failure::originate(
+                    crate::operations::FailureKind::Permanent,
+                    &error,
+                    harmos_operations::failure::Origin::Host,
+                )
             });
             let failure = failure.in_operation(operation.as_str());
-            Refusal::failed(harmos_domain::FAILED, failure)
+            Refusal::failed(harmos_operations::FAILED, failure)
         }
         Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
-        Error::NotRegistered { .. } => Refusal::new(harmos_domain::UNKNOWN, error),
-        Error::OperationPayload { .. } => Refusal::new(harmos_domain::UNREADABLE, error),
+        Error::NotRegistered { .. } => Refusal::new(harmos_operations::UNKNOWN, error),
+        Error::OperationPayload { .. } => Refusal::new(harmos_operations::UNREADABLE, error),
         Error::OperationRefused(crate::Refusal::TimedOut { .. }) => Refusal::new(-32_607, error),
         Error::OperationRefused(_) | Error::Closing { .. } => Refusal::new(-32_606, error),
         error => Refusal::originate(
-            harmos_domain::FAILED,
+            harmos_operations::FAILED,
             crate::operations::FailureKind::Permanent,
             &error,
-            harmos_domain::failure::Origin::Host,
+            harmos_operations::failure::Origin::Host,
         ),
     }
 }
@@ -225,7 +230,7 @@ async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) ->
 }
 
 fn unknown(instance: u64) -> Refusal {
-    Refusal::new(harmos_domain::UNKNOWN, format!("operation instance {instance} is not a child this attempt owns"))
+    Refusal::new(harmos_operations::UNKNOWN, format!("operation instance {instance} is not a child this attempt owns"))
 }
 
 /* === Tests === */

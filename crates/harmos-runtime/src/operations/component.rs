@@ -95,7 +95,7 @@ pub enum ComponentError {
     Catalog { operation: &'static str },
 
     #[error(transparent)]
-    Declaration(#[from] harmos_domain::Error),
+    Declaration(#[from] harmos_operations::operations::Error),
 
     #[error("guest operation transport failed")]
     Transport(#[from] GuestError),
@@ -105,14 +105,14 @@ pub enum ComponentError {
 
     // The guest refused the request while preparing it.
     #[error(transparent)]
-    Preparation(harmos_domain::Failure),
+    Preparation(harmos_operations::Failure),
 
     #[error("guest operation request is not granted")]
     Unauthorized(#[source] crate::Error),
 
     // The guest handler failed; its failure crosses unchanged.
     #[error(transparent)]
-    Remote(harmos_domain::Failure),
+    Remote(harmos_operations::Failure),
 }
 
 /* === Traits === */
@@ -124,7 +124,7 @@ impl ComponentError {
         classify(self)
     }
 
-    pub(crate) fn failure(&self) -> Option<&harmos_domain::Failure> {
+    pub(crate) fn failure(&self) -> Option<&harmos_operations::Failure> {
         match self {
             Self::Preparation(failure) | Self::Remote(failure) => Some(failure),
             Self::Stream(source) => source.failure(),

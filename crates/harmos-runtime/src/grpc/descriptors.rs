@@ -22,7 +22,7 @@ use prost_types::FileDescriptorSet;
 
 // Local Imports
 use super::projection::DescriptorError;
-use harmos_domain::operations::Contract;
+use harmos_operations::operations::Contract;
 
 /* === Constants === */
 

@@ -33,7 +33,7 @@ use harmos_operations::execution::operations::{Contract, ExecutionContext, Nativ
 
 struct State {
     instance: Option<Box<dyn NativeInstance>>,
-    grant: Option<harmos_domain::plugin::Grant>,
+    grant: Option<harmos_operations::plugin::Grant>,
     #[cfg(feature = "streaming")]
     streams: Option<harmos_operations::execution::operations::WireStreams>,
     initialized: bool,
@@ -120,7 +120,7 @@ impl Table {
 }
 
 impl Prepared for State {
-    fn grant(&self) -> Option<harmos_domain::plugin::Grant> {
+    fn grant(&self) -> Option<harmos_operations::plugin::Grant> {
         self.grant.clone()
     }
     #[cfg(feature = "streaming")]

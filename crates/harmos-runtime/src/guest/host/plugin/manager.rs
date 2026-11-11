@@ -842,7 +842,8 @@ impl<G: Send + 'static, E: Send + 'static> PluginManager<G, E> {
                 Err(source) => {
                     self.failure_classes.insert(id.clone(), classify(source.as_ref()));
                     self.cancel_retry(&id);
-                    self.last_failures.insert(id.clone(), format!("plugin cleanup: {}", harmos_domain::failure::Report(source.as_ref())));
+                    self.last_failures
+                        .insert(id.clone(), format!("plugin cleanup: {}", harmos_operations::failure::Report(source.as_ref())));
                     self.failed.insert(id.clone());
                     failures.push(PluginCleanupFailure {
                         artifact: id,

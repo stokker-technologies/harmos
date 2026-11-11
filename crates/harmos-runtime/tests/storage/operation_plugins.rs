@@ -25,8 +25,8 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Fixture, config};
-use harmos_domain::inventory::contracts::Required;
-use harmos_domain::plugin::Grant;
+use harmos_operations::inventory::contracts::Required;
+use harmos_operations::plugin::Grant;
 use harmos_operations::storage::{Query, WriteRecords};
 use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
 use harmos_runtime::Aggregate;

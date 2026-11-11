@@ -163,7 +163,7 @@ pub(super) struct GrantAuthority {
 
     // A cross-owner plugin caller and its declared requirement for this operation.
     #[cfg(feature = "plugin-guest")]
-    plugin: Option<(String, Option<harmos_domain::inventory::contracts::Required>)>,
+    plugin: Option<(String, Option<harmos_operations::inventory::contracts::Required>)>,
 
     // External Authority Never Replaces A Plugin Caller's Own Requirement.
     external: Option<crate::operations::authorization::Authorization>,
@@ -290,7 +290,9 @@ impl std::ops::Deref for OperationManager {
 /* === Private Functions === */
 
 #[cfg(feature = "plugin-guest")]
-fn grant_allowed(required: Option<&harmos_domain::inventory::contracts::Required>, grant: Option<&harmos_domain::plugin::Grant>) -> bool {
+fn grant_allowed(
+    required: Option<&harmos_operations::inventory::contracts::Required>, grant: Option<&harmos_operations::plugin::Grant>,
+) -> bool {
     match grant {
         None => true,
         Some(grant) => required.is_some_and(|required| required.grants(grant)),

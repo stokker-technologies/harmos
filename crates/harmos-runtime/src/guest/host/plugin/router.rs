@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::watch;
 // Local Imports
 use super::{GuestInventory, PluginGeneration, PluginScope};
-use harmos_domain::Refusal;
+use harmos_operations::Refusal;
 
 /* === Constants === */
 

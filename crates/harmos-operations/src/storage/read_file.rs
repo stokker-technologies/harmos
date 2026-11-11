@@ -10,7 +10,7 @@
 /* === Imports === */
 
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
-use harmos_domain::operations::{FailureKind, ReplaySafety};
+use harmos_operations::operations::{FailureKind, ReplaySafety};
 use harmos_storage::StorageManager;
 
 /* === Structs === */
@@ -31,7 +31,7 @@ impl ProtobufOperation for ReadFile {
     const RESOURCES: &'static [Resource] =
         &[Resource::of::<StorageManager>(), Resource::of::<crate::execution::operations::access::GrantAccess>()];
 
-    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+    fn grant(request: &Self::Request) -> Result<Option<harmos_operations::plugin::Grant>, harmos_domain::MessageError> {
         let source = request
             .source
             .as_ref()
@@ -43,7 +43,7 @@ impl ProtobufOperation for ReadFile {
             }
             harmos_protocol::storage::file_source::Source::Local(_) => None,
         };
-        Ok(scope.map(|scope| harmos_domain::plugin::Grant::of(Self::ID, scope)))
+        Ok(scope.map(|scope| harmos_operations::plugin::Grant::of(Self::ID, scope)))
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
@@ -58,7 +58,7 @@ impl ProtobufOperation for ReadFile {
                     field: "grants",
                     reason: "resource is missing",
                 })?;
-            let grant = source.grant_scope().map(|scope| harmos_domain::plugin::Grant::of(Self::ID, scope));
+            let grant = source.grant_scope().map(|scope| harmos_operations::plugin::Grant::of(Self::ID, scope));
             if let Some(grant) = &grant {
                 grants.0.admit(grant).map_err(crate::Error::Access)?;
             }

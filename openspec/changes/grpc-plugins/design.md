@@ -13,7 +13,7 @@ Final validation waits for source closure; completed source does not close nativ
 | 2 | Host 3.1–3.9; Rust SDK 4.1–4.6; removal 6.1–6.4, 6.6–6.7; pilot SDKs 5.x | Native cutover, virtual clock, SDK rename, engine relocation and framed-path removal landed; cross-platform final proof remains open | Runtime, operations, SDKs, examples and retained tests |
 | 3 | Authoritative host protobuf: 2.6, 3.10–3.12, host portion of 6.5; 6.9 | Built-in and native example handlers use generated messages; replaced host DTOs/codecs and the operations runtime feature are removed | Protocol, operations, runtime; contract-only consumers |
 | 4 | `authoring-without-macros`; 6.10 | Agreed, implementation not started; follow its steps 1–11, migrate live aliases before deleting them, then consolidate surviving field-reading derives | Macro consumers, `crates/harmos-macros`, `sdk/rust/derive` |
-| 5 | Reduced domain: 6.8 | Pending wave 4; retain the native foundation and move or delete every other module by owner | Domain, protocol, operations, runtime and consumers |
+| 5 | Reduced domain: 6.8 | Foundation reduction in progress; operation behavior and retained guest declarations move to operations, portable policy values to protocol | Domain, protocol, operations, runtime and consumers |
 | 6 | Guests 7.1 and guest portion of 6.5 | Deferred until lifecycle/child-control design; after wave 5, fold guests into optional SDK Wasm support and delete guest macros together | SDK adapter, guest fixtures and runtime guest host |
 | Any | Conformance 6.11; packaging 6.12 | Low-risk placement work may run at any time; preserve executable/release interfaces and runtime bundle reading | `tools/conformance`, `tools/packaging`, runtime and tooling callers |
 | Final | `test-stories`; SDK client 4.7; guides; validation 8.x | Story work and client implementation remain; native Linux/Windows and hosted proof stay open | Tests, SDK client, documentation and CI |
@@ -35,8 +35,9 @@ public package/library `harmos`, with native plugin builders and its Message der
 The client half is still to be built. The former `crates/harmos-sdk` engine lives in
 `crates/harmos-operations/src/execution/`; the old SDK root and `crates/harmos` facade are deleted.
 Guest-private dispatch and lifecycle extraction have landed in `harmos-guest` and the runtime
-guest host. Host protobuf adoption, macro replacement, domain reduction and guest protocol/SDK
-migration remain open. Target contracts below do not claim those migrations or final proof passed.
+guest host. Host protobuf adoption, macro replacement and derive consolidation have landed.
+Domain reduction moves native operation behavior to operations and portable policy values
+to protocol; guest protocol/SDK migration remains deferred. Target contracts below do not claim those migrations or final proof passed.
 
 ## Crate Structure
 

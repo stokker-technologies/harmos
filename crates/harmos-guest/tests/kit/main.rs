@@ -23,7 +23,7 @@ mod fixtures;
 // Third Party Imports
 
 // Local Imports
-use harmos_domain::inventory::{Declaration, Facility};
+use harmos_operations::inventory::{Declaration, Facility};
 
 /* === Constants === */
 

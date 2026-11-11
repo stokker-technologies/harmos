@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::operations::instance::*;
+pub use harmos_operations::operations::instance::*;
 
 /* === Imports === */
 

@@ -44,12 +44,12 @@ pub struct PluginScope {
     dependencies: Arc<BTreeSet<String>>,
     operations: Arc<BTreeMap<crate::Identifier, crate::operations::OperationDefinition>>,
     wire_contracts: Arc<BTreeMap<crate::Identifier, crate::operations::Contract>>,
-    required_contracts: Arc<Option<Vec<harmos_domain::inventory::contracts::Required>>>,
+    required_contracts: Arc<Option<Vec<harmos_operations::inventory::contracts::Required>>>,
     required_providers: Arc<BTreeMap<String, String>>,
-    observers: Arc<[harmos_domain::inventory::observers::Declaration]>,
+    observers: Arc<[harmos_operations::inventory::observers::Declaration]>,
     observe_contract: Arc<Option<crate::operations::Contract>>,
-    streams: Arc<[harmos_domain::StreamDeclaration]>,
-    listeners: Arc<[harmos_domain::listeners::Definition]>,
+    streams: Arc<[harmos_operations::StreamDeclaration]>,
+    listeners: Arc<[harmos_operations::listeners::Definition]>,
     lifecycle: Arc<Option<[harmos_operations::lifecycle::Descriptor; 2]>>,
     activation: Arc<Mutex<Option<Weak<crate::streams::Activation>>>>,
     // The live native call surface of this generation, answering its host publications.
@@ -170,11 +170,12 @@ impl PluginScope {
         self
     }
 
-    pub(super) fn with_observers(mut self, observers: &[harmos_domain::inventory::observers::Declaration]) -> Self {
+    pub(super) fn with_observers(mut self, observers: &[harmos_operations::inventory::observers::Declaration]) -> Self {
         self.observers = Arc::from(observers.to_vec());
         // A Sidecar That Declares Observers Serves The Built-In Observe Control.
-        self.observe_contract =
-            Arc::new((!observers.is_empty()).then(|| harmos_domain::observers::contract().expect("the built-in observe control is valid")));
+        self.observe_contract = Arc::new(
+            (!observers.is_empty()).then(|| harmos_operations::observers::contract().expect("the built-in observe control is valid")),
+        );
         self
     }
 
@@ -184,8 +185,8 @@ impl PluginScope {
     }
 
     pub(super) fn with_requirements(
-        mut self, contracts: Option<&Vec<harmos_domain::inventory::contracts::Required>>, providers: &BTreeMap<crate::Identifier, String>,
-        dependencies: &BTreeSet<String>,
+        mut self, contracts: Option<&Vec<harmos_operations::inventory::contracts::Required>>,
+        providers: &BTreeMap<crate::Identifier, String>, dependencies: &BTreeSet<String>,
     ) -> Self {
         self.required_contracts = Arc::new(contracts.cloned());
         self.required_providers = Arc::new(providers.iter().map(|(id, owner)| (id.to_string(), owner.clone())).collect());
@@ -198,11 +199,11 @@ impl PluginScope {
         self.wire_contracts.values()
     }
 
-    pub(crate) fn required_contracts(&self) -> Option<&[harmos_domain::inventory::contracts::Required]> {
+    pub(crate) fn required_contracts(&self) -> Option<&[harmos_operations::inventory::contracts::Required]> {
         self.required_contracts.as_ref().as_deref()
     }
 
-    pub fn requirement(&self, id: &crate::Identifier) -> Option<&harmos_domain::inventory::contracts::Required> {
+    pub fn requirement(&self, id: &crate::Identifier) -> Option<&harmos_operations::inventory::contracts::Required> {
         self.required_contracts()?.iter().find(|required| required.contract.operation().id == *id)
     }
 
@@ -239,7 +240,7 @@ impl PluginScope {
         Ok(())
     }
 
-    pub(super) fn with_streams(mut self, streams: &[harmos_domain::StreamDeclaration]) -> Self {
+    pub(super) fn with_streams(mut self, streams: &[harmos_operations::StreamDeclaration]) -> Self {
         let mut frozen = streams.to_vec();
         frozen.sort_unstable_by(|left, right| left.id.cmp(&right.id));
         self.streams = Arc::from(frozen);
@@ -253,7 +254,7 @@ impl PluginScope {
         self
     }
 
-    pub(super) fn with_listeners(mut self, listeners: &[harmos_domain::listeners::Definition]) -> Self {
+    pub(super) fn with_listeners(mut self, listeners: &[harmos_operations::listeners::Definition]) -> Self {
         self.listeners = Arc::from(listeners.to_vec());
         self.phase.send_if_modified(|phase| {
             let Phase::Staged {
@@ -265,15 +266,15 @@ impl PluginScope {
                 return false;
             };
             *record_listeners_bound =
-                !listeners.iter().any(|listener| matches!(listener.source(), harmos_domain::listeners::Source::Record { .. }));
+                !listeners.iter().any(|listener| matches!(listener.source(), harmos_operations::listeners::Source::Record { .. }));
             *stream_listeners_bound =
-                !listeners.iter().any(|listener| matches!(listener.source(), harmos_domain::listeners::Source::Stream { .. }));
+                !listeners.iter().any(|listener| matches!(listener.source(), harmos_operations::listeners::Source::Stream { .. }));
             true
         });
         self
     }
 
-    pub fn listeners(&self) -> &[harmos_domain::listeners::Definition] {
+    pub fn listeners(&self) -> &[harmos_operations::listeners::Definition] {
         &self.listeners
     }
 
@@ -823,7 +824,7 @@ mod tests {
     }
     #[tokio::test]
     async fn transport_restart_renews_only_the_committed_inventory() {
-        let stream = harmos_domain::StreamDeclaration {
+        let stream = harmos_operations::StreamDeclaration {
             id: "frozen.samples".into(),
             metadata: crate::Metadata::new(crate::Identifier::new("frozen.samples").unwrap(), "Samples", None),
             row_metadata: Vec::new(),

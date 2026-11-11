@@ -45,25 +45,25 @@ pub struct InstanceState {
 
 /* === Implementations === */
 
-impl From<harmos_domain::operations::instance::Status> for InstanceState {
-    fn from(status: harmos_domain::operations::instance::Status) -> Self {
+impl From<harmos_operations::operations::instance::Status> for InstanceState {
+    fn from(status: harmos_operations::operations::instance::Status) -> Self {
         Self {
             phase: status.phase.as_str().to_owned(),
-            outcome: status.outcome.map(harmos_domain::operations::instance::Outcome::as_str).unwrap_or_default().to_owned(),
+            outcome: status.outcome.map(harmos_operations::operations::instance::Outcome::as_str).unwrap_or_default().to_owned(),
             cancellation_requested: status.cancellation_requested,
             attempt: status.attempt,
         }
     }
 }
 
-impl TryFrom<&InstanceState> for harmos_domain::operations::instance::Status {
-    type Error = harmos_domain::operations::instance::ParseError;
+impl TryFrom<&InstanceState> for harmos_operations::operations::instance::Status {
+    type Error = harmos_operations::operations::instance::ParseError;
 
     fn try_from(state: &InstanceState) -> Result<Self, Self::Error> {
-        let phase = state.phase.parse::<harmos_domain::operations::instance::Phase>()?;
+        let phase = state.phase.parse::<harmos_operations::operations::instance::Phase>()?;
         let outcome = match state.outcome.as_str() {
             "" => None,
-            outcome => Some(outcome.parse::<harmos_domain::operations::instance::Outcome>()?),
+            outcome => Some(outcome.parse::<harmos_operations::operations::instance::Outcome>()?),
         };
         Ok(Self {
             phase,

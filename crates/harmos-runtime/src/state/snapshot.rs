@@ -164,7 +164,7 @@ impl<A: Application> Snapshots<A> {
             if let Error::SnapshotEntry { bytes, .. } = &error {
                 size_bytes = Some(*bytes);
             }
-            let error = harmos_domain::failure::Report(&error);
+            let error = harmos_operations::failure::Report(&error);
             let replay_entries = storage.status().recovery_accepted.sequence.saturating_sub(self.last_sequence.load(Ordering::Relaxed));
             tracing::warn!(%error, position = position.0, size_bytes = size_bytes.unwrap_or(0), size_known = size_bytes.is_some(), segment_limit = self.policy.max_bytes.get(), replay_entries,
                 "snapshot skipped; the next boot replays {} journal entries", replay_entries);

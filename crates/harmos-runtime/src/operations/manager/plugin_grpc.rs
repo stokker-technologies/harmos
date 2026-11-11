@@ -286,8 +286,8 @@ fn policy(policy: Option<&v1::OperationPolicy>) -> Result<OperationPolicy> {
     };
     let wire = policy.cloned().unwrap_or_default();
     let result = OperationPolicy {
-        timeout: duration(wire.timeout, harmos_domain::operations::UNBOUNDED)?,
-        attempt_timeout: duration(wire.attempt_timeout, harmos_domain::operations::UNBOUNDED)?,
+        timeout: duration(wire.timeout, harmos_operations::operations::UNBOUNDED)?,
+        attempt_timeout: duration(wire.attempt_timeout, harmos_operations::operations::UNBOUNDED)?,
         cancellation_timeout: duration(wire.cancellation_timeout, Duration::ZERO)?,
         retries: if wire.attempts <= 1 {
             RetryPolicy::Never

@@ -11,7 +11,7 @@
 
 use crate::execution::operations::access::GrantAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
-use harmos_domain::operations::{FailureKind, ReplaySafety};
+use harmos_operations::operations::{FailureKind, ReplaySafety};
 use harmos_storage::StorageManager;
 
 /* === Structs === */
@@ -31,14 +31,14 @@ impl ProtobufOperation for Query {
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
 
-    fn grant(request: &Self::Request) -> Result<Option<harmos_domain::plugin::Grant>, harmos_domain::MessageError> {
+    fn grant(request: &Self::Request) -> Result<Option<harmos_operations::plugin::Grant>, harmos_domain::MessageError> {
         let source: harmos_domain::model::storage::Source = request
             .source
             .clone()
             .ok_or_else(|| harmos_domain::MessageError::borrowed("source is required"))?
             .try_into()
             .map_err(|error: harmos_domain::Error| harmos_domain::MessageError::new(error.to_string()))?;
-        Ok(Some(harmos_domain::plugin::Grant::of(Self::ID, source.grant_scope())))
+        Ok(Some(harmos_operations::plugin::Grant::of(Self::ID, source.grant_scope())))
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
@@ -47,7 +47,7 @@ impl ProtobufOperation for Query {
         let result: crate::Result<harmos_domain::model::storage::QueryCompletion> = async {
             let source: harmos_domain::model::storage::Source =
                 request.source.ok_or(crate::Error::InvalidInput { field: "source", reason: "required" })?.try_into()?;
-            let grant = harmos_domain::plugin::Grant::of(Self::ID, source.grant_scope());
+            let grant = harmos_operations::plugin::Grant::of(Self::ID, source.grant_scope());
             grants.0.admit(&grant).map_err(crate::Error::Access)?;
             let mut reader = storage
                 .query(harmos_storage::Query {

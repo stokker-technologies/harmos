@@ -15,7 +15,7 @@ mod owner;
 /* === Re-Exports === */
 
 pub use error::Error;
-pub use harmos_domain::plugin::*;
+pub use harmos_operations::plugin::*;
 pub(crate) use owner::Owner;
 
 /* === Imports === */
@@ -26,8 +26,8 @@ pub(crate) use owner::Owner;
 
 // Local Imports
 use crate::dispatch::Table;
-use harmos_domain::model::operations::lifecycle;
 use harmos_operations::execution::operations::ServingError;
+use harmos_operations::model::operations::lifecycle;
 
 /* === Constants === */
 
