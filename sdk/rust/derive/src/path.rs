@@ -57,7 +57,7 @@ impl HarmosPath {
     }
 
     pub(crate) fn resolve(explicit: Option<Path>) -> Self {
-        explicit.map(|path| Self(path)).unwrap_or_else(Self::catalog)
+        explicit.map(Self).unwrap_or_else(Self::catalog)
     }
 }
 

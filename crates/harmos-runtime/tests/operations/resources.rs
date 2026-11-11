@@ -154,9 +154,9 @@ async fn runtime_selected_ids() {
     runtime.register_batch(registration.clone()).await.unwrap();
 
     let definition = runtime.operations.definition(&id).unwrap();
-    assert_eq!(definition, (&READ_CONTRACT_DECLARATION_OPERATION).named(&id).unwrap());
+    assert_eq!(definition, READ_CONTRACT_DECLARATION_OPERATION.named(&id).unwrap());
     assert_eq!(definition.policy, READ_CONTRACT_DECLARATION_OPERATION.entry().policy);
-    assert_ne!(definition.fingerprint, (&READ_CONTRACT_DECLARATION_OPERATION).definition().expect("valid operation").fingerprint);
+    assert_ne!(definition.fingerprint, READ_CONTRACT_DECLARATION_OPERATION.definition().expect("valid operation").fingerprint);
     assert!(runtime.operations.definitions().contains(&definition));
     assert!(matches!(
         runtime.operations.submit_at::<OtherRead>(&id, OtherRead { nested: false }),

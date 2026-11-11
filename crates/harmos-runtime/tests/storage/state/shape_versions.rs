@@ -98,7 +98,7 @@ impl harmos_runtime::state::Transaction<i64> for Changes {
     type Error = std::convert::Infallible;
     fn check(&self, state: &i64) -> std::result::Result<(), Self::Error> {
         match self {
-            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
         }
     }
     fn apply(&self, state: &mut i64) {

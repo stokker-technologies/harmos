@@ -109,8 +109,9 @@ mod twin {
 
     #[derive(Message, Debug)]
     #[harmos_path(::harmos_domain)]
-    #[derive(Clone, Copy, PartialEq)]
+    #[derive(Clone, Copy, PartialEq, Default)]
     pub enum Aggregate {
+        #[default]
         Count,
         Sum,
         Mean,
@@ -119,13 +120,9 @@ mod twin {
         Max,
         Rms,
         Std,
-        Percentile { rank: u32 },
-    }
-
-    impl Default for Aggregate {
-        fn default() -> Self {
-            Self::Count
-        }
+        Percentile {
+            rank: u32,
+        },
     }
 
     /* === Traits === */

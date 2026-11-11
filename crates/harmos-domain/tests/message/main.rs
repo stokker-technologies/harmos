@@ -120,17 +120,18 @@ struct Choices {
 
 #[derive(Message, Clone)]
 #[harmos_path(::harmos_domain)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 enum Choice {
+    #[default]
     Empty,
     Text(String),
-    Sample { enabled: bool, row: Original, bytes: Vec<u8>, values: Vec<i64>, note: Option<String> },
-}
-
-impl Default for Choice {
-    fn default() -> Self {
-        Self::Empty
-    }
+    Sample {
+        enabled: bool,
+        row: Original,
+        bytes: Vec<u8>,
+        values: Vec<i64>,
+        note: Option<String>,
+    },
 }
 
 #[derive(Message, Clone)]
@@ -154,16 +155,14 @@ enum ExplicitDefault {
 
 #[derive(Message, Clone)]
 #[harmos_path(::harmos_domain)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 enum MergedChoice {
+    #[default]
     Empty,
-    Pair { left: String, right: String },
-}
-
-impl Default for MergedChoice {
-    fn default() -> Self {
-        Self::Empty
-    }
+    Pair {
+        left: String,
+        right: String,
+    },
 }
 
 #[derive(Message, Clone, Debug)]

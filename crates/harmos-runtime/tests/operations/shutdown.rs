@@ -48,17 +48,12 @@ struct AttemptGuard(Arc<Trace>);
 
 /* === Enums === */
 
-#[derive(harmos_runtime::Message, Clone, Debug)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Mode {
+    #[default]
     Hold,
     Count,
     Sleep,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Hold
-    }
 }
 
 #[derive(harmos_runtime::Message, Debug)]

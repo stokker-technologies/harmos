@@ -17,7 +17,7 @@ version = { workspace = true }
 
 [features]
 default = ["derive"]
-derive = ["harmos-domain/derive", "dep:harmos-sdk-derive", "dep:harmos-guest-macros"]
+derive = ["harmos-domain/derive", "dep:harmos-guest-macros"]
 # Provider Protobuf Decoding For Contracts That Bind A gRPC Method; No Host Networking.
 grpc = ["harmos-operations/grpc"]
 # Stream Endpoints Add Rust Channel Traffic.
@@ -35,7 +35,6 @@ kit = ["harmos-operations/lifecycle", "dep:wit-bindgen", "wit-bindgen/inter-task
 # Local
 harmos-domain = { workspace = true }
 harmos-guest-macros = { workspace = true, optional = true }
-harmos-sdk-derive = { workspace = true, optional = true }
 harmos-operations = { workspace = true }
 
 # Git

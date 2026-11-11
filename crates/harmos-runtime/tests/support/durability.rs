@@ -152,11 +152,11 @@ impl harmos_runtime::state::Transaction<Ledger> for Change {
     type Error = Refusal;
     fn check(&self, state: &Ledger) -> std::result::Result<(), Self::Error> {
         match self {
-            Self::Deposit(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::Withdraw(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::Pay(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::Bonus(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::Explode(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::Deposit(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::Withdraw(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::Pay(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::Bonus(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::Explode(value) => harmos_runtime::state::Transaction::check(value, state),
         }
     }
     fn apply(&self, state: &mut Ledger) {

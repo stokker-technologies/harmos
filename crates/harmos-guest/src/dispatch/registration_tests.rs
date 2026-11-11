@@ -79,9 +79,9 @@ fn named_factory_contract() {
     let id = format!("fixture.device_{}", 7);
     let batch = Catalog::new().entry_named(read_operation().expect("representable operation"), &id).unwrap();
     let factory = &batch.operations[0];
-    let definition = (&READ_OPERATION).named(&id).unwrap();
+    let definition = READ_OPERATION.named(&id).unwrap();
     assert_eq!(factory.definition, definition);
-    assert_ne!(definition.fingerprint, (&READ_OPERATION).definition().expect("valid operation").fingerprint);
+    assert_ne!(definition.fingerprint, READ_OPERATION.definition().expect("valid operation").fingerprint);
     let contract = factory.contract().unwrap();
     assert_eq!(contract.operation(), &definition);
     assert_eq!(contract.schema(), READ_OPERATION.wire().contract().unwrap().schema());
@@ -119,7 +119,7 @@ fn carrier_assignments_are_immutable() {
     use prost::Message as _;
     let first = AssignedOperation {
         operation: format!("fixture.{}", READ_OPERATION.entry().id),
-        fingerprint: (&READ_OPERATION).definition().expect("valid operation").fingerprint.0.to_vec(),
+        fingerprint: READ_OPERATION.definition().expect("valid operation").fingerprint.0.to_vec(),
         generation: 1,
     };
     let assignments = OperationAssignments::default();
@@ -190,7 +190,7 @@ fn wire_identity_fences_replacement_before_decoding() {
     use harmos_operations::execution::operations::ServingError;
     use harmos_operations::execution::{Message, QualifiedId};
     let batch = Catalog::new().entry(read_operation().expect("representable operation"));
-    let fingerprint = (&READ_OPERATION).definition().unwrap().fingerprint.0;
+    let fingerprint = READ_OPERATION.definition().unwrap().fingerprint.0;
     let mut table = WireTable::new("fixture").unwrap();
     table.resource(42u64);
     table.capacity(std::num::NonZeroUsize::MIN);

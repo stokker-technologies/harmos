@@ -199,16 +199,11 @@ pub(crate) const PORTABLE_CATALOG: harmos_operations::execution::operations::Cat
 
 #[derive(harmos_domain::Message, Debug)]
 #[harmos_path(::harmos_domain)]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Default)]
 pub(crate) enum Delivered {
+    #[default]
     Missing,
     Boxed(Box<AnnotatedOperation>),
-}
-
-impl Default for Delivered {
-    fn default() -> Self {
-        Self::Missing
-    }
 }
 
 static BOXED_CATALOG_DECLARATIONS: [harmos_domain::catalog::Node<harmos_domain::operations::WireDeclaration>; 1] =

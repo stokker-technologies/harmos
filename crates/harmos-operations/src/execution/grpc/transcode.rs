@@ -674,15 +674,11 @@ mod tests {
 
     #[derive(harmos_domain::Message, Clone, Debug)]
     #[harmos_path(::harmos_domain)]
+    #[derive(Default)]
     enum Choice {
+        #[default]
         Empty,
         Row(Row),
-    }
-
-    impl Default for Choice {
-        fn default() -> Self {
-            Self::Empty
-        }
     }
 
     #[derive(harmos_domain::Message, Clone, Debug)]

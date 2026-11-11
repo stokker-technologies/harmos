@@ -460,7 +460,7 @@ mod atomic_records {
         type Error = Infallible;
         fn check(&self, state: &State) -> std::result::Result<(), Self::Error> {
             match self {
-                Self::Add(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+                Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
             }
         }
         fn apply(&self, state: &mut State) {

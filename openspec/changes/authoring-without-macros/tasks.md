@@ -2,7 +2,7 @@
 
 ## 1. Contract
 
-- [x] 1.1 After authoritative host protobuf adoption under `grpc-plugins`, lock the source inventory per macro: uses in Harmos source, examples and tests, and in Dokime, with the typed projections each use depends on.
+- [x] 1.1 After authoritative host protobuf adoption under `grpc-plugins`, lock the source inventory per macro: uses in Harmos source, examples and tests, and in the external application, with the typed projections each use depends on.
 
 The locked starting [source inventory](proposal.md#source-inventory) records every textual
 attribute site, dependent projection, live alias export and excluded-path dependency.
@@ -43,5 +43,5 @@ local commit and focused proof for each complete macro family.
 
 ## Workflow Follow-Up
 
-- Dokime migrates its operations, catalogs, transactions and messages when it adopts the revision.
+- The external application migrates its operations, catalogs, transactions and messages when it adopts the revision.
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.

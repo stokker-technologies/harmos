@@ -59,18 +59,13 @@ struct FreeGuard {
 
 /* === Enums === */
 
-#[derive(harmos_runtime::Message, Clone, Debug)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Mode {
+    #[default]
     Leaf,
     HandleCycle,
     PropagateCycle,
     FullLane,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Leaf
-    }
 }
 
 #[derive(harmos_runtime::Message, Debug)]

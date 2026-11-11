@@ -1182,7 +1182,6 @@ dependencies = [
  "harmos-guest-macros",
  "harmos-operations",
  "harmos-protocol",
- "harmos-sdk-derive",
  "postcard",
  "prost",
  "schematic-operations",

@@ -72,27 +72,23 @@ struct CustomDebug {
 
 /* === Enums === */
 
-#[derive(facade::Message, Clone, Debug)]
+#[derive(facade::Message, Clone, Debug, Default)]
 #[harmos_path(::facade::__harmos)]
 enum Outcome {
+    #[default]
     Pending,
     Ready { sample: Sample },
     Failed(String),
 }
 
-impl Default for Outcome { fn default() -> Self { Self::Pending } }
-
-
-#[derive(facade::Message, Clone, Debug)]
+#[derive(facade::Message, Clone, Debug, Default)]
 #[harmos_path(::facade::__harmos)]
 #[cfg(any())]
 enum ExcludedEnum {
+    #[default]
     Pending,
     Ready(u32),
 }
-#[cfg(any())]
-impl Default for ExcludedEnum { fn default() -> Self { Self::Pending } }
-
 
 /* === Traits === */
 

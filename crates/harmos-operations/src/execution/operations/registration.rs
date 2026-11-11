@@ -51,6 +51,16 @@ type PrepareEncoded = std::sync::Arc<
         + Sync,
 >;
 
+type OperationDependencies = std::sync::Arc<dyn Fn() -> Result<Vec<super::calls::OperationDependency>, ServingError> + Send + Sync>;
+type DeclaredOperation = std::sync::Arc<dyn Fn() -> OperationDefinition + Send + Sync>;
+type NamedOperation = std::sync::Arc<dyn Fn(&str) -> Result<OperationDefinition, ServingError> + Send + Sync>;
+type GrantMapping =
+    std::sync::Arc<dyn Fn(&str, Option<harmos_domain::plugin::Grant>) -> Option<harmos_domain::plugin::Grant> + Send + Sync>;
+type RequestGrant =
+    std::sync::Arc<dyn Fn(&(dyn Any + Send)) -> Result<Option<harmos_domain::plugin::Grant>, crate::execution::MessageError> + Send + Sync>;
+type ContractProjection =
+    std::sync::Arc<dyn Fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError> + Send + Sync>;
+
 /* === Structs === */
 
 #[derive(Clone, Copy)]
@@ -79,17 +89,15 @@ pub struct PreparedNative {
 #[derive(Clone)]
 pub struct OperationFactory {
     pub definition: OperationDefinition,
-    pub operations: std::sync::Arc<dyn Fn() -> Result<Vec<super::calls::OperationDependency>, ServingError> + Send + Sync>,
-    declared: std::sync::Arc<dyn Fn() -> OperationDefinition + Send + Sync>,
-    named: std::sync::Arc<dyn Fn(&str) -> Result<OperationDefinition, ServingError> + Send + Sync>,
+    pub operations: OperationDependencies,
+    declared: DeclaredOperation,
+    named: NamedOperation,
     registered_id: Option<crate::execution::Identifier>,
-    grant: std::sync::Arc<dyn Fn(&str, Option<harmos_domain::plugin::Grant>) -> Option<harmos_domain::plugin::Grant> + Send + Sync>,
-    request_grant: std::sync::Arc<
-        dyn Fn(&(dyn Any + Send)) -> Result<Option<harmos_domain::plugin::Grant>, crate::execution::MessageError> + Send + Sync,
-    >,
+    grant: GrantMapping,
+    request_grant: RequestGrant,
     pub(super) builtin: bool,
     resources: &'static [Resource],
-    contract: std::sync::Arc<dyn Fn(&harmos_domain::config::SchemaSettings) -> Result<Contract, super::ContractError> + Send + Sync>,
+    contract: ContractProjection,
     native: PrepareNative,
     endpoints_valid: fn() -> bool,
     native_types: fn() -> (std::any::TypeId, std::any::TypeId, std::any::TypeId),

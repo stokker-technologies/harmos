@@ -57,8 +57,8 @@ mod tests {
     fn lifecycle_descriptors_match_the_guest_carriers() {
         use super::{Action, Descriptor, INITIALIZE_OPERATION, POLICY, SHUTDOWN_OPERATION};
         for (action, definition) in [
-            (Action::Initialize, (&INITIALIZE_OPERATION).declared().expect("valid operation")),
-            (Action::Shutdown, (&SHUTDOWN_OPERATION).declared().expect("valid operation")),
+            (Action::Initialize, INITIALIZE_OPERATION.declared().expect("valid operation")),
+            (Action::Shutdown, SHUTDOWN_OPERATION.declared().expect("valid operation")),
         ] {
             let descriptor = Descriptor::new(action, POLICY).unwrap();
             assert_eq!(descriptor.contract().operation(), &definition);

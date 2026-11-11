@@ -442,7 +442,7 @@ async fn shared_attempt_resources() {
                 .unwrap()
                 .as_str()
                 .into(),
-            fingerprint: (&sandbox::READ_OPERATION_OPERATION).definition().expect("valid operation").fingerprint.0,
+            fingerprint: sandbox::READ_OPERATION_OPERATION.definition().expect("valid operation").fingerprint.0,
             generation: 1,
             payload: request.encode(),
         })

@@ -262,8 +262,8 @@ mod sheet {
         type Error = Untitled;
         fn check(&self, state: &Sheet) -> std::result::Result<(), Self::Error> {
             match self {
-                Self::Rename(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-                Self::Erase(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+                Self::Rename(value) => harmos_runtime::state::Transaction::check(value, state),
+                Self::Erase(value) => harmos_runtime::state::Transaction::check(value, state),
             }
         }
         fn apply(&self, state: &mut Sheet) {

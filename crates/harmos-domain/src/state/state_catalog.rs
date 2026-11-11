@@ -56,10 +56,16 @@ struct Entry<S, C> {
     version: u32,
     type_id: TypeId,
     declared: bool,
-    inverse: Option<(TypeId, &'static str, Arc<Reverse<S, C>>)>,
+    inverse: Option<Inverse<S, C>>,
     prepare: Arc<Prepare<C>>,
     restore: Arc<Restore<C>>,
     wrap: Arc<Wrap<C>>,
+}
+
+struct Inverse<S, C> {
+    type_id: TypeId,
+    name: &'static str,
+    callback: Arc<Reverse<S, C>>,
 }
 
 struct EntryValue<'a, S, T> {
@@ -180,7 +186,11 @@ impl<S: 'static, C: 'static> StateCatalog<S, C> {
         let inverse = match entry.disposition {
             Disposition::Reversible { type_id, name, inverse } => {
                 let callback: Arc<Reverse<S, C>> = Arc::new(move |change, before| project(change).map(|change| inverse(change, before)));
-                Some((type_id(), name(), callback))
+                Some(Inverse {
+                    type_id: type_id(),
+                    name: name(),
+                    callback,
+                })
             }
             _ => None,
         };
@@ -191,7 +201,7 @@ impl<S: 'static, C: 'static> StateCatalog<S, C> {
             declared: !matches!(entry.disposition, Disposition::Undeclared),
             inverse,
             prepare: Arc::new(move |value| project(value).map(|value| entry.prepare(value)).transpose()),
-            restore: Arc::new(move |value| serde_json::from_value(value.clone()).map(wrap)),
+            restore: Arc::new(move |value| serde::Deserialize::deserialize(value).map(wrap)),
             wrap: Arc::new(move |value| value.downcast::<T>().ok().map(|value| wrap(*value))),
         }));
         self
@@ -214,12 +224,11 @@ impl<S: 'static, C: 'static> StateCatalog<S, C> {
                     crate::MessageError::new(format!("transaction `{}` must declare a reversible inverse or a barrier", entry.id)).into()
                 );
             }
-            if let Some((inverse, name, _)) = &entry.inverse {
-                let partner =
-                    self.entries.iter().find(|partner| partner.type_id == *inverse).ok_or_else(|| {
-                        crate::MessageError::new(format!("transaction `{}` inverse `{name}` is not registered", entry.id))
-                    })?;
-                if partner.inverse.as_ref().map(|(inverse, _, _)| *inverse) != Some(entry.type_id) {
+            if let Some(inverse) = &entry.inverse {
+                let partner = self.entries.iter().find(|partner| partner.type_id == inverse.type_id).ok_or_else(|| {
+                    crate::MessageError::new(format!("transaction `{}` inverse `{}` is not registered", entry.id, inverse.name))
+                })?;
+                if partner.inverse.as_ref().map(|inverse| inverse.type_id) != Some(entry.type_id) {
                     return Err(crate::MessageError::new(format!(
                         "transaction `{}` inverse `{}` does not name it back",
                         entry.id, partner.id
@@ -267,9 +276,9 @@ impl<S: 'static, C: 'static> StateCatalog<S, C> {
 
     pub fn inverse(&self, change: &C, before: &S) -> Option<C> {
         for entry in &self.entries {
-            let Some((inverse, _, callback)) = &entry.inverse else { continue };
-            if let Some(value) = callback(change, before) {
-                return self.entries.iter().find(|entry| entry.type_id == *inverse).and_then(|entry| (entry.wrap)(value));
+            let Some(inverse) = &entry.inverse else { continue };
+            if let Some(value) = (inverse.callback)(change, before) {
+                return self.entries.iter().find(|entry| entry.type_id == inverse.type_id).and_then(|entry| (entry.wrap)(value));
             }
         }
         None

@@ -287,15 +287,13 @@ mod tests {
 
     #[derive(Message, Clone, Debug)]
     #[harmos_path(crate)]
+    #[derive(Default)]
     enum Choice {
+        #[default]
         Empty,
-        Reading { value: i32 },
-    }
-
-    impl Default for Choice {
-        fn default() -> Self {
-            Self::Empty
-        }
+        Reading {
+            value: i32,
+        },
     }
 
     #[test]

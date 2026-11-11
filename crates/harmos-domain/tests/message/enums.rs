@@ -99,16 +99,11 @@ mod known {
 
     #[derive(Message)]
     #[harmos_path(::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Default)]
     pub enum Mode {
+        #[default]
         Automatic,
         Manual,
-    }
-
-    impl Default for Mode {
-        fn default() -> Self {
-            Self::Automatic
-        }
     }
 
     #[derive(Message)]
@@ -182,17 +177,12 @@ mod newer {
 
     #[derive(Message)]
     #[harmos_path(::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Default)]
     pub enum Mode {
+        #[default]
         Automatic,
         Manual,
         Remote,
-    }
-
-    impl Default for Mode {
-        fn default() -> Self {
-            Self::Automatic
-        }
     }
 
     #[derive(Message)]

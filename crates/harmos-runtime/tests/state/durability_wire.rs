@@ -205,10 +205,10 @@ mod other {
         type Error = Refusal;
         fn check(&self, state: &Ledger) -> std::result::Result<(), Self::Error> {
             match self {
-                Self::Paid(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-                Self::Blew(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-                Self::Took(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-                Self::Put(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+                Self::Paid(value) => harmos_runtime::state::Transaction::check(value, state),
+                Self::Blew(value) => harmos_runtime::state::Transaction::check(value, state),
+                Self::Took(value) => harmos_runtime::state::Transaction::check(value, state),
+                Self::Put(value) => harmos_runtime::state::Transaction::check(value, state),
             }
         }
         fn apply(&self, state: &mut Ledger) {

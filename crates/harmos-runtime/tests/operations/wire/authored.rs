@@ -74,17 +74,12 @@ const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::Operation
 
 /* === Enums === */
 
-#[derive(harmos_runtime::Message, Clone, Debug)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Mode {
+    #[default]
     Complete,
     Wait,
     Panic,
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Complete
-    }
 }
 
 /* === Traits === */

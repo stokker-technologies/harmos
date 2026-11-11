@@ -72,11 +72,11 @@ impl harmos_runtime::state::Transaction<Schematic> for Transactions {
     type Error = SchematicError;
     fn check(&self, state: &Schematic) -> std::result::Result<(), Self::Error> {
         match self {
-            Self::PlaceSymbol(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::MoveSymbol(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::ConnectPins(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::RenameNet(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
-            Self::ApplyRoute(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::PlaceSymbol(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::MoveSymbol(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::ConnectPins(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::RenameNet(value) => harmos_runtime::state::Transaction::check(value, state),
+            Self::ApplyRoute(value) => harmos_runtime::state::Transaction::check(value, state),
         }
     }
     fn apply(&self, state: &mut Schematic) {

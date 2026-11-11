@@ -155,7 +155,7 @@ impl WireDeclaration {
 
     pub const fn grpc(mut self, grpc: super::Grpc) -> Self {
         assert!(self.grpc.is_none(), "gRPC binding is declared only once");
-        let previous = std::mem::replace(&mut self.grpc, Some(grpc));
+        let previous = self.grpc.replace(grpc);
         std::mem::forget(previous);
         self
     }

@@ -39,6 +39,8 @@ const REGISTRATIONS: usize = 64;
 
 type Submit<A> = Arc<dyn Fn(&<A as Application>::Record, Context, &PluginCallback) -> Result<Option<EncodedInvocation>> + Send + Sync>;
 
+type Bytes<A> = Arc<dyn Fn(&<A as Application>::Record) -> usize + Send + Sync>;
+
 /* === Structs === */
 
 pub struct PluginListenerBindings<'a, A: Application> {
@@ -52,7 +54,7 @@ struct Binding<A: Application> {
     ordinal: usize,
     callback: PluginCallback,
     submit: Submit<A>,
-    bytes: Arc<dyn Fn(&A::Record) -> usize + Send + Sync>,
+    bytes: Bytes<A>,
 }
 
 #[must_use = "retain the listener registration until shutdown positively settles"]

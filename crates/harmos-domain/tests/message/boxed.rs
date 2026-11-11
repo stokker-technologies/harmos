@@ -224,17 +224,15 @@ mod plain {
 
     #[derive(Message)]
     #[harmos_path(::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Default)]
     pub enum Choice {
+        #[default]
         Empty,
         Tuple(Leaf, u32),
-        Named { row: Leaf, note: Option<String> },
-    }
-
-    impl Default for Choice {
-        fn default() -> Self {
-            Self::Empty
-        }
+        Named {
+            row: Leaf,
+            note: Option<String>,
+        },
     }
 
     /* === Traits === */
@@ -284,17 +282,15 @@ mod heap {
 
     #[derive(Message)]
     #[harmos_path(::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq, Default)]
     pub enum Choice {
+        #[default]
         Empty,
         Tuple(Box<Leaf>, u32),
-        Named { row: Box<Leaf>, note: Option<String> },
-    }
-
-    impl Default for Choice {
-        fn default() -> Self {
-            Self::Empty
-        }
+        Named {
+            row: Box<Leaf>,
+            note: Option<String>,
+        },
     }
 
     /* === Traits === */

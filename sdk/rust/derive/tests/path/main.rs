@@ -74,7 +74,7 @@ fn crate_builds_against() {
     fs::create_dir_all(&output).expect("the compile-test output directory is available");
 
     // Built once against Harmos and serde — never harmos-sdk-derive directly, since
-    // the facade re-exports the attributes through harmos, exactly as
+    // the facade re-exports the derives through harmos, exactly as
     // a host embedding crate does.
     let compiled = fixtures::command(&rustc)
         .arg("--edition=2024")

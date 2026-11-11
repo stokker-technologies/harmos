@@ -47,18 +47,13 @@ struct ChildGuard(Arc<Trace>);
 
 /* === Enums === */
 
-#[derive(harmos_runtime::Message, Clone, Debug)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 enum Exit {
+    #[default]
     Return,
     Fail,
     Wait,
     Retry,
-}
-
-impl Default for Exit {
-    fn default() -> Self {
-        Self::Return
-    }
 }
 
 #[derive(Debug, thiserror::Error)]

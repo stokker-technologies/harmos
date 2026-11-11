@@ -149,7 +149,7 @@ mod tests {
         let encoded = serde_json::to_value(&contract).unwrap();
         assert_eq!(encoded["operation"]["visibility"], "public");
         assert_eq!(serde_json::from_value::<Contract>(encoded.clone()).unwrap(), contract);
-        assert_eq!(contract.fingerprint(), (&PUBLISHED_OPERATION).definition().expect("valid operation").fingerprint);
+        assert_eq!(contract.fingerprint(), PUBLISHED_OPERATION.definition().expect("valid operation").fingerprint);
 
         for visibility in ["shared", "host"] {
             let mut obsolete = encoded.clone();

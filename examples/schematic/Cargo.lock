@@ -999,7 +999,6 @@ version = "0.1.14"
 dependencies = [
  "harmos-domain",
  "harmos-guest-macros",
- "harmos-sdk-derive",
  "harmos-operations",
  "postcard",
  "serde",

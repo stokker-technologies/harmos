@@ -241,15 +241,11 @@ mod tests {
 
     #[derive(harmos_domain::Message, Clone, Debug)]
     #[harmos_path(::harmos_domain)]
+    #[derive(Default)]
     enum Frame {
+        #[default]
         Empty,
         Bytes(Row),
-    }
-
-    impl Default for Frame {
-        fn default() -> Self {
-            Self::Empty
-        }
     }
 
     struct Handwritten {

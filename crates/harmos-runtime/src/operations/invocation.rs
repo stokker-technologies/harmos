@@ -994,7 +994,7 @@ mod tests {
         let factory = batch.operations.pop().unwrap();
         let binding = Arc::new(factory);
         let lane = crate::operations::Lane::default().name();
-        let definition = (&LEAF_OPERATION).definition().expect("valid operation");
+        let definition = LEAF_OPERATION.definition().expect("valid operation");
         let mut entry = runtime
             .operations
             .binding_erased(

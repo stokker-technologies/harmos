@@ -388,17 +388,12 @@ mod tests {
 
     /* === Enums === */
 
-    #[derive(harmos_domain::Message, Clone, Debug)]
+    #[derive(harmos_domain::Message, Clone, Debug, Default)]
     enum Choice {
+        #[default]
         Empty,
         Value(Sample),
         Many(Vec<Sample>),
-    }
-
-    impl Default for Choice {
-        fn default() -> Self {
-            Self::Empty
-        }
     }
 
     /* === Traits === */

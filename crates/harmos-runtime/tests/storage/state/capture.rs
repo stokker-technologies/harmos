@@ -85,7 +85,7 @@ impl harmos_runtime::state::Transaction<u64> for Transactions {
     type Error = Refusal;
     fn check(&self, state: &u64) -> std::result::Result<(), Self::Error> {
         match self {
-            Self::Advance(value) => harmos_runtime::state::Transaction::check(value, state).map_err(Into::into),
+            Self::Advance(value) => harmos_runtime::state::Transaction::check(value, state),
         }
     }
     fn apply(&self, state: &mut u64) {
