@@ -19,19 +19,12 @@
 
 mod driver;
 
-#[cfg(feature = "plugin-sidecar")]
-mod native;
-
 /* === Re-Exports === */
 
 pub use crate::operations::resident::Staged as ObserverRegistration;
 pub use driver::ObserverActivation;
 
 pub(crate) use driver::Backend;
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use driver::ChildSettlement;
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use native::Native;
 
 /* === Imports === */
 

@@ -207,26 +207,19 @@ impl PublicationLease {
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
     // `missed` applies before the first row only.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub fn stage_rows(&self, rows: Vec<PublicationRow>, first_wire_sequence: u64, missed: u64) -> super::StagedRows {
         self.stage_sequence(rows, Some(first_wire_sequence), missed, None)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub fn stage_derived_row(&self, row: PublicationRow, missed: u64) -> Result<super::StagedPublication, StreamPublicationError> {
         self.stage_sequence(vec![row], None, missed, None).single()
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn stage_rows_in(
-        &self, context: &crate::operations::Context<'_>, rows: Vec<PublicationRow>, first_wire_sequence: u64, missed: u64,
-    ) -> super::StagedRows {
-        self.stage_sequence(rows, Some(first_wire_sequence), missed, Some(context))
-    }
-
     // One visibility fence and one scope phase cover the whole batch, so no
     // reader or commit observes it half staged.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     fn stage_sequence(
         &self, rows: Vec<PublicationRow>, wire_sequence: Option<u64>, missed: u64, context: Option<&crate::operations::Context<'_>>,
     ) -> super::StagedRows {
@@ -299,7 +292,7 @@ impl PublicationLease {
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             if let Some(staged) = &self.stream.wired.staged {
                 staged.scope.prepare_publication(|ready| {
                     if !ready {
@@ -308,10 +301,6 @@ impl PublicationLease {
                     self.admit_locked(row, sequence, missed, true)
                 })
             } else {
-                self.admit_locked(row, sequence, missed, true)
-            }
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-            {
                 self.admit_locked(row, sequence, missed, true)
             }
         };
@@ -348,13 +337,9 @@ impl PublicationLease {
         }
         self.stream.wired.validation.as_ref().expect("compiled plugin schema").validate(&row.payload)?;
         let generation = {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             {
                 self.stream.wired.staged.as_ref().map(|staged| staged.scope.generation().get())
-            }
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-            {
-                None
             }
         };
         if live && !self.stream.wired.window.can_advance(missed.checked_add(1).ok_or(StreamPublicationError::Sequence)?) {
@@ -382,7 +367,7 @@ impl PublicationLease {
     }
 
     pub fn revoke(&self) {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if let Some(staged) = &self.stream.wired.staged {
             staged.scope.unbind_streams();
         }
@@ -489,7 +474,7 @@ pub(super) fn validate_existing(
         let Some(wired) = revisions.wires.get(&definition.version()) else {
             continue;
         };
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if require_unoccupied && wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed()) {
             return Err(StreamAdmissionError::Occupied(definition.id().into()));
         }

@@ -14,10 +14,8 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsString;
+use std::collections::BTreeSet;
 use std::fmt;
-use std::path::PathBuf;
 // Third Party Imports
 use semver::Version;
 // Local Imports
@@ -60,27 +58,12 @@ pub struct PluginContributions {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum PluginArtifact {
-    Guest {
-        sha256: [u8; 32],
-    },
-    Sidecar {
-        path: PathBuf,
-        sha256: [u8; 32],
-        arguments: Vec<OsString>,
-        directory: Option<PathBuf>,
-        environment: BTreeMap<OsString, OsString>,
-    },
-    LocalSidecar {
-        revision: String,
-    },
-    Embedded {
-        revision: String,
-    },
+    Guest { sha256: [u8; 32] },
+    Embedded { revision: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PluginKind {
-    Sidecar,
     Guest,
     Embedded,
 }
@@ -158,15 +141,6 @@ impl fmt::Debug for PluginArtifact {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Guest { sha256 } => formatter.debug_struct("Guest").field("sha256", sha256).finish(),
-            Self::Sidecar { path, sha256, directory, .. } => formatter
-                .debug_struct("Sidecar")
-                .field("path", path)
-                .field("sha256", sha256)
-                .field("arguments", &"<redacted>")
-                .field("directory", directory)
-                .field("environment", &"<redacted>")
-                .finish(),
-            Self::LocalSidecar { revision } => formatter.debug_struct("LocalSidecar").field("revision", revision).finish(),
             Self::Embedded { revision } => formatter.debug_struct("Embedded").field("revision", revision).finish(),
         }
     }
@@ -176,7 +150,6 @@ impl PluginArtifact {
     pub fn kind(&self) -> PluginKind {
         match self {
             Self::Guest { .. } => PluginKind::Guest,
-            Self::Sidecar { .. } | Self::LocalSidecar { .. } => PluginKind::Sidecar,
             Self::Embedded { .. } => PluginKind::Embedded,
         }
     }
@@ -184,29 +157,9 @@ impl PluginArtifact {
     fn validate(&self) -> Result<(), PluginDefinitionError> {
         match self {
             Self::Guest { .. } => Ok(()),
-            Self::Embedded { revision } | Self::LocalSidecar { revision } => {
+            Self::Embedded { revision } => {
                 if revision.trim().is_empty() {
                     return Err(invalid("artifact revision", "revision is empty"));
-                }
-                Ok(())
-            }
-            Self::Sidecar {
-                path, arguments, directory, environment, ..
-            } => {
-                if !path.is_absolute() || path.as_os_str().as_encoded_bytes().contains(&0) {
-                    return Err(invalid("artifact path", "path must be absolute and contain no NUL"));
-                }
-                if directory.as_ref().is_some_and(|path| !path.is_absolute() || path.as_os_str().as_encoded_bytes().contains(&0)) {
-                    return Err(invalid("artifact directory", "directory must be absolute and contain no NUL"));
-                }
-                if arguments.iter().any(|arg| arg.as_encoded_bytes().contains(&0)) {
-                    return Err(invalid("artifact arguments", "argument contains NUL"));
-                }
-                for (name, value) in environment {
-                    let name = name.as_encoded_bytes();
-                    if name.is_empty() || name.contains(&0) || name.contains(&b'=') || value.as_encoded_bytes().contains(&0) {
-                        return Err(invalid("artifact environment", "invalid variable name or value"));
-                    }
                 }
                 Ok(())
             }
@@ -215,24 +168,12 @@ impl PluginArtifact {
 }
 
 impl PluginDefinition {
-    #[cfg(feature = "plugin-sidecar")]
-    pub fn sidecar(executable: &harmos_sidecar::Executable, configuration: Vec<u8>) -> Result<Self, PluginDefinitionError> {
-        let artifact = PluginArtifact::Sidecar {
-            path: executable.path().to_path_buf(),
-            sha256: executable.sha256(),
-            arguments: executable.arguments().to_vec(),
-            directory: executable.working_directory().map(std::path::Path::to_path_buf),
-            environment: executable.environment().iter().cloned().collect(),
-        };
-        Self::inspected(executable.declaration(), artifact, configuration)
-    }
-
     #[cfg(feature = "plugin-guest")]
     pub fn guest<A: crate::Application>(loaded: &crate::guest::Loaded<A>, configuration: Vec<u8>) -> Result<Self, PluginDefinitionError> {
         Self::inspected(loaded.declaration(), PluginArtifact::Guest { sha256: loaded.sha256() }, configuration)
     }
 
-    #[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+    #[cfg(any(feature = "plugin-guest"))]
     fn inspected(
         declaration: &harmos_domain::inventory::Declaration, artifact: PluginArtifact, configuration: Vec<u8>,
     ) -> Result<Self, PluginDefinitionError> {

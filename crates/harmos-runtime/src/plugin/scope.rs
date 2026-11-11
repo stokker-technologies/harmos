@@ -35,7 +35,7 @@ pub struct PluginScope {
     owner: Arc<str>,
     generation: PluginGeneration,
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     generation_context: Arc<OnceLock<[u8; 32]>>,
 
     phase: Arc<watch::Sender<Phase>>,
@@ -52,10 +52,7 @@ pub struct PluginScope {
     listeners: Arc<[harmos_domain::listeners::Definition]>,
     lifecycle: Arc<Option<[harmos_operations::lifecycle::Descriptor; 2]>>,
     activation: Arc<Mutex<Option<Weak<crate::streams::Activation>>>>,
-
     // The live native call surface of this generation, answering its host publications.
-    #[cfg(feature = "plugin-sidecar")]
-    native: Arc<Mutex<Weak<crate::services::NativeEndpoint>>>,
 }
 
 /* === Enums === */
@@ -85,7 +82,7 @@ impl PluginScope {
         self.generation == other.generation && Arc::ptr_eq(&self.phase, &other.phase)
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn issue_generation_context(&self) -> Result<[u8; 32]> {
         if self.is_closed() {
             return Err(Error::Closing { domain: "plugin generation" });
@@ -108,7 +105,7 @@ impl PluginScope {
         Ok(*self.generation_context.get().expect("generation context issued once"))
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn accepts_generation_context(&self, context: &[u8]) -> bool {
         !self.is_closed() && self.generation_context.get().is_some_and(|original| original.as_slice() == context)
     }
@@ -117,7 +114,7 @@ impl PluginScope {
         Self {
             owner: Arc::from(owner),
             generation,
-            #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+            #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
             generation_context: Arc::new(OnceLock::new()),
             phase: Arc::new(
                 watch::channel(Phase::Staged {
@@ -143,19 +140,7 @@ impl PluginScope {
             listeners: Arc::from([]),
             lifecycle: Arc::new(None),
             activation: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "plugin-sidecar")]
-            native: Arc::new(Mutex::new(Weak::new())),
         }
-    }
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn bind_native(&self, endpoint: &Arc<crate::services::NativeEndpoint>) {
-        *self.native.lock().expect("native endpoint binding is healthy") = Arc::downgrade(endpoint);
-    }
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn native(&self) -> Option<Arc<crate::services::NativeEndpoint>> {
-        self.native.lock().expect("native endpoint binding is healthy").upgrade()
     }
 
     pub(super) fn with_dependencies(owner: &str, generation: PluginGeneration, requirements: &[super::Requirement]) -> Self {
@@ -193,16 +178,6 @@ impl PluginScope {
         self
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn observers(&self) -> &[harmos_domain::inventory::observers::Declaration] {
-        &self.observers
-    }
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn observe_contract(&self) -> Option<&crate::operations::Contract> {
-        self.observe_contract.as_ref().as_ref()
-    }
-
     pub(super) fn with_wire_contracts(mut self, contracts: &[crate::operations::Contract]) -> Self {
         self.wire_contracts = Arc::new(contracts.iter().map(|contract| (contract.operation().id.clone(), contract.clone())).collect());
         self
@@ -218,7 +193,7 @@ impl PluginScope {
         self
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn wire_contracts(&self) -> impl Iterator<Item = &crate::operations::Contract> {
         self.wire_contracts.values()
     }
@@ -369,16 +344,6 @@ impl PluginScope {
 
     pub fn publication(&self, id: &str) -> crate::Result<Arc<crate::streams::PublicationLease>> {
         if self.is_closed() {
-            return Err(crate::Error::Closing { domain: "publication generation" });
-        }
-        self.selected_publication(id)
-    }
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn publication_in(
-        &self, context: &crate::operations::Context<'_>, id: &str,
-    ) -> crate::Result<Arc<crate::streams::PublicationLease>> {
-        if self.is_closed() && !(self.has_committed() && context.retains_publication(self)) {
             return Err(crate::Error::Closing { domain: "publication generation" });
         }
         self.selected_publication(id)

@@ -102,8 +102,7 @@ impl<D: OperationDeclaration> Bound<D> {
             admission: self.admission.clone(),
             request_claims: self.physical._request.clone(),
             source: self.source.for_attempt(&self.entry, scope, &origin),
-            #[cfg(feature = "plugin-sidecar")]
-            retirement: self.entry.retirement_control() || origin.has_lifecycle_loan(),
+
             origin,
         })
     }
@@ -282,13 +281,7 @@ fn execution_context(context: Context<'_>) -> Result<harmos_operations::executio
             source: Arc::new(source),
         }
     })?;
-    #[cfg(feature = "plugin-sidecar")]
-    dependencies
-        .insert(Arc::new(harmos_operations::execution::operations::publication::PublicationAccess(Arc::new(context.owned()))))
-        .map_err(|source| Error::OperationFailed {
-            operation: "publication access".into(),
-            source: Arc::new(source),
-        })?;
+
     dependencies.insert(Arc::new(harmos_operations::execution::operations::access::DiscoveryAccess(Arc::new(context.owned())))).map_err(
         |source| Error::OperationFailed {
             operation: "discovery access".into(),

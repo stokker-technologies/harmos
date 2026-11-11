@@ -38,8 +38,8 @@ use harmos_runtime::plugin::{
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<Resources, (), Resources>;
-pub(super) type Manager = PluginManager<Resources, (), Resources>;
+type Backends = PluginBackend<Resources, Resources>;
+pub(super) type Manager = PluginManager<Resources, Resources>;
 
 /* === Structs === */
 
@@ -217,7 +217,7 @@ where
         + harmos_runtime::catalog::Catalog<harmos_runtime::operations::ComponentBindings>,
 {
     type Guest = Resources;
-    type Sidecar = ();
+
     type Embedded = Resources;
     fn preflight(&mut self, candidate: &PluginDefinitions) -> harmos_runtime::Result<()> {
         self.operations.validate_requirements(candidate)
@@ -226,9 +226,6 @@ where
         match definition.kind() {
             harmos_runtime::plugin::PluginKind::Guest => Ok(PluginBackend::Guest(self.guest_seed())),
             harmos_runtime::plugin::PluginKind::Embedded => Ok(PluginBackend::Embedded(Resources::default())),
-            harmos_runtime::plugin::PluginKind::Sidecar => {
-                unreachable!("the fixture owns no native transport")
-            }
         }
     }
     async fn fence(&mut self, _: PluginTransition, _: &[PluginDefinition]) -> harmos_runtime::Result<()> {
@@ -247,14 +244,12 @@ where
             PluginBackend::Guest(resources) => {
                 resources.start::<C>(&self.operations, definition, router, authority, self.lane).await?;
             }
-            PluginBackend::Sidecar(()) => unreachable!(),
         }
         Ok(())
     }
     async fn stop(_: &PluginDefinition, authority: &PluginLifecycleAuthority<'_>, backend: &mut Backends) -> harmos_runtime::Result<()> {
         let resources = match backend {
             PluginBackend::Guest(resources) | PluginBackend::Embedded(resources) => resources,
-            PluginBackend::Sidecar(()) => unreachable!(),
         };
         resources.stop(authority).await
     }

@@ -82,9 +82,6 @@ pub struct Context<'a> {
     pub(super) request_claims: Option<super::RequestClaims>,
     pub(super) source: Source,
     pub(super) origin: Origin,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(super) retirement: bool,
 }
 
 #[derive(Clone)]
@@ -98,9 +95,6 @@ pub struct HostContext {
     admission: Admission,
     source: Source,
     origin: Origin,
-
-    #[cfg(feature = "plugin-sidecar")]
-    retirement: bool,
 }
 
 /* === Enums === */
@@ -298,8 +292,6 @@ impl Context<'_> {
             admission: self.admission.clone(),
             source: self.source.clone(),
             origin: self.origin.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            retirement: self.retirement,
         }
     }
 
@@ -348,7 +340,7 @@ impl Context<'_> {
     }
 
     // Refuse a provider-prepared grant the admitted caller does not hold.
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32")), feature = "plugin-sidecar"))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(super) fn admit_grant(&self, grant: Option<&harmos_domain::plugin::Grant>) -> Result<()> {
         match (&self.origin.grants, grant) {
             (Some(authority), grant) => authority.admit(grant),
@@ -357,12 +349,12 @@ impl Context<'_> {
         }
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
             (origin.has_lifecycle_loan() || origin.resident) && origin.scope.as_ref().is_some_and(|caller| caller.same_activation(scope))
@@ -435,8 +427,6 @@ impl HostContext {
             admission: self.admission.clone(),
             source: self.source.clone(),
             origin: self.origin.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            retirement: self.retirement,
         }
     }
 }
@@ -544,23 +534,5 @@ impl harmos_operations::execution::operations::access::GrantAuthority for HostCo
         &self, grant: &harmos_domain::plugin::Grant,
     ) -> std::result::Result<(), harmos_operations::execution::operations::access::AccessError> {
         self.borrow().admit_stream_grant(grant).map_err(Into::into)
-    }
-}
-
-#[cfg(feature = "plugin-sidecar")]
-impl harmos_operations::execution::operations::publication::PublicationHost for HostContext {
-    fn publish<'a>(
-        &'a self, _: harmos_operations::execution::operations::CallContext,
-        publication: harmos_operations::execution::operations::publication::Publication<'a>,
-    ) -> harmos_operations::execution::operations::publication::Published<'a> {
-        Box::pin(async move {
-            let context = self.borrow();
-            let scope = context.caller_scope().ok_or(Error::<std::convert::Infallible>::InvalidInput {
-                field: "native publication",
-                reason: "the original plugin caller is required",
-            })?;
-            let endpoint = scope.native().ok_or(Error::<std::convert::Infallible>::NotReady { domain: "native publication endpoint" })?;
-            endpoint.publish(scope, publication, &context).await.map_err(Into::into)
-        })
     }
 }

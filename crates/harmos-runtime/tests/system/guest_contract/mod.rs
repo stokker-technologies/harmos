@@ -69,28 +69,12 @@ async fn runtime() -> Runtime<Bank> {
 
 fn schematic() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
-    COMPONENT
-        .get_or_init(|| {
-            if std::env::var_os("HARMOS_FOCUSED_FIXTURES").is_some() {
-                harmos_packaging::componentize(&support::fixtures::inspection("schematic-guest")).unwrap()
-            } else {
-                support::fixtures::component("schematic-guest")
-            }
-        })
-        .clone()
+    COMPONENT.get_or_init(|| support::fixtures::component("schematic-guest")).clone()
 }
 
 fn sandbox() -> Vec<u8> {
     static COMPONENT: OnceLock<Vec<u8>> = OnceLock::new();
-    COMPONENT
-        .get_or_init(|| {
-            if std::env::var_os("HARMOS_FOCUSED_FIXTURES").is_some() {
-                harmos_packaging::componentize(&support::fixtures::inspection("harmos-sandbox-guest")).unwrap()
-            } else {
-                support::fixtures::component("harmos-sandbox-guest")
-            }
-        })
-        .clone()
+    COMPONENT.get_or_init(|| support::fixtures::component("harmos-sandbox-guest")).clone()
 }
 
 // A Route From The Origin To `(x, 4)` Turns At `(x, 0)`
@@ -121,7 +105,7 @@ fn execution_error(error: &harmos_runtime::Error) -> &wasmtime::Error {
 
 // A Failed Generation Reports Its SDK Shutdown Refusal Once, Then Retires
 async fn retire_failed_guest<L: harmos_runtime::plugin::PluginLifecycle>(
-    manager: &mut harmos_runtime::plugin::PluginManager<L::Guest, L::Sidecar, L::Embedded>, lifecycle: &mut L,
+    manager: &mut harmos_runtime::plugin::PluginManager<L::Guest, L::Embedded>, lifecycle: &mut L,
 ) {
     let harmos_runtime::Error::PluginLifecycle { source } = manager.shutdown(lifecycle).await.unwrap_err() else {
         panic!("the original failed generation must report its SDK shutdown refusal")

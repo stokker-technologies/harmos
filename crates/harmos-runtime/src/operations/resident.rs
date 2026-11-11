@@ -84,7 +84,7 @@ pub(crate) struct Registry {
     shared: Arc<Shared>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 #[derive(Clone)]
 pub(crate) struct WeakRegistry(Weak<Shared>);
 
@@ -105,9 +105,6 @@ pub(crate) struct Scope {
     resources: Resources,
     closed: AtomicBool,
 
-    #[cfg(feature = "plugin-sidecar")]
-    retirement: Mutex<Option<Outcome>>,
-
     detached: Mutex<Vec<Lease>>,
 }
 
@@ -120,19 +117,12 @@ pub(crate) struct Registration {
     internal: bool,
     published: Arc<AtomicBool>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     plugin: Option<crate::plugin::PluginScope>,
 }
 
 // Retains a retired scope's resources and instances until its caller has
 // consumed the outcome, so author Drop code never runs under a registry lock.
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) struct Retirement {
-    outcome: Outcome,
-    _scope: Arc<Scope>,
-    _running: Vec<Running>,
-    _definitions: Vec<Arc<Registration>>,
-}
 
 // A staged set of definitions that become visible when committed and are
 // withdrawn when dropped uncommitted.
@@ -322,7 +312,7 @@ impl Registration {
         if !self.published.load(Ordering::Acquire) {
             return false;
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if self.plugin.as_ref().is_some_and(|scope| !scope.is_ready()) {
             return false;
         }
@@ -330,7 +320,7 @@ impl Registration {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl WeakRegistry {
     pub(crate) fn upgrade(&self) -> Option<Registry> {
         self.0.upgrade().map(|shared| Registry { shared })
@@ -338,7 +328,7 @@ impl WeakRegistry {
 }
 
 impl Registry {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(crate) fn downgrade(&self) -> WeakRegistry {
         WeakRegistry(Arc::downgrade(&self.shared))
     }
@@ -353,8 +343,7 @@ impl Registry {
             address: address(&resources),
             resources,
             closed: AtomicBool::new(false),
-            #[cfg(feature = "plugin-sidecar")]
-            retirement: Mutex::new(None),
+
             detached: Mutex::new(Vec::new()),
         });
         let state = State {
@@ -409,7 +398,7 @@ impl Registry {
             scope: scope.map(|scope| scope.id),
             internal,
             published: Arc::new(AtomicBool::new(true)),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             plugin: None,
         });
         let mut state = self.state();
@@ -429,10 +418,10 @@ impl Registry {
     // Reserve definitions bound to one scope; they become visible on commit.
     pub(crate) fn stage(
         &self, scope: &Arc<Scope>, entries: Vec<(Definition, Arc<dyn Runner>)>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<crate::plugin::PluginScope>,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))] plugin: Option<crate::plugin::PluginScope>,
     ) -> Result<Staged> {
         self.check_scope(scope)?;
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
             return Err(Error::Closing { domain: "plugin scope" });
         }
@@ -455,7 +444,7 @@ impl Registry {
                 scope: Some(scope.id),
                 internal: false,
                 published: Arc::clone(&published),
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
                 plugin: plugin.clone(),
             }));
         }
@@ -515,8 +504,7 @@ impl Registry {
             address,
             resources,
             closed: AtomicBool::new(false),
-            #[cfg(feature = "plugin-sidecar")]
-            retirement: Mutex::new(None),
+
             detached: Mutex::new(Vec::new()),
         });
         state.scopes.insert(id, Arc::clone(&scope));
@@ -524,7 +512,7 @@ impl Registry {
         Ok(scope)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(crate) fn scope_of<R: Send + Sync + 'static>(&self, resources: &Arc<R>) -> Option<Arc<Scope>> {
         let address = Arc::as_ptr(resources) as *const () as usize;
         let state = self.state();
@@ -703,71 +691,9 @@ impl Registry {
 
     // Stop every instance over a scope, settle them and forget the scope with
     // the definitions bound to it. The first outcome is retained.
-    #[cfg(feature = "plugin-sidecar")]
-    #[tracing::instrument(target = "harmos::operations", name = "operations.retire_scope", level = "debug", skip_all)]
-    pub(crate) async fn retire_scope(&self, scope: &Arc<Scope>) -> Result<Retirement> {
-        self.check_scope(scope)?;
-        if let Some(outcome) = scope.retirement.lock().expect("resident scope is healthy").clone() {
-            return Ok(Retirement {
-                outcome,
-                _scope: Arc::clone(scope),
-                _running: Vec::new(),
-                _definitions: Vec::new(),
-            });
-        }
-        let (running, definitions) = {
-            let mut state = self.state();
-            scope.closed.store(true, Ordering::Release);
-            let definitions: Vec<_> = state.definitions.values().filter(|entry| entry.scope == Some(scope.id)).cloned().collect();
-            for definition in &definitions {
-                definition.closing.store(true, Ordering::Release);
-            }
-            let running = state.stop(|key, _, _| key.scope == scope.id);
-            self.shared.publish(&state);
-            (running, definitions)
-        };
-        let outcome = settle(running.clone()).await.map_err(Arc::new);
-        let (original, detached) = {
-            let mut state = self.state();
-            if state.instances.iter().any(|(key, entry)| key.scope == scope.id && !entry.running.settlement.lifecycle().is_settled()) {
-                return Err(match &outcome {
-                    Err(source) => Error::TaskFailed {
-                        domain: "resident cleanup",
-                        source: source.clone(),
-                    },
-                    Ok(()) => Error::NotReady { domain: "resident cleanup" },
-                });
-            }
-            // Only observer retirement failures resurface at shutdown.
-            if let Err(source) = &outcome
-                && running.iter().any(|running| running.report.kind == Kind::Observer)
-            {
-                state.retired_failure.get_or_insert_with(|| Arc::clone(source));
-            }
-            let original = state.scopes.remove(&scope.id).unwrap_or_else(|| Arc::clone(scope));
-            state.addresses.remove(&original.address);
-            state.instances.retain(|key, _| key.scope != scope.id);
-            for definition in &definitions {
-                if state.definitions.get(definition.definition.id()).is_some_and(|current| Arc::ptr_eq(current, definition)) {
-                    state.definitions.remove(definition.definition.id());
-                }
-            }
-            self.shared.publish(&state);
-            let detached = std::mem::take(&mut *original.detached.lock().expect("resident scope is healthy"));
-            (original, detached)
-        };
-        drop(detached);
-        let outcome = scope.retirement.lock().expect("resident scope is healthy").get_or_insert(outcome).clone();
-        Ok(Retirement {
-            outcome,
-            _scope: original,
-            _running: running,
-            _definitions: definitions,
-        })
-    }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.unregister", level = "debug", skip_all)]
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(crate) fn close_plugin(&self, scope: &crate::plugin::PluginScope) {
         let mut state = self.state();
         let ids: std::collections::BTreeSet<_> = state
@@ -786,7 +712,7 @@ impl Registry {
         self.shared.publish(&state);
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(crate) async fn shutdown_plugin(&self, scope: &crate::plugin::PluginScope) -> Result<()> {
         let ids: Vec<_> = self
             .state()
@@ -1197,11 +1123,6 @@ impl Lease {
         async move { settle(vec![running]).await }
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn transition(&self, phase: Phase) {
-        self.running.report.transition(phase);
-    }
-
     // Stop the instance for every lease holder.
     pub(crate) fn stop(&self) {
         let report = &self.running.report;
@@ -1293,7 +1214,7 @@ impl Staged {
             return Err(Error::Closing { domain: "resident scope" });
         }
         for entry in &self.entries {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             if entry.plugin.as_ref().is_some_and(|scope| scope.is_closed()) {
                 return Err(Error::Closing { domain: "plugin scope" });
             }
@@ -1326,13 +1247,6 @@ impl Drop for Staged {
             }
         }
         // self.entries retains every runner until this lock has been released.
-    }
-}
-
-#[cfg(feature = "plugin-sidecar")]
-impl Retirement {
-    pub(crate) fn into_outcome(self) -> Outcome {
-        self.outcome
     }
 }
 

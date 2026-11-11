@@ -113,13 +113,6 @@ pub struct PluginRestartSettings {
     pub backoff_cap: Duration,
 }
 
-#[cfg(feature = "plugin-sidecar")]
-#[derive(Clone, Debug)]
-pub struct PluginSidecarSettings {
-    pub plugin: PluginSettings,
-    pub calls: NonZeroUsize,
-}
-
 #[cfg(feature = "plugin-guest")]
 #[derive(Clone, Copy, Debug)]
 pub struct PluginGuestSettings {
@@ -162,16 +155,6 @@ impl PluginRestartSettings {
             });
         }
         Ok(())
-    }
-}
-
-#[cfg(feature = "plugin-sidecar")]
-impl Default for PluginSidecarSettings {
-    fn default() -> Self {
-        Self {
-            plugin: PluginSettings::default(),
-            calls: NonZeroUsize::new(4).unwrap(),
-        }
     }
 }
 

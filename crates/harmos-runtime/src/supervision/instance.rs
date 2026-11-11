@@ -339,53 +339,6 @@ impl Instance {
         }
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn depend_on(self: &Arc<Self>, provider: &Arc<Self>, retirement: bool) -> crate::Result<()> {
-        if Arc::ptr_eq(self, provider) {
-            return Err(Error::InvalidInput {
-                field: "physical provider",
-                reason: "an instance cannot retain itself",
-            });
-        }
-        let mut providers = self.providers.lock().expect("instance providers are healthy");
-        if providers.iter().any(|held| Arc::ptr_eq(&held.provider, provider)) {
-            return Ok(());
-        }
-        let mut admitted = false;
-        let mut stopping_control = false;
-        provider.status.send_modify(|status| {
-            if status.phase.is_terminal() {
-                return;
-            }
-            if status.cancellation_requested {
-                if !retirement {
-                    return;
-                }
-                if status.dependents == 0 {
-                    // The Existing Physical Stop Owner Drives Its Own SDK Controls.
-                    stopping_control = true;
-                    return;
-                }
-            }
-            if let Some(count) = status.dependents.checked_add(1) {
-                status.dependents = count;
-                admitted = true;
-            }
-        });
-        if stopping_control {
-            return Ok(());
-        }
-        if !admitted {
-            return Err(Error::Closing { domain: "physical provider" });
-        }
-        providers.push(Dependency { provider: provider.clone() });
-        drop(providers);
-        if !retirement {
-            provider.track(self);
-        }
-        Ok(())
-    }
-
     pub(crate) fn retain<R: Resource>(&self, resource: R, failure: Arc<Error>) {
         let mut retained = self.retained.lock().expect("instance cleanup lock is healthy");
         assert!(retained.is_none(), "one instance has one physical cleanup owner");

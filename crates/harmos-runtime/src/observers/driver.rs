@@ -26,8 +26,7 @@ use tokio::sync::watch;
 // Local Imports
 use super::ObserverBackend;
 use crate::Error;
-#[cfg(feature = "plugin-sidecar")]
-use crate::Result;
+
 use crate::operations::resident::{self, Completion, Outcome, Report, Runner, Settlement, Start};
 use crate::operations::{OperationInstanceId, OperationPhase};
 use crate::supervision::{self, Task, instance::Instance};
@@ -53,9 +52,6 @@ pub(crate) struct ChildSettlement {
 pub struct ObserverActivation {
     report: Report,
     stopping: watch::Receiver<bool>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    children: Arc<ChildSettlement>,
 }
 
 /* === Enums === */
@@ -87,8 +83,6 @@ impl<B: ObserverBackend> Runner for Backend<B> {
             let activation = ObserverActivation {
                 report: report.clone(),
                 stopping: stopping.subscribe(),
-                #[cfg(feature = "plugin-sidecar")]
-                children: Arc::clone(&completion),
             };
             // Calling backend code happens inside the owned attempt,
             // including constructing its future, so panics are joined.
@@ -146,25 +140,8 @@ impl Settlement for ChildSettlement {
 impl ChildSettlement {
     // Retain one physical child of this activation until the activation
     // settles; nothing new is admitted once the backend has returned.
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn submit(
-        &self, retirement: bool, submit: impl FnOnce() -> Result<crate::operations::EncodedInvocation>,
-    ) -> Result<crate::operations::EncodedInvocation> {
-        let mut pending = self.pending.lock().expect("observer children are healthy");
-        pending.retain(|control| !control.is_settled());
-        if pending.len() >= 64 || (!retirement && self.outcome.lock().expect("observer outcome is healthy").is_some()) {
-            return Err(Error::ResourceExhausted { resource: "observer physical children" });
-        }
-        let invocation = submit()?;
-        pending.push(Arc::clone(&invocation.control));
-        Ok(invocation)
-    }
 
     // Stop settling a child whose failed cleanup the backend retains itself.
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn forget(&self, control: &Arc<Instance>) {
-        self.pending.lock().expect("observer children are healthy").retain(|pending| !Arc::ptr_eq(pending, control));
-    }
 
     async fn finish(&self, recover: bool) -> Outcome {
         let outcome = self
@@ -241,11 +218,6 @@ impl ObserverActivation {
         self.report.transition(OperationPhase::Stopping);
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn cleaning_up(&self) {
-        self.report.transition(OperationPhase::Finalizing);
-    }
-
     pub async fn stopping(&mut self) {
         while !*self.stopping.borrow_and_update() {
             if self.stopping.changed().await.is_err() {
@@ -254,28 +226,7 @@ impl ObserverActivation {
         }
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn is_stopping(&self) -> bool {
-        *self.stopping.borrow()
-    }
-
     // Keep a failed physical cleanup owned by this activation for a later retry.
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn retain<R: supervision::cleanup::Resource>(&self, resource: R, failure: Arc<Error>) {
-        self.children.backend_cleanup.store(true, Ordering::Release);
-        self.children.lifecycle.retain(resource, failure);
-        self.report.publish();
-    }
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn depend_on(&self, provider: &Arc<Instance>) -> Result<()> {
-        self.children.lifecycle.depend_on(provider, false)
-    }
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn child_settlement(&self) -> Arc<ChildSettlement> {
-        Arc::clone(&self.children)
-    }
 }
 
 /* === Public Functions === */

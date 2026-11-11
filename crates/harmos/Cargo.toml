@@ -20,15 +20,6 @@ plugin-grpc = ["runtime", "harmos-runtime/plugin-grpc"]
 default = ["runtime"]
 runtime = ["dep:harmos-runtime", "harmos-runtime?/plugin-grpc", "dep:harmos-sdk-grpc"]
 plugin = ["runtime", "harmos-runtime/plugin"]
-sidecar = [
-  "runtime",
-  "dep:harmos-sidecar",
-  "harmos-sidecar/kit",
-  "harmos-sidecar/derive",
-  "harmos-sidecar/grpc",
-  "harmos-sidecar/streaming",
-  "harmos-runtime?/plugin-sidecar",
-]
 guest = [
   "runtime",
   "harmos-runtime?/plugin-guest",
@@ -38,8 +29,8 @@ guest = [
   "harmos-guest/grpc",
   "harmos-guest/streaming",
 ]
-grpc = ["runtime", "harmos-runtime?/grpc", "harmos-operations/grpc", "harmos-sidecar?/grpc", "harmos-guest?/grpc"]
-streaming = ["runtime", "harmos-operations/streaming", "harmos-sidecar?/streaming", "harmos-guest?/streaming"]
+grpc = ["runtime", "harmos-runtime?/grpc", "harmos-operations/grpc", "harmos-guest?/grpc"]
+streaming = ["runtime", "harmos-operations/streaming", "harmos-guest?/streaming"]
 generate-proto = ["runtime", "harmos-runtime/generate-proto"]
 simulation = ["runtime", "harmos-runtime/simulation"]
 
@@ -90,7 +81,6 @@ harmos-operations = { workspace = true }
 # Local
 harmos-runtime = { workspace = true, optional = true }
 harmos-sdk-grpc = { workspace = true, optional = true }
-harmos-sidecar = { workspace = true, optional = true, default-features = false }
 
 # Git
 

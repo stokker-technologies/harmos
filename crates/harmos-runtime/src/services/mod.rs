@@ -14,20 +14,9 @@
 mod restart;
 mod runner;
 
-#[cfg(feature = "plugin-sidecar")]
-mod sidecar;
-
 /* === Re-Exports === */
 
 pub(crate) use runner::{Once, Typed};
-
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use sidecar::Endpoint as NativeEndpoint;
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use sidecar::RuntimeDriver;
-
-#[cfg(feature = "plugin-sidecar")]
-pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, SidecarError, Supervised};
 
 /* === Imports === */
 
@@ -75,7 +64,7 @@ pub(crate) type ServiceRunner = fn(
 pub(crate) enum ServiceOwner {
     Host,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     Plugin(crate::plugin::PluginScope),
 }
 
@@ -124,12 +113,6 @@ pub struct ServiceContext<A: Application> {
     pub(crate) streams: StreamManager<A>,
     pub(crate) stopping: watch::Receiver<bool>,
     pub(crate) ready: watch::Sender<bool>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) provider: Arc<crate::supervision::instance::Instance>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    deactivation: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /* === Enums === */
@@ -181,7 +164,7 @@ impl ServiceManager {
     pub(crate) fn new(operations: Manager) -> Self {
         Self { operations, owner: ServiceOwner::Host }
     }
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(crate) fn scoped(operations: Manager, scope: crate::plugin::PluginScope) -> Self {
         Self {
             operations,
@@ -191,7 +174,7 @@ impl ServiceManager {
     fn owner(&self) -> &str {
         match &self.owner {
             ServiceOwner::Host => "host",
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             ServiceOwner::Plugin(scope) => scope.owner(),
         }
     }
@@ -234,7 +217,7 @@ impl ServiceManager {
         }
         let staged = self.operations.stage_services(
             entries,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             match &self.owner {
                 ServiceOwner::Host => None,
                 ServiceOwner::Plugin(scope) => Some(scope.clone()),
@@ -272,7 +255,7 @@ impl<A: Application> Resident<A> for AuthoredService {
         let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
         match &self.owner {
             ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_operations::execution::ServingError::Catalog)?,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             ServiceOwner::Plugin(scope) => {
                 dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_operations::execution::ServingError::Catalog)?
             }
@@ -314,10 +297,7 @@ impl ServiceDefinition {
 }
 
 impl<A: Application> Handles<A> {
-    pub(crate) fn context(
-        &self, operations: Manager, stopping: watch::Receiver<bool>, ready: watch::Sender<bool>,
-        #[cfg(feature = "plugin-sidecar")] provider: Arc<crate::supervision::instance::Instance>,
-    ) -> ServiceContext<A> {
+    pub(crate) fn context(&self, operations: Manager, stopping: watch::Receiver<bool>, ready: watch::Sender<bool>) -> ServiceContext<A> {
         ServiceContext {
             state: self.state.clone(),
             records: self.records.clone(),
@@ -325,10 +305,6 @@ impl<A: Application> Handles<A> {
             streams: self.streams.clone(),
             stopping,
             ready,
-            #[cfg(feature = "plugin-sidecar")]
-            provider,
-            #[cfg(feature = "plugin-sidecar")]
-            deactivation: Arc::default(),
         }
     }
 }
@@ -457,10 +433,6 @@ impl<A: Application> Clone for ServiceContext<A> {
             streams: self.streams.clone(),
             stopping: self.stopping.clone(),
             ready: self.ready.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            provider: self.provider.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            deactivation: self.deactivation.clone(),
         }
     }
 }

@@ -39,7 +39,7 @@ use harmos_runtime::{Error, Message, Result, Runtime};
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<Resources, Resources, Resources>;
+type Backends = PluginBackend<Resources, Resources>;
 
 /* === Structs === */
 
@@ -76,7 +76,7 @@ struct Host {
 
 impl PluginLifecycle for Host {
     type Guest = Resources;
-    type Sidecar = Resources;
+
     type Embedded = Resources;
 
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
@@ -161,7 +161,7 @@ fn candidate(text: bool, label: &str) -> PluginDefinitions {
     .unwrap()
 }
 
-async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources, Resources>, Host) {
+async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources>, Host) {
     let runtime = crate::support::booted(Ledger::default(), |_| {}).await;
     let host = Host {
         streams: runtime.streams.clone(),

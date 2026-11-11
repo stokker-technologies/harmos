@@ -80,11 +80,7 @@ async fn guest_composition_walks() {
     assert!(runtime.plugin.status(PLUGIN).is_none());
 
     // Scene 2: The Stamped Schematic Guest Declares Itself Before Instantiation
-    let bytes = if std::env::var_os("HARMOS_FOCUSED_FIXTURES").is_some() {
-        harmos_packaging::componentize(&support::fixtures::inspection("schematic-guest")).unwrap()
-    } else {
-        support::fixtures::component("schematic-guest")
-    };
+    let bytes = support::fixtures::component("schematic-guest");
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let loaded = host.load(&bytes).unwrap();
     let declaration = loaded.declaration();

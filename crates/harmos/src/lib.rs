@@ -32,9 +32,6 @@ pub use harmos_guest::{Plugin, plugin};
 // enables runtime execution for another crate.
 pub use harmos_macros::{catalog, operation};
 
-#[cfg(all(feature = "sidecar", not(target_arch = "wasm32")))]
-pub use harmos_macros::plugin as sidecar;
-
 #[cfg(feature = "guest")]
 pub use harmos_guest::guest;
 
@@ -66,43 +63,6 @@ pub use harmos_domain::*;
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-#[cfg(all(feature = "sidecar", not(target_arch = "wasm32")))]
-pub mod sidecar {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    pub use harmos_runtime::sidecar::*;
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
-}
 
 #[cfg(all(feature = "guest", not(target_arch = "wasm32")))]
 pub mod guest {

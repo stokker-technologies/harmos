@@ -18,26 +18,26 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use super::Binding;
 use super::Manager;
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use super::manager::Entry;
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::catalog::Projection;
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::catalog::{Catalog, Visitor};
 
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::operations::Declarations;
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::operations::OperationDeclaration;
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 use crate::operations::OperationDefinition;
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use crate::plugin::PluginScope;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use crate::Error;
 use crate::{Result, operations::Lane};
 
@@ -65,19 +65,19 @@ pub(crate) struct CatalogBinding {
     lanes: Vec<&'static str>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 pub struct Bindings<'a> {
     pub(super) operations: &'a Manager,
     pub(super) owner: &'a str,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) scope: Option<&'a PluginScope>,
 
     pub(super) entries: Vec<Arc<Entry>>,
 }
 
 #[must_use = "retain plugin operation registration until shutdown settles its invocations"]
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 pub struct PluginRegistration {
     scope: Arc<PluginScope>,
     operations: Manager,
@@ -161,7 +161,7 @@ impl CatalogBinding {
 }
 
 impl Manager {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub fn stage_plugin(&self, scope: &PluginScope, configure: impl FnOnce(&mut Bindings<'_>) -> Result<()>) -> Result<PluginRegistration> {
         if scope.is_closed() {
             return Err(Error::Closing { domain: "plugin scope" });
@@ -182,16 +182,7 @@ impl Manager {
         scope.validate_operations(bindings.entries.iter().map(|entry| entry.declared()))?;
         scope.validate_wire_contracts(bindings.entries.iter().filter_map(|entry| entry.contract.as_ref()))?;
         self.reserve(&bindings.entries)?;
-        #[cfg(feature = "plugin-sidecar")]
-        for entry in &bindings.entries {
-            if let Some(native) = &entry.native
-                && let Err(error) = native.capture_observe_contract()
-            {
-                self.fence(&bindings.entries, true);
-                self.remove_settled(&bindings.entries);
-                return Err(error);
-            }
-        }
+
         let receipt_scope = Arc::new(scope.clone());
         let staged = self
             .track_staging(&receipt_scope)
@@ -212,7 +203,7 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl Bindings<'_> {
     pub fn operations<C: harmos_operations::execution::operations::OperationCatalog>(&mut self, lane: impl Lane) -> Result<()> {
         self.register(C::batch().lane(lane))
@@ -224,7 +215,7 @@ impl Bindings<'_> {
         Ok(())
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(super) fn stage_implementation<D, O>(
         &mut self, lane: &'static str, dependencies: harmos_operations::execution::__private::ResourceSet,
     ) -> Result<()>
@@ -254,9 +245,9 @@ impl Bindings<'_> {
     }
 }
 
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
 impl Bindings<'_> {
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(super) fn project<C, V, H>(&mut self, lane: impl Lane, handler: Arc<H>) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<V>,
@@ -266,7 +257,7 @@ impl Bindings<'_> {
         self.project_at::<C, V, H>(lane.name(), handler)
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     fn project_at<C, V, H>(&mut self, lane: &'static str, handler: Arc<H>) -> Result<()>
     where
         C: Catalog<Declarations> + Catalog<V>,
@@ -297,7 +288,7 @@ impl Bindings<'_> {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl PluginRegistration {
     pub async fn shutdown(&mut self) -> Result<()> {
         self.scope.close();
@@ -311,7 +302,7 @@ impl PluginRegistration {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl Drop for PluginRegistration {
     fn drop(&mut self) {
         self.scope.close();

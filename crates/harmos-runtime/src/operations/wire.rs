@@ -54,22 +54,15 @@ pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
     pub(super) retry: Option<super::RetryPolicy>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(super) native_capacity: Option<OwnedSemaphorePermit>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 #[derive(Clone)]
 pub struct PluginCallback {
     operations: Manager,
     entry: Arc<Entry>,
     contract: crate::operations::Contract,
 }
-
-#[cfg(feature = "plugin-sidecar")]
-#[derive(Clone)]
-pub(crate) struct PluginControl(PluginCallback);
 
 pub(super) struct Parent<'a> {
     pub(super) scope: &'a Scope<'a>,
@@ -81,9 +74,6 @@ pub struct EncodedInvocation {
     pub(super) generation: super::OperationGeneration,
     pub(super) outcome: Outcome,
     pub(crate) control: Arc<crate::supervision::instance::Instance>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) observer_stop: Option<harmos_operations::execution::operations::Cancellation>,
 }
 
 /* === Enums === */
@@ -166,7 +156,7 @@ impl Manager {
         self.submit_encoded_at_as(operation, payload, source, parent, self.clock().now(), EncodedOptions::default())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) fn submit_encoded_retry_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
@@ -231,32 +221,13 @@ impl Manager {
             },
             source,
             parent,
-            EncodedInput {
-                retry,
-                payload,
-                preparation: None,
-                #[cfg(feature = "plugin-sidecar")]
-                native_capacity: None,
-            },
+            EncodedInput { retry, payload, preparation: None },
         )
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl Manager {
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn capture_host_control(
-        &self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract,
-    ) -> Result<PluginControl> {
-        if contract.operation().visibility != crate::operations::Visibility::Private || scope.observe_contract() != Some(contract) {
-            return Err(Error::InvalidInput {
-                field: "observer control",
-                reason: "control differs from the frozen Private contract",
-            });
-        }
-        self.capture_callback(scope, contract).map(PluginControl)
-    }
-
     pub fn capture_callback(&self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract) -> Result<PluginCallback> {
         if scope.is_closed() {
             return Err(Error::Closing { domain: "callback scope" });
@@ -276,7 +247,7 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl PluginCallback {
     pub(super) fn from_entry(operations: Manager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
         if entry.declared() != contract.operation() || entry.contract.as_ref() != Some(contract) {
@@ -320,7 +291,6 @@ impl PluginCallback {
         &self, source: Source, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
         resident: bool, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
-        #[cfg(not(feature = "plugin-sidecar"))]
         let _ = resident;
         let submitted = self.operations.clock().now();
         let origin = source.check()?;
@@ -329,26 +299,13 @@ impl PluginCallback {
         let timeout = self.entry.declared().policy.timeout;
         budget(self.operations.clock(), self.entry.id(), 1, timeout, submitted)?;
         let preparation = self.operations.claim_preparation(encoding_memory_bytes)?;
-        #[cfg(feature = "plugin-sidecar")]
-        let native_capacity = self
-            .entry
-            .native
-            .as_ref()
-            .map(|binding| if resident { Ok(super::native::Binding::resident_slot()) } else { binding.reserve() })
-            .transpose()
-            .map_err(|source| Error::OperationFailed {
-                operation: self.entry.id().to_owned(),
-                source: Arc::new(source),
-            })?;
+
         let payload = catch_unwind(AssertUnwindSafe(|| encode(encoding_memory_bytes.get())))
             .map_err(|_| Error::OperationPanicked { operation: self.entry.id().to_owned() })??;
         if payload.capacity() > encoding_memory_bytes.get() {
             return Err(Error::ResourceExhausted { resource: "callback encoding claim" });
         }
-        #[cfg(feature = "plugin-sidecar")]
-        if native_capacity.is_some() && payload.capacity() > harmos_sidecar::Frame::LIMIT {
-            return Err(Error::ResourceExhausted { resource: "native callback frame" });
-        }
+
         source.check()?;
         self.entry.available()?;
         budget(self.operations.clock(), self.entry.id(), 1, timeout, submitted)?;
@@ -370,23 +327,12 @@ impl PluginCallback {
                 retry,
                 payload,
                 preparation: Some(preparation),
-                #[cfg(feature = "plugin-sidecar")]
-                native_capacity,
             },
         )
     }
 }
 
-#[cfg(feature = "plugin-sidecar")]
-impl PluginControl {
-    pub(crate) fn submit_with(
-        &self, bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
-    ) -> Result<EncodedInvocation> {
-        self.0.submit_with_as(Source::Host, bytes, encode, true, None)
-    }
-}
-
-#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[cfg(any(feature = "plugin-guest"))]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
@@ -431,7 +377,7 @@ impl super::Context<'_> {
         )
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
         values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
@@ -500,7 +446,7 @@ pub(super) fn dispatch_native(
         if let Some(factory) = factory {
             return factory.decoding_memory(&input.payload);
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
             return binding.decoding_memory(&input.payload);
         }
@@ -521,7 +467,7 @@ pub(super) fn dispatch_native(
         if let Some(factory) = factory {
             return factory.prepare_encoded(resources, &input.payload);
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
             return binding.prepare(resources, &input.payload);
         }
@@ -571,14 +517,7 @@ pub(super) fn dispatch_prepared(
         }
         Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
-    Ok(EncodedInvocation {
-        id,
-        generation,
-        outcome,
-        control,
-        #[cfg(feature = "plugin-sidecar")]
-        observer_stop: None,
-    })
+    Ok(EncodedInvocation { id, generation, outcome, control })
 }
 
 pub(super) fn available(target: &Weak<Entry>, source: &Source) -> Result<()> {

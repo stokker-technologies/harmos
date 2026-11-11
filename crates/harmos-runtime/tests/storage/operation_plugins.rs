@@ -47,7 +47,7 @@ use harmos_storage::writes::WriteReceipt;
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<(), (), Option<PluginEndpoint>>;
+type Backends = PluginBackend<(), Option<PluginEndpoint>>;
 
 /* === Structs === */
 
@@ -64,7 +64,7 @@ struct Host {
 
 impl PluginLifecycle for Host {
     type Guest = ();
-    type Sidecar = ();
+
     type Embedded = Option<PluginEndpoint>;
 
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {

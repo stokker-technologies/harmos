@@ -15,7 +15,7 @@
 
 // Standard Library Imports
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
@@ -68,7 +68,7 @@ pub(crate) struct Wired {
     pub(super) validation: Option<Arc<crate::schema::Validator>>,
     pub(super) publisher: Mutex<Weak<Mutex<bool>>>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) staged: Option<super::registration::Staged>,
 }
 
@@ -82,7 +82,7 @@ pub(crate) struct Table {
     pub(super) publications: Arc<super::publication::Pool>,
     pub(super) ingest: Arc<super::ingest::Ingest>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -164,7 +164,7 @@ impl Table {
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
             ingest: Arc::new(super::ingest::Ingest::new()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             listeners: Mutex::new(BTreeMap::new()),
         };
 
@@ -194,7 +194,7 @@ impl Table {
             definition,
             window,
             publisher: Mutex::new(Weak::new()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             staged: None,
         });
         windows.insert(
@@ -239,13 +239,9 @@ impl Table {
         for revisions in windows.values_mut() {
             revisions.wires.retain(|revision, wired| {
                 let pending = {
-                    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
                     {
                         wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed())
-                    }
-                    #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-                    {
-                        false
                     }
                 };
                 revisions.current == Some(*revision) || pending || wired.window.latest_locked() > taken
@@ -325,7 +321,7 @@ impl Table {
         Cursor(self.sequence.load(std::sync::atomic::Ordering::Acquire))
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) fn can_advance(&self, count: u64) -> bool {
         self.sequence.load(std::sync::atomic::Ordering::Relaxed).checked_add(count).is_some()
     }
@@ -340,7 +336,7 @@ impl Table {
 
 impl Wired {
     fn admitted(self: &Arc<Self>) -> Option<Arc<Self>> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if let Some(staged) = &self.staged
             && !staged.scope.has_committed()
         {
@@ -355,50 +351,3 @@ impl Wired {
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[cfg(all(test, any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn retired_windows_release_after_feeds_and_readers_release_them() {
-        let table = Table::resuming([], Position::ORIGIN, Cursor::ORIGIN).unwrap();
-        let feed = table.ingest.engage(0);
-        let mut weak = Vec::new();
-        let mut readers = Vec::new();
-        for index in 1..=64 {
-            let definition = Definition::native::<u64>("samples", index);
-            let revision = definition.version();
-            let window = Arc::new(
-                Window::wired(4, Position::ORIGIN, table.sequence.clone(), table.pump.clone()).visible_with(table.visibility.clone()),
-            );
-            window.publish(Position::ORIGIN, Arc::new(index as u64));
-            weak.push(Arc::downgrade(&window));
-            if index == 1 {
-                readers.push(window.clone());
-            }
-            let wired = Arc::new(Wired {
-                definition: definition.clone(),
-                window,
-                validation: None,
-                publisher: Mutex::new(Weak::new()),
-                staged: None,
-            });
-            {
-                let mut windows = table.windows.write().unwrap();
-                let revisions = windows.entry("samples".into()).or_default();
-                revisions.current = Some(revision);
-                revisions.definitions.insert(revision, Contract::of(&definition));
-                revisions.wires.insert(revision, wired);
-            }
-            table.drained(u64::MAX);
-        }
-        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 64);
-        feed.took(64);
-        table.drained(64);
-        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 2);
-        readers.clear();
-        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 1);
-        assert_eq!(table.declared()[0].definition.version(), Definition::native::<u64>("samples", 64).version());
-    }
-}

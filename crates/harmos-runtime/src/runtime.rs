@@ -898,12 +898,7 @@ impl<A: Application> Builder<A> {
         #[cfg(feature = "grpc")]
         let grpc = crate::grpc::GrpcManager::new::<A>(&operations);
         #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
-        let plugin = crate::plugin::PluginHost::new(
-            operations.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            handles,
-        )
-        .map_err(Incompatible::work)?;
+        let plugin = crate::plugin::PluginHost::new(operations.clone()).map_err(Incompatible::work)?;
         boot.runtime = Some(Runtime {
             #[cfg(feature = "simulation")]
             simulation,
@@ -1018,13 +1013,6 @@ impl Incompatible {
             cause: Cause::Simulation(live_only),
             cleanup: None,
         }
-    }
-}
-
-#[cfg(feature = "plugin-sidecar")]
-impl From<harmos_sidecar::ExecutableError> for Incompatible {
-    fn from(error: harmos_sidecar::ExecutableError) -> Self {
-        Self::work(error)
     }
 }
 

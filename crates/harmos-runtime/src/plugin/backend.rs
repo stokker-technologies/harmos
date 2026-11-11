@@ -30,9 +30,8 @@ use super::PluginKind;
 
 /* === Enums === */
 
-pub enum PluginBackend<G, S, E> {
+pub enum PluginBackend<G, E> {
     Guest(G),
-    Sidecar(S),
     Embedded(E),
 }
 
@@ -40,11 +39,10 @@ pub enum PluginBackend<G, S, E> {
 
 /* === Implementations === */
 
-impl<G, S, E> PluginBackend<G, S, E> {
+impl<G, E> PluginBackend<G, E> {
     pub fn kind(&self) -> PluginKind {
         match self {
             Self::Guest(_) => PluginKind::Guest,
-            Self::Sidecar(_) => PluginKind::Sidecar,
             Self::Embedded(_) => PluginKind::Embedded,
         }
     }

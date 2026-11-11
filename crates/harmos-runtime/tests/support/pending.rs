@@ -20,8 +20,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::Poll;
 
-#[cfg(feature = "plugin-sidecar")]
-use std::time::Duration;
+
 
 // Third Party Imports
 
@@ -53,12 +52,7 @@ pub(crate) async fn parked<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     }
 }
 
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) async fn outlasts<F: Future + ?Sized>(mut future: Pin<&mut F>, span: Duration) {
-    parked(future.as_mut()).await;
-    tokio::time::advance(span).await;
-    parked(future).await;
-}
+
 
 /* === Private Functions === */
 

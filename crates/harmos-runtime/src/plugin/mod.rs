@@ -36,8 +36,6 @@ pub use harmos_domain::{Refusal, Registrar, Registration, RegistrationError, Req
 pub use harmos_operations::execution::plugin::*;
 pub use host::PluginHost;
 
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use host::{Driving, Lease};
 pub use manager::{
     PluginCleanup, PluginCleanupFailure, PluginCleanupStatus, PluginFailure, PluginInstance, PluginLifecycle, PluginLifecycleAuthority,
     PluginLifecyclePhase, PluginManager, PluginReloadPlan, PluginTransition,

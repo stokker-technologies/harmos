@@ -20,7 +20,7 @@ mod fixture;
 #[cfg(feature = "plugin-guest")]
 mod guest;
 
-#[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 mod guest_contract;
 
 #[path = "../support/report.rs"]

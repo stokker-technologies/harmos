@@ -442,7 +442,7 @@ impl<A: Application> StateManager<A> {
 }
 
 impl<A: Application> Feed<A> {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     #[tracing::instrument(target = "harmos::state", name = "state.shared_page", level = "debug", skip_all)]
     pub(crate) async fn shared_page(
         &self, after: Position, through: Position, max_rows: std::num::NonZeroUsize, bytes: impl Fn(&A::Record) -> usize,

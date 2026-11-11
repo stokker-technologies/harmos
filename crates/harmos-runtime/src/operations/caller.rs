@@ -14,25 +14,25 @@
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use std::sync::{Arc, Weak};
 // Third Party Imports
 
 // Local Imports
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use super::manager::Entry;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use super::{Manager, Running};
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use crate::Error;
 use crate::Result;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use crate::plugin::{PluginCaller, PluginGeneration, PluginScope};
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 use crate::operations::OperationDeclaration;
 
 /* === Constants === */
@@ -43,7 +43,7 @@ use crate::operations::OperationDeclaration;
 
 /* === Structs === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 #[derive(Clone)]
 pub struct Caller {
     pub(crate) operations: Manager,
@@ -54,21 +54,21 @@ pub struct Caller {
 pub(super) struct Origin {
     pub(super) identity: Identity,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) scope: Option<PluginScope>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) lifecycle: Option<LifecycleLoan>,
 
     // Calls made by a resident control, which may publish while it retires.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) resident: bool,
 
     // The grant authority admission recorded for the request this origin made.
     pub(super) grants: Option<std::sync::Arc<super::manager::GrantAuthority>>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 #[derive(Clone)]
 pub(super) struct LifecycleLoan {
     shutdown: Weak<Entry>,
@@ -87,19 +87,19 @@ pub(super) enum Source {
         id: super::OperationInstanceId,
     },
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     Plugin(PluginCaller),
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     Scope(PluginScope),
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     Binding(Weak<Entry>),
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     Callback(Weak<Entry>),
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     Lifecycle {
         binding: Weak<Entry>,
         loan: LifecycleLoan,
@@ -113,7 +113,7 @@ pub(super) enum Identity {
     #[cfg(feature = "grpc")]
     External(super::OperationInstanceId),
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     Plugin {
         owner: Arc<str>,
         generation: PluginGeneration,
@@ -124,7 +124,7 @@ pub(super) enum Identity {
 
 /* === Implementations === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl Manager {
     pub fn caller(&self, source: &PluginCaller) -> Result<Caller> {
         Source::Plugin(source.clone()).check()?;
@@ -135,7 +135,7 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl Caller {
     pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O::Request) -> Result<super::Running<O>> {
         self.operations.admit_at::<O, ()>(id, (request.into(), ()), None, &[], &Source::Plugin(self.source.clone()), None)
@@ -194,7 +194,7 @@ impl Caller {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl harmos_operations::execution::operations::OperationHost for Caller {
     type Error = Error;
     type Instance<O: OperationDeclaration> = Running<O>;
@@ -246,7 +246,7 @@ impl Source {
             return Ok(origin);
         }
 
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         let scope = match self {
             Self::Host => None,
             #[cfg(feature = "grpc")]
@@ -273,21 +273,20 @@ impl Source {
             }
         };
         Ok(Origin {
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             identity: scope.as_ref().map_or(Identity::Host, |scope| Identity::Plugin {
                 owner: scope.owner_identity(),
                 generation: scope.generation(),
             }),
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-            identity: Identity::Host,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             scope,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             lifecycle: match self {
                 Self::Lifecycle { loan, .. } => Some(loan.clone()),
                 _ => None,
             },
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             resident: match self {
                 Self::Binding(binding) | Self::Callback(binding) => binding.upgrade().is_some_and(|binding| binding.retires_late()),
                 _ => false,
@@ -307,11 +306,11 @@ impl Source {
             };
         }
         // A Host Provider Serving a Plugin Requirement Acts for That Caller
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if entry.plugin().is_none() && _origin.scope.is_some() {
             return self.clone();
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if entry.plugin().is_some() {
             let control = _scope.original_control();
             let loan = if control.upgrade().is_some_and(|control| entry.admitted_shutdown(&control)) {
@@ -327,20 +326,20 @@ impl Source {
     }
 
     pub(super) fn for_binding(_entry: &std::sync::Arc<super::manager::Entry>) -> Self {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         if _entry.plugin().is_some() {
             return Self::Binding(Arc::downgrade(_entry));
         }
         Self::Host
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     pub(super) fn for_callback(entry: &Arc<Entry>) -> Self {
         if entry.plugin().is_some() { Self::Callback(Arc::downgrade(entry)) } else { Self::Host }
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(any(feature = "plugin", feature = "plugin-guest"))]
 impl LifecycleLoan {
     fn is_live(&self) -> bool {
         let Some(entry) = self.shutdown.upgrade() else {
@@ -355,13 +354,9 @@ impl LifecycleLoan {
 
 impl Origin {
     pub(super) fn has_lifecycle_loan(&self) -> bool {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         {
             self.lifecycle.as_ref().is_some_and(LifecycleLoan::is_live)
-        }
-        #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-        {
-            false
         }
     }
 }

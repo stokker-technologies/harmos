@@ -42,8 +42,6 @@ impl Manager {
             std::any::TypeId::of::<harmos_operations::execution::operations::access::GrantAccess>(),
             std::any::TypeId::of::<harmos_operations::execution::operations::instances::InstanceAccess>(),
             std::any::TypeId::of::<crate::operations::HostContext>(),
-            #[cfg(feature = "plugin-sidecar")]
-            std::any::TypeId::of::<harmos_operations::execution::operations::publication::PublicationAccess>(),
         ]
     }
 
@@ -54,19 +52,19 @@ impl Manager {
             registration,
             staged,
             "host",
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             None,
         )
     }
 
     pub(in crate::operations) fn register_scoped_services<L: Lane>(
         &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged, owner: &str,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] scope: Option<&PluginScope>,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))] scope: Option<&PluginScope>,
     ) -> Result<()> {
         let mut entries = self.native_entries(
             registration,
             owner,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             scope,
         )?;
         let publication = staged.publication();
@@ -90,7 +88,7 @@ impl Manager {
         let entries = self.native_entries(
             registration,
             "host",
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             None,
         )?;
         self.reserve(&entries)
@@ -98,7 +96,7 @@ impl Manager {
 
     pub(in crate::operations) fn native_entries<L: Lane>(
         &self, registration: crate::operations::Registration<L>, owner: &str,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] scope: Option<&PluginScope>,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))] scope: Option<&PluginScope>,
     ) -> Result<Vec<Arc<Entry>>> {
         let crate::operations::Registration { batch, lane, defaults } = registration;
         if !batch.services.is_empty() {
@@ -150,7 +148,7 @@ impl Manager {
                 Arc::new(factory),
                 definition,
                 wire,
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
                 scope.cloned(),
             )?;
             #[cfg(feature = "grpc")]
@@ -162,7 +160,7 @@ impl Manager {
         }
         Ok(entries)
     }
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
     pub(in crate::operations) fn bind_native<D, O>(
         &self, owner: &str, lane: &'static str, dependencies: harmos_operations::execution::__private::ResourceSet,
         definition: OperationDefinition, wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
@@ -186,7 +184,7 @@ impl Manager {
     pub(in crate::operations) fn binding_erased(
         &self, owner: impl Into<String>, lane: &'static str, binding: Arc<dyn Any + Send + Sync>, definition: OperationDefinition,
         wire: Option<crate::operations::wire::Dispatch>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<PluginScope>,
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))] plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>> {
         let owner = Identifier::new(owner.into()).map_err(|source| Error::OperationDeclaration { source: source.into() })?;
         let valid_owner = harmos_domain::identity::segment(owner.as_str());
@@ -213,21 +211,18 @@ impl Manager {
             grpc: None,
             generation,
             lane,
-            #[cfg(feature = "plugin-sidecar")]
-            resident: false,
+
             active: AtomicBool::new(true),
             publication: Arc::new(AtomicBool::new(true)),
             retirement: AtomicU8::new(Retirement::Retained as u8),
             pending: Mutex::new(BTreeMap::new()),
             binding,
-            #[cfg(feature = "plugin-sidecar")]
-            native_binding: None,
+
             wire,
-            #[cfg(feature = "plugin-sidecar")]
-            native: None,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             plugin,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             sdk: None,
         }))
     }

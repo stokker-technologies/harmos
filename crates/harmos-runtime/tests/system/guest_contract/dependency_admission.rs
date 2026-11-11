@@ -47,7 +47,7 @@ async fn dependencies_share_admission() {
     let _report = crate::report::system();
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let runtime = runtime_with_provider(provider.clone()).await;
-    let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
+    let mut lifecycle = DependencyHost::new(&runtime).await;
     let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "dependencies").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     assert_eq!(
@@ -79,7 +79,7 @@ async fn cancelled_dependency_admission() {
     let _report = crate::report::system();
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let runtime = runtime_with_provider(provider.clone()).await;
-    let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
+    let mut lifecycle = DependencyHost::new(&runtime).await;
     let mut manager = harmos_runtime::plugin::PluginManager::new(dependency_candidate(&mut lifecycle, "idle").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let invocation =
@@ -101,7 +101,7 @@ async fn missing_provider_refused() {
     let _report = crate::report::system();
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let runtime = runtime_with_provider(provider.clone()).await;
-    let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
+    let mut lifecycle = DependencyHost::new(&runtime).await;
     let candidate = dependency_candidate(&mut lifecycle, "idle").await;
     let missing = candidate.definitions().filter(|definition| definition.id != "provider").cloned();
     // No Plugin Provides It, So Planning Routes It to the Host, Whose Preflight Refuses It
@@ -128,11 +128,11 @@ async fn missing_provider_refused() {
 async fn shutdown_fences_callers() {
     let _report = crate::report::system();
     use std::sync::Arc;
-    let runtime = runtime().await;
     let provider = Arc::new(ProviderOwner::default());
-    let mut lifecycle = DependencyHost::new(&runtime, provider.clone()).await;
+    let runtime = runtime_with_provider(provider.clone()).await;
+    let mut lifecycle = DependencyHost::new(&runtime).await;
     let mut manager =
-        harmos_runtime::plugin::PluginManager::new(native_dependency_candidate(&mut lifecycle, "dependencies", true).await).unwrap();
+        harmos_runtime::plugin::PluginManager::new(dependency_candidate_with_client(&mut lifecycle, "dependencies").await).unwrap();
     manager.initialize(&mut lifecycle).await.unwrap();
     let stale = runtime.operations.caller(&manager.caller("client").unwrap()).unwrap();
     assert_eq!(

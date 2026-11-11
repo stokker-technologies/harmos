@@ -118,11 +118,6 @@ impl<A: Application> StreamManager<A> {
         self.stream::<S>().window.publish(at, Arc::new(row));
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn miss<S: Stream<A>>(&self, count: u64) {
-        self.stream::<S>().window.miss(count);
-    }
-
     pub fn query<S: Stream<A>>(&self, range: impl RangeBounds<Position>) -> Query<S> {
         let wired = self.stream::<S>();
 

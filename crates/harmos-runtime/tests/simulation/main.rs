@@ -23,7 +23,6 @@ mod oracle;
 
 // Standard Library Imports
 use std::convert::Infallible;
-use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -34,14 +33,12 @@ use support::{Bank, Deposit, Ledger, Noted, alice, catalog, pulse, streams};
 
 // Local Imports
 use crate::support;
-use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
-use harmos_runtime::sidecar::{Notice, Supervised};
+use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::simulation::entropy;
 use harmos_runtime::{
     Application, DefinitionId, Identified, Runtime, Setup, runtime::Catalog, runtime::Registration, simulation::SimulatedRuntime,
     state::Focus, state::Kind, state::Transaction,
 };
-use harmos_sidecar::{Attach, PluginNative, Supervisor};
 
 /* === Constants === */
 
@@ -50,9 +47,6 @@ static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);
 /* === Macros === */
 
 /* === Type Aliases === */
-
-type IdleManaged =
-    harmos_runtime::sidecar::Managed<Bank, PluginNative<Idle>, fn(&harmos_runtime::services::ServiceContext<Bank>, Notice), Lanes>;
 
 /* === Structs === */
 
@@ -120,12 +114,6 @@ struct DivergentCatalog;
 )]
 struct TimingItsOwnWaitDeclaration {
     wait_ms: u64,
-}
-
-struct Idle;
-
-struct IdleResident {
-    managed: IdleManaged,
 }
 
 /* === Enums === */
@@ -283,81 +271,6 @@ impl harmos_runtime::state::RecordCatalog for NoRecord {
 }
 
 impl harmos_runtime::state::TransactionCatalog<DivergentState> for DivergentChange {}
-
-impl harmos_operations::lifecycle::Policy for Idle {
-    const INITIALIZATION_POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(2),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    };
-    const SHUTDOWN_POLICY: OperationPolicy = Self::INITIALIZATION_POLICY;
-}
-
-impl harmos_runtime::Lifecycle for Idle {
-    type Context = Supervisor;
-    type Config = ();
-    type Error = Infallible;
-    async fn prepare(_: (), _: &mut Setup<Self>) -> Result<Self, Infallible> {
-        Ok(Self)
-    }
-}
-
-#[harmos_runtime::sidecar(id = "idle", requires = ())]
-impl harmos_runtime::Plugin for Idle {
-    const CATALOGS: &'static [harmos_runtime::operations::Catalog] = &[];
-}
-
-impl IdleResident {
-    fn new() -> Self {
-        let capacity = NonZeroUsize::new(1).unwrap();
-        let source = PluginNative::<Idle>::new(capacity).expect("the idle SDK declaration is valid");
-        let definition = harmos_runtime::plugin::PluginDefinition {
-            id: source.owner().into(),
-            version: "1.0.0".parse().unwrap(),
-            artifact: harmos_runtime::plugin::PluginArtifact::LocalSidecar { revision: "simulation".into() },
-            configuration: serde_json::to_vec(&()).unwrap(),
-            requires: vec![],
-            contributions: harmos_runtime::plugin::PluginContributions {
-                operations: source.operations().unwrap(),
-                wire_contracts: source.operation_contracts().unwrap().unwrap(),
-                required_contracts: source.required_contracts().unwrap(),
-                lifecycle: source.sdk_lifecycle().unwrap(),
-                streams: source.publications(),
-                observers: source.observers(),
-                listeners: source.listener_declarations().unwrap().unwrap_or_default(),
-                ..Default::default()
-            },
-        };
-        let resident = Supervised::new(
-            source,
-            (|_: &harmos_runtime::services::ServiceContext<Bank>, _: Notice| {})
-                as fn(&harmos_runtime::services::ServiceContext<Bank>, Notice),
-        );
-        let managed = harmos_runtime::sidecar::Managed::new(resident, definition, Lanes::Open, capacity, NonZeroUsize::new(4096).unwrap())
-            .expect("the frozen idle graph is valid");
-        Self { managed }
-    }
-}
-
-impl Clone for IdleResident {
-    fn clone(&self) -> Self {
-        Self::new()
-    }
-}
-
-impl harmos_runtime::services::Resident<Bank> for IdleResident {
-    type Error = harmos_runtime::sidecar::ManagedError;
-    async fn run(&mut self, context: harmos_runtime::services::ServiceContext<Bank>) -> Result<(), Self::Error> {
-        harmos_runtime::services::Resident::run(&mut self.managed, context).await
-    }
-    async fn stop(&mut self) -> Result<(), Self::Error> {
-        harmos_runtime::services::Resident::stop(&mut self.managed).await
-    }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        harmos_runtime::services::Resident::cleanup(&mut self.managed).await
-    }
-}
 
 /* === Public Functions === */
 
@@ -667,48 +580,4 @@ fn full_script_replays() {
     assert_eq!(state.position.0, 2);
     assert_eq!(state.value.balance(support::HOUSE), 3);
     assert!(sim.service("adapter").restarts() >= 2);
-}
-
-#[test]
-fn sidecar_fault_scripted() {
-    let script = |seed: u64| {
-        let policy = harmos_runtime::ServicePolicy {
-            restart: harmos_runtime::operations::RestartPolicy::OnFailure {
-                credit: 3,
-                sustained_health: Duration::from_millis(250),
-                backoff: harmos_runtime::operations::Backoff::Exponential {
-                    initial: Duration::from_millis(1),
-                    maximum: Duration::from_millis(1),
-                    jitter: harmos_runtime::operations::Jitter::Deterministic,
-                },
-            },
-            ..harmos_runtime::services::POLICY
-        };
-        let mut sim = bank(seed, move |setup| {
-            setup
-                .settings()
-                .operation_settings(harmos_runtime::operations::Settings {
-                    preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
-                    ..Default::default()
-                })
-                .simulated_service_with("meter", policy, IdleResident::new());
-        });
-        sim.fault("meter", "the meter fell over").expect("the attached sidecar receives its scripted exit");
-        sim.advance_ms(8);
-        sim
-    };
-
-    let first = script(11);
-    let second = script(11);
-
-    assert!(
-        first.service("meter").restarts() >= 1,
-        "a scripted sidecar fault spends a credit like any other: {:?}",
-        first.service("meter").exits()
-    );
-    assert!(
-        first.service("meter").exits().iter().any(|exit| exit.contains("the meter fell over")),
-        "the scripted regime is the one the trace records"
-    );
-    first.assert_same(&second);
 }

@@ -49,7 +49,7 @@ impl Manager {
             return;
         }
         state.closing = true;
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         let staging: Vec<_> = state.staging.iter().filter_map(std::sync::Weak::upgrade).collect();
         for entry in state.entries.values().flat_map(|providers| providers.values()) {
             let _pending = entry.pending.lock().expect("operation settlement lock is healthy");
@@ -60,10 +60,9 @@ impl Manager {
                 entry.retirement.store(Retirement::Runtime as u8, Ordering::Release);
             }
             entry.active.store(false, Ordering::Release);
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             let ordinary = entry.sdk.is_none();
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-            let ordinary = true;
+
             if _retain_shutdown && ordinary {
                 for control in _pending.values() {
                     control.request_cancel();
@@ -71,7 +70,7 @@ impl Manager {
             }
         }
         drop(state);
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
         for scope in staging {
             scope.close_staging();
         }

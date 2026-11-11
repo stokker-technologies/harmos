@@ -78,7 +78,7 @@ pub enum Error<E = Infallible> {
     #[error("operation child lane `{child}` would cycle with held lane `{parent}`")]
     OperationLaneCycle { parent: &'static str, child: &'static str },
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     #[error("operation caller is unavailable: {source}")]
     OperationCaller {
         #[source]
@@ -132,7 +132,7 @@ pub enum Error<E = Infallible> {
         source: std::sync::Arc<Error>,
     },
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
     #[error("plugin lifecycle failed: {source}")]
     PluginLifecycle {
         #[source]
@@ -300,7 +300,7 @@ impl<E> Error<E> {
             Self::OperationFinalization { outcome, source, .. } => outcome.as_deref().and_then(Error::failure).or_else(|| source.failure()),
             Self::OperationSettlement { source } => source.failure(),
             Self::OperationInvocation(source) => carried(source),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             Self::PluginLifecycle { source } => carried(source.as_ref()),
             _ => None,
         }
@@ -326,10 +326,7 @@ fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harm
         if let Some(error) = link.downcast_ref::<Error>() {
             return error.failure();
         }
-        #[cfg(feature = "plugin-sidecar")]
-        if let Some(error) = link.downcast_ref::<crate::operations::NativeError>() {
-            return error.failure();
-        }
+
         #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
         if let Some(error) = link.downcast_ref::<crate::operations::ComponentError>() {
             return error.failure();

@@ -124,7 +124,7 @@ impl<A: Application> Runtime<A> {
             // Notify Residents Before Cancelling Their In-Flight Calls
             self.operations.close_resident_admission();
             self.operations.close_admission();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             {
                 self.records.stop_listeners();
                 self.streams.stop_listeners();
@@ -181,24 +181,23 @@ impl<A: Application> Shutdown<A> {
             }
             self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             {
                 self.handles.records.stop_listeners();
                 self.handles.streams.stop_listeners();
             }
             self.progress.send_replace("observers and listeners");
             let observers = self.handles.operations.shutdown_observers();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             let (observers, records, streams) =
                 tokio::join!(observers, self.handles.records.shutdown_listeners(), self.handles.streams.shutdown_listeners(),);
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-            let observers = observers.await;
+
             if self.handles.operations.observer_cleanup_pending() {
                 return Err(observers.err().unwrap_or(Error::NotReady { domain: "observer cleanup" }));
             }
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             records?;
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(any(feature = "plugin", feature = "plugin-guest"))]
             streams?;
             self.progress.send_replace("application services");
             let services = self.handles.operations.shutdown_application_services().await;

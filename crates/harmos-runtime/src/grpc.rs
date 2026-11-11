@@ -29,8 +29,6 @@ mod tls;
 
 /* === Re-Exports === */
 
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use codec::encode_bytes;
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
 pub use controlled::ControlEnvelope;
 pub use decoding::{DecodeSettings, Decoder};

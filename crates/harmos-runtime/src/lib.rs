@@ -25,9 +25,6 @@ pub mod storage;
 #[cfg(all(not(target_arch = "wasm32"), feature = "plugin"))]
 pub mod plugin;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "plugin-sidecar"))]
-pub mod sidecar;
-
 #[cfg(all(not(target_arch = "wasm32"), feature = "plugin-guest"))]
 pub mod guest;
 pub mod operations;
@@ -65,9 +62,6 @@ pub use operations::refusal::Refusal;
 pub use operations::{Catalog, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};
 pub use services::{ServiceContext, ServiceManager};
-
-#[cfg(feature = "plugin-sidecar")]
-pub use harmos_macros::plugin as sidecar;
 
 #[cfg(feature = "plugin-guest")]
 pub use harmos_guest::guest;
@@ -132,9 +126,6 @@ pub mod __private {
         Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
         Requirements as PluginRequirements,
     };
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub use harmos_sidecar as sidecar;
 
     // A stream declaration is authored wherever its row type is, host core or
     // no host core, so these three are as unconditional as the attribute that

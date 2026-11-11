@@ -198,12 +198,7 @@ impl PluginSdkRegistration {
             return Err(Error::ResourceExhausted { resource: "SDK physical settlement" });
         }
         let preparation = self.operations.claim_preparation(bytes)?;
-        #[cfg(feature = "plugin-sidecar")]
-        let native_capacity =
-            entry.native.as_ref().map(|binding| binding.reserve()).transpose().map_err(|source| Error::OperationFailed {
-                operation: entry.id().to_owned(),
-                source: Arc::new(source),
-            })?;
+
         let payload = encode(bytes.get())?;
         if payload.capacity() > bytes.get() {
             return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
@@ -226,8 +221,6 @@ impl PluginSdkRegistration {
                 retry: None,
                 payload,
                 preparation: Some(preparation),
-                #[cfg(feature = "plugin-sidecar")]
-                native_capacity,
             },
         )?;
         let outcome = invocation.outcome;
@@ -249,12 +242,7 @@ impl PluginSdkRegistration {
     #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
     pub async fn settle(&self) -> Result<()> {
         self.operations.settle_owned_entries(&self.entries).await?;
-        #[cfg(feature = "plugin-sidecar")]
-        if self.entries[0].plugin().is_some_and(PluginScope::is_closed)
-            && let Some(binding) = &self.entries[0].native
-        {
-            binding.settle_observers().await?;
-        }
+
         Ok(())
     }
 

@@ -213,7 +213,7 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-cli -p schematic-sidecar",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-guest --target wasm32-unknown-unknown",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml -p harmos-sandbox-guest --target wasm32-unknown-unknown",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --bins --benches --profile bench --features harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --all-features{% endif %}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --bins --benches --profile bench --features harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --all-features{% endif %}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-guest --features benchmark --target wasm32-unknown-unknown",
   "{% if usage.extended %}uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test -p harmos-domain --target wasm32-unknown-unknown{% endif %}",
@@ -271,9 +271,7 @@ run = [
 hide = true
 description = "Build the Shared Test Archive and Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
-run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}} --features harmos-runtime/plugin-sidecar",
-]
+run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}}"]
 
 [tasks."test:python:integration"]
 hide = true
@@ -341,7 +339,7 @@ usage = '''
 flag "--refresh-baseline"
 flag "--extended"
 '''
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category unit --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:rust:integration"]
 hide = true
@@ -350,7 +348,7 @@ usage = '''
 flag "--refresh-baseline"
 flag "--extended"
 '''
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category integration --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."bench:rust:system"]
 hide = true
@@ -359,7 +357,7 @@ usage = '''
 flag "--refresh-baseline"
 flag "--extended"
 '''
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-sidecar,harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run bench --category system --language rust --archive-argument=--features --archive-argument=harmos-runtime/plugin-guest,harmos-runtime/grpc{% if usage.extended %} --archive-argument=--all-features{% endif %}{% if usage.refresh_baseline %} --refresh-baseline{% endif %}"
 
 [tasks."package:rust"]
 hide = true

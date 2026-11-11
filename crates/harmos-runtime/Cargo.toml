@@ -41,7 +41,6 @@ plugin-grpc = [
   "tokio/net",
   "tokio/process",
 ]
-plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
 plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
 grpc = [
   "harmos-operations/grpc",
@@ -220,7 +219,6 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem", "Win32
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Local
-harmos-sidecar = { workspace = true, optional = true }
 
 # Git
 
