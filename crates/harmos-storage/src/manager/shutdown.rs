@@ -55,6 +55,7 @@ impl StorageManager {
                 self.settle_transition().await;
                 self.settle_files().await?;
                 self.settle_deletions().await?;
+                self.settle_definitions().await?;
                 let files = self.capture_files(None)?;
                 self.flush_domain(Domain::Data, None).await?;
                 self.persist_files(&files).await?;

@@ -72,6 +72,10 @@ pub struct Control {
     pub delete_release: Notify,
     pub checkpoint_failures: AtomicUsize,
     pub receipt_failures: AtomicUsize,
+    pub definition_lost_replies: AtomicUsize,
+    pub block_definition: AtomicBool,
+    pub definition_entered: Notify,
+    pub definition_release: Notify,
     pub fence_failures: AtomicUsize,
     pub block_fence: AtomicBool,
     pub fence_entered: Notify,
@@ -402,8 +406,41 @@ impl StorageBackend for Data {
     }
     fn set_projection_definition<'a>(
         &'a self, definition: &'a harmos_storage::query::projection::ProjectionDefinition, expected: Option<u64>, rebuild: bool,
-    ) -> StorageFuture<'a, u64> {
-        Box::pin(async move { self.projections.lock().unwrap().register(definition, expected, rebuild) })
+        mutation: Option<&'a harmos_storage::MutationHeader>,
+    ) -> StorageFuture<'a, harmos_storage::DefinitionOutcome> {
+        Box::pin(async move {
+            if self.control.block_definition.load(Ordering::Acquire) {
+                self.control.definition_entered.notify_one();
+                self.control.definition_release.notified().await;
+            }
+            let mut ledger = self.mutation_receipts.lock().unwrap();
+            let mut definitions = self.projections.lock().unwrap();
+            if let Some(header) = mutation
+                && let Some(prior) = ledger.get(&header.mutation)
+            {
+                return header.replay_definition(prior, harmos_storage::DefinitionKind::Projection, &definition.name);
+            }
+
+            let outcome = harmos_storage::DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
+            if let Some(header) = mutation {
+                ledger.insert(
+                    header.mutation.clone(),
+                    header.definition(harmos_storage::DefinitionKind::Projection, definition.name.clone(), outcome.clone()),
+                );
+            }
+            drop(definitions);
+            drop(ledger);
+            if mutation.is_some()
+                && self
+                    .control
+                    .definition_lost_replies
+                    .try_update(Ordering::AcqRel, Ordering::Acquire, |remaining| remaining.checked_sub(1))
+                    .is_ok()
+            {
+                return Err(failure(BackendFailure::Transient));
+            }
+            Ok(outcome)
+        })
     }
     fn get_projection_definition<'a>(
         &'a self, name: &'a Identifier, revision: Option<u64>,
@@ -463,11 +500,40 @@ impl StorageBackend for Data {
 
     fn set_index_definition<'a>(
         &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits,
-        cancel: &'a harmos_storage::query::columnar::Cancellation,
-    ) -> StorageFuture<'a, u64> {
+        cancel: &'a harmos_storage::query::columnar::Cancellation, mutation: Option<&'a harmos_storage::MutationHeader>,
+    ) -> StorageFuture<'a, harmos_storage::DefinitionOutcome> {
         Box::pin(async move {
+            if self.control.block_definition.load(Ordering::Acquire) {
+                self.control.definition_entered.notify_one();
+                self.control.definition_release.notified().await;
+            }
+            let mut ledger = self.mutation_receipts.lock().unwrap();
+            let mut definitions = self.indexes.lock().unwrap();
+            if let Some(header) = mutation
+                && let Some(prior) = ledger.get(&header.mutation)
+            {
+                return header.replay_definition(prior, harmos_storage::DefinitionKind::Index, &definition.name);
+            }
             cancel.check()?;
-            self.indexes.lock().unwrap().register(definition, expected, rebuild)
+            let outcome = harmos_storage::DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
+            if let Some(header) = mutation {
+                ledger.insert(
+                    header.mutation.clone(),
+                    header.definition(harmos_storage::DefinitionKind::Index, definition.name.clone(), outcome.clone()),
+                );
+            }
+            drop(definitions);
+            drop(ledger);
+            if mutation.is_some()
+                && self
+                    .control
+                    .definition_lost_replies
+                    .try_update(Ordering::AcqRel, Ordering::Acquire, |remaining| remaining.checked_sub(1))
+                    .is_ok()
+            {
+                return Err(failure(BackendFailure::Transient));
+            }
+            Ok(outcome)
         })
     }
     fn get_index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_storage::query::index::IndexDefinition, u64)> {

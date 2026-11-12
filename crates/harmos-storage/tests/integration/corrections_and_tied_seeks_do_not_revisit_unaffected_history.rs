@@ -91,7 +91,11 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
 
     // Build Once Per Physical Chunk With One Prepared Insertion.
     let before = backend.get_work().await.unwrap();
-    backend.set_index_definition(&workload.index(), None, false, workload.work(), &cancel).await.unwrap();
+    backend
+        .set_index_definition(&workload.index(), None, false, workload.work(), &cancel, None)
+        .await
+        .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
+        .unwrap();
     let after = backend.get_work().await.unwrap();
     assert_eq!(after.source_rows - before.source_rows, workload.rows as u64);
     assert_eq!(after.decoded_chunks - before.decoded_chunks, (workload.rows / settings.chunk_rows.get()) as u64);
@@ -118,7 +122,11 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
 
     // Correct One Identity Across A Boundary And Rebuild Exactly Two Buckets.
     let definition = workload.buckets();
-    backend.set_projection_definition(&definition, None, false).await.unwrap();
+    backend
+        .set_projection_definition(&definition, None, false, None)
+        .await
+        .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+        .unwrap();
     advance_projection(&backend, &snapshot, &definition.name, None, workload.work(), &cancel).await.unwrap();
     let original = backend
         .list_projection_rows(&ProjectionRead {

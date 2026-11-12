@@ -27,8 +27,12 @@ use harmos_storage::{
 
 /* === Public Functions === */
 
-pub(super) async fn capabilities(context: &ExecutionContext) -> Result<wire::StorageCapabilities, ServingError> {
-    Ok(context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?.capabilities().into())
+pub(super) async fn capabilities(
+    context: &ExecutionContext,
+) -> Result<(wire::StorageCapabilities, Option<wire::MutationWindow>, u64), ServingError> {
+    let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+    let info = storage.info().map_err(|error| super::native::failure(error.into()))?;
+    Ok((storage.capabilities().into(), info.mutations.map(Into::into), info.file_batch_bytes))
 }
 pub(super) async fn create(
     context: &ExecutionContext, at: Option<v1::ReadCut>,

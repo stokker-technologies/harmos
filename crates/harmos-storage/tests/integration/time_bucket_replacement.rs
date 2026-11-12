@@ -210,7 +210,11 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
         backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
-        backend.set_projection_definition(&definition, None, false).await.unwrap();
+        backend
+            .set_projection_definition(&definition, None, false, None)
+            .await
+            .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+            .unwrap();
         let snapshot = backend.create_snapshot(&cut).await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
         saved.push(snapshot);
@@ -382,7 +386,11 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let mut rebuilt = definition.clone();
     rebuilt.version += 1;
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        let revision = backend.set_projection_definition(&rebuilt, Some(1), true).await.unwrap();
+        let revision = backend
+            .set_projection_definition(&rebuilt, Some(1), true, None)
+            .await
+            .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+            .unwrap();
         let snapshot = backend.create_snapshot(&final_cut).await.unwrap();
         assert!(matches!(
             advance_projection(backend, &snapshot, &definition.name, Some(1), work, &cancel).await,

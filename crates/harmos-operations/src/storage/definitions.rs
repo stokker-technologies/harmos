@@ -7,7 +7,7 @@
  * ***
  */
 
-// Shared Unary File Transfer Handlers
+// Shared Revision-Guarded Definition Handlers
 
 /* === Modules === */
 
@@ -76,23 +76,41 @@ pub(super) async fn get_index(
 
 pub(super) async fn set_index(
     context: &ExecutionContext, id: &'static str, definition: Option<wire::IndexDefinition>, expected_revision: Vec<u8>,
-    create_if_absent: bool, rebuild: bool, work: Option<wire::ReadLimits>,
-) -> Result<(wire::IndexDefinition, Vec<u8>), ServingError> {
+    create_if_absent: bool, rebuild: bool, work: Option<wire::ReadLimits>, mutation: Option<wire::MutationId>,
+) -> Result<(wire::IndexDefinition, Vec<u8>, v1::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
-    let cancel = Cancellation::default();
-    super::native::run(
-        context,
-        async {
-            let expected = expected(&expected_revision, create_if_absent)?;
-            let definition: harmos_storage::query::index::IndexDefinition = required(definition)?.try_into()?;
-            definition.validate()?;
-            super::native::admit(context, id, &definition.source)?;
-            let current = storage.set_index_definition(&definition, expected, rebuild, required(work)?.try_into()?, &cancel).await?;
-            Ok((definition.into(), revision(current)))
-        },
-        cancel.clone(),
-    )
-    .await
+    let result: crate::Result<_> = async {
+        let expected = expected(&expected_revision, create_if_absent)?;
+        let definition: harmos_storage::query::index::IndexDefinition = required(definition)?.try_into()?;
+        definition.validate()?;
+        super::native::admit(context, id, &definition.source)?;
+        let mutation = required(mutation)?;
+        let identity: harmos_storage::MutationId = mutation.clone().try_into()?;
+        let work: harmos_storage::ReadLimits = required(work)?.try_into()?;
+        let input = harmos_storage::DefinitionInput::Index {
+            value: definition.clone(),
+            expected,
+            rebuild,
+            work,
+        };
+        if !storage.definition_admitted(&identity, &input)? {
+            match storage.get_index_definition(&definition.name).await {
+                Ok((current, revision)) => {
+                    if expected != Some(revision) {
+                        return Err(conflict("Index"));
+                    }
+                    super::native::admit(context, id, &current.source)?;
+                }
+                Err(harmos_storage::Error::IndexNotFound { .. }) if expected.is_none() => {}
+                Err(harmos_storage::Error::NotReady { domain: "projection definition" }) if expected.is_none() => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let current = storage.set_index_definition_once(&identity, definition.clone(), expected, rebuild, work).await?;
+        Ok((definition.into(), revision(current), super::transfers::receipt(&mutation, None)))
+    }
+    .await;
+    result.map_err(super::native::failure)
 }
 
 pub(super) async fn get_projection(
@@ -124,21 +142,47 @@ pub(super) async fn get_projection(
 
 pub(super) async fn set_projection(
     context: &ExecutionContext, id: &'static str, definition: Option<wire::ProjectionDefinition>, expected_revision: Vec<u8>,
-    create_if_absent: bool, rebuild: bool,
-) -> Result<(wire::ProjectionDefinition, Vec<u8>), ServingError> {
+    create_if_absent: bool, rebuild: bool, mutation: Option<wire::MutationId>,
+) -> Result<(wire::ProjectionDefinition, Vec<u8>, v1::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
-    let cancel = Cancellation::default();
-    super::native::run(
-        context,
-        async {
-            let expected = expected(&expected_revision, create_if_absent)?;
-            let definition: harmos_storage::query::projection::ProjectionDefinition = required(definition)?.try_into()?;
-            definition.validate()?;
-            super::native::admit(context, id, &definition.source)?;
-            let current = storage.set_projection_definition(&definition, expected, rebuild).await?;
-            Ok((definition.try_into()?, revision(current)))
-        },
-        cancel.clone(),
+    let result: crate::Result<_> = async {
+        let expected = expected(&expected_revision, create_if_absent)?;
+        let definition: harmos_storage::query::projection::ProjectionDefinition = required(definition)?.try_into()?;
+        definition.validate()?;
+        super::native::admit(context, id, &definition.source)?;
+        let mutation = required(mutation)?;
+        let identity: harmos_storage::MutationId = mutation.clone().try_into()?;
+
+        let input = harmos_storage::DefinitionInput::Projection {
+            value: definition.clone(),
+            expected,
+            rebuild,
+        };
+        if !storage.definition_admitted(&identity, &input)? {
+            match storage.get_projection_definition(&definition.name, None).await {
+                Ok((current, revision)) => {
+                    if expected != Some(revision) {
+                        return Err(conflict("Projection"));
+                    }
+                    super::native::admit(context, id, &current.source)?;
+                }
+                Err(harmos_storage::Error::IndexNotFound { .. }) if expected.is_none() => {}
+                Err(harmos_storage::Error::NotReady { domain: "projection definition" }) if expected.is_none() => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let current = storage.set_projection_definition_once(&identity, definition.clone(), expected, rebuild).await?;
+        Ok((definition.try_into()?, revision(current), super::transfers::receipt(&mutation, None)))
+    }
+    .await;
+    result.map_err(super::native::failure)
+}
+
+fn conflict(kind: &'static str) -> crate::Error {
+    harmos_storage::Error::backend(
+        if kind == "Index" { "SetIndexDefinition" } else { "SetProjectionDefinition" },
+        harmos_storage::BackendFailure::Conflict,
+        std::io::Error::other("get again and retry"),
     )
-    .await
+    .into()
 }

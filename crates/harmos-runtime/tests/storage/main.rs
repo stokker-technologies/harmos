@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+mod definition_receipts;
 mod generated_example_hash;
 mod generated_native_journey;
 

@@ -141,6 +141,8 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert_eq!(batch.as_record_batch().num_rows(), 1);
     assert!(page.complete);
 
+    let window = storage.mutation_window().unwrap().id.to_string();
+    let mutation = |key: &str| Some(wire::MutationId { window: window.clone(), key: key.into() });
     // Register an Ordered Index and Read the Same Cut.
     let index = wire::IndexDefinition {
         name: "sample.values".into(),
@@ -151,6 +153,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     runtime
         .operations
         .call_protobuf::<operations::SetIndexDefinition>(harmos_protocol::v1::StorageSetIndexDefinitionRequest {
+            mutation: mutation("index-0"),
             definition: Some(index.clone()),
             expected_revision: vec![],
             create_if_absent: true,
@@ -169,6 +172,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .unwrap();
     assert_eq!(current.definition.as_ref(), Some(&index));
     let update = harmos_protocol::v1::StorageSetIndexDefinitionRequest {
+        mutation: mutation("index-1"),
         definition: Some(index.clone()),
         expected_revision: current.revision.clone(),
         create_if_absent: false,
@@ -180,6 +184,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         current.revision
     );
     let mut absent = update;
+    absent.mutation = mutation("index-absent-conflict");
     absent.expected_revision.clear();
     absent.create_if_absent = true;
     assert!(runtime.operations.call_protobuf::<operations::SetIndexDefinition>(absent).await.is_err());
@@ -219,6 +224,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     let revision_bytes = runtime
         .operations
         .call_protobuf::<operations::SetProjectionDefinition>(harmos_protocol::v1::StorageSetProjectionDefinitionRequest {
+            mutation: mutation("projection-0"),
             definition: Some(definition),
             expected_revision: vec![],
             create_if_absent: true,
@@ -313,6 +319,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     runtime
         .operations
         .call_protobuf::<operations::SetProjectionDefinition>(harmos_protocol::v1::StorageSetProjectionDefinitionRequest {
+            mutation: mutation("projection-1"),
             definition: Some(rebuilt),
             expected_revision: revision_bytes,
             create_if_absent: false,

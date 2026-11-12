@@ -145,10 +145,14 @@ class StorageCapabilitiesRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class StorageCapabilitiesResponse(_message.Message):
-    __slots__ = ("capabilities",)
+    __slots__ = ("capabilities", "mutations", "file_batch_bytes")
     CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
+    MUTATIONS_FIELD_NUMBER: _ClassVar[int]
+    FILE_BATCH_BYTES_FIELD_NUMBER: _ClassVar[int]
     capabilities: _storage_types_pb2.StorageCapabilities
-    def __init__(self, capabilities: _Optional[_Union[_storage_types_pb2.StorageCapabilities, _Mapping]] = ...) -> None: ...
+    mutations: _storage_types_pb2.MutationWindow
+    file_batch_bytes: int
+    def __init__(self, capabilities: _Optional[_Union[_storage_types_pb2.StorageCapabilities, _Mapping]] = ..., mutations: _Optional[_Union[_storage_types_pb2.MutationWindow, _Mapping]] = ..., file_batch_bytes: _Optional[int] = ...) -> None: ...
 
 class StorageCreateSnapshotRequest(_message.Message):
     __slots__ = ("at",)
@@ -209,46 +213,54 @@ class StorageListIndexEntriesResponse(_message.Message):
     def __init__(self, page: _Optional[_Union[_storage_types_pb2.IndexPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageSetIndexDefinitionRequest(_message.Message):
-    __slots__ = ("definition", "expected_revision", "create_if_absent", "rebuild", "work")
+    __slots__ = ("definition", "expected_revision", "create_if_absent", "rebuild", "work", "mutation")
     DEFINITION_FIELD_NUMBER: _ClassVar[int]
     EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
     CREATE_IF_ABSENT_FIELD_NUMBER: _ClassVar[int]
     REBUILD_FIELD_NUMBER: _ClassVar[int]
     WORK_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
     definition: _storage_types_pb2.IndexDefinition
     expected_revision: bytes
     create_if_absent: bool
     rebuild: bool
     work: _storage_types_pb2.ReadLimits
-    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., rebuild: _Optional[bool] = ..., work: _Optional[_Union[_storage_types_pb2.ReadLimits, _Mapping]] = ...) -> None: ...
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., rebuild: _Optional[bool] = ..., work: _Optional[_Union[_storage_types_pb2.ReadLimits, _Mapping]] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
 class StorageSetIndexDefinitionResponse(_message.Message):
-    __slots__ = ("definition", "revision")
+    __slots__ = ("definition", "revision", "receipt")
     DEFINITION_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
     definition: _storage_types_pb2.IndexDefinition
     revision: bytes
-    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ...) -> None: ...
+    receipt: _types_pb2.Receipt
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StorageSetProjectionDefinitionRequest(_message.Message):
-    __slots__ = ("definition", "expected_revision", "create_if_absent", "rebuild")
+    __slots__ = ("definition", "expected_revision", "create_if_absent", "rebuild", "mutation")
     DEFINITION_FIELD_NUMBER: _ClassVar[int]
     EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
     CREATE_IF_ABSENT_FIELD_NUMBER: _ClassVar[int]
     REBUILD_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
     definition: _storage_types_pb2.ProjectionDefinition
     expected_revision: bytes
     create_if_absent: bool
     rebuild: bool
-    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.ProjectionDefinition, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., rebuild: _Optional[bool] = ...) -> None: ...
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.ProjectionDefinition, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., rebuild: _Optional[bool] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
 class StorageSetProjectionDefinitionResponse(_message.Message):
-    __slots__ = ("definition", "revision")
+    __slots__ = ("definition", "revision", "receipt")
     DEFINITION_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
     definition: _storage_types_pb2.ProjectionDefinition
     revision: bytes
-    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.ProjectionDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ...) -> None: ...
+    receipt: _types_pb2.Receipt
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.ProjectionDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StorageAdvanceProjectionRequest(_message.Message):
     __slots__ = ("snapshot", "name", "work", "source")

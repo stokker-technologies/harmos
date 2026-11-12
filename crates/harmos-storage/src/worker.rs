@@ -60,6 +60,7 @@ enum Action {
     Snapshot(SnapshotAction),
     File(FileAction),
     Delete(Arc<super::deletion::DeleteWork>),
+    Definition(Arc<super::definitions::DefinitionWork>),
     Recovery(Target),
     Prune(super::StorageCursor),
 }
@@ -70,6 +71,7 @@ enum Completed {
     Released(u64),
     File(FileCompleted),
     Deleted,
+    Definition(crate::MutationReceipt),
     Recovery(RecoveryPosition),
     Pruned(bool),
 }
@@ -127,6 +129,7 @@ impl Worker {
                 }
                 state.expire_files();
                 state.request_deletions();
+                state.request_definitions();
                 state.collect();
                 if state.queue.bytes() >= inner.settings.flush_batch_bytes() {
                     state.request_flush();
@@ -213,6 +216,11 @@ impl Worker {
                         None
                     };
                     let data = data.or(prune);
+                    let definition = (!ordered_running && !snapshot_running && state.status.failure.is_none())
+                        .then(|| state.definition_action())
+                        .flatten()
+                        .map(Action::Definition);
+                    let data = if prefer_control { definition.or(data) } else { data.or(definition) };
                     // Alternate persistence with bounded control work; rotate files
                     // and views so neither producer churn nor reads can starve a peer.
                     if prefer_control || data.is_none() {
@@ -273,7 +281,7 @@ impl Worker {
                     prefer_state = entry.operation.domain() != Domain::Recovery;
                 }
                 prefer_pruning = !matches!(action, Action::Prune(_));
-                prefer_control = !matches!(action, Action::Snapshot(_) | Action::File(_));
+                prefer_control = !matches!(action, Action::Snapshot(_) | Action::File(_) | Action::Definition(_));
                 if matches!(action, Action::Snapshot(_)) {
                     snapshot_running = true;
                 } else if action.independent() {
@@ -295,6 +303,7 @@ impl Worker {
                             .map(|held| (Some(held.context.clone()), held.queued.take()))
                             .unwrap_or((None, None)),
                         Action::Delete(work) => (Some(work.context.clone()), work.queued.lock().unwrap().take()),
+                        Action::Definition(work) => (Some(work.context.clone()), work.queued.lock().unwrap().take()),
                         _ => (None, None),
                     }
                 };
@@ -374,6 +383,9 @@ impl Worker {
                     // A Peer Completion Cannot Clear Another Action's Failure.
                     state.status.failure = failures.values().next().map(|failure| Arc::clone(&failure.source));
                     match (action, completed) {
+                        (Action::Definition(work), Completed::Definition(receipt)) => {
+                            state.definition_completed(&work, receipt)?;
+                        }
                         (Action::Delete(work), Completed::Deleted) => {
                             state.receipts.complete(&work.receipt().mutation, work.receipt().value.clone());
                             state.deletions.remove(&work.receipt().mutation);
@@ -465,9 +477,11 @@ impl Worker {
                         state.file_failed(file, Arc::clone(&source), retry_at.is_some());
                     }
                     match &action {
+                        Action::Definition(work) => state.definition_failed(&work.header.mutation, Arc::clone(&source), retry_at.is_some()),
                         Action::Delete(work) => state.deletion_failed(&work.receipt().mutation, Arc::clone(&source)),
                         Action::Write(pending, _) if pending.operation.domain() == Domain::Data => {
                             state.deletion_data_failed(pending.index, Arc::clone(&source));
+                            state.definition_data_failed(pending.index, Arc::clone(&source));
                         }
                         _ => {}
                     }
@@ -611,6 +625,7 @@ impl Operation {
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
+        Action::Definition(work) => work.perform(inner).await.map(Completed::Definition),
         Action::Prune(through) => inner
             .bounded(
                 "primary.delete_expired_object_revisions",

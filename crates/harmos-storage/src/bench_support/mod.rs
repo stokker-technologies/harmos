@@ -176,7 +176,10 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
 
     // Publish And Replay An Exact Projection Frontier.
     let definition = workload.projection();
-    let revision = runtime.block_on(backend.set_projection_definition(&definition, None, false)).unwrap();
+    let revision = runtime
+        .block_on(backend.set_projection_definition(&definition, None, false, None))
+        .and_then(|outcome| outcome.into_result(crate::DefinitionKind::Projection))
+        .unwrap();
     let cancel = Cancellation::default();
     measure("storage.projection.advance.2m", 1, || {
         runtime.block_on(advance_projection(backend, &snapshot, &definition.name, None, workload.work(), &cancel)).unwrap()
@@ -208,7 +211,10 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
     let index = workload.index();
     let before = runtime.block_on(backend.get_work()).unwrap();
     measure("storage.index.build.2m", 1, || {
-        runtime.block_on(backend.set_index_definition(&index, None, false, workload.work(), &cancel)).unwrap()
+        runtime
+            .block_on(backend.set_index_definition(&index, None, false, workload.work(), &cancel, None))
+            .and_then(|outcome| outcome.into_result(crate::DefinitionKind::Index))
+            .unwrap()
     });
     report_work("storage.index.build.2m", before, runtime.block_on(backend.get_work()).unwrap());
     let mut expected = (0..workload.rows).map(|index| (sample(index).value as u64, index as u64 + 2)).collect::<Vec<_>>();
@@ -254,7 +260,10 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
 
     // Publish Buckets, Then Replace Late And Corrected Identities.
     let definition = workload.buckets();
-    let revision = runtime.block_on(backend.set_projection_definition(&definition, None, false)).unwrap();
+    let revision = runtime
+        .block_on(backend.set_projection_definition(&definition, None, false, None))
+        .and_then(|outcome| outcome.into_result(crate::DefinitionKind::Projection))
+        .unwrap();
     measure("storage.bucket.advance.2m", 1, || {
         runtime.block_on(advance_projection(backend, &snapshot, &definition.name, None, workload.work(), &cancel)).unwrap()
     });

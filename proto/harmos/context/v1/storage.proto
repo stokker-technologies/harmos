@@ -21,7 +21,7 @@ message StorageGetFileBytesRequest { .harmos.storage.v1.FileReference file = 1; 
 message StorageGetFileBytesResponse { bytes data = 1; uint64 total_length = 2; bytes sha256 = 3; .harmos.v1.ReadCut resolved_at = 4; }
 
 message StorageCapabilitiesRequest {  }
-message StorageCapabilitiesResponse { .harmos.storage.v1.StorageCapabilities capabilities = 1; }
+message StorageCapabilitiesResponse { .harmos.storage.v1.StorageCapabilities capabilities = 1; .harmos.storage.v1.MutationWindow mutations = 2; uint64 file_batch_bytes = 3; }
 message StorageCreateSnapshotRequest { .harmos.v1.ReadCut at = 1; }
 message StorageCreateSnapshotResponse { .harmos.storage.v1.SavedSnapshot snapshot = 1; .harmos.v1.ReadCut resolved_at = 2; }
 message StorageDeleteSnapshotRequest { .harmos.storage.v1.SavedSnapshot snapshot = 1; }
@@ -30,10 +30,10 @@ message StorageListColumnRowsRequest { .harmos.storage.v1.SavedSnapshot snapshot
 message StorageListColumnRowsResponse { .harmos.storage.v1.ArrowPage page = 1; .harmos.v1.ReadCut resolved_at = 2; }
 message StorageListIndexEntriesRequest { .harmos.storage.v1.SavedSnapshot snapshot = 1; .harmos.storage.v1.IndexRead read = 2; .harmos.storage.v1.ColumnSource source = 3; }
 message StorageListIndexEntriesResponse { .harmos.storage.v1.IndexPage page = 1; .harmos.v1.ReadCut resolved_at = 2; }
-message StorageSetIndexDefinitionRequest { .harmos.storage.v1.IndexDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; .harmos.storage.v1.ReadLimits work = 5; }
-message StorageSetIndexDefinitionResponse { .harmos.storage.v1.IndexDefinition definition = 1; bytes revision = 2; }
-message StorageSetProjectionDefinitionRequest { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; }
-message StorageSetProjectionDefinitionResponse { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes revision = 2; }
+message StorageSetIndexDefinitionRequest { .harmos.storage.v1.IndexDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; .harmos.storage.v1.ReadLimits work = 5; .harmos.storage.v1.MutationId mutation = 6; }
+message StorageSetIndexDefinitionResponse { .harmos.storage.v1.IndexDefinition definition = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
+message StorageSetProjectionDefinitionRequest { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; .harmos.storage.v1.MutationId mutation = 5; }
+message StorageSetProjectionDefinitionResponse { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
 message StorageAdvanceProjectionRequest { .harmos.storage.v1.SavedSnapshot snapshot = 1; string name = 2; .harmos.storage.v1.ReadLimits work = 3; .harmos.storage.v1.ColumnSource source = 4; }
 message StorageAdvanceProjectionResponse { bytes revision = 1; .harmos.v1.ReadCut resolved_at = 2; }
 message StorageListProjectionRowsRequest { .harmos.storage.v1.ProjectionRead read = 1; .harmos.storage.v1.ColumnSource source = 2; }

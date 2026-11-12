@@ -45,6 +45,14 @@ pub struct MutationReceipt {
     pub value: MutationValue,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MutationHeader {
+    pub mutation: MutationId,
+    pub fingerprint: [u8; 32],
+    pub expires_at: SystemTime,
+}
+
 pub(super) struct Receipts {
     execution: crate::execution::Execution,
     window: Identifier,
@@ -73,6 +81,7 @@ pub(super) struct Completion(Arc<()>);
 #[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MutationValue {
     Cursor(super::StorageCursor),
+    Definition { kind: super::DefinitionKind, name: Identifier, outcome: super::DefinitionOutcome },
     Deleted(super::StagedFile),
     Producer(FileProducer),
     Reference(Box<super::FileReference>),
@@ -203,6 +212,15 @@ impl Receipts {
         );
 
         Ok(())
+    }
+
+    pub(super) fn header(&self, id: &MutationId) -> MutationHeader {
+        let entry = self.entries.get(id).expect("admitted receipt");
+        MutationHeader {
+            mutation: id.clone(),
+            fingerprint: entry.fingerprint,
+            expires_at: entry.expires_at,
+        }
     }
 
     pub(super) fn prepared(&self, id: &MutationId, value: MutationValue) -> MutationReceipt {
@@ -365,6 +383,9 @@ impl StorageManager {
             });
         }
         for receipt in &receipts {
+            if let MutationValue::Definition { outcome, .. } = &receipt.value {
+                outcome.validate()?;
+            }
             if let MutationValue::Deleted(file) = &receipt.value {
                 self.inner.primary.get_history().check(&file.history)?;
             }
@@ -498,6 +519,7 @@ impl MemorySize for MutationValue {
                 Self::Cursor(value) => value.memory_size() - std::mem::size_of::<super::StorageCursor>(),
                 Self::Producer(value) => value.memory_size() - std::mem::size_of::<FileProducer>(),
                 Self::Reference(value) => value.as_ref().memory_size(),
+                Self::Definition { name, outcome, .. } => name.memory_size() - std::mem::size_of::<Identifier>() + outcome.heap_bytes(),
                 Self::Progress(_) | Self::Rejected => 0,
             }
     }
@@ -506,6 +528,38 @@ impl MemorySize for MutationReceipt {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.mutation.memory_size() - std::mem::size_of::<MutationId>() + self.value.memory_size()
             - std::mem::size_of::<MutationValue>()
+    }
+}
+
+impl MutationHeader {
+    pub fn definition(&self, kind: super::DefinitionKind, name: Identifier, outcome: super::DefinitionOutcome) -> MutationReceipt {
+        self.complete(MutationValue::Definition { kind, name, outcome })
+    }
+    pub fn replay_definition(
+        &self, prior: &MutationReceipt, owner: super::DefinitionKind, name: &Identifier,
+    ) -> Result<super::DefinitionOutcome> {
+        if prior.mutation != self.mutation || prior.fingerprint != self.fingerprint {
+            return Err(Error::backend(
+                owner.action(),
+                super::BackendFailure::Conflict,
+                std::io::Error::other("mutation identity has a different payload"),
+            ));
+        }
+        match &prior.value {
+            MutationValue::Definition { kind, name: current, outcome } if *kind == owner && current == name => Ok(outcome.clone()),
+            _ => Err(Error::InvalidInput {
+                field: "storage definition receipt",
+                reason: "mutation identity owns a different result",
+            }),
+        }
+    }
+    pub fn complete(&self, value: MutationValue) -> MutationReceipt {
+        MutationReceipt {
+            mutation: self.mutation.clone(),
+            fingerprint: self.fingerprint,
+            expires_at: self.expires_at,
+            value,
+        }
     }
 }
 

@@ -174,3 +174,11 @@ and the complete built-in mapping.
   receipt directly on the first ranged read. Remaining common paging across the native
   list mechanisms, metadata/object mirrors, other file/directory methods and Watch
   still keep 3.2/3.8 open.
+
+- Definition Set receipts now commit atomically with the complete index/projection
+  candidate or refusal. The manager owns admitted work through caller loss; retries
+  preserve the original outcome after later revisions, and source replacement checks
+  both sources. Capabilities exposes the shared mutation window. Focused proofs:
+  `storage::definition_receipts::definition_receipts_survive_caller_loss_and_preserve_source_authority`
+  and `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`
+  (one passed each). Tasks 3.3/3.4 remain open for the other mutation families.

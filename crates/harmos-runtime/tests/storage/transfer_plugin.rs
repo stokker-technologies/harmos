@@ -85,6 +85,11 @@ impl TransferPlugin {
             "DeleteFileProduction",
             "GetFileBytes",
             "ListRows",
+            "Capabilities",
+            "GetIndexDefinition",
+            "SetIndexDefinition",
+            "GetProjectionDefinition",
+            "SetProjectionDefinition",
         ] {
             let request = format!("harmos.context.v1.Storage{method}Request");
             let response = format!("harmos.context.v1.Storage{method}Response");

@@ -436,7 +436,7 @@ impl ProtobufOperation for SetIndexDefinition {
         super::native::grant(Self::ID, request.definition.as_ref().and_then(|definition| definition.source.clone()))
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (definition, revision) = super::definitions::set_index(
+        let (definition, revision, receipt) = super::definitions::set_index(
             &context,
             Self::ID,
             request.definition,
@@ -444,9 +444,17 @@ impl ProtobufOperation for SetIndexDefinition {
             request.create_if_absent,
             request.rebuild,
             request.work,
+            request.mutation,
         )
         .await?;
-        super::native::read_response(&context, Self::Response { definition: Some(definition), revision })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                definition: Some(definition),
+                revision,
+                receipt: Some(receipt),
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -502,16 +510,24 @@ impl ProtobufOperation for SetProjectionDefinition {
         super::native::grant(Self::ID, request.definition.as_ref().and_then(|definition| definition.source.clone()))
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (definition, revision) = super::definitions::set_projection(
+        let (definition, revision, receipt) = super::definitions::set_projection(
             &context,
             Self::ID,
             request.definition,
             request.expected_revision,
             request.create_if_absent,
             request.rebuild,
+            request.mutation,
         )
         .await?;
-        super::native::read_response(&context, Self::Response { definition: Some(definition), revision })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                definition: Some(definition),
+                revision,
+                receipt: Some(receipt),
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -566,8 +582,15 @@ impl ProtobufOperation for Capabilities {
         &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, _: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let capabilities = super::views::capabilities(&context).await?;
-        super::native::read_response(&context, Self::Response { capabilities: Some(capabilities) })
+        let (capabilities, mutations, file_batch_bytes) = super::views::capabilities(&context).await?;
+        super::native::read_response(
+            &context,
+            Self::Response {
+                capabilities: Some(capabilities),
+                mutations,
+                file_batch_bytes,
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)

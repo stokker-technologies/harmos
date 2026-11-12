@@ -55,118 +55,130 @@ pub(super) fn definition(connection: &Connection, name: &crate::Identifier) -> R
 
 pub(super) fn register(
     state: &mut State, definition: &IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits, cancel: &Cancellation,
-) -> Result<u64> {
+    mutation: Option<&crate::MutationHeader>,
+) -> Result<crate::DefinitionOutcome> {
     cancel.check()?;
     state.check()?;
     definition.validate()?;
-    let tx = rusqlite::Transaction::new_unchecked(&state.connection, rusqlite::TransactionBehavior::Immediate).map_err(db)?;
-    let prior = tx
-        .query_row("SELECT definition,revision FROM storage_indexes WHERE name=?1", [definition.name.as_str()], |row| {
-            Ok((row.get::<_, Vec<u8>>(0)?, unsigned(row, 1)?))
-        })
-        .optional()
-        .map_err(db)?;
-    if prior.as_ref().map(|(_, revision)| *revision) != expected {
-        return Err(conflict("set index definition: get again and retry"));
+    let mut tx = rusqlite::Transaction::new_unchecked(&state.connection, rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    if let Some(outcome) = super::definition_mutations::replay(&tx, mutation, crate::DefinitionKind::Index, &definition.name)? {
+        return Ok(outcome);
     }
-    let mut revision = 1;
-    if let Some((data, current)) = prior {
-        if decode::<IndexDefinition>(&data)? == *definition {
-            return Ok(current);
-        }
-        if !rebuild {
-            return Err(conflict("changed index requires explicit rebuild"));
-        }
-        revision = current.checked_add(1).ok_or_else(|| invalid("index revision overflow"))?;
-    }
-    tx.execute("INSERT INTO storage_indexes VALUES(?1,?2,?3,?4) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,source=excluded.source,definition=excluded.definition",params![definition.name.as_str(),integer(revision)?,text(&definition.source)?,encode(definition)?]).map_err(db)?;
-    tx.execute("DELETE FROM storage_index_entries WHERE name=?1", [definition.name.as_str()]).map_err(db)?;
     let at = state.cursor()?;
     let token = [b"index-build:".as_slice(), definition.name.as_str().as_bytes()].concat();
     state.snapshots.insert(token.clone(), at.clone());
     let snapshot = BackendSnapshot { at, token: token.clone() };
-    let result = (|| {
-        let mut read = ArrowScan {
-            source: definition.source.clone(),
-            columns: definition.columns.clone(),
-            predicate: None,
-            time: None,
-            start: 0,
-            after: None,
-            limits: work,
-            work,
-        };
-        if !read.columns.iter().any(|name| name == "_storage.position") {
-            read.columns.push("_storage.position".into());
+    let result = (|| -> Result<u64> {
+        let edit = tx.savepoint().map_err(db)?;
+        let prior = edit
+            .query_row("SELECT definition,revision FROM storage_indexes WHERE name=?1", [definition.name.as_str()], |row| {
+                Ok((row.get::<_, Vec<u8>>(0)?, unsigned(row, 1)?))
+            })
+            .optional()
+            .map_err(db)?;
+        if prior.as_ref().map(|(_, revision)| *revision) != expected {
+            return Err(conflict("set index definition: get again and retry"));
         }
-        let mut rows = 0usize;
-        let mut bytes = 0usize;
-        let mut key_bytes = 0usize;
-        let mut entries = Vec::<IndexEntry>::new();
-        loop {
-            cancel.check()?;
-            let retained = entries.capacity().saturating_mul(std::mem::size_of::<IndexEntry>()).saturating_add(key_bytes);
-            if rows >= work.rows.get() || bytes.saturating_add(retained) >= work.bytes.get() {
-                return Err(crate::query::columnar::exhausted());
+        let mut revision = 1;
+        if let Some((data, current)) = prior {
+            if decode::<IndexDefinition>(&data)? == *definition {
+                return Ok(current);
             }
-            read.work = ReadLimits {
-                rows: NonZeroUsize::new(work.rows.get() - rows).unwrap(),
-                bytes: NonZeroUsize::new(work.bytes.get() - bytes - retained).unwrap(),
+            if !rebuild {
+                return Err(conflict("changed index requires explicit rebuild"));
+            }
+            revision = current.checked_add(1).ok_or_else(|| invalid("index revision overflow"))?;
+        }
+        edit.execute("INSERT INTO storage_indexes VALUES(?1,?2,?3,?4) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,source=excluded.source,definition=excluded.definition",params![definition.name.as_str(),integer(revision)?,text(&definition.source)?,encode(definition)?]).map_err(db)?;
+        edit.execute("DELETE FROM storage_index_entries WHERE name=?1", [definition.name.as_str()]).map_err(db)?;
+        let result = (|| {
+            let mut read = ArrowScan {
+                source: definition.source.clone(),
+                columns: definition.columns.clone(),
+                predicate: None,
+                time: None,
+                start: 0,
+                after: None,
+                limits: work,
+                work,
             };
-            read.limits = read.work;
-            let page = columns::scan(state, &snapshot, &read, cancel, true)?;
-            rows += page.scanned;
-            bytes = bytes.saturating_add(page.bytes_read);
-            let capacity = entries.len().saturating_add(page.batch.num_rows());
-            if bytes.saturating_add(key_bytes).saturating_add(capacity.saturating_mul(std::mem::size_of::<IndexEntry>())) > work.bytes.get()
-            {
-                return Err(crate::query::columnar::exhausted());
+            if !read.columns.iter().any(|name| name == "_storage.position") {
+                read.columns.push("_storage.position".into());
             }
-            if capacity > entries.capacity() {
-                let available = work.bytes.get().saturating_sub(bytes).saturating_sub(key_bytes) / std::mem::size_of::<IndexEntry>();
-                let target = capacity.max(entries.capacity().saturating_mul(2)).min(available);
-                entries.try_reserve_exact(target - entries.len()).map_err(|_| crate::query::columnar::exhausted())?;
-            }
-            for row in 0..page.batch.num_rows() {
-                if row % 256 == 0 {
-                    cancel.check()?;
+            let mut rows = 0usize;
+            let mut bytes = 0usize;
+            let mut key_bytes = 0usize;
+            let mut entries = Vec::<IndexEntry>::new();
+            loop {
+                cancel.check()?;
+                let retained = entries.capacity().saturating_mul(std::mem::size_of::<IndexEntry>()).saturating_add(key_bytes);
+                if rows >= work.rows.get() || bytes.saturating_add(retained) >= work.bytes.get() {
+                    return Err(crate::query::columnar::exhausted());
                 }
-                let entry = execution::entry(&page.batch, definition, row)?;
-                key_bytes = key_bytes.saturating_add(entry.key.capacity());
-                if bytes.saturating_add(key_bytes).saturating_add(entries.capacity().saturating_mul(std::mem::size_of::<IndexEntry>()))
+                read.work = ReadLimits {
+                    rows: NonZeroUsize::new(work.rows.get() - rows).unwrap(),
+                    bytes: NonZeroUsize::new(work.bytes.get() - bytes - retained).unwrap(),
+                };
+                read.limits = read.work;
+                let page = columns::scan(state, &snapshot, &read, cancel, true)?;
+                rows += page.scanned;
+                bytes = bytes.saturating_add(page.bytes_read);
+                let capacity = entries.len().saturating_add(page.batch.num_rows());
+                if bytes.saturating_add(key_bytes).saturating_add(capacity.saturating_mul(std::mem::size_of::<IndexEntry>()))
                     > work.bytes.get()
                 {
                     return Err(crate::query::columnar::exhausted());
                 }
-                entries.push(entry);
+                if capacity > entries.capacity() {
+                    let available = work.bytes.get().saturating_sub(bytes).saturating_sub(key_bytes) / std::mem::size_of::<IndexEntry>();
+                    let target = capacity.max(entries.capacity().saturating_mul(2)).min(available);
+                    entries.try_reserve_exact(target - entries.len()).map_err(|_| crate::query::columnar::exhausted())?;
+                }
+                for row in 0..page.batch.num_rows() {
+                    if row % 256 == 0 {
+                        cancel.check()?;
+                    }
+                    let entry = execution::entry(&page.batch, definition, row)?;
+                    key_bytes = key_bytes.saturating_add(entry.key.capacity());
+                    if bytes.saturating_add(key_bytes).saturating_add(entries.capacity().saturating_mul(std::mem::size_of::<IndexEntry>()))
+                        > work.bytes.get()
+                    {
+                        return Err(crate::query::columnar::exhausted());
+                    }
+                    entries.push(entry);
+                }
+                if page.complete {
+                    break;
+                }
+                read.after = page.next;
             }
-            if page.complete {
-                break;
+            Ok(entries)
+        })();
+        let mut entries = result?;
+        cancel.check()?;
+        entries.sort_unstable();
+        cancel.check()?;
+        let mut insert = edit.prepare("INSERT INTO storage_index_entries VALUES(?1,?2,?3,?4)").map_err(db)?;
+        for (ordinal, entry) in entries.iter().enumerate() {
+            if ordinal % 256 == 0 {
+                cancel.check()?;
             }
-            read.after = page.next;
+            insert.execute(params![definition.name.as_str(), integer(revision)?, &entry.key, integer(entry.position)?]).map_err(db)?;
         }
-        Ok(entries)
+        drop(insert);
+        cancel.check()?;
+        edit.commit().map_err(db)?;
+        let mut counters = state.work.get();
+        counters.index_prepares += 1;
+        counters.index_entries += entries.len() as u64;
+        state.work.set(counters);
+        Ok(revision)
     })();
     state.snapshots.remove(&token);
-    let mut entries = result?;
-    cancel.check()?;
-    entries.sort_unstable();
-    cancel.check()?;
-    let mut insert = tx.prepare("INSERT INTO storage_index_entries VALUES(?1,?2,?3,?4)").map_err(db)?;
-    for (ordinal, entry) in entries.iter().enumerate() {
-        if ordinal % 256 == 0 {
-            cancel.check()?;
-        }
-        insert.execute(params![definition.name.as_str(), integer(revision)?, &entry.key, integer(entry.position)?]).map_err(db)?;
-    }
-    drop(insert);
-    cancel.check()?;
+    let outcome = crate::DefinitionOutcome::capture(result)?;
+    super::definition_mutations::write(&tx, mutation, crate::DefinitionKind::Index, &definition.name, &outcome)?;
     tx.commit().map_err(db)?;
-    let mut counters = state.work.get();
-    counters.index_prepares += 1;
-    counters.index_entries += entries.len() as u64;
-    state.work.set(counters);
-    Ok(revision)
+    Ok(outcome)
 }
 
 pub(super) fn maintain(connection: &Connection, source: &ColumnSource, batch: &RecordBatch) -> Result<()> {

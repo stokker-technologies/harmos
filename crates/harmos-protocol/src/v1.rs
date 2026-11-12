@@ -1675,10 +1675,14 @@ pub struct StorageGetFileBytesResponse {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCapabilitiesRequest {}
 #[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCapabilitiesResponse {
     #[prost(message, optional, tag = "1")]
     pub capabilities: ::core::option::Option<crate::storage::StorageCapabilities>,
+    #[prost(message, optional, tag = "2")]
+    pub mutations: ::core::option::Option<crate::storage::MutationWindow>,
+    #[prost(uint64, tag = "3")]
+    pub file_batch_bytes: u64,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1750,6 +1754,8 @@ pub struct StorageSetIndexDefinitionRequest {
     pub rebuild: bool,
     #[prost(message, optional, tag = "5")]
     pub work: ::core::option::Option<crate::storage::ReadLimits>,
+    #[prost(message, optional, tag = "6")]
+    pub mutation: ::core::option::Option<crate::storage::MutationId>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1758,6 +1764,8 @@ pub struct StorageSetIndexDefinitionResponse {
     pub definition: ::core::option::Option<crate::storage::IndexDefinition>,
     #[prost(bytes = "vec", tag = "2")]
     pub revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub receipt: ::core::option::Option<Receipt>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1770,6 +1778,8 @@ pub struct StorageSetProjectionDefinitionRequest {
     pub create_if_absent: bool,
     #[prost(bool, tag = "4")]
     pub rebuild: bool,
+    #[prost(message, optional, tag = "5")]
+    pub mutation: ::core::option::Option<crate::storage::MutationId>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1778,6 +1788,8 @@ pub struct StorageSetProjectionDefinitionResponse {
     pub definition: ::core::option::Option<crate::storage::ProjectionDefinition>,
     #[prost(bytes = "vec", tag = "2")]
     pub revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub receipt: ::core::option::Option<Receipt>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

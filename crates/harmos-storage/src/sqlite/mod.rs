@@ -11,6 +11,7 @@
 
 mod buckets;
 mod columns;
+mod definition_mutations;
 mod files;
 mod index;
 mod objects;
@@ -352,10 +353,11 @@ impl StorageBackend for SqliteBackend {
 
     fn set_index_definition<'a>(
         &'a self, definition: &'a crate::query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits,
-        cancel: &'a Cancellation,
-    ) -> StorageFuture<'a, u64> {
+        cancel: &'a Cancellation, mutation: Option<&'a crate::MutationHeader>,
+    ) -> StorageFuture<'a, crate::DefinitionOutcome> {
+        let mutation = mutation.cloned();
         let (definition, cancel) = (definition.clone(), cancel.clone());
-        Box::pin(self.call(move |state| index::register(state, &definition, expected, rebuild, work, &cancel)))
+        Box::pin(self.call(move |state| index::register(state, &definition, expected, rebuild, work, &cancel, mutation.as_ref())))
     }
     fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
         let name = name.clone();
@@ -372,9 +374,11 @@ impl StorageBackend for SqliteBackend {
     }
     fn set_projection_definition<'a>(
         &'a self, definition: &'a crate::query::projection::ProjectionDefinition, expected: Option<u64>, rebuild: bool,
-    ) -> StorageFuture<'a, u64> {
+        mutation: Option<&'a crate::MutationHeader>,
+    ) -> StorageFuture<'a, crate::DefinitionOutcome> {
+        let mutation = mutation.cloned();
         let definition = definition.clone();
-        Box::pin(self.call(move |state| projection::register(state, &definition, expected, rebuild)))
+        Box::pin(self.call(move |state| projection::register(state, &definition, expected, rebuild, mutation.as_ref())))
     }
     fn get_projection_definition<'a>(
         &'a self, name: &'a crate::Identifier, revision: Option<u64>,

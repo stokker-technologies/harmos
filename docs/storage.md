@@ -111,6 +111,14 @@ storage.set_index_definition(&definition, expected_revision, rebuild, work, &can
 An `IndexDefinition` owns a name, nonzero semantic version, source and ordered
 columns. Set requires the revision returned by Get; `None` explicitly creates an absent definition.
 The provider compares the expected revision atomically before accepting even an unchanged value.
+Both audience faces require a mutation identity from `Capabilities.mutations` for
+Set. The manager owns admitted work through caller cancellation; the provider commits the
+complete replacement or refusal and its receipt atomically. Replaying the normalized request
+returns the original result even after a later revision or source change. Replacing a source
+requires authority over both the old and new source. Native callers use
+`set_index_definition_once` or `set_projection_definition_once` for the same guarantee.
+Definition receipts name a completed metadata revision; they carry no primary-data position.
+
 Stale revisions conflict with the action “get again and retry”. A changed definition
 requires explicit rebuild and creates a new revision. SQLite builds history under
 one immediate transaction and updates entries in the source write transaction.

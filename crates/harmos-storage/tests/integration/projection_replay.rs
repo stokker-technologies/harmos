@@ -109,8 +109,16 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
         backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
         backend.append_records(StorageBatch::new(records[..2].to_vec())).await.unwrap();
         assert_eq!(
-            backend.set_projection_definition(&definition, None, false).await.unwrap(),
-            backend.set_projection_definition(&definition, Some(1), false).await.unwrap()
+            backend
+                .set_projection_definition(&definition, None, false, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+                .unwrap(),
+            backend
+                .set_projection_definition(&definition, Some(1), false, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+                .unwrap()
         );
     }
     let first_cut = StorageCursor { history: history.clone(), sequence: 3 };
@@ -191,14 +199,35 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     rebuilt.version += 1;
     rebuilt.transform = ProjectionTransform::Select(vec!["_storage.position".into(), "payload.value".into()]);
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        assert!(backend.set_projection_definition(&rebuilt, Some(1), false).await.is_err());
-        let next_revision = backend.set_projection_definition(&rebuilt, Some(1), true).await.unwrap();
+        assert!(
+            backend
+                .set_projection_definition(&rebuilt, Some(1), false, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+                .is_err()
+        );
+        let next_revision = backend
+            .set_projection_definition(&rebuilt, Some(1), true, None)
+            .await
+            .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+            .unwrap();
         assert_ne!(next_revision, revision);
         assert!(matches!(
-            backend.set_projection_definition(&rebuilt, Some(1), true).await.unwrap_err().backend_failure(),
+            backend
+                .set_projection_definition(&rebuilt, Some(1), true, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+                .unwrap_err()
+                .backend_failure(),
             Some(BackendFailure::Conflict)
         ));
-        assert!(backend.set_projection_definition(&rebuilt, None, true).await.is_err());
+        assert!(
+            backend
+                .set_projection_definition(&rebuilt, None, true, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Projection))
+                .is_err()
+        );
         assert_eq!(backend.get_projection_definition(&rebuilt.name, None).await.unwrap().0, rebuilt);
         assert_eq!(backend.list_projection_rows(&old_read).await.unwrap().batch.num_rows(), 2);
         backend.delete_projection_history(&definition.name, revision, &first_cut).await.unwrap();
