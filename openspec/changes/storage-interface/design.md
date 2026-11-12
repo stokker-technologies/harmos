@@ -606,15 +606,15 @@ index construction 47.170998 seconds. First full scan 0.276647 seconds and 128,3
 column bytes across its pages; first/next windows 262,992/525,984 bytes respectively. Each native
 scan reconstructed zero payload rows. The next window spans a physical chunk boundary and
 therefore fetches two chunks. These byte counts are measured encoded reads, not unique disk
-I/O or allocations. TempDir removes the owned database after close; raw stdout is
-`target/benchmarks/storage/candidate.txt`, compiler metadata its sibling `compiler.json`, and
-native Criterion samples/estimates are under `criterion/integration_multi_day_native/`.
+I/O or allocations. TempDir removes the owned database after close. The prior stdout/compiler capture was
+replaced by the continuation below; native Criterion samples/estimates remain under
+`criterion/integration_multi_day_native/`.
 The baseline compiler capture is preserved separately as `compiler-baseline.json`.
 
 The previously proposed 2-second native read ceiling remains unchanged and these reads meet it.
 The baseline +20% ceilings also remain unchanged; no existing-path median regression conclusion
-is claimed from native-path measurements. Bucket catch-up/contention, memory/allocation, restart
-and cancellation cost measurements, native Linux and consumer workloads remain tasks 3.x.
+is claimed from native-path measurements. The continuation below adds bucket catch-up/contention, memory/allocation, restart and
+cancellation refusal costs on Windows. Native Linux and consumer workloads remain open.
 
 Minimal forced external edits, inspected clean before editing: domain
 `crates/harmos-domain/src/model/storage/query/transform/mod.rs` and `query/protobuf.rs`;
@@ -622,6 +622,105 @@ Minimal forced external edits, inspected clean before editing: domain
 stories `generated_query_batches.rs`, `operation_plugins.rs` and `operation_schemas.rs` use
 fallible query conversion for existing supported transforms. These are compilation migrations,
 not adoption of the new wire/storage capabilities. No other worker's dirty paths were edited.
+
+## Windows Benchmark Continuation
+
+Measured on the same Windows machine and locked source shape with storage source checkpoint
+`8bb72660`, using `mise run bench -- --storage --filter baseline` followed by
+`mise run bench -- --storage --filter native`. Both succeed. Guest changes and other workstation
+CPU/I/O work continued concurrently, including output cleanup. These local observations do not
+replace native Linux or authoritative hosted repeated proof. The public publication harness
+uses ten direct read/replay observations after one-second warmup, with the middle two averaged;
+mutating/build/first cases run once and contention reports the median of 64 eight-writer rounds.
+It preserves the locked input, queries, page/work sizes and numerical budgets. These direct
+samples are not the earlier Criterion estimates. Rust allocation instrumentation is active.
+
+| Existing Row Path | Locked Baseline (s) | Current Observation (s) | Unchanged +20% Ceiling (s) |
+| --- | ---: | ---: | ---: |
+| Full | 215.787614 | 10.496275 | 258.945137 |
+| First Window | 79.456927 | 4.576124 | 95.348312 |
+| Next Window | 82.026233 | 6.511515 | 98.431480 |
+
+All existing-path observations are below their ceilings. The native window and projection
+read ceiling remains 2 seconds; every measured bounded native read below meets it. Existing
+row-path captures are single traversals, so no existing-path median regression claim is made.
+
+| Stable Case | Seconds | Rust Allocation Calls | Total Allocated Bytes | Incremental Peak Rust Heap Bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `storage.bucket.advance.2m` | 7.810964400 | 14500885 | 1031565782 | 321520855 |
+| `storage.bucket.replace.2m` | 38.974153600 | 15058913 | 2150948022 | 321829859 |
+| `storage.close.2m` | 0.000037000 | 2 | 392 | 392 |
+| `storage.index.build.2m` | 79.244174900 | 6053642 | 580467960 | 803576 |
+| `storage.index.deep.2m` | 0.120473650 | 4152 | 958504 | 432517 |
+| `storage.index.next.2m` | 0.119563550 | 4152 | 958504 | 432517 |
+| `storage.index.read.2m` | 0.109404200 | 4146 | 957664 | 432445 |
+| `storage.ingest.2m` | 89.927627300 | 20114105 | 4394365279 | 6882275 |
+| `storage.object.contend.8` | 0.004551950 | 931 | 76435.5 | 24504 |
+| `storage.object.replay.512` | 0.000037000 | 18 | 1694 | 1694 |
+| `storage.object.restart_replay.512` | 0.000034300 | 18 | 1694 | 1694 |
+| `storage.projection.advance.2m` | 0.453780800 | 58891 | 181177609 | 16658768 |
+| `storage.projection.cancel.2m` | 0.000000300 | 4 | 49 | 49 |
+| `storage.projection.read.2m` | 0.000481550 | 129 | 1548199 | 264868 |
+| `storage.projection.replay.2m` | 0.000172800 | 49 | 3991 | 1957 |
+| `storage.projection.restart_replay.2m` | 0.000261600 | 54 | 4072 | 2038 |
+| `storage.restart.2m` | 0.004202000 | 15 | 1025 | 436 |
+| `storage.scan.cancel.2m` | 0.000000350 | 3 | 43 | 43 |
+| `storage.scan.read.2m` | 0.494258600 | 214667 | 338019683 | 411560 |
+| `storage.scan.read.2m.first` | 0.712549900 | 214667 | 338019683 | 411560 |
+| `storage.stop.2m` | 0.023742600 | 0 | 0 | 0 |
+| `storage.window.next.2m` | 0.001858600 | 875 | 1269755 | 411560 |
+| `storage.window.next.2m.first` | 0.001216700 | 875 | 1269755 | 411560 |
+| `storage.window.read.2m` | 0.000574400 | 438 | 692035 | 411496 |
+| `storage.window.read.2m.first` | 0.001320900 | 438 | 692035 | 411496 |
+
+Measured throughput: ingest 22,240 rows/s; full scan 4,046,465 rows/s; select projection
+advancement 4,407,414 source rows/s; initial buckets 256,050 source rows/s; contended
+conditional requests 1,757 attempts/s. The contention rate is eight divided by the median
+round duration, including seven durable conflicts, rather than eight successful writes.
+
+The initial deep seek took 0.473931 seconds versus 0.189066 for the next page. The optional
+seek predicate allowed scanning from the prefix lower bound. Merely making the seek predicate
+explicit was insufficient: SQLite still chose the independent prefix bound. The final query
+passes one merged ascending lower bound (maximum of request, prefix and continuation key),
+plus the exclusive key/position tie-breaker. Descending reads retain an explicit upper seek
+bound. No budget was changed. In the final run, next/deep seeks have identical 4152 Rust
+allocations, 958504 allocated bytes and 432517 incremental heap bytes; time differs by less
+than 1%, rather than growing with the skipped million entries. Forward/reverse saved-cut
+journeys and independently sorted full-workload expectations both pass.
+
+Encoded bytes fetched: full scan 128,359,376; first window 262,992; next window 525,984.
+Native payload rows reconstructed are zero in all three cases. These are column read counters,
+not unique physical device I/O. Whole-process resident high water is 681,463,808 bytes,
+including input preparation and SQLite native allocations. Per-region heap counters cover Rust
+allocations only; they do not count SQLite's C heap. No memory ceiling was invented or tuned.
+
+SQLite uses WAL with FULL synchronization. Pre-generated ingest, projection/bucket publication
+and all conditional attempts include their real commit/durability cost. The native stop case
+measures owner/connection disposal separately from logical close; restart creates a new owner.
+Every contention round has exactly one applied outcome, and the final winning object and
+original replay outcome are verified before and after restart. Independent grouped count/sum
+checks verify initial, corrected, saved and reopened bucket outputs outside timing. Projection
+frontier/replay and indexed source positions are likewise verified outside timing. Cancellation
+numbers measure already-signalled refusal, not active non-cooperative I/O cancellation latency.
+No wall-clock-dependent correctness test is added.
+
+Raw source/compiler evidence and samples are under `target/benchmarks/storage/`:
+`baseline-locked.txt`/`compiler-baseline.json` preserve the original baseline;
+`baseline-current.txt`/`compiler-existing-path.json` preserve the current row path;
+`candidate.txt` includes every native sample and result counter, with `compiler.json` for its
+executable. `target/benchmarks/benchmarks-storage-windows.json` contains the 25 timing cases
+and their 112 measurements, including units, backend, platform suite and source revision.
+Earlier unsuccessful seek-performance candidates remain named separately; their numbers are
+not substituted for the final run. Temporary databases are removed after closing their owners.
+
+Nightly now runs the reference on Linux and Windows, uploads `results-bench_storage_*`, and
+its existing report collector places these events in the release `benchmarks.json` and report
+archive. Focused producer tests exercise that same staging path with both platform suites.
+No push or hosted publication occurred here. Public `bench_support::run_with_reopen` owns all
+case names, generation, plans, sample counts and correctness checks; a consumer supplies only
+its backend opener and installs the tracking allocator. `docs/storage.md` documents the units
+and JSON adapter. The large executable is excluded from ordinary benchmark execution; the
+16,385-row native/fallback boundary journey remains an ordinary integration test.
 
 ## Targeted Proof and Remaining Gates
 
