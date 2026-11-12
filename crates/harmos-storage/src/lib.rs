@@ -42,6 +42,7 @@ pub mod query;
 mod queue;
 mod read_batch;
 mod receipts;
+mod record_view;
 mod schema_encoding;
 mod selection;
 mod snapshot;
@@ -55,7 +56,7 @@ pub mod writes;
 
 /* === Re-Exports === */
 
-pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture};
+pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture, StorageWork};
 pub use batch::{FileChunk, StorageBatch};
 pub use config::{StorageAccumulatorSettings, StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use directory::{DirectoryReader, DirectoryWatcher};
@@ -81,6 +82,7 @@ pub use opened_capture::OpenedCapture;
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
 pub use read_batch::{ReadBatch, ReadPages};
 pub use receipts::{MutationReceipt, MutationValue};
+pub use record_view::RecordView;
 pub use snapshot::Snapshot;
 pub use staging::StorageFile;
 

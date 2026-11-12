@@ -742,3 +742,110 @@ The consumer inventory identifies the first shared-source dependency: protocol g
 requires dirty `codegen.rs`, `examples/generate.rs`, reflection and descriptor outputs. No
 partial wire addition or dirty owner edit is made. Task 2.6 remains open until that generation
 and its dependent operation/SDK/example adoption are integrated. This is not combined SOURCE COMPLETE.
+
+
+## Storage Performance Repair Measurements
+
+The repair uses the locked two-million-sample input, page/work sizes and WAL/FULL
+commit boundaries above. Commands are `mise run bench -- --storage --filter native`
+and `mise run bench -- --storage --filter baseline`. These are native Windows
+observations with concurrent workstation builds, not Linux or hosted proof.
+Mutating cases run once; native read timings use the established warmup and ten
+samples. Row-path captures use the existing single-traversal baseline selector.
+
+The before executable is based on `5cf6d463` with profiling/work counters added;
+its algorithms are unchanged. `profile-before.txt`, `compiler-before.json`,
+`benchmarks-before.json`, `row-before.txt` and `compiler-row-before.json` under
+`target/benchmarks/storage/` retain the before evidence. Final evidence is
+`native-final.txt`, `compiler-native-final.json`, `benchmarks-final.json`,
+`row-final.txt` and `compiler-row-final.json` there. The native JSON is also emitted
+as `target/benchmarks/benchmarks-storage-windows.json` for the Nightly adapter.
+
+| Case | Profiled Before (s) | Final After (s) | Measured Cause |
+| --- | ---: | ---: | --- |
+| Late Bucket Replacement | 39.3291261 | 0.5131352 | 2,004,096 source rows/91,330,848 encoded bytes decoded; 8.562587 s rebuilding all buckets and 29.533507 s comparing prior keys with a repeated growing-map key-size sum. |
+| Index Build | 92.1256242 | 7.1502901 | 2,000,000 statement preparations and unordered B-tree insertion; 90.1683684 s in encode/insert versus 0.1852623 s scanning 123 source chunks. This was already one transaction, not per-row commits. |
+| Index First / Next / Deep | 0.12577675 / 0.13726170 / 0.13255655 | 0.00123975 / 0.00149660 / 0.00088730 | Each 4,097-entry probe joins the source table unnecessarily for record/stream keys; 53,284 / 69,832 / 70,000 SQLite VM steps. The key-only continuation can also revisit an equal-key prefix. |
+| Generic Full / First / Next | 13.045437 / 5.217750 / 5.966451 | 1.662117 / 0.005560 / 0.003524 | Every query copies 2,000,000 snapshot records; reads examine 124,929,274 / 14,106,665 / 14,794,794 entries through repeated prefix scans and allocate JSON solely for byte counting. |
+
+The row opening stages before repair took 1.691432 / 2.308433 / 3.087492 seconds;
+consumption took 11.353921 / 2.909257 / 2.878882 seconds. Instrumentation counts all
+iterator visits, including skipped prefixes, so these timings include its cost.
+The earlier 10.496275 / 4.576124 / 6.511515 observations remain recorded above;
+they are not substituted for this before/after pair.
+
+Replacement now reads 4,096 source rows/177,192 encoded bytes in one chunk and
+rebuilds 240 buckets from 4,167 retained members using 19,788 member-query VM steps.
+Incremental peak Rust heap is 640,651 bytes versus 321,829,315 bytes before.
+Membership is clustered by `(name, revision, bucket_key, identity)`, with a unique
+identity index for correction lookup. An initial candidate was rejected because
+SQLite chose only `(name, revision)` and rescanned unrelated members; its partial
+output is `bucket-candidate-rejected.txt`. Work evidence and deterministic tests
+include VM steps, so a planner regression cannot hide behind a small result set.
+
+The initial durable membership checkpoint takes 25.0467008 seconds versus the
+profiled pre-repair initial advancement of 12.4392209 seconds. It persists the
+identity/bucket state needed for incremental replacements. This one-time write
+cost is a tradeoff; no initial-build speedup is claimed. Immutable bucket output
+versions preserve saved cuts. Checkpoint output cardinality survives retirement
+of every readable cut, and later generic publication invalidates membership
+before native catch-up resumes. Independent current/saved/reopened count/sum,
+legacy Arrow-page adoption and retirement checks pass.
+
+Index construction decodes each of 123 source chunks once: 2,000,000 source rows
+and 32,104,304 encoded bytes. It retains bounded entries, sorts them and inserts
+with one prepared statement in the original immediate transaction. Cancellation
+and WAL/FULL publication boundaries are unchanged. An initial sorted candidate
+used exact per-chunk reserves and allocated 4,578,200,824 cumulative Rust bytes;
+bounded geometric growth reduces that to 714,161,400 bytes, with 99,631,864 bytes
+incremental peak heap within the unchanged 1 GiB work budget. Output agrees with
+independently sorted `(value, position)` expectations.
+
+Indexed first/next/deep probes each examine 4,097 entries and use 49,186 / 49,270 /
+49,228 VM steps; they read no source column chunks. Composite key/position bounds
+perform one seek followed by sequential entries, including reverse continuation
+and ordering ties. Record/stream probes use the covering index; objects retain
+latest-at-cut lookup. A 512-entry all-tied journey bounds deep-seek VM work.
+
+Generic full/first/next reads examine 2,000,122 / 4,097 / 4,097 records with zero
+snapshot copies and zero owned record copies. Full traversal includes one
+lookahead per non-final page. Opening takes 0.000215 / 0.000238 / 0.000084 seconds.
+Shared record images and per-schema ranks remove historical copying/rescanning;
+immutable `RecordView` entries retain a constructor-checked serialized size,
+removing repeated JSON sizing and payload cloning. Simple projection/slicing
+stays inline. Required numeric projection compiles the selected field once,
+uses the canonical Postcard reader for every input value, validates unselected
+fields and rejects trailing data. The deterministic saved-image page guard
+checks bounded visits and sharing while appends continue. Intermediate row
+captures above two seconds remain in `row-stage-profile.txt`,
+`row-candidate-first.txt` and `row-views-first.txt`; they were not accepted as
+meeting the target. The earlier successful `row-after.txt` measured 1.365005 s;
+the table uses the final rerun rather than selecting the fastest observation.
+
+True predicate cases use `start=1` over the entire saved history, with an exact
+half-open `payload.time_ns` interval from generated rows 666,666 to 670,762.
+`storage.window.time.2m` has only that time predicate;
+`storage.window.numeric.2m` additionally requires `10000 <= payload.value < 20000`.
+Independent generator checks return 4,096 and 623 rows. Final medians are
+0.0383971 and 0.06910445 seconds; first observations are 0.0398865 and 0.0576226
+seconds. Each decodes one 16,384-row chunk and 394,520 encoded bytes, reconstructing
+no payload rows. These timings include metadata traversal; no positional shortcut
+is used. Stable names and their `.source.rows`, `.read.bytes` and `.work.*`
+measurements enter the existing Nightly JSON adapter.
+
+Existing public signatures are unchanged. Additive default backend hooks are
+`work()`, `advance_projection_native(snapshot, name, work, cancel)`,
+`seek_records(snapshot, selection, offset)` and
+`read_record_views(snapshot, selection, page)`; new public values are `StorageWork`
+and immutable `RecordView`. Existing implementers need no call-site changes.
+The view constructor owns exact size checking; private fields prevent forged
+budget metadata. Readers still check history, order, cut, selection and page
+limits. Typed owned-row reads remain the fallback.
+
+All 120 storage integration stories and both focused unit guards pass; the final
+record-page guard rerun also passes. The three focused benchmark-producer tests,
+common format, Rust, Python and repository checks and test-artifact build pass.
+The Product build needed for generated Python inputs also passes. Both final
+benchmark commands succeed, including saved outputs, replay and contention
+correctness checks. Linux and hosted validation remain pending. Commits stay
+local; no push or combined feature-delivery closure is authorized by this slice.

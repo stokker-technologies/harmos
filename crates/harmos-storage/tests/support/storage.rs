@@ -9,6 +9,10 @@
 
 /* === Modules === */
 
+#[path = "record_store.rs"]
+#[allow(dead_code, reason = "Shared read fixture APIs are consumed by different integration and system binaries.")]
+mod record_store;
+
 #[path = "file_backend.rs"]
 mod file_backend;
 #[path = "read_backend.rs"]
@@ -33,6 +37,7 @@ use harmos_storage::query::{FileSelection, ObjectSelection, ObjectVersions, Reco
 use harmos_storage::state::*;
 use harmos_storage::*;
 use harmos_storage::{BackendFailure, Error, Identifier, MemorySize, Result};
+use record_store::{RecordStore, RowStore};
 
 /* === Type Aliases === */
 
@@ -42,6 +47,9 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 
 #[derive(Default)]
 pub struct Control {
+    pub record_rows_examined: AtomicUsize,
+    pub record_rows_copied: AtomicUsize,
+    pub snapshot_rows_copied: AtomicUsize,
     pub date: Mutex<Option<std::time::SystemTime>>,
     pub fail_projection: AtomicBool,
     pub block_chunk_file: Mutex<Option<String>>,
@@ -156,7 +164,7 @@ struct Snapshot {
     objects: BTreeMap<u64, ObjectEntry>,
     files: BTreeMap<u64, FileReference>,
     schemas: BTreeMap<u64, StorageSchema>,
-    records: BTreeMap<u64, StoredRecord>,
+    records: RecordStore,
     rows: BTreeMap<u64, StoredRow>,
 }
 
@@ -198,7 +206,7 @@ pub struct Data {
     snapshot_scope: usize,
     pub history: StoreHistory,
     pub control: Control,
-    pub records: Mutex<BTreeMap<u64, StoredRecord>>,
+    pub records: Mutex<RecordStore>,
     pub rows: Mutex<BTreeMap<u64, StoredRow>>,
     pub schemas: Mutex<BTreeMap<u64, StorageSchema>>,
     pub saved: AtomicUsize,
@@ -303,7 +311,7 @@ impl Data {
             snapshot_scope: NEXT_SCOPE.fetch_add(1, Ordering::SeqCst),
             history,
             control: Control::default(),
-            records: Mutex::new(BTreeMap::new()),
+            records: Mutex::default(),
             rows: Mutex::new(BTreeMap::new()),
             schemas: Mutex::new(BTreeMap::new()),
             saved: AtomicUsize::new(0),
@@ -462,6 +470,49 @@ impl StorageBackend for Data {
             Ok(())
         })
     }
+    fn read_record_views<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
+    ) -> StorageFuture<'a, Option<Vec<RecordView>>> {
+        Box::pin(async move {
+            self.control.gate_read().await;
+            let image = self.image(snapshot)?;
+            let mut entries = Vec::new();
+            let mut bytes = 0usize;
+            for view in image.records.selected_views(&selection.schema, page.after, snapshot.at.sequence) {
+                self.control.record_rows_examined.fetch_add(1, Ordering::Relaxed);
+                let row = view.record();
+                if !record_matches(row, &selection.schema, &selection.scope, &selection.item)
+                    || !window(selection.source_start, selection.source_end, row.source_time)
+                {
+                    continue;
+                }
+                if entries.len() == page.rows.get() || (!entries.is_empty() && bytes + view.encoded_bytes() > page.bytes.get()) {
+                    break;
+                }
+                bytes += view.encoded_bytes();
+                entries.push(view.clone());
+            }
+            if self.control.invalid_page.load(Ordering::SeqCst) && !entries.is_empty() {
+                let mut record = entries[0].record().clone();
+                record.item = Identifier::new("wrong-item").unwrap();
+                entries[0] = RecordView::new(record)?;
+            }
+            Ok(Some(entries))
+        })
+    }
+
+    fn seek_records<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, offset: u64,
+    ) -> StorageFuture<'a, Option<u64>> {
+        Box::pin(async move {
+            let image = self.image(snapshot)?;
+            if selection.scope.is_some() || selection.item.is_some() || selection.source_start.is_some() || selection.source_end.is_some() {
+                return Ok(None);
+            }
+            Ok(Some(image.records.seek(&selection.schema, offset, snapshot.at.sequence)))
+        })
+    }
+
     fn history(&self) -> &StoreHistory {
         &self.history
     }
@@ -704,8 +755,8 @@ impl StorageBackend for Data {
 }
 
 impl Data {
-    fn persist<'a, T: Clone + PartialEq + Send + Sync + 'static>(
-        &'a self, batch: StorageBatch<T>, stored: &'a Mutex<BTreeMap<u64, T>>, position: fn(&T) -> &StorageCursor,
+    fn persist<'a, T: Clone + PartialEq + Send + Sync + 'static, M: RowStore<T> + Send + 'static>(
+        &'a self, batch: StorageBatch<T>, stored: &'a Mutex<M>, position: fn(&T) -> &StorageCursor,
         validate: impl Fn(&T) -> Result<()> + Send + 'a,
     ) -> StorageFuture<'a, StorageCursor> {
         Box::pin(async move {
@@ -728,7 +779,7 @@ impl Data {
                 }
             }
             for value in values {
-                stored.lock().unwrap().insert(position(value).sequence, value.clone());
+                stored.lock().unwrap().insert(position(value).sequence, value.clone())?;
             }
 
             // A Later Type Can Fail Without Rolling Back An Earlier Durable Call.

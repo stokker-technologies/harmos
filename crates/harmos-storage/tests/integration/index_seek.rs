@@ -105,10 +105,17 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         backend.open().await.unwrap();
         backend.write_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
         backend.write_records(StorageBatch::new(records.clone())).await.unwrap();
+        let before = backend.work().await.unwrap();
         assert_eq!(
             backend.register_index(&definition, false, work, &cancel).await.unwrap(),
             backend.register_index(&definition, false, work, &cancel).await.unwrap()
         );
+        let after = backend.work().await.unwrap();
+        if backend.capabilities().native_index {
+            assert_eq!(after.source_rows - before.source_rows, records.len() as u64);
+            assert_eq!(after.decoded_chunks - before.decoded_chunks, (records.len() / settings.chunk_rows.get()) as u64);
+            assert_eq!(after.index_prepares - before.index_prepares, 1);
+        }
     }
     let cut = StorageCursor { history: history.clone(), sequence: 9 };
     let saved = native.open_snapshot(&cut).await.unwrap();

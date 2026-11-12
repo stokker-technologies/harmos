@@ -85,7 +85,25 @@ class BenchmarkRelease(unittest.TestCase):
                         "bytes_read": 512,
                         "rows": 4096,
                         "payload_rows": 0,
+                        "source_rows": 8192,
                     }
+                )
+            ]
+            events += [
+                "STORAGE_WORK "
+                + json.dumps(
+                    dict(
+                        name="storage.bucket.replace.2m",
+                        source_rows=16,
+                        source_bytes=512,
+                        decoded_chunks=1,
+                        bucket_rows=24,
+                        bucket_steps=160,
+                        buckets=2,
+                        index_entries=0,
+                        index_steps=0,
+                        index_prepares=0,
+                    )
                 )
             ]
             for system in ("windows", "linux"):
@@ -105,6 +123,9 @@ class BenchmarkRelease(unittest.TestCase):
                 self.assertEqual(cases["storage.object.contend.8.throughput"]["value"], 2000)
                 self.assertEqual(cases["storage.window.read.2m.read.bytes"]["value"], 512)
                 self.assertEqual(cases["storage.window.read.2m.payload.rows"]["value"], 0)
+                self.assertEqual(cases["storage.window.read.2m.source.rows"]["value"], 8192)
+                self.assertEqual(cases["storage.bucket.replace.2m.work.bucket.rows"]["value"], 24)
+                self.assertEqual(cases["storage.bucket.replace.2m.work.source.bytes"]["unit"], "bytes")
             events.append(
                 "STORAGE_MEASUREMENT "
                 + json.dumps(

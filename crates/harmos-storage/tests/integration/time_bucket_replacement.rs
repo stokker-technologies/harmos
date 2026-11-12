@@ -242,7 +242,15 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.write_records(StorageBatch::new(additions.clone())).await.unwrap();
         let snapshot = backend.open_snapshot(&next).await.unwrap();
+        let before = backend.work().await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, work, &cancel).await.unwrap();
+        let after = backend.work().await.unwrap();
+        if backend.capabilities().native_arrow {
+            assert_eq!(after.source_rows - before.source_rows, additions.len() as u64);
+            assert_eq!(after.buckets - before.buckets, 2);
+            assert!(after.bucket_rows - before.bucket_rows < records.len() as u64);
+            assert!(after.bucket_steps - before.bucket_steps < (after.bucket_rows - before.bucket_rows) * 40 + 60);
+        }
         backend.release_snapshot(&snapshot).await.unwrap();
         assert_eq!(read_all(backend, read.clone()).await.0, initial);
         let (current, changed) = read_all(backend, ProjectionRead { frontier: next.clone(), ..read.clone() }).await;

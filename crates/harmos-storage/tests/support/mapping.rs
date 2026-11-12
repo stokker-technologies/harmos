@@ -40,6 +40,7 @@ pub(crate) struct Expansion {
 // Fixture Storage Holding Saved Records Of One Declared Schema.
 pub(crate) struct Mapped {
     pub(crate) storage: StorageManager,
+    pub(crate) data: std::sync::Arc<super::backend::Data>,
     schema: SchemaKey,
     at: StorageCursor,
 }
@@ -95,7 +96,7 @@ impl Mapped {
             storage.write_records(records).await.unwrap();
         }
         let at = storage.flush().await.unwrap();
-        Self { storage, schema, at }
+        Self { storage, data: fixture.data, schema, at }
     }
 
     pub(crate) fn query(&self, item: Option<&str>) -> Query {

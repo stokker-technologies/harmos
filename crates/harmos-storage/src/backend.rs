@@ -66,11 +66,53 @@ pub struct ReadLimits {
     pub bytes: NonZeroUsize,
 }
 
+/// Cumulative physical work on one backend owner; differences describe an isolated operation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct StorageWork {
+    pub source_rows: u64,
+    pub source_bytes: u64,
+    pub decoded_chunks: u64,
+    pub bucket_rows: u64,
+    pub bucket_steps: u64,
+    pub buckets: u64,
+    pub index_entries: u64,
+    pub index_steps: u64,
+    pub index_prepares: u64,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 pub trait StorageBackend: Send + Sync + 'static {
+    /// Optional immutable record pages. Views retain their data and checked encoded size.
+    fn read_record_views<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a RecordSelection, _page: ScanPage,
+    ) -> StorageFuture<'a, Option<Vec<crate::RecordView>>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Optionally locate the exclusive source position after skipping selected records.
+    /// None retains sequential execution; an exhausted selection returns the saved cut.
+    fn seek_records<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a RecordSelection, _offset: u64,
+    ) -> StorageFuture<'a, Option<u64>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Optional work evidence. Backends without instrumentation return zero counters.
+    fn work(&self) -> StorageFuture<'_, StorageWork> {
+        Box::pin(async { Ok(StorageWork::default()) })
+    }
+
+    /// Advance natively when supported, or return None for the shared bounded executor.
+    fn advance_projection_native<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _name: &'a crate::Identifier, _work: ReadLimits,
+        _cancel: &'a crate::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, Option<u64>> {
+        Box::pin(async { Ok(None) })
+    }
+
     fn compare_exchange<'a>(&'a self, _exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
         unsupported("conditional objects")
     }

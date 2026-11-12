@@ -91,6 +91,7 @@ pub enum QueryArrow {
 enum Rows {
     Objects(Vec<ObjectEntry>),
     Records(Vec<StoredRecord>),
+    RecordViews(Vec<crate::RecordView>),
     Stream(Vec<StoredRow>),
     Schemas(Vec<StorageSchema>),
     Files(Vec<FileReference>),
@@ -336,7 +337,16 @@ impl QueryReader {
             let Transform::Project(project) = transforms.remove(0) else { unreachable!() };
             self.projection = Some((project, empty.schema()));
         }
-        let plan = Plan::new(empty.schema(), transforms, self.query.slice)?;
+        let mut slice = self.query.slice;
+        if slice.offset > 0
+            && transforms.iter().all(|transform| matches!(transform, Transform::Project(_)))
+            && let Source::Records(selection) = &self.query.source
+            && let Some(position) = snapshot.seek_records(selection, slice.offset).await?
+        {
+            self.after = position;
+            slice.offset = 0;
+        }
+        let plan = Plan::new(empty.schema(), transforms, slice)?;
         let schema = ArrowSchema::try_new(plan.output_schema())?;
         self.plan = Some(plan);
         Ok(schema)
@@ -351,9 +361,13 @@ impl QueryReader {
     #[tracing::instrument(name = "storage.query.reader.page_attempt", level = "trace", skip_all)]
     async fn page_attempt(&mut self) -> Result<()> {
         let scan_bytes = self.inner.settings.scan_bytes();
+        let rows = self.plan.as_ref().and_then(Plan::source_limit).map_or(self.rows, |remaining| {
+            let remaining = usize::try_from(remaining).unwrap_or(usize::MAX);
+            NonZeroUsize::new(self.rows.get().min(remaining)).unwrap_or(NonZeroUsize::MIN)
+        });
         let page = ScanPage {
             after: self.after,
-            rows: self.rows,
+            rows,
             bytes: scan_bytes,
         };
 
@@ -361,7 +375,10 @@ impl QueryReader {
 
         let (rows, _) = match &self.query.source {
             Source::Objects(selection) => scan(snapshot, selection, page, Rows::Objects).await?,
-            Source::Records(selection) => scan(snapshot, selection, page, Rows::Records).await?,
+            Source::Records(selection) => match snapshot.record_views(selection, page).await? {
+                Some(views) => (Rows::RecordViews(views), 0),
+                None => scan(snapshot, selection, page, Rows::Records).await?,
+            },
             Source::Stream(selection) => scan(snapshot, selection, page, Rows::Stream).await?,
             Source::Schemas(selection) => scan(snapshot, selection, page, Rows::Schemas).await?,
             Source::Files(selection) => scan(snapshot, selection, page, Rows::Files).await?,
@@ -400,6 +417,13 @@ impl QueryReader {
 
     // A Dropped Caller Cancels Blocking Work Before Its Next Bounded Step.
     async fn work(&mut self, batch: Option<RecordBatch>) -> Result<Option<RecordBatch>> {
+        let plan = self.plan.as_mut().expect("prepared query plan");
+        if plan.is_inline() {
+            return match batch {
+                Some(batch) => plan.page(&batch, &mut || Ok(())),
+                None => plan.finish(&mut || Ok(())),
+            };
+        }
         let mut plan = self.plan.take().expect("prepared query plan");
         let cancelled = Arc::new(AtomicBool::new(false));
         let guard = CancelWork(Arc::clone(&cancelled));
@@ -471,9 +495,16 @@ impl QueryReader {
             }
             (Source::Records(_), Some(Rows::Records(rows))) => match &self.projection {
                 Some((project, output)) => super::source::projected(schema.expect("record schema"), rows.iter(), project, output.clone()),
-                None => super::source::records(schema.expect("record schema"), rows),
+                None => super::source::records(schema.expect("record schema"), rows.iter()),
             },
-            (Source::Records(_), _) => super::source::records(schema.expect("record schema"), &[]),
+            (Source::Records(_), Some(Rows::RecordViews(rows))) => {
+                let records = rows.iter().map(crate::RecordView::record);
+                match &self.projection {
+                    Some((project, output)) => super::source::projected(schema.expect("record schema"), records, project, output.clone()),
+                    None => super::source::records(schema.expect("record schema"), records),
+                }
+            }
+            (Source::Records(_), _) => super::source::records(schema.expect("record schema"), std::iter::empty()),
             (Source::Stream(_), Some(Rows::Stream(rows))) => match &self.projection {
                 Some((project, output)) => {
                     let records = rows.iter().map(|row| &row.record);
@@ -495,6 +526,7 @@ impl Rows {
         let position = match self {
             Self::Objects(rows) => rows.last().map(Entry::position),
             Self::Records(rows) => rows.last().map(Entry::position),
+            Self::RecordViews(rows) => rows.last().map(|view| &view.record().position),
             Self::Stream(rows) => rows.last().map(Entry::position),
             Self::Schemas(rows) => rows.last().map(Entry::position),
             Self::Files(rows) => rows.last().map(Entry::position),

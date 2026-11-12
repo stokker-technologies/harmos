@@ -98,6 +98,17 @@ impl Plan {
         self.slice.limit.is_some_and(|limit| self.emitted >= limit)
     }
 
+    pub(super) fn source_limit(&self) -> Option<u64> {
+        if !self.global.is_empty() || !self.prefix.iter().all(|transform| matches!(transform, Transform::Project(_))) {
+            return None;
+        }
+        self.slice.limit.map(|limit| self.slice.offset.saturating_sub(self.skipped).saturating_add(limit.saturating_sub(self.emitted)))
+    }
+
+    pub(super) fn is_inline(&self) -> bool {
+        self.global.is_empty() && self.prefix.iter().all(|transform| matches!(transform, Transform::Project(_)))
+    }
+
     #[tracing::instrument(name = "storage.query.execute.page", level = "trace", skip_all)]
     pub(super) fn page(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         if input.schema() != self.input {

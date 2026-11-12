@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+#[cfg(feature = "sqlite")]
+mod native;
+
 /* === Re-Exports === */
 
 pub use harmos_domain::model::storage::query::transform::TimeBucketPlan;
@@ -52,33 +55,35 @@ pub struct Accumulator {
     owned_bytes: usize,
 }
 
-struct Sample {
-    identity: Vec<u8>,
-    key: Vec<u8>,
-    bucket: i64,
-    position: u64,
-    time_ns: i64,
-    value: f64,
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct Sample {
+    pub(crate) identity: Vec<u8>,
+    pub(crate) key: Vec<u8>,
+    pub(crate) bucket: i64,
+    pub(crate) position: u64,
+    pub(crate) time_ns: i64,
+    pub(crate) value: f64,
 }
 
-struct Bucket {
-    key: Vec<u8>,
-    bucket: i64,
-    revision: [u8; 32],
-    count: u64,
-    first: f64,
-    last: f64,
-    min: f64,
-    max: f64,
-    sum: f64,
-    sum_squares: f64,
-    mean: f64,
-    m2: f64,
-    first_position: u64,
-    last_position: u64,
-    min_position: u64,
-    max_position: u64,
-    positions: Vec<u64>,
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(crate) struct Bucket {
+    pub(crate) key: Vec<u8>,
+    pub(crate) bucket: i64,
+    pub(crate) revision: [u8; 32],
+    pub(crate) count: u64,
+    pub(crate) first: f64,
+    pub(crate) last: f64,
+    pub(crate) min: f64,
+    pub(crate) max: f64,
+    pub(crate) sum: f64,
+    pub(crate) sum_squares: f64,
+    pub(crate) mean: f64,
+    pub(crate) m2: f64,
+    pub(crate) first_position: u64,
+    pub(crate) last_position: u64,
+    pub(crate) min_position: u64,
+    pub(crate) max_position: u64,
+    pub(crate) positions: Vec<u64>,
 }
 
 /* === Enums === */
@@ -195,7 +200,12 @@ impl Accumulator {
         Ok(())
     }
 
-    pub fn finish(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
+    pub fn finish(self, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
+        let buckets = self.finish_buckets(check)?;
+        output(&buckets)
+    }
+
+    pub(crate) fn finish_buckets(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<Vec<Bucket>> {
         check()?;
         self.samples.sort_unstable_by_key(|sample| sample.position);
         for pair in self.samples.windows(2) {
@@ -282,7 +292,7 @@ impl Accumulator {
         }
         drop(self.samples);
         check()?;
-        output(&buckets)
+        Ok(buckets)
     }
 }
 
@@ -384,7 +394,7 @@ fn revision(bucket: &Bucket) -> [u8; 32] {
     }
     hash.finalize().into()
 }
-fn output(buckets: &[Bucket]) -> Result<RecordBatch> {
+pub(crate) fn output(buckets: &[Bucket]) -> Result<RecordBatch> {
     let positions =
         ListArray::from_iter_primitive::<UInt64Type, _, _>(buckets.iter().map(|bucket| Some(bucket.positions.iter().copied().map(Some))));
     let columns: Vec<(&str, ArrayRef)> = vec![

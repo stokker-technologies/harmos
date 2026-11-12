@@ -80,10 +80,19 @@ fn main() {
     println!("Workload Ready");
     let mut group = criterion.benchmark_group("integration/multi_day/baseline");
     for (name, offset, limit) in [("full", 0, ROWS), ("first_window", ROWS / 3, 4096), ("next_window", ROWS / 3 + 4096, 4096)] {
+        mapped.data.control.record_rows_examined.store(0, std::sync::atomic::Ordering::Relaxed);
+        mapped.data.control.record_rows_copied.store(0, std::sync::atomic::Ordering::Relaxed);
+        mapped.data.control.snapshot_rows_copied.store(0, std::sync::atomic::Ordering::Relaxed);
         let start = std::time::Instant::now();
         let expected = scan(&runtime, &mapped, offset, limit);
         let elapsed = start.elapsed();
         println!("baseline/{name}: {} rows in {:.6} seconds", expected.0, elapsed.as_secs_f64());
+        println!(
+            "STORAGE_PROFILE baseline/{name} examined={} snapshot_copies={} record_copies={}",
+            mapped.data.control.record_rows_examined.load(std::sync::atomic::Ordering::Relaxed),
+            mapped.data.control.snapshot_rows_copied.load(std::sync::atomic::Ordering::Relaxed),
+            mapped.data.control.record_rows_copied.load(std::sync::atomic::Ordering::Relaxed)
+        );
         assert_eq!(expected.0, limit);
         let sum = samples[offset..offset + limit].iter().map(|sample| sample.value).sum::<f64>();
         assert_eq!(expected.1, sum);
@@ -109,7 +118,10 @@ fn scan(runtime: &tokio::runtime::Runtime, mapped: &Mapped, offset: usize, limit
             offset: offset as u64,
             limit: Some(limit as u64),
         };
+        let profile_start = std::time::Instant::now();
         let mut reader = mapped.storage.query(query).await.unwrap();
+        let opened_s = profile_start.elapsed().as_secs_f64();
+        let profile_start = std::time::Instant::now();
         let mut rows = 0;
         let mut sum = 0.0;
         while let Some(output) = reader.next().await.unwrap() {
@@ -120,6 +132,7 @@ fn scan(runtime: &tokio::runtime::Runtime, mapped: &Mapped, offset: usize, limit
                 sum += values.values().iter().sum::<f64>();
             }
         }
+        println!("STORAGE_PROFILE baseline/query open_s={opened_s:.6} consume_s={:.6}", profile_start.elapsed().as_secs_f64());
         (rows, sum)
     })
 }

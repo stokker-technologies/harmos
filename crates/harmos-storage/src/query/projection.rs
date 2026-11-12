@@ -281,6 +281,13 @@ pub async fn advance_projection(
     backend: &dyn StorageBackend, snapshot: &BackendSnapshot, name: &Identifier, work: ReadLimits, cancel: &Cancellation,
 ) -> Result<u64> {
     cancel.check()?;
+    let native_cancel = cancel.child();
+    let native_guard = CancelWork(native_cancel.clone());
+    let native = backend.advance_projection_native(snapshot, name, work, &native_cancel).await?;
+    drop(native_guard);
+    if let Some(revision) = native {
+        return Ok(revision);
+    }
     let (definition, revision) = backend.projection_definition(name).await?;
     backend
         .read_schemas(
@@ -370,6 +377,7 @@ pub async fn advance_projection(
             let budget = free / 4;
             let current = super::time_buckets::fingerprints(&output, budget)?;
             let mut prior = BTreeMap::new();
+            let mut prior_key_bytes = 0usize;
             if let Some(frontier) = &previous {
                 let mut read = ProjectionRead {
                     name: name.clone(),
@@ -386,9 +394,9 @@ pub async fn advance_projection(
                     cancel.check()?;
                     let page = backend.read_projection(&read).await?;
                     for (key, value) in super::time_buckets::fingerprints(&page.batch, budget)? {
+                        prior_key_bytes = prior_key_bytes.saturating_add(key.capacity());
                         prior.insert(key, value);
-                        let used = crate::btree_map_memory::<Vec<u8>, [u8; 32]>(prior.len())
-                            .saturating_add(prior.keys().map(Vec::capacity).sum::<usize>());
+                        let used = crate::btree_map_memory::<Vec<u8>, [u8; 32]>(prior.len()).saturating_add(prior_key_bytes);
                         if used > budget {
                             return Err(columnar::exhausted());
                         }

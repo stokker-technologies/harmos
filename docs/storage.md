@@ -77,6 +77,24 @@ column loading. `ArrowPage` reports source rows scanned, encoded column bytes re
 columns fetched and payload rows reconstructed for measurement. These counters
 are evidence, not admission policy or timing assertions.
 
+For a record query containing only projections, `StorageBackend::seek_records`
+may locate the exclusive position after the requested number of selected records.
+It binds the same snapshot and selection; an exhausted selection returns the saved
+cut, and `None` keeps sequential execution. The query executor then decodes only
+the requested page. Backends own any ordinal index. Streaming filters and global
+reductions retain their complete input semantics. The deterministic record backend
+retains shared immutable images and per-schema ranks/encoded sizes, so opening a
+snapshot and reading an unfiltered page do not copy or rescan its prior history.
+
+Backends can also implement `read_record_views(snapshot, selection, page)` and
+return `Some(Vec<RecordView>)` instead of copying owned record payloads per read.
+Construct each `RecordView` once with `RecordView::new(record)?`; clones share the
+immutable row, and `encoded_bytes()` retains its exact checked serialized size.
+The snapshot reader still validates history, position order, cut, selection and
+row/byte ceilings. Returning `None` keeps the existing `read_records` path.
+Payload validation and decoding still run on selected rows. No backend-provided
+unchecked byte count can bypass the page bound.
+
 `Cancellation` is cooperative across source reads, decoding, sorting and bucket
 work. Cancellation does not roll back an already committed write. CPU bucket work
 runs on the blocking executor; dropping its awaiting future cancels its child
@@ -92,6 +110,10 @@ An `IndexDefinition` owns a name, nonzero semantic version, source and ordered
 columns. Registration is idempotent for the same definition. A changed definition
 requires explicit rebuild and creates a new revision. SQLite builds history under
 one immediate transaction and updates entries in the source write transaction.
+Construction decodes each physical source chunk once, orders encoded entries and
+inserts them through one prepared statement in that transaction. Record and stream
+pages read the covering key/position index directly; object pages additionally
+resolve the latest object revision at the saved cut.
 `IndexRead` supports inclusive lower/exclusive upper key bounds, byte prefix,
 direction and continuation. Its total order is canonical key bytes followed by
 source position; reverse reads reverse both components. Ties remain stable.
@@ -147,6 +169,15 @@ outputs remain readable. `Transform::TimeBuckets` and projection execution use
 the same bounded reduction. The current protobuf transform mapping explicitly
 refuses this variant pending the separate consumer adoption pass.
 
+For record and stream projections, SQLite checkpoints the latest sample for each
+logical identity and indexes its bucket membership. Advancement reads source rows
+after that checkpoint and recomputes the old and new buckets of changed identities.
+It recomputes moments in the canonical `(time, position)` order, avoiding subtraction
+of floating-point aggregates. Bucket versions, removed-key tombstones, membership,
+changed keys and the frontier commit together. Saved cuts share unchanged bucket
+versions; retirement retains private anchors needed by later cuts. Object-source
+projections use the common executor's latest-object selection semantics.
+
 ## Conditional Objects
 
 ```rust,ignore
@@ -201,8 +232,24 @@ construct `bench_support::workload::Workload::new(workload::ROWS)`, and call
 The opener first creates an empty backend, then reopens that same store after disposal.
 This runs identical data, plans, corrections, checks and case names against any backend;
 no concrete database or host engine is required. For JSON, consume its `STORAGE_MEASUREMENT`
-and `STORAGE_COUNTER` lines; the repository producer's `storage_bench.measurements(lines,
+and `STORAGE_COUNTER`/`STORAGE_WORK` lines; the repository producer's `storage_bench.measurements(lines,
 revision, system, backend="reference")` emits the release schema for another backend.
+
+`StorageBackend::work()` optionally returns cumulative `StorageWork` counters.
+Differences around an isolated call report decoded source rows/bytes/chunks,
+bucket members and buckets recomputed, index entries visited, SQLite VM steps
+and prepared index statements. Counters belong to an owner and include repeated
+physical decoding; encoded bytes are not unique device I/O. Unsupported counters
+remain zero. `advance_projection_native` is an optional backend hook; returning
+`None` selects the shared bounded executor without changing existing implementers.
+
+`storage.window.time.2m` searches the whole history with exact time bounds covering
+the same interval as the first positional window. `storage.window.numeric.2m`
+adds the half-open value predicate `[10000, 20000)` to that time window. Both start
+at the beginning of the source and report source rows and bytes decoded, proving
+time pruning independently of a positional seek. Expected rows and sums are
+generated independently outside timing. First observations use the `.first` suffix;
+warm timings keep the shared ten-sample naming used by Nightly `benchmarks.json`.
 
 The fixed input is 2,000,000 `(time_ns:i64, plot:u32, value:f64)` records over three days
 and 24 plots. There is no RNG: logical index is admission index except every 4096th row

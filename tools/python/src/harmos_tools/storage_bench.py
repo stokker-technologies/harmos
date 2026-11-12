@@ -114,12 +114,15 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
     """Translate The Shared Workload's Native Events Without Backend-Dependent Case Names."""
     cases: dict[str, list[dict]] = {}
     counters = []
+    work = []
     for line in lines:
         if line.startswith("STORAGE_MEASUREMENT "):
             value = json.loads(line.removeprefix("STORAGE_MEASUREMENT "))
             cases.setdefault(value["name"], []).append(value)
         if line.startswith("STORAGE_COUNTER "):
             counters.append(json.loads(line.removeprefix("STORAGE_COUNTER ")))
+        if line.startswith("STORAGE_WORK "):
+            work.append(json.loads(line.removeprefix("STORAGE_WORK ")))
     rows = []
     for name, samples in sorted(cases.items()):
         for field, suffix, unit in (
@@ -143,6 +146,21 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
     for counter in counters:
         rows.append(_row(counter["name"] + ".read.bytes", counter["bytes_read"], "bytes", revision, system, backend))
         rows.append(_row(counter["name"] + ".payload.rows", counter["payload_rows"], "rows", revision, system, backend))
+        if "source_rows" in counter:
+            rows.append(_row(counter["name"] + ".source.rows", counter["source_rows"], "rows", revision, system, backend))
+    for counter in work:
+        for field, unit in (
+            ("source_rows", "rows"),
+            ("source_bytes", "bytes"),
+            ("decoded_chunks", "count"),
+            ("bucket_rows", "rows"),
+            ("bucket_steps", "count"),
+            ("buckets", "count"),
+            ("index_entries", "rows"),
+            ("index_steps", "count"),
+            ("index_prepares", "count"),
+        ):
+            rows.append(_row(counter["name"] + ".work." + field.replace("_", "."), counter[field], unit, revision, system, backend))
     return {"benchmarks": rows}
 
 
