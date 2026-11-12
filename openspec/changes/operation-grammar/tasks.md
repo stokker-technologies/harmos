@@ -14,8 +14,8 @@ consumers without compatibility aliases or stored-data changes.
 
 ## 2. Complete Proto Inventory Without Automatic Twins
 
-- [ ] 2.1 Enumerate the complete proto inventory from the mapping: 47 logical operations, 36 storage declarations, 42 exposed routes in 3 services and 94 method request/response messages (84 exposed, 10 native-only); enumerate shared/domain/nested/imported payloads separately and verify every declaration and consumer is accounted for before handlers. Include GetIndexDefinition, GetProjectionDefinition, GetObject and native GetSchema as exact writable-value/revision mirrors of Set, plus GetFileProduction status.
-- [ ] 2.2 Replace unconditional twins in runtime gRPC projection and packaging/client generators with explicit canonical routes; Get/List are unary, streams serve Watch and plugin carriers, and a managed final-result route replaces its ordinary route only where promised. Verify focused descriptor and generation checks, with no unreachable automatic envelopes in the final inventory.
+- [ ] 2.1 Enumerate the complete proto inventory from the mapping: 47 logical operations, 36 storage declarations, 42 exposed gRPC methods in 3 services and 94 method request/response messages (84 exposed, 10 native-only); enumerate shared/domain/nested/imported payloads separately and verify every declaration and consumer is accounted for before handlers. Include GetIndexDefinition, GetProjectionDefinition, GetObject and native GetSchema as exact writable-value/revision mirrors of Set, plus GetFileProduction status.
+- [ ] 2.2 Replace unconditional twins in runtime gRPC projection and packaging/client generators with explicit canonical gRPC methods; Get/List are unary, streams serve Watch and plugin carriers, and a managed final-result gRPC method replaces its ordinary gRPC method only where promised. Verify focused descriptor and generation checks, with no unreachable automatic envelopes in the final inventory.
 - [ ] 2.3 Generate the 32 exposed Storage methods and SDK bindings from one authoritative declaration owner, with matching request/response wrappers; preserve grants and the five native-only operations in design.md. Update `proto/harmos/v1/behaviour.md` with the locked grammar and policy.
 
 ## 3. Handlers, Native Storage and Transfers
@@ -30,7 +30,7 @@ consumers without compatibility aliases or stored-data changes.
 - [ ] 3.8 Settle issued-position and page-token validity, provenance, composite selection and restart behavior when implementing retention; record the decision in design.md and implement explicit expiry/unavailability without arbitrary earlier reads.
 - [ ] 3.9 Settle exact Watch opening, events, progress, gaps and resynchronization at the Watch task; record the decision in design.md, implement one WatchRows selector for records/samples/object revisions, and preserve distinct file/directory/production watches with durable versus accepted facts. Verify deterministic opening-race, filter-progress and gap behavior.
 - [ ] 3.10 Settle deletion while readers retain content before changing DeleteFile or reclamation; record the decision in design.md and verify it across supported backends without implicit data-loss migrations.
-- [ ] 3.11 Enumerate operations promising a cooperative final result after cancellation at the managed-route task; record the decision in design.md and implement one replacement route per such promise. Preserve running-only Cancel, queued refusal naming Cancel, distinct Stop and typed settlement with focused tests.
+- [ ] 3.11 Enumerate operations promising a cooperative final result after cancellation at the managed-gRPC method task; record the decision in design.md and implement one replacement gRPC method per such promise. Preserve running-only Cancel, queued refusal naming Cancel, distinct Stop and typed settlement with focused tests.
 
 ## 4. Library SDKs, Plugin Hosts and Conformance
 
@@ -49,14 +49,14 @@ consumers without compatibility aliases or stored-data changes.
 
 ## 6. Delete Superseded Code Last and Close Source
 
-- [ ] 6.1 After every affected consumer migrates and the Nightly large-file throughput case has been measured, delete streaming uploads/downloads, superseded routes, policies, adapters, generators, envelopes, fixtures and guidance; verify no automatic twins or streaming Get/List remain, retaining Watch, plugin carriers and explicitly promised managed replacements.
+- [ ] 6.1 After every affected consumer migrates and the Nightly large-file throughput case has been measured, delete streaming uploads/downloads, superseded gRPC methods, policies, adapters, generators, envelopes, fixtures and guidance; verify no automatic twins or streaming Get/List remain, retaining Watch, plugin carriers and explicitly promised managed replacements.
 - [ ] 6.2 Verify the complete inventory is closed in one combined candidate with all writers handed off, focused tests and owned format/language checks complete; only then declare source closure. Final validation remains separate.
 
 ## 7. Final Validation
 
 - [ ] 7.1 After implementation source closure, run strict OpenSpec validation and required repository/language checks for the combined candidate; report actual results and repair every failure.
 - [ ] 7.2 Under later delivery authorization, validate the combined library and pinned product candidate through configured hosted CI and Nightly on native Windows and Linux, including SDK/conformance, restart, cancellation, paging, unary transfers and both benchmark cases; report exact revisions, results and pending evidence.
-- [ ] 7.3 Review final operation/route/service/message counts and capability coverage against the locked contract and full descriptor payload inventory; verify owner acceptance and leave unperformed proof pending.
+- [ ] 7.3 Review final operation/gRPC method/service/message counts and capability coverage against the locked contract and full descriptor payload inventory; verify owner acceptance and leave unperformed proof pending.
 
 ## Workflow Follow-Up
 

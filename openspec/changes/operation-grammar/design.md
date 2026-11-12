@@ -120,7 +120,7 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   total length and digest. Configuration bounds chunk and range sizes.
 - **Streaming (Owner):** never generate streaming twins automatically. Use
   unary calls plus Get and Watch on the resource. One managed streaming method
-  replaces the ordinary route only where a cooperative final result after
+  replaces the ordinary gRPC method only where a cooperative final result after
   cancellation is actually promised. Native gRPC cancellation abandons observation
   and cannot promise that final response; accepted durable work survives lost
   observers. Server streaming is reserved for Watch; plugin protocol carriers
@@ -172,7 +172,7 @@ The library report's present-operation totals agree with this tree. Its suggeste
 WaitTime is superseded by Sleep. Its bare-resource replies are superseded by response wrappers; whole-value
 revision-guarded Set is locked. Its barrier-before-
 latest recommendation and the product report's latest-accepted wording are
-superseded by the owner's latest-durable selection. Its 34-route/204-message
+superseded by the owner's latest-durable selection. Its 34-gRPC method/204-message
 replacement budgets do not describe this candidate: unary sessions need client
 bindings and wrappers change reachable messages. Do not carry those totals forward.
 
@@ -515,9 +515,9 @@ methods are not added to the library counts.
 | Added operations | 0 | 5: four Get mirrors and GetFileProduction |
 | Storage declarations | 34 | 36 = 34 − 2 watch merges − 1 streaming upload + 5 Get operations |
 | Logical service groups when registered | 5 | 3: Plugin, Host, Storage |
-| Routes at the stated exposure boundary | 64 = 4 + 30 ordinary + 30 managed | 42 = 4 plugin + 6 Host + 32 Storage; no automatic twins |
+| gRPC Methods at the stated exposure boundary | 64 = 4 + 30 ordinary + 30 managed | 42 = 4 plugin + 6 Host + 32 Storage; no automatic twins |
 | Static Storage subset | 11 of 34 | 32 exposed declarations generated from the authoritative owner |
-| Method request/response messages, all logical operations | No uniform wrapper rule | 94 = 2 × 47, including 84 for the 42 exposed routes and 10 for 5 native-only operations |
+| Method request/response messages, all logical operations | No uniform wrapper rule | 94 = 2 × 47, including 84 for the 42 exposed gRPC methods and 10 for 5 native-only operations |
 | StorageBackend hooks | 58 | 52 |
 | StateBackend hooks | 8 | 8 |
 
@@ -525,11 +525,11 @@ The exposure calculation is 64 − 30 automatic twins − 1 WriteFile + 6 upload
 session bindings + 3 exposed Get mirrors = 42. The six session bindings are
 CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter,
 PublishFileProduction and DeleteFileProduction. The streaming ReadFile operation
-is replaced in place by unary ranged GetFileBytes: zero extra routes. Get/List
+is replaced in place by unary ranged GetFileBytes: zero extra gRPC methods. Get/List
 streamed delivery is removed, not retained as an optional twin. Only Watch and
-plugin carriers stream, subject to explicitly promised managed final-result routes
-replacing ordinary routes one for one. Which methods promise those results remains
-open, without changing route cardinality.
+plugin carriers stream, subject to explicitly promised managed final-result gRPC methods
+replacing ordinary gRPC methods one for one. Which methods promise those results remains
+open, without changing gRPC method cardinality.
 
 Message counts here count method-specific request/response definitions, qualified
 by namespace (Host and Storage AppendSamples are distinct). They exclude domain
@@ -738,7 +738,7 @@ owner; they do not block the other locked work. Each has a corresponding task.
 5. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
    supported backends before implementing deletion changes.
 6. **Cooperative Final Results:** enumerate which operations actually promise a
-   final result after cancellation; only those get a managed replacement route.
+   final result after cancellation; only those get a managed replacement gRPC method.
 
 ## Migration Plan
 
@@ -746,7 +746,7 @@ First implement shared primitives and both Nightly benchmark cases, then the
 complete proto inventory without automatic twins. Change handlers, SDKs and every
 affected library consumer together in compiling
 slices, preserving existing data encodings. Reuse the existing production owner
-for unary transfers and remove superseded routes/envelopes only after consumers
+for unary transfers and remove superseded gRPC methods/envelopes only after consumers
 migrate and transfer throughput has been measured. Update conformance fixtures
 and affected guides with each slice.
 

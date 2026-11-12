@@ -28,13 +28,13 @@ the locked contract; implementation is not authorized by this documentation task
 | Cancellation | Owner | Cancel interrupts running work; queued work is refused with an error naming the action. Stop finishes at a safe boundary and remains distinct. Product scheduling policy belongs to the product. |
 | Rename | Owner | Renaming changes the identified resource only, never sibling attempts of its parent. This is a product behavior; no library rename RPC is invented. |
 | Transfers | Owner | One unary, ranged, resumable mechanism for clients and plugins: Create session, Append ordered bytes at offsets, Get status, Publish content, Delete to abandon; downloads use repeated bounded Get ranges returning total length and digest. Configuration bounds chunks and ranges. Measure large-file throughput in Nightly before deleting streaming transfers. |
-| Streaming routes | Owner | Never generate streaming twins automatically. Streams are reserved for Watch and plugin protocol carriers; use unary resource actions and Get/Watch; retain one managed stream only for an explicitly promised cooperative final result, replacing its ordinary route. |
+| Streaming gRPC methods | Owner | Never generate streaming twins automatically. Streams are reserved for Watch and plugin protocol carriers; use unary resource actions and Get/Watch; retain one managed stream only for an explicitly promised cooperative final result, replacing its ordinary gRPC method. |
 | Shared primitives | Owner | One paging, position, time, Failure, retry-policy and receipt vocabulary, as specified in design.md. |
 | SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Only four-language plugin parity and generic managed-client language scope remain open under SDKs. |
 
 **BREAKING:** rename the operations in the complete design inventory; merge the
 three row-follow operations into WatchRows; replace streaming uploads and downloads with
-the shared unary session and ranged Get reads; delete automatic `Run<Method>` routes and
+the shared unary session and ranged Get reads; delete automatic `Run<Method>` gRPC methods and
 their envelopes. Remove separate checkpoint read families in the product, while
 retaining this library's distinct backend recovery records and file-production
 recovery metadata. No such public checkpoint RPC family exists here today.
@@ -54,7 +54,7 @@ None; the candidate adds requirements to existing capability owners.
 ### Modified Capabilities
 
 - `operation-contract`: method grammar, wrappers, action meanings and one policy vocabulary.
-- `operation-invocation`: explicit routes, cancellation and isolated metadata edits.
+- `operation-invocation`: explicit gRPC methods, cancellation and isolated metadata edits.
 - `storage-visibility`: position-resolved reads, bounded paging and watches.
 - `storage-mutations`: whole-value revision-guarded Set, immutable Append and durability receipts.
 - `storage-transfers`: resumable unary transfers shared by all callers.
@@ -68,7 +68,7 @@ Every renamed ID changes its fingerprint: requirements, manifests, descriptor
 sets, constants, generated clients and dispatch must migrate together. Callers
 must unwrap responses, retain `resolved_at`, continue with bound page tokens,
 consume accepted/durable receipts, replace old follows and streaming transfers,
-and select only explicitly declared managed routes.
+and select only explicitly declared managed gRPC methods.
 
 SDK retention is decided, without an implicit commitment to four generic managed
 client implementations. Correct the five independently actionable defects in
