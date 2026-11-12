@@ -384,43 +384,38 @@ impl Contract {
         let template = if let Some(contract) = cache.get() {
             contract
         } else {
-            let request = action.request();
-            let request_schema = Schema::from_declaration(request, &SchemaSettings::default()).map_err(|source| ContractError::Schema {
-                id: action.id().into(),
-                direction: "request",
-                source: source.into(),
-            })?;
-            let request_root = request_schema.root().map_err(|source| ContractError::Schema {
-                id: action.id().into(),
-                direction: "request",
-                source: source.into(),
-            })?;
-            let request_fingerprint =
-                harmos_domain::schema::identity::fingerprint(request_root, Codec::Protobuf.id()).map_err(|source| {
-                    ContractError::Schema {
-                        id: action.id().into(),
-                        direction: "request",
-                        source: source.into(),
-                    }
-                })?;
-            let fingerprint =
-                harmos_domain::schema::identity::operation(action.id(), request_fingerprint, super::catalog::payload::<()>()?, None, None);
+            use prost::Message;
+            let request = match action {
+                Action::Initialize => "harmos.v1.GuestInitialize",
+                Action::Shutdown => "harmos.v1.GuestShutdown",
+            };
+            let mut types = harmos_protocol::guest::types().clone();
+            types.file.push(prost_types::FileDescriptorProto {
+                name: Some("google/protobuf/empty.proto".into()),
+                package: Some("google.protobuf".into()),
+                syntax: Some("proto3".into()),
+                message_type: vec![prost_types::DescriptorProto {
+                    name: Some("Empty".into()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            });
             let operation = OperationDefinition {
                 id: harmos_domain::Identifier::new(action.id()).map_err(crate::operations::Error::from)?,
                 description: String::new(),
                 policy: lifecycle::POLICY,
                 visibility: super::Visibility::Private,
                 replay: super::ReplaySafety::Unknown,
-                fingerprint,
+                fingerprint: harmos_domain::Fingerprint([0; 32]),
             };
-            let schema =
-                Schema::from_declarations(&[("request", request), ("response", <() as Described>::DEFINITION)], &SchemaSettings::default())
-                    .map_err(|source| ContractError::Schema {
-                        id: action.id().into(),
-                        direction: "contract",
-                        source: source.into(),
-                    })?;
-            let contract = Self::canonical(operation, Some(fingerprint), Codec::Protobuf, schema, &SchemaSettings::default())?;
+            let protobuf = super::Protobuf {
+                descriptors: types.encode_to_vec(),
+                request: request.into(),
+                response: "google.protobuf.Empty".into(),
+                input: None,
+                output: None,
+            };
+            let contract = Self::generated(operation, protobuf, None, &SchemaSettings::default())?;
             cache.get_or_init(|| contract)
         };
         let mut contract = template.clone();
@@ -694,41 +689,14 @@ mod tests {
                 assert!(serde_json::from_value::<Descriptor>(forged).is_err(), "{pointer}");
             }
         }
-        let mut manifest = crate::inventory::contracts::Manifest {
-            facility: "guest".into(),
-            owner: "fixture".into(),
-            provides: Vec::new(),
-            requires: Vec::new(),
-            lifecycle: descriptors,
-        };
-        crate::inventory::contracts::validate(&manifest).unwrap();
-        manifest.lifecycle.swap(0, 1);
-        assert!(crate::inventory::contracts::validate(&manifest).is_err());
     }
 
     #[test]
     fn reserved_operations_refused() {
-        use crate::inventory::contracts::{Manifest, validate};
         for contract in sdk_contracts() {
             assert!(contract.operation().validate().is_err());
             let definition = serde_json::to_value(contract.operation()).unwrap();
             assert!(serde_json::from_value::<OperationDefinition>(definition).is_err());
-
-            let mut manifest = Manifest {
-                facility: "sidecar".into(),
-                owner: "fixture".into(),
-                provides: Vec::new(),
-                requires: Vec::new(),
-                lifecycle: [
-                    Descriptor::new(Action::Initialize, lifecycle::POLICY).unwrap(),
-                    Descriptor::new(Action::Shutdown, lifecycle::POLICY).unwrap(),
-                ],
-            };
-            validate(&manifest).unwrap();
-            manifest.provides.push(contract);
-            assert!(validate(&manifest).is_err());
-            let encoded = serde_json::to_value(&manifest).unwrap();
-            assert!(serde_json::from_value::<Manifest>(encoded).is_err());
         }
     }
 }

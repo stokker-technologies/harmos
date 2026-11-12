@@ -25,7 +25,7 @@ use std::path::Path;
 use crate::Result;
 use harmos_runtime::{state::Focus, state::PrincipalId};
 use schematic_app::domain::model;
-use schematic_app::operations::guest::{ProposeRoute, ValidateSchematic};
+use schematic_app::protocol::{ProposeRoute, ValidateSchematic};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
@@ -139,38 +139,25 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         let schematic = model::Snapshot { symbols, connections };
 
         // Validate the Schematic
-        let request = ValidateSchematic { schematic: schematic.clone() };
-        let diagnostics = if guest.is_some() {
-            runtime.operation(request).await?.diagnostics.clone()
-        } else {
-            let request = schematic_app::protocol::ValidateSchematic {
-                schematic: Some(request.schematic.into()),
-            };
-            schematic_app::services::sidecar::call(&runtime, request).await?.diagnostics
+        let request = ValidateSchematic {
+            schematic: Some(schematic.clone().into()),
         };
+        let diagnostics = schematic_app::services::call(&runtime, request).await?.diagnostics;
         println!("Validation: {} diagnostics", diagnostics.len());
 
         // Propose a Route
         let from = snapshot.symbol(SymbolId(1)).position;
         let to = snapshot.symbol(SymbolId(2)).position;
         let request = ProposeRoute {
-            from: model::Point { x: from.x, y: from.y },
-            to: model::Point { x: to.x, y: to.y },
+            from: Some(schematic_app::protocol::Point { x: from.x, y: from.y }),
+            to: Some(schematic_app::protocol::Point { x: to.x, y: to.y }),
         };
-        let proposed = if guest.is_some() {
-            runtime.operation(request).await?.points.clone()
-        } else {
-            let request = schematic_app::protocol::ProposeRoute {
-                from: Some(schematic_app::protocol::Point { x: request.from.x, y: request.from.y }),
-                to: Some(schematic_app::protocol::Point { x: request.to.x, y: request.to.y }),
-            };
-            schematic_app::services::sidecar::call(&runtime, request)
-                .await?
-                .points
-                .into_iter()
-                .map(|point| model::Point { x: point.x, y: point.y })
-                .collect()
-        };
+        let proposed: Vec<_> = schematic_app::services::call(&runtime, request)
+            .await?
+            .points
+            .into_iter()
+            .map(|point| model::Point { x: point.x, y: point.y })
+            .collect();
 
         // Apply the Route
         let points = proposed.iter().map(|point| Point::new(point.x, point.y)).collect();

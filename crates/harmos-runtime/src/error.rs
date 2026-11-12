@@ -252,6 +252,10 @@ impl<E> From<harmos_storage::Error> for Error<E> {
         match error {
             Storage::OperationFailed { operation, source } => Self::OperationFailed { operation, source },
             Storage::NotReady { domain } => Self::NotReady { domain },
+            Storage::IndexNotFound { name } => Self::NotRegistered {
+                domain: "storage index",
+                name: name.to_string(),
+            },
             Storage::Persistence { source } => Self::Persistence {
                 source: std::sync::Arc::new(std::sync::Arc::try_unwrap(source).map(Error::from).unwrap_or_else(|source| {
                     Error::backend("storage persistence", source.backend_failure().unwrap_or(BackendFailure::Permanent), source)

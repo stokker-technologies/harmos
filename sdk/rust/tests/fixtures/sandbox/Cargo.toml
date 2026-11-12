@@ -1,0 +1,117 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Workspace === #
+
+# A Fixture Outside The Root Workspace, Built Once For wasm32-unknown-unknown
+[workspace]
+
+# === Workspace Package === #
+
+# === Workspace Dependencies === #
+
+[workspace.dependencies]
+# Local
+harmos = { path = "../../..", features = ["wasm"] }
+harmos-protocol = { path = "../../../../../crates/harmos-protocol" }
+
+# Serialization
+serde_json = { version = "1.0.154", default-features = false, features = ["std"] }
+
+# === Package === #
+
+[package]
+name = "harmos-sandbox-guest"
+description = "The guest the host harness drives through every sandbox behaviour"
+edition = "2024"
+rust-version = "1.99"
+license = "Apache-2.0"
+version = "0.1.14"
+publish = false
+
+# === Package Targets === #
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+# === Features === #
+
+[features]
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos = { workspace = true }
+harmos-protocol = { workspace = true }
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+serde_json = { workspace = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+# === Profiles === #
+
+# Match the Root Workspace's Development Debug Information.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# Keep SDK Descriptor Validation Within The Runtime Fuel Budget In Dev Builds.
+[profile.dev.package.harmos]
+opt-level = 2
+
+[profile.dev.package.harmos-protocol]
+opt-level = 2
+
+# === Patches === #
+
+# === Other === #

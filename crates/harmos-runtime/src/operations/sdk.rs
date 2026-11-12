@@ -24,9 +24,10 @@ use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, Manager};
 use crate::guest::host::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
-use harmos_guest::lifecycle::Initialize;
+use harmos_protocol::v1::GuestInitialize as Initialize;
+use prost::Message as _;
 
-use crate::{Error, Message, Result};
+use crate::{Error, Result};
 
 /* === Constants === */
 
@@ -152,11 +153,16 @@ impl PluginSdkRegistration {
             let scope = self.entries[0].plugin().expect("SDK retains its original scope");
             let assignments = self.operations.encode_assignments(scope, allowance - peak)?;
             let request = Initialize {
-                config_json: config_json.to_vec(),
+                configuration: config_json.to_vec(),
                 generation_context: generation_context.to_vec(),
-                assignments,
+                assignments: Some(harmos_protocol::host::OperationAssignments::decode(assignments.as_slice()).map_err(|_| {
+                    Error::InvalidInput {
+                        field: "guest assignments",
+                        reason: "invalid host assignments",
+                    }
+                })?),
             };
-            Ok(request.encode())
+            Ok(request.encode_to_vec())
         })
     }
 
@@ -188,12 +194,15 @@ impl PluginSdkRegistration {
         if !entry.settled() {
             return Err(Error::ResourceExhausted { resource: "SDK physical settlement" });
         }
-        let preparation = self.operations.claim_preparation(bytes)?;
+        let mut preparation = self.operations.claim_preparation(bytes)?;
 
         let payload = encode(bytes.get())?;
         if payload.capacity() > bytes.get() {
             return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
         }
+        // Encoding Is Finished; Retain Only The Actual Forwarded Payload.
+        let retained = preparation.split(payload.capacity().max(1)).expect("payload fits its encoding reservation");
+        drop(preparation);
         let dispatch = entry.wire.ok_or(Error::InvalidInput {
             field: "SDK lifecycle",
             reason: "entry has no original wire adapter",
@@ -210,8 +219,9 @@ impl PluginSdkRegistration {
             None,
             EncodedInput {
                 retry: None,
+                policy: None,
                 payload,
-                preparation: Some(preparation),
+                preparation: Some(retained),
             },
         )?;
         let outcome = invocation.outcome;

@@ -16,6 +16,8 @@
 // Standard Library Imports
 
 // Third Party Imports
+use prost::Message as _;
+use wasm_encoder::Encode;
 use wasm_encoder::reencode::{Reencode, ReencodeComponent};
 use wit_component::ComponentEncoder;
 // Local Imports
@@ -63,12 +65,20 @@ impl ReencodeComponent for Shipping {
 /* === Public Functions === */
 
 pub fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
-    ComponentEncoder::default()
+    let mut component = ComponentEncoder::default()
         .module(module)
         .map_err(|error| format!("{error:#}"))?
         .validate(true)
         .encode()
-        .map_err(|error| format!("{error:#}"))
+        .map_err(|error| format!("{error:#}"))?;
+    let registration = super::guest::inspect(&component).map_err(|error| error.to_string())?;
+    let section = wasm_encoder::CustomSection {
+        name: harmos_runtime::bundle::GUEST_METADATA_SECTION.into(),
+        data: registration.encode_to_vec().into(),
+    };
+    component.push(0);
+    section.encode(&mut component);
+    Ok(component)
 }
 
 /* === Private Functions === */

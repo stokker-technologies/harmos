@@ -38,3 +38,49 @@
 ## Workflow Follow-Up
 
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.
+
+## Windows Build Measurements
+
+Ryzen 9 5950X, 80 GiB RAM, Rust 1.99.1; other builds were active. Cold targets
+retained the shared compiler cache. Warm probes added and removed an unused
+constant, then built the runtime consumer; rows average edit and restore runs.
+These observations overlap cache/profile effects and are not isolated guarantees.
+
+| Selection | Before | After |
+| --- | --- | --- |
+| Warm Runtime Check / Build / Library Test | 8.9 / 15.1 / 36.6 s | 4.7 / 21.1 / 14.7 s |
+| Warm Operations Check / Build / Library Test | 13.4 / 23.1 / 36.4 s | 7.0 / 13.0 / 21.5 s |
+| Warm Protocol Check / Build / Library Test | 20.7 / 26.2 / 35.6 s | 15.5 / 22.6 / 36.7 s |
+| Empty-Target Runtime Build | 186 s | 110 s |
+| First Example Selection | 802 s | 183 s |
+| Tests Compilation and Archive | 576.3 s | 493.4 s |
+| Separate Fixture Driver | 167.9 s | <0.001 s |
+| Guest Fixture | 210.2 s | 43.7 s |
+| Offline Inputs | 24.6 s | 32.4 s |
+| Complete Cold Tests Producer | 998.4 s | 590.8 s |
+| Complete Warm Tests Producer | 46.3 s | 41.5 s |
+
+The cold Tests comparison used the then-canonical 32 targets and features;
+the final run removed native and Wasm development outputs first. Runtime `--lib`
+edit/restore took 7.0–8.5 s. An independent empty-target protocol check took 499 s
+with server-side compilation versus 80–97 s client-side; wrapper waiting appeared
+inside frontend timing bars. An isolated cross-drive cache probe improved from
+0 hits / 70 misses to 63 hits / 7 misses, reducing the second build from 64 to 45 s;
+retained-target edit/restore then took 6.6 / 4.3 s.
+
+| Builders, Eight Jobs Each | Warm Batch Time | Relative Throughput |
+| --- | --- | --- |
+| 1 | 24.6 s | 1.0× |
+| 2 | 25.0 s | 2.0× |
+| 4 | 28.8 s | 3.4× |
+
+Independent targets shared the cache. Coarse sampling observed up to four rustc
+processes and about 3.2 logical cores of compiler work. LLD edit/restore took
+31.8 / 17.3 s versus MSVC's 13.6 / 15.9 s; the default linker remains. Warm runtime
+frontends took roughly 2–5 s, with under one second of code generation. Packaging's
+runtime dependency still causes distinct normal/test runtime units. Linux timings,
+other SDK timings, actual branch switching, more than four builders and controlled
+cold-build concurrency remain unmeasured.
+
+- [x] 5.5 Merge build-speed tooling with SDK guest profiles and focused test selectors;
+  retain benchmark fixture separation and move measurements out of the usage guide.

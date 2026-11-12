@@ -27,7 +27,16 @@ publish.workspace = true
 default = []
 build-tools = ["dep:notify", "dep:process-wrap"]
 sidecar = ["build-tools", "dep:harmos-protocol", "dep:prost", "dep:tokio"]
-guest = ["build-tools", "dep:wit-component", "dep:wasm-encoder", "dep:wasmparser"]
+guest = [
+  "build-tools",
+  "harmos-runtime/plugin-guest",
+  "dep:harmos-protocol",
+  "dep:prost",
+  "dep:tokio",
+  "dep:wit-component",
+  "dep:wasm-encoder",
+  "dep:wasmparser",
+]
 generate-proto = ["dep:heck", "dep:prost-reflect"]
 generate-python = ["generate-proto"]
 

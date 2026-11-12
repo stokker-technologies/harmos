@@ -14,8 +14,11 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::io::{self, Write};
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 // Third Party Imports
+use sha2::{Digest, Sha256};
 // Local Imports
 use super::manager::{Domain, Operation};
 use super::{
@@ -45,28 +48,147 @@ pub struct ObjectGroup<'a> {
     receipts: Vec<ObjectReceipt>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ObjectExchange {
+    pub expected: Option<ObjectVersionToken>,
+    pub schema: StorageSchema,
+    pub value: ObjectEntry,
+}
+
+struct Fingerprint(Sha256);
+
 /* === Enums === */
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CompareExchange {
+    Applied(ObjectReceipt),
+    Conflict { current: Option<ObjectVersionToken> },
+}
 
 /* === Traits === */
 
 /* === Implementations === */
 
+impl ObjectExchange {
+    pub fn validate(&self) -> Result<()> {
+        self.value.version.check_position(&self.value.position)?;
+        self.value.position.history.check(&self.schema.position.history)?;
+        if self.schema.position.sequence == 0
+            || self.schema.position.sequence.checked_add(1) != Some(self.value.position.sequence)
+            || self.schema.key != self.value.value.schema
+        {
+            return Err(invalid("conditional schema and object must own consecutive matching positions"));
+        }
+        if let Some(expected) = &self.expected {
+            self.value.position.history.check(expected.history())?;
+        }
+        Ok(())
+    }
+    pub fn fingerprint(&self) -> Result<[u8; 32]> {
+        let mut writer = Fingerprint(Sha256::new());
+        writer.0.update(b"storage.object.exchange:v1\0");
+        serde_json::to_writer(&mut writer, self)
+            .map_err(|source| crate::Error::backend("fingerprint conditional object", crate::BackendFailure::Permanent, source))?;
+        Ok(writer.0.finalize().into())
+    }
+}
+
+impl Write for Fingerprint {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 impl ObjectGroup<'_> {
     pub fn write<T: StoredObject>(&mut self, value: &T) -> Result<()> {
-        self.manager.inner.catalog.handle::<T>()?;
         if self.objects.len() == self.count {
             return Err(invalid("object group contains too many objects"));
         }
-        let settings = harmos_domain::config::SchemaSettings::default();
-        let graph =
-            crate::schema::graph::Schema::from_declaration(T::DEFINITION, &settings).map_err(|_| invalid("invalid object schema"))?;
-        let schema = object_schema::<T>()?;
-        let item = object_key(value.key(), self.manager.inner.settings.max_batch_bytes())?;
-        let payload = value.encode();
-        if payload.len() != value.encoded_size() {
-            return Err(invalid("object codec length differs"));
+        let (value, graph) = prepare(self.manager, value)?;
+        self.append(value, graph)
+    }
+}
+
+impl StorageManager {
+    pub async fn compare_exchange<T: StoredObject>(&self, expected: Option<ObjectVersionToken>, value: &T) -> Result<CompareExchange> {
+        self.admit_exchange(None, expected, value).await
+    }
+    pub async fn compare_exchange_once<T: StoredObject>(
+        &self, mutation: &crate::MutationId, expected: Option<ObjectVersionToken>, value: &T,
+    ) -> Result<CompareExchange> {
+        self.admit_exchange(Some(mutation), expected, value).await
+    }
+    pub async fn retire_object_receipts(&self, through: &crate::StorageCursor) -> Result<()> {
+        self.flush_until(through).await?;
+        self.inner.bounded("primary.retire_object_receipts", self.inner.primary.retire_object_receipts(through)).await
+    }
+
+    async fn admit_exchange<T: StoredObject>(
+        &self, mutation: Option<&crate::MutationId>, expected: Option<ObjectVersionToken>, value: &T,
+    ) -> Result<CompareExchange> {
+        if !self.inner.primary.capabilities().conditional_objects {
+            return Err(crate::Error::backend(
+                "conditional objects",
+                crate::BackendFailure::Unsupported,
+                io::Error::new(io::ErrorKind::Unsupported, "backend has no atomic conditional object primitive"),
+            ));
         }
-        self.append(ObjectValue { schema, item, payload }, graph)
+        let _writer = self.inner.object_writes.lock().await;
+        let (value, graph) = prepare(self, value)?;
+        let graph = Arc::new(graph);
+        if let Some(expected) = &expected {
+            self.inner.primary.history().check(expected.history())?;
+        }
+        let fingerprint = if mutation.is_some() {
+            let mut writer = Fingerprint(Sha256::new());
+            writer.0.update(b"storage.compare_exchange:v1\0");
+            serde_json::to_writer(&mut writer, &(&expected, &value))
+                .map_err(|source| crate::Error::backend("fingerprint conditional admission", crate::BackendFailure::Permanent, source))?;
+            Some(writer.0.finalize().into())
+        } else {
+            None
+        };
+        let mutation = mutation.zip(fingerprint).map(|(id, fingerprint)| super::admissions::Mutation { id, fingerprint });
+        let mut prepared = Some((value, graph));
+        let mut request = None;
+        let sequence = self
+            .admit_mutation(Domain::Data, self.object_admission_bytes().get(), 2, mutation, false, |first| {
+                let (value, graph) = prepared.take().expect("one admission build");
+                let position = self.position(first + 1);
+                let exchange = Arc::new(ObjectExchange {
+                    expected: expected.clone(),
+                    schema: StorageSchema::new(self.position(first), value.schema.clone(), graph),
+                    value: ObjectEntry {
+                        version: ObjectVersionToken::new(position.clone()),
+                        position,
+                        value,
+                    },
+                });
+                request = Some(exchange.clone());
+                Ok(Operation::Conditional(exchange))
+            })
+            .await?;
+        let through = self.position(sequence);
+        self.flush_until(&through).await?;
+        let request = if let Some(request) = request {
+            request
+        } else {
+            let (value, graph) = prepared.take().expect("replayed admission keeps its input");
+            Arc::new(ObjectExchange {
+                expected,
+                schema: StorageSchema::new(self.position(sequence - 1), value.schema.clone(), graph),
+                value: ObjectEntry {
+                    version: ObjectVersionToken::new(through.clone()),
+                    position: through,
+                    value,
+                },
+            })
+        };
+        self.inner.bounded("primary.compare_exchange", self.inner.primary.compare_exchange(&request)).await
     }
 }
 
@@ -234,6 +356,21 @@ impl StorageManager {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn prepare<T: StoredObject>(manager: &StorageManager, value: &T) -> Result<(ObjectValue, crate::schema::graph::Schema)> {
+    manager.inner.catalog.handle::<T>()?;
+    let graph = crate::schema::graph::Schema::from_declaration(T::DEFINITION, &harmos_domain::config::SchemaSettings::default())
+        .map_err(|_| invalid("invalid object schema"))?;
+    let schema = object_schema::<T>()?;
+    let item = object_key(value.key(), manager.inner.settings.max_batch_bytes())?;
+    let payload = value.encode();
+    if payload.len() != value.encoded_size() {
+        return Err(invalid("object codec length differs"));
+    }
+    let value = ObjectValue { schema, item, payload };
+    manager.inner.catalog.validate_value(&value, manager.inner.settings.max_batch_bytes())?;
+    Ok((value, graph))
+}
 
 pub(super) fn invalid(reason: &'static str) -> crate::Error {
     harmos_domain::model::storage::invalid(reason).into()

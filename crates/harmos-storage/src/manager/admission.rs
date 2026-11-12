@@ -145,6 +145,7 @@ impl StorageManager {
             }
             let bytes = match &operation {
                 Operation::ObjectGroup { bytes: retained, .. } => *retained,
+                Operation::Conditional(_) => operation.encoded_batch_bytes()?,
                 _ => bytes,
             };
             tracing::Span::current().record("sequence", last);

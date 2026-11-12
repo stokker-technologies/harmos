@@ -22,8 +22,8 @@ pub use settings::storage_settings;
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 // Third Party Imports
 use tokio::sync::Notify;
@@ -43,6 +43,7 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 #[derive(Default)]
 pub struct Control {
     pub date: Mutex<Option<std::time::SystemTime>>,
+    pub fail_projection: AtomicBool,
     pub block_chunk_file: Mutex<Option<String>>,
     pub permanent_chunk_file: Mutex<Option<String>>,
     pub chunk_active: Mutex<BTreeMap<String, usize>>,
@@ -147,8 +148,8 @@ pub struct Control {
     pub flushes: Mutex<Vec<u64>>,
 }
 
-#[derive(Clone)]
 struct Snapshot {
+    at: StorageCursor,
     pruned_objects: BTreeMap<u64, (SchemaKey, ObjectKey)>,
     blobs: BTreeMap<String, (FileReference, Vec<u8>)>,
     lost_objects_through: u64,
@@ -166,7 +167,16 @@ pub struct Release {
     pub through: StorageCursor,
 }
 
+#[derive(Default)]
+struct Conditional {
+    floor: u64,
+    receipts: BTreeMap<u64, ([u8; 32], CompareExchange)>,
+}
+
 pub struct Data {
+    conditional: Mutex<Conditional>,
+    projections: Mutex<harmos_storage::query::projection::ProjectionCatalog>,
+    indexes: Mutex<harmos_storage::query::index::IndexCatalog>,
     pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
     pub object_releases: Mutex<Vec<Release>>,
     catalog: ObjectCatalog,
@@ -183,8 +193,9 @@ pub struct Data {
     file_io: Mutex<()>,
     pub files: Mutex<BTreeMap<u64, FileReference>>,
     pub blobs: Mutex<BTreeMap<String, (FileReference, Vec<u8>)>>,
-    snapshots: Mutex<BTreeMap<Vec<u8>, Snapshot>>,
+    snapshots: Mutex<BTreeMap<Vec<u8>, Arc<Snapshot>>>,
     next_snapshot: AtomicUsize,
+    snapshot_scope: usize,
     pub history: StoreHistory,
     pub control: Control,
     pub records: Mutex<BTreeMap<u64, StoredRecord>>,
@@ -266,7 +277,11 @@ impl Data {
 
 impl Data {
     pub fn with_catalog(catalog: ObjectCatalog, history: StoreHistory) -> Self {
+        static NEXT_SCOPE: AtomicUsize = AtomicUsize::new(1);
         Self {
+            indexes: Mutex::default(),
+            projections: Mutex::default(),
+            conditional: Mutex::default(),
             pruned_objects: Mutex::default(),
             object_releases: Mutex::new(Vec::new()),
             catalog,
@@ -285,6 +300,7 @@ impl Data {
             blobs: Mutex::default(),
             snapshots: Mutex::default(),
             next_snapshot: AtomicUsize::new(1),
+            snapshot_scope: NEXT_SCOPE.fetch_add(1, Ordering::SeqCst),
             history,
             control: Control::default(),
             records: Mutex::new(BTreeMap::new()),
@@ -299,6 +315,136 @@ impl Data {
 }
 
 impl StorageBackend for Data {
+    fn compare_exchange<'a>(&'a self, exchange: &'a ObjectExchange) -> StorageFuture<'a, CompareExchange> {
+        Box::pin(async move {
+            exchange.validate()?;
+            self.history.check(&exchange.value.position.history)?;
+            self.control.write([exchange.schema.position.sequence, exchange.value.position.sequence]).await?;
+            let fingerprint = exchange.fingerprint()?;
+            let mut conditional = self.conditional.lock().unwrap();
+            let position = exchange.value.position.sequence;
+            if let Some((prior, outcome)) = conditional.receipts.get(&position) {
+                if prior != &fingerprint {
+                    return Err(failure(BackendFailure::Conflict));
+                }
+                return Ok(outcome.clone());
+            }
+            if position <= conditional.floor {
+                return Err(Error::Gap {
+                    requested: position,
+                    available: conditional.floor.saturating_add(1),
+                });
+            }
+            if exchange.schema.position.sequence <= self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(failure(BackendFailure::Conflict));
+            }
+            let mut objects = self.objects.lock().unwrap();
+            let current = objects
+                .values()
+                .rev()
+                .find(|object| object.value.schema.id == exchange.value.value.schema.id && object.value.item == exchange.value.value.item)
+                .map(|object| object.version.clone());
+            let outcome = if current == exchange.expected {
+                self.catalog.validate_value(&exchange.value.value, NonZeroUsize::MAX)?;
+                let mut schemas = self.schemas.lock().unwrap();
+                if schemas.values().any(|schema| schema.key == exchange.schema.key && schema.schema != exchange.schema.schema) {
+                    return Err(failure(BackendFailure::Conflict));
+                }
+                schemas.insert(exchange.schema.position.sequence, exchange.schema.clone());
+                objects.insert(position, exchange.value.clone());
+                CompareExchange::Applied(ObjectReceipt {
+                    position: exchange.value.position.clone(),
+                    version: exchange.value.version.clone(),
+                })
+            } else {
+                CompareExchange::Conflict { current }
+            };
+            conditional.receipts.insert(position, (fingerprint, outcome.clone()));
+            self.saved.fetch_max(position as usize, Ordering::SeqCst);
+            Ok(outcome)
+        })
+    }
+    fn retire_object_receipts<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        Box::pin(async move {
+            self.history.check(&through.history)?;
+            if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(failure(BackendFailure::Conflict));
+            }
+            let mut conditional = self.conditional.lock().unwrap();
+            conditional.receipts.retain(|position, _| *position > through.sequence);
+            conditional.floor = conditional.floor.max(through.sequence);
+            Ok(())
+        })
+    }
+
+    fn capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
+        harmos_storage::query::columnar::StorageCapabilities {
+            durable_projections: true,
+            conditional_objects: true,
+            ..Default::default()
+        }
+    }
+    fn register_projection<'a>(
+        &'a self, definition: &'a harmos_storage::query::projection::ProjectionDefinition, rebuild: bool,
+    ) -> StorageFuture<'a, u64> {
+        Box::pin(async move { self.projections.lock().unwrap().register(definition, rebuild) })
+    }
+    fn projection_definition<'a>(
+        &'a self, name: &'a Identifier,
+    ) -> StorageFuture<'a, (harmos_storage::query::projection::ProjectionDefinition, u64)> {
+        Box::pin(async move { self.projections.lock().unwrap().definition(name) })
+    }
+    fn projection_status<'a>(
+        &'a self, name: &'a Identifier, revision: u64, frontier: &'a StorageCursor,
+    ) -> StorageFuture<'a, Option<harmos_storage::query::projection::ProjectionStatus>> {
+        Box::pin(async move {
+            self.history.check(&frontier.history)?;
+            self.projections.lock().unwrap().status(name, revision, frontier)
+        })
+    }
+    fn projection_frontier<'a>(&'a self, name: &'a Identifier, revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
+        Box::pin(async move { self.projections.lock().unwrap().frontier(name, revision) })
+    }
+    fn publish_projection(&self, publication: harmos_storage::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+        Box::pin(async move {
+            self.image(publication.snapshot())?;
+            if self.control.fail_projection.load(Ordering::SeqCst) {
+                return Err(failure(BackendFailure::Transient));
+            }
+            self.projections.lock().unwrap().publish(&publication)
+        })
+    }
+    fn read_projection<'a>(
+        &'a self, read: &'a harmos_storage::query::projection::ProjectionRead,
+    ) -> StorageFuture<'a, harmos_storage::query::projection::ProjectionPage> {
+        Box::pin(async move {
+            self.history.check(&read.frontier.history)?;
+            self.projections.lock().unwrap().read(read)
+        })
+    }
+    fn retire_projection<'a>(&'a self, name: &'a Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        Box::pin(async move {
+            self.history.check(&through.history)?;
+            if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(failure(BackendFailure::Conflict));
+            }
+            self.projections.lock().unwrap().retire(name, revision, through)
+        })
+    }
+
+    fn register_index<'a>(
+        &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, rebuild: bool, _work: ReadLimits,
+        cancel: &'a harmos_storage::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, u64> {
+        Box::pin(async move {
+            cancel.check()?;
+            self.indexes.lock().unwrap().register(definition, rebuild)
+        })
+    }
+    fn index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_storage::query::index::IndexDefinition, u64)> {
+        Box::pin(async move { self.indexes.lock().unwrap().definition(name) })
+    }
+
     fn release_object_history<'a>(
         &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()> {
@@ -450,7 +596,11 @@ impl StorageBackend for Data {
         })
     }
     fn close(&self) -> StorageFuture<'_, ()> {
-        Box::pin(async move { self.control.close() })
+        Box::pin(async move {
+            self.control.close()?;
+            self.snapshots.lock().unwrap().clear();
+            Ok(())
+        })
     }
     fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         self.fixture_open_snapshot(at)
@@ -608,8 +758,14 @@ impl Data {
         })
     }
 
-    fn image(&self, snapshot: &BackendSnapshot) -> Result<Snapshot> {
-        self.snapshots.lock().unwrap().get(&snapshot.token).cloned().ok_or(Error::Closing { domain: "test snapshot" })
+    fn image(&self, snapshot: &BackendSnapshot) -> Result<Arc<Snapshot>> {
+        self.snapshots
+            .lock()
+            .unwrap()
+            .get(&snapshot.token)
+            .filter(|image| image.at == snapshot.at)
+            .cloned()
+            .ok_or(Error::NotReady { domain: "expired test snapshot" })
     }
 }
 

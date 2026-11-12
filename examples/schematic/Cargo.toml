@@ -19,7 +19,6 @@ publish = false
 # Local
 harmos-runtime = { path = "../../crates/harmos-runtime", default-features = false }
 harmos-operations = { path = "../../crates/harmos-operations", default-features = false }
-harmos-guest = { path = "../../crates/harmos-guest", default-features = false }
 harmos-protocol = { path = "../../crates/harmos-protocol" }
 harmos-domain = { path = "../../crates/harmos-domain", default-features = false }
 harmos-packaging = { path = "../../tools/packaging", default-features = false }
@@ -85,6 +84,12 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+# Keep SDK Descriptor Validation Within The Runtime Fuel Budget In Dev Builds.
+[profile.dev.package.harmos]
+opt-level = 2
+
+[profile.dev.package.harmos-protocol]
+opt-level = 2
 
 # Keep Full Guest Metadata Validation Within The Same Fuel Budget In Dev Builds.
 [profile.dev.package.harmos-domain]

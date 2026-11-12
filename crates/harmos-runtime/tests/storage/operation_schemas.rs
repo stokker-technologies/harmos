@@ -124,7 +124,7 @@ async fn schema_registry_roundtrip() {
         .runtime
         .operations
         .download_protobuf::<Query>(
-            query.into(),
+            query.try_into().unwrap(),
             harmos_runtime::operations::StreamSettings {
                 items: NonZeroUsize::MIN,
                 bytes: NonZeroUsize::new(64 * 1024).unwrap(),

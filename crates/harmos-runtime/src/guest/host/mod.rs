@@ -12,7 +12,6 @@
 pub(crate) mod envelope;
 pub(crate) mod plugin;
 
-pub(crate) mod native_payloads;
 mod sdk;
 mod serving;
 pub(crate) mod session;
@@ -35,10 +34,11 @@ use wasmtime::component::{Component, InstancePre, Linker};
 use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuilder};
 
 // Local Imports
-use super::Registration;
+use super::Declaration;
 use crate::config::PluginGuestSettings;
 use crate::{Application, Runtime, streams::StreamManager};
-use harmos_operations::inventory::{Declaration, DeclarationError, Facility};
+use harmos_protocol::v1;
+use prost::Message as _;
 
 /* === Constants === */
 
@@ -62,6 +62,7 @@ pub struct Host<A: Application> {
     streams: StreamManager<A>,
     operations: crate::operations::Manager,
     max_component: usize,
+    stream_window: Option<std::num::NonZeroUsize>,
     limits: StoreLimits,
     fuel: u64,
 }
@@ -81,7 +82,6 @@ pub struct Loaded<A: Application> {
 pub struct Registered<A: Application> {
     store: Store<Bridge<A>>,
     sdk: sdk::Plugin,
-    registrations: Vec<Registration>,
     routing: Option<crate::guest::host::plugin::PluginEndpoint>,
     epochs: Arc<Epochs>,
     fuel: u64,
@@ -122,9 +122,6 @@ pub enum Error {
 
     #[error(transparent)]
     Stream(#[from] crate::streams::StreamRegistrationError),
-
-    #[error(transparent)]
-    Declaration(#[from] DeclarationError),
 
     #[error("guest component exceeds the {limit}-byte host bound")]
     Oversized { limit: usize },
@@ -180,10 +177,6 @@ impl Epochs {
 
         epochs
     }
-
-    fn ticks(&self, bound: Duration) -> u64 {
-        u64::try_from(bound.as_nanos().div_ceil(TICK.as_nanos())).unwrap_or(UNBOUNDED).clamp(1, UNBOUNDED)
-    }
 }
 
 impl<A: Application> Host<A> {
@@ -218,6 +211,7 @@ impl<A: Application> Host<A> {
             streams,
             operations,
             max_component: settings.component_bytes.get(),
+            stream_window: settings.stream_window,
             fuel: settings.fuel.get(),
             limits: store_limits(settings),
         })
@@ -227,9 +221,11 @@ impl<A: Application> Host<A> {
         if bytes.len() > self.max_component {
             return Err(Error::Oversized { limit: self.max_component });
         }
-        let declaration = Declaration::inspect(bytes, Facility::Guest)?;
+
+        let registration = crate::bundle::guest_registration(bytes).map_err(|error| Error::Guest { message: error.to_string() })?;
+        let declaration = Declaration::new(registration, self.stream_window)?;
         let component = Component::new(&self.engine, bytes).map_err(|source| Error::Component {
-            id: declaration.id.clone(),
+            id: "guest".into(),
             message: source.to_string(),
         })?;
         let mut linker: Linker<Bridge<A>> = Linker::new(&self.engine);
@@ -239,10 +235,17 @@ impl<A: Application> Host<A> {
                 interface.func_wrap_concurrent("child", |accessor, (payload,): (Vec<u8>,)| {
                     Box::pin(async move {
                         let submitted = crate::supervision::executor::now();
-                        let child = crate::operations::WireChild::decode(&payload);
+                        let child = crate::operations::WireChild::decode(&payload).and_then(|mut child| {
+                            let preparation = if let crate::operations::WireChild::Call(call) = &mut child {
+                                accessor.with(|mut access| access.get().publication_payload(call))?
+                            } else {
+                                None
+                            };
+                            Ok((child, preparation))
+                        });
                         let result = match child {
                             Err(error) => Err(Bridge::<A>::refusal("-32602", error.to_string())),
-                            Ok(child) => {
+                            Ok((child, _preparation)) => {
                                 let scope = accessor.with(|mut access| {
                                     access.get().children.lock().expect("guest child context lock").get(child.context()).cloned()
                                 });
@@ -257,7 +260,7 @@ impl<A: Application> Host<A> {
                                         let endpoint =
                                             accessor.with(|mut access| access.get().session.as_ref().and_then(std::sync::Weak::upgrade));
                                         match endpoint {
-                                            Some(endpoint) => endpoint.background(call, submitted).await.map_err(|error| {
+                                            Some(endpoint) => endpoint.background(*call, submitted).await.map_err(|error| {
                                                 let refusal = match error {
                                                     Error::OperationCaller(error) => crate::operations::children::refused(error),
                                                     error => harmos_operations::Refusal::new(-32_606, error),
@@ -270,7 +273,7 @@ impl<A: Application> Host<A> {
                                     (Some(scope), child) => {
                                         let (_cancel, cancelled) = tokio::sync::oneshot::channel();
                                         let answer = match child {
-                                            crate::operations::WireChild::Call(call) => scope.call(call, submitted, cancelled).await,
+                                            crate::operations::WireChild::Call(call) => scope.call(*call, submitted, cancelled).await,
                                             crate::operations::WireChild::Control(control) => scope.control(control, cancelled).await,
                                         };
                                         answer.map_err(|error| Bridge::<A>::forwarded(&error))
@@ -342,14 +345,7 @@ impl<A: Application> Loaded<A> {
     }
 
     pub async fn register(self) -> Result<Registered<A>, Error> {
-        self.register_with_limits(None).await
-    }
-
-    pub(super) async fn register_with_limits(self, limits: Option<StoreLimits>) -> Result<Registered<A>, Error> {
-        // Catalog serialization can legitimately do more work than one
-        // interactive route call; its wall-clock bound remains separate.
-        let fuel = if limits.is_some() { 100_000_000 } else { self.fuel };
-        let deadline = if limits.is_some() { self.epochs.ticks(Duration::from_secs(10)) } else { UNBOUNDED };
+        let fuel = self.fuel;
         let bridge = Bridge {
             declaration: self.declaration,
             streams: self.streams,
@@ -361,33 +357,37 @@ impl<A: Application> Loaded<A> {
             children: Arc::new(Mutex::new(BTreeMap::new())),
             session: None,
             active: false,
-            limits: limits.unwrap_or(self.limits),
+            limits: self.limits,
         };
         let mut store = Store::new(self.component.engine(), bridge);
         store.limiter(|bridge| &mut bridge.limits);
         store.set_fuel(fuel).map_err(|source| Error::Guest { message: format!("{source:#}") })?;
-        store.set_epoch_deadline(deadline);
+        store.set_epoch_deadline(UNBOUNDED);
         let instance =
             self.component.instantiate_async(&mut store).await.map_err(|source| Error::Guest { message: format!("{source:#}") })?;
         let sdk = self.sdk.load(&mut store, &instance).map_err(|source| Error::Guest { message: format!("{source:#}") })?;
         // Collect Inert Metadata on the Original Store Before P Exists
         let collected = store.run_concurrent(async |accessor| sdk.call_register(accessor).await).await.and_then(|result| result);
-        let registrations = match collected {
-            Ok(Ok(registrations)) => Ok(registrations
-                .into_iter()
-                .map(|entry| Registration {
-                    namespace: entry.namespace,
-                    schema: entry.schema,
-                    payload: entry.payload,
-                })
-                .collect()),
-            Ok(Err(message)) => Err(Error::Refused { message }),
-            Err(source) => Err(Error::Guest { message: format!("{source:#}") }),
-        }?;
+        let metadata = match collected {
+            Ok(Ok(bytes)) if bytes.len() <= harmos_protocol::guest::COMMAND_BYTES => {
+                v1::GuestRegistration::decode(bytes.as_slice()).map_err(|error| Error::Guest { message: error.to_string() })?
+            }
+            Ok(Ok(_)) => {
+                return Err(Error::Guest {
+                    message: "Guest Registration Exceeds Its Byte Bound".into(),
+                });
+            }
+            Ok(Err(message)) => return Err(Error::Refused { message }),
+            Err(source) => return Err(Error::Guest { message: format!("{source:#}") }),
+        };
+        if metadata != store.data().declaration.registration {
+            return Err(Error::Guest {
+                message: "Guest Registration Changed Between Stores".into(),
+            });
+        }
         Ok(Registered {
             store,
             sdk,
-            registrations,
             routing: None,
             epochs: self.epochs,
             fuel: self.fuel,
@@ -396,10 +396,6 @@ impl<A: Application> Loaded<A> {
 }
 
 impl<A: Application> Registered<A> {
-    pub fn registrations(&self) -> &[Registration] {
-        &self.registrations
-    }
-
     pub fn routed(mut self, router: &crate::guest::host::plugin::Router) -> Result<Self, Error> {
         let instance = router.enter(&self.store.data().declaration.id)?;
         self.store.data_mut().scope = instance.scope().cloned();
@@ -424,7 +420,9 @@ impl<A: Application> Registered<A> {
         scope.validate_wire_contracts(manifest.provides.iter())?;
         let mut required = manifest.requires.clone();
         required.sort_by(|a, b| a.contract.operation().id.cmp(&b.contract.operation().id));
-        if scope.required_contracts() != Some(required.as_slice()) {
+        if scope.required_contracts().is_none_or(|actual| {
+            actual.len() != required.len() || actual.iter().zip(&required).any(|(actual, expected)| actual.contract != expected.contract)
+        }) {
             return Err(crate::Error::InvalidInput {
                 field: "guest required contracts",
                 reason: "manifest differs from the original admitted generation",
@@ -461,26 +459,108 @@ impl<A: Application> Bridge<A> {
         Ok(())
     }
 
-    fn refusal(code: &str, message: impl Into<String>) -> sdk::capabilities::Refusal {
-        let failure = harmos_operations::Failure::new(crate::operations::FailureKind::Permanent, message);
-        sdk::capabilities::Refusal {
-            code: code.to_owned(),
-            failure: failure.encode(),
+    fn publication_payload(
+        &self, call: &mut crate::operations::WireChildCall,
+    ) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, crate::operations::WireCodecError> {
+        if call.operation.split_once('.').map(|(_, local)| local) != Some("host.publish") {
+            return Ok(None);
         }
+        let factory = harmos_operations::execution::operations::OperationFactory::protobuf::<harmos_operations::streams::Publish>()
+            .map_err(|_| crate::operations::WireCodecError::Shape)?;
+        let bytes = factory.grpc_decoding_memory(&call.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
+        let preparation = self.operations.claim_preparation(std::num::NonZeroUsize::new(bytes.max(1)).unwrap())?;
+        let mut request = harmos_protocol::host::Publish::decode(call.payload.as_slice())?;
+        let catalog = self.declaration.registration.catalog.as_ref().ok_or(crate::operations::WireCodecError::Shape)?;
+        let stream = catalog.streams.iter().find(|stream| stream.id == request.stream).ok_or(crate::operations::WireCodecError::Shape)?;
+        let pool =
+            prost_reflect::DescriptorPool::from_file_descriptor_set(catalog.types.clone().ok_or(crate::operations::WireCodecError::Shape)?)
+                .map_err(|_| crate::operations::WireCodecError::Shape)?;
+        let row =
+            crate::streams::protobuf::Row::new(pool.get_message_by_name(&stream.row).ok_or(crate::operations::WireCodecError::Shape)?)
+                .map_err(|_| crate::operations::WireCodecError::Shape)?;
+        request.payload = row.decode(&request.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
+        for following in &mut request.following {
+            following.payload = row.decode(&following.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
+        }
+        call.payload = request.encode_to_vec();
+        Ok(Some(preparation))
     }
 
-    // A host refusal crosses into the guest with its failure unchanged.
-    fn forwarded(refusal: &OperationRefusal) -> sdk::capabilities::Refusal {
-        sdk::capabilities::Refusal {
-            code: refusal.code().to_string(),
-            failure: refusal.failure().encode(),
+    fn refusal(code: &str, message: impl Into<String>) -> Vec<u8> {
+        v1::Failure {
+            classification: v1::Classification::Refused as i32,
+            code: code.into(),
+            message: message.into(),
+            ..Default::default()
         }
+        .encode_to_vec()
+    }
+    fn forwarded(refusal: &OperationRefusal) -> Vec<u8> {
+        let mut failure = v1::Failure::from(refusal.failure());
+        if failure.code.is_empty() {
+            failure.code = refusal.code().to_string();
+        }
+        failure.encode_to_vec()
     }
 }
 
 /* === Public Functions === */
 
+/// Collect the Authoritative Guest Metadata Without Granting Host Authority.
+pub async fn inspect(bytes: &[u8], settings: PluginGuestSettings) -> Result<v1::GuestRegistration, Error> {
+    if bytes.len() > settings.component_bytes.get() {
+        return Err(Error::Oversized { limit: settings.component_bytes.get() });
+    }
+    let mut config = Config::new();
+    config.wasm_component_model(true).wasm_component_model_async(true).concurrency_support(true).consume_fuel(true);
+    let engine = WasmEngine::new(&config).map_err(|error| Error::Guest { message: error.to_string() })?;
+    let component = Component::new(&engine, bytes).map_err(|error| Error::Guest { message: error.to_string() })?;
+    inspect_component(&component, store_limits(settings), settings.fuel.get()).await
+}
+
 /* === Private Functions === */
+
+async fn inspect_component(component: &Component, limits: StoreLimits, fuel: u64) -> Result<v1::GuestRegistration, Error> {
+    let mut linker: Linker<StoreLimits> = Linker::new(component.engine());
+    linker
+        .instance("harmos:guest/operation-context@1.0.0")
+        .and_then(|mut interface| {
+            interface.func_wrap_concurrent("child", |_, (_payload,): (Vec<u8>,)| {
+                Box::pin(async {
+                    Ok((Err::<Vec<u8>, _>(
+                        v1::Failure {
+                            classification: v1::Classification::Refused as i32,
+                            code: "registration_has_no_authority".into(),
+                            message: "Registration Cannot Call the Host".into(),
+                            ..Default::default()
+                        }
+                        .encode_to_vec(),
+                    ),))
+                })
+            })
+        })
+        .map_err(|error| Error::Guest { message: error.to_string() })?;
+    let pre = linker.instantiate_pre(component).map_err(|error| Error::Guest { message: error.to_string() })?;
+    let indices = sdk::PluginIndices::new(&pre).map_err(|error| Error::Guest { message: error.to_string() })?;
+    let mut store = Store::new(component.engine(), limits);
+    store.limiter(|limits| limits);
+    store.set_fuel(fuel).map_err(|error| Error::Guest { message: error.to_string() })?;
+    store.set_epoch_deadline(UNBOUNDED);
+    let instance = pre.instantiate_async(&mut store).await.map_err(|error| Error::Guest { message: format!("{error:#}") })?;
+    let sdk = indices.load(&mut store, &instance).map_err(|error| Error::Guest { message: error.to_string() })?;
+    let bytes = store
+        .run_concurrent(async |accessor| sdk.call_register(accessor).await)
+        .await
+        .and_then(|result| result)
+        .map_err(|error| Error::Guest { message: format!("{error:#}") })?
+        .map_err(|message| Error::Refused { message })?;
+    if bytes.len() > harmos_protocol::guest::COMMAND_BYTES {
+        return Err(Error::Guest {
+            message: "Guest Registration Exceeds Its Byte Bound".into(),
+        });
+    }
+    v1::GuestRegistration::decode(bytes.as_slice()).map_err(|error| Error::Guest { message: error.to_string() })
+}
 
 pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
     StoreLimitsBuilder::new()
@@ -491,20 +571,6 @@ pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {
         .instances(settings.instances.get())
         .trap_on_grow_failure(true)
         .build()
-}
-
-fn refused(refusal: sdk::capabilities::Refusal) -> OperationRefusal {
-    let failure = match harmos_operations::Failure::decode(&refusal.failure) {
-        Ok(failure) => failure,
-        Err(source) => {
-            let cause = format!("the guest refusal is unreadable: {source}");
-            harmos_operations::Failure::new(crate::operations::FailureKind::Invalid, cause)
-        }
-    };
-    match refusal.code.parse::<i64>() {
-        Ok(code) => OperationRefusal::failed(code, failure),
-        Err(_) => OperationRefusal::failed(harmos_operations::FAILED, failure),
-    }
 }
 
 /* === Tests === */

@@ -26,9 +26,6 @@ use super::manager::Entry;
 #[cfg(feature = "plugin-guest")]
 use crate::guest::host::plugin::PluginScope;
 
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::RequestShape;
-
 #[cfg(feature = "plugin-guest")]
 use crate::Error;
 use crate::{Result, operations::Lane};
@@ -229,43 +226,6 @@ impl Bindings<'_> {
     pub fn register(&mut self, registration: Registration) -> Result<()> {
         let entries = self.operations.native_entries(registration, self.owner, self.scope)?;
         self.entries.extend(entries);
-        Ok(())
-    }
-
-    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    pub(super) fn stage_implementation<D, O>(
-        &mut self, specification: harmos_operations::operations::OperationSpec<D>, lane: &'static str,
-        mut dependencies: harmos_operations::execution::__private::ResourceSet,
-    ) -> Result<()>
-    where
-        D: RequestShape,
-        O: harmos_operations::execution::operations::Carrier<Declaration = D>,
-    {
-        let definition = specification.definition().map_err(|source| Error::OperationDeclaration { source })?;
-        let contract = specification.declaration.contract_with_settings(&self.operations.schema_settings).map_err(|source| {
-            Error::OperationFailed {
-                operation: definition.id.to_string(),
-                source: Arc::new(source),
-            }
-        })?;
-        let wire = (contract.input().is_none() && contract.output().is_none())
-            .then_some(crate::operations::wire::dispatch_native as crate::operations::wire::Dispatch);
-        dependencies.insert(Arc::new(specification))?;
-        let mut batch = harmos_operations::execution::__private::Catalog::new().carrier::<D, O>(specification).map_err(|source| {
-            Error::OperationFailed {
-                operation: definition.id.to_string(),
-                source: Arc::new(source),
-            }
-        })?;
-        let factory = batch.operations.pop().expect("one native implementation");
-        let mut entry = self.operations.binding_erased(self.owner, lane, Arc::new(factory), definition, wire, self.scope.cloned())?;
-        Arc::get_mut(&mut entry).expect("new native entry").carrier = dependencies;
-        #[cfg(feature = "grpc")]
-        if contract.grpc().is_some() {
-            Arc::get_mut(&mut entry).expect("new native entry").grpc = Some(crate::grpc::routing::handler::<D>());
-        }
-        Arc::get_mut(&mut entry).expect("new native entry").contract = Some(contract);
-        self.entries.push(entry);
         Ok(())
     }
 }

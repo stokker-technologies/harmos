@@ -12,16 +12,21 @@
 /* === Modules === */
 
 mod accumulate;
+pub mod columnar;
 mod execute;
+pub mod index;
+mod manager;
 mod object_schemas;
 mod order_stats;
 mod ordering;
+pub mod projection;
 pub mod quantiles;
 mod reader;
 mod reduction;
 mod source;
 mod spill;
 mod table;
+pub mod time_buckets;
 pub mod transform;
 mod typed;
 

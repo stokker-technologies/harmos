@@ -10,7 +10,6 @@
 /* === Modules === */
 
 mod answer;
-pub mod artifacts;
 pub mod catalog;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub mod clock;
@@ -35,7 +34,6 @@ pub mod streams;
 
 /* === Re-Exports === */
 
-pub use artifacts::{KINDS, ScanError, fragments};
 pub use config::{ConfigError, decode_config, encode_config, validate_config};
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use error::Error;
@@ -120,11 +118,7 @@ pub mod __private {
     }
     pub use crate::inventory as PluginInventory;
     pub use crate::plugin;
-    pub use crate::plugin::schema_markers as PluginSchemaMarkers;
-    pub use crate::plugin::{
-        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
-        Requirements as PluginRequirements,
-    };
+    pub use crate::plugin::{Grant as PluginGrant, Requirement as PluginRequirement, Requirements as PluginRequirements};
     pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
     pub use harmos_domain::__private::*;
     pub use harmos_domain::config::SchemaSettings;

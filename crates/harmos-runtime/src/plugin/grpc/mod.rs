@@ -17,7 +17,6 @@ mod connection;
 pub(crate) mod invoke;
 mod managed;
 mod publish;
-mod rows;
 
 /* === Re-Exports === */
 

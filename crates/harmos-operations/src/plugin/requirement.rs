@@ -75,19 +75,6 @@ impl Grant {
     pub fn scope(&self) -> Option<&str> {
         self.scope.as_deref()
     }
-
-    pub(crate) const fn borrowed(&self) -> (&'static str, Option<&'static str>) {
-        let operation = match &self.operation {
-            Cow::Borrowed(value) => *value,
-            Cow::Owned(_) => panic!("const grants must be borrowed"),
-        };
-        let scope = match &self.scope {
-            None => None,
-            Some(Cow::Borrowed(value)) => Some(*value),
-            Some(Cow::Owned(_)) => panic!("const grants must be borrowed"),
-        };
-        (operation, scope)
-    }
 }
 
 impl Visitor for Requirements {

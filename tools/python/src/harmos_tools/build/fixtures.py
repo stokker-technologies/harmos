@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[5]
 TARGET = ROOT / "target"
 GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
-GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
+GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "sdk/rust/tests/fixtures/sandbox/Cargo.toml"}
 LIBRARIES = ("harmos", "harmos_runtime", "harmos_operations", "harmos_sdk_derive", "serde")
 
 # === Types === #

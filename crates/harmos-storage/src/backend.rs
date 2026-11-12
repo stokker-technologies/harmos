@@ -60,7 +60,7 @@ pub struct ScanPage {
     pub bytes: NonZeroUsize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReadLimits {
     pub rows: NonZeroUsize,
     pub bytes: NonZeroUsize,
@@ -71,6 +71,79 @@ pub struct ReadLimits {
 /* === Traits === */
 
 pub trait StorageBackend: Send + Sync + 'static {
+    fn compare_exchange<'a>(&'a self, _exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
+        unsupported("conditional objects")
+    }
+
+    fn retire_object_receipts<'a>(&'a self, _through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        unsupported("conditional object receipt retention")
+    }
+
+    fn register_projection<'a>(
+        &'a self, _definition: &'a crate::query::projection::ProjectionDefinition, _rebuild: bool,
+    ) -> StorageFuture<'a, u64> {
+        unsupported("projection registration")
+    }
+
+    fn projection_definition<'a>(
+        &'a self, _name: &'a crate::Identifier,
+    ) -> StorageFuture<'a, (crate::query::projection::ProjectionDefinition, u64)> {
+        unsupported("projection definition")
+    }
+
+    fn projection_status<'a>(
+        &'a self, _name: &'a crate::Identifier, _revision: u64, _frontier: &'a StorageCursor,
+    ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {
+        unsupported("projection status")
+    }
+
+    fn projection_frontier<'a>(&'a self, _name: &'a crate::Identifier, _revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
+        unsupported("projection frontier")
+    }
+
+    fn publish_projection(&self, _publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+        unsupported("projection publication")
+    }
+
+    fn read_projection<'a>(
+        &'a self, _read: &'a crate::query::projection::ProjectionRead,
+    ) -> StorageFuture<'a, crate::query::projection::ProjectionPage> {
+        unsupported("projection read")
+    }
+
+    fn retire_projection<'a>(&'a self, _name: &'a crate::Identifier, _revision: u64, _through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        unsupported("projection retention")
+    }
+
+    fn register_index<'a>(
+        &'a self, _definition: &'a crate::query::index::IndexDefinition, _rebuild: bool, _work: ReadLimits,
+        _cancel: &'a crate::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, u64> {
+        unsupported("storage index registration")
+    }
+
+    fn index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
+        Box::pin(async move { Err(Error::IndexNotFound { name: name.clone() }) })
+    }
+
+    fn scan_index<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::index::IndexRead,
+        _cancel: &'a crate::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, crate::query::index::IndexPage> {
+        unsupported("native index scan")
+    }
+
+    fn capabilities(&self) -> crate::query::columnar::StorageCapabilities {
+        crate::query::columnar::StorageCapabilities::default()
+    }
+
+    fn scan_arrow<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::columnar::ArrowScan,
+        _cancel: &'a crate::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, crate::query::columnar::ArrowPage> {
+        unsupported("native Arrow scan")
+    }
+
     // Lifecycle
     fn history(&self) -> &StoreHistory;
     fn open(&self) -> StorageFuture<'_, StorageCursor>;
@@ -196,10 +269,11 @@ impl ReadLimits {
 
 fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
     Box::pin(async move {
-        Err(Error::InvalidInput {
+        Err(Error::backend(
             field,
-            reason: "backend does not support this capability",
-        })
+            crate::BackendFailure::Unsupported,
+            std::io::Error::new(std::io::ErrorKind::Unsupported, "backend does not support this capability"),
+        ))
     })
 }
 

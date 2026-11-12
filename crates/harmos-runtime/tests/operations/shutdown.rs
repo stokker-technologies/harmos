@@ -7,6 +7,14 @@
  * ***
  */
 
+/* === Modules === */
+
+#[path = "shutdown/cancellation_observable_queued.rs"]
+mod cancellation_observable_queued;
+
+#[path = "shutdown/shutdown_cancels_attempts.rs"]
+mod shutdown_cancels_attempts;
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -43,7 +51,6 @@ enum Mode {
     #[default]
     Hold,
     Count,
-    Sleep,
 }
 
 #[derive(harmos_runtime::Message, Debug)]
@@ -94,10 +101,6 @@ async fn wait_contract_declaration_handler(
         Mode::Count => {
             trace.counted.fetch_add(1, Ordering::SeqCst);
         }
-        Mode::Sleep => {
-            trace.started.notify_one();
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
     }
     Ok(().into())
 }
@@ -128,40 +131,4 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     .unwrap();
     crate::support::app::register(&runtime, operations_catalog(), crate::support::SERIAL).await.unwrap();
     (runtime, trace)
-}
-
-/* === Tests === */
-
-#[tokio::test]
-async fn cancellation_observable_queued() {
-    let (runtime, trace) = runtime().await;
-    let first = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
-    trace.started.notified().await;
-    let queued = runtime.operation(WaitContractDeclaration { mode: Mode::Count }).start().await.unwrap();
-    queued.request_cancel();
-    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
-    assert_eq!(trace.counted.load(Ordering::SeqCst), 0);
-    trace.release.notify_one();
-    first.await.unwrap();
-
-    let running = runtime.operation(WaitContractDeclaration { mode: Mode::Sleep }).start().await.unwrap();
-    trace.started.notified().await;
-
-    running.request_cancel();
-    assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
-
-    // The cancelled queued instance was never constructed.
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
-    crate::support::app::shutdown(&runtime).await.unwrap();
-}
-
-#[tokio::test]
-async fn shutdown_cancels_attempts() {
-    let (runtime, trace) = runtime().await;
-    let instance = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
-    trace.started.notified().await;
-    crate::support::app::shutdown(&runtime).await.unwrap();
-    assert!(matches!(instance.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    assert!(matches!(runtime.operations.submit_resident("late").await, Err(Error::Closing { domain: "resident" })));
 }

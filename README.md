@@ -91,6 +91,10 @@ Portable messages support standard Rust maps with deterministic key ordering
 and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/product-guide.md)
 describes their repeated key/value entry representation.
 
+`harmos-storage/sqlite` adds an optional durable reference backend with bounded Arrow scans,
+ordered indexes, exact-frontier projections, grouped time buckets and atomic object updates.
+See [Storage Interfaces](docs/storage.md) for native APIs, backend obligations and pending consumer adoption.
+
 Structured operation and storage tracing supports performance investigation;
 applications control collection. See [Performance](docs/product-guide.md#performance).
 
@@ -100,7 +104,7 @@ The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers
 editing, plugin validation, undo/redo and save/reopen. Its
 [storage adapter](examples/schematic/storage/) shows application-owned persistence.
 Its native plugin serves unary advice over gRPC; analysis and transfer streams run
-in the host. The guest retains transfer endpoints under its `benchmark` feature
+in the host. The guest uses SDK builders with `harmos/wasm` and exposes unary transfer endpoints under its `benchmark` feature
 for the [performance suites](docs/product-guide.md#performance).
 
 ### C++

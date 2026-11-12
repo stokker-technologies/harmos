@@ -61,11 +61,27 @@ mise run test -- --package harmos-runtime --features simulation --target lib --e
 mise run test -- --package harmos-sdk-derive --target lib --exact stored_message::tests::map_field_shapes
 ```
 
-Focused builds select one package; focused tests select exactly one library or
+Focused builds select one package; focused tests can select a library or
 named integration target and use Cargo's default test profile, without an archive.
 Use `build --package <name> --lib` when editing a library: it skips unrelated package
 binaries, including the runtime's benchmark fixture. Omitting `--lib` retains Cargo's
 normal package targets. The Tests producer still builds the complete canonical selection.
+
+```sh
+mise run test -- --package harmos-storage --target integration --story manager::files::opened_clones_keep_independent_read_offsets
+mise run test -- --package harmos-protocol
+mise run test -- --paths crates/harmos-storage/tests/integration/manager/files.rs
+```
+
+`--story` selects a Rust module prefix; `--exact` selects one complete test name.
+Omit `--target` to run a package's test targets. `--paths` conservatively selects
+root-workspace test binaries, including shared modules; product changes also select
+local dependents and prepared-fixture consumers. These selections use nextest with the
+existing hang guards and serial System scheduling. Add `--no-run --timings` to
+measure just their compilation with Cargo's HTML timing report. Focused nextest
+JUnit reports stay in `target/tests/focused/<package>/<local|system>/project/`.
+Compiler-contract and guest stories still need their explicitly prepared fixtures.
+
 Both accept `--manifest-path examples/schematic/Cargo.toml` to select the separate
 example workspace while keeping compilation behind the same task interface.
 Focused Cargo subprocesses set `CARGO_TARGET_DIR` to the repository's `target/`,
@@ -81,7 +97,7 @@ mise run build -- --package harmos-packaging --example fixture-driver --features
 
 Focused guest builds accept `--target wasm32-unknown-unknown` and `--messages <path>`
 to capture Cargo artifacts. Build each guest through that selection, then use
-`prepare:tests:fixtures --focused-messages <native-library-capture> --libraries harmos_guest
+`prepare:tests:fixtures --focused-messages <native-library-capture> --libraries harmos
 --inspection-messages <guest-captures> --inspections <guest-names>
 --componentizer target/debug/examples/fixture-driver.exe` to componentize and stamp
 those exact artifacts. On Unix, omit `.exe`. Set `HARMOS_FOCUSED_FIXTURES` to the
@@ -118,104 +134,12 @@ settings: line tables for workspace members and no dependency debug information.
 Their existing optimized guest metadata dependencies retain their settings and
 fuel budgets. Release and bench optimization settings are unchanged.
 
-### Windows Measurements
-
-Measured on a Ryzen 9 5950X (16 cores / 32 threads), 80 GiB RAM and Rust 1.99.1.
-Other builds were active, so these are workstation observations, not isolated
-latency guarantees. Cold targets retain the shared compiler cache. The warm probe
-adds and removes an unused constant in the selected crate's `src/lib.rs`, then
-builds the runtime consumer. It measures invalidation and incremental reuse;
-function-body and public-schema changes can require more code generation.
-
-The warm rows below average the edit and restore runs. Each cell gives
-check / package build / one library test target, in seconds. The test selection
-executes the codec case shown above. Package builds retain their normal binaries.
-
-| Edited Crate | Before | After |
-| --- | --- | --- |
-| Runtime (leaf) | 8.9 / 15.1 / 36.6 | 4.7 / 21.1 / 14.7 |
-| Operations (middle) | 13.4 / 23.1 / 36.4 | 7.0 / 13.0 / 21.5 |
-| Protocol (foundation) | 20.7 / 26.2 / 35.6 | 15.5 / 22.6 / 36.7 |
-
-Not every warm selection improved under the background load. The new `--lib`
-selection took 7.0–8.5 seconds for the runtime leaf edit/restore, avoiding the
-benchmark fixture binary. Keep the package build when that binary needs proof.
-
-The focused runtime build from an empty native target fell from 186 to 110 seconds.
-The first example selection after the focused runs fell from 802 to 183 seconds.
-The final cold Tests run removed both native and Wasm development outputs first;
-its canonical features and all 32 test targets match the baseline.
-
-| Tests Producer Stage | Before | After |
-| --- | --- | --- |
-| Compilation and Archive | 576.3 s | 493.4 s |
-| Separate Fixture Driver | 167.9 s | <0.001 s |
-| Guest Fixture | 210.2 s | 43.7 s |
-| Offline Inputs | 24.6 s | 32.4 s |
-| Total, Including Staging and Startup | 998.4 s | 590.8 s |
-| Warm Repeat of the Complete Producer | 46.3 s | 41.5 s |
-
-The example selection saved 619 seconds, while the cold Tests producer saved
-408 seconds. Within Tests, eliminating the second driver build saved 168 seconds
-and the guest stage fell by 166 seconds. These observations overlap cache and
-profile effects and are not additive estimates of independent improvements.
-Offline staging remains necessary for the complete archive and varied with load;
-focused tests do not perform it.
-
-An independent empty-target protocol check took 499 seconds through server-side
-compilation and 80–97 seconds in client-side mode. Cargo counted wrapper waiting
-inside frontend durations: even tiny dependency units had 50–90-second bars in
-the server-side control. This is why raising an already available 32-job limit
-was not the first fix.
-
-A separate, bounded cache and server isolated the cross-drive test from other
-sessions' statistics. Identical protocol builds on two drives went from 0 hits /
-70 misses to 63 hits / 7 misses with checkout-root normalization; the second build
-fell from 64 to 45 seconds. Editing and restoring the protocol source then took
-6.6 and 4.3 seconds with its target retained. No Git branch switch was performed.
-
-### Concurrent Builders
-
-Independent source snapshots, each with its own target and the shared cache,
-completed the same warm runtime edit as follows. Each builder used the native
-`CARGO_BUILD_JOBS=8` override; the repository does not impose that machine budget.
-
-| Builders | Batch Wall Time | Throughput Versus One |
-| --- | --- | --- |
-| 1 | 24.6 s | 1.0× |
-| 2 | 25.0 s | 2.0× |
-| 4 | 28.8 s | 3.4× |
-
-Use two concurrent warm builders when individual latency matters, or four for
-throughput: four added about 17% to the batch latency while completing four builds.
-More than four and a controlled cold-build concurrency limit remain unmeasured.
-Coarse process sampling observed up to four simultaneous rustc processes and
-about 3.2 logical cores of compiler work in that warm probe; short-lived processes
-can fall between samples. Cargo's whole-machine CPU curves include other builds.
-One small edit's serial frontend dependency chain cannot occupy all 32 threads.
-
-Keep one target per independent worktree and one machine-wide compiler cache.
-Commands in one checkout share Cargo's target lock; batch or queue those requests.
-Do not give concurrent compiler-cache servers the same writable disk cache.
-
-LLD did not consistently improve the warm library-test loop: the runtime leaf
-edit/restore took 31.8 / 17.3 seconds versus 13.6 / 15.9 with MSVC in the client-side
-control. The default linker, root debug tuning, dependency optimization and codegen
-unit settings are retained. Warm runtime units spent roughly 2–5 seconds in their
-frontends and under one second in code generation; more codegen parallelism does
-not remove that chain. Separate native/Wasm targets, build/test feature variants
-and incompatible dependency API versions still require distinct compiler units.
-
-The remaining architectural cost is the runtime test dependency on packaging,
-which itself uses runtime bundle and gRPC projection APIs in
-`tools/packaging/src/{lib.rs,bundle/mod.rs,proto/mod.rs}`. A library test can therefore
-compile both normal and test runtime units. Revisit that boundary with the host
-rebuild; this tuning does not restructure the locked crate graph.
-
-Focused Rust commands do not invoke TypeScript, C# or C++ builds. The Tests producer
-also stages Python wheels and Rust vendor inputs; those retain their native caches
-and are intentionally absent from the focused loop. Linux performance, other SDK
-build timings and actual branch switching remain unmeasured.
+Use two concurrent builders for latency or four for throughput, with eight Cargo jobs
+per builder (`CARGO_BUILD_JOBS=8`). Give each independent checkout its own build
+directory and share the machine-wide compiler cache. Commands in one checkout
+share Cargo's target lock. Do not share one writable cache between cache servers.
+Windows measurements and remaining unmeasured cases are recorded in
+[Tooling Streamline](../openspec/changes/tooling-streamline/tasks.md#windows-build-measurements).
 
 ## Protocol Generation
 
@@ -439,7 +363,7 @@ the configured per-test hang guards from `[conventions.testing.deadlines]` in
 
 ```sh
 mise run test -- --language rust --layer integration --filter 'package(=harmos-runtime) & test(=plugin_grpc::child_calls::child_calls_reach_host_and_public_peer_without_start_order)' --stress-count 50
-mise run test -- --language rust --layer system --filter 'binary_id(=harmos-guest::system) | (binary_id(=harmos-runtime::system) & test(guest))'
+mise run test -- --language rust --layer system --filter 'binary_id(=harmos::system) | (binary_id(=harmos-runtime::system) & test(guest))'
 ```
 
 System also accepts `--filter` and preserves its serial scheduling and hang guards.
@@ -598,3 +522,31 @@ build summary through `ci/build.py` and `ci/compiler.py`. Local invocations and
 focused selections do not enter that path. Workflows call the entry point directly;
 the old `ci.build` command and `BUILD_SCRIPT` adapter are retired. Current setup
 cache environment inputs retain their meanings.
+
+
+## Focused Storage Benchmarks
+
+```sh
+mise run bench -- --storage --filter baseline
+mise run bench -- --storage --filter native
+```
+
+This selection builds only `harmos-storage`'s `integration-multi-day` benchmark in the bench
+profile. It measures the current generic row-query path over the deterministic test backend:
+2,000,000 samples spanning three days and 24 plots, including late arrivals. Workload generation
+is outside timing; projected row count and value sum are checked against the generated inputs.
+The baseline selection records a single timed traversal for full, first-window and next-window
+reads. These measurements include snapshot and paging costs and are not Criterion medians.
+Raw output and compiler metadata remain in `target/benchmarks/storage/`. Without the baseline
+filter, the same executable additionally uses ordinary Criterion sampling, whose native files
+remain under `target/benchmarks/storage/criterion/`. The storage-interface design owns workload
+identity and proposed acceptance budgets; this command does not establish a performance claim.
+
+The `native` selection constructs the same deterministic source in the optional durable SQLite
+backend and measures native full/window scans, exact-frontier projection windows/replay and
+index construction/seek reads. It does not construct the row-query baseline fixture. Ingest,
+catch-up and index construction report individual elapsed measurements; read cases retain ten
+Criterion samples. Verification runs outside timing. The owned temporary database is removed
+after close; `candidate.txt`, compiler metadata and Criterion samples remain for comparison.
+The existing baseline capture is not a durable-backend baseline; preserve its compiler metadata
+as `compiler-baseline.json` before a later run replaces `compiler.json`.

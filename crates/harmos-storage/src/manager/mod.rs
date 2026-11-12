@@ -189,6 +189,7 @@ pub(super) enum Domain {
 }
 
 pub(super) enum Operation {
+    Conditional(Arc<super::ObjectExchange>),
     Schema(StorageBatch<StorageSchema>),
     File(StorageBatch<super::FileReference>),
     Records(StorageBatch<StoredRecord>),

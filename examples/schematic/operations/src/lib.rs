@@ -7,7 +7,7 @@
  * ***
  */
 
-// Generated Native Operations and the Deferred Private Guest Catalog.
+// Generated Native Operation Handlers.
 
 /* === Modules === */
 
@@ -19,7 +19,6 @@ pub mod schematic;
 pub mod transfer;
 
 pub use schematic_protocol as protocol;
-pub mod guest;
 
 #[cfg(feature = "runtime")]
 mod error;

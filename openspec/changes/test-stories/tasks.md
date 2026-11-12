@@ -30,6 +30,19 @@
 
 - [ ] 6.1 Run the affected unit and integration lanes on Linux and Windows and record test counts and lines before and after.
 
+## 7. Developer Feedback
+
+- [x] 7.1 Measure the existing focused selections, package/layer binaries, linking, execution and CPU use on Windows; distinguish cold and warm builds and list deferred guest costs.
+- [x] 7.2 Extend the test selection in `tools/python/src/harmos_tools/ci/tasks.py` and a new focused-test module to select a story, package or changed Rust paths without the shared archive; preserve configured hang guards and System serialization. Prove selection with focused tooling stories.
+- [x] 7.2.1 Include prepared-fixture consumers on product changes and reject excluded fixture workspaces rather than selecting their parent package.
+- [x] 7.3 Consolidate retained slow stories and reduce benchmark workloads to boundary cases, preserving distinct behaviors; keep guest replacement suites unchanged.
+- [x] 7.3.1 Gate the runtime benchmark server behind its benchmark fixture feature; enable it in the benchmark producer, consumers and benchmark lint selection without building it for ordinary tests.
+- [x] 7.3.2 Remove empty conformance executable test/benchmark harness targets while retaining the executable fixtures and conformance stories.
+- [x] 7.4 Document focused invocations in `docs/tooling.md`, review README impact, repeat measurements and run each touched suite through its focused task.
+- [x] 7.5 Run the requested format, Rust/Python/repository checks and Tests artifact build; repair owned failures and report native Linux proof separately.
+- [x] 7.5.1 Update the feature-catalog compiler fixture's moved policy import and rerun its focused story.
+- [ ] 7.6 Repair runtime typed admission in the host rebuild: `operations::execution::shutdown_releases_bindings` and `operations::wire::endpoints::charged_request_ownership` fail before and after this work. `crates/harmos-runtime/src/operations/manager/lookup.rs::typed_entry` returns `NotRegistered` before the expected closing or endpoint validation. Keep both assertions; this product behavior repair exceeds the test-seam-only ownership here.
+
 ## Workflow Follow-Up
 
 - Tests of the sidecar hosting and transport areas are rewritten under this convention in `grpc-plugins`.

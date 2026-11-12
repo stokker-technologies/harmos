@@ -33,7 +33,7 @@ initialization starts; the readiness interval covers plugin initialization.
 | --- | --- |
 | [domain](../examples/schematic/domain/src/lib.rs) | Shared models, stream and stored-object contracts. |
 | [protocol](../examples/schematic/protocol/src/lib.rs) | Generated application messages and descriptors shared by host handlers and SDK clients. |
-| [operations](../examples/schematic/operations/src/lib.rs) | Generated native declarations and handlers, with deferred WebAssembly declarations under `guest/`. |
+| [operations](../examples/schematic/operations/src/lib.rs) | Generated native declarations and handlers. |
 | [app](../examples/schematic/app/src/app.rs) | Document state, transactions, persistence, runtime composition, and plugin lifecycle. |
 | [cli](../examples/schematic/cli/src/walkthrough.rs) | The readable teaching sequence and terminal output. |
 | [guest](../examples/schematic/guest/src/lib.rs) | Sandboxed Wasm composition of the shared operation catalog. |
@@ -42,8 +42,8 @@ initialization starts; the readiness interval covers plugin initialization.
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
 The protocol crate exposes generated contracts without the host stack. The operations
-crate enables implementations with `runtime`; its `guest` namespace retains the private
-WebAssembly declarations until the guest protocol migration. Native analysis publishes
+crate enables implementations with `runtime`. The guest uses the same generated
+messages with SDK operation builders. Native analysis publishes
 progress through its host-owned callback resource.
 
 `SchematicEditor` implements the shared `Lifecycle`. Its async `prepare` opens
@@ -58,7 +58,7 @@ The native plugin depends on `harmos`; its unary protobuf contracts and
 operation builder values live in `sidecar/src/operations.rs`, using messages generated
 from `proto/schematic/v1/operations.proto`. It ends in `serve()`.
 The host uses managed gRPC placement and checks its `Describe` identity.
-The guest retains `harmos-guest`, its catalog and preparation path.
+The guest uses `harmos/wasm` and one `harmos_register` function returning SDK builders.
 
 ## Streaming and Native Access
 
@@ -105,7 +105,7 @@ both ready-to-load plugins, and `grpc/<producer>/operations/`. Run the extracted
 CLI from any working directory; native directory listing uses that directory.
 Windows executables have the `.exe` suffix.
 
-The CLI and guest build scripts derive their schema bundles from the
+The CLI build script derives its schema bundle from the
 shared operations crate in its contract-only configuration. Each bundle contains `manifest.txt`, `descriptors.bin` and
 package-relative `.proto` files, preserving imports. The native catalogs include
 `ListDirectories`; the guest catalog includes only portable operations. The
@@ -132,13 +132,10 @@ settlement and publishes the document through an atomic file replacement.
 
 ## Transfer Benchmarks
 
-The guest's `benchmark` feature enables record, sample and file-byte transfer
-endpoints from the shared [transfer operations](../examples/schematic/operations/src/transfer/).
-`Put`/`Take` transfer one owned batch per unary call; `Upload`/`Download` carry
-bounded batches through streams. Transfer IDs isolate concurrent datasets.
-The guest feature also exposes a `Hash` bridge to the host `HashFile` operation. Its
-benchmark verifies a local-file range and digest through this bridge
-before timing transfers.
+The guest's `benchmark` feature enables unary record, sample and file-byte
+`Put`/`Take` operations in [guest transfer handlers](../examples/schematic/guest/src/transfer.rs).
+Transfer IDs isolate concurrent datasets. Its `Hash` bridge calls the authoritative
+host `storage.hash_file` contract and verifies a local-file range and digest before timing.
 
 `mise run build -- --artifact bench` builds and stamps the guest with `benchmark`.
 The native gRPC plugin is a Product artifact; its framed transport benchmarks are removed.

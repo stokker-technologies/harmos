@@ -59,6 +59,8 @@ struct Record {
     cause: String,
     context: Context,
     diagnostics: Option<Diagnostics>,
+    #[serde(default)]
+    wire: Option<Vec<u8>>,
 }
 
 // The frames that locate a failure, one per request hop. Each is set once by
@@ -118,6 +120,7 @@ impl Failure {
             cause: cause.into(),
             context: Context::default(),
             diagnostics: None,
+            wire: None,
         }))
     }
 
@@ -195,7 +198,18 @@ impl Failure {
     }
 
     pub fn without_diagnostics(mut self) -> Self {
+        use prost::Message as _;
         self.0.diagnostics = None;
+        if let Some(bytes) = &mut self.0.wire {
+            let mut wire = harmos_protocol::v1::Failure::decode(bytes.as_slice()).expect("retained protobuf failure was decoded");
+            let mut current = &mut wire;
+            loop {
+                current.diagnostics.clear();
+                let Some(cause) = current.cause.as_deref_mut() else { break };
+                current = cause;
+            }
+            *bytes = wire.encode_to_vec();
+        }
         self
     }
 
@@ -259,6 +273,92 @@ impl Diagnostics {
 
     pub fn backtrace(&self) -> Option<&str> {
         self.backtrace.as_deref()
+    }
+}
+
+impl From<&Failure> for harmos_protocol::v1::Failure {
+    fn from(failure: &Failure) -> Self {
+        use harmos_protocol::v1::Classification;
+        use operations::FailureKind;
+        use prost::Message as _;
+        if let Some(bytes) = &failure.0.wire {
+            let mut wire = Self::decode(bytes.as_slice()).expect("retained protobuf failure");
+            wire.details.extend(failure.0.details.clone());
+            if wire.operation.is_empty() {
+                wire.operation = failure.context().operation().unwrap_or_default().into();
+            }
+            if let Some(step) = failure.context().step() {
+                wire.details.insert("harmos.step".into(), step.into());
+            }
+            return wire;
+        }
+        let classification = match failure.code() {
+            FailureKind::Transient => Classification::Transient,
+            FailureKind::Cancelled => Classification::Cancelled,
+            FailureKind::Invalid | FailureKind::Unauthorized => Classification::Refused,
+            _ => Classification::Permanent,
+        };
+        let mut details = failure.0.details.clone();
+        details.insert(
+            "harmos.failure_kind".into(),
+            match failure.code() {
+                FailureKind::Permanent => "permanent",
+                FailureKind::Transient => "transient",
+                FailureKind::Ambiguous => "ambiguous",
+                FailureKind::Unauthorized => "unauthorized",
+                FailureKind::Invalid => "invalid",
+                FailureKind::Cancelled => "cancelled",
+            }
+            .into(),
+        );
+        if let Some(step) = failure.0.context.step.as_ref() {
+            details.insert("harmos.step".into(), step.clone());
+        }
+        Self {
+            classification: classification as i32,
+            code: failure.refusal_code().map(|code| code.to_string()).unwrap_or_default(),
+            message: failure.cause().into(),
+            operation: failure.context().operation().unwrap_or_default().into(),
+            details: details.into_iter().collect(),
+            diagnostics: failure
+                .diagnostics()
+                .map(|diagnostics| serde_json::to_string(diagnostics).expect("serializable diagnostics"))
+                .unwrap_or_default(),
+            ..Default::default()
+        }
+    }
+}
+impl From<harmos_protocol::v1::Failure> for Failure {
+    fn from(mut wire: harmos_protocol::v1::Failure) -> Self {
+        use prost::Message as _;
+        let original = wire.encode_to_vec();
+        use harmos_protocol::v1::Classification;
+        use operations::FailureKind;
+        let code = match wire.details.remove("harmos.failure_kind").as_deref() {
+            Some("ambiguous") => FailureKind::Ambiguous,
+            Some("unauthorized") => FailureKind::Unauthorized,
+            Some("invalid") => FailureKind::Invalid,
+            _ => match wire.classification() {
+                Classification::Transient => FailureKind::Transient,
+                Classification::Cancelled => FailureKind::Cancelled,
+                Classification::Refused => FailureKind::Unauthorized,
+                _ => FailureKind::Permanent,
+            },
+        };
+        let step = wire.details.remove("harmos.step");
+        let mut failure = Self::new(code, wire.message);
+        failure.0.refusal_code = wire.code.parse().ok();
+        failure.0.details = wire.details.into_iter().collect();
+        if !wire.code.is_empty() && failure.0.refusal_code.is_none() {
+            failure.0.details.insert("harmos.code".into(), wire.code);
+        }
+        failure.0.context = Context {
+            operation: (!wire.operation.is_empty()).then_some(wire.operation),
+            step,
+        };
+        failure.0.diagnostics = serde_json::from_str(&wire.diagnostics).ok();
+        failure.0.wire = Some(original);
+        failure
     }
 }
 
@@ -326,5 +426,34 @@ mod tests {
         assert_eq!(received.context().operation(), Some("harmos.initialize"));
         assert_eq!(received.diagnostics().unwrap().origin(), Origin::Plugin);
         assert_eq!(received.diagnostics().unwrap().chain().len(), 1);
+        let wire = harmos_protocol::v1::Failure {
+            classification: harmos_protocol::v1::Classification::Transient as i32,
+            code: "sensor_unavailable".into(),
+            message: "sensor unavailable".into(),
+            action: "Reconnect Sensor".into(),
+            plugin: "sensor".into(),
+            diagnostics: "plugin diagnostic".into(),
+            cause: Some(Box::new(harmos_protocol::v1::Failure {
+                message: "link closed".into(),
+                diagnostics: "cause diagnostic".into(),
+                ..Default::default()
+            })),
+            ..Default::default()
+        };
+        let received = Failure::from(wire.clone()).in_operation("sensor.read");
+        let retained = Failure::decode(&received.encode()).unwrap();
+        let encoded = harmos_protocol::v1::Failure::from(&retained);
+        assert_eq!(encoded.code, wire.code);
+        assert_eq!(encoded.action, wire.action);
+        assert_eq!(encoded.cause, wire.cause);
+        assert_eq!(encoded.diagnostics, wire.diagnostics);
+        assert_eq!(encoded.plugin, wire.plugin);
+        assert_eq!(encoded.operation, "sensor.read");
+        let redacted = retained.without_diagnostics();
+        let redacted = Failure::decode(&redacted.encode()).unwrap();
+        assert!(redacted.diagnostics().is_none());
+        let redacted = harmos_protocol::v1::Failure::from(&redacted);
+        assert!(redacted.diagnostics.is_empty());
+        assert!(redacted.cause.unwrap().diagnostics.is_empty());
     }
 }

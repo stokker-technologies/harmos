@@ -12,7 +12,7 @@
 /* === Re-Exports === */
 
 // Both Phases and SDK Calls Use the Original Store's Async Operation Function
-pub(super) use bindings::{Plugin, PluginIndices, harmos::guest::capabilities};
+pub(super) use bindings::{Plugin, PluginIndices};
 
 /* === Imports === */
 
@@ -58,7 +58,7 @@ mod bindings {
     /* === Macros === */
 
     wasmtime::component::bindgen!({
-        path: "../harmos-guest/wit",
+        path: "../../sdk/rust/wit",
         world: "plugin",
         exports: { default: async | store },
     });

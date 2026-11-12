@@ -45,6 +45,7 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     Server(#[from] tonic::transport::Error),
 

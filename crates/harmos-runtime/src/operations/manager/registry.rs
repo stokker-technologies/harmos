@@ -52,10 +52,12 @@ impl State {
 
     #[cfg(feature = "plugin-guest")]
     pub(super) fn host_provider(&self, id: &str, contract: &crate::operations::Contract) -> Result<&Arc<Entry>> {
-        let mut compatible = self.entries.get(id).into_iter().flat_map(|providers| providers.values()).filter(|entry| {
-            entry.plugin.is_none()
-                && entry.contract.as_ref().is_some_and(|actual| crate::guest::host::native_payloads::matches(contract, actual))
-        });
+        let mut compatible = self
+            .entries
+            .get(id)
+            .into_iter()
+            .flat_map(|providers| providers.values())
+            .filter(|entry| entry.plugin.is_none() && entry.contract.as_ref().is_some_and(|actual| actual.compatible(contract)));
         let selected = compatible.next().ok_or_else(|| Error::NotRegistered {
             domain: "host provider",
             name: id.to_owned(),

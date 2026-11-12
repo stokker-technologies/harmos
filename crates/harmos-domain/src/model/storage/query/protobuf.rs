@@ -443,10 +443,11 @@ impl TryFrom<wire::QuerySource> for Source {
         })
     }
 }
-impl From<Transform> for wire::Transform {
-    fn from(value: Transform) -> Self {
+impl TryFrom<Transform> for wire::Transform {
+    type Error = Error;
+    fn try_from(value: Transform) -> Result<Self> {
         use wire::transform::Transform as Variant;
-        Self {
+        Ok(Self {
             transform: Some(match value {
                 Transform::Filter(value) => Variant::Filter(value.into()),
                 Transform::Project(value) => Variant::Project(value.into()),
@@ -454,8 +455,9 @@ impl From<Transform> for wire::Transform {
                 Transform::Histogram(value) => Variant::Histogram(value.into()),
                 Transform::Downsample(value) => Variant::Downsample(value.into()),
                 Transform::Sort(value) => Variant::Sort(value.into()),
+                Transform::TimeBuckets(_) => return Err(invalid("TimeBuckets requires a storage protocol mapping")),
             }),
-        }
+        })
     }
 }
 impl TryFrom<wire::Transform> for Transform {

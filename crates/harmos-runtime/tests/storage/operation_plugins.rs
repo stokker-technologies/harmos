@@ -255,7 +255,8 @@ async fn query_grants_enforced() {
     let reducer = fixture.runtime.operations.caller(&host.callers["reducer"]).unwrap();
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
-    let mut collected = reducer.download_protobuf::<Query>(query(&fixture, schema.clone()).into(), super::writes::settings()).unwrap();
+    let mut collected =
+        reducer.download_protobuf::<Query>(query(&fixture, schema.clone()).try_into().unwrap(), super::writes::settings()).unwrap();
     let mut count = None;
     while let Some(output) = collected.next().await.unwrap() {
         if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output).unwrap() {
@@ -277,16 +278,16 @@ async fn query_grants_enforced() {
         after: 0,
     });
     assert!(matches!(
-        reducer.download_protobuf::<Query>(cross_kind.into(), super::writes::settings()),
+        reducer.download_protobuf::<Query>(cross_kind.try_into().unwrap(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
 
     assert!(matches!(
-        reducer.download_protobuf::<Query>(query(&fixture, other).into(), super::writes::settings()),
+        reducer.download_protobuf::<Query>(query(&fixture, other).try_into().unwrap(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
     assert!(matches!(
-        bystander.download_protobuf::<Query>(query(&fixture, schema).into(), super::writes::settings()),
+        bystander.download_protobuf::<Query>(query(&fixture, schema).try_into().unwrap(), super::writes::settings()),
         Err(Error::OperationUnauthorized { .. })
     ));
     manager.shutdown(&mut host).await.unwrap();

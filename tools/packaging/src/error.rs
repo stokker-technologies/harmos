@@ -48,9 +48,6 @@ pub enum Error {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
-    #[error(transparent)]
-    Declaration(#[from] harmos_operations::inventory::DeclarationError),
-
     #[error("invalid packaging settings: {0}")]
     Settings(String),
 

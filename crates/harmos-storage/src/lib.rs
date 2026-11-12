@@ -16,6 +16,8 @@ pub mod arrow;
 mod backend;
 mod batch;
 mod batching;
+#[cfg(feature = "testing")]
+pub mod bench_support;
 mod capacity;
 pub mod config;
 mod deletion;
@@ -43,6 +45,8 @@ mod receipts;
 mod schema_encoding;
 mod selection;
 mod snapshot;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 mod staging;
 pub mod state;
 mod statistics;
@@ -72,11 +76,12 @@ pub use harmos_domain::model::storage::{
     StorageInfo, StoreHistory, StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
 pub use manager::{StorageManager, StorageMetrics, WorkerOwner, encoded_size};
-pub use objects::ObjectGroup;
+pub use objects::{CompareExchange, ObjectExchange, ObjectGroup};
 pub use opened_capture::OpenedCapture;
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
 pub use read_batch::{ReadBatch, ReadPages};
 pub use receipts::{MutationReceipt, MutationValue};
+pub use snapshot::Snapshot;
 pub use staging::StorageFile;
 
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};

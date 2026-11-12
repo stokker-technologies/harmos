@@ -113,8 +113,7 @@ impl harmos_runtime::streams::StreamRow for Temperature {
 ```
 
 `StreamEntry::build()` checks the identity, window, schema and presentation before
-returning a definition. Deferred guests inspect its constant declaration projection;
-the projection and native definition read the same value and field metadata.
+returning a definition. Guest streams use the SDK `Stream` builder with protobuf row messages.
 
 Lanes are values configured at application startup. The default lane is
 unbounded; additional lanes declare their admission capacity in an owned set:
@@ -174,8 +173,7 @@ canonical bytes. Listener values use `listeners::Entry::record::<Row>(id, record
 or `Entry::stream::<Row>(id, stream_id, callback)`. The callback is a wire
 declaration with a `Delivery<Row>` request and unit response; building checks its
 policy, visibility and schema. Binding checks source identity and row schema and
-refuses a missing callback at startup. Deferred guest declarations accept an
-explicit constant `listeners = ENTRIES` slice of listener entry nodes.
+refuses a missing callback at startup. Listeners belong to the native host.
 System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
 `SystemFact::encode(source, name, &value)` for a described Serde payload. Their
 stored revision carrier remains necessary; callers no longer supply its value.
@@ -220,9 +218,8 @@ All surviving field-reading derives live in
 portable values and their Postcard codec, memory use and row metadata.
 `Described` describes stored Serde shapes without adding a payload codec, and
 `Row` reads row fields. Host data authors explicitly derive `Clone`, `Debug`, `Default`
-and any needed Serde traits. `harmos-macros` is retired. Deferred guest registration
-macros remain in `harmos-guest-macros`; their inventories consume constant
-catalog descriptions and entry slices without host dependencies in the SDK.
+and any needed Serde traits. Plugin registration uses builder values; the SDK
+has no host dependency.
 
 Managed journal entries and snapshot definition inventories store derived
 revisions. Open refuses a stored host record or transaction whose definition differs,
@@ -311,7 +308,7 @@ Host embedders depend explicitly on `harmos-runtime`. Managed and remote
 
 | Runtime Feature | Enables |
 | --- | --- |
-| `plugin-guest` | Wasmtime guest hosting and its private lifecycle and child-control protocol. |
+| `plugin-guest` | Wasmtime guest hosting with `harmos.v1` lifecycle and child-control messages. |
 | `grpc` | External host gRPC listener, reflection and TLS; enabled by default. |
 | `simulation` | Deterministic runtime simulation. |
 
@@ -320,12 +317,12 @@ identities, typed records and transactions, preparation/restoration and inverse 
 journal positions, native stream row identity, and storage catalogs, selections and transforms.
 Lightweight application models can use it without Arrow, filesystem, async or host dependencies.
 `harmos-operations` owns operation declarations, typed dispatch and call context, streaming,
-policy admission and the retained guest artifact inventories and failure codecs.
+policy admission and native failure codecs.
 Portable policy values live in `harmos-protocol`; listener activation stays in runtime.
-State entries and record registries are owned values. Native plugin authoring uses SDK builder values. Guests depend on `harmos-guest` and retain guest-specific
-macros and setup; their lifecycle and child controls await a separate protocol decision.
+State entries and record registries are owned values. Native and guest plugin authors
+use the same SDK builders. Optional `harmos/wasm` adds component lifecycle and child controls.
 `harmos-storage` owns persistence and queries; `harmos-runtime` composes it with
-host lifecycle and managed state. Build tools use `harmos-packaging` from `tools/packaging`; it sits outside the six-library core.
+host lifecycle and managed state. Build tools use `harmos-packaging` from `tools/packaging`; it sits outside the core libraries.
 Runtime reads verified plugin bundles through `harmos_runtime::bundle`; construction uses
 `harmos_packaging::bundle::build`. Runtime has no normal dependency on packaging tooling.
 The reference host and plugin live in `tools/conformance`, preserving their executable names
@@ -971,22 +968,18 @@ supports both directions. Handlers receive generated requests and return generat
 See the [declaration example](../openspec/changes/grpc-plugins/design.md#generated-host-messages).
 Reflection preserves original protobuf names, field encodings and presence. Decoding-memory
 admission bounds generated allocations before Prost decoding. Built-ins and native example operations no longer use `Portable` projections.
-The remaining portable projection machinery serves deferred guest declarations
-and native portable message values.
+Portable projection machinery serves native stored message values.
 
 `operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
 Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
 typed native declarations. Assignment catalogs use the generated
 `harmos.host.v1.OperationAssignments` messages, with frozen identity validation.
 
-The deferred guest path retains Postcard command/answer envelopes, lifecycle and
-child controls, typed guest requests/results and stream items. Private guest
-`storage.hash_file` and `host.publish` declarations live in
-`harmos-guest/src/builtins/`; runtime converts only their exact frozen contracts to
-the generated native handlers. Fingerprints, provider generations and grants remain
-checked. The small storage codec adapters still needed by guest hashing and the
-bounded persisted identity codecs remain; unused host payload codecs are deleted.
-Stored data encoding and schema revisions are unchanged.
+Guest commands, answers and child controls use authoritative `harmos.v1` protobuf
+messages. Built-in `storage.hash_file` and `host.publish` calls use their generated
+contracts; no private guest payload mirrors are retained. Fingerprints, provider
+generations and host grants remain checked. Stored data encoding and schema
+revisions are unchanged.
 
 ### Generated Rust Clients
 
@@ -1165,12 +1158,54 @@ result.
 
 ### Guest Hosting
 
-Enable `harmos-runtime/plugin-guest` to host Wasm components. Guest authors use
-`harmos-guest` for their operation catalog, lifecycle setup and export macro.
-The envelope, dispatch table and lifecycle owner belong privately to the guest
-crate and guest host. Guests retain their existing lifecycle phases and child
-submit, status, join and release controls; moving those controls to `harmos.v1`
-is deferred until the missing protocol semantics are designed.
+Enable `harmos-runtime/plugin-guest` to host components and `harmos/wasm` in a
+guest crate. The SDK has no runtime, storage or operations dependency.
+
+```toml
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["wasm"] }
+```
+
+```rust
+use harmos::{Context, Operation, Plugin, Result, wasm::Registration};
+
+#[unsafe(no_mangle)]
+pub fn harmos_register() -> Registration {
+    Registration::new(
+        Plugin::new("example", "1.0.0")
+            .operation(Operation::new("example.echo", async |_: &Context, request: String| -> Result<String> {
+                Ok(request)
+            })),
+    )
+    .capacity(2)
+    .on_initialize(async |_: &Context, configuration: Vec<u8>| {
+        serde_json::from_slice::<()>(&configuration).map_err(|error| harmos::Error::Invalid(error.to_string()))?;
+        Ok(())
+    })
+}
+```
+
+Registration builds inert metadata. Componentization stamps its protobuf catalog;
+loading validates that catalog, and activation verifies it against registration on
+the retained store before initialization. Registration must not perform authored
+resource initialization. Operation handlers use the native SDK's `Operation`,
+`Context::call` and protobuf messages. Plugin operations are unary; declared streams
+publish through `Context::publish` and the host stream manager.
+
+The adapter retains Prepare, Initialize, Attempt, Cancel and Finalize phases.
+`Context::submit` returns a child with `status`, `cancel`, `join`, `release` and
+`detach`; dropping it releases owned work. Submit and control require the original
+finite attempt capability. A retained generation context may call declared dependencies
+or publish while its generation remains active, but cannot submit or control children.
+The runtime owns loading, fuel, memory, deadlines and host authority. Consumers
+set resource-scoped `PluginSettings::grants` on declared requirements; a guest
+cannot grant itself access through its catalog. Stream-hosting
+consumers supply `PluginGuestSettings::stream_window`. The SDK does not depend on `harmos-operations`. Development guest workspaces optimize
+`harmos` and `harmos-protocol` at level 2 to keep descriptor validation within the
+existing fuel budget; release builds optimize these normally.
 
 ## Performance
 
@@ -1213,18 +1248,17 @@ instrumentation overhead has not been benchmarked.
 Storage, Wasm guests and external gRPC commands have separate benchmark suites.
 The guest suite enables the `benchmark` feature on the shipped Schematic guest.
 Native gRPC plugins build without the retired framed-transport benchmark feature.
-Each direction uses 256-record, 4096-sample or 1 MiB file batches, comparing unary
-calls against a stream. Generation and content verification are outside timing;
+Each direction uses 256-record, 4096-sample or 1 MiB file batches. Guest operations
+are unary. Generation and content verification are outside timing;
 completion includes the receiver acknowledgment. Records, files and samples run
 concurrently on one reused host/plugin per carrier, with isolated transfer IDs;
-unary and streamed variants remain sequential within each dataset. The fixture retains at most
-64 MiB of data, with four queued batches and a 4 MiB stream budget. File transfer
+The guest fixture retains at most 64 MiB of data. File transfer
 cases measure crossing the carrier boundary.
 
 | Suite | What It Measures |
 | --- | --- |
 | [Storage Transforms](../crates/harmos-runtime/benches/storage/transforms.rs) | In-memory RMS, histogram and downsampling kernels over balanced three-phase samples. |
-| [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
+| [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: bidirectional unary protobuf transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
 | [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work and codec costs. |
 
@@ -1249,25 +1283,21 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../sdk/rust/src/lib.rs) — the standalone protocol SDK.
 - [Cargo Features](../crates/harmos-runtime/Cargo.toml) — select the facilities your application needs.
+- [Storage Interfaces](storage.md) — saved Arrow reads, indexes, projections, conditional objects and the optional SQLite backend.
 - [Storage Adapter](../examples/schematic/storage/) — own your persistence format.
 
 
 ## Built-In Operation Ownership
 
-`harmos-operations` holds host, lifecycle, storage and stream operation contracts
-and their optional execution. `harmos-runtime` exposes these under
-`harmos_runtime::builtins`. Guest initialization and shutdown carriers belong to
-`crates/harmos-guest/src/lifecycle/`; they are absent from the host built-in catalog.
+`harmos-operations` holds native host, lifecycle, storage and stream contracts and
+execution. `harmos-runtime` exposes them under `harmos_runtime::builtins`.
+Guest lifecycle messages belong to `harmos-protocol`; the optional adapter and
+component world live under `sdk/rust/src/wasm/` and `sdk/rust/wit/`.
 
-The invocation and resource engine lives in
-`crates/harmos-operations/src/execution/`. Guest execution selects
-`lifecycle`; native operation modules select `grpc` and `streaming` and use `harmos-storage`.
-Neither the engine nor the standalone `harmos` SDK depends on `harmos-runtime`.
-
-Guest artifact inventory retains contract and lifecycle fragments for inert
-inspection. The guest crate and private guest host own its envelope codec,
-dispatch, lifecycle phases and child controls. Native plugins describe protobuf
-catalogs through `harmos.v1` and use the SDK builders.
+The native invocation and resource engine lives in
+`crates/harmos-operations/src/execution/`. Neither it nor the standalone `harmos`
+SDK depends on `harmos-runtime`. Guests use SDK builders and protobuf contracts;
+the runtime alone owns Wasmtime and sandbox authority.
 
 ## Transaction Reversibility
 
@@ -1320,8 +1350,8 @@ and calls `serve()`. Keep protobuf messages and operation contracts beside their
 handlers. A reusable contract crate can implement `Message` for generated types
 or use its derive. `use harmos::prelude::*;` supplies the authoring surface.
 
-Guests live in separate `-guest` crates and depend on `harmos-guest`. Shared
-operation implementations belong in an operations crate with optional execution;
+Guests live in separate `-guest` crates and depend on `harmos` with `wasm`. Shared
+operation implementations can live in a protocol-only crate;
 shared models remain in a domain crate. Host applications depend on
 `harmos-runtime` and own state, storage adapters and placement settings.
 Plugin artifact crates declare `publish = false`.

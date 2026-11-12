@@ -21,7 +21,6 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::app::Runtime;
-use harmos::{OperationRequest, encoding::Message as _};
 use harmos_runtime::plugin::grpc::{Attached, Managed, Placement, PlacementSettings};
 use harmos_runtime::{Error, Result};
 
@@ -84,12 +83,6 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<A
         return Err(Error::NotReady { domain: "schematic plugin identity" });
     }
     Ok(attached)
-}
-
-pub async fn call<Q: OperationRequest>(runtime: &Runtime, request: Q) -> Result<Q::Response> {
-    let payload = request.encode_to_vec();
-    let response = runtime.operations.call_encoded(Q::ID, payload).await?;
-    Q::Response::decode(response.as_slice()).map_err(failed)
 }
 
 /* === Private Functions === */

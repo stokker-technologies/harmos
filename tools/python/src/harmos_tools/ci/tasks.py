@@ -109,6 +109,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
     test.add_argument("--features")
     test.add_argument("--target")
     test.add_argument("--exact")
+    test.add_argument("--story")
+    test.add_argument("--paths", nargs="+", type=Path)
+    test.add_argument("--no-run", action="store_true")
+    test.add_argument("--timings", action="store_true")
     test.add_argument("--coverage", action="store_true")
     test.add_argument("--profile", choices=("dev", "release"), default="dev")
     test.add_argument("--filter")
@@ -118,6 +122,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
     bench.add_argument("--layer", choices=("unit", "integration", "system"))
     bench.add_argument("--refresh-baseline", action="store_true")
     bench.add_argument("--extended", action="store_true")
+    bench.add_argument("--storage", action="store_true")
+    bench.add_argument("--filter")
     package = commands.add_parser("package")
     package.add_argument("--language", choices=("rust",))
     package.add_argument("--profile", choices=("dev", "release"), default="dev")
@@ -163,6 +169,50 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "build" and options.lib:
         if not options.package or options.package == "harmos-plugin" or options.example or options.language not in (None, "rust"):
             parser.error("--lib requires a Rust --package without --example")
+    if options.command == "test":
+        for selector in ("package", "target", "story", "exact"):
+            value = getattr(options, selector)
+            if value is not None and not value:
+                parser.error(f"--{selector} requires a nonempty value")
+
+    # Developer Rust Selections Never Require The Shared Test Archive.
+    if options.command == "test" and (
+        options.paths
+        or options.story
+        or options.no_run
+        or options.timings
+        or (options.package and not options.target and options.language != "python")
+    ):
+        from ..test import focused
+        from ..test.policy import TestError
+
+        if options.language not in (None, "rust") or options.coverage or options.extended or options.profile != "dev":
+            parser.error("focused Rust tests use the default test profile without coverage or extended selection")
+        if options.layer or options.filter or options.stress_count:
+            parser.error("focused Rust tests select --target, --story or --exact")
+        if options.paths and (options.package or options.target or options.manifest_path):
+            parser.error("--paths selects packages and targets; use --manifest-path with --package instead")
+        if not options.paths and not options.package:
+            parser.error("focused Rust tests require --package or --paths")
+        if options.exact and options.story:
+            parser.error("select either --exact or --story")
+        if options.paths and (options.exact or options.story):
+            parser.error("--paths selects affected suites; use --package and --target to filter a story")
+        try:
+            return focused.run(
+                root,
+                package=options.package,
+                target=options.target,
+                paths=options.paths or (),
+                manifest=options.manifest_path,
+                features=options.features,
+                exact=options.exact,
+                story=options.story,
+                no_run=options.no_run,
+                timings=options.timings,
+            )
+        except TestError as error:
+            parser.error(str(error))
 
     # C# SDK Selections Remain Independent of Rust Lanes and Tooling Python Tests.
     if options.command in ("build", "test", "format", "check") and options.language == "csharp":
@@ -457,6 +507,12 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Benchmarks And Packaging
     if options.command == "bench":
+        if options.storage:
+            from .. import storage_bench
+
+            return storage_bench.run(root, options.filter)
+        if options.filter:
+            parser.error("--filter requires --storage")
         layers = [options.layer] if options.layer else ["unit", "integration", "system"]
         extra = ["--extended"] if options.extended else []
         if options.refresh_baseline:
