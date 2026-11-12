@@ -1,4 +1,4 @@
-// DRAFT for owner review. Not implemented. See ../../README.md for the rules.
+// Authoritative plugin contract. See ../../README.md for the rules.
 syntax = "proto3";
 
 package harmos.v1;
@@ -6,6 +6,27 @@ package harmos.v1;
 import "google/protobuf/descriptor.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
+
+// Shared read and mutation primitives. Histories include store identity and epoch;
+// positions from different histories must never be compared.
+message History { string store = 1; string epoch = 2; }
+message Position { History history = 1; uint64 sequence = 2; }
+message ResourceRevision { string name = 1; bytes revision = 2; }
+message ReadCut {
+  repeated Position positions = 1;
+  repeated ResourceRevision revisions = 2;
+}
+message PageRequest {
+  uint32 page_size = 1;
+  uint64 max_bytes = 2;
+  string page_token = 3;
+}
+message Receipt {
+  string request_id = 1;
+  Position accepted_at = 2;
+  Position durable_at = 3;
+  bool completed = 4;
+}
 
 // Served by every plugin. The host is always the client.
 service Plugin {
@@ -84,6 +105,8 @@ message OperationContract {
   // SHA-256 over the id and the request and response definitions.
   bytes fingerprint = 6;
   string description = 7;
+  // Only explicitly replay-safe operations may retry transient failures.
+  bool replay_safe = 8;
 }
 
 enum Visibility {
@@ -101,10 +124,15 @@ message OperationPolicy {
   google.protobuf.Duration attempt_timeout = 2;
   // Grace after Cancel before the host abandons the attempt.
   google.protobuf.Duration cancellation_timeout = 3;
-  // Total attempts allowed. 0 and 1 both mean no retry.
-  uint32 attempts = 4;
-  // Wait on the host's clock between attempts.
-  google.protobuf.Duration backoff = 5;
+  // Absent means one attempt. Delays use the host's clock.
+  RetryPolicy retries = 4;
+}
+
+message RetryPolicy {
+  uint64 total_attempts = 1; // Includes the first attempt; must be positive.
+  google.protobuf.Duration initial = 2;
+  google.protobuf.Duration maximum = 3; // Presence selects exponential backoff.
+  bool deterministic_jitter = 4;
 }
 
 message Requirement {

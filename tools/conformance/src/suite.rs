@@ -323,7 +323,15 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     && overridden.operation == "conformance.host.echo"
                     && overridden.payload == payload
                     && overridden.fingerprint == fixture::fingerprint("conformance.host.echo")
-                    && overridden.policy == Some(v1::OperationPolicy { attempts: 3, ..Default::default() }),
+                    && overridden.policy
+                        == Some(v1::OperationPolicy {
+                            retries: Some(harmos_protocol::v1::RetryPolicy {
+                                total_attempts: 3,
+                                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
                 "Child Policy Override Differs",
             )?;
             send_child(&send, 1, child_response::Result::Payload(payload.clone())).await?;

@@ -5,6 +5,36 @@ fn pool() -> &'static DescriptorPool {
     static POOL: OnceLock<DescriptorPool> = OnceLock::new();
     POOL.get_or_init(|| DescriptorPool::decode(include_bytes!("descriptors.bin").as_slice()).expect("generated protocol descriptors"))
 }
+impl ReflectMessage for crate::v1::History {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.History").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::Position {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.Position").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::ResourceRevision {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.ResourceRevision").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::ReadCut {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.ReadCut").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::PageRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.PageRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::Receipt {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.Receipt").expect("generated message")
+    }
+}
 impl ReflectMessage for crate::v1::DescribeRequest {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.v1.DescribeRequest").expect("generated message")
@@ -28,6 +58,11 @@ impl ReflectMessage for crate::v1::OperationContract {
 impl ReflectMessage for crate::v1::OperationPolicy {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.v1.OperationPolicy").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::RetryPolicy {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.RetryPolicy").expect("generated message")
     }
 }
 impl ReflectMessage for crate::v1::Requirement {
@@ -258,16 +293,6 @@ impl ReflectMessage for crate::host::Grpc {
 impl ReflectMessage for crate::host::Grant {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.host.v1.Grant").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::host::OperationPolicy {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.host.v1.OperationPolicy").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::host::RetryPolicy {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.host.v1.RetryPolicy").expect("generated message")
     }
 }
 impl ReflectMessage for crate::host::OperationContract {

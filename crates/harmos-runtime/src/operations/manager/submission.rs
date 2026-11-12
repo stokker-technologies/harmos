@@ -180,6 +180,12 @@ impl Manager {
             policy.retries = retry;
         }
         policy.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })?;
+        if policy.retries != crate::operations::RetryPolicy::Never && entry.declared().replay == crate::operations::ReplaySafety::Unknown {
+            return Err(Error::InvalidInput {
+                field: "operation retry",
+                reason: "InvokeOperation retries require declared replay safety",
+            });
+        }
         let admission = self.lanes.admit(ancestors, lane, bounded)?;
         let id = crate::operations::handler::fresh_instance()?;
         let mut pending = entry.pending.lock().expect("operation settlement lock is healthy");

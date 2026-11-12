@@ -16,17 +16,14 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{
-    sync::{Arc, Weak},
-    time::Duration,
-};
+use std::sync::{Arc, Weak};
 
 // Third Party Imports
 use harmos_protocol::v1;
 
 // Local Imports
 use super::*;
-use crate::operations::{Backoff, Jitter, OperationPolicy, ReplaySafety, RetryPolicy, Visibility};
+use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
 use crate::plugin::grpc::{Activation, Error as PlacementError, invoke::Binding};
 
 /* === Constants === */
@@ -117,7 +114,7 @@ impl Manager {
                     _ => return Err(PlacementError::Invalid(format!("Invalid Visibility for {}", contract.id))),
                 },
                 policy: policy(contract.policy.as_ref()).map_err(|error| PlacementError::Invalid(error.to_string()))?,
-                replay: ReplaySafety::Unknown,
+                replay: if contract.replay_safe { ReplaySafety::Idempotent } else { ReplaySafety::Unknown },
                 fingerprint: harmos_domain::Fingerprint(contract.fingerprint.clone().try_into().unwrap()),
             };
             let binding = Arc::new(Binding::new(activation, contract.clone()));
@@ -272,40 +269,10 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
 }
 
 fn policy(policy: Option<&v1::OperationPolicy>) -> Result<OperationPolicy> {
-    let duration = |duration: Option<prost_types::Duration>, default| -> Result<Duration> {
-        match duration {
-            None => Ok(default),
-            Some(value) if value.seconds >= 0 && (0..1_000_000_000).contains(&value.nanos) => {
-                Ok(Duration::new(value.seconds as u64, value.nanos as u32))
-            }
-            _ => Err(Error::InvalidInput {
-                field: "operation policy",
-                reason: "invalid duration",
-            }),
-        }
-    };
-    let wire = policy.cloned().unwrap_or_default();
-    let result = OperationPolicy {
-        timeout: duration(wire.timeout, harmos_operations::operations::UNBOUNDED)?,
-        attempt_timeout: duration(wire.attempt_timeout, harmos_operations::operations::UNBOUNDED)?,
-        cancellation_timeout: duration(wire.cancellation_timeout, Duration::ZERO)?,
-        retries: if wire.attempts <= 1 {
-            RetryPolicy::Never
-        } else {
-            RetryPolicy::OnTransient {
-                max_retries: wire.attempts as usize - 1,
-                backoff: Backoff::Fixed {
-                    delay: duration(wire.backoff, Duration::ZERO)?,
-                    jitter: Jitter::None,
-                },
-            }
-        },
-    };
-    result.validate().map_err(|_| Error::InvalidInput {
+    OperationPolicy::try_from(policy).map_err(|_| Error::InvalidInput {
         field: "operation policy",
         reason: "invalid operation policy",
-    })?;
-    Ok(result)
+    })
 }
 
 /* === Tests === */

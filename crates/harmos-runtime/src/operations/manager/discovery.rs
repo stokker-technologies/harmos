@@ -205,13 +205,13 @@ fn describe(contract: &Contract) -> Result<host::OperationContract> {
     let policy = definition.policy;
     let retries = match policy.retries {
         RetryPolicy::Never => None,
-        RetryPolicy::OnTransient { max_retries, backoff } => {
+        RetryPolicy::OnTransient { total_attempts, backoff } => {
             let (initial, maximum, jitter) = match backoff {
                 Backoff::Fixed { delay, jitter } => (delay, None, jitter),
                 Backoff::Exponential { initial, maximum, jitter } => (initial, Some(maximum), jitter),
             };
-            Some(host::RetryPolicy {
-                max_retries: max_retries as u64,
+            Some(harmos_protocol::v1::RetryPolicy {
+                total_attempts: total_attempts as u64,
                 initial: Some(duration(initial)?),
                 maximum: maximum.map(duration).transpose()?,
                 deterministic_jitter: jitter == Jitter::Deterministic,
@@ -225,7 +225,7 @@ fn describe(contract: &Contract) -> Result<host::OperationContract> {
             Visibility::Private => host::Visibility::Private,
             Visibility::Public => host::Visibility::Public,
         } as i32,
-        policy: Some(host::OperationPolicy {
+        policy: Some(harmos_protocol::v1::OperationPolicy {
             timeout: Some(duration(policy.timeout)?),
             attempt_timeout: Some(duration(policy.attempt_timeout)?),
             cancellation_timeout: Some(duration(policy.cancellation_timeout)?),

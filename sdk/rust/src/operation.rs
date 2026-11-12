@@ -90,6 +90,10 @@ impl Operation {
         self.contract.policy = Some(policy);
         self
     }
+    pub fn replay_safe(mut self) -> Self {
+        self.contract.replay_safe = true;
+        self
+    }
     pub fn description(mut self, description: impl Into<String>) -> Self {
         self.contract.description = description.into();
         self
