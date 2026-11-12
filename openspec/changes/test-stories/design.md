@@ -102,7 +102,7 @@ by `facility-trim`, not recreated as benchmarks or counted as completed story co
 | --- | --- |
 | Runtime | `tests/support`, `tests/operations`, `tests/state`, `tests/storage/manager`, listed service and guest deadline tests; shared launch mechanics adopted by runtime consumers |
 | Storage | `tests/integration/manager`, `tests/integration/state`, quantile spill, `tests/support/file_backend.rs`, `benches/query` |
-| Operations | Catalog unit test: retain uniqueness and construction behavior, remove fixed count |
+| Operations | Inline catalog unit test removed; uniqueness and fingerprints are checked in the runtime built-in control story |
 | Guest | `tests/kit/main.rs`: remove fixture-name/timeout readback; retain behavior in system guest stories |
 | Protocol, Domain, Rust SDK/derive, examples | Inspected for relocation effects; existing independent journeys retained; no obsolete macro or sidecar tests recreated |
 | Tools/packaging | Binding consumers under `tests/acceptance/bindings.rs`; task 3.4 belongs to concurrent tooling owner |

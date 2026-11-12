@@ -76,5 +76,10 @@ Repair and successful native guest proof remain required before 4.2 can close.
 | Guest ABI Integration | 1 | 0 |
 | Runtime Guest System | 0 | 2 |
 
-Every rewritten story was selected by its exact name. These are unique focused selections,
-not full lane counts. No Linux or full test lane was run. The guest failures remain repair obligations.
+Every rewritten story was selected by its exact name. These count unique current test declarations, excluding repeat attempts and feature variants,
+not full lanes. No Linux or full test lane was run. The guest failures remain repair obligations.
+
+Required local commands passed: `mise run format`, `mise run check -- --language rust`,
+`mise run check -- --language python`, `mise run check -- --repository` and
+`mise run build -- --artifact tests`. Rust checks include the new benchmark targets.
+Benchmarks were compiled, not measured. No push or delivery was performed.
