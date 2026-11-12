@@ -58,6 +58,18 @@ consumers without compatibility aliases or stored-data changes.
 - [ ] 7.2 Under later delivery authorization, validate the combined library and pinned product candidate through configured hosted CI and Nightly on native Windows and Linux, including SDK/conformance, restart, cancellation, paging, unary transfers and both benchmark cases; report exact revisions, results and pending evidence.
 - [ ] 7.3 Review final operation/gRPC method/service/message counts and capability coverage against the locked contract and full descriptor payload inventory; verify owner acceptance and leave unperformed proof pending.
 
+## 8. Plugin Manager
+
+- [x] 8.1 Record the owner-authorized manager contract, public shapes, ownership, decisions and requirement scenarios before implementation.
+- [ ] 8.2 Add `Plugins` proto, generated bindings, seven operation files and Rust client request bindings; join shared primitives from the core branch without duplicating them.
+- [ ] 8.3 Implement the bounded persistent manager registry with conditional objects, whole-value revision guards, replay-safe Create, issued read cuts, paging and explicit Watch resynchronization.
+- [ ] 8.4 Reuse verified bundle reading and shared published-content uploads; install only verified native executables under the manager root, with no process started on invalid content. Join unary upload sessions from the storage worker.
+- [ ] 8.5 Compose existing attachments, reconnect and process supervision; expose process identity, hidden Windows startup, unavailable failures, enable/disable, activation replacement, deletion and host restoration.
+- [ ] 8.6 Add one journey per file: `client_manages_remote_plugins`, `client_manages_bundled_plugins`, `host_restores_plugin_entries`, and `client_refuses_invalid_plugin_bundles`; use the controlled clock, awaited events and existing reference plugins.
+- [ ] 8.7 Document host adoption, product-owned policy and removal of duplicated management/hosting code; update affected README and guide links.
+- [ ] 8.8 Run format, Rust/Python/repository checks, all four stories twice, existing plugin-hosting tests, four-SDK conformance and Tests build; repair findings and record only actual proof.
+- [ ] 8.9 Commit building owned changes locally with Conventional Commits; do not push or run specification lifecycle commands.
+
 ## Workflow Follow-Up
 
 - This documentation task commits only this locked change locally; implementation, push, review creation, publication and specification activation or retirement are not authorized.

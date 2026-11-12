@@ -746,6 +746,79 @@ by plugin SDKs and an older desktop generated client. Those repairs belong to th
 product; its desktop move to the new host and grammar regeneration should be one
 migration after the exact library revision is available.
 
+## Plugin Manager
+
+Owner decision, 2026-11-12: move generic plugin management into the library.
+`Plugins` is the client-facing resource service; `Plugin` is the distinct
+service implemented by a plugin executable. This adds seven logical operations
+and fourteen method messages to the inventory above.
+
+```proto
+service Plugins {
+  rpc Get(PluginsGetRequest) returns (PluginsGetResponse);
+  rpc List(PluginsListRequest) returns (PluginsListResponse);
+  rpc Watch(PluginsWatchRequest) returns (stream PluginsWatchResponse);
+  rpc Create(PluginsCreateRequest) returns (PluginsCreateResponse);
+  rpc Set(PluginsSetRequest) returns (PluginsSetResponse);
+  rpc Delete(PluginsDeleteRequest) returns (PluginsDeleteResponse);
+  rpc Restart(PluginsRestartRequest) returns (PluginsRestartResponse);
+}
+// Full field definitions live in proto/harmos/v1/plugins.proto.
+// Get/List/Watch: optional ReadCut at; responses: ReadCut resolved_at.
+// Create: request_id, name, placement, complete writable value.
+// Set: name, complete PluginValue, expected_revision from Get.
+// Entry: name, placement, value, revision, state, failure, description,
+//        catalog_digest, managed process identity, activation identity.
+message PluginValue { bool enabled = 1; }
+```
+
+```rust
+use harmos_runtime::plugin::manager::{Manager, PluginManagerSettings};
+// The host supplies storage, its installation root, all capacities and policy.
+let manager = Manager::new(storage, content, settings)?;
+setup.settings().plugins(manager.clone());
+let runtime = /* launch the configured host */;
+manager.start(&runtime).await?;
+// Management calls use registered operations and normal authorization.
+// Plugin invocation uses the existing scope-preserving operation handle.
+let operations = runtime.operations.with_scope("opaque-scope")?;
+let reply = operations.call_encoded("example.echo", payload).await?;
+```
+
+| Decision | Reason |
+| --- | --- |
+| Immutable placement and one writable `enabled` value | Set cannot turn an installed executable into an unrelated remote endpoint; replacement uses Delete/Create. |
+| Caller-chosen opaque entry name and replay-safe Create request identifier | Identity survives reconnect and host restart independently of catalog identity; normalized replay returns the original response, and changed input conflicts. |
+| Durable registry object using conditional storage replacement | One bounded registry atomically owns entries and Create receipts without a private database or cross-object transaction. Consumer capacities bound entries, receipts and encoded registry bytes; exhausted receipt retention refuses new creates instead of silently expiring identities. |
+| Verify uploaded content and existing bundle format before admitting an entry | Digest, manifest, native target and executable checks precede extraction and process startup. The manager owns the installed directory; clients never supply executable paths. |
+| Content-source trait until the upload-session worker joins | The manager consumes only published immutable content; it never creates a second upload protocol. The storage implementation reads retained published file content. |
+| Reuse attachment connection, admission, invocation, streams and supervision | The manager owns the set and lifecycle, while `attach_grpc` remains the single hosting implementation. |
+| Retain unavailable entries and the last connected description | A failed process or endpoint must remain manageable and diagnostically visible. Restart replaces the activation; disabled entries remain stopped. |
+| Reconnect remote entries and start enabled managed entries on startup | Persisted intent survives a host restart; observed process state is reconstructed, never trusted from disk. |
+| Bounded issued cuts, pages and Watch events | Reads resolve one durable manager snapshot; identifier ordering and opaque bound tokens keep pagination consistent. Watch opens with a snapshot, then ordered changes; overflow reports explicit resynchronization instead of skipping evidence. |
+| Manager-instance cut epoch | Issued cuts and tokens expire across host restart; stale or foreign positions fail explicitly. Durable entry identities and revisions survive. |
+| Product policy through existing visibility, grants and external authorizer | Opaque invocation scope is inherited unchanged and never parsed as authority; no product role model enters the manager. |
+| No automatic process restart loop | Remote reconnect remains attachment policy; failed managed processes stay unavailable until Restart or host restart, avoiding a second restart scheduler. |
+| Hidden Windows process startup and explicit loopback endpoint environment | Managed executables have no console window and receive `HARMOS_ADDRESS=127.0.0.1:0`; existing readiness announcement supplies the bound endpoint without reserving a racy port. |
+
+Owned source inventory: `proto/harmos/v1/plugins.proto`,
+`crates/harmos-runtime/src/plugin/manager/**`,
+`crates/harmos-operations/src/plugins/**`, manager stories under
+`crates/harmos-runtime/tests/plugin_grpc/manager/**`,
+`sdk/rust/src/plugins_contracts.rs`, and `docs/plugin-manager.md`.
+Existing hosting extensions are confined to `plugin/grpc/mod.rs` (shared
+attachment factory and process identity), `plugin/grpc/managed.rs` (explicit
+endpoint and platform launch), and `plugin/grpc/managed/{mod,windows,unix}.rs`
+if platform factoring is needed. Other source edits are registrations and
+generated protocol output. Shared primitives and carrier renames join from
+`feat/gp-grammar-core`; unary uploads and ranged content join from the storage
+worker. Neither parallel owner's semantics are reimplemented here.
+
+Open questions: per-plugin settings and secrets may be generic library concerns,
+but current evidence only establishes product-owned configuration and credential
+policy. They remain product-owned in this delivery. The catalog's meaning and
+which plugins a unit of work uses remain entirely with the product.
+
 ## Risks and Trade-offs
 
 - Receipt/position renames change fingerprints and admission: migrate descriptors,
