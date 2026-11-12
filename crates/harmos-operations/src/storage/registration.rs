@@ -105,8 +105,10 @@ pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
         crate::execution::operations::OperationFactory::protobuf::<super::context::DeleteFileProduction>()
             .expect("DeleteFileProduction declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::context::GetFileBytes>().expect("GetFileBytes declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::CompareExchangeObject>()
-            .expect("CompareExchangeObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetObject>().expect("GetObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::SetObject>().expect("SetObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetObject>().expect("GetObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::SetObject>().expect("SetObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),

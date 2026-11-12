@@ -333,14 +333,28 @@ class StorageSetObjectRequest(_message.Message):
     def __init__(self, mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., schema: _Optional[_Union[_storage_types_pb2.SchemaInput, _Mapping]] = ..., value: _Optional[_Union[_storage_types_pb2.ObjectValue, _Mapping]] = ...) -> None: ...
 
 class StorageSetObjectResponse(_message.Message):
-    __slots__ = ("value", "revision", "receipt")
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    RECEIPT_FIELD_NUMBER: _ClassVar[int]
-    value: _storage_types_pb2.ObjectValue
-    revision: bytes
-    receipt: _types_pb2.Receipt
-    def __init__(self, value: _Optional[_Union[_storage_types_pb2.ObjectValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    __slots__ = ("applied", "conflict")
+    class Applied(_message.Message):
+        __slots__ = ("value", "revision", "receipt")
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        REVISION_FIELD_NUMBER: _ClassVar[int]
+        RECEIPT_FIELD_NUMBER: _ClassVar[int]
+        value: _storage_types_pb2.ObjectValue
+        revision: bytes
+        receipt: _types_pb2.Receipt
+        def __init__(self, value: _Optional[_Union[_storage_types_pb2.ObjectValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    class Conflict(_message.Message):
+        __slots__ = ("current_revision", "action")
+        CURRENT_REVISION_FIELD_NUMBER: _ClassVar[int]
+        ACTION_FIELD_NUMBER: _ClassVar[int]
+        current_revision: bytes
+        action: str
+        def __init__(self, current_revision: _Optional[bytes] = ..., action: _Optional[str] = ...) -> None: ...
+    APPLIED_FIELD_NUMBER: _ClassVar[int]
+    CONFLICT_FIELD_NUMBER: _ClassVar[int]
+    applied: StorageSetObjectResponse.Applied
+    conflict: StorageSetObjectResponse.Conflict
+    def __init__(self, applied: _Optional[_Union[StorageSetObjectResponse.Applied, _Mapping]] = ..., conflict: _Optional[_Union[StorageSetObjectResponse.Conflict, _Mapping]] = ...) -> None: ...
 
 class StorageListRowsRequest(_message.Message):
     __slots__ = ("source", "at", "transforms", "page")

@@ -1254,40 +1254,6 @@ class ProjectionState(_message.Message):
     status: ProjectionStatus
     def __init__(self, status: _Optional[_Union[ProjectionStatus, _Mapping]] = ...) -> None: ...
 
-class CompareExchangeObject(_message.Message):
-    __slots__ = ("mutation", "expected", "schema", "value")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_FIELD_NUMBER: _ClassVar[int]
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    expected: ObjectVersionToken
-    schema: SchemaInput
-    value: ObjectValue
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., expected: _Optional[_Union[ObjectVersionToken, _Mapping]] = ..., schema: _Optional[_Union[SchemaInput, _Mapping]] = ..., value: _Optional[_Union[ObjectValue, _Mapping]] = ...) -> None: ...
-
-class ObjectReceipt(_message.Message):
-    __slots__ = ("position", "version")
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    position: StorageCursor
-    version: ObjectVersionToken
-    def __init__(self, position: _Optional[_Union[StorageCursor, _Mapping]] = ..., version: _Optional[_Union[ObjectVersionToken, _Mapping]] = ...) -> None: ...
-
-class ObjectConflict(_message.Message):
-    __slots__ = ("current",)
-    CURRENT_FIELD_NUMBER: _ClassVar[int]
-    current: ObjectVersionToken
-    def __init__(self, current: _Optional[_Union[ObjectVersionToken, _Mapping]] = ...) -> None: ...
-
-class CompareExchangeOutcome(_message.Message):
-    __slots__ = ("applied", "conflict")
-    APPLIED_FIELD_NUMBER: _ClassVar[int]
-    CONFLICT_FIELD_NUMBER: _ClassVar[int]
-    applied: ObjectReceipt
-    conflict: ObjectConflict
-    def __init__(self, applied: _Optional[_Union[ObjectReceipt, _Mapping]] = ..., conflict: _Optional[_Union[ObjectConflict, _Mapping]] = ...) -> None: ...
-
 class StorageFailure(_message.Message):
     __slots__ = ("kind", "message")
     KIND_FIELD_NUMBER: _ClassVar[int]

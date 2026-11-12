@@ -1585,26 +1585,6 @@ impl ReflectMessage for crate::storage::ProjectionState {
         pool().get_message_by_name("harmos.storage.v1.ProjectionState").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::CompareExchangeObject {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.CompareExchangeObject").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::ObjectReceipt {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ObjectReceipt").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::ObjectConflict {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ObjectConflict").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::CompareExchangeOutcome {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.CompareExchangeOutcome").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::StorageFailure {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.StorageFailure").expect("generated message")

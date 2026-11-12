@@ -41,7 +41,11 @@ message StorageListProjectionRowsResponse { .harmos.storage.v1.ProjectionPage pa
 message StorageGetProjectionStatusRequest { string name = 1; uint64 revision = 2; .harmos.storage.v1.StorageCursor frontier = 3; .harmos.storage.v1.ColumnSource source = 4; }
 message StorageGetProjectionStatusResponse { .harmos.storage.v1.ProjectionStatus status = 1; .harmos.v1.ReadCut resolved_at = 2; }
 message StorageSetObjectRequest { .harmos.storage.v1.MutationId mutation = 1; bytes expected_revision = 2; bool create_if_absent = 3; .harmos.storage.v1.SchemaInput schema = 4; .harmos.storage.v1.ObjectValue value = 5; }
-message StorageSetObjectResponse { .harmos.storage.v1.ObjectValue value = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
+message StorageSetObjectResponse {
+  message Applied { .harmos.storage.v1.ObjectValue value = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
+  message Conflict { bytes current_revision = 1; string action = 2; }
+  oneof outcome { Applied applied = 1; Conflict conflict = 2; }
+}
 message StorageListRowsRequest { .harmos.storage.v1.QuerySource source = 1; .harmos.v1.ReadCut at = 2; repeated .harmos.storage.v1.Transform transforms = 3; .harmos.v1.PageRequest page = 4; }
 message StorageListRowsResponse { repeated .harmos.storage.v1.QueryOutput rows = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
 message StorageWatchRowsRequest { .harmos.storage.v1.QuerySource source = 1; .harmos.v1.ReadCut at = 2; }

@@ -86,6 +86,8 @@ impl TransferPlugin {
             "GetFileBytes",
             "ListRows",
             "Capabilities",
+            "GetObject",
+            "SetObject",
             "GetIndexDefinition",
             "SetIndexDefinition",
             "GetProjectionDefinition",

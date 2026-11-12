@@ -40,6 +40,23 @@ impl StoredObject for Sample {
     }
 }
 
+struct Authority;
+impl harmos_runtime::operations::authorization::Authorizer for Authority {
+    fn authorize(
+        &self, _: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
+    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
+        Ok(Some(harmos_runtime::operations::authorization::Authorization::Restricted(
+            harmos_runtime::operations::authorization::Required {
+                contract: provider.contract.clone(),
+                grants: vec![harmos_operations::plugin::Grant::of(
+                    provider.contract.operation().id.to_string(),
+                    "objects:schema:test.storage.sample",
+                )],
+            },
+        )))
+    }
+}
+
 /* === Tests === */
 
 #[tokio::test]
@@ -68,6 +85,22 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     crate::support::app::register(&runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
+    runtime.operations.register_authorizer(Arc::new(Authority)).unwrap();
+    let plugin = super::transfer_plugin::TransferPlugin::start().await;
+    let attached = runtime
+        .attach_grpc(
+            harmos_runtime::plugin::grpc::Placement::Remote(plugin.address.clone()),
+            harmos_runtime::plugin::grpc::PlacementSettings {
+                connect_timeout: std::time::Duration::from_secs(30),
+                reconnect_delay: std::time::Duration::from_secs(1),
+                stop_grace: std::time::Duration::from_secs(30),
+                stream_window: NonZeroUsize::new(64).unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    let listener = runtime.grpc().attach(harmos_runtime::grpc::Settings::default()).await.unwrap();
+    let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
     let capabilities = runtime
         .operations
         .call_protobuf::<operations::Capabilities>(harmos_protocol::v1::StorageCapabilitiesRequest {})
@@ -89,9 +122,10 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         window: storage.mutation_window().unwrap().id,
         key: harmos_runtime::Identifier::new("create").unwrap(),
     };
-    let create = wire::CompareExchangeObject {
+    let create = harmos_protocol::v1::StorageSetObjectRequest {
         mutation: Some(mutation.into()),
-        expected: None,
+        expected_revision: vec![],
+        create_if_absent: true,
         schema: Some(wire::SchemaInput {
             key: Some(value.schema.clone().into()),
             graph: Some(graph.into()),
@@ -99,16 +133,53 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         value: Some(value.into()),
     };
     data.control.unsupported_conditional.store(true, std::sync::atomic::Ordering::Release);
-    assert!(runtime.operations.call_protobuf::<operations::CompareExchangeObject>(create.clone()).await.is_err());
+    assert!(runtime.operations.call_protobuf::<operations::SetObject>(create.clone()).await.is_err());
     assert_eq!(storage.cursor_accepted().sequence, 0);
     data.control.unsupported_conditional.store(false, std::sync::atomic::Ordering::Release);
-    let created = runtime.operations.call_protobuf::<operations::CompareExchangeObject>(create.clone()).await.unwrap();
-    let wire::compare_exchange_outcome::Outcome::Applied(receipt) = created.outcome.clone().unwrap() else { panic!("create applied") };
-    assert_eq!(runtime.operations.call_protobuf::<operations::CompareExchangeObject>(create.clone()).await.unwrap(), created);
+    let created = super::transfer_plugin::client_call::<operations::SetObject>(&channel, create.clone()).await.unwrap();
+    let replay = super::transfer_plugin::call::<operations::context::SetObject>(
+        &runtime.operations,
+        harmos_protocol::context::StorageSetObjectRequest {
+            mutation: create.mutation.clone(),
+            expected_revision: create.expected_revision.clone(),
+            create_if_absent: true,
+            schema: create.schema.clone(),
+            value: create.value.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    let created_reply = created.clone();
+    let harmos_protocol::v1::storage_set_object_response::Outcome::Applied(created) = created.outcome.unwrap() else {
+        panic!("create applied")
+    };
+    let harmos_protocol::context::storage_set_object_response::Outcome::Applied(replay) = replay.outcome.unwrap() else {
+        panic!("replay applied")
+    };
+    assert_eq!(created.value, replay.value);
+    assert_eq!(created.revision, replay.revision);
+    assert_eq!(created.receipt, replay.receipt);
+    let get = harmos_protocol::v1::StorageGetObjectRequest {
+        schema: create.value.as_ref().unwrap().schema.clone(),
+        item: "one".into(),
+        at: None,
+    };
+    let selected = super::transfer_plugin::client_call::<operations::GetObject>(&channel, get.clone()).await.unwrap();
+    assert!(selected.exists);
+    assert_eq!(selected.value, created.value);
+    assert_eq!(selected.revision, created.revision);
+    let issued = selected.resolved_at.unwrap();
+
+    let receipt = created.clone();
+    assert_eq!(runtime.operations.call_protobuf::<operations::SetObject>(create.clone()).await.unwrap(), created_reply);
     let mut conflict = create.clone();
     conflict.mutation.as_mut().unwrap().key = "conflict".into();
-    let refused = runtime.operations.call_protobuf::<operations::CompareExchangeObject>(conflict).await.unwrap();
-    assert!(matches!(refused.outcome, Some(wire::compare_exchange_outcome::Outcome::Conflict(_))));
+    let refused = runtime.operations.call_protobuf::<operations::SetObject>(conflict.clone()).await.unwrap();
+    let harmos_protocol::v1::storage_set_object_response::Outcome::Conflict(current) = refused.outcome.clone().unwrap() else {
+        panic!("stale create refused")
+    };
+    assert_eq!(current.current_revision, created.revision);
+    assert_eq!(runtime.operations.call_protobuf::<operations::SetObject>(conflict).await.unwrap(), refused);
 
     // Retain the Saved Cut and Read Its Arrow Page.
     let saved = runtime
@@ -278,10 +349,26 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     // Correct the Object and Replace the Bucket Without Changing the Saved View.
     let mut correction = create;
     correction.mutation.as_mut().unwrap().key = "correct".into();
-    correction.expected = receipt.version;
+    correction.expected_revision = receipt.revision;
+    correction.create_if_absent = false;
     correction.value = Some(catalog.encode(&Sample { value: 9.0, ..first }, NonZeroUsize::new(4096).unwrap()).unwrap().into());
-    let changed = runtime.operations.call_protobuf::<operations::CompareExchangeObject>(correction).await.unwrap();
-    let wire::compare_exchange_outcome::Outcome::Applied(changed) = changed.outcome.unwrap() else { panic!("correction applied") };
+    let changed = runtime.operations.call_protobuf::<operations::SetObject>(correction).await.unwrap();
+    let harmos_protocol::v1::storage_set_object_response::Outcome::Applied(changed) = changed.outcome.unwrap() else {
+        panic!("correction applied")
+    };
+    let at_old_cut = super::transfer_plugin::call::<operations::context::GetObject>(
+        &runtime.operations,
+        harmos_protocol::context::StorageGetObjectRequest {
+            schema: get.schema.clone(),
+            item: get.item.clone(),
+            at: Some(issued.clone()),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(at_old_cut.value, created.value);
+    assert_eq!(at_old_cut.resolved_at, Some(issued));
+    let changed_position = changed.receipt.as_ref().unwrap().durable_at.as_ref().unwrap();
     let live = runtime
         .operations
         .call_protobuf::<operations::CreateSnapshot>(harmos_protocol::v1::StorageCreateSnapshotRequest { at: None })
@@ -289,7 +376,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .unwrap()
         .snapshot
         .unwrap();
-    assert_eq!(live.at, changed.position);
+    assert_eq!(live.at.as_ref().unwrap().sequence, changed_position.sequence);
     runtime
         .operations
         .call_protobuf::<operations::AdvanceProjection>(harmos_protocol::v1::StorageAdvanceProjectionRequest {
@@ -306,6 +393,10 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert_eq!(replacement.changed_keys, old.changed_keys);
     assert_ne!(replacement.ipc, old.ipc);
     assert_eq!(runtime.operations.call_protobuf::<operations::ListProjectionRows>(read).await.unwrap().page.unwrap(), old);
+
+    let current = super::transfer_plugin::client_call::<operations::GetObject>(&channel, get).await.unwrap();
+    assert_eq!(current.value, changed.value);
+    assert_eq!(current.revision, changed.revision);
 
     // Rebuild With a Different Source and Keep the Old Revision's Source Authority.
     let mut alternate = scan.source.clone().unwrap();
@@ -361,5 +452,9 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .call_protobuf::<operations::DeleteSnapshot>(harmos_protocol::v1::StorageDeleteSnapshotRequest { snapshot: Some(live) })
         .await
         .unwrap();
+    attached.stop("object journey complete").await.unwrap();
+    plugin.stop().await;
+    drop(channel);
+    listener.detach().await.unwrap();
     crate::support::app::shutdown(&runtime).await.unwrap();
 }

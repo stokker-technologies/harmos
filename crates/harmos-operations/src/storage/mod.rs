@@ -67,9 +67,9 @@ mod write_schema;
 mod write_streams;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod compare_exchange;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod native;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod object;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod snapshot;
 
@@ -80,12 +80,11 @@ pub(crate) use contracts::contract;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use client::{
     AdvanceProjection, AppendFileBytes, Capabilities, CreateFileProduction, CreateFileWriter, CreateSnapshot, DeleteFileProduction,
-    DeleteSnapshot, GetFileBytes, GetFileProduction, GetIndexDefinition, GetProjectionDefinition, GetProjectionStatus, ListColumnRows,
-    ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction, SetIndexDefinition, SetProjectionDefinition,
+    DeleteSnapshot, GetFileBytes, GetFileProduction, GetIndexDefinition, GetObject, GetProjectionDefinition, GetProjectionStatus,
+    ListColumnRows, ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction, SetIndexDefinition, SetObject,
+    SetProjectionDefinition,
 };
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use compare_exchange::CompareExchangeObject;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use snapshot::SavedSnapshots;
 

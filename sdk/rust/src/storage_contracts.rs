@@ -13,7 +13,7 @@
 
 /* === Imports === */
 
-use crate::{Message, OperationRequest};
+use crate::Message;
 use harmos_protocol::storage;
 use std::sync::OnceLock;
 
@@ -22,32 +22,6 @@ use std::sync::OnceLock;
 impl Message for storage::ArrowPage {
     fn name() -> String {
         "harmos.storage.v1.ArrowPage".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
-impl Message for storage::CompareExchangeObject {
-    fn name() -> String {
-        "harmos.storage.v1.CompareExchangeObject".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
-impl Message for storage::CompareExchangeOutcome {
-    fn name() -> String {
-        "harmos.storage.v1.CompareExchangeOutcome".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
@@ -148,8 +122,4 @@ impl Message for storage::StorageCapabilities {
             })
             .clone()
     }
-}
-impl OperationRequest for storage::CompareExchangeObject {
-    type Response = storage::CompareExchangeOutcome;
-    const ID: &'static str = "storage.compare_exchange_object";
 }

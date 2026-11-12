@@ -1213,49 +1213,6 @@ pub struct ProjectionState {
     pub status: ::core::option::Option<ProjectionStatus>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CompareExchangeObject {
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<MutationId>,
-    #[prost(message, optional, tag = "2")]
-    pub expected: ::core::option::Option<ObjectVersionToken>,
-    #[prost(message, optional, tag = "3")]
-    pub schema: ::core::option::Option<SchemaInput>,
-    #[prost(message, optional, tag = "4")]
-    pub value: ::core::option::Option<ObjectValue>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ObjectReceipt {
-    #[prost(message, optional, tag = "1")]
-    pub position: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub version: ::core::option::Option<ObjectVersionToken>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ObjectConflict {
-    #[prost(message, optional, tag = "1")]
-    pub current: ::core::option::Option<ObjectVersionToken>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct CompareExchangeOutcome {
-    #[prost(oneof = "compare_exchange_outcome::Outcome", tags = "1, 2")]
-    pub outcome: ::core::option::Option<compare_exchange_outcome::Outcome>,
-}
-/// Nested message and enum types in `CompareExchangeOutcome`.
-pub mod compare_exchange_outcome {
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Outcome {
-        #[prost(message, tag = "1")]
-        Applied(super::ObjectReceipt),
-        #[prost(message, tag = "2")]
-        Conflict(super::ObjectConflict),
-    }
-}
-#[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageFailure {
     #[prost(enumeration = "StorageFailureKind", tag = "1")]

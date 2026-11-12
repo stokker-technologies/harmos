@@ -784,3 +784,75 @@ impl ProtobufOperation for ListProjectionRows {
         super::transfers::classify(error)
     }
 }
+
+/* === Object Mirrors === */
+
+pub struct GetObject;
+pub struct SetObject;
+
+impl ProtobufOperation for GetObject {
+    type Request = wire::StorageGetObjectRequest;
+    type Response = wire::StorageGetObjectResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.context.v1.storage.get_object";
+    const GRPC: Option<crate::operations::Grpc> = None;
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, super::object::source(request.schema.clone()))
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (value, revision, resolved_at) = super::object::get(&context, Self::ID, request.schema, request.item, request.at).await?;
+        super::native::read_response(
+            &context,
+            Self::Response {
+                exists: value.is_some(),
+                value,
+                revision,
+                resolved_at: Some(resolved_at),
+            },
+        )
+    }
+}
+impl ProtobufOperation for SetObject {
+    type Request = wire::StorageSetObjectRequest;
+    type Response = wire::StorageSetObjectResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.context.v1.storage.set_object";
+    const GRPC: Option<crate::operations::Grpc> = None;
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, super::object::source(request.value.as_ref().and_then(|value| value.schema.clone())))
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let result = super::object::set(
+            &context,
+            Self::ID,
+            request.mutation,
+            request.expected_revision,
+            request.create_if_absent,
+            request.schema,
+            request.value,
+        )
+        .await?;
+        use wire::storage_set_object_response::{Applied, Conflict, Outcome};
+        let outcome = match result {
+            super::object::SetOutcome::Applied(value, revision, receipt) => Outcome::Applied(Applied {
+                value: Some(value),
+                revision,
+                receipt: Some(receipt),
+            }),
+            super::object::SetOutcome::Conflict(current_revision) => Outcome::Conflict(Conflict {
+                current_revision,
+                action: "SetObject: get again and retry".into(),
+            }),
+        };
+        super::native::read_response(&context, Self::Response { outcome: Some(outcome) })
+    }
+}

@@ -170,9 +170,5 @@ message ProjectionStatus { StorageCursor frontier = 1; uint64 revision = 2; uint
 message SavedSnapshot { bytes token = 1; StorageCursor at = 2; }
 message DefinitionRevision { uint64 revision = 1; }
 message ProjectionState { ProjectionStatus status = 1; }
-message CompareExchangeObject { MutationId mutation = 1; ObjectVersionToken expected = 2; SchemaInput schema = 3; ObjectValue value = 4; }
-message ObjectReceipt { StorageCursor position = 1; ObjectVersionToken version = 2; }
-message ObjectConflict { ObjectVersionToken current = 1; }
-message CompareExchangeOutcome { oneof outcome { ObjectReceipt applied = 1; ObjectConflict conflict = 2; } }
 enum StorageFailureKind { STORAGE_FAILURE_UNSPECIFIED = 0; STORAGE_FAILURE_UNSUPPORTED = 1; STORAGE_FAILURE_CONFLICT = 2; STORAGE_FAILURE_EXPIRED = 3; STORAGE_FAILURE_NOT_READY = 4; STORAGE_FAILURE_GAP = 5; STORAGE_FAILURE_EXHAUSTED = 6; STORAGE_FAILURE_INVALID = 7; STORAGE_FAILURE_MISSING_INDEX = 8; }
 message StorageFailure { StorageFailureKind kind = 1; string message = 2; }

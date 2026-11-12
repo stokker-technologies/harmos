@@ -178,8 +178,7 @@ values plus signed bucket ordinal identify a bucket; SHA-256 revisions identify
 its retained content. Catch-up emits sorted changed and removed keys relative
 to the preceding published cut. Late input replaces affected buckets; old saved
 outputs remain readable. `Transform::TimeBuckets` and projection execution use
-the same bounded reduction. The current protobuf transform mapping explicitly
-refuses this variant pending the separate consumer adoption pass.
+the same bounded reduction. The protobuf mapping carries the same bounded time-bucket transform.
 
 For record and stream projections, SQLite checkpoints the latest sample for each
 logical identity and indexes its bucket membership. Advancement reads source rows
@@ -206,9 +205,18 @@ frontier, with no schema or object change. Manager results are durable outcomes;
 a caller cancelled after admission may have committed and should replay its
 mutation ID. Reusing an ID with a changed fingerprint refuses.
 
+The client and context `GetObject` methods return the complete value, opaque revision,
+existence flag and resolved cut. Omitted `at` selects the latest durable cut immediately;
+an issued retained `at` reads that exact image. `SetObject` takes the complete candidate,
+its schema, a mutation identity and either that revision or explicit create-if-absent.
+Stale candidates return a typed conflict with the current revision and the action
+“SetObject: get again and retry”. The
+successful reply carries the original value, revision and durable receipt. Client and
+context handlers share the native atomic primitive.
+
 Accepted positions replay their original success or conflict after later writes
 and restart. Consumers explicitly retire receipts with
-`retire_object_receipts(through)`; retrying a retired outcome reports `Gap` rather
+`delete_object_receipts(through)`; retrying a retired outcome reports `Gap` rather
 than applying again. Object pruning preserves rows protected by live snapshots
 and explicit catalog retention. Exact or revision reads crossing reclaimed rows
 report `Gap` rather than silently truncating history.
@@ -232,7 +240,7 @@ directly also supply `harmos_operations::storage::SavedSnapshots::new(capacity)`
 Ordinary `storage.query` retains its bounded row fallback and existing query behavior.
 `WriteObjects`, `WriteRecords` and `WriteStreams` retain streamed batch admission and
 accepted-before-durable receipts. Conditional updates use the separate
-`storage.compare_exchange_object` operation, which validates the declared object catalog,
+`Storage.SetObject` operation, which validates the declared object catalog,
 schema graph, payload and object key before one atomic admission. Independent calls do not
 form a cross-method transaction. File sessions, recovery and receipt retention remain intact.
 

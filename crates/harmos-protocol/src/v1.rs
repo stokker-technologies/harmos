@@ -1864,12 +1864,37 @@ pub struct StorageSetObjectRequest {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageSetObjectResponse {
-    #[prost(message, optional, tag = "1")]
-    pub value: ::core::option::Option<crate::storage::ObjectValue>,
-    #[prost(bytes = "vec", tag = "2")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "3")]
-    pub receipt: ::core::option::Option<Receipt>,
+    #[prost(oneof = "storage_set_object_response::Outcome", tags = "1, 2")]
+    pub outcome: ::core::option::Option<storage_set_object_response::Outcome>,
+}
+/// Nested message and enum types in `StorageSetObjectResponse`.
+pub mod storage_set_object_response {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+    pub struct Applied {
+        #[prost(message, optional, tag = "1")]
+        pub value: ::core::option::Option<crate::storage::ObjectValue>,
+        #[prost(bytes = "vec", tag = "2")]
+        pub revision: ::prost::alloc::vec::Vec<u8>,
+        #[prost(message, optional, tag = "3")]
+        pub receipt: ::core::option::Option<super::Receipt>,
+    }
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+    pub struct Conflict {
+        #[prost(bytes = "vec", tag = "1")]
+        pub current_revision: ::prost::alloc::vec::Vec<u8>,
+        #[prost(string, tag = "2")]
+        pub action: ::prost::alloc::string::String,
+    }
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Outcome {
+        #[prost(message, tag = "1")]
+        Applied(Applied),
+        #[prost(message, tag = "2")]
+        Conflict(Conflict),
+    }
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]

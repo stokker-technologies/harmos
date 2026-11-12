@@ -182,3 +182,11 @@ and the complete built-in mapping.
   `storage::definition_receipts::definition_receipts_survive_caller_loss_and_preserve_source_authority`
   and `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`
   (one passed each). Tasks 3.3/3.4 remain open for the other mutation families.
+
+- Object mirrors now use face-local GetObject/SetObject wrappers and one atomic
+  handler. Set returns a typed applied/conflict outcome, opaque revisions and
+  original durable receipts; Get returns existence and an issued exact cut.
+  The old CompareExchangeObject wire declaration/bindings are removed. Focused
+  proof: `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
+  (one passed), including socket/client and plugin-child replay and old-cut reads.
+  Schema mirrors and common list paging still keep 3.3/3.2 open.
