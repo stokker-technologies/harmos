@@ -153,6 +153,9 @@ pub(super) fn publish(state: &mut State, publication: &ProjectionPublication) ->
     if latest.is_some_and(|latest| latest > cut as i64) {
         return Err(conflict("projection frontiers must advance monotonically"));
     }
+    if latest.map(|value| value as u64) != publication.expected_frontier().map(|frontier| frontier.sequence) {
+        return Err(conflict("projection frontier changed during advancement"));
+    }
     let first = publication.batches().first().ok_or_else(|| invalid("projection publication requires a schema"))?;
     let schema = columns::ipc(&RecordBatch::new_empty(first.schema()))?;
     if schema.len() > state.settings.chunk_bytes.get() {
@@ -243,30 +246,36 @@ pub(super) fn read(state: &State, read: &ProjectionRead) -> Result<ProjectionPag
             .map_err(db)?;
         (columns::from_ipc(&data)?, read.after)
     };
-    let key_limit = read.limits.rows.get().min(read.work.rows.get()).min(read.work.bytes.get() / 8);
-    if key_limit == 0 && read.after < total_keys {
-        return Err(crate::query::columnar::exhausted());
-    }
+    let key_limit = read.limits.rows.get().min(read.work.rows.get());
     let mut query = state
         .connection
         .prepare(
             "SELECT key FROM projection_changes WHERE name=?1 AND revision=?2 AND frontier=?3 AND ordinal>=?4 ORDER BY ordinal LIMIT ?5",
         )
         .map_err(db)?;
-    let keys = query
-        .query_map(
-            params![
-                read.name.as_str(),
-                integer(read.revision)?,
-                integer(read.frontier.sequence)?,
-                integer(read.after as u64)?,
-                integer(key_limit as u64)?
-            ],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(db)?
-        .collect::<std::result::Result<Vec<_>, _>>()
+    let mut rows = query
+        .query(params![
+            read.name.as_str(),
+            integer(read.revision)?,
+            integer(read.frontier.sequence)?,
+            integer(read.after as u64)?,
+            integer(key_limit as u64)?
+        ])
         .map_err(db)?;
+    let mut keys = Vec::new();
+    let mut used = 0usize;
+    while let Some(row) = rows.next().map_err(db)? {
+        let key = row.get_ref(0).map_err(db)?.as_blob().map_err(|_| incompatible())?;
+        let bytes = key.len() + std::mem::size_of::<Vec<u8>>();
+        if used.saturating_add(bytes).saturating_add(batch.get_array_memory_size().saturating_mul(3)) > read.work.bytes.get() {
+            if keys.is_empty() {
+                return Err(crate::query::columnar::exhausted());
+            }
+            break;
+        }
+        used += bytes;
+        keys.push(key.to_vec());
+    }
     execution::page(read, &batch, start, &keys, total_rows, total_keys)
 }
 

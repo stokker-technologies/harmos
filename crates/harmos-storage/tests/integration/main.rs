@@ -19,6 +19,7 @@ mod manager;
 mod projection_replay;
 mod query;
 mod state;
+mod time_bucket_replacement;
 
 /* === Imports === */
 

@@ -54,7 +54,7 @@ pub struct ProjectionPage {
     pub batch: RecordBatch,
     pub frontier: StorageCursor,
     pub revision: u64,
-    pub changed_keys: Vec<i64>,
+    pub changed_keys: Vec<Vec<u8>>,
     pub next: Option<usize>,
 }
 
@@ -72,8 +72,9 @@ pub struct ProjectionPublication {
     definition: ProjectionDefinition,
     revision: u64,
     batches: Vec<RecordBatch>,
-    changed_keys: Vec<i64>,
+    changed_keys: Vec<Vec<u8>>,
     cancel: Cancellation,
+    previous: Option<StorageCursor>,
 }
 
 #[derive(Default)]
@@ -92,7 +93,7 @@ struct Revision {
 struct StoredOutput {
     frontier: StorageCursor,
     batches: Vec<RecordBatch>,
-    changed_keys: Vec<i64>,
+    changed_keys: Vec<Vec<u8>>,
 }
 
 /* === Enums === */
@@ -100,6 +101,7 @@ struct StoredOutput {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ProjectionTransform {
     Select(Vec<String>),
+    TimeBuckets(super::time_buckets::TimeBucketPlan),
 }
 
 /* === Traits === */
@@ -111,10 +113,13 @@ impl ProjectionDefinition {
         if self.version == 0 {
             return Err(columnar::invalid("projection version must be nonzero"));
         }
-        let ProjectionTransform::Select(columns) = &self.transform;
+        let columns = match &self.transform {
+            ProjectionTransform::Select(columns) => columns.clone(),
+            ProjectionTransform::TimeBuckets(plan) => bucket_columns(plan),
+        };
         ArrowScan {
             source: self.source.clone(),
-            columns: columns.clone(),
+            columns,
             predicate: None,
             time: None,
             start: 0,
@@ -145,8 +150,11 @@ impl ProjectionPublication {
     pub fn batches(&self) -> &[RecordBatch] {
         &self.batches
     }
-    pub fn changed_keys(&self) -> &[i64] {
+    pub fn changed_keys(&self) -> &[Vec<u8>] {
         &self.changed_keys
+    }
+    pub fn expected_frontier(&self) -> Option<&StorageCursor> {
+        self.previous.as_ref()
     }
     pub fn check_cancelled(&self) -> Result<()> {
         self.cancel.check()
@@ -208,6 +216,9 @@ impl ProjectionCatalog {
         }
         if target.outputs.last_key_value().is_some_and(|(cut, _)| *cut > publication.snapshot.at.sequence) {
             return Err(conflict("projection frontiers must advance monotonically"));
+        }
+        if target.outputs.last_key_value().map(|(_, output)| &output.frontier) != publication.expected_frontier() {
+            return Err(conflict("projection frontier changed during advancement"));
         }
         target.outputs.insert(
             publication.snapshot.at.sequence,
@@ -279,13 +290,17 @@ pub async fn advance_projection(
     if backend.projection_status(name, revision, &snapshot.at).await?.is_some() {
         return Ok(revision);
     }
-    if backend.projection_frontier(name, revision).await?.is_some_and(|frontier| frontier.sequence > snapshot.at.sequence) {
+    let previous = backend.projection_frontier(name, revision).await?;
+    if previous.as_ref().is_some_and(|frontier| frontier.sequence > snapshot.at.sequence) {
         return Err(conflict("projection frontiers must advance monotonically"));
     }
-    let ProjectionTransform::Select(columns) = &definition.transform;
+    let columns = match &definition.transform {
+        ProjectionTransform::Select(columns) => columns.clone(),
+        ProjectionTransform::TimeBuckets(plan) => bucket_columns(plan),
+    };
     let mut scan = ArrowScan {
         source: definition.source.clone(),
-        columns: columns.clone(),
+        columns,
         predicate: None,
         time: None,
         start: 0,
@@ -320,13 +335,83 @@ pub async fn advance_projection(
         }
         scan.after = page.next;
     }
+    let (batches, changed_keys) = match &definition.transform {
+        ProjectionTransform::Select(_) => (batches, vec![]),
+        ProjectionTransform::TimeBuckets(plan) => {
+            let mut accumulator = super::time_buckets::Accumulator::new(plan, batches[0].schema())?;
+            for batch in &batches {
+                accumulator.push(batch, &mut || cancel.check())?;
+                if bytes.saturating_add(retained).saturating_add(accumulator.memory_bytes()) > work.bytes.get() {
+                    return Err(columnar::exhausted());
+                }
+            }
+            drop(batches);
+            let output = accumulator.finish(&mut || cancel.check())?;
+            let free = work.bytes.get().saturating_sub(bytes).saturating_sub(output.get_array_memory_size());
+            let budget = free / 4;
+            let current = super::time_buckets::fingerprints(&output, budget)?;
+            let mut prior = BTreeMap::new();
+            if let Some(frontier) = &previous {
+                let mut read = ProjectionRead {
+                    name: name.clone(),
+                    revision,
+                    frontier: frontier.clone(),
+                    after: 0,
+                    limits: ReadLimits {
+                        rows: work.rows,
+                        bytes: std::num::NonZeroUsize::new(budget).ok_or_else(columnar::exhausted)?,
+                    },
+                    work,
+                };
+                loop {
+                    cancel.check()?;
+                    let page = backend.read_projection(&read).await?;
+                    for (key, value) in super::time_buckets::fingerprints(&page.batch, budget)? {
+                        prior.insert(key, value);
+                        let used = crate::btree_map_memory::<Vec<u8>, [u8; 32]>(prior.len())
+                            .saturating_add(prior.keys().map(Vec::capacity).sum::<usize>());
+                        if used > budget {
+                            return Err(columnar::exhausted());
+                        }
+                    }
+                    let Some(next) = page.next else {
+                        break;
+                    };
+                    read.after = next;
+                }
+            }
+            let mut changed = Vec::new();
+            let mut used = 0usize;
+            for (key, value) in &current {
+                if prior.get(key) != Some(value) {
+                    used = used.saturating_add(key.capacity() + std::mem::size_of::<Vec<u8>>());
+                    if used > budget {
+                        return Err(columnar::exhausted());
+                    }
+                    changed.push(key.clone());
+                }
+            }
+            for key in prior.keys() {
+                if !current.contains_key(key) {
+                    used = used.saturating_add(key.capacity() + std::mem::size_of::<Vec<u8>>());
+                    if used > budget {
+                        return Err(columnar::exhausted());
+                    }
+                    changed.push(key.clone());
+                }
+            }
+            changed.sort();
+            (vec![output], changed)
+        }
+    };
     let publication = ProjectionPublication {
         snapshot: snapshot.clone(),
         definition,
         revision,
         batches,
-        changed_keys: vec![],
+        changed_keys,
         cancel: cancel.clone(),
+        previous,
     };
     backend.publish_projection(publication).await?;
     Ok(revision)
@@ -335,24 +420,29 @@ pub async fn advance_projection(
 /* === Private Functions === */
 
 pub(crate) fn page(
-    read: &ProjectionRead, batch: &RecordBatch, start: usize, keys: &[i64], total_rows: usize, total_keys: usize,
+    read: &ProjectionRead, batch: &RecordBatch, start: usize, keys: &[Vec<u8>], total_rows: usize, total_keys: usize,
 ) -> Result<ProjectionPage> {
     if batch.num_rows() > read.work.rows.get() || batch.get_array_memory_size().saturating_mul(3) > read.work.bytes.get() {
         return Err(columnar::exhausted());
     }
     let offset = read.after.saturating_sub(start).min(batch.num_rows());
-    let available = if read.after < total_rows {
+    let mut available = if read.after < total_rows {
         batch.num_rows() - offset
     } else {
         keys.len().min(read.work.rows.get()).min(total_keys.saturating_sub(read.after))
     };
+    if read.after < total_keys {
+        available = available.min(keys.len());
+    }
     let mut low = 0;
     let mut high = available.min(read.limits.rows.get());
     while low < high {
         let count = low + (high - low).div_ceil(2);
         let indices = (offset..offset + count.min(batch.num_rows() - offset)).map(|row| row as u64).collect::<Vec<_>>();
         let candidate = columnar::take(batch, &indices)?;
-        let bytes = candidate.get_array_memory_size().saturating_add(count.min(keys.len()).saturating_mul(8));
+        let bytes = candidate
+            .get_array_memory_size()
+            .saturating_add(keys[..count.min(keys.len())].iter().map(|key| key.capacity() + std::mem::size_of::<Vec<u8>>()).sum::<usize>());
         if bytes <= read.limits.bytes.get() {
             low = count;
         } else {
@@ -386,6 +476,14 @@ pub(crate) fn check_retired(retired: Option<u64>, requested: u64) -> Result<()> 
     }
     Ok(())
 }
+fn bucket_columns(plan: &super::time_buckets::TimeBucketPlan) -> Vec<String> {
+    let mut columns = plan.group.clone();
+    columns.extend([plan.time.clone(), plan.value.clone(), plan.identity.clone(), "_storage.position".into()]);
+    columns.sort();
+    columns.dedup();
+    columns
+}
+
 fn conflict(reason: &'static str) -> Error {
     Error::backend("storage projection", crate::BackendFailure::Conflict, std::io::Error::new(std::io::ErrorKind::InvalidInput, reason))
 }

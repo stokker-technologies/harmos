@@ -241,16 +241,7 @@ pub fn encode_key(values: &[ScalarValue]) -> Result<Vec<u8>> {
                 encoded.push(4);
                 encoded.extend(ordered.to_be_bytes());
             }
-            ScalarValue::Text(value) => {
-                encoded.push(5);
-                for byte in value.as_bytes() {
-                    encoded.push(*byte);
-                    if *byte == 0 {
-                        encoded.push(255);
-                    }
-                }
-                encoded.extend([0, 0]);
-            }
+            ScalarValue::Text(value) => append_text(&mut encoded, value),
             ScalarValue::Datetime(value) => {
                 let value = i64::try_from(*value).map_err(|_| columnar::invalid("index timestamp overflow"))?;
                 encoded.push(6);
@@ -318,6 +309,17 @@ pub(crate) fn finish(
         })
     };
     Ok(IndexPage { entries, next, complete })
+}
+
+pub(crate) fn append_text(encoded: &mut Vec<u8>, value: &str) {
+    encoded.push(5);
+    for byte in value.as_bytes() {
+        encoded.push(*byte);
+        if *byte == 0 {
+            encoded.push(255);
+        }
+    }
+    encoded.extend([0, 0]);
 }
 
 fn conflict(reason: &'static str) -> Error {

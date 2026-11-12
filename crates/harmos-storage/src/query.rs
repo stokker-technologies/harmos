@@ -25,6 +25,7 @@ mod reduction;
 mod source;
 mod spill;
 mod table;
+pub mod time_buckets;
 pub mod transform;
 mod typed;
 

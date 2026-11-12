@@ -271,7 +271,7 @@ invalid input, exhausted work/memory and corrupt/incompatible durable data.
 enum ProjectionTransform { Select(Vec<String>), TimeBuckets(TimeBucketPlan) }
 struct ProjectionDefinition { name: Identifier, version: u32, source: ColumnSource, transform: ProjectionTransform }
 struct ProjectionRead { name: Identifier, revision: u64, frontier: StorageCursor, after: usize, limits: ReadLimits }
-struct ProjectionPage { batch: RecordBatch, frontier: StorageCursor, revision: u64, changed_keys: Vec<i64>, next: Option<usize> }
+struct ProjectionPage { batch: RecordBatch, frontier: StorageCursor, revision: u64, changed_keys: Vec<Vec<u8>>, next: Option<usize> }
 fn register_projection(definition: &ProjectionDefinition) -> StorageFuture<u64>;
 fn advance_projection(snapshot: &BackendSnapshot, name: &Identifier, work: ReadLimits, cancel: &Cancellation) -> StorageFuture<u64>;
 fn read_projection(read: &ProjectionRead) -> StorageFuture<ProjectionPage>;
@@ -291,7 +291,7 @@ budget; it never silently truncates a materialization. Consumers choose catch-up
 ### 1.4 Replaceable Time Buckets
 
 ```rust,ignore
-struct TimeBucketPlan { origin_ns: i64, width_ns: NonZeroU64, time: String, value: String, identity: String }
+struct TimeBucketPlan { origin_ns: i64, width_ns: NonZeroU64, time: String, value: String, identity: String, group: Vec<String>, max_samples: NonZeroUsize, max_bytes: NonZeroUsize }
 // Output: key, count, first, last, min, max, sum, sum_squares, mean, m2,
 // first_position, last_position, min_position, max_position, positions: Vec<u64>.
 // Projection revision and changed_keys describe replacement, not append semantics.
@@ -460,3 +460,24 @@ newer frontier. Old published cuts and revisions remain readable until explicit 
 The reference database has one backend owner enforced by a native file lease for the instance
 lifetime; concurrent callers share that owner. This makes snapshot retention authoritative
 across pruning and prevents independent backend instances from expiring each other's cuts.
+
+
+Time buckets use optional generic grouping fields so independent series cannot be combined
+accidentally. Logical identity is unique within the selected source (consumers scope it across
+groups); a correction may move that identity between groups/buckets. Changed keys are canonical
+binary `(group scalar values..., signed bucket ordinal)` keys, not unscoped integer ordinals.
+Each bucket carries a SHA-256 content revision over its statistics and contributing positions;
+the projection's definition revision plus source frontier identifies the atomic materialization.
+Consumer-supplied `max_samples` and `max_bytes` bound generic transform state. This is the clean
+replacement for the provisional ungrouped key shape; no consumer has adopted that shape.
+Native domain contracts gain `TimeBucketPlan` and `Transform::TimeBuckets`. Their existing native
+to-wire conversion becomes fallible and explicitly refuses this variant until protocol mapping
+lands in the deferred adoption pass; no wire variant is fabricated or silently omitted.
+
+
+Projection publication additionally compares its expected preceding frontier atomically. Two
+concurrent catch-up attempts cannot publish deltas relative to different predecessors silently;
+the stale candidate conflicts and can be recomputed. Binary changed-key pages use a shared
+ordinal over output rows and changed keys, including key-only tail pages for removed buckets.
+Every supplied time-bucket input row must have finite values, including superseded versions;
+invalid input refuses advancement and preserves the last published cut.

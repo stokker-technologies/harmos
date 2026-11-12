@@ -503,14 +503,15 @@ impl Rows {
     }
 }
 
-impl From<Query> for harmos_protocol::storage::Query {
-    fn from(value: Query) -> Self {
-        Self {
+impl TryFrom<Query> for harmos_protocol::storage::Query {
+    type Error = Error;
+    fn try_from(value: Query) -> Result<Self> {
+        Ok(Self {
             at: Some(value.at.into()),
             source: Some(value.source.into()),
-            transforms: value.transforms.into_iter().map(Into::into).collect(),
+            transforms: value.transforms.into_iter().map(TryInto::try_into).collect::<harmos_domain::Result<_>>()?,
             slice: Some(value.slice.into()),
-        }
+        })
     }
 }
 

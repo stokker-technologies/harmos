@@ -130,6 +130,7 @@ impl TransformExecution for Transform {
             Self::Histogram(value) => value.output_schema(input),
             Self::Downsample(value) => value.output_schema(input),
             Self::Sort(value) => value.output_schema(input),
+            Self::TimeBuckets(value) => super::time_buckets::output_schema(value, input),
         }
     }
 
@@ -141,6 +142,7 @@ impl TransformExecution for Transform {
             Self::Histogram(value) => value.apply(input, check),
             Self::Downsample(value) => value.apply(input, check),
             Self::Sort(value) => value.apply(input, check),
+            Self::TimeBuckets(value) => super::time_buckets::apply(value, input, check),
         }
     }
 }
