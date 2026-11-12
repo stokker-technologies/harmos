@@ -18,6 +18,7 @@ mod fixture;
 #[path = "../../tests/support/mapping.rs"]
 mod mapping_fixture;
 
+mod native;
 mod workload;
 
 /* === Re-Exports === */
@@ -61,6 +62,12 @@ use workload::ROWS;
 
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
+    let mut criterion = Criterion::default().configure_from_args();
+    if std::env::var_os("HARMOS_STORAGE_NATIVE").is_some() {
+        native::run(&runtime, &mut criterion);
+        criterion.final_summary();
+        return;
+    }
     let samples = (0..ROWS).map(workload::sample).collect::<Vec<_>>();
     let mut settings = backend::storage_settings();
     settings.response.batch_rows = NonZeroUsize::new(16384).unwrap();
@@ -68,7 +75,6 @@ fn main() {
     println!("Preparing {ROWS} records across three days and 24 plots");
     let mapped = runtime.block_on(Mapped::new(settings, "multi-day", &samples));
     println!("Workload Ready");
-    let mut criterion = Criterion::default().configure_from_args();
     let mut group = criterion.benchmark_group("integration/multi_day/baseline");
     for (name, offset, limit) in [("full", 0, ROWS), ("first_window", ROWS / 3, 4096), ("next_window", ROWS / 3 + 4096, 4096)] {
         let start = std::time::Instant::now();

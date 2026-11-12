@@ -59,6 +59,8 @@ def run(directory: Path, selected: str | None) -> int:
     environment.pop("STKR_TEST_REPORT_DIR", None)
     if selected == "baseline":
         environment["HARMOS_STORAGE_BASELINE_ONCE"] = "1"
+    if selected == "native":
+        environment["HARMOS_STORAGE_NATIVE"] = "1"
     command = [executables[-1], "--bench", "--sample-size", "10", "--warm-up-time", "1", "--measurement-time", "1"]
     if selected:
         command.append(selected)
