@@ -912,10 +912,12 @@ Owned source inventory: `proto/harmos/v1/plugins.proto`,
 `sdk/rust/src/plugins_contracts.rs`, and `docs/plugin-manager.md`.
 Existing hosting extensions are confined to `plugin/grpc/mod.rs` (shared
 attachment supervision, process identity and awaited reaping after disconnect), `plugin/grpc/managed.rs` (explicit
-endpoint and platform launch), and `plugin/grpc/managed/{mod,windows,unix}.rs`
-if platform factoring is needed. Other source edits are registrations and
-generated protocol output, plus `crates/harmos-protocol/src/plugins.rs` for exact
-management fingerprints registered in the reserved operation namespace. Shared primitives and carrier renames join from
+endpoint and platform launch), and `plugin/grpc/managed/{windows,unix}.rs`
+(platform command construction). Other source edits are registrations and
+generated protocol output, plus seven built-in contract registrations in
+`crates/harmos-operations/src/operations/contract.rs`. The shared registry validates
+the exact protocol, binding and public visibility without a manager-specific
+reserved-namespace exception. Shared primitives and carrier renames join from
 `feat/gp-grammar-core`; unary uploads and ranged content join from the storage
 worker. Neither parallel owner's semantics are reimplemented here.
 

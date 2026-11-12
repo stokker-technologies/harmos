@@ -312,6 +312,13 @@ impl Contract {
                 "harmos.invocations.cancel" => ("InvocationsCancelRequest", "InvocationsCancelResponse", "Invocations", "Cancel", false),
                 "harmos.invocations.watch" => ("InvocationsWatchRequest", "InvocationsWatchResponse", "Invocations", "Watch", true),
                 "harmos.samples.append" => ("SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false),
+                "harmos.plugins.get" => ("PluginsGetRequest", "PluginsGetResponse", "Plugins", "Get", false),
+                "harmos.plugins.list" => ("PluginsListRequest", "PluginsListResponse", "Plugins", "List", false),
+                "harmos.plugins.watch" => ("PluginsWatchRequest", "PluginsWatchResponse", "Plugins", "Watch", true),
+                "harmos.plugins.create" => ("PluginsCreateRequest", "PluginsCreateResponse", "Plugins", "Create", false),
+                "harmos.plugins.set" => ("PluginsSetRequest", "PluginsSetResponse", "Plugins", "Set", false),
+                "harmos.plugins.delete" => ("PluginsDeleteRequest", "PluginsDeleteResponse", "Plugins", "Delete", false),
+                "harmos.plugins.restart" => ("PluginsRestartRequest", "PluginsRestartResponse", "Plugins", "Restart", false),
                 _ => return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into()),
             };
             let request = format!("harmos.host.v1.{request}");
