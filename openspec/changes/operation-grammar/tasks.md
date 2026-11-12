@@ -130,3 +130,11 @@ and the complete built-in mapping.
   regenerate through the joined core generator. Focused proof:
   `generated_code_matches_proto::generated_code_matches_proto` (1 passed). Task 1.4
   remains open until every declaration is bound to its migrated shared handler.
+
+- Task 3.3 partial: index/projection Get/Set pairs are served independently on both
+  faces with shared handlers and atomic expected-revision checks in SQLite and the
+  reference catalogs. Explicit create-if-absent and stale unchanged values are covered.
+  Focused proofs: `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`,
+  `projection_replay::projection_frontiers_survive_interrupted_publication_rebuild_and_restart`,
+  and `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
+  (one passed each). Object/schema mirrors and issued composite cuts remain open.

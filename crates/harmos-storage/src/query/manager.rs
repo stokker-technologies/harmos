@@ -57,16 +57,20 @@ impl StorageManager {
         self.inner.primary.capabilities()
     }
     pub async fn set_index_definition(
-        &self, definition: &IndexDefinition, rebuild: bool, work: ReadLimits, cancel: &Cancellation,
+        &self, definition: &IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits, cancel: &Cancellation,
     ) -> Result<u64> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.set_index_definition", self.inner.primary.set_index_definition(definition, rebuild, work, cancel)).await
+        self.inner
+            .bounded("primary.set_index_definition", self.inner.primary.set_index_definition(definition, expected, rebuild, work, cancel))
+            .await
     }
-    pub async fn set_projection_definition(&self, definition: &ProjectionDefinition, rebuild: bool) -> Result<u64> {
+    pub async fn set_projection_definition(&self, definition: &ProjectionDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.set_projection_definition", self.inner.primary.set_projection_definition(definition, rebuild)).await
+        self.inner
+            .bounded("primary.set_projection_definition", self.inner.primary.set_projection_definition(definition, expected, rebuild))
+            .await
     }
 
     pub async fn get_projection_status(

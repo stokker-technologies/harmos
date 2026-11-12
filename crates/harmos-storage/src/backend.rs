@@ -125,7 +125,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     }
 
     fn set_projection_definition<'a>(
-        &'a self, _definition: &'a crate::query::projection::ProjectionDefinition, _rebuild: bool,
+        &'a self, _definition: &'a crate::query::projection::ProjectionDefinition, _expected: Option<u64>, _rebuild: bool,
     ) -> StorageFuture<'a, u64> {
         unsupported("projection registration")
     }
@@ -161,7 +161,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     }
 
     fn set_index_definition<'a>(
-        &'a self, _definition: &'a crate::query::index::IndexDefinition, _rebuild: bool, _work: ReadLimits,
+        &'a self, _definition: &'a crate::query::index::IndexDefinition, _expected: Option<u64>, _rebuild: bool, _work: ReadLimits,
         _cancel: &'a crate::query::columnar::Cancellation,
     ) -> StorageFuture<'a, u64> {
         unsupported("storage index registration")

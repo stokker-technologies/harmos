@@ -13,6 +13,8 @@
 /* === Modules === */
 
 mod contracts;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod definitions;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod client;
@@ -77,10 +79,6 @@ mod open_snapshot;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod read_projection;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod register_index;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod register_projection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod release_snapshot;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod scan_arrow;
@@ -95,7 +93,8 @@ pub(crate) use contracts::contract;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use client::{
-    AppendFileBytes, CreateFileProduction, CreateFileWriter, DeleteFileProduction, GetFileBytes, GetFileProduction, PublishFileProduction,
+    AppendFileBytes, CreateFileProduction, CreateFileWriter, DeleteFileProduction, GetFileBytes, GetFileProduction, GetIndexDefinition,
+    GetProjectionDefinition, PublishFileProduction, SetIndexDefinition, SetProjectionDefinition,
 };
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -110,10 +109,6 @@ pub use inspect_projection::InspectProjection;
 pub use open_snapshot::OpenSnapshot;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use read_projection::ReadProjection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use register_index::RegisterIndex;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use register_projection::RegisterProjection;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use release_snapshot::ReleaseSnapshot;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]

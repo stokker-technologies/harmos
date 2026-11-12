@@ -1600,16 +1600,6 @@ impl ReflectMessage for crate::storage::ScanIndex {
         pool().get_message_by_name("harmos.storage.v1.ScanIndex").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::RegisterIndex {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.RegisterIndex").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::RegisterProjection {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.RegisterProjection").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::DefinitionRevision {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.DefinitionRevision").expect("generated message")

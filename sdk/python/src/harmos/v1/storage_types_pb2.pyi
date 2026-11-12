@@ -1276,24 +1276,6 @@ class ScanIndex(_message.Message):
     source: ColumnSource
     def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[IndexRead, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
 
-class RegisterIndex(_message.Message):
-    __slots__ = ("definition", "rebuild", "work")
-    DEFINITION_FIELD_NUMBER: _ClassVar[int]
-    REBUILD_FIELD_NUMBER: _ClassVar[int]
-    WORK_FIELD_NUMBER: _ClassVar[int]
-    definition: IndexDefinition
-    rebuild: bool
-    work: ReadLimits
-    def __init__(self, definition: _Optional[_Union[IndexDefinition, _Mapping]] = ..., rebuild: _Optional[bool] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
-
-class RegisterProjection(_message.Message):
-    __slots__ = ("definition", "rebuild")
-    DEFINITION_FIELD_NUMBER: _ClassVar[int]
-    REBUILD_FIELD_NUMBER: _ClassVar[int]
-    definition: ProjectionDefinition
-    rebuild: bool
-    def __init__(self, definition: _Optional[_Union[ProjectionDefinition, _Mapping]] = ..., rebuild: _Optional[bool] = ...) -> None: ...
-
 class DefinitionRevision(_message.Message):
     __slots__ = ("revision",)
     REVISION_FIELD_NUMBER: _ClassVar[int]

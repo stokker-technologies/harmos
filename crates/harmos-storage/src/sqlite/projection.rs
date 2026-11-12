@@ -59,11 +59,14 @@ pub(super) fn definition_at(connection: &Connection, name: &crate::Identifier, r
     decode(&data.ok_or(Error::NotReady { domain: "projection revision" })?)
 }
 
-pub(super) fn register(state: &mut State, value: &ProjectionDefinition, rebuild: bool) -> Result<u64> {
+pub(super) fn register(state: &mut State, value: &ProjectionDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
     state.check()?;
     value.validate()?;
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
     let prior=tx.query_row("SELECT d.definition,a.revision FROM projection_active a JOIN projection_definitions d ON d.name=a.name AND d.revision=a.revision WHERE a.name=?1",[value.name.as_str()],|row|Ok((row.get::<_,Vec<u8>>(0)?,unsigned(row,1)?))).optional().map_err(db)?;
+    if prior.as_ref().map(|(_, revision)| *revision) != expected {
+        return Err(conflict("set projection definition: get again and retry"));
+    }
     let mut revision = 1;
     if let Some((data, current)) = prior {
         if decode::<ProjectionDefinition>(&data)? == *value {

@@ -173,8 +173,6 @@ message ReleaseSnapshot { SavedSnapshot snapshot = 1; }
 message Capabilities {}
 message ScanArrow { SavedSnapshot snapshot = 1; ArrowScan read = 2; }
 message ScanIndex { SavedSnapshot snapshot = 1; IndexRead read = 2; ColumnSource source = 3; }
-message RegisterIndex { IndexDefinition definition = 1; bool rebuild = 2; ReadLimits work = 3; }
-message RegisterProjection { ProjectionDefinition definition = 1; bool rebuild = 2; }
 message DefinitionRevision { uint64 revision = 1; }
 message AdvanceProjection { SavedSnapshot snapshot = 1; string name = 2; ReadLimits work = 3; ColumnSource source = 4; }
 message ReadProjection { ProjectionRead read = 1; ColumnSource source = 2; }

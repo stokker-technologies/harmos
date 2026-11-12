@@ -188,32 +188,6 @@ impl Message for storage::ReadProjection {
             .clone()
     }
 }
-impl Message for storage::RegisterIndex {
-    fn name() -> String {
-        "harmos.storage.v1.RegisterIndex".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
-impl Message for storage::RegisterProjection {
-    fn name() -> String {
-        "harmos.storage.v1.RegisterProjection".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
 impl Message for storage::ReleaseSnapshot {
     fn name() -> String {
         "harmos.storage.v1.ReleaseSnapshot".into()
@@ -298,14 +272,6 @@ impl OperationRequest for storage::ScanArrow {
 impl OperationRequest for storage::ScanIndex {
     type Response = storage::IndexPage;
     const ID: &'static str = "storage.scan_index";
-}
-impl OperationRequest for storage::RegisterIndex {
-    type Response = storage::DefinitionRevision;
-    const ID: &'static str = "storage.register_index";
-}
-impl OperationRequest for storage::RegisterProjection {
-    type Response = storage::DefinitionRevision;
-    const ID: &'static str = "storage.register_projection";
 }
 impl OperationRequest for storage::AdvanceProjection {
     type Response = storage::DefinitionRevision;

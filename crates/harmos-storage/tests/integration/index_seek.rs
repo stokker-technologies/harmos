@@ -107,8 +107,8 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
         let before = backend.get_work().await.unwrap();
         assert_eq!(
-            backend.set_index_definition(&definition, false, work, &cancel).await.unwrap(),
-            backend.set_index_definition(&definition, false, work, &cancel).await.unwrap()
+            backend.set_index_definition(&definition, None, false, work, &cancel).await.unwrap(),
+            backend.set_index_definition(&definition, Some(1), false, work, &cancel).await.unwrap()
         );
         let after = backend.get_work().await.unwrap();
         if backend.capabilities().native_index {
@@ -189,8 +189,14 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     let mut rebuilt = definition.clone();
     rebuilt.version += 1;
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        assert!(backend.set_index_definition(&rebuilt, false, work, &cancel).await.is_err());
-        backend.set_index_definition(&rebuilt, true, work, &cancel).await.unwrap();
+        assert!(backend.set_index_definition(&rebuilt, Some(1), false, work, &cancel).await.is_err());
+        backend.set_index_definition(&rebuilt, Some(1), true, work, &cancel).await.unwrap();
+        assert!(matches!(
+            backend.set_index_definition(&rebuilt, Some(1), true, work, &cancel).await.unwrap_err().backend_failure(),
+            Some(BackendFailure::Conflict)
+        ));
+        assert!(backend.set_index_definition(&rebuilt, None, true, work, &cancel).await.is_err());
+        assert_eq!(backend.get_index_definition(&rebuilt.name).await.unwrap().0, rebuilt);
     }
     resumed.descending = false;
     assert!(list_index_entries(&native, &saved, &resumed, &cancel).await.is_err());

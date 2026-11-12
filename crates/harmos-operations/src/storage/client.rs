@@ -380,3 +380,125 @@ impl ProtobufOperation for GetFileBytes {
 /* === Private Functions === */
 
 /* === Tests === */
+
+pub struct GetIndexDefinition;
+
+impl ProtobufOperation for GetIndexDefinition {
+    type Request = wire::StorageGetIndexDefinitionRequest;
+    type Response = wire::StorageGetIndexDefinitionResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.get_index_definition";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Storage", "GetIndexDefinition"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (definition, revision, resolved_at) = super::definitions::get_index(&context, Self::ID, request.name, request.source).await?;
+        Ok(Self::Response {
+            definition: Some(definition),
+            revision,
+            resolved_at: Some(resolved_at),
+        })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct SetIndexDefinition;
+
+impl ProtobufOperation for SetIndexDefinition {
+    type Request = wire::StorageSetIndexDefinitionRequest;
+    type Response = wire::StorageSetIndexDefinitionResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.set_index_definition";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Storage", "SetIndexDefinition"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.definition.as_ref().and_then(|definition| definition.source.clone()))
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (definition, revision) = super::definitions::set_index(
+            &context,
+            Self::ID,
+            request.definition,
+            request.expected_revision,
+            request.create_if_absent,
+            request.rebuild,
+            request.work,
+        )
+        .await?;
+        Ok(Self::Response { definition: Some(definition), revision })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct GetProjectionDefinition;
+
+impl ProtobufOperation for GetProjectionDefinition {
+    type Request = wire::StorageGetProjectionDefinitionRequest;
+    type Response = wire::StorageGetProjectionDefinitionResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.get_projection_definition";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Storage", "GetProjectionDefinition"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (definition, revision, resolved_at) =
+            super::definitions::get_projection(&context, Self::ID, request.name, request.source).await?;
+        Ok(Self::Response {
+            definition: Some(definition),
+            revision,
+            resolved_at: Some(resolved_at),
+        })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct SetProjectionDefinition;
+
+impl ProtobufOperation for SetProjectionDefinition {
+    type Request = wire::StorageSetProjectionDefinitionRequest;
+    type Response = wire::StorageSetProjectionDefinitionResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.set_projection_definition";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Storage", "SetProjectionDefinition"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.definition.as_ref().and_then(|definition| definition.source.clone()))
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (definition, revision) = super::definitions::set_projection(
+            &context,
+            Self::ID,
+            request.definition,
+            request.expected_revision,
+            request.create_if_absent,
+            request.rebuild,
+        )
+        .await?;
+        Ok(Self::Response { definition: Some(definition), revision })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}

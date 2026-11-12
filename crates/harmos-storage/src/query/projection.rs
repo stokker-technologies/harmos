@@ -170,8 +170,11 @@ impl ProjectionPublication {
 }
 
 impl ProjectionCatalog {
-    pub fn register(&mut self, definition: &ProjectionDefinition, rebuild: bool) -> Result<u64> {
+    pub fn register(&mut self, definition: &ProjectionDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
         definition.validate()?;
+        if self.active.get(&definition.name).copied() != expected {
+            return Err(conflict("set projection definition: get again and retry"));
+        }
         let mut revision = 1;
         if let Some(current) = self.active.get(&definition.name) {
             let prior = self.revisions.get(&(definition.name.clone(), *current)).expect("active revision exists");

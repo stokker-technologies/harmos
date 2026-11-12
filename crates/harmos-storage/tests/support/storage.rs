@@ -400,9 +400,9 @@ impl StorageBackend for Data {
         }
     }
     fn set_projection_definition<'a>(
-        &'a self, definition: &'a harmos_storage::query::projection::ProjectionDefinition, rebuild: bool,
+        &'a self, definition: &'a harmos_storage::query::projection::ProjectionDefinition, expected: Option<u64>, rebuild: bool,
     ) -> StorageFuture<'a, u64> {
-        Box::pin(async move { self.projections.lock().unwrap().register(definition, rebuild) })
+        Box::pin(async move { self.projections.lock().unwrap().register(definition, expected, rebuild) })
     }
     fn get_projection_definition<'a>(
         &'a self, name: &'a Identifier, revision: Option<u64>,
@@ -461,12 +461,12 @@ impl StorageBackend for Data {
     }
 
     fn set_index_definition<'a>(
-        &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, rebuild: bool, _work: ReadLimits,
+        &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits,
         cancel: &'a harmos_storage::query::columnar::Cancellation,
     ) -> StorageFuture<'a, u64> {
         Box::pin(async move {
             cancel.check()?;
-            self.indexes.lock().unwrap().register(definition, rebuild)
+            self.indexes.lock().unwrap().register(definition, expected, rebuild)
         })
     }
     fn get_index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_storage::query::index::IndexDefinition, u64)> {

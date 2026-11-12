@@ -54,7 +54,7 @@ pub(super) fn definition(connection: &Connection, name: &crate::Identifier) -> R
 }
 
 pub(super) fn register(
-    state: &mut State, definition: &IndexDefinition, rebuild: bool, work: ReadLimits, cancel: &Cancellation,
+    state: &mut State, definition: &IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits, cancel: &Cancellation,
 ) -> Result<u64> {
     cancel.check()?;
     state.check()?;
@@ -66,6 +66,9 @@ pub(super) fn register(
         })
         .optional()
         .map_err(db)?;
+    if prior.as_ref().map(|(_, revision)| *revision) != expected {
+        return Err(conflict("set index definition: get again and retry"));
+    }
     let mut revision = 1;
     if let Some((data, current)) = prior {
         if decode::<IndexDefinition>(&data)? == *definition {

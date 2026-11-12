@@ -105,11 +105,13 @@ without cancelling the caller's shared token.
 ## Ordered Indexes
 
 ```rust,ignore
-storage.set_index_definition(&definition, rebuild, work, &cancel).await?;
+storage.set_index_definition(&definition, expected_revision, rebuild, work, &cancel).await?;
 ```
 
 An `IndexDefinition` owns a name, nonzero semantic version, source and ordered
-columns. Registration is idempotent for the same definition. A changed definition
+columns. Set requires the revision returned by Get; `None` explicitly creates an absent definition.
+The provider compares the expected revision atomically before accepting even an unchanged value.
+Stale revisions conflict with the action “get again and retry”. A changed definition
 requires explicit rebuild and creates a new revision. SQLite builds history under
 one immediate transaction and updates entries in the source write transaction.
 Construction decodes each physical source chunk once, orders encoded entries and
@@ -128,11 +130,11 @@ invalidates old index continuations; changed plans and foreign cuts refuse.
 ## Durable Projections
 
 ```rust,ignore
-let revision = storage.set_projection_definition(&definition, rebuild).await?;
+let revision = storage.set_projection_definition(&definition, expected_revision, rebuild).await?;
 snapshot.advance_projection(&definition.name, None, work, &cancel).await?;
 let frontier = storage.get_projection_status(&definition.name, revision, None).await?.map(|status| status.frontier);
 let status = storage.get_projection_status(&definition.name, revision, Some(snapshot.at())).await?;
-let page = storage.read_projection(&read).await?;
+let page = storage.list_projection_rows(&read).await?;
 ```
 
 Definitions select columns or generic grouped time buckets. Registration and

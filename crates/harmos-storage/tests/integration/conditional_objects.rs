@@ -130,7 +130,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         assert_eq!(storage.compare_exchange_once(&create, None, &value).await.unwrap(), outcome);
         assert!(storage.compare_exchange_once(&create, None, &Counter { id: 1, value: 99 }).await.is_err());
         let saved = primary.create_snapshot(&initial.position).await.unwrap();
-        storage.set_index_definition(&definition, false, work, &cancel).await.unwrap();
+        storage.set_index_definition(&definition, None, false, work, &cancel).await.unwrap();
 
         // Scope Expected Tokens To Their Object And Refuse Existing Creates.
         assert!(matches!(
@@ -273,7 +273,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             source: definition.source.clone(),
             transform: ProjectionTransform::Select(vec!["payload.value".into()]),
         };
-        let revision = storage.set_projection_definition(&projection, false).await.unwrap();
+        let revision = storage.set_projection_definition(&projection, None, false).await.unwrap();
         held.advance_projection(&projection.name, None, work, &cancel).await.unwrap();
         assert_eq!(storage.get_projection_status(&projection.name, revision, Some(held.at())).await.unwrap().unwrap().rows, 1);
         let page = storage

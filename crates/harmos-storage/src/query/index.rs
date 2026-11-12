@@ -101,8 +101,11 @@ impl IndexDefinition {
 }
 
 impl IndexCatalog {
-    pub fn register(&mut self, definition: &IndexDefinition, rebuild: bool) -> Result<u64> {
+    pub fn register(&mut self, definition: &IndexDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
         definition.validate()?;
+        if self.definitions.get(&definition.name).map(|(_, revision)| *revision) != expected {
+            return Err(conflict("set index definition: get again and retry"));
+        }
         let mut revision = 1;
         if let Some((prior, current)) = self.definitions.get(&definition.name) {
             if prior == definition {

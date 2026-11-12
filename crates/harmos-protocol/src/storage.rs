@@ -1234,24 +1234,6 @@ pub struct ScanIndex {
     pub source: ::core::option::Option<ColumnSource>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct RegisterIndex {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<IndexDefinition>,
-    #[prost(bool, tag = "2")]
-    pub rebuild: bool,
-    #[prost(message, optional, tag = "3")]
-    pub work: ::core::option::Option<ReadLimits>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct RegisterProjection {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<ProjectionDefinition>,
-    #[prost(bool, tag = "2")]
-    pub rebuild: bool,
-}
-#[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DefinitionRevision {
     #[prost(uint64, tag = "1")]

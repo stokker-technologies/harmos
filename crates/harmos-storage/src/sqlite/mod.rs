@@ -351,10 +351,11 @@ impl StorageBackend for SqliteBackend {
     }
 
     fn set_index_definition<'a>(
-        &'a self, definition: &'a crate::query::index::IndexDefinition, rebuild: bool, work: ReadLimits, cancel: &'a Cancellation,
+        &'a self, definition: &'a crate::query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits,
+        cancel: &'a Cancellation,
     ) -> StorageFuture<'a, u64> {
         let (definition, cancel) = (definition.clone(), cancel.clone());
-        Box::pin(self.call(move |state| index::register(state, &definition, rebuild, work, &cancel)))
+        Box::pin(self.call(move |state| index::register(state, &definition, expected, rebuild, work, &cancel)))
     }
     fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
         let name = name.clone();
@@ -370,10 +371,10 @@ impl StorageBackend for SqliteBackend {
         Box::pin(self.call(move |state| index::scan(state, &snapshot, &read, &cancel)))
     }
     fn set_projection_definition<'a>(
-        &'a self, definition: &'a crate::query::projection::ProjectionDefinition, rebuild: bool,
+        &'a self, definition: &'a crate::query::projection::ProjectionDefinition, expected: Option<u64>, rebuild: bool,
     ) -> StorageFuture<'a, u64> {
         let definition = definition.clone();
-        Box::pin(self.call(move |state| projection::register(state, &definition, rebuild)))
+        Box::pin(self.call(move |state| projection::register(state, &definition, expected, rebuild)))
     }
     fn get_projection_definition<'a>(
         &'a self, name: &'a crate::Identifier, revision: Option<u64>,

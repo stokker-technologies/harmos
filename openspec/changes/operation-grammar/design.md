@@ -1352,3 +1352,17 @@ The transfer fixture now serves `harmos.plugin.v1.Instance`; the focused cross-f
 resume story passes. Coupling repairs update SDK Wasm host imports to shared/context
 owners, fix the runtime guest host import, remove a duplicated generator input scan,
 and retain storage package flattening. No compatibility module or carrier alias remains.
+
+### Definition Compare and Exchange
+
+Index and projection definitions use their provider-owned revision. Native Set takes
+`expected: Option<u64>`: `None` explicitly creates an absent definition; `Some(revision)`
+compares the current revision inside the same provider transaction or catalog mutex.
+The wire uses the Get revision as eight opaque big-endian bytes and a mutually exclusive
+create-if-absent flag. Validation covers the complete definition before replacement;
+rebuild remains explicit. Even an unchanged candidate with a stale revision conflicts,
+naming the Set action and “get again and retry”. The two faces share these handlers,
+while each declaration and grant retains its own identity. Retired RegisterIndex and
+RegisterProjection operations, request types and SDK bindings are removed. Native
+bench/provider consumers now supply expected revisions. Object/schema mirrors and
+issued-cut retention remain separate open work.

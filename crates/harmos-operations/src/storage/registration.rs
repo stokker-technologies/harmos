@@ -47,6 +47,20 @@ pub fn storage_catalog() -> crate::execution::operations::Catalog {
 pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
     let mut batch = crate::execution::__private::Catalog::new();
     batch.operations.extend([
+        crate::execution::operations::OperationFactory::protobuf::<super::context::SetProjectionDefinition>()
+            .expect("SetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::SetProjectionDefinition>()
+            .expect("SetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetProjectionDefinition>()
+            .expect("GetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetProjectionDefinition>()
+            .expect("GetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::SetIndexDefinition>()
+            .expect("SetIndexDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::SetIndexDefinition>().expect("SetIndexDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetIndexDefinition>()
+            .expect("GetIndexDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetIndexDefinition>().expect("GetIndexDefinition declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::CreateFileProduction>()
             .expect("CreateFileProduction declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::GetFileProduction>().expect("GetFileProduction declaration"),
@@ -74,8 +88,6 @@ pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
         crate::execution::operations::OperationFactory::protobuf::<super::ReleaseSnapshot>().expect("ReleaseSnapshot declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::ScanArrow>().expect("ScanArrow declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::ScanIndex>().expect("ScanIndex declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::RegisterIndex>().expect("RegisterIndex declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::RegisterProjection>().expect("RegisterProjection declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::AdvanceProjection>().expect("AdvanceProjection declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::ReadProjection>().expect("ReadProjection declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::InspectProjection>().expect("InspectProjection declaration"),

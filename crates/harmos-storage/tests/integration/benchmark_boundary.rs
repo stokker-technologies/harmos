@@ -87,7 +87,7 @@ async fn shared_workload_keeps_boundary_pages_and_replayed_projection_identical(
 
         // Publish, Replay And Read The Same Boundary From A Durable Projection.
         let definition = workload.projection();
-        let revision = backend.set_projection_definition(&definition, false).await.unwrap();
+        let revision = backend.set_projection_definition(&definition, None, false).await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, None, workload.work(), &Cancellation::default()).await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, None, workload.work(), &Cancellation::default()).await.unwrap();
         let mut read = ProjectionRead {

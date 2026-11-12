@@ -137,13 +137,39 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     };
     runtime
         .operations
-        .call_protobuf::<operations::RegisterIndex>(wire::RegisterIndex {
-            definition: Some(index),
+        .call_protobuf::<operations::SetIndexDefinition>(harmos_protocol::v1::StorageSetIndexDefinitionRequest {
+            definition: Some(index.clone()),
+            expected_revision: vec![],
+            create_if_absent: true,
             rebuild: false,
             work: Some(limits),
         })
         .await
         .unwrap();
+    let current = runtime
+        .operations
+        .call_protobuf::<operations::GetIndexDefinition>(harmos_protocol::v1::StorageGetIndexDefinitionRequest {
+            name: index.name.clone(),
+            source: index.source.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(current.definition.as_ref(), Some(&index));
+    let update = harmos_protocol::v1::StorageSetIndexDefinitionRequest {
+        definition: Some(index.clone()),
+        expected_revision: current.revision.clone(),
+        create_if_absent: false,
+        rebuild: false,
+        work: Some(limits),
+    };
+    assert_eq!(
+        runtime.operations.call_protobuf::<operations::SetIndexDefinition>(update.clone()).await.unwrap().revision,
+        current.revision
+    );
+    let mut absent = update;
+    absent.expected_revision.clear();
+    absent.create_if_absent = true;
+    assert!(runtime.operations.call_protobuf::<operations::SetIndexDefinition>(absent).await.is_err());
     let index = wire::ScanIndex {
         snapshot: Some(saved.clone()),
         source: Some(source.clone()),
@@ -177,15 +203,27 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         source: Some(source.clone()),
         transform: Some(wire::projection_definition::Transform::TimeBuckets(plan)),
     };
-    let revision = runtime
+    let revision_bytes = runtime
         .operations
-        .call_protobuf::<operations::RegisterProjection>(wire::RegisterProjection {
+        .call_protobuf::<operations::SetProjectionDefinition>(harmos_protocol::v1::StorageSetProjectionDefinitionRequest {
             definition: Some(definition),
+            expected_revision: vec![],
+            create_if_absent: true,
             rebuild: false,
         })
         .await
         .unwrap()
         .revision;
+    let revision = u64::from_be_bytes(revision_bytes.clone().try_into().unwrap());
+    let current = runtime
+        .operations
+        .call_protobuf::<operations::GetProjectionDefinition>(harmos_protocol::v1::StorageGetProjectionDefinitionRequest {
+            name: "sample.buckets".into(),
+            source: Some(source.clone()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(current.revision, revision_bytes);
     let inspect = wire::InspectProjection {
         name: "sample.buckets".into(),
         revision,
@@ -254,7 +292,12 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     };
     runtime
         .operations
-        .call_protobuf::<operations::RegisterProjection>(wire::RegisterProjection { definition: Some(rebuilt), rebuild: true })
+        .call_protobuf::<operations::SetProjectionDefinition>(harmos_protocol::v1::StorageSetProjectionDefinitionRequest {
+            definition: Some(rebuilt),
+            expected_revision: revision_bytes,
+            create_if_absent: false,
+            rebuild: true,
+        })
         .await
         .unwrap();
     let old_read = wire::ReadProjection {
