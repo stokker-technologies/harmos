@@ -198,7 +198,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         child_started: Notify::new(),
         parent_ready: Notify::new(),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Trace>(trace.clone());
     })
     .await
@@ -242,7 +242,7 @@ async fn parent_joins_child() {
             Err(Error::OperationRefused(Refusal::Cancelled { .. })) => assert!(cancel),
             Err(error) => panic!("unexpected parent outcome: {error}"),
         }
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -257,5 +257,5 @@ async fn retry_waits_child() {
         *trace.events.lock().unwrap(),
         ["parent-attempt", "child-started", "child-dropped", "parent-attempt", "child-started", "child-dropped",]
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

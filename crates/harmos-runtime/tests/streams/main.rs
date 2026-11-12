@@ -42,7 +42,7 @@ use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 use crate::support;
 use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{
-    Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
+    state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
     streams::Definition, streams::Item, streams::StreamManager,
 };
 
@@ -118,7 +118,7 @@ async fn rows_gaps_account() {
     assert_eq!(delivered + missed, published, "no row is lost silently: what was not delivered was counted");
     assert_eq!(last, published, "the newest row is always delivered");
 
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -155,7 +155,7 @@ async fn watch_delivery_settles() {
             ));
         }
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let runtime = streaming().await;
@@ -163,7 +163,7 @@ async fn watch_delivery_settles() {
 
         runtime.streams.publish(pulse(1));
         runtime.streams.publish(pulse(2));
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(1)));
         assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(2)));
@@ -218,7 +218,7 @@ async fn history_respects_cuts() {
             .collect();
         assert_eq!(retained, vec![5, 6, 7, 8, 9, 10, 11, 12]);
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let runtime = streaming().await;
@@ -257,7 +257,7 @@ async fn history_respects_cuts() {
             .collect();
         assert_eq!(all, vec![1, 2, 3]);
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -282,10 +282,10 @@ async fn demand_tracks_consumers() {
         drop(other);
         assert_eq!(*demand.borrow(), 0, "demand falls back to zero on drop");
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
-        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
             setup.settings().register(streams());
             setup.settings().attach_streams(Selecting);
@@ -298,7 +298,7 @@ async fn demand_tracks_consumers() {
         assert_eq!(*pulse_demand.borrow(), 1, "the attached consumer counts for the stream it selected");
         assert_eq!(*reading_demand.borrow(), 0, "selection is per definition, not per facility");
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         assert_eq!(*pulse_demand.borrow(), 0, "the consumer leaves demand when its supervisor joins");
     }
@@ -354,7 +354,7 @@ async fn demand_drives_capture() {
 #[tokio::test]
 async fn definitions_refuse_invalid() {
     {
-        let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let refused = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
             setup.settings().register(streams());
             setup.settings().register(colliding::stream_definitions());
@@ -370,7 +370,7 @@ async fn definitions_refuse_invalid() {
         #[derive(harmos_runtime::Described, Clone, Copy, Debug, Serialize, Deserialize)]
         struct Hollow;
 
-        let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let refused = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
             setup.settings().register([Definition::native::<Hollow>("hollow", 0)]);
         })

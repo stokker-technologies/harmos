@@ -313,5 +313,5 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
 
     // Close The Listener And Host.
     drop(attached);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

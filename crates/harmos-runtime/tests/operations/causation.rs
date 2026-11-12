@@ -282,7 +282,7 @@ async fn scoped_trace_handoffs() {
     }
     .with_subscriber(subscriber)
     .await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let records = capture.0.lock().unwrap();
     let root = records.iter().find(|record| record.name == "request").unwrap().id;
@@ -324,7 +324,7 @@ async fn filtered_trace_behaves() {
     .await;
     let records: Vec<_> = runtime.state.query::<Fact>(Position::ORIGIN).await.collect();
     assert_eq!(records.len(), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(capture.0.lock().unwrap().is_empty());
 }
 
@@ -384,7 +384,7 @@ async fn children_inherit_cause() {
     assert_eq!(noted.get("inherited-child"), Some(&root), "inheritance chains: a default-lane grandchild is in the same family");
     assert_eq!(noted.get("rerooted"), Some(&other), "a child that named its own cause re-roots itself");
     assert_eq!(noted.get("rerooted-child"), Some(&other), "and everything beneath it inherits the cause it re-rooted onto");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -413,5 +413,5 @@ async fn caused_submit_records() {
         "the recorded fact answers the position the submission named"
     );
     assert_eq!(noted[0].metadata.correlation.0, receipt.position);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

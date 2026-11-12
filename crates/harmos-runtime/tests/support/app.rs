@@ -42,12 +42,9 @@ pub async fn runtime() -> Runtime<Bank> {
 }
 
 pub async fn streaming() -> Runtime<Bank> {
-    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-        setup.settings().register(catalog());
+    booted(Ledger::default(), |setup| {
         setup.settings().register(streams());
-    })
-    .await
-    .expect("a memory-only boot recovers nothing")
+    }).await
 }
 
 pub async fn runtime_from(origin: Ledger) -> Runtime<Bank> {
@@ -55,12 +52,30 @@ pub async fn runtime_from(origin: Ledger) -> Runtime<Bank> {
 }
 
 pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Runtime<Bank> {
-    Runtime::<Bank>::launch_with(origin, (), |setup| {
+    launch::<Bank>(origin, (), |setup| {
         setup.settings().register(catalog());
         attach(setup);
     })
     .await
     .expect("a memory-only boot recovers nothing")
+}
+
+pub async fn launch<A: harmos_runtime::Application>(
+    origin: impl Into<harmos_runtime::state::Origin<A::State>>, config: A::Config,
+    attach: impl FnOnce(&mut Setup<A>),
+) -> Result<Runtime<A>, harmos_runtime::runtime::StartupError> {
+    Runtime::<A>::launch_with(origin, config, attach).await
+}
+
+pub async fn register<A: harmos_runtime::Application>(
+    runtime: &Runtime<A>, catalog: harmos_runtime::operations::Catalog,
+    lane: harmos_runtime::operations::Lane,
+) -> harmos_runtime::Result<()> {
+    runtime.operations.register_catalog(catalog, lane).await
+}
+
+pub async fn shutdown<A: harmos_runtime::Application>(runtime: &Runtime<A>) -> harmos_runtime::Result<harmos_runtime::state::Position> {
+    runtime.shutdown().await
 }
 
 /* === Private Functions === */

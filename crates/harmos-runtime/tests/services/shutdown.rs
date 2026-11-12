@@ -20,7 +20,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
-use super::{Ledger, Runtime};
+use super::{Ledger};
 use super::{
     assembly, service_status,
     support::{Bank, Noted},
@@ -214,7 +214,7 @@ impl Drop for Dropped {
 async fn independent_services_stop_together() {
     let service = Arc::new(Cleanup::default());
     let peer = Arc::new(Cleanup::default());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("independent", PhysicalStop(service.clone()));
         setup.settings().service("second", PhysicalStop(peer.clone()));
@@ -224,7 +224,7 @@ async fn independent_services_stop_together() {
     service.running.notified().await;
     peer.running.notified().await;
     {
-        let stop = runtime.shutdown();
+        let stop = crate::support::app::shutdown(&runtime);
         tokio::pin!(stop);
         (async {
             tokio::select! {
@@ -241,14 +241,14 @@ async fn independent_services_stop_together() {
     assert_eq!(service.finalized.load(Ordering::SeqCst), 0);
     peer.release.notify_one();
     service.release.notify_one();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(service.finalized.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn interruption_retains_stop() {
     let cleanup = Arc::new(Cleanup::default());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("physical-stop", PhysicalStop(cleanup.clone()));
     })
@@ -257,7 +257,7 @@ async fn interruption_retains_stop() {
     cleanup.running.notified().await;
     let mut participant = runtime.stop_participant();
     {
-        let stopping = runtime.shutdown();
+        let stopping = crate::support::app::shutdown(&runtime);
         tokio::pin!(stopping);
         (async {
             tokio::select! {
@@ -278,7 +278,7 @@ async fn interruption_retains_stop() {
     cleanup.release.notify_one();
     (participant.stopping()).await;
     participant.finish();
-    (runtime.shutdown()).await.unwrap();
+    (crate::support::app::shutdown(&runtime)).await.unwrap();
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 1);
     assert_eq!(cleanup.finalized.load(Ordering::SeqCst), 1);
     assert!(cleanup.stop_future_dropped.load(Ordering::SeqCst));
@@ -288,7 +288,7 @@ async fn interruption_retains_stop() {
 #[tokio::test]
 async fn cleanup_releases_resident() {
     let cleanup = Arc::new(Cleanup::default());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("owned", Owned(cleanup.clone()));
     })
@@ -296,7 +296,7 @@ async fn cleanup_releases_resident() {
     .unwrap();
     cleanup.running.notified().await;
     {
-        let stopping = runtime.shutdown();
+        let stopping = crate::support::app::shutdown(&runtime);
         tokio::pin!(stopping);
         (async {
             tokio::select! {
@@ -310,7 +310,7 @@ async fn cleanup_releases_resident() {
         (&mut stopping).await.unwrap();
     }
     assert!(cleanup.dropped.load(Ordering::SeqCst));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 1);
 }
 
@@ -318,7 +318,7 @@ async fn cleanup_releases_resident() {
 async fn cleanup_retry_survives() {
     let cleanup = Arc::new(Cleanup::default());
     cleanup.failed.store(true, Ordering::SeqCst);
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("owned", Owned(Arc::clone(&cleanup)));
     })
@@ -326,7 +326,7 @@ async fn cleanup_retry_survives() {
     .unwrap();
     cleanup.running.notified().await;
     let mut participant = runtime.stop_participant();
-    let failure = runtime.shutdown().await.unwrap_err();
+    let failure = crate::support::app::shutdown(&runtime).await.unwrap_err();
     let failure = std::iter::successors(Some(&failure as &(dyn std::error::Error + 'static)), |error| error.source())
         .map(ToString::to_string)
         .collect::<Vec<_>>()
@@ -337,7 +337,7 @@ async fn cleanup_retry_survives() {
 
     cleanup.failed.store(false, Ordering::SeqCst);
     {
-        let waiting = runtime.shutdown();
+        let waiting = crate::support::app::shutdown(&runtime);
         tokio::pin!(waiting);
         (async {
             tokio::select! {
@@ -351,7 +351,7 @@ async fn cleanup_retry_survives() {
     cleanup.release.notify_one();
     (participant.stopping()).await;
     participant.finish();
-    (runtime.shutdown()).await.unwrap();
+    (crate::support::app::shutdown(&runtime)).await.unwrap();
     assert_eq!(cleanup.attempts.load(Ordering::SeqCst), 2);
     assert!(cleanup.dropped.load(Ordering::SeqCst));
 }
@@ -360,7 +360,7 @@ async fn cleanup_retry_survives() {
 async fn uncooperative_resident_aborted() {
     let entered = Arc::new(Notify::new());
     let dropped = Arc::new(AtomicBool::new(false));
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service_with(
             "stalled",
@@ -388,7 +388,7 @@ async fn uncooperative_resident_aborted() {
     entered.notified().await;
     let statuses = runtime.operations.watch_residents();
 
-    assert!(matches!((runtime.shutdown()).await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+    assert!(matches!((crate::support::app::shutdown(&runtime)).await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 
     assert!(dropped.load(Ordering::SeqCst), "shutdown joined cancellation before returning");
     assert!(matches!(
@@ -401,7 +401,7 @@ async fn uncooperative_resident_aborted() {
 async fn cleanup_finish_within() {
     let entered = Arc::new(Notify::new());
     let cleaned = Arc::new(AtomicBool::new(false));
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service_with(
             "cleanup",
@@ -431,7 +431,7 @@ async fn cleanup_finish_within() {
     entered.notified().await;
     let statuses = runtime.operations.watch_residents();
 
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     assert!(cleaned.load(Ordering::SeqCst));
     assert!(matches!(
@@ -446,7 +446,7 @@ async fn unregister_retains_ownership() {
     let stopping = Arc::new(Notify::new());
     let dropped = Arc::new(AtomicBool::new(false));
     let runtime = Arc::new(
-        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             assembly(setup);
         })
         .await
@@ -502,7 +502,7 @@ async fn unregister_retains_ownership() {
 
     assert!(dropped.load(Ordering::SeqCst));
     assert!(!runtime.operations.watch_residents().borrow().contains_key(&harmos_runtime::operations::resident::Key::root("tenant")));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -514,7 +514,7 @@ async fn domains_outlives_clones() {
         events: events.clone(),
         started: started.clone(),
     });
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.resource::<Sequence>(sequence);
         setup.catalog(operations_catalog(), crate::support::SERIAL);
@@ -543,7 +543,7 @@ async fn domains_outlives_clones() {
         participant_events.lock().expect("event lock is healthy").push("participant");
         participant.finish();
     });
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     host.await.expect("the host participant does not panic");
     assert!(matches!(running.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
@@ -557,7 +557,7 @@ async fn domains_outlives_clones() {
     // rather than waiting for the last clone to go, so a host that keeps one by
     // design still stops, and stops promptly.
     let runtime = Arc::new(
-        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             assembly(setup);
         })
         .await
@@ -567,7 +567,7 @@ async fn domains_outlives_clones() {
     let stopping = tokio::spawn({
         let runtime = Arc::clone(&runtime);
 
-        async move { runtime.shutdown().await.unwrap() }
+        async move { crate::support::app::shutdown(&runtime).await.unwrap() }
     });
 
     assert_eq!((stopping).await.expect("runtime stop does not panic"), Position::ORIGIN);
@@ -575,7 +575,7 @@ async fn domains_outlives_clones() {
         matches!(retained.records.publish(Noted("after".to_owned())).await, Err(harmos_runtime::Error::Unavailable)),
         "a sealed journal refuses a late write rather than leaving it hanging"
     );
-    assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN, "a repeat stop reports the frontier the first one observed");
+    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position::ORIGIN, "a repeat stop reports the frontier the first one observed");
 }
 
 /* === Tests === */

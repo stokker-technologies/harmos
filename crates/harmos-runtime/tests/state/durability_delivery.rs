@@ -64,7 +64,7 @@ async fn unacked_item_redelivered() {
     })
     .await;
     let restored = ledger(&recovered).await;
-    recovered.shutdown().await.unwrap();
+    crate::support::app::shutdown(&recovered).await.unwrap();
 
     assert_eq!(
         *dispatched.lock().expect("the listener is never poisoned"),

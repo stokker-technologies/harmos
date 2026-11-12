@@ -324,7 +324,7 @@ async fn lifecycle_with_overrides() {
             stop_fails,
             cleanup_fails_once: false,
         };
-        let runtime = Runtime::<App>::launch_with((), config, |setup| {
+        let runtime = crate::support::app::launch::<App>((), config, |setup| {
             setup.resource::<Counter>(fake.clone());
         })
         .await
@@ -333,7 +333,7 @@ async fn lifecycle_with_overrides() {
         assert_eq!(*runtime.operation(Read).await.unwrap(), 41);
         let pending = runtime.operation(Pending).start().await.unwrap();
         fake.entered.notified().await;
-        let (first, second) = tokio::join!(runtime.shutdown(), runtime.shutdown());
+        let (first, second) = tokio::join!(crate::support::app::shutdown(&runtime), crate::support::app::shutdown(&runtime));
         assert_eq!(first.is_err(), stop_fails);
         assert_eq!(second.is_err(), stop_fails);
         assert!(pending.await.is_err());
@@ -400,9 +400,9 @@ async fn cleanup_retry_once() {
         ..Config::default()
     };
     let runtime = Runtime::<App>::launch((), config).await.unwrap();
-    assert!(runtime.shutdown().await.is_err());
-    runtime.shutdown().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
+    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(*counter.events.lock().unwrap(), [Phase::Prepare, Phase::Initialize, Phase::Stop, Phase::Cleanup, Phase::Cleanup]);
 }
 
@@ -416,7 +416,7 @@ async fn lifecycle_reports_failures() {
         ..Config::default()
     };
     let runtime = Runtime::<App>::launch((), config).await.unwrap();
-    let error = runtime.shutdown().await.unwrap_err();
+    let error = crate::support::app::shutdown(&runtime).await.unwrap_err();
     let first: &(dyn std::error::Error + 'static) = &error;
     let errors = std::iter::successors(Some(first), |source| source.source());
     let mut typed = errors.filter_map(|source| source.downcast_ref::<harmos_runtime::Error>());
@@ -427,8 +427,8 @@ async fn lifecycle_reports_failures() {
     assert!(matches!(stop.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application stop", .. }));
     assert!(matches!(cleanup.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application cleanup", .. }));
 
-    assert!(runtime.shutdown().await.is_err());
-    assert!(runtime.shutdown().await.is_err());
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
     assert_eq!(*counter.events.lock().unwrap(), [Phase::Prepare, Phase::Initialize, Phase::Stop, Phase::Cleanup, Phase::Cleanup]);
 }
 

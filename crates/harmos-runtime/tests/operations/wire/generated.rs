@@ -341,5 +341,5 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
 
     // Shut Down the Listener and Host.
     drop(attached);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

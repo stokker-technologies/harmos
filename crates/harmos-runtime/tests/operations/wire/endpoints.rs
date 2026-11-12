@@ -232,7 +232,7 @@ async fn bounded<T>(future: impl Future<Output = T>) -> T {
     (future).await
 }
 async fn runtime_with_resource<T: Send + Sync + 'static>(resource: Arc<T>) -> Runtime<App> {
-    Runtime::<App>::launch_with((), (), |setup| {
+    crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<T>(resource);
     })
     .await
@@ -343,7 +343,7 @@ async fn decoded_charge_releases_on_hand_off() {
     let total = bounded(harmos_runtime::grpc::input(instance, sending, items)).await.unwrap();
     assert_eq!(*total, (1..=FRAMES).sum::<u32>());
     assert_eq!(admitted_items(&mut codec, FRAMES).await, capacity);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[tokio::test]
@@ -368,7 +368,7 @@ async fn endpoint_admission_contract() {
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*item, 8);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[tokio::test]
@@ -398,7 +398,7 @@ async fn cancellation_settles_owner() {
     assert!(input.is_closed());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*held, 2);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[tokio::test]
@@ -431,7 +431,7 @@ async fn half_close_joins() {
     assert_eq!(*held, 8);
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -451,7 +451,7 @@ async fn settlement_never_wait() {
     let result = bounded(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending())).await.unwrap();
     assert_eq!(*result, 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -481,7 +481,7 @@ async fn input_failure_settles_attempt() {
     assert!(matches!(*source, Error::TaskFailed { domain: "gRPC input", .. }));
     assert!(matches!(settlement.as_deref(), Some(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
@@ -500,7 +500,7 @@ async fn input_drop_cancels() {
     let instance =
         runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::input(instance, input, futures_util::stream::pending()));
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
     // Abandoned before it started, the instance never constructed.
     assert_eq!(trace.new.load(Ordering::SeqCst), 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
@@ -525,7 +525,7 @@ async fn deadline_settles_peer() {
         matches!(error, harmos_runtime::grpc::InputError::Operation(source) if matches!(*source, Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. })))
     );
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -563,7 +563,7 @@ async fn grpc_exchange_polls() {
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -598,7 +598,7 @@ async fn exchange_failure_settles_attempt() {
         if matches!(settlement.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
@@ -618,7 +618,7 @@ async fn exchange_drop_cancels() {
     let instance =
         runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
     drop(harmos_runtime::grpc::exchange(instance, input, futures_util::stream::pending(), output));
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
     // Abandoned before it started, the instance never constructed.
     assert_eq!(trace.new.load(Ordering::SeqCst), 0);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 0);
@@ -651,7 +651,7 @@ async fn charged_request_ownership() {
     let instance = runtime.operations.submit_charged::<ForwardDeclaration, _>(request, (receiving, sending)).unwrap();
     assert_eq!(*bounded(instance).await.unwrap(), 0);
     drop(bounded(requests.reserve(1)).await.unwrap());
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
@@ -697,7 +697,7 @@ async fn opening_admission_exchange() {
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 async fn parent_cancellation<const CHARGED: bool>() {
@@ -732,7 +732,7 @@ async fn parent_cancellation<const CHARGED: bool>() {
     assert_eq!(*held, 8);
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(runtime.shutdown()).await.unwrap();
+    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -756,7 +756,7 @@ async fn stream_progress_outlives_total_timeout() {
     }
     drop(input);
     assert_eq!(*instance.await.unwrap(), 10);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -776,7 +776,7 @@ async fn stream_stall_expires_after_progress() {
     assert_eq!(*output.recv().await.unwrap(), 8);
     tokio::time::advance(Duration::from_secs(4)).await;
     assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -822,7 +822,7 @@ async fn unary_keeps_total_deadline() {
     instance.ready().await.unwrap();
     tokio::time::advance(Duration::from_secs(4)).await;
     assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -873,7 +873,7 @@ async fn stream_final_response_wait_is_idle_bounded() {
     assert!(instance.status().outcome().is_none());
     tokio::time::advance(Duration::from_secs(2)).await;
     assert!(matches!(instance.await, Err(Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }))));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -917,5 +917,5 @@ async fn grpc_stall_names_operation() {
     let status = tonic::Status::from_header_map(response.headers()).expect("deadline status");
     assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
     assert!(status.message().contains(SLOW_DECLARATION_OPERATION.entry().id), "{status}");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

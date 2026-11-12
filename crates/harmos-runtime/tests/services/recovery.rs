@@ -106,7 +106,7 @@ async fn stop_cleanup(
             lease.settle().await
         }
         CleanupRequest::Definition => runtime.operations.unregister_resident("retained-cleanup").await,
-        CleanupRequest::Runtime => runtime.shutdown().await.map(|_| ()),
+        CleanupRequest::Runtime => crate::support::app::shutdown(&runtime).await.map(|_| ()),
     }
 }
 
@@ -169,9 +169,9 @@ async fn unregister_retains_cleanup() {
             assert!(
                 !runtime.operations.watch_residents().borrow().contains_key(&harmos_runtime::operations::resident::Key::root("reload"))
             );
-            runtime.shutdown().await.unwrap();
+            crate::support::app::shutdown(&runtime).await.unwrap();
         } else {
-            let stopping = runtime.shutdown();
+            let stopping = crate::support::app::shutdown(&runtime);
             tokio::pin!(stopping);
             let pending =
                 std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(stopping.as_mut(), cx).is_pending())).await;
@@ -217,7 +217,7 @@ async fn stop_joins_cleanup() {
             lease = Some(runtime.operations.submit_resident("cleanup").await.unwrap());
             runtime
         } else {
-            Runtime::<App>::launch_with((), (), |setup| {
+            crate::support::app::launch::<App>((), (), |setup| {
                 setup.settings().service("cleanup", resident);
             })
             .await
@@ -226,14 +226,14 @@ async fn stop_joins_cleanup() {
         service_status(runtime.operations.watch_residents(), "cleanup", |status| matches!(status, ServiceStatus::Running { .. })).await;
 
         {
-            let stop = runtime.shutdown();
+            let stop = crate::support::app::shutdown(&runtime);
             tokio::pin!(stop);
             tokio::select! {
                 _ = &mut stop => panic!("cleanup has not finished"),
                 _ = entered.notified() => {}
             }
         }
-        let stop = runtime.shutdown();
+        let stop = crate::support::app::shutdown(&runtime);
         tokio::pin!(stop);
         assert!(futures_util::poll!(&mut stop).is_pending());
         assert!(!cleaned.load(Ordering::SeqCst));
@@ -331,9 +331,9 @@ async fn timeout_retains_cleanup() {
         }
         drop(lease);
         if matches!(request, CleanupRequest::Instance | CleanupRequest::Runtime) {
-            assert!(runtime.shutdown().await.is_err());
+            assert!(crate::support::app::shutdown(&runtime).await.is_err());
         } else {
-            runtime.shutdown().await.unwrap();
+            crate::support::app::shutdown(&runtime).await.unwrap();
         }
     }
 }
@@ -378,5 +378,5 @@ async fn exit_cause_preserved() {
     assert_eq!(source.to_string(), "original transport exit");
     assert!(observed.load(Ordering::Acquire));
     drop(lease);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

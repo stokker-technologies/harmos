@@ -181,7 +181,7 @@ async fn partial_cleanup_retry() {
         config(),
     )
     .unwrap();
-    let error = Runtime::<App>::launch_with(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
+    let error = crate::support::app::launch::<App>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
         setup.settings().storage(&storage);
     })
     .await
@@ -220,7 +220,7 @@ async fn logical_failure_settles() {
         config(),
     )
     .unwrap();
-    let error = Runtime::<InitializingApp>::launch_with(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
+    let error = crate::support::app::launch::<InitializingApp>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
         setup.settings().storage(&storage);
     })
     .await

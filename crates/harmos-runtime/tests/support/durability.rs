@@ -503,7 +503,7 @@ pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Ru
 }
 
 pub async fn opened(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Result<Runtime<Bank>, StartupError> {
-    Runtime::<Bank>::launch_with(origin, (), |setup| {
+    crate::support::app::launch::<Bank>(origin, (), |setup| {
         setup.settings().register(change_state_catalog()).register(fact_registry());
         attach(setup);
     })

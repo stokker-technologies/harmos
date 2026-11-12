@@ -120,7 +120,7 @@ impl Drop for AttemptGuard {
 
 async fn runtime() -> (Runtime<App>, Arc<Resources>) {
     let resources = Arc::new(Resources::default());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Resources>(resources.clone());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
@@ -141,7 +141,7 @@ async fn runtime() -> (Runtime<App>, Arc<Resources>) {
 async fn wire_bindings_execute() {
     {
         let resources = Arc::new(Resources::default());
-        let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        let runtime = crate::support::app::launch::<App>((), (), |setup| {
             setup.resource::<Resources>(resources.clone());
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
@@ -162,7 +162,7 @@ async fn wire_bindings_execute() {
         let response = invocation.await.unwrap();
         assert_eq!(decode_protobuf::<Text>(&response).value, "hello:1");
         assert_eq!(resources.events.lock().unwrap().iter().filter(|event| **event == "run").count(), 1);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, resources) = runtime().await;
@@ -176,7 +176,7 @@ async fn wire_bindings_execute() {
         assert_eq!(*resources.events.lock().unwrap(), ["run", "drop"]);
         let answer = runtime.operation(ReadContractDeclaration { value: "local".to_owned() }).await.unwrap();
         assert_eq!(answer.value, "local:1");
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -194,7 +194,7 @@ async fn contracts_guard_identity() {
             .is_err()
     );
     assert!(resources.events.lock().unwrap().is_empty());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[cfg(feature = "plugin-guest")]
@@ -237,7 +237,7 @@ async fn owner_assignments_isolate_instances() {
         let ids = resources.ids.lock().unwrap();
         assert_ne!(ids[0], ids[1]);
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 fn payload(value: &str) -> Vec<u8> {
@@ -282,7 +282,7 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
         for accepted in [true, false] {
             let settings = if accepted { harmos_runtime::config::SchemaSettings::default() } else { tiny };
             let resources = Arc::new(Resources::default());
-            let runtime = Runtime::<App>::launch_with((), (), |setup| {
+            let runtime = crate::support::app::launch::<App>((), (), |setup| {
                 setup.resource::<Resources>(resources.clone());
                 setup.settings().schema_settings(settings);
                 if initial {
@@ -297,7 +297,7 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
                 assert_eq!(runtime.is_ok(), accepted);
                 if let Ok(runtime) = runtime {
                     assert!(runtime.operations.definition(READ_CONTRACT_DECLARATION_OPERATION.entry().id).is_ok());
-                    runtime.shutdown().await.unwrap();
+                    crate::support::app::shutdown(&runtime).await.unwrap();
                 }
             } else {
                 let runtime = runtime.unwrap();
@@ -310,7 +310,7 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
                     .await;
                 assert_eq!(result.is_ok(), accepted);
                 assert_eq!(runtime.operations.definition(READ_CONTRACT_DECLARATION_OPERATION.entry().id).is_ok(), accepted);
-                runtime.shutdown().await.unwrap();
+                crate::support::app::shutdown(&runtime).await.unwrap();
             }
         }
     }

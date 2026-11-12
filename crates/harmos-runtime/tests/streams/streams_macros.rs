@@ -104,7 +104,7 @@ async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item
 }
 
 async fn studio() -> Runtime<Studio> {
-    Runtime::<Studio>::launch_with(State, (), |setup| {
+    crate::support::app::launch::<Studio>(State, (), |setup| {
         setup.settings().register(streams::stream_definitions());
     })
     .await
@@ -149,7 +149,7 @@ async fn streams_publish_query() {
 
     drop(watching);
     assert_eq!(*demand.borrow(), 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 mod streams {

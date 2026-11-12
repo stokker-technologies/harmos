@@ -93,7 +93,7 @@ impl Fixture {
     pub async fn executable(path: &std::path::Path) -> Self {
         // Keep Scenario Time on the Host's Virtual Clock
         let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
-        let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::support::app::launch::<Model>((), (), |setup| {
             setup.settings().clock(clock).register(stream_definitions()).operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(32 * 1024 * 1024).unwrap()),
                 ..Default::default()

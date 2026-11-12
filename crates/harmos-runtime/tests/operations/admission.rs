@@ -129,7 +129,7 @@ impl Drop for AttemptGuard {
 /* === Private Functions === */
 
 async fn runtime(counts: Arc<Counts>) -> Runtime<App> {
-    Runtime::<App>::launch_with((), (), |setup| {
+    crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Counts>(counts);
         setup.settings().operation_settings(Settings {
             queued: NonZeroUsize::new(1).unwrap(),
@@ -154,7 +154,7 @@ fn request(blocked: bool) -> HoldContractDeclaration {
 async fn queue_refuses_construction() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), crate::support::SERIAL).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -165,7 +165,7 @@ async fn queue_refuses_construction() {
         Err(Error::ResourceExhausted { resource: "operation admission queue" })
     ));
 
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     drop((first, second));
 }
 
@@ -173,7 +173,7 @@ async fn queue_refuses_construction() {
 async fn queued_cancel_unbuilt() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), crate::support::SERIAL).await.unwrap();
     let first_request = request(true);
     let started = first_request.started.clone();
     let first = runtime.operation(first_request).start().await.unwrap();
@@ -201,14 +201,14 @@ async fn queued_cancel_unbuilt() {
     first.request_cancel();
     assert!(matches!(first.join().await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn instances_leave_lookup() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), crate::support::SERIAL).await.unwrap();
     for _ in 0..64 {
         let instance = runtime.operation(request(false)).start().await.unwrap();
         let id = instance.id();
@@ -216,18 +216,18 @@ async fn instances_leave_lookup() {
         assert!(runtime.operations.status(id).is_none());
     }
     assert_eq!(counts.drops.load(Ordering::SeqCst), 64);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn thread_submission_works() {
     let counts = Arc::new(Counts::default());
     let runtime = runtime(counts.clone()).await;
-    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), crate::support::SERIAL).await.unwrap();
     let operations = runtime.operations.clone();
     let instance = std::thread::spawn(move || operations.submit::<HoldContractDeclaration>(request(false))).join().unwrap().unwrap();
     instance.join().await.unwrap();
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

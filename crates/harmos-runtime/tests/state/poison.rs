@@ -62,7 +62,7 @@ async fn poison_refuses_verbs() {
     // The writer is never restarted in place: a second attempt is refused too,
     // and the runtime stops at the frontier it reached.
     assert!(matches!(runtime.state.commit(deposit(2)).await, Err(Error::Unavailable)));
-    assert_eq!(runtime.shutdown().await.unwrap(), Position(1));
+    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(1));
 }
 
 #[tokio::test]

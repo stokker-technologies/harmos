@@ -541,7 +541,7 @@ async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, Plug
 async fn setup_source(
     block: bool, reenter: bool, tail: usize, managed: bool,
 ) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
-    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<Model>((), (), |setup| {
         setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
         setup.settings().register(if managed { vec![] } else { stream_definitions() });
         setup.settings().tail(tail);
@@ -622,7 +622,7 @@ async fn reentrancy_preserve_logical() {
         ]
     );
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -636,7 +636,7 @@ async fn sources_never_commit() {
         assert!(!host.scope.as_ref().unwrap().is_ready());
         assert!(host.owner.seen.lock().unwrap().is_empty());
         manager.shutdown(&mut host).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -653,7 +653,7 @@ async fn listener_failure_fences() {
         assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
         assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
         manager.shutdown(&mut host).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, mut manager, mut host) = setup(false, false, 8).await;
@@ -665,7 +665,7 @@ async fn listener_failure_fences() {
         assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::guest::PluginState::Failed);
         assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
         manager.shutdown(&mut host).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -715,7 +715,7 @@ async fn runtime_signals_listener() {
         .unwrap();
     let lease = runtime.operations.submit_resident("blocked-cleanup").await.unwrap();
     gates.running.notified().await;
-    let mut stopping = Box::pin(runtime.shutdown());
+    let mut stopping = Box::pin(crate::support::app::shutdown(&runtime));
     tokio::select! {
         _ = async {
             gates.stopping.notified().await;
@@ -726,7 +726,7 @@ async fn runtime_signals_listener() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     drop(stopping);
     gates.release.notify_one();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     drop(lease);
 }
 
@@ -760,7 +760,7 @@ async fn pages_deliver_native() {
         }
     }
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -781,7 +781,7 @@ async fn overwrite_reports_logical() {
     }
     assert!(host.scope.as_ref().unwrap().is_ready());
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -800,7 +800,7 @@ async fn receipt_cleans_replacement() {
     assert!(runtime.streams.shutdown_listeners_for(&old).await.is_err());
     assert!(current.is_ready());
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -818,7 +818,7 @@ async fn source_preserves_staged() {
     assert_eq!(host.view.as_ref().unwrap().lock().await.frontier("listener.samples"), Some(5));
     manager.shutdown(&mut host).await.unwrap();
     assert!(lease.admit_row(publication_row(6), 6, 0).is_err());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 /* === Tests === */
@@ -833,7 +833,7 @@ async fn shutdown_releases_callback_before_source() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     let source_dropped = host.original_drop.clone();
     assert_eq!(source_dropped.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     drop((manager, host, runtime));
     assert_eq!(source_dropped.load(Ordering::SeqCst), 1);
 }

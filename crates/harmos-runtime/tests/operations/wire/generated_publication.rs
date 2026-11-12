@@ -66,5 +66,5 @@ async fn native_publication_preserves_payload_and_batch_metadata() {
     };
     runtime.operations.call_protobuf::<harmos_operations::streams::Publish>(request.clone()).await.unwrap();
     assert_eq!(*publications.0.lock().unwrap(), vec![request]);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

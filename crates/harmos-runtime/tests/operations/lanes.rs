@@ -26,7 +26,7 @@ use tokio::sync::{Semaphore, mpsc};
 // Local Imports
 use super::app::App;
 use harmos_runtime::operations::RetryPolicy;
-use harmos_runtime::{Runtime, operations::Capacity, operations::Lane};
+use harmos_runtime::{operations::Capacity, operations::Lane};
 
 /* === Constants === */
 
@@ -123,12 +123,12 @@ async fn assert_admission(lane: Lane, count: usize, admitted: usize) {
         entered,
         release: Semaphore::new(0),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Gauge>(gauge.clone());
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(operations_catalog(), lane).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), lane).await.unwrap();
     let mut instances = Vec::new();
     for _ in 0..count {
         instances.push(runtime.operation(MeasureContractDeclaration {}).start().await.unwrap());
@@ -145,7 +145,7 @@ async fn assert_admission(lane: Lane, count: usize, admitted: usize) {
     assert_eq!(gauge.maximum.load(Ordering::SeqCst), admitted);
     assert_eq!(gauge.ran.load(Ordering::SeqCst), count);
     assert_eq!(gauge.active.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]

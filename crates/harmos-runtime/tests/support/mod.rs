@@ -11,7 +11,7 @@
 
 /* === Modules === */
 
-mod app;
+pub mod app;
 pub mod fixtures;
 
 /* === Re-Exports === */

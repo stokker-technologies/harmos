@@ -137,7 +137,7 @@ pub async fn streams_r004_publish_cost_is_independent_of_the_window_size() {
         Wide::WINDOW,
     );
 
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 pub async fn streams_ac006_concurrent_waveform_measurement() {
@@ -228,7 +228,7 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
         Wide::WINDOW,
     );
 
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 /* === Private Functions === */
@@ -253,7 +253,7 @@ fn count_allocation() {
 }
 
 async fn measured_runtime() -> Runtime<Probe> {
-    Runtime::<Probe>::launch_with((), (), |setup| {
+    crate::support::app::launch::<Probe>((), (), |setup| {
         setup.settings().register(feeds::stream_definitions());
     })
     .await

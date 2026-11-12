@@ -40,7 +40,7 @@ use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authent
 use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::grpc::{Codec, DecodeSettings, EncodeSettings};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamSettings};
-use harmos_runtime::{Error, Runtime};
+use harmos_runtime::{Error};
 
 /* === Constants === */
 
@@ -746,7 +746,7 @@ async fn failures<F: Future<Output = ()>>(
     behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager) -> F,
 ) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource(behavior);
     })
     .await
@@ -822,7 +822,7 @@ async fn failures<F: Future<Output = ()>>(
         Err(status) => status,
     };
     drop(attached);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     [unary, streaming, upload, exchange]
 }
 

@@ -203,7 +203,7 @@ fn parent_contract_declaration_operation()
 
 async fn runtime() -> (Runtime<App>, Arc<Counts>) {
     let counts = Arc::new(Counts::default());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Counts>(counts.clone());
     })
     .await
@@ -237,7 +237,7 @@ async fn aliases_preserve_values() {
     let Error::OperationFailed { operation, source } = error else { panic!("expected authored failure") };
     assert_eq!(operation, "outcomes.compute");
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -258,7 +258,7 @@ async fn deadlines_remain_distinct() {
     let error = runtime.operation(ParentContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut { .. })))));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -269,12 +269,12 @@ async fn child_retries_settle_each_attempt() {
     assert_eq!((*root, *child), (3, 3));
     assert_eq!(counts.started.load(Ordering::SeqCst), 6);
     assert_eq!(counts.finished.load(Ordering::SeqCst), 6);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn failure_never_emit() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource(Counts::default());
         setup.operation(
@@ -295,5 +295,5 @@ async fn failure_never_emit() {
         .filter(|entry| matches!(entry.value.source, FactSource::Work(_)))
         .collect();
     assert!(facts.is_empty());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

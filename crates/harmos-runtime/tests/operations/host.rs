@@ -136,7 +136,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         cleanup: Notify::new(),
         request: Mutex::new(None),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Gate>(gate.clone());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
@@ -150,7 +150,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         .register_operation(hold_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     (runtime, gate)
 }
 
@@ -186,7 +186,7 @@ async fn owned_request_survives_caller_cancellation() {
 
     // A Native Worker May Own The Request Allocation After The Caller Cancels.
     assert!(instance.cancel().await.is_err());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(budget.available_permits(), 0);
     drop(retained);
     assert_eq!(budget.available_permits(), 64);
@@ -200,7 +200,7 @@ async fn refused_owned_request_releases_admission() {
     let claims = harmos_runtime::operations::RequestClaims::retain(permit);
     assert!(OperationHost::submit_owned::<TickerDeclaration>(&runtime.operations, TickerDeclaration {}, claims).await.is_err());
     assert_eq!(budget.available_permits(), 64);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -219,7 +219,7 @@ async fn host_instances_settle() {
         gate.release.add_permits(1);
         assert_eq!(*called.await.unwrap(), 8);
         assert_eq!(gate.completed.load(Ordering::SeqCst), 2);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -228,7 +228,7 @@ async fn host_instances_settle() {
         assert!(instance.cancel().await.is_err());
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
         assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -239,7 +239,7 @@ async fn host_instances_settle() {
         // Dropping an unsettled instance cancels it.
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -253,7 +253,7 @@ async fn host_instances_settle() {
         gate.release.add_permits(1);
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 1);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -281,7 +281,7 @@ async fn builtin_controls_instance() {
     let refused = operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(unknown)).await;
     assert!(hidden(refused.err()));
     assert_ne!(cancelled.outcome, Outcome::Succeeded.as_str());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -351,5 +351,5 @@ async fn resident_leases_watched() {
     // A Stopped Resident Leaves the Index Like a Settled Request
     let stopped = operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
     assert!(hidden(stopped.err()));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

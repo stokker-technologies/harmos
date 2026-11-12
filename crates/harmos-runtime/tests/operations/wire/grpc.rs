@@ -161,7 +161,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         finished: AtomicUsize::new(0),
         dropped: AtomicUsize::new(0),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup
             .resource::<Trace>(trace.clone())
             .operation(produce_declaration_operation().expect("representable operation"), crate::support::SERIAL);
@@ -218,7 +218,7 @@ async fn items_precede_settled() {
     assert!(stream.next().await.is_none());
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -236,7 +236,7 @@ async fn output_releases_backpressure() {
     assert!(matches!(stream.next().await.unwrap().unwrap(), Event::Completion(value) if *value == 3));
     assert!(stream.next().await.is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -248,7 +248,7 @@ async fn abandonment_drops_attempt() {
     let stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.attempting.acquire().await.unwrap().forget();
     drop(stream);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -266,7 +266,7 @@ async fn items_remain_visible() {
     assert_eq!(item(stream.next().await.unwrap()), 1);
     assert!(stream.next().await.unwrap().is_err());
     assert!(stream.next().await.is_none());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -294,7 +294,7 @@ async fn failure_not_success() {
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     trace.fail_finish.store(false, Ordering::SeqCst);
     trace.release.add_permits(1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.finished.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -317,7 +317,7 @@ async fn deadline_settles_draining() {
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -346,7 +346,7 @@ async fn held_item_backpressures() {
     trace.release.add_permits(1);
     assert!(matches!(stream.next().await.unwrap().unwrap(), Event::Completion(value) if *value == 2));
     assert!(stream.next().await.is_none());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -367,7 +367,7 @@ async fn abandonment_cancels_operation() {
     assert_eq!(trace.items_created.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     trace.release.add_permits(1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*held, 0);

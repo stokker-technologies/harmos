@@ -157,7 +157,7 @@ fn sources_avoid_tokio() {
 #[tokio::test(start_paused = true)]
 async fn clock_measures_script() {
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let scripted = Duration::from_secs(300);
 
     let answer = runtime
@@ -181,5 +181,5 @@ async fn clock_measures_script() {
         .await
         .expect("the second attempt measures its own wait");
     assert_eq!(Duration::from_nanos(again.scoped_nanos), scoped);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

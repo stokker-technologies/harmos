@@ -235,7 +235,7 @@ async fn runtime(parent_lane: harmos_runtime::operations::Lane) -> (Runtime<App>
         release: Notify::new(),
         free_started: Notify::new(),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Trace>(trace.clone());
     })
     .await
@@ -271,7 +271,7 @@ async fn ancestor_cycles_rejected() {
         assert_eq!(*answer, 7);
         assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
         assert!(trace.free_dropped.load(Ordering::SeqCst));
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -284,7 +284,7 @@ async fn refusal_survives_parent() {
         matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { parent, child }) if *parent == "Serial" && *child == "Serial")
     );
     assert_eq!(trace.parent_constructions.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -299,6 +299,6 @@ async fn child_settles_another() {
 
     trace.release.notify_one();
     assert_eq!(*blocker.await.unwrap(), 7);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(trace.queued_runs.load(Ordering::SeqCst), 0, "the cancelled child never runs after capacity returns");
 }

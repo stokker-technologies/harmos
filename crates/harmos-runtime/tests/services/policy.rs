@@ -92,7 +92,7 @@ async fn work_facts(runtime: &Runtime<Bank>) -> Vec<SystemFact> {
 #[tokio::test]
 async fn never_restart_preserves_failure() {
     for panics in [false, true] {
-        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             assembly(setup);
             setup.settings().service_with(
                 "analysis",
@@ -119,7 +119,7 @@ async fn never_restart_preserves_failure() {
         let facts = work_facts(&runtime).await;
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].identify().0.as_str(), "harmos:work/analysis/deactivated");
-        assert!(matches!(runtime.shutdown().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+        assert!(matches!(crate::support::app::shutdown(&runtime).await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
     }
 }
 
@@ -127,7 +127,7 @@ async fn never_restart_preserves_failure() {
 async fn credit_exhaustion_history() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let service_attempts = Arc::clone(&attempts);
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("adapter", move |_context| {
             let attempts = Arc::clone(&service_attempts);
@@ -151,7 +151,7 @@ async fn credit_exhaustion_history() {
     ));
     assert_eq!(attempts.load(Ordering::SeqCst), 4);
     assert_eq!(work_facts(&runtime).await.len(), 1);
-    assert!(matches!(runtime.shutdown().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+    assert!(matches!(crate::support::app::shutdown(&runtime).await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 
 #[tokio::test(start_paused = true)]
@@ -169,7 +169,7 @@ async fn credit_survive_restarts() {
         },
         ..harmos_runtime::services::POLICY
     };
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service_with("adapter", policy, MutableAdapter { attempts: 0, exits: receiver });
     })
@@ -199,5 +199,5 @@ async fn credit_survive_restarts() {
     let status = service_status(statuses, "adapter", |status| matches!(status, ServiceStatus::Inactive { .. })).await;
     assert!(matches!(status, ServiceStatus::Inactive { cause: ServiceExit::CreditExhausted, ref history }
         if history == &["reset on attempt 1", "failed on attempt 2", "failed on attempt 3"]));
-    assert!(matches!(runtime.shutdown().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+    assert!(matches!(crate::support::app::shutdown(&runtime).await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }

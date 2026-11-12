@@ -321,7 +321,7 @@ async fn child_preserves_authority() {
     assert_eq!(&*operations.operation::<OverlayParentDeclaration>(OverlayParentDeclaration {}).await.unwrap(), "alice:parent:alice:child");
     assert_eq!(original.require::<Stage>().unwrap().id, "parent");
     assert_eq!(&*operations.operation::<OverlayChildDeclaration>(OverlayChildDeclaration {}).await.unwrap(), "alice:parent");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -370,7 +370,7 @@ async fn children_inherit_principals() {
     );
     assert_eq!(&*a.unwrap(), "alice:alice");
     assert_eq!(&*b.unwrap(), "bob:bob");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -392,7 +392,7 @@ async fn layers_skips_layers() {
             "first observe middleware.parent",
         ]
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -418,7 +418,7 @@ async fn cancellation_interrupts_policy() {
         assert_eq!(observations[0].outcome, harmos_runtime::operations::OperationOutcome::Cancelled);
         assert!(observations[0].settled);
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -449,7 +449,7 @@ async fn overrides_preserve_type() {
             .submit_at::<DeclareParentDeclaration>(DECLARE_CHILD_DECLARATION_OPERATION.entry().id, DeclareParentDeclaration {})
             .is_err()
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -472,7 +472,7 @@ async fn retries_preserve_principal() {
     let answer = runtime.operations.with_context(context("alice")).operation::<RetryDeclaration>(RetryDeclaration {}).await.unwrap();
     assert_eq!(&*answer, "alice:3");
     assert_eq!(*events.lock().unwrap(), ["once enter middleware.retry", "once observe middleware.retry"]);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 struct Wait {

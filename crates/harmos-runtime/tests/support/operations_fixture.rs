@@ -332,7 +332,7 @@ pub(crate) async fn runtime() -> Runtime<Bank> {
 }
 
 pub(crate) async fn runtime_with(update: impl FnOnce(&mut harmos_runtime::Setup<Bank>)) -> Runtime<Bank> {
-    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup
             .settings()
             .operation_settings(harmos_runtime::operations::Settings {

@@ -173,7 +173,7 @@ async fn drain_precedes_flush() {
         runtime.state.commit(deposit(amount)).await.expect("accepted");
     }
     let applied = runtime.state.applied();
-    let settled = runtime.shutdown().await.unwrap();
+    let settled = crate::support::app::shutdown(&runtime).await.unwrap();
 
     // `stop` answered, so the join came last; what the probe wrote down is
     // everything that happened before it.
@@ -196,7 +196,7 @@ async fn recorder_resumes_own() {
     for sample in 1..=5 {
         runtime.streams.publish(pulse(sample));
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     assert_eq!(kept.cursor.load(Ordering::Acquire), 5, "the first supervisor made every published row durable");
     assert_eq!(*kept.samples.lock().expect("the tape is never poisoned"), vec![1, 2, 3, 4, 5]);
@@ -206,7 +206,7 @@ async fn recorder_resumes_own() {
     for sample in 6..=9 {
         runtime.streams.publish(pulse(sample));
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     assert_eq!(kept.cursor.load(Ordering::Acquire), 9, "new rows continue after the durable cursor instead of reusing it");
     assert_eq!(
@@ -227,7 +227,7 @@ async fn gap_reports_window() {
     for sample in 1..=12 {
         runtime.streams.publish(pulse(sample));
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     assert_eq!(
         *kept.gaps.lock().expect("the tape is never poisoned"),
@@ -265,7 +265,7 @@ async fn recovery_accepts_source() {
 }
 
 async fn recording(tape: Tape) -> Runtime<Bank> {
-    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().register(streams());
         setup.settings().attach_streams(tape);

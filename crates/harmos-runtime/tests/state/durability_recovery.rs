@@ -147,7 +147,7 @@ async fn redelivery_forwards_stored() {
 
     assert_eq!(ledger(&recovered).await.balance, 13, "the current bonus applies once");
     assert_eq!(recovered.state.applied(), Position(10), "the matching record retains its position");
-    recovered.shutdown().await.unwrap();
+    crate::support::app::shutdown(&recovered).await.unwrap();
 
     let written = mirror.lines();
 
@@ -275,7 +275,7 @@ async fn seeded(copy: &Store) {
         runtime.state.commit(deposit(amount * 2)).await.expect("accepted");
         runtime.state.commit(withdraw(amount)).await.expect("accepted");
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 /* === Tests === */

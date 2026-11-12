@@ -122,7 +122,7 @@ impl Drop for AttemptGuard {
 
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Trace>(trace.clone()).operation(
             read_contract_declaration_operation().expect("representable operation"),
             harmos_runtime::operations::Lane::default(),
@@ -141,7 +141,7 @@ async fn registration_does_not_execute_requests() {
     assert_eq!(response.value, 7);
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -153,7 +153,7 @@ async fn cancellation_drops_attempt_state() {
     assert!(call.await.is_err());
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -163,7 +163,7 @@ async fn panic_drops_attempt_state() {
     assert!(matches!(result, Err(Error::OperationPanicked { .. })));
     assert_eq!(trace.entered.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 mod listed {
@@ -389,7 +389,7 @@ mod listed {
         assert_eq!(*restored, 7);
         assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 1);
         drop((first, second, restored));
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 
     #[tokio::test]
@@ -416,7 +416,7 @@ mod listed {
         assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
         assert!(inferred.ptr_eq(&declared));
         drop((inferred, declared));
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
         drop(runtime);
         let recovered = harmos_runtime::operations::Response::from_owner(original).try_unwrap().unwrap();
         assert_eq!(recovered, 7);

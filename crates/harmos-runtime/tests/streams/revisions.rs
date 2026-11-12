@@ -236,7 +236,7 @@ async fn changed_row_commits_a_new_current_revision() {
     manager.reload(candidate(false, "Numbers Again"), &mut host).await.unwrap();
     assert_eq!(current(&host).definition().version(), old_revision);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -256,7 +256,7 @@ async fn failed_reload_keeps_old_revision_current() {
     let rows = current(&host).query(..).await.unwrap().collect::<Vec<_>>();
     assert_eq!(Number::decode(&rows.last().unwrap().value.payload).unwrap().value, 9);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -269,7 +269,7 @@ async fn label_only_reload_preserves_revision() {
     assert_eq!(current(&host).definition().version(), old.definition().version());
     assert_ne!(current(&host).definition().metadata(), old.definition().metadata());
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -325,7 +325,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         manager.shutdown(&mut host).await.unwrap();
         drop(feed);
         storage.close().await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     assert_ne!(keys[0], keys[1]);
 }

@@ -135,12 +135,12 @@ impl Drop for AttemptGuard {
 
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Trace>(trace.clone());
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(operations_catalog(), crate::support::SERIAL).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), crate::support::SERIAL).await.unwrap();
     (runtime, trace)
 }
 
@@ -166,7 +166,7 @@ async fn cancellation_observable_queued() {
 
     // The cancelled queued instance was never constructed.
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -174,7 +174,7 @@ async fn shutdown_cancels_attempts() {
     let (runtime, trace) = runtime().await;
     let instance = runtime.operation(WaitContractDeclaration { mode: Mode::Hold }).start().await.unwrap();
     trace.started.notified().await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(matches!(instance.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert!(matches!(runtime.operations.submit_resident("late").await, Err(Error::Closing { domain: "resident" })));

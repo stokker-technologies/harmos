@@ -158,7 +158,7 @@ impl Drop for Guard {
 #[tokio::test(start_paused = true)]
 async fn cancel_final_response_in_process() {
     let probe = Arc::new(Probe::default());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup
             .resource::<Probe>(probe.clone())
             .operation(finish_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
@@ -183,7 +183,7 @@ async fn cancel_final_response_in_process() {
         assert_eq!(probe.dropped.load(Ordering::SeqCst), mode as usize + 1);
     }
     assert_eq!(probe.started.load(Ordering::SeqCst), 4);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
@@ -234,7 +234,7 @@ pub(crate) async fn remote<A: harmos_runtime::Application>(runtime: &Runtime<A>,
 #[tokio::test]
 async fn cancel_final_response_grpc() {
     let probe = Arc::new(Probe::default());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup
             .resource::<Probe>(probe.clone())
             .operation(finish_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
@@ -244,5 +244,5 @@ async fn cancel_final_response_grpc() {
     .unwrap();
     remote(&runtime, &probe).await;
     assert_eq!(probe.dropped.load(Ordering::SeqCst), 4);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

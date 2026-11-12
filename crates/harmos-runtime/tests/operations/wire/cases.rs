@@ -462,7 +462,7 @@ async fn malformed_payload_refused() {
     ));
     // The refused payload constructs nothing.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -480,7 +480,7 @@ async fn decode_panic_refused() {
     ));
     // The panic stays inside submission and constructs nothing.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -499,7 +499,7 @@ async fn encode_panic_settles() {
     // The response panics after one completed run.
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -547,7 +547,7 @@ async fn decode_races_replacement() {
         .unwrap();
     assert_eq!(decode_protobuf::<Text>(&reply).value, "replacement");
     assert_eq!(replacement.prepared.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -571,7 +571,7 @@ async fn children_refuse_held() {
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Nested(Error::OperationLaneCycle { .. }))));
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -598,7 +598,7 @@ async fn success_joins_unawaited() {
         .unregister(&harmos_runtime::QualifiedId::qualify("host", PRIVATE_ECHO_DECLARATION_OPERATION.entry().id).unwrap())
         .await
         .unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -624,7 +624,7 @@ async fn cancellation_joins_child() {
     parent.request_cancel();
     assert!(matches!(parent.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(owner.wire_joined.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 fn protobuf<T: harmos_runtime::Portable>(value: &T) -> Vec<u8> {

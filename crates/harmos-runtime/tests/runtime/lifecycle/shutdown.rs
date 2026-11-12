@@ -27,7 +27,7 @@ use crate::runtime::boot::catalog;
 use crate::runtime::probe::{Editor, Sheet};
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
-use harmos_runtime::{Error, Runtime};
+use harmos_runtime::{Error};
 
 /* === Constants === */
 
@@ -145,12 +145,12 @@ impl std::task::Wake for StopNotification {
 #[tokio::test]
 async fn services_stop_first() {
     let trace = Arc::new(Cancellation::default());
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.resource::<Cancellation>(trace.clone());
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime
@@ -184,7 +184,7 @@ async fn services_stop_first() {
     assert!(std::future::Future::poll(changed.as_mut(), &mut context).is_pending());
 
     // Observe the Stop Notification Synchronously, Before Scheduling Cleanup
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(cancelled.get(), Some(&false));
     assert!(lease.status().cancellation_requested());
     assert!(matches!(operation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
@@ -196,7 +196,7 @@ async fn services_stop_first() {
 async fn budget_retains_journal() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
@@ -217,7 +217,7 @@ async fn budget_retains_journal() {
     }
     release.notify_one();
     assert_eq!(runtime.shutdown_with_timeout(Duration::from_secs(1)).await.unwrap(), Position(1));
-    assert_eq!(runtime.shutdown().await.unwrap(), Position(1));
+    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(1));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
@@ -225,7 +225,7 @@ async fn budget_retains_journal() {
 async fn shutdown_budget_shared() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
             release: release.clone(),
@@ -245,5 +245,5 @@ async fn shutdown_budget_shared() {
     assert_eq!(started.elapsed(), Duration::from_millis(10));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     release.notify_one();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

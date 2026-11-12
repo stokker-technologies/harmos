@@ -122,7 +122,7 @@ async fn retries_clone_the_original_request() {
     let request = Request { value: 19, events: events.clone() };
     let call = runtime.operation(request).start().await.unwrap();
     assert_eq!(*call.join().await.unwrap(), 20);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(*events.lock().unwrap(), ["run", "request dropped", "run", "request dropped", "request dropped"]);
 }
 
@@ -167,7 +167,7 @@ async fn transfer_blocks_retry() {
             assert_eq!(*receive.recv().await.unwrap(), 7);
         }
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[derive(harmos_runtime::Message, Debug, Default)]

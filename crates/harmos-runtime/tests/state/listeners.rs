@@ -513,7 +513,7 @@ fn candidate() -> PluginDefinitions {
 }
 
 async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
-    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<Model>((), (), |setup| {
         setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
         setup.settings().register(rows_registry());
         setup.settings().tail(tail);
@@ -587,7 +587,7 @@ async fn reentrancy_preserve_positions() {
         [(true, 0, Position(1)), (false, 0, Position(1)), (true, 9, Position(2)), (false, 9, Position(2))]
     );
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -601,7 +601,7 @@ async fn sources_never_commit() {
         assert!(!host.scope.as_ref().unwrap().is_ready());
         assert!(host.owner.seen.lock().unwrap().is_empty());
         manager.shutdown(&mut host).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -622,7 +622,7 @@ async fn failure_fences_side() {
     assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
     assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -671,7 +671,7 @@ async fn runtime_signals_listener() {
         .unwrap();
     let lease = runtime.operations.submit_resident("blocked-cleanup").await.unwrap();
     (gates.running.notified()).await;
-    let mut stopping = Box::pin(runtime.shutdown());
+    let mut stopping = Box::pin(crate::support::app::shutdown(&runtime));
     (async {
         tokio::select! {
             _ = async {
@@ -685,7 +685,7 @@ async fn runtime_signals_listener() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     drop(stopping);
     gates.release.notify_one();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     drop(lease);
 }
 
@@ -713,7 +713,7 @@ async fn pages_deliver_native() {
         }
     }
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -729,7 +729,7 @@ async fn gap_fences_generation() {
     assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::guest::PluginState::Failed);
     assert_eq!(*host.owner.seen.lock().unwrap(), [(true, 0, Position(1)), (false, 0, Position(1))]);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 /* === Tests === */
@@ -744,7 +744,7 @@ async fn shutdown_releases_callback_before_source() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     let source_dropped = host.original_drop.clone();
     assert_eq!(source_dropped.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     drop((manager, host, runtime));
     assert_eq!(source_dropped.load(Ordering::SeqCst), 1);
 }
