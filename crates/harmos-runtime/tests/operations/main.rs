@@ -26,6 +26,7 @@ mod children;
 mod clock;
 #[path = "../operations/execution.rs"]
 mod execution;
+mod retries;
 #[path = "../operations/host.rs"]
 mod host;
 #[path = "../operations/lanes.rs"]

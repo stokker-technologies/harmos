@@ -151,6 +151,8 @@ pub(crate) struct Response {
 pub(crate) struct Owner {
     pub(crate) prepared: AtomicUsize,
     pub(crate) runs: AtomicUsize,
+    pub(crate) finished: AtomicUsize,
+    pub(crate) times: Mutex<Vec<tokio::time::Instant>>,
     pub(crate) seen: Mutex<Vec<OperationInstanceId>>,
     pub(crate) wire_started: Notify,
     pub(crate) wire_joined: AtomicUsize,
@@ -230,12 +232,19 @@ impl Request {
     }
 }
 
+struct Attempt<'a>(&'a AtomicUsize);
+impl Drop for Attempt<'_> {
+    fn drop(&mut self) { self.0.fetch_add(1, Ordering::SeqCst); }
+}
+
 impl Owner {
     pub(crate) async fn compute(&self, request: &Request, context: Context<'_>) -> Result<Response, Failed> {
         if !request.valid {
             return Err(Failed::Scripted(FailureKind::Invalid));
         }
+        let _attempt = Attempt(&self.finished);
         self.runs.fetch_add(1, Ordering::SeqCst);
+        self.times.lock().unwrap().push(context.scope().now());
         self.seen.lock().unwrap().push(context.id());
         let attempts = context.attempt() + 1;
         if request.value == usize::MAX {

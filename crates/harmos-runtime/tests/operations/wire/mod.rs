@@ -12,6 +12,7 @@
 #[cfg(feature = "plugin-guest")]
 mod artifact;
 mod authored;
+mod authored_listed;
 mod authored_lifecycle;
 mod cases;
 #[cfg(feature = "grpc")]

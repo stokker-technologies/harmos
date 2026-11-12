@@ -68,32 +68,6 @@ impl harmos_runtime::Lifecycle for InitializingBank {
 
 /* === Tests === */
 
-#[tokio::test(start_paused = true)]
-async fn retry_retains_invocation_identity() {
-    let owner = Arc::new(Owner::default());
-    let runtime = runtime_with(|setup| {
-        setup.resource::<Owner>(owner.clone());
-    })
-    .await;
-    runtime
-        .operations
-        .register_operation(compute_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
-    let mut invocation = runtime.operation(Request { failures: 2, ..request() }).start().await.unwrap();
-    let id = invocation.id();
-    let generation = invocation.generation();
-    let response = (&mut invocation).await.unwrap();
-    assert_eq!(invocation.id(), id);
-    assert_eq!(invocation.generation(), generation);
-    assert_eq!(invocation.status().attempt(), 2);
-    assert_eq!(invocation.status().phase(), harmos_runtime::operations::OperationPhase::Settled);
-    assert_eq!(response.attempts, 3);
-    assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    assert_eq!(*owner.seen.lock().unwrap(), vec![id; 3]);
-    crate::support::app::shutdown(&runtime).await.unwrap();
-}
-
 #[tokio::test]
 async fn errors_never_retry() {
     let owner = Arc::new(Owner::default());

@@ -56,7 +56,6 @@ enum Mode {
     Value(u64),
     Reject,
     Wait,
-    Retry,
 }
 
 impl Default for Mode {
@@ -69,9 +68,6 @@ impl Default for Mode {
 enum Failed {
     #[error("the instrument said no")]
     Instrument,
-
-    #[error("not drained yet")]
-    Backlog,
 
     #[error(transparent)]
     Child(#[from] Error),
@@ -139,23 +135,17 @@ async fn compute_contract_declaration_handler(
     let counts = ctx.resource::<Counts>().expect("declared resource is registered");
     counts.started.fetch_add(1, Ordering::SeqCst);
     let _guard = AttemptGuard(counts);
-    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
-    let attempt = host.borrow().attempt() + 1;
     let value = match request.mode {
         Mode::Value(value) => value,
         Mode::Reject => return Err(Failed::Instrument),
         Mode::Wait => std::future::pending().await,
-        Mode::Retry if attempt < 3 => return Err(Failed::Backlog),
-        Mode::Retry => u64::try_from(attempt).expect("attempts fit in u64"),
     };
     Ok(value.into())
 }
 
 fn compute_contract_declaration_classification(error: &Failed) -> FailureKind {
-    match error {
-        Failed::Backlog => FailureKind::Transient,
-        _ => FailureKind::Permanent,
-    }
+    let _ = error;
+    FailureKind::Permanent
 }
 
 fn compute_contract_declaration_operation()
@@ -258,17 +248,6 @@ async fn deadlines_remain_distinct() {
     let error = runtime.operation(ParentContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut { .. })))));
-    crate::support::app::shutdown(&runtime).await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
-async fn child_retries_settle_each_attempt() {
-    let (runtime, counts) = runtime().await;
-    let root = runtime.operation(ComputeContractDeclaration { mode: Mode::Retry }).start().await.unwrap().await.unwrap();
-    let child = runtime.operation(ParentContractDeclaration { mode: Mode::Retry }).start().await.unwrap().await.unwrap();
-    assert_eq!((*root, *child), (3, 3));
-    assert_eq!(counts.started.load(Ordering::SeqCst), 6);
-    assert_eq!(counts.finished.load(Ordering::SeqCst), 6);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
