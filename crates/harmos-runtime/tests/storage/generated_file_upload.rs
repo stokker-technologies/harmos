@@ -47,10 +47,7 @@ async fn uploaded_file_is_durable_and_readable() {
     use harmos_operations::storage::WriteFile;
     use harmos_protocol::storage as wire;
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let mut upload = fixture

@@ -49,10 +49,7 @@ async fn guest_hash_uses_the_native_protobuf_handler() {
     use harmos_runtime::storage::{ByteRange, FileHash, FileSource};
     use sha2::{Digest, Sha256};
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let directory = tempfile::tempdir().unwrap();

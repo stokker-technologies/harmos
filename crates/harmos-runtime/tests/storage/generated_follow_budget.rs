@@ -47,10 +47,7 @@ async fn following_spends_budget() {
     use harmos_operations::storage::FollowRecords;
     use std::time::Duration;
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     write(&fixture.storage, "first").await;

@@ -103,7 +103,7 @@ async fn ipc_admission_retains() {
             converted.set(true);
             Ok(item.output().encode_to_vec())
         }));
-        assert!(super::super::super::pending(sending.as_mut()).await);
+        assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(sending.as_mut(), context).is_pending())).await);
         assert!(!converted.get());
         drop(blocked);
         if cancel {
@@ -117,7 +117,7 @@ async fn ipc_admission_retains() {
             assert!(matches!(decoded.output, Some(harmos_protocol::storage::query_output::Output::Schema(_))));
             // Destination Admission Now Covers The Wire Bytes Until Consumption.
             let mut next = Box::pin(sender.reserve(bytes));
-            assert!(super::super::super::pending(next.as_mut()).await);
+            assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(next.as_mut(), context).is_pending())).await);
             drop(output);
             drop(next.await.unwrap());
             continue;

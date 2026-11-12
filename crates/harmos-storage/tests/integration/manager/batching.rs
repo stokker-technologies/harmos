@@ -474,7 +474,6 @@ async fn flush_excludes_later() {
             FlushGate::Receipt => (&f.data.control.block_flush, &f.data.control.flush_entered, &f.data.control.flush_release),
         };
         blocked.store(true, Ordering::SeqCst);
-        tokio::task::yield_now().await;
         for item in before {
             write(&f.storage, item).await;
         }
@@ -494,9 +493,6 @@ async fn flush_excludes_later() {
         assert_eq!(flush.await.unwrap().sequence, receipts[0]);
 
         // Completing A Barrier Cannot Start A Later Write.
-        for _ in 0..4 {
-            tokio::task::yield_now().await;
-        }
         assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), prefix);
         assert_eq!(f.data.control.write_sizes.lock().unwrap().as_slice(), &batches[..1]);
         assert_eq!(f.storage.status().pending_batches, after.len());
@@ -550,7 +546,7 @@ async fn pressure_preserves_flush() {
     write(&f.storage, "two").await;
     let blocked = write(&storage, "three");
     tokio::pin!(blocked);
-    assert!(super::pending(blocked.as_mut()).await, "queue is full");
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(blocked.as_mut(), context).is_pending())).await, "queue is full");
     f.data.control.block_write.store(false, Ordering::SeqCst);
     f.data.control.write_release.notify_one();
     let (saved, admitted) = tokio::join!(flush, blocked);
@@ -599,14 +595,11 @@ async fn reservation_never_flush() {
 #[tokio::test(start_paused = true)]
 async fn queued_writes_wait() {
     let f = Fixture::new(config()).await;
-    tokio::task::yield_now().await;
     for item in ["one", "two", "three", "four"] {
         write(&f.storage, item).await;
-        tokio::task::yield_now().await;
     }
     for entry in [b"first".as_slice(), b"second".as_slice()] {
         f.storage.write_recovery(vec![entry.to_vec()]).await.unwrap();
-        tokio::task::yield_now().await;
     }
     assert!(f.data.control.writes.lock().unwrap().is_empty());
     assert!(f.recovery.control.writes.lock().unwrap().is_empty());
@@ -616,7 +609,6 @@ async fn queued_writes_wait() {
 
     // The Private Periodic Save Interval Is 100 Milliseconds.
     tokio::time::advance(Duration::from_millis(99)).await;
-    tokio::task::yield_now().await;
     assert!(f.data.control.writes.lock().unwrap().is_empty());
     assert!(f.recovery.control.writes.lock().unwrap().is_empty());
 
@@ -1021,7 +1013,7 @@ async fn retained_observer_traced() {
             drop(session);
             f.data.snapshots_released().await;
             let mut observer = Box::pin(f.storage.wait_saved_after(&saved));
-            assert!(super::fixture::pending(observer.as_mut()).await);
+            assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(observer.as_mut(), context).is_pending())).await);
             {
                 let captured = capture.0.lock().unwrap();
                 let observer = captured.spans.values().find(|span| span.name == "storage.manager.status.wait_saved_after").unwrap();

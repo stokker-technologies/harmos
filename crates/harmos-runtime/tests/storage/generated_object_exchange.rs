@@ -53,7 +53,7 @@ async fn object_exchange_saves() {
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
@@ -61,7 +61,9 @@ async fn object_exchange_saves() {
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let first = value("a/b", "first");
     let second = value("second", "two");
     // Register Authored Schema Before Sending Its Typed Payload.
@@ -111,5 +113,5 @@ async fn object_exchange_saves() {
     let exact = storage.read_object::<Document>(&"a/b".into(), ObjectVersion::Latest).await.unwrap().unwrap();
     assert_eq!(exact.value.text, "first");
     drop(exact);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

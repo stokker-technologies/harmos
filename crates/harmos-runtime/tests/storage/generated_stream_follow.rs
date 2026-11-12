@@ -47,10 +47,7 @@ async fn stream_follow_sequence() {
     use harmos_operations::storage::FollowStream;
     use harmos_runtime::storage::StreamInput;
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let key = crate::storage::schema();

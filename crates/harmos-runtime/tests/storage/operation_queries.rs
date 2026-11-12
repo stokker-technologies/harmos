@@ -45,7 +45,7 @@ use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Sour
 use harmos_runtime::storage::{
     ObjectKey, ObjectRetention, PayloadEncoding, RecordInput, SchemaKey, StorageBackends, StorageManager, StoredObject,
 };
-use harmos_runtime::{Identified, Identifier, Message, Runtime};
+use harmos_runtime::{Identified, Identifier, Message};
 
 /* === Constants === */
 

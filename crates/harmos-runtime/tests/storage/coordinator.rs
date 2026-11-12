@@ -96,10 +96,7 @@ async fn recovery_share_backpressure() {
     {
         let blocked = f.storage.write_recovery(vec![b"state".to_vec()]);
         tokio::pin!(blocked);
-        assert!(crate::storage::pending(blocked.as_mut()).await);
-        // The Held Flush Of The First Batch Is What Keeps The Recovery Write Waiting.
-        f.data.control.flush_entered.notified().await;
-        assert!(crate::storage::pending(blocked.as_mut()).await);
+        assert!(crate::support::events::until(blocked.as_mut(), f.data.control.flush_entered.notified()).await.is_ok());
     }
     assert_eq!(f.storage.status().recovery_accepted.sequence, 0);
     assert_eq!(f.storage.status().pending_batches, 1);
@@ -135,7 +132,7 @@ async fn close_retains_writes() {
     assert_eq!(f.data.records.lock().unwrap().len(), 1);
     assert!(f.data.control.writes.lock().unwrap().iter().all(|at| *at == 1));
     assert_eq!(f.storage.status().saved.sequence, 1);
-    f.runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -169,12 +166,12 @@ async fn backend_close_failure() {
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
     assert_eq!(f.recovery.control.closes.load(Ordering::SeqCst), 2);
-    f.runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn partial_open_remains() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
@@ -202,7 +199,7 @@ async fn partial_open_remains() {
             .and_then(|item| item.health)
             .is_none()
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -217,7 +214,7 @@ async fn cancelled_close_retains() {
     let inputs = [record(&key, &item, &[1])];
     let producer = f.storage.write_records((inputs).to_vec());
     tokio::pin!(producer);
-    assert!(crate::storage::pending(producer.as_mut()).await, "queue is full");
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(producer.as_mut(), context).is_pending())).await, "queue is full");
     {
         let close = f.storage.close();
         tokio::pin!(close);
@@ -228,7 +225,7 @@ async fn cancelled_close_retains() {
     f.data.control.flush_release.notify_one();
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[1]);
-    f.runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -307,7 +304,7 @@ async fn close_seals_admission() {
     let storage = f.storage.clone();
     let close = storage.close();
     tokio::pin!(close);
-    assert!(crate::storage::pending(close.as_mut()).await, "read holds the lifecycle lock");
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(close.as_mut(), context).is_pending())).await, "read holds the lifecycle lock");
     assert!(f.storage.status().closing);
     assert!(matches!(f.storage.write_recovery(vec![b"late".to_vec()]).await, Err(harmos_storage::Error::Closing { domain: "storage" })));
 

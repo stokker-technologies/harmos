@@ -46,10 +46,7 @@ async fn create_append_resume_finish_and_delete() {
     use harmos_operations::storage::{AbandonFile, AppendFile, CreateFile, DeleteFile, FinishFile, ResumeFile};
     use harmos_protocol::storage as wire;
     let fixture = super::Fixture::new(super::config()).await;
-    fixture
-        .runtime
-        .operations
-        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let operations = &fixture.runtime.operations;

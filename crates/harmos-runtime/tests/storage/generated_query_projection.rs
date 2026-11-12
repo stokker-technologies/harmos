@@ -53,7 +53,7 @@ async fn query_heterogeneous_projection() {
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog());
     })
     .await
@@ -150,5 +150,5 @@ async fn query_heterogeneous_projection() {
     assert!(incompatible.next().await.is_err());
     drop(incompatible);
     storage.close().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

@@ -89,7 +89,7 @@ async fn dropped_write_retained() {
     assert_eq!(storage.cursor_saved().sequence, 0);
     let batch = [record(&second)];
     let mut waiting = Box::pin(storage.write_records((batch).to_vec()));
-    assert!(super::pending(waiting.as_mut()).await);
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(waiting.as_mut(), context).is_pending())).await);
     drop(waiting);
     // Dropping The Future Must Not Retract The Already Accepted Batch.
     assert_eq!(storage.cursor_accepted(), accepted);
@@ -124,7 +124,7 @@ async fn cancelled_query_releases() {
     };
     let first_reader = storage.query(query()).await.unwrap();
     let mut waiting = Box::pin(storage.query(query()));
-    assert!(super::pending(waiting.as_mut()).await);
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(waiting.as_mut(), context).is_pending())).await);
     drop(waiting);
     drop(first_reader);
     let mut following = storage.query(query()).await.unwrap();

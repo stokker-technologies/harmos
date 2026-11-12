@@ -84,5 +84,5 @@ async fn follow_reports_pruned() {
     assert!(
         matches!(source.as_ref().downcast_ref::<harmos_operations::Error>(), Some(harmos_operations::Error::Storage(harmos_storage::Error::Gap { requested, available })) if requested < available)
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

@@ -16,10 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::future::{Future, poll_fn};
-use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use std::task::Poll;
 
 // Third Party Imports
 
@@ -217,7 +214,7 @@ async fn unrelated_backlog_skipped() {
     let first = f.storage.write_recovery(vec![b"state-one".to_vec()]).await.unwrap();
     let second = f.storage.write_recovery(vec![b"state-two".to_vec()]).await.unwrap();
     let mut flushing = Box::pin(f.storage.flush_recovery());
-    assert_pending(flushing.as_mut()).await;
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await);
     f.data.control.block_write.store(true, Ordering::SeqCst);
     f.data.control.block_view.store(false, Ordering::SeqCst);
     f.data.control.view_release.notify_one();
@@ -244,14 +241,6 @@ async fn unrelated_backlog_skipped() {
     f.finish().await;
 }
 
-async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
-    poll_fn(|context| {
-        assert!(future.as_mut().poll(context).is_pending(), "gated future completed unexpectedly");
-        Poll::Ready(())
-    })
-    .await;
-}
-
 #[tokio::test]
 async fn journal_awaits_data() {
     let data = Arc::new(Data::new(history()));
@@ -265,7 +254,7 @@ async fn journal_awaits_data() {
         policy.clone(),
     )
     .unwrap();
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
         setup
             .settings()
             .storage(&storage)
@@ -304,7 +293,7 @@ async fn journal_awaits_data() {
     assert!(final_dependency.sequence > first_dependency.sequence);
     assert!(first_dependency.sequence > before.sequence);
     let mut flushing = Box::pin(storage.flush_recovery());
-    assert_pending(flushing.as_mut()).await;
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await);
     data.control.block_write.store(true, Ordering::SeqCst);
     state.control.block_write.store(true, Ordering::SeqCst);
     data.control.block_view.store(false, Ordering::SeqCst);
@@ -337,5 +326,5 @@ async fn journal_awaits_data() {
     }
     drop(view);
     storage.close().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

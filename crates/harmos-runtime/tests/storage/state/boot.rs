@@ -21,7 +21,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 // Local Imports
 use super::{CleanupCapture, closed, incompatible};
-use crate::storage::{Bank, Data, Ledger, Recovery as Backend, Runtime, StorageBackends, StorageManager, catalog, config, history, write};
+use crate::storage::{Bank, Data, Ledger, Recovery as Backend, StorageBackends, StorageManager, catalog, config, history, write};
 use harmos_runtime::{
     runtime::Incompatible, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer,
     storage::Recovery, storage::Source,
@@ -132,7 +132,7 @@ async fn storage_precedes_recovery() {
     probe.write_drain = true;
     let storage = probe.storage.clone();
     let data = probe.data.clone();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).recover(probe);
     })
     .await
@@ -140,7 +140,7 @@ async fn storage_precedes_recovery() {
     assert_eq!(data.saved.load(Ordering::SeqCst), 1);
     assert!(runtime.storage().is_some());
     assert!(runtime.handle().storage().is_some());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(!data.control.open.load(Ordering::SeqCst));
 }
 
@@ -153,7 +153,7 @@ async fn failed_open_skips() {
         control.fail_open.store(true, Ordering::SeqCst);
         let started = Arc::new(AtomicBool::new(false));
         let mark = started.clone();
-        let result = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let result = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).service("application", move |_context: ServiceContext<Bank>| {
                 mark.store(true, Ordering::SeqCst);
                 async { Ok::<(), std::io::Error>(()) }
@@ -177,7 +177,7 @@ async fn cancelled_open_closes() {
         control.block_open.store(true, Ordering::SeqCst);
         let cleanup = CleanupCapture::default();
         {
-            let open = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            let open = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
                 cleanup.capture(setup);
                 setup.settings().storage(&storage).register(catalog());
             });
@@ -201,7 +201,7 @@ async fn load_failure_closes() {
     let data = probe.data.clone();
     let recovery = probe.recovery.clone();
     assert!(
-        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).recover(probe);
         })
         .await
@@ -221,7 +221,7 @@ async fn cancelled_recovery_closes() {
     let data = probe.data.clone();
     let cleanup = CleanupCapture::default();
     {
-        let open = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let open = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup.settings().storage(&storage).register(catalog()).recover(probe);
         });
@@ -244,7 +244,7 @@ async fn cancelled_drain_settles() {
     let data = probe.data.clone();
     let cleanup = CleanupCapture::default();
     {
-        let open = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let open = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup.settings().storage(&storage).register(catalog()).recover(probe);
         });
@@ -266,7 +266,7 @@ async fn consumer_panic_blocks() {
     probe.panic_drain = true;
     let storage = probe.storage.clone();
     let data = probe.data.clone();
-    let result = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let result = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).recover(probe);
     })
     .await;
@@ -283,13 +283,13 @@ async fn consumer_panic_blocks() {
 #[tokio::test]
 async fn second_boot_refused() {
     let probe = Probe::new();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&probe.storage).register(catalog());
     })
     .await
     .unwrap();
     assert!(
-        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&probe.storage).register(catalog());
         })
         .await
@@ -297,7 +297,7 @@ async fn second_boot_refused() {
     );
     assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 0);
     write(&probe.storage, "original").await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(probe.data.saved.load(Ordering::SeqCst), 1);
 }
 
@@ -316,7 +316,7 @@ async fn reserved_service_refused() {
             policy,
         )
         .unwrap();
-        let result = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let result = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).service(name, |_context: ServiceContext<Bank>| async {
                 Err::<(), std::io::Error>(std::io::Error::other("application service unexpectedly started"))
             });
@@ -335,7 +335,7 @@ async fn service_start_writes() {
     let storage = probe.storage.clone();
     let entered = Arc::new(Notify::new());
     let ready = entered.clone();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&probe.storage).register(catalog()).service("writer", move |mut context: ServiceContext<Bank>| {
             let storage = storage.clone();
             let ready = ready.clone();
@@ -352,7 +352,7 @@ async fn service_start_writes() {
     .unwrap();
     entered.notified().await;
     assert_eq!(probe.data.saved.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -363,19 +363,19 @@ async fn stop_retains_panic() {
         let storage = probe.storage.clone();
         let data = probe.data.clone();
         let recovery = probe.recovery.clone();
-        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).recover(probe);
         })
         .await
         .unwrap();
         recovery.control.fail_close.store(fail_close, Ordering::SeqCst);
         if fail_close {
-            assert!(runtime.shutdown().await.is_err());
+            assert!(crate::support::app::shutdown(&runtime).await.is_err());
             assert!(recovery.control.open.load(Ordering::SeqCst));
             recovery.control.fail_close.store(false, Ordering::SeqCst);
         }
         for _ in 0..2 {
-            let error = runtime.shutdown().await.unwrap_err();
+            let error = crate::support::app::shutdown(&runtime).await.unwrap_err();
             assert!(matches!(error, harmos_runtime::Error::TaskFailed { domain: "journal supervisor", .. }));
             assert!(error.to_string().contains("controlled final consumer panic"));
         }
@@ -393,7 +393,7 @@ async fn cleanup_failure_retries() {
     probe.data.control.fail_close.store(true, Ordering::SeqCst);
     let cleanup = CleanupCapture::default();
     {
-        let open = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let open = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup.settings().storage(&probe.storage).register(catalog());
         });
@@ -420,7 +420,7 @@ async fn cleanup_failure_retries() {
 #[tokio::test]
 async fn zero_deadline_refused() {
     let probe = Probe::new();
-    let error = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let error = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&probe.storage).register(catalog()).initialize(Duration::ZERO, |_| async { Ok::<(), std::io::Error>(()) });
     })
     .await
@@ -437,7 +437,7 @@ async fn initialization_cleanup_retry() {
     {
         let probe = Probe::new();
         let mut error = incompatible(
-            Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
                 setup.settings().storage(&probe.storage).register(catalog()).initialize(Duration::from_secs(1), |_| async {
                     Err::<(), _>(std::io::Error::other("controlled initialization failure"))
                 });
@@ -460,7 +460,7 @@ async fn initialization_cleanup_retry() {
         probe.data.control.fail_close.store(true, Ordering::SeqCst);
         let mut error =
             incompatible(
-                Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+                crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
                     setup.settings().storage(&probe.storage).register(catalog()).initialize(Duration::from_secs(1), |_| async {
                         Err::<(), _>(std::io::Error::other("controlled startup failure"))
                     });
@@ -489,7 +489,7 @@ async fn deadline_awaits_cleanup() {
     let committed = Arc::new(AtomicBool::new(false));
     let cleanup_commit = Arc::clone(&committed);
 
-    let open = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let open = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup
             .settings()
             .storage(&probe.storage)
@@ -542,7 +542,7 @@ async fn cancelled_init_settles() {
 
     let cleanup = CleanupCapture::default();
     {
-        let open = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let open = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup
                 .settings()

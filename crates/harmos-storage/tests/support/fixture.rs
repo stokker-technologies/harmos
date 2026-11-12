@@ -11,6 +11,9 @@
 
 /* === Modules === */
 
+#[path = "events.rs"]
+pub(crate) mod events;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -37,8 +40,8 @@ pub(crate) use harmos_storage::*;
 
 /* === Structs === */
 
-pub(crate) struct Fixture {
-    pub(crate) storage: StorageManager,
+pub(crate) struct Fixture<M = StorageManager> {
+    pub(crate) storage: M,
     pub(crate) data: Arc<Data>,
     pub(crate) recovery: Arc<Recovery>,
 }
@@ -67,24 +70,28 @@ impl WorkerOwner for Task {
 
 impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
+        let fixture = Self::build_with(config, |backends, config| StorageManager::new(backends, config).unwrap());
+        start(&fixture.storage).await;
+        fixture
+    }
+
+    pub(crate) async fn finish(self) {
+        self.storage.close().await.unwrap();
+    }
+}
+
+impl<M> Fixture<M> {
+    pub(crate) fn build_with(config: StorageSettings, create: impl FnOnce(StorageBackends, StorageSettings) -> M) -> Self {
         let data = Arc::new(Data::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
-        let storage = StorageManager::new(
+        let storage = create(
             StorageBackends {
                 primary: data.clone(),
                 state: recovery.clone(),
             },
             config,
-        )
-        .unwrap();
-        start(&storage).await;
+        );
         Self { storage, data, recovery }
-    }
-
-    pub(crate) async fn finish(self) {
-        self.storage.close().await.unwrap();
-        assert!(self.storage.status().closed);
-        assert!(!self.storage.status().running);
     }
 }
 
@@ -133,10 +140,6 @@ pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &
         source_time: None,
         payload: (payload).to_vec(),
     }
-}
-
-pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pin::Pin<&mut F>) -> bool {
-    std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
 }
 
 pub(crate) async fn write(storage: &StorageManager, id: &str) -> StorageCursor {

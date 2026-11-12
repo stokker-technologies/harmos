@@ -132,7 +132,7 @@ async fn receipt_releases_covered() {
     {
         let earlier = f.storage.flush_until(&first);
         tokio::pin!(earlier);
-        assert!(super::pending(earlier.as_mut()).await, "backend write is still blocked");
+        assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(earlier.as_mut(), context).is_pending())).await, "backend write is still blocked");
         f.data.control.block_write.store(false, Ordering::SeqCst);
         f.data.control.write_release.notify_one();
         assert_eq!(earlier.await.unwrap(), second);
@@ -191,7 +191,7 @@ async fn saved_wait_passive() {
     let second = write(&f.storage, "passive-second").await;
     {
         let mut waiting = Box::pin(f.storage.wait_saved_after(&before));
-        assert!(super::fixture::pending(waiting.as_mut()).await);
+        assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(waiting.as_mut(), context).is_pending())).await);
         assert_eq!(f.storage.cursor_saved(), before);
         assert_eq!(f.storage.cursor_accepted(), second);
         assert!(f.data.control.writes.lock().unwrap().is_empty());

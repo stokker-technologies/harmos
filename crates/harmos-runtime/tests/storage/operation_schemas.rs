@@ -109,7 +109,9 @@ fn request(f: &Fixture, name: &str) -> harmos_protocol::storage::WriteSchema {
 
 async fn setup() -> Fixture {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&f.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     f
 }
 

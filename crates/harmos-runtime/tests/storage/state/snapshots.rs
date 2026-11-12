@@ -251,7 +251,7 @@ async fn balance(runtime: &Runtime<Bank>) -> i64 {
 }
 
 async fn launch(snapshot: SnapshotPolicy, storage: &StorageManager) -> Runtime<Bank> {
-    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -267,7 +267,7 @@ async fn launch(snapshot: SnapshotPolicy, storage: &StorageManager) -> Runtime<B
 async fn snapshot_restores_state() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -284,12 +284,12 @@ async fn snapshot_restores_state() {
     journal.commit(deposit(6)).await.unwrap();
     journal.undo(who.clone(), Focus::all()).await.unwrap();
     harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("tail".into())).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.snapshot().through.sequence, 4);
     store.recovery.entries.lock().unwrap().clear();
 
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -311,7 +311,7 @@ async fn snapshot_restores_state() {
     assert_eq!(balance(&runtime).await, 11);
     journal.undo(who, Focus::all()).await.unwrap();
     assert_eq!(balance(&runtime).await, 5);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -320,14 +320,14 @@ async fn snapshot_restores_at_payload_limit() {
     let storage = store.manager(config());
     let runtime = launch(policy(100), &storage).await;
     runtime.state.commit(deposit(4)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let mut exact = policy(100);
     exact.max_bytes = NonZeroUsize::new(store.snapshot().payload.len()).unwrap();
     store.recovery.snapshot.lock().unwrap().take();
     let storage = store.manager(config());
     let runtime = launch(exact.clone(), &storage).await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let snapshot = store.snapshot();
     assert_eq!(snapshot.payload.len(), exact.max_bytes.get());
     assert_eq!(snapshot.payload.manifest().count, 1);
@@ -338,7 +338,7 @@ async fn snapshot_restores_at_payload_limit() {
     assert_eq!(balance(&runtime).await, 4);
     assert_eq!(runtime.state.applied(), Position(1));
     assert_eq!(runtime.state.stored(), Position(1));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -347,14 +347,14 @@ async fn snapshot_over_payload_limit_segments() {
     let storage = store.manager(config());
     let runtime = launch(policy(100), &storage).await;
     runtime.state.commit(deposit(4)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let mut small = policy(100);
     small.max_bytes = NonZeroUsize::new(store.snapshot().payload.len() - 1).unwrap();
     store.recovery.snapshot.lock().unwrap().take();
     let storage = store.manager(config());
     let runtime = launch(small.clone(), &storage).await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.snapshot().payload.manifest().count, 2);
     assert_eq!(storage.status().pending_bytes, 0);
 
@@ -362,7 +362,7 @@ async fn snapshot_over_payload_limit_segments() {
     let runtime = launch(small, &storage).await;
     assert_eq!(balance(&runtime).await, 4);
     assert_eq!(runtime.state.applied(), Position(1));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.snapshot().payload.manifest().count, 2);
 }
 
@@ -370,7 +370,7 @@ async fn snapshot_over_payload_limit_segments() {
 async fn snapshot_resumes_durable() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -387,12 +387,12 @@ async fn snapshot_resumes_durable() {
     let earlier = store.snapshot();
     assert_eq!(earlier.through.sequence, 2);
     runtime.state.commit(deposit(7)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     *store.recovery.snapshot.lock().unwrap() = Some(earlier);
     store.recovery.entries.lock().unwrap().retain(|at, _| *at > 2);
 
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -405,14 +405,14 @@ async fn snapshot_resumes_durable() {
     assert_eq!(balance(&runtime).await, 12);
     assert_eq!(runtime.state.applied(), Position(3));
     assert_eq!(runtime.state.state().read(|state| state.applications).await.unwrap().value, 3);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn journal_replays_alone() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -423,10 +423,10 @@ async fn journal_replays_alone() {
     .await
     .unwrap();
     runtime.state.commit(deposit(9)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     store.recovery.snapshot.lock().unwrap().take();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -437,11 +437,11 @@ async fn journal_replays_alone() {
     .await
     .unwrap();
     assert_eq!(balance(&runtime).await, 9);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     store.recovery.snapshot.lock().unwrap().as_mut().unwrap().payload =
         SnapshotPayload::from_bytes(b"invalid snapshot", policy(100).max_bytes, Position(1)).unwrap();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -452,7 +452,7 @@ async fn journal_replays_alone() {
     .await
     .unwrap();
     assert_eq!(balance(&runtime).await, 9);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -460,7 +460,7 @@ async fn snapshot_keeps_tail() {
     let store = Store::new();
 
     let storage = store.manager(config());
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
         setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
@@ -473,9 +473,9 @@ async fn snapshot_keeps_tail() {
     .await
     .unwrap();
     runtime.state.commit(Add { amount: 3 }).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let storage = store.manager(config());
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
         setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
@@ -488,13 +488,13 @@ async fn snapshot_keeps_tail() {
     .await
     .unwrap();
     assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 3);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let snapshot: serde_json::Value = serde_json::from_reader(store.snapshot().payload.reader().unwrap()).unwrap();
     assert_eq!(snapshot["tail"].as_array().unwrap().len(), 2);
     assert_eq!(snapshot["tail"][0]["version"], Add::ENTRY.definition().1);
     store.recovery.entries.lock().unwrap().clear();
     let storage = store.manager(config());
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
         setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
@@ -510,7 +510,7 @@ async fn snapshot_keeps_tail() {
     let facts: Vec<_> = runtime.state.query::<Records>(Position::ORIGIN).await.collect();
     assert_eq!(facts.len(), 1);
     assert!(facts[0].is_ok());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -519,7 +519,7 @@ async fn oversized_snapshot_skipped() {
     let storage = store.manager(config());
     let mut small = policy(1);
     small.max_bytes = NonZeroUsize::new(1).unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -530,11 +530,11 @@ async fn oversized_snapshot_skipped() {
     .await
     .unwrap();
     runtime.state.commit(deposit(4)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(store.recovery.snapshot.lock().unwrap().is_none());
     assert_eq!(storage.status().pending_bytes, 0);
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -545,14 +545,14 @@ async fn oversized_snapshot_skipped() {
     .await
     .unwrap();
     assert_eq!(balance(&runtime).await, 4);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn snapshot_failure_retryable() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -565,12 +565,12 @@ async fn snapshot_failure_retryable() {
     runtime.state.commit(deposit(4)).await.unwrap();
     storage.flush_recovery().await.unwrap();
     store.recovery.control.permanent.store(true, Ordering::SeqCst);
-    assert!(runtime.shutdown().await.is_err());
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
     assert_eq!(storage.status().recovery_saved.sequence, 1);
     assert!(store.recovery.snapshot.lock().unwrap().is_none());
     assert!(storage.status().pending_bytes > 0);
     store.recovery.control.permanent.store(false, Ordering::SeqCst);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.snapshot().through.sequence, 1);
     assert_eq!(storage.status().pending_bytes, 0);
 }
@@ -581,7 +581,7 @@ async fn snapshot_waits_queue() {
     let mut config = config();
     config.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
     let storage = store.manager(config);
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -592,7 +592,7 @@ async fn snapshot_waits_queue() {
     .await
     .unwrap();
     runtime.state.commit(deposit(4)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.snapshot().through.sequence, 1);
     assert_eq!(storage.status().pending_bytes, 0);
 }
@@ -602,7 +602,7 @@ async fn corrupt_snapshot_blocks() {
     for field in ["schema", "position", "undo", "receipts", "tail", "boundary"] {
         let store = Store::new();
         let storage = store.manager(config());
-        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -613,7 +613,7 @@ async fn corrupt_snapshot_blocks() {
         .await
         .unwrap();
         runtime.state.as_principal(PrincipalId::new("author")).commit_keyed(RequestKey::new("key"), deposit(4)).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
         {
             let mut snapshot = store.recovery.snapshot.lock().unwrap();
             let snapshot = snapshot.as_mut().unwrap();
@@ -639,7 +639,7 @@ async fn corrupt_snapshot_blocks() {
         }
         let storage = store.manager(config());
         assert!(
-            Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
                 setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(),
                     capture: limits(),
@@ -661,7 +661,7 @@ async fn corrupt_snapshot_blocks() {
 async fn cancelled_snapshot_releases() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -672,12 +672,12 @@ async fn cancelled_snapshot_releases() {
     .await
     .unwrap();
     runtime.state.commit(deposit(4)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     store.recovery.control.block_read.store(true, Ordering::SeqCst);
     let storage = store.manager(config());
     let cleanup = CleanupCapture::default();
     {
-        let opening = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let opening = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
@@ -705,7 +705,7 @@ async fn cancelled_snapshot_releases() {
 async fn snapshot_read_ignores_write_queue_budget() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -716,11 +716,11 @@ async fn snapshot_read_ignores_write_queue_budget() {
     .await
     .unwrap();
     runtime.state.commit(deposit(4)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let mut config = config();
     config.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
     let storage = store.manager(config);
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -732,14 +732,14 @@ async fn snapshot_read_ignores_write_queue_budget() {
     .unwrap();
     assert_eq!(balance(&runtime).await, 4);
     assert_eq!(storage.status().pending_bytes, 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(storage.status().closed);
 }
 
 #[tokio::test]
 async fn snapshots_require_storage() {
     assert!(
-        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -758,7 +758,7 @@ async fn snapshot_releases_unused() {
     let mut settings = config();
     settings.request.max_pending_write_bytes = NonZeroUsize::new(1024 * 1024).unwrap();
     let storage = store.manager(settings);
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -776,7 +776,7 @@ async fn snapshot_releases_unused() {
     assert_eq!(storage.status().recovery_saved.sequence, 0);
     store.recovery.control.block_flush.store(false, Ordering::SeqCst);
     store.recovery.control.flush_release.notify_one();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(!store.snapshot().payload.is_empty());
 }
 
@@ -789,7 +789,7 @@ async fn segmented_snapshot_matches_full_replay() {
     let mut policy = policy(10000);
     policy.max_bytes = NonZeroUsize::new(64 * 1024).unwrap();
     let initial = Ledger::bulky(100_000);
-    let runtime = Runtime::<Bank>::launch_with(initial.clone(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(initial.clone(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -809,7 +809,7 @@ async fn segmented_snapshot_matches_full_replay() {
     for _ in 0..64 {
         harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(16 * 1024))).await.unwrap();
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let snapshot = store.snapshot();
     assert_eq!(snapshot.payload.manifest().position, Some(Position(730)));
     assert!(snapshot.payload.manifest().count > 3);
@@ -826,7 +826,7 @@ async fn segmented_snapshot_matches_full_replay() {
 
     // Retain The Full Journal For An Independent Replay And Add Work Beyond The Checkpoint.
     let storage = store.manager(config());
-    let runtime = Runtime::<Bank>::launch_with(initial.clone(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(initial.clone(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -837,7 +837,7 @@ async fn segmented_snapshot_matches_full_replay() {
     .await
     .unwrap();
     runtime.state.as_principal(who.clone()).commit(deposit(7)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let full = Store::new();
     *full.recovery.entries.lock().unwrap() = store.recovery.entries.lock().unwrap().clone();
     // The Fixture's Durable Frontier Is Reconstructed By Its Open Method.
@@ -846,7 +846,7 @@ async fn segmented_snapshot_matches_full_replay() {
     let mut results = Vec::new();
     for (store, snapshots) in [(&store, Some(policy.clone())), (&full, None)] {
         let storage = store.manager(config());
-        let runtime = Runtime::<Bank>::launch_with(initial.clone(), (), |setup| {
+        let runtime = crate::support::app::launch::<Bank>(initial.clone(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -868,7 +868,7 @@ async fn segmented_snapshot_matches_full_replay() {
         journal.redo(who.clone(), Focus::all()).await.unwrap();
         let redone = runtime.state.state().read(Clone::clone).await.unwrap().value;
         results.push((restored, undone, redone));
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     assert_eq!(results[0], results[1]);
 }
@@ -887,12 +887,12 @@ async fn oversized_entry_warns_and_preserves_recovery() {
         policy.max_bytes = NonZeroUsize::new(1024).unwrap();
         let runtime = launch(policy.clone(), &storage).await;
         runtime.state.commit(deposit(4)).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
         let storage = store.manager(config());
         let runtime = launch(policy.clone(), &storage).await;
         let journal = runtime.state.as_principal(PrincipalId::new("editor"));
         harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(2048))).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
         assert_eq!(store.snapshot().through.sequence, 1);
         {
             let captured = warnings.0.lock().unwrap();
@@ -910,7 +910,7 @@ async fn oversized_entry_warns_and_preserves_recovery() {
         let facts: Vec<_> = runtime.state.query::<Fact>(Position(1)).await.collect();
         assert_eq!(facts.len(), 1);
         assert!(facts[0].is_ok());
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     .with_subscriber(subscriber)
     .await;

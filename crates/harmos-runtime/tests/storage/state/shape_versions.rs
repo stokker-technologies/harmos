@@ -436,7 +436,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         let old = SystemFact::encode(FactSource::Sidecar("probe".into()), "reading".into(), &value).unwrap();
         runtime.records.publish_system(old.clone()).await.unwrap();
         runtime.state.commit(Add { amount: 7 }).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         // Reopen With The Changed Plugin Definition And Write Current State.
         let disk = plugin_storage(new_plugin_objects_catalog(), root.path(), &data);
@@ -467,7 +467,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         assert_ne!(old.identify().1, next.identify().1);
         runtime.records.publish_system(next.clone()).await.unwrap();
         historical_plugin_values(&disk, &schema).await;
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         // Reopen Without Any Plugin Object Catalog Or Installed Plugin.
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
@@ -477,7 +477,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         let history = runtime.state.query::<SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(history.into_iter().map(|entry| entry.value).collect::<Vec<_>>(), [old, next]);
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         // The Same Root Still Refuses A Changed Host Record Definition.
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
@@ -499,7 +499,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         historical_plugin_values(&disk, &schema).await;
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -513,7 +513,7 @@ async fn unchanged_shapes_restart_on_one_root() {
         runtime.state.commit(Add { amount: 7 }).await.unwrap();
         runtime.records.publish(Observed { before: 7 }).await.unwrap();
         let expected = runtime.state.applied();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = original(&disk, snapshot).await;
@@ -521,7 +521,7 @@ async fn unchanged_shapes_restart_on_one_root() {
         assert_eq!(runtime.state.applied(), expected);
         let facts = runtime.state.query::<Facts>(Position(expected.0 - 1)).await.collect::<Result<Vec<_>, _>>().unwrap();
         assert!(matches!(&facts.last().unwrap().value, Facts::Observed(value) if value.before == 7));
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -544,7 +544,7 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
             ))
             .await
             .unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
@@ -575,7 +575,7 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
         let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -610,7 +610,7 @@ async fn native_stream_round_trip_uses_shared_revision() {
     assert_eq!(definition.version(), revision);
     let stored = runtime.streams.definitions().into_iter().find(|item| item.id() == Sample::ID).unwrap();
     assert_eq!(stored.version(), revision);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(*borrowed.lock().unwrap(), [41]);
     assert_eq!(*shared.lock().unwrap(), [41]);
 }

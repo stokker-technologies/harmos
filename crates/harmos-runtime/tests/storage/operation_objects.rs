@@ -92,7 +92,7 @@ async fn object_batch_atomic() {
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
@@ -118,7 +118,7 @@ async fn object_batch_atomic() {
     assert!(storage.write_objects_once(&mutation, vec![]).await.is_err());
     let admitted = storage.write_objects_once(&mutation, vec![good]).await.unwrap();
     assert_eq!(admitted[0].position.sequence, 2);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 async fn query_fixture() -> (Runtime<Bank>, StorageManager, Arc<Data>) {
@@ -132,7 +132,7 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager, Arc<Data>) {
         config(),
     )
     .unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
@@ -140,7 +140,9 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager, Arc<Data>) {
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     (runtime, storage, data)
 }
 

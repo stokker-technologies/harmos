@@ -292,7 +292,7 @@ async fn snapshot_reads_concurrent() {
 
     // Closing Still Waits For Every In-Flight Read Before Releasing The Backend.
     let mut closing = Box::pin(storage.close());
-    assert!(super::pending(closing.as_mut()).await);
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(closing.as_mut(), context).is_pending())).await);
     assert_eq!(data.control.closes.load(Ordering::SeqCst), 0);
     data.control.block_read.store(false, Ordering::SeqCst);
     data.control.read_release.notify_waiters();
@@ -364,7 +364,7 @@ async fn standalone_reader_queues() {
     };
     let first = storage.read_objects(read()).await.unwrap();
     let mut second = Box::pin(storage.read_objects(read()));
-    assert!(super::fixture::pending(second.as_mut()).await);
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(second.as_mut(), context).is_pending())).await);
     drop(first);
     let mut second = second.await.unwrap();
     assert_eq!(second.next().await.unwrap().unwrap()[0].value.label, "one");

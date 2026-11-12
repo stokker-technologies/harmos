@@ -556,7 +556,7 @@ async fn close_drains_files() {
     let closing_storage = f.storage.clone();
     let closing = closing_storage.close();
     tokio::pin!(closing);
-    assert!(super::pending(closing.as_mut()).await);
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(closing.as_mut(), context).is_pending())).await);
     assert!(f.storage.status().closing);
     assert!(f.data.control.open.load(Ordering::SeqCst));
     assert_eq!(f.data.control.chunk_active.lock().unwrap().values().sum::<usize>(), 2);
@@ -588,7 +588,7 @@ async fn file_bypasses_persistence() {
     {
         let finishing = file.finish();
         tokio::pin!(finishing);
-        assert!(super::pending(finishing.as_mut()).await);
+        assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(finishing.as_mut(), context).is_pending())).await);
         assert!(f.data.control.finish_positions.lock().unwrap().is_empty());
         f.data.control.block_write.store(false, Ordering::SeqCst);
         f.data.control.write_release.notify_one();

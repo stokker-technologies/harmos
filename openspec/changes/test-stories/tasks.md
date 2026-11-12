@@ -7,7 +7,7 @@
 ## 2. Shared Modules
 
 - [x] 2.1 Add the runtime launch, catalog registration and shutdown module and move existing tests onto it.
-- [ ] 2.2 Merge the two storage fixture shells into one and add the wait-for-event module, replacing poll and yield helpers.
+- [x] 2.2 Merge the two storage fixture shells into one and add the wait-for-event module, replacing poll and yield helpers.
 
 ## 3. Stories
 

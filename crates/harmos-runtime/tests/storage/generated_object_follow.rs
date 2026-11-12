@@ -89,5 +89,5 @@ async fn object_follow_resumes() {
     drop(received);
     call.request_cancel();
     assert!(call.join().await.is_err());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

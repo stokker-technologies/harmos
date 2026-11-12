@@ -12,6 +12,10 @@
 /* === Modules === */
 
 pub mod app;
+#[path = "../../../harmos-storage/tests/support/clock.rs"]
+pub mod clock;
+#[path = "../../../harmos-storage/tests/support/events.rs"]
+pub mod events;
 pub mod fixtures;
 
 /* === Re-Exports === */

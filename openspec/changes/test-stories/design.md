@@ -111,3 +111,16 @@ by `facility-trim`, not recreated as benchmarks or counted as completed story co
 SDK client tests live in `R/tests/operations/wire/sdk_client.rs` and `sdk/rust/tests/integration`.
 Declarations and guest machinery moved to operations; conformance lives in `tools/conformance`.
 No edits to those tool-owned paths are needed for crate story consolidation.
+
+## Test Mechanics Decisions
+
+Shared storage construction accepts the native storage manager factory, so runtime keeps its
+resident-owned worker while storage tests retain their direct worker owner. Teardown assertions
+are visible in stories. Backend stages use `events::until` with fixture notifications; fixed
+scheduler-turn loops and duplicated pending helpers are removed. Immediate pending observations
+at in-process admission boundaries remain visible checks while the fixture holds the exact
+resource being contested; they do not infer progress from time or scheduler yields.
+The manual test clock is a test-only `Clock` implementation using watch notifications. It can
+advance deadlines while a deliberately stalled handler remains active, whereas the production
+virtual clock correctly refuses to advance during active external work. Clock accounting itself
+continues to use the existing virtual-clock stories.

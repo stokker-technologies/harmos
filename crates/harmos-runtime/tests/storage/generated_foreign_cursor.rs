@@ -46,10 +46,7 @@ use super::*;
 async fn foreign_cursor_refused() {
     use harmos_operations::storage::FollowStream;
     let fixture = Fixture::new(config()).await;
-    fixture
-        .runtime
-        .operations
-        .register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let mut foreign = fixture.storage.cursor_accepted();
