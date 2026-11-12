@@ -101,12 +101,6 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
             return Err(DescriptorError::DuplicateOperation);
         }
     }
-    for (method, _) in methods {
-        let managed = format!("Run{method}");
-        if !names.insert(managed.clone()) || !generated.insert(managed.to_snake_case()) {
-            return Err(DescriptorError::Name);
-        }
-    }
     let mut files = Vec::new();
     let mut service = ServiceDescriptorProto {
         name: Some(name.into()),
@@ -133,28 +127,28 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         };
         let request = direction("request");
         let response = direction("response");
-        let input = match contract.input() {
-            Some(_) => {
-                let item = direction("input");
-                envelope(&mut file, &format!("{name}{method}Input"), vec![("request", 1, request.clone()), ("item", 2, item)])
-            }
-            None => request.clone(),
-        };
-        let output = match contract.output() {
-            Some(_) => {
-                let item = direction("output");
-                envelope(&mut file, &format!("{name}{method}Output"), vec![("item", 1, item), ("response", 2, response.clone())])
-            }
-            None => response.clone(),
-        };
-        service.method.push(MethodDescriptorProto {
-            name: Some((*method).into()),
-            input_type: Some(input),
-            output_type: Some(output),
-            client_streaming: Some(contract.input().is_some()),
-            server_streaming: Some(contract.output().is_some()),
-            ..Default::default()
-        });
+        if !contract.grpc().is_some_and(|grpc| grpc.managed) {
+            let input = match contract.input() {
+                Some(_) => {
+                    let item = direction("input");
+                    envelope(&mut file, &format!("{name}{method}Input"), vec![("request", 1, request.clone()), ("item", 2, item)])
+                }
+                None => request.clone(),
+            };
+            let output = match contract.output() {
+                Some(_) => direction("output"),
+                None => response.clone(),
+            };
+            service.method.push(MethodDescriptorProto {
+                name: Some((*method).into()),
+                input_type: Some(input),
+                output_type: Some(output),
+                client_streaming: Some(contract.input().is_some()),
+                server_streaming: Some(contract.output().is_some()),
+                ..Default::default()
+            });
+            continue;
+        }
         let cancellation = format!("{name}{method}Cancellation");
         file.message_type.push(DescriptorProto {
             name: Some(cancellation.clone()),
@@ -169,10 +163,10 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
         if contract.output().is_some() {
             outgoing.push(("item", 1, direction("output")));
         }
-        let input = envelope(&mut file, &format!("{name}{method}RunInput"), incoming);
-        let output = envelope(&mut file, &format!("{name}{method}RunOutput"), outgoing);
+        let input = envelope(&mut file, &format!("{name}{method}Request"), incoming);
+        let output = envelope(&mut file, &format!("{name}{method}Response"), outgoing);
         service.method.push(MethodDescriptorProto {
-            name: Some(format!("Run{method}")),
+            name: Some((*method).into()),
             input_type: Some(input),
             output_type: Some(output),
             client_streaming: Some(true),

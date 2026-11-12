@@ -19,7 +19,7 @@ use std::ops::Bound;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 // Third Party Imports
-use harmos_protocol::host;
+use harmos_protocol::v1 as host;
 use prost::Message;
 // Local Imports
 use super::{Entry, Manager};
@@ -27,7 +27,7 @@ use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::{Error, Identifier, Result};
 use harmos_operations::plugin::Grant;
-use harmos_protocol::host::{Catalog, CatalogPage};
+use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse};
 
 /* === Constants === */
 
@@ -48,15 +48,19 @@ type ProviderEntry = (String, String, Arc<Entry>);
 /* === Implementations === */
 
 impl Manager {
-    pub(in crate::operations) fn discover(&self, source: &Source, request: &Catalog) -> Result<CatalogPage> {
+    pub(in crate::operations) fn discover(
+        &self, source: &Source, request: &CatalogEntriesListRequest,
+    ) -> Result<CatalogEntriesListResponse> {
         let origin = source.check()?;
         let (rows, bytes) = harmos_operations::host::limits(request).map_err(|_| Error::InvalidInput {
             field: "catalog limits",
             reason: "rows must be 1..=256 and bytes must be 2..=4194304",
         })?;
         let after: Option<(String, String)> = request
-            .after
+            .page
             .as_ref()
+            .map(|page| &page.page_token)
+            .filter(|token| !token.is_empty())
             .map(|cursor| {
                 if cursor.len() > CURSOR_BYTES {
                     return Err(Error::InvalidInput {
@@ -78,12 +82,15 @@ impl Manager {
             })
             .transpose()?;
 
-        let mut output = CatalogPage::default();
+        let mut output = CatalogEntriesListResponse::default();
         let mut count = 0;
         let mut last = None;
         let mut position = after;
         while let Some((id, owner, entry)) = self.next_discovery(position.as_ref())? {
             position = Some((id.clone(), owner.clone()));
+            if entry.definition.visibility == crate::operations::Visibility::Private {
+                continue;
+            }
             if !entry.active.load(Ordering::Acquire) || entry.available().is_err() || entry.authorize(&origin).is_err() {
                 continue;
             }
@@ -163,10 +170,10 @@ impl Manager {
             };
             let cursor = serde_json::to_string(&(id, owner)).expect("identifier cursor serializes");
             output.operations.push(metadata);
-            output.next = Some(cursor.clone());
+            output.next_page_token = cursor.clone();
             if count == rows || output.encoded_len() > bytes {
                 output.operations.pop();
-                output.next = last.take();
+                output.next_page_token = last.take().unwrap_or_default();
                 if count == 0 {
                     return Err(Error::ResourceExhausted { resource: "discovery schema bytes" });
                 }
@@ -175,7 +182,7 @@ impl Manager {
             last = Some(cursor);
             count += 1;
         }
-        output.next = None;
+        output.next_page_token.clear();
         Ok(output)
     }
 
@@ -199,45 +206,47 @@ impl Manager {
 
 /* === Private Functions === */
 
-fn describe(contract: &Contract) -> Result<host::OperationContract> {
+fn describe(contract: &Contract) -> Result<host::DiscoveredContract> {
     use crate::operations::{Backoff, Jitter, ReplaySafety, RetryPolicy, Visibility};
     let definition = contract.operation();
     let policy = definition.policy;
     let retries = match policy.retries {
         RetryPolicy::Never => None,
-        RetryPolicy::OnTransient { max_retries, backoff } => {
+        RetryPolicy::OnTransient { total_attempts, backoff } => {
             let (initial, maximum, jitter) = match backoff {
                 Backoff::Fixed { delay, jitter } => (delay, None, jitter),
                 Backoff::Exponential { initial, maximum, jitter } => (initial, Some(maximum), jitter),
             };
-            Some(host::RetryPolicy {
-                max_retries: max_retries as u64,
+            Some(harmos_protocol::v1::RetryPolicy {
+                total_attempts: total_attempts as u64,
                 initial: Some(duration(initial)?),
                 maximum: maximum.map(duration).transpose()?,
                 deterministic_jitter: jitter == Jitter::Deterministic,
             })
         }
     };
-    Ok(host::OperationContract {
+    Ok(host::DiscoveredContract {
         id: definition.id.to_string(),
         description: definition.description.clone(),
         visibility: match definition.visibility {
             Visibility::Private => host::Visibility::Private,
+            Visibility::Protected => host::Visibility::Protected,
             Visibility::Public => host::Visibility::Public,
         } as i32,
-        policy: Some(host::OperationPolicy {
+        policy: Some(harmos_protocol::v1::OperationPolicy {
             timeout: Some(duration(policy.timeout)?),
             attempt_timeout: Some(duration(policy.attempt_timeout)?),
             cancellation_timeout: Some(duration(policy.cancellation_timeout)?),
             retries,
         }),
-        replay_safe: definition.replay == ReplaySafety::Idempotent,
+        replay_safe: definition.replay != ReplaySafety::Unknown,
         fingerprint: definition.fingerprint.0.to_vec(),
         protobuf: descriptors(contract)?,
         grpc: contract.grpc().map(|binding| host::Grpc {
             package: binding.package.to_string(),
             service: binding.service.to_string(),
             method: binding.method.to_string(),
+            managed: binding.managed,
         }),
     })
 }
@@ -267,10 +276,21 @@ fn projected_descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> 
         }
     })?;
     let method = service.methods().find(|method| method.name() == binding.method).expect("declared method");
-    let request = payload(method.input(), "request", contract.input().is_some());
-    let response = payload(method.output(), "response", contract.output().is_some());
+    let request = payload(method.input(), "request", binding.managed || contract.input().is_some());
+    let response = if contract.output().is_some() && !binding.managed {
+        let root = service
+            .parent_pool()
+            .get_message_by_name(&format!("{}.{}Messages.{}.Row0", binding.package, binding.service, binding.method))
+            .expect("projected contract root");
+        let prost_reflect::Kind::Message(response) = root.get_field_by_name("response").expect("response direction").kind() else {
+            unreachable!("message response")
+        };
+        response.full_name().to_owned()
+    } else {
+        payload(method.output(), "response", binding.managed)
+    };
     let input = contract.input().map(|_| payload(method.input(), "item", true));
-    let output = contract.output().map(|_| payload(method.output(), "item", true));
+    let output = contract.output().map(|_| payload(method.output(), "item", binding.managed));
     let types = prost_types::FileDescriptorSet {
         file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
     };

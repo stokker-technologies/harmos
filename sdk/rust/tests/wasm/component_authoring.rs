@@ -21,7 +21,7 @@ mod bindings {
 
 use super::contract::{EchoOperation, Echoed};
 use harmos_protocol::{
-    host,
+    v1 as host,
     v1::{self, guest_child, guest_command, response},
 };
 use prost::Message as _;
@@ -169,8 +169,8 @@ fn imported(imports: &mut Imports, bytes: Vec<u8>) -> Result<Vec<u8>, Vec<u8>> {
                 imports.children.insert(instance, (request.payload, false));
                 return Ok(v1::GuestSubmitted { instance }.encode_to_vec());
             }
-            if request.operation == "host.host.publish" {
-                return Ok(host::Published {}.encode_to_vec());
+            if request.operation == "host.harmos.context.v1.Samples/Append" {
+                return Ok(harmos_protocol::context::SamplesAppendResponse {}.encode_to_vec());
             }
             Ok(request.payload)
         }
@@ -237,7 +237,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
                 "{}.{}",
                 if required.id == "provider.echo" {
                     "provider"
-                } else if required.id == "host.publish" {
+                } else if required.id == "harmos.context.v1.Samples/Append" {
                     "host"
                 } else {
                     "sandbox_guest"
@@ -268,6 +268,12 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     let request = EchoOperation { say: "hello".into() }.encode_to_vec();
     let answer = session.call("probe.echo", 2, request).await;
     assert!(matches!(answer, response::Result::Payload(payload) if Echoed::decode(payload.as_slice()).unwrap().said == "heard hello"));
+    // Private Dispatch Never Acquires an Assignment or Crosses the Component Import.
+    assert!(!metadata.catalog.as_ref().unwrap().operations.iter().any(|operation| operation.id == "probe.local"));
+    let imported = session.store.data().calls.len();
+    let answer = session.call("probe.echo", 12, EchoOperation { say: "local:inside".into() }.encode_to_vec()).await;
+    assert!(matches!(answer, response::Result::Payload(payload) if Echoed::decode(payload.as_slice()).unwrap().said == "inside"));
+    assert_eq!(session.store.data().calls.len(), imported);
     // Only the Initialization Context Carries Retained Generation Authority
     session.call("probe.echo", 10, EchoOperation { say: "dependency:finite".into() }.encode_to_vec()).await;
     assert_eq!(session.store.data().generations.last(), Some(&0));

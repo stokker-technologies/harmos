@@ -1,3 +1,5 @@
+using Harmos.Context.V1;
+using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Threading.Channels;
@@ -10,27 +12,27 @@ using Microsoft.Extensions.Hosting;
 
 namespace Harmos.Sdk;
 
-internal sealed class PluginService(Description description, Dictionary<string, Handler> operations,
+internal sealed class PluginService(InstanceGetResponse description, Dictionary<string, Handler> operations,
     Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime)
-    : V1.Plugin.PluginBase
+    : Harmos.Plugin.V1.Instance.InstanceBase
 {
   private readonly Dictionary<string, ByteString> requires = description.Catalog.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
 
-  public override Task<Description> Describe(DescribeRequest request, ServerCallContext context)
+  public override Task<InstanceGetResponse> Get(InstanceGetRequest request, ServerCallContext context)
   {
     if (request.Revision == 0)
       throw Invalid("Revision Must Be at Least One");
     return Task.FromResult(description.Clone());
   }
 
-  public override async Task Invoke(IAsyncStreamReader<HostFrame> input, IServerStreamWriter<PluginFrame> output, ServerCallContext call)
+  public override async Task Invoke(IAsyncStreamReader<InstanceInvokeRequest> input, IServerStreamWriter<InstanceInvokeResponse> output, ServerCallContext call)
   {
-    if (!await input.MoveNext(call.CancellationToken) || input.Current.FrameCase != HostFrame.FrameOneofCase.Request)
+    if (!await input.MoveNext(call.CancellationToken) || input.Current.FrameCase != InstanceInvokeRequest.FrameOneofCase.Request)
       throw Invalid("Request Must Be First");
     var request = input.Current.Request;
     if (request.Invocation.Length == 0 || request.Attempt == 0)
       throw Invalid("Invocation and Attempt Are Required");
-    if (!operations.TryGetValue(request.Operation, out var handler))
+    if (!operations.TryGetValue(request.Operation, out var handler) || handler.Contract.Visibility == Visibility.Private)
       throw new RpcException(new Status(StatusCode.NotFound, "Unknown Operation"));
 
     IMessage decoded;
@@ -40,8 +42,8 @@ internal sealed class PluginService(Description description, Dictionary<string, 
     await call.WriteResponseHeadersAsync(new Metadata());
 
     using var stopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
-    var frames = Channel.CreateUnbounded<PluginFrame>(new UnboundedChannelOptions { SingleReader = true });
-    var context = new Context(request, description.Id, requires, stopped, frames.Writer);
+    var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
+    var context = new Context(request, description.Id, requires, stopped, frames.Writer, operations);
     var processing = RunInvoke(input, handler, decoded, context, frames.Writer, call.CancellationToken);
     try
     {
@@ -55,8 +57,8 @@ internal sealed class PluginService(Description description, Dictionary<string, 
     }
   }
 
-  private static async Task RunInvoke(IAsyncStreamReader<HostFrame> input, Handler handler, IMessage request,
-      Context context, ChannelWriter<PluginFrame> output, CancellationToken transport)
+  private static async Task RunInvoke(IAsyncStreamReader<InstanceInvokeRequest> input, Handler handler, IMessage request,
+      Context context, ChannelWriter<InstanceInvokeResponse> output, CancellationToken transport)
   {
     Task<ByteString>? executing = null;
     Task<bool>? reading = null;
@@ -87,11 +89,11 @@ internal sealed class PluginService(Description description, Dictionary<string, 
         var frame = input.Current;
         switch (frame.FrameCase)
         {
-          case HostFrame.FrameOneofCase.Child:
-            context.Reply(frame.Child);
+          case InstanceInvokeRequest.FrameOneofCase.Child:
+            await context.Reply(frame.Child);
             break;
-          case HostFrame.FrameOneofCase.Cancel:
-            context.Cancel(frame.Cancel.Reason);
+          case InstanceInvokeRequest.FrameOneofCase.Cancel:
+            await context.Cancel(frame.Cancel.Reason);
             break;
           default:
             throw Invalid("Expected Child Response or Cancel");
@@ -106,7 +108,8 @@ internal sealed class PluginService(Description description, Dictionary<string, 
       {
         response = new V1.Response { Failure = context.CancellationFailure().Failure };
       }
-      await output.WriteAsync(new PluginFrame { Response = response }, transport);
+      await context.FlushCancellations();
+      await output.WriteAsync(new InstanceInvokeResponse { Response = response }, transport);
       output.TryComplete();
     }
     catch (Exception error)
@@ -149,9 +152,9 @@ internal sealed class PluginService(Description description, Dictionary<string, 
     }
   }
 
-  public override async Task Publish(IAsyncStreamReader<PublishFrame> input, IServerStreamWriter<Samples> output, ServerCallContext call)
+  public override async Task Samples(IAsyncStreamReader<InstanceSamplesRequest> input, IServerStreamWriter<InstanceSamplesResponse> output, ServerCallContext call)
   {
-    if (!await input.MoveNext(call.CancellationToken) || input.Current.FrameCase != PublishFrame.FrameOneofCase.Open)
+    if (!await input.MoveNext(call.CancellationToken) || input.Current.FrameCase != InstanceSamplesRequest.FrameOneofCase.Open)
       throw Invalid("Open Must Be First");
     var open = input.Current.Open;
     if (!streams.TryGetValue(open.Stream, out var publication))
@@ -183,7 +186,7 @@ internal sealed class PluginService(Description description, Dictionary<string, 
             return;
           var row = await observing;
           var sample = new Sample { At = at, Row = row, Sequence = context.Sequence };
-          await output.WriteAsync(new Samples { Samples_ = { sample } }, call.CancellationToken);
+          await output.WriteAsync(new InstanceSamplesResponse { Samples = { sample } }, call.CancellationToken);
         }
         return;
       }
@@ -212,7 +215,7 @@ internal sealed class PluginService(Description description, Dictionary<string, 
         while (rows.Reader.TryRead(out var sample))
         {
           sample.Sequence = ++context.Sequence;
-          await output.WriteAsync(new Samples { Samples_ = { sample } }, call.CancellationToken);
+          await output.WriteAsync(new InstanceSamplesResponse { Samples = { sample } }, call.CancellationToken);
         }
         sampling = rows.Reader.WaitToReadAsync(call.CancellationToken).AsTask();
       }
@@ -248,10 +251,10 @@ internal sealed class PluginService(Description description, Dictionary<string, 
     catch (Exception error) { rows.TryComplete(error); }
   }
 
-  private static Timestamp TickTime(PublishFrame frame)
+  private static Timestamp TickTime(InstanceSamplesRequest frame)
   {
-    if (frame.FrameCase != PublishFrame.FrameOneofCase.Tick || frame.Tick.At is null)
-      throw Invalid("Tick Time Is Required");
+    if (frame.FrameCase != InstanceSamplesRequest.FrameOneofCase.Tick || frame.Tick.At is null)
+      throw Invalid("Tick TimeGetResponse Is Required");
     ValidateTimestamp(frame.Tick.At);
     return frame.Tick.At.Clone();
   }
@@ -262,7 +265,7 @@ internal sealed class PluginService(Description description, Dictionary<string, 
       throw Invalid("Invalid Timestamp");
   }
 
-  public override async Task<StopResponse> Stop(StopRequest request, ServerCallContext context)
+  public override async Task<InstanceStopResponse> Stop(InstanceStopRequest request, ServerCallContext context)
   {
     foreach (var hook in cleanup)
       await hook();
@@ -272,7 +275,7 @@ internal sealed class PluginService(Description description, Dictionary<string, 
         lifetime.StopApplication();
         return Task.CompletedTask;
       });
-    return new StopResponse();
+    return new InstanceStopResponse();
   }
 
   private static RpcException Invalid(string message) => new(new Status(StatusCode.InvalidArgument, message));

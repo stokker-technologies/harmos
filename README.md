@@ -43,7 +43,8 @@ Your application defines each change; Harmos manages its accepted history.
 - **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
-- **gRPC Plugin Placement**: Invoke managed or remote `harmos.v1` plugins, capture their streams and drive plugin waits and observers from the host clock.
+- **gRPC Plugin Placement**: Invoke managed or remote `harmos.plugin.v1.Instance` plugins, capture their streams and drive plugin waits and observers from the host clock.
+- **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
 - **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
@@ -79,8 +80,8 @@ application revision that produced them.
 
 Plugin and client authors depend on `harmos` and import `harmos::prelude::*`.
 Its protobuf messages, plugin builders and generated-contract clients compile without host code.
-Clients bind `client::Method` to generated application types, then use `Client::call`
-or managed `Client::start`; see the [Rust client example](sdk/rust/examples/client.rs).
+Clients bind `client::Method` to generated application types, then use `Client::call`,
+`Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote `harmos.v1` placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.

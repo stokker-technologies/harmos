@@ -110,7 +110,12 @@ def from_contract(
     ):
         raise ValueError("invalid canonical operation contract")
     grpc = contract.get("grpc")
-    if not isinstance(grpc, Mapping) or set(grpc) != {"package", "service", "method"}:
+    if not isinstance(grpc, Mapping) or set(grpc) != {
+        "package",
+        "service",
+        "method",
+        "managed",
+    }:
         raise ValueError("operation has no gRPC declaration")
     package, service, method = (
         grpc.get(key) for key in ("package", "service", "method")
@@ -292,9 +297,12 @@ def from_contract(
         syntax="proto3",
         dependency=[file.name],
     )
+    managed = grpc.get("managed")
+    if not isinstance(managed, bool):
+        raise TypeError("operation must declare managed final-result semantics")
     rpc_request = direction_types["request"]
     rpc_response = direction_types["response"]
-    if "input" in direction_types:
+    if "input" in direction_types and not managed:
         rpc_request = _envelope(
             service_file,
             f"{service}{method}Input",
@@ -304,43 +312,30 @@ def from_contract(
             ],
         )
     if "output" in direction_types:
-        rpc_response = _envelope(
-            service_file,
-            f"{service}{method}Output",
-            [
-                ("item", 1, direction_types["output"]),
-                ("response", 2, direction_types["response"]),
-            ],
-        )
+        rpc_response = direction_types["output"]
     definition = service_file.service.add(name=service)
+    if managed:
+        cancellation = f"{service}{method}Cancellation"
+        service_file.message_type.add(name=cancellation)
+        cancellation = f"{package}.{cancellation}"
+        incoming = [
+            ("request", 1, direction_types["request"]),
+            ("cancel", 3, cancellation),
+            ("finish", 4, cancellation),
+        ]
+        if "input" in direction_types:
+            incoming.append(("item", 2, direction_types["input"]))
+        outgoing = [("response", 2, direction_types["response"])]
+        if "output" in direction_types:
+            outgoing.append(("item", 1, direction_types["output"]))
+        rpc_request = _envelope(service_file, f"{service}{method}Request", incoming)
+        rpc_response = _envelope(service_file, f"{service}{method}Response", outgoing)
     definition.method.add(
         name=method,
         input_type=f".{rpc_request}",
         output_type=f".{rpc_response}",
-        client_streaming="input" in direction_types,
-        server_streaming="output" in direction_types,
-    )
-    cancellation = f"{service}{method}Cancellation"
-    service_file.message_type.add(name=cancellation)
-    cancellation = f"{package}.{cancellation}"
-    incoming = [
-        ("request", 1, direction_types["request"]),
-        ("cancel", 3, cancellation),
-        ("finish", 4, cancellation),
-    ]
-    if "input" in direction_types:
-        incoming.append(("item", 2, direction_types["input"]))
-    outgoing = [("response", 2, direction_types["response"])]
-    if "output" in direction_types:
-        outgoing.append(("item", 1, direction_types["output"]))
-    run_request = _envelope(service_file, f"{service}{method}RunInput", incoming)
-    run_response = _envelope(service_file, f"{service}{method}RunOutput", outgoing)
-    definition.method.add(
-        name=f"Run{method}",
-        input_type=f".{run_request}",
-        output_type=f".{run_response}",
-        client_streaming=True,
-        server_streaming=True,
+        client_streaming=managed or "input" in direction_types,
+        server_streaming=managed or "output" in direction_types,
     )
     serialized = file.SerializeToString()
     if len(serialized) > max_bytes:
@@ -389,8 +384,7 @@ def from_contract(
         grpc_path=f"/{package}.{service}/{method}",
         rpc_request=GetMessageClass(pool.FindMessageTypeByName(rpc_request)),
         rpc_response=GetMessageClass(pool.FindMessageTypeByName(rpc_response)),
-        run_request=GetMessageClass(pool.FindMessageTypeByName(run_request)),
-        run_response=GetMessageClass(pool.FindMessageTypeByName(run_response)),
+        managed=managed,
         contract=encoded,
         fingerprint=fingerprint,
     )

@@ -46,8 +46,10 @@ use harmos::{Context, Operation, Plugin, Result, wasm::Registration};
 #[test]
 fn guest_registration_describes_values_before_initialization() {
     // Compose the Same Unary Builder Used by Native Plugins
-    let plugin = Plugin::new("guest_fixture", "1.0.0")
-        .operation(Operation::new("guest.echo", async |_: &Context, _: ()| -> Result<()> { panic!("inspection entered a handler") }));
+    let plugin = Plugin::new("guest_fixture", "1.0.0").operation(
+        Operation::new("guest.echo", async |_: &Context, _: ()| -> Result<()> { panic!("inspection entered a handler") })
+            .visibility(harmos_protocol::v1::Visibility::Protected),
+    );
     let registration = Registration::new(plugin)
         .capacity(2)
         .on_initialize(async |_: &Context, _: Vec<u8>| panic!("inspection initialized a plugin"))

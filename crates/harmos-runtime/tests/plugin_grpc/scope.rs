@@ -64,7 +64,9 @@ async fn bound_scope_reaches_handlers_and_children_and_missing_scope_is_refused(
     // Refuse Missing Transport Scope Even When the Payload Contains a Scope.
     let error = host.runtime.operations.call_encoded("fixture.scoped", payload("scope/α".as_bytes())).await.unwrap_err();
     assert_eq!(call_error(&error).classification(), harmos_protocol::v1::Classification::Refused);
-    assert!(matches!(call_error(&error), harmos_runtime::plugin::grpc::CallError::Remote(failure) if failure.code == "scope_required"));
+    assert!(
+        matches!(call_error(&error), harmos_runtime::plugin::grpc::CallError::Remote(failure) if harmos_protocol::v1::Failure::from(failure.as_ref()).code == "scope_required")
+    );
     assert!(host.runtime.operations.with_scope("").is_err());
 
     // Retire the Managed Activation and Attach the Same Contract Remotely.
@@ -75,7 +77,9 @@ async fn bound_scope_reaches_handlers_and_children_and_missing_scope_is_refused(
     assert_eq!(response, payload("scope/β\0scope/β\0scope/β".as_bytes()));
     let error = host.runtime.operations.call_encoded("fixture.scoped", payload("scope/β".as_bytes())).await.unwrap_err();
     assert_eq!(call_error(&error).classification(), harmos_protocol::v1::Classification::Refused);
-    assert!(matches!(call_error(&error), harmos_runtime::plugin::grpc::CallError::Remote(failure) if failure.code == "scope_required"));
+    assert!(
+        matches!(call_error(&error), harmos_runtime::plugin::grpc::CallError::Remote(failure) if harmos_protocol::v1::Failure::from(failure.as_ref()).code == "scope_required")
+    );
 
     // Clean Up Both Activations and Their Scoped Call Handles.
     attached.stop("Story Complete").await.unwrap();

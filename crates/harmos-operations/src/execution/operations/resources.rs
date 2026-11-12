@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::host::AssignedOperation;
+pub use harmos_protocol::v1::AssignedOperation;
 
 /* === Imports === */
 
@@ -130,7 +130,7 @@ impl ExecutionContext {
 impl OperationAssignments {
     pub fn install(&self, bytes: &[u8]) -> Result<(), super::ServingError> {
         use prost::Message;
-        let assignments = harmos_protocol::host::OperationAssignments::decode(bytes).map_err(|_| super::ServingError::Catalog)?;
+        let assignments = harmos_protocol::v1::OperationAssignments::decode(bytes).map_err(|_| super::ServingError::Catalog)?;
         let entries = assignments.operations;
         let mut locals = std::collections::BTreeSet::new();
         for entry in &entries {
@@ -215,23 +215,21 @@ mod tests {
     fn protobuf_assignments_validate_and_freeze_the_catalog() {
         use prost::Message;
         let entry = AssignedOperation {
-            operation: "host.catalog.read".into(),
+            operation: "host.harmos.v1.CatalogEntries/List".into(),
             fingerprint: vec![7; 32],
             generation: 1,
         };
-        let encoded = harmos_protocol::host::OperationAssignments { operations: vec![entry.clone()] }.encode_to_vec();
-        let decoded = harmos_protocol::host::OperationAssignments::decode(encoded.as_slice()).unwrap();
+        let encoded = harmos_protocol::v1::OperationAssignments { operations: vec![entry.clone()] }.encode_to_vec();
+        let decoded = harmos_protocol::v1::OperationAssignments::decode(encoded.as_slice()).unwrap();
         assert_eq!(decoded.operations[0].operation, entry.operation);
         let assignments = OperationAssignments::default();
         assignments.install(&encoded).unwrap();
         assignments.install(&encoded).unwrap();
         let replacement = AssignedOperation { generation: 2, ..entry.clone() };
-        assert!(
-            assignments.install(&harmos_protocol::host::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err()
-        );
+        assert!(assignments.install(&harmos_protocol::v1::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err());
         assert!(
             OperationAssignments::default()
-                .install(&harmos_protocol::host::OperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())
+                .install(&harmos_protocol::v1::OperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())
                 .is_err()
         );
         let mut invalid = decoded;

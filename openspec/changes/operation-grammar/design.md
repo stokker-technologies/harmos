@@ -646,6 +646,21 @@ child request/result, parent cancel/child cancel, and publication opening/ticks.
 They are frames, not additional public RPCs. Keep catalog sections, requirements,
 visibility, fingerprints, digest, descriptors and failure causes used in admission.
 
+### Non-Storage Package Layout
+
+The running-instance service is `harmos.plugin.v1.Instance` in
+`proto/harmos/plugin/v1/instance.proto`, with Instance-qualified wrappers.
+CatalogEntries, Invocations and Time have separate service files and independent
+wrappers in `harmos.context.v1` and `harmos.v1`. Samples.Append has only a context
+file. Reusable primitives, plugin catalog/control payloads and discovery values
+live in service-free `harmos/v1/types.proto`; the discovery contract is
+DiscoveredContract, distinct from the plugin catalog's OperationContract.
+Rust exposes `plugin`, `context` and `v1` modules; the superseded `host` module is
+removed. Python authoring lives in `authoring.py` and `invocation.py`; its generated
+face namespace packages have inert initializers, preserving root SDK imports.
+Storage face inventory and management services are integrated by their owners.
+Runtime face admission and generation filtering are tracked separately from file moves.
+
 ### Current Visibility Discrepancy
 
 `crates/harmos-runtime/src/operations/manager/plugin_grpc.rs` applies the Private
@@ -1148,24 +1163,51 @@ manager inventory above; application operations remain outside this repository.
 
 ## Open Questions
 
+Implementation choice (4.1): one descriptor table drives generated Rust/C#/C++ resource classes and Python runtime binding; parents and service names determine every client path.
+
+Implementation (0.3–0.7): each SDK runs Private handlers from its local registry,
+with fresh attempt resources, host-clock policy guards, replay-safe retries and
+reason-bearing cancellation. Conformance cases 24 and 26–29 guard local isolation,
+retry, deadline, cooperative cancellation and host-mediated peer visibility.
+Child demand frames bound context Watch to one requested item; background policy
+guards do not make active handler work eligible for virtual-time advancement.
+The runtime peer story independently guards inherited scope, failure cause and
+caller-to-child cancellation. HostValues.Get uses an OperationManager resolver
+registration with declared value types and invocation scope; dropping registration
+ends new resolution. No library settings or secrets store is introduced.
+
+Implementation (4.7): Rust Cargo features, Python wheel audience selection, C#
+HarmosAudience and CMake HARMOS_AUDIENCE select plugin/client/host bindings.
+Context methods remain child calls, with no standalone context service stubs.
+C++ and Python filter the pinned compiler's output during generation/packaging;
+generated files are never edited as source. Python editable development installs
+retain all faces; installable wheels select exactly one audience.
+
+Implementation (4.6): context message descriptor graphs are projected during
+generation and embedded per SDK message. Guest registration never initializes the
+full host reflection pool; the existing fuel budgets remain unchanged. Guest
+assignments retain their provider alongside the canonical service/method identity,
+and runtime dispatch checks that provider, generation, fingerprint and audience.
+
+
+Implementation decision (3.11): no library built-in promises a cooperative final result after cancellation: actions use unary receipts/status and watches end observation; explicit application `Grpc::managed()` declarations replace the canonical method. The Collect and Exchange fixtures promise the accepted-input aggregate, and Wait promises its typed cancellation summary; those three fixture declarations exercise the opt-in contract.
+
+Implementation decision (4.1): Rust, Python, C# and C++ promise the same native plugin semantics, proven by the common conformance suite; Wasm remains Rust-only.
+
+Implementation decision (4.2): the generic managed application client remains Rust-only; other SDKs use generated application gRPC clients.
+
 Only these questions remain open. Settle each when implementation reaches its
 owner; they do not block the other locked work. Each has a corresponding task.
 
-1. **Four-Language Plugin Parity:** settle the semantic parity promise for Rust,
-   Python, C# and C++.
-2. **Generic Managed Clients:** settle whether generic managed-client coverage is
-   Rust-only or includes the other languages.
-3. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
+1. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
    expiry, provenance and retained composite selections across restart. Arbitrary
    earlier positions remain refused; product presentation retention stays there.
-4. **Exact Watch Semantics:** settle opening snapshot/boundary, event/progress and
+2. **Exact Watch Semantics:** settle opening snapshot/boundary, event/progress and
    gap/resynchronization rules, including external file/directory and runtime
    sources. Watch shapes earlier in this document are candidate details
    for that task, not an assertion that these exact semantics are settled.
-5. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
+3. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
    supported backends before implementing deletion changes.
-6. **Cooperative Final Results:** enumerate which operations actually promise a
-   final result after cancellation; only those get a managed replacement gRPC method.
 
 ## Migration Plan
 

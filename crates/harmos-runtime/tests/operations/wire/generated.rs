@@ -51,21 +51,6 @@ struct Forward;
 pub(super) struct Watch;
 struct Access(AtomicBool);
 
-#[derive(Clone, PartialEq, prost::Message)]
-struct Output {
-    #[prost(oneof = "output::Value", tags = "1, 2")]
-    value: Option<output::Value>,
-}
-mod output {
-    #[derive(Clone, PartialEq, prost::Oneof)]
-    pub enum Value {
-        #[prost(message, tag = "1")]
-        Item(super::Reply),
-        #[prost(message, tag = "2")]
-        Response(super::Reply),
-    }
-}
-
 /* === Implementations === */
 
 impl ReflectMessage for Request {
@@ -283,13 +268,12 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
         .server_streaming(
             tonic::Request::new(request()),
             PathAndQuery::from_static("/generated.host.v1.Operations/Watch"),
-            tonic_prost::ProstCodec::<Request, Output>::default(),
+            tonic_prost::ProstCodec::<Request, Reply>::default(),
         )
         .await
         .unwrap()
         .into_inner();
-    assert_eq!(stream.message().await.unwrap().unwrap().value, Some(output::Value::Item(reply(request()))));
-    assert_eq!(stream.message().await.unwrap().unwrap().value, Some(output::Value::Response(reply(request()))));
+    assert_eq!(stream.message().await.unwrap().unwrap(), reply(request()));
     assert!(stream.message().await.unwrap().is_none());
 
     // Admit a Byte-Heavy Message That Fits the Decoding Budget.

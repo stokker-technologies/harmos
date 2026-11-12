@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.context.v1;
+
+service HostValues {
+  rpc Get(HostValuesGetRequest) returns (HostValuesGetResponse);
+}
+message HostValuesGetRequest { string name = 1; }
+message HostValuesGetResponse { string type = 1; bytes payload = 2; }

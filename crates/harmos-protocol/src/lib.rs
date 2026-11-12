@@ -7,7 +7,7 @@
  * ***
  */
 
-//! Protobuf messages and gRPC bindings for the `harmos.v1` plugin protocol.
+//! Audience-separated client, context and instance protocol contracts.
 //! [`schema`] owns descriptor fingerprints and catalog digests shared by peers.
 
 /* === Modules === */
@@ -17,7 +17,9 @@ pub mod guest;
 pub mod policy;
 pub mod service;
 #[rustfmt::skip]
-pub mod host;
+pub mod context;
+#[rustfmt::skip]
+pub mod plugin;
 #[rustfmt::skip]
 mod reflection;
 #[rustfmt::skip]

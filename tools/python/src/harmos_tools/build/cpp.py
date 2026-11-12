@@ -40,10 +40,14 @@ from ..process import spawn_flags
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
+    parser.add_argument("--audience", choices=("plugin", "client", "host"), default="host")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--generate", action="store_true")
     options = parser.parse_args()
     root = Path.cwd()
+    from .resource_roots import generate
+
+    generate(root)
     directory = root / "target/cpp" / options.profile
     configuration = "Debug" if options.profile == "dev" else "Release"
     configure = [
@@ -54,6 +58,7 @@ def main() -> None:
         str(directory),
         f"-DCMAKE_BUILD_TYPE={configuration}",
         "-DHARMOS_BUILD_TESTS=ON",
+        f"-DHARMOS_AUDIENCE={options.audience.title()}",
     ]
     environment = dict(os.environ)
     # Git's Child Submodule Processes Need Long-Path Support in Windows Worktrees.
@@ -75,16 +80,12 @@ def main() -> None:
         return
 
     if options.generate:
-        for relative in (
-            "harmos/v1/plugin.pb.cc",
-            "harmos/v1/plugin.pb.h",
-            "harmos/v1/plugin.grpc.pb.cc",
-            "harmos/v1/plugin.grpc.pb.h",
-            "harmos/conformance/v1/fixture.pb.cc",
-            "harmos/conformance/v1/fixture.pb.h",
-        ):
-            (directory / "generated" / relative).unlink(missing_ok=True)
-    targets = ("harmos_cpp_protocol", "harmos_cpp_fixture") if options.generate else ("harmos-cpp-conformance", "harmos-cpp-tests")
+        for path in (directory / "generated" / options.audience.title()).rglob("*.pb.*"):
+            path.unlink()
+    if options.audience != "host":
+        targets = ("harmos-cpp-audience",)
+    else:
+        targets = ("harmos_cpp_protocol", "harmos_cpp_fixture") if options.generate else ("harmos-cpp-conformance", "harmos-cpp-tests")
 
     # Compile the Runtime and Code Generator with Bounded Parallelism.
     log = directory / "build.log"

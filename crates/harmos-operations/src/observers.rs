@@ -49,7 +49,7 @@ impl crate::operations::RequestShape for Control {
 }
 pub static CONTROL_DESCRIPTION: crate::operations::WireDeclaration =
     crate::operations::WireDeclaration::request::<Control>("harmos_observe", POLICY)
-        .visibility(Visibility::Private)
+        .visibility(Visibility::Protected)
         .replay(ReplaySafety::Idempotent);
 
 pub const CONTROL_OPERATION: crate::operations::OperationSpec<Control> =

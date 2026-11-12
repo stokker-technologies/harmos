@@ -60,7 +60,7 @@ static EXPONENTIAL_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDecl
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
-                max_retries: 4,
+                total_attempts: 5,
                 backoff: Backoff::Exponential {
                     initial: Duration::from_millis(200),
                     maximum: Duration::from_secs(1),
@@ -68,7 +68,8 @@ static EXPONENTIAL_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDecl
                 },
             },
         },
-    );
+    )
+    .replay(ReplaySafety::Idempotent);
 
 const EXPONENTIAL_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ExponentialDeclaration> =
     harmos_runtime::operations::OperationSpec::<ExponentialDeclaration>::new(&EXPONENTIAL_DECLARATION_DESCRIPTION);
@@ -86,7 +87,7 @@ static JITTERED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
         "policy.jittered",
         OperationPolicy {
             retries: RetryPolicy::OnTransient {
-                max_retries: 4,
+                total_attempts: 5,
                 backoff: Backoff::Exponential {
                     initial: Duration::from_millis(200),
                     maximum: Duration::from_secs(1),
@@ -95,7 +96,8 @@ static JITTERED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
             },
             ..EXPONENTIAL_DECLARATION_OPERATION.declaration.operation.policy
         },
-    );
+    )
+    .replay(ReplaySafety::Idempotent);
 
 const JITTERED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<JitteredDeclaration> =
     harmos_runtime::operations::OperationSpec::<JitteredDeclaration>::new(&JITTERED_DECLARATION_DESCRIPTION);
@@ -113,7 +115,7 @@ static EMPTY_RETRIES_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
         "policy.empty",
         OperationPolicy {
             retries: RetryPolicy::OnTransient {
-                max_retries: 0,
+                total_attempts: 1,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(1),
                     jitter: Jitter::None,
@@ -139,7 +141,7 @@ static INVERTED_BACKOFF_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wir
         "policy.inverted",
         OperationPolicy {
             retries: RetryPolicy::OnTransient {
-                max_retries: 1,
+                total_attempts: 2,
                 backoff: Backoff::Exponential {
                     initial: Duration::from_millis(100),
                     maximum: Duration::from_millis(50),
@@ -406,7 +408,7 @@ const fn policy(overall: u64, attempt: u64, retries: usize, delay: u64) -> Opera
             RetryPolicy::Never
         } else {
             RetryPolicy::OnTransient {
-                max_retries: retries,
+                total_attempts: retries + 1,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(delay),
                     jitter: Jitter::None,
@@ -649,10 +651,9 @@ async fn attempt_limits_backoff() {
         behavior: Behavior,
     }
 
-    static RETRYING_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos_runtime::operations::WireDeclaration::request::<
-        Retrying,
-    >("policy.compute", policy(100, 1000, 10, 1000))
-    .replay(if false { ReplaySafety::Idempotent } else { ReplaySafety::Unknown });
+    static RETRYING_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<Retrying>("policy.compute", policy(100, 1000, 10, 1000))
+            .replay(ReplaySafety::Idempotent);
 
     const RETRYING_OPERATION: harmos_runtime::operations::OperationSpec<Retrying> =
         harmos_runtime::operations::OperationSpec::<Retrying>::new(&RETRYING_DESCRIPTION);
@@ -731,10 +732,9 @@ async fn cancellation_skips_backoff() {
         behavior: Behavior,
     }
 
-    static RETRYING_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos_runtime::operations::WireDeclaration::request::<
-        Retrying,
-    >("policy.compute", policy(10000, 100, 2, 1000))
-    .replay(if false { ReplaySafety::Idempotent } else { ReplaySafety::Unknown });
+    static RETRYING_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<Retrying>("policy.compute", policy(10000, 100, 2, 1000))
+            .replay(ReplaySafety::Idempotent);
 
     const RETRYING_OPERATION: harmos_runtime::operations::OperationSpec<Retrying> =
         harmos_runtime::operations::OperationSpec::<Retrying>::new(&RETRYING_DESCRIPTION);
@@ -860,8 +860,8 @@ async fn timeouts_require_replay() {
 
     let (runtime, probe) = bound(unknown_operation().expect("representable operation")).await;
     let result = runtime.operation(Unknown { behavior: Behavior::Pending }).await;
-    assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
-    assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
+    assert!(matches!(result, Err(Error::InvalidInput { field: "operation retry", .. })));
+    assert_eq!(probe.attempts.load(Ordering::SeqCst), 0);
     crate::support::app::shutdown(&runtime).await.unwrap();
 
     #[derive(harmos_runtime::Request)]

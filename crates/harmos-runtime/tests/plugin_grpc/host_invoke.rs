@@ -32,7 +32,7 @@ async fn host_invokes_registered_plugin_operation() {
     let input = payload(b"echo");
     let response = host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap();
     assert_eq!(response, input);
-    assert_eq!(host.runtime.operations.definition("fixture.echo").unwrap().visibility, harmos_runtime::operations::Visibility::Private);
+    assert_eq!(host.runtime.operations.definition("fixture.echo").unwrap().visibility, harmos_runtime::operations::Visibility::Protected);
 
     // Stop Removes Operations From The Registry
     attached.stop("Story Complete").await.unwrap();

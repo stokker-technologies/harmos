@@ -29,22 +29,7 @@ use harmos_protocol::v1::*;
 /* === Constants === */
 
 pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure", "policy"];
-pub const CLOCK_FINGERPRINTS: [(&str, [u8; 32]); 2] = [
-    (
-        "harmos.clock.sleep",
-        [
-            225, 132, 164, 249, 80, 106, 186, 165, 169, 217, 165, 220, 137, 211, 126, 66, 239, 172, 93, 254, 210, 30, 29, 19, 96, 55, 253,
-            247, 27, 7, 156, 171,
-        ],
-    ),
-    (
-        "harmos.clock.now",
-        [
-            205, 13, 190, 24, 110, 229, 160, 96, 250, 199, 77, 136, 248, 239, 51, 52, 68, 167, 137, 155, 87, 218, 83, 236, 177, 253, 20,
-            211, 201, 42, 188, 129,
-        ],
-    ),
-];
+pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.context.v1.Time/Sleep", "harmos.context.v1.Time/Get"];
 
 pub const ROW: &str = "harmos.conformance.v1.Value";
 
@@ -99,8 +84,27 @@ pub fn types() -> FileDescriptorSet {
 }
 
 pub fn fingerprint(id: &str) -> Vec<u8> {
-    if let Some((_, fingerprint)) = CLOCK_FINGERPRINTS.iter().find(|(operation, _)| *operation == id) {
-        return fingerprint.to_vec();
+    if id == "conformance.host.watch" {
+        return harmos_protocol::schema::host_fingerprint(
+            id,
+            &Protobuf {
+                descriptors: types().encode_to_vec(),
+                request: ROW.into(),
+                response: ROW.into(),
+                input: None,
+                output: Some(ROW.into()),
+            },
+        )
+        .unwrap();
+    }
+    if CLOCK_OPERATIONS.contains(&id) {
+        let (request, response) = if id == "harmos.context.v1.Time/Sleep" {
+            ("harmos.context.v1.TimeSleepRequest", "harmos.context.v1.TimeSleepResponse")
+        } else {
+            ("harmos.context.v1.TimeGetRequest", "harmos.context.v1.TimeGetResponse")
+        };
+        return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
+            .expect("clock contract");
     }
     harmos_protocol::schema::fingerprint(id, &types(), ROW, ROW).expect("the fixed fixture descriptor resolves Value")
 }
@@ -120,13 +124,22 @@ pub fn catalog() -> Catalog {
             }
         })
         .collect();
-    let mut requires: Vec<_> = ["conformance.host.echo", "conformance.host.pending", "conformance.host.fail"]
-        .into_iter()
-        .map(|id| Requirement {
-            id: id.into(),
-            fingerprint: fingerprint(id),
-        })
-        .collect();
+    let mut requires: Vec<_> = [
+        "conformance.host.echo",
+        "conformance.host.pending",
+        "conformance.host.fail",
+        "conformance.host.watch",
+        "conformance.peer.public",
+        "conformance.peer.protected",
+        "conformance.peer.local",
+        "conformance.protected",
+    ]
+    .into_iter()
+    .map(|id| Requirement {
+        id: id.into(),
+        fingerprint: fingerprint(id),
+    })
+    .collect();
     let mut streams: Vec<_> = ["ticks", "device"]
         .into_iter()
         .map(|name| StreamDeclaration {
@@ -176,10 +189,38 @@ pub fn catalog() -> Catalog {
         fingerprint: fingerprint("conformance.clock"),
         ..Default::default()
     });
-    for (id, fingerprint) in CLOCK_FINGERPRINTS {
+    for (id, visibility, replay_safe) in [
+        ("conformance.protected", Visibility::Protected, false),
+        ("conformance.resources", Visibility::Public, true),
+        ("conformance.cancel_reason", Visibility::Public, false),
+        ("conformance.watch", Visibility::Public, false),
+        ("conformance.peer_call", Visibility::Public, false),
+    ] {
+        operations.push(OperationContract {
+            id: id.into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: visibility as i32,
+            replay_safe,
+            fingerprint: fingerprint(id),
+            ..Default::default()
+        });
+    }
+    operations.insert(
+        0,
+        OperationContract {
+            id: "conformance.local_call".into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Public as i32,
+            fingerprint: fingerprint("conformance.local_call"),
+            ..Default::default()
+        },
+    );
+    for id in CLOCK_OPERATIONS {
         requires.push(Requirement {
             id: id.into(),
-            fingerprint: fingerprint.to_vec(),
+            fingerprint: fingerprint(id),
         });
     }
     let mut types = schema_fixture::types();

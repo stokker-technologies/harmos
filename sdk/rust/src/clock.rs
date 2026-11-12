@@ -13,7 +13,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::v1::{Now, Sleep, SleepResponse, Time};
+pub use harmos_protocol::context::{TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
 
 /* === Imports === */
 
@@ -24,7 +24,7 @@ use harmos_protocol::clock::catalog_types;
 use prost_types::FileDescriptorSet;
 
 // Local Imports
-use crate::{Message, OperationRequest};
+use crate::Message;
 
 /* === Constants === */
 
@@ -39,51 +39,6 @@ use crate::{Message, OperationRequest};
 /* === Traits === */
 
 /* === Implementations === */
-
-impl Message for Sleep {
-    fn name() -> String {
-        "harmos.v1.Sleep".into()
-    }
-    fn types() -> FileDescriptorSet {
-        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
-    }
-}
-
-impl Message for SleepResponse {
-    fn name() -> String {
-        "harmos.v1.SleepResponse".into()
-    }
-    fn types() -> FileDescriptorSet {
-        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
-    }
-}
-
-impl Message for Now {
-    fn name() -> String {
-        "harmos.v1.Now".into()
-    }
-    fn types() -> FileDescriptorSet {
-        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
-    }
-}
-
-impl Message for Time {
-    fn name() -> String {
-        "harmos.v1.Time".into()
-    }
-    fn types() -> FileDescriptorSet {
-        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
-    }
-}
-
-impl OperationRequest for Sleep {
-    type Response = SleepResponse;
-    const ID: &'static str = "harmos.clock.sleep";
-}
-impl OperationRequest for Now {
-    type Response = Time;
-    const ID: &'static str = "harmos.clock.now";
-}
 
 impl Message for prost_types::Duration {
     fn name() -> String {

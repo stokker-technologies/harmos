@@ -33,7 +33,12 @@ from .process import spawn_flags
 # === Public Functions === #
 
 
-def run(root: Path, command: str, profile: str = "dev", *, check: bool = False) -> int:
+def run(
+    root: Path, command: str, profile: str = "dev", *, check: bool = False, dependencies: bool = False, audience: str | None = None
+) -> int:
+    from .build.resource_roots import generate
+
+    generate(root)
     directory = root / "sdk/csharp"
     configuration = "Release" if profile == "release" else "Debug"
     environment = os.environ.copy()
@@ -47,9 +52,9 @@ def run(root: Path, command: str, profile: str = "dev", *, check: bool = False) 
 
     # Regenerate Each Configured Protocol with the SDK's Pinned Compiler.
     if command == "generate":
-        for project in projects[:2]:
+        for project in projects:
             result = subprocess.run(
-                [dotnet, "restore", project, "--locked-mode"],
+                [dotnet, "restore", project, "--force-evaluate" if dependencies else "--locked-mode"],
                 cwd=directory,
                 env=environment,
                 stdout=subprocess.PIPE,
@@ -74,9 +79,14 @@ def run(root: Path, command: str, profile: str = "dev", *, check: bool = False) 
 
     # Build the SDK, Managed Fixture and Story as Explicit Producer Outputs.
     if command == "build":
-        for project in projects:
+        selections = (
+            [("Harmos/Harmos.csproj", audience.title())]
+            if audience
+            else [(project, "Plugin") for project in projects] + [("Harmos/Harmos.csproj", "Client"), ("Harmos/Harmos.csproj", "Host")]
+        )
+        for project, selected_audience in selections:
             result = subprocess.run(
-                [dotnet, "restore", project, "--locked-mode"],
+                [dotnet, "restore", project, "--locked-mode", f"-p:HarmosAudience={selected_audience}"],
                 cwd=directory,
                 env=environment,
                 stdout=subprocess.PIPE,
@@ -87,7 +97,7 @@ def run(root: Path, command: str, profile: str = "dev", *, check: bool = False) 
             print(result.stdout, flush=True)
             result.check_returncode()
             result = subprocess.run(
-                [dotnet, "build", project, "--no-restore", "--configuration", configuration],
+                [dotnet, "build", project, "--no-restore", "--configuration", configuration, f"-p:HarmosAudience={selected_audience}"],
                 cwd=directory,
                 env=environment,
                 stdout=subprocess.PIPE,

@@ -35,11 +35,11 @@ pub struct Watch;
 /* === Implementations === */
 
 impl ProtobufOperation for Watch {
-    type Request = harmos_protocol::host::Watch;
-    type Response = super::InstanceState;
-    type Endpoints = ProtobufOutput<super::InstanceState>;
-    const ID: &'static str = "host.operations.watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Operations", "Watch"));
+    type Request = harmos_protocol::v1::InvocationsWatchRequest;
+    type Response = harmos_protocol::v1::InvocationsWatchResponse;
+    type Endpoints = ProtobufOutput<harmos_protocol::v1::InvocationsWatchResponse>;
+    const ID: &'static str = "harmos.v1.Invocations/Watch";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Invocations", "Watch"));
     const POLICY: crate::OperationPolicy = super::WATCH_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
@@ -54,7 +54,7 @@ impl ProtobufOperation for Watch {
         drop(instance);
         loop {
             let status = changes.current();
-            let state = super::state(status);
+            let state = harmos_protocol::v1::InvocationsWatchResponse { invocation: Some(super::state(status)) };
             output.send(state.clone()).await.map_err(ServingError::Stream)?;
             if status.is_settled() || !changes.changed().await {
                 return Ok(state);
@@ -64,8 +64,8 @@ impl ProtobufOperation for Watch {
 }
 
 impl Watch {
-    pub fn of(instance: Id) -> harmos_protocol::host::Watch {
-        harmos_protocol::host::Watch { instance: instance.value() }
+    pub fn of(instance: Id) -> harmos_protocol::v1::InvocationsWatchRequest {
+        harmos_protocol::v1::InvocationsWatchRequest { instance: instance.value() }
     }
 }
 

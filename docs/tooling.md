@@ -143,7 +143,8 @@ Windows measurements and remaining unmeasured cases are recorded in
 
 ## Protocol Generation
 
-The checked-in Rust messages and descriptor set come from `proto/harmos/v1`:
+The checked-in Rust messages and descriptor set come from the client, context and
+instance service files under `proto/harmos/`:
 
 ```sh
 mise run build -- --package harmos-protocol --example generate
@@ -157,6 +158,31 @@ mise run generate -- --sdk cpp
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle
 handlers register their generated request and response contracts directly.
 
+Client roots follow package parents, service names and method names mechanically:
+`client.plugins.settings.get(request)`, `client.jobs.progress.watch(request)` and
+`client.invocations.cancel(request)` (normal PascalCase in C#). A descriptor table
+drives all four languages; no per-operation client layer is maintained. Compose
+library and product descriptors with:
+
+```sh
+mise run generate -- --sdk rust --descriptors path/to/product-descriptors.bin --output path/to/generated --namespace application
+```
+
+This writes all four language roots and their shared table. Product protobuf
+bindings retain their qualified message identity. Rust product roots take the
+existing client's `transport_handle()`; Python accepts explicit complete tables
+as `Client(channel, library_table, product_table)`. Actual leaf collisions are refused.
+
+Select the SDK's audience when building. Rust enables `plugin` by default;
+client-only consumers use `default-features = false, features = ["client"]`, and
+host consumers use `host`. Python wheels use `build --package harmos-plugin
+--audience plugin|client|host`; C# uses `HarmosAudience=Plugin|Client|Host`; CMake
+uses `HARMOS_AUDIENCE=Plugin|Client|Host`. The repository build task accepts
+`--language csharp|cpp --audience plugin|client|host`. Plugin packages expose the
+Instance server and child-carried context contracts; client packages expose only
+client callers; host packages supply all faces. Python editable development
+installs retain all faces. Context services have no standalone gRPC listener.
+
 ## Python Plugin SDK
 
 `sdk/python` builds the pure Python `harmos-plugin` distribution for Python 3.13+.
@@ -169,17 +195,18 @@ those message classes, without an intermediate JSON representation:
 from google.protobuf.duration_pb2 import Duration
 from harmos import Context, Operation, Plugin, observer, on_stop, operation
 from thermal.v1.messages_pb2 import Reading, SetTemperature
+from harmos.v1 import types_pb2 as wire
 
-READ_SENSOR = Operation("sensor.read", SetTemperature, Reading)
+READ_SENSOR = Operation("sensor.read", SetTemperature, Reading, visibility=wire.VISIBILITY_PUBLIC)
 
 class Chamber:
     def __init__(self):
         self.target = 0.0
 
-    @operation("thermal.set", request=SetTemperature, response=Reading)
+    @operation("thermal.set", request=SetTemperature, response=Reading, visibility=wire.VISIBILITY_PUBLIC)
     async def set_temperature(self, ctx: Context, request: SetTemperature) -> Reading:
         self.target = request.target
-        return await ctx.operation(READ_SENSOR, request)
+        return await ctx.call(READ_SENSOR, request)
 
     @observer("thermal.temperature", row=Reading, interval=Duration(seconds=1))
     async def temperature(self, ctx: Context) -> Reading:
@@ -200,14 +227,17 @@ credentials. Stop awaits cleanup hooks in declaration order, replies, and keeps
 the endpoint serving. `start(address)` returns an endpoint with its bound
 `address` and an async `close()` for applications that own the server lifecycle.
 
-`ctx.operation(contract, request, policy=...)` sends a typed unary child call on
-the parent invocation. Declare every child contract in `requires`. Raise
-`harmos.Failure(harmos.v1.plugin_pb2.Failure(...))` for a structured application
+`ctx.call(contract, request, policy=...)` dispatches Private operations inside the
+plugin. Other calls use typed unary children on the parent invocation; declare
+those contracts in `requires`. `ctx.watch(contract, request, max_item_bytes=...)`
+is an async context manager yielding a pull-based child stream. Each item requires
+demand; leaving the context cancels the watch. Raise
+`harmos.Failure(harmos.v1.types_pb2.Failure(...))` for a structured application
 failure; failures received from children retain every field. `ctx.cancelled()`
-waits for cooperative cancellation. `ctx.set(value)` and `ctx.get(Type)` retain
+waits for cooperative cancellation and returns its reason. Every operation must select Private, Protected or Public explicitly. `ctx.set(value)` and `ctx.get(Type)` retain
 invocation-local resources; ordinary `self` fields retain the author's instance state.
 
-Declare `harmos.SLEEP` and `harmos.NOW` in `requires` to use
+Declare `harmos.SLEEP` and `harmos.GET_TIME` in `requires` to use
 `await ctx.sleep(Duration(...))` and `await ctx.now()`. These are host child calls;
 the SDK has no local timer. All SDKs fingerprint clock contracts with the shared
 [canonical projection](../proto/harmos/v1/behaviour.md#schema-fingerprints),
@@ -241,15 +271,15 @@ mise run test -- --language python --package harmos-plugin --target integration 
 mise run test -- --language python --package harmos-plugin --target integration --exact tests.integration.test_host_clock_and_state.HostClockAndState.test_host_clock_and_state
 ```
 
-The wheel is written to `target/build/<profile>/any/python/`. Checked-in
+The wheel is written to `target/build/<profile>/any/python/<audience>/`. Checked-in
 `harmos.v1` message, type-stub and service modules are generated by the pinned
-`grpcio-tools` compiler from `proto/harmos/v1/plugin.proto`; the conformance Value
+`grpcio-tools` compiler from the per-service face folders under `proto/harmos/`; the conformance Value
 is generated from `sdk/python/proto/`. The SDK check regenerates into disposable
 scratch and compares every generated file byte for byte. Python language checks
 and tests include the SDK alongside repository tooling. The reference-host story
 consumes an existing host executable from Product's `bin/`, a focused local
 `target/debug/` build, or `HARMOS_CONFORMANCE_HOST`; it never builds one in a test.
-The standalone fixture can be served with
+From the development checkout the standalone fixture can be served with
 `python -m harmos.conformance --address 127.0.0.1:53124` and checked with
 `harmos-conformance --address 127.0.0.1:53124`. Every current rule applies to remote
 plugins, including the remote-specific Stop check; none is skipped.
@@ -300,7 +330,7 @@ The fixture is `target/cpp/dev/Debug/harmos-cpp-conformance.exe` on Windows and
 ephemeral loopback port and announces `harmos listening 127.0.0.1:PORT`.
 `HARMOS_ADDRESS` overrides its bind address. `--address HOST:PORT` selects remote
 lifecycle: Stop completes cleanup and leaves the server running. Both modes use
-plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::NOW` with
+plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::GET_TIME` with
 `requires_operation`; observers answer ticks and cannot wait. Authors must not
 start untracked background work if they require virtual-time execution.
 
@@ -348,7 +378,7 @@ mise run check -- --language csharp
 ```
 
 The test consumes both build outputs without rebuilding. Its one managed-plugin story
-runs all 20 reference-host cases in managed and remote modes, including successful
+runs all 29 reference-host cases in managed and remote modes, including successful
 managed process exit and continued remote availability after Stop. A focused unit
 test also checks clock requirement descriptors and the Rust-compatible sleep fingerprint.
 `--profile release` selects matching Release C# and release Rust outputs. Formatting
@@ -463,7 +493,7 @@ Native verification consumes `release-manifest` and runs the downloaded conforma
 host. Benchmark exports retain medians and pre-run baselines, including results
 available from a failed benchmark subprocess.
 
-### Dokime Alignment
+### Consumer Alignment
 
 The shared validation inputs are `channel` and `profile`; Harmos also selects a body
 with `selection`. Publication and verification use `build-run`, `build-sha` and
@@ -474,9 +504,9 @@ group, retains the original notes, swaps a complete verified inventory and overw
 the published inventory rather than repeating package staging.
 
 Products keep their own languages, runner matrices, inventories and workflow file
-organization. Harmos retains one validation dispatcher; Dokime splits validation by
+organization. Harmos retains one validation dispatcher; Consumer splits validation by
 job. The four-hour Nightly schedule is unchanged.
-Dokime should default every package download to `build-run || github.run_id`, including
+Consumer should default every package download to `build-run || github.run_id`, including
 Windows Rust packages: its shared publish/verify workflows currently select the
 publication run for those packages and can lose stable review inputs. Its alignment
 notes should reflect the shared contracts above.

@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1;
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+service Time {
+  rpc Get(TimeGetRequest) returns (TimeGetResponse);
+  rpc Sleep(TimeSleepRequest) returns (TimeSleepResponse);
+}
+
+message TimeSleepRequest {
+  google.protobuf.Duration duration = 1;
+}
+
+message TimeSleepResponse {}
+
+message TimeGetRequest {}
+
+message TimeGetResponse {
+  google.protobuf.Timestamp now = 1;
+}

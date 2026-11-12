@@ -16,7 +16,7 @@
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 use crate::{Error, Identifier, MessageError};
 use harmos_operations::plugin::Grant;
-use harmos_protocol::host::{CatalogKind as Kind, CatalogPage};
+use harmos_protocol::v1::{CatalogEntriesListResponse, CatalogKind as Kind};
 use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
 use serde::Serialize;
 use std::{num::NonZeroUsize, sync::Arc};
@@ -31,7 +31,7 @@ type Result<T> = std::result::Result<T, Error>;
 
 /* === Structs === */
 
-pub struct Catalog;
+pub struct List;
 
 /* === Enums === */
 
@@ -39,12 +39,12 @@ pub struct Catalog;
 
 /* === Implementations === */
 
-impl ProtobufOperation for Catalog {
-    type Request = harmos_protocol::host::Catalog;
-    type Response = CatalogPage;
+impl ProtobufOperation for List {
+    type Request = harmos_protocol::v1::CatalogEntriesListRequest;
+    type Response = CatalogEntriesListResponse;
     type Endpoints = ();
-    const ID: &'static str = "host.catalog";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Host", "Catalog"));
+    const ID: &'static str = "harmos.v1.CatalogEntries/List";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "CatalogEntries", "List"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] =
@@ -68,21 +68,22 @@ impl ProtobufOperation for Catalog {
 
 /* === Public Functions === */
 
-pub fn limits(request: &harmos_protocol::host::Catalog) -> std::result::Result<(usize, usize), MessageError> {
-    let rows = request.rows.unwrap_or(64);
-    let bytes = request.bytes.unwrap_or(64 * 1024);
-    if rows == 0 || rows > 256 || !(2..=4 * 1024 * 1024).contains(&bytes) {
-        return Err(MessageError::borrowed("rows must be 1..=256 and bytes must be 2..=4194304"));
+pub fn limits(request: &harmos_protocol::v1::CatalogEntriesListRequest) -> std::result::Result<(usize, usize), MessageError> {
+    let page = request.page.as_ref().ok_or_else(|| MessageError::borrowed("List requires page_size and max_bytes"))?;
+    let rows = page.page_size;
+    let bytes = page.max_bytes;
+    if rows == 0 || bytes < 2 || usize::try_from(bytes).is_err() {
+        return Err(MessageError::borrowed("List requires positive page_size and representable max_bytes of at least two"));
     }
     Ok((rows as usize, bytes as usize))
 }
 
 /* === Private Functions === */
 
-fn kind(request: &harmos_protocol::host::Catalog) -> std::result::Result<Kind, MessageError> {
+fn kind(request: &harmos_protocol::v1::CatalogEntriesListRequest) -> std::result::Result<Kind, MessageError> {
     Kind::try_from(request.kind).map_err(|_| MessageError::borrowed("unknown catalog kind"))
 }
-async fn run(context: ExecutionContext, request: harmos_protocol::host::Catalog) -> Result<CatalogPage> {
+async fn run(context: ExecutionContext, request: harmos_protocol::v1::CatalogEntriesListRequest) -> Result<CatalogEntriesListResponse> {
     let storage = context.resource::<Option<Arc<StorageManager>>>().map_err(|_| Error::NotReady { domain: "catalog storage" })?;
     let access = context
         .resource::<crate::execution::operations::access::DiscoveryAccess>()
@@ -96,7 +97,8 @@ async fn run(context: ExecutionContext, request: harmos_protocol::host::Catalog)
     let page = match kind {
         Kind::Operations => {
             let (rows, bytes) = limits(&request)?;
-            host.0.discover(request.after.as_deref(), rows, bytes).map_err(Error::Access)?
+            let token = request.page.as_ref().map(|page| page.page_token.as_str()).filter(|token| !token.is_empty());
+            host.0.discover(token, rows, bytes).map_err(Error::Access)?
         }
         Kind::Schemas => {
             let schema = schema.clone();
@@ -127,15 +129,17 @@ async fn run(context: ExecutionContext, request: harmos_protocol::host::Catalog)
 }
 
 async fn stored<T>(
-    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::host::Catalog, keep: impl Fn(&T) -> bool,
-) -> Result<CatalogPage>
+    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::v1::CatalogEntriesListRequest, keep: impl Fn(&T) -> bool,
+) -> Result<CatalogEntriesListResponse>
 where
     T: harmos_storage::follow::Entry,
 {
     let (rows, bytes) = limits(request)?;
     let after = request
-        .after
-        .as_deref()
+        .page
+        .as_ref()
+        .map(|page| page.page_token.as_str())
+        .filter(|token| !token.is_empty())
         .map(str::parse::<u64>)
         .transpose()
         .map_err(|_| Error::InvalidInput {
@@ -170,7 +174,12 @@ where
         next = Some(position.to_string());
     }
     entries.push(b']');
-    Ok(CatalogPage { entries, next, operations: Vec::new() })
+    Ok(CatalogEntriesListResponse {
+        entries,
+        next_page_token: next.unwrap_or_default(),
+        operations: Vec::new(),
+        resolved_at: None,
+    })
 }
 
 fn write(bytes: &mut Vec<u8>, entry: &impl Serialize) -> std::result::Result<(), serde_json::Error> {

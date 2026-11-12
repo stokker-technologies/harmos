@@ -99,7 +99,7 @@ pub trait OperationHost: Send + Sync + Sized {
         async move { self.submit_owned::<O>(request, claims).await?.join().await }
     }
 
-    // Publish one row on a declared stream through the host's `host.publish`.
+    // Publish one row on a declared stream through the host's `harmos.context.v1.Samples/Append`.
     fn publish_on<S: StreamSpec>(&self, row: &S::Row) -> impl Future<Output = Result<(), Self::Error>> + Send
     where
         S::Row: Message;

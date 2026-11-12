@@ -613,7 +613,7 @@ mod tests {
         assert_eq!(initialized.load(Ordering::SeqCst), 1);
 
         let retry = RetryPolicy::OnTransient {
-            max_retries: 1,
+            total_attempts: 2,
             backoff: crate::Backoff::Fixed {
                 delay: std::time::Duration::from_millis(1),
                 jitter: crate::Jitter::None,

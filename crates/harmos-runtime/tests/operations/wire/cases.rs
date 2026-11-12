@@ -26,7 +26,7 @@ const ECHO_POLICY: OperationPolicy = OperationPolicy {
     attempt_timeout: Duration::from_secs(1),
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::OnTransient {
-        max_retries: 1,
+        total_attempts: 2,
         backoff: Backoff::Fixed {
             delay: Duration::from_millis(1),
             jitter: Jitter::None,
@@ -145,7 +145,7 @@ pub(super) struct PrivateEchoDeclaration {
 }
 
 pub(super) static PRIVATE_ECHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
-    harmos_runtime::operations::WireDeclaration::request::<PrivateEchoDeclaration>("fixture.private_echo", ECHO_POLICY);
+    harmos_runtime::operations::WireDeclaration::request::<PrivateEchoDeclaration>("fixture.protected_echo", ECHO_POLICY);
 
 pub(super) const PRIVATE_ECHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PrivateEchoDeclaration> =
     harmos_runtime::operations::OperationSpec::<PrivateEchoDeclaration>::new(&PRIVATE_ECHO_DECLARATION_DESCRIPTION);

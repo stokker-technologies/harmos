@@ -89,27 +89,36 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     codegen::generate(&compiler, &includes, output.path())?;
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.
-    let generated = fs::read(output.path().join("harmos.v1.rs"))?;
-    let committed = fs::read(root.join("crates/harmos-protocol/src/v1.rs"))?;
-    if generated != committed {
-        let output = output.keep();
-        panic!("generated Rust differs from src/v1.rs; regenerated source retained in {}", output.display());
-    }
-    let generated = fs::read(output.path().join("harmos.host.v1.rs"))?;
-    let committed = fs::read(root.join("crates/harmos-protocol/src/host.rs"))?;
-    if generated != committed {
-        let output = output.keep();
-        panic!("generated Rust differs from src/host.rs; regenerated source retained in {}", output.display());
+    for (package, module) in [("harmos.v1", "v1"), ("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin")] {
+        assert_eq!(
+            fs::read(output.path().join(format!("{package}.rs")))?,
+            fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?
+        );
     }
     assert_eq!(fs::read(output.path().join("harmos.storage.v1.rs"))?, include_bytes!("../../src/storage.rs"));
     assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
     assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
     assert_eq!(fs::read(output.path().join("guest-descriptors.bin"))?, include_bytes!("../../src/guest-descriptors.bin"));
+    for entry in fs::read_dir(output.path().join("context-types"))? {
+        let path = entry?.path();
+        assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);
+    }
     codegen::generate_example(&compiler, &includes, output.path())?;
     for (generated, committed) in
         [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
     {
         assert_eq!(fs::read(output.path().join(generated))?, fs::read(root.join("examples/schematic/protocol/src").join(committed))?);
+    }
+    codegen::generate_client_fixture(&compiler, &includes, output.path())?;
+    for name in [
+        "library.v1.rs",
+        "library.v1.plugins.rs",
+        "application.v1.rs",
+        "application.v1.jobs.rs",
+        "client-descriptors.bin",
+        "client-reflection.rs",
+    ] {
+        assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
     }
     Ok(())
 }

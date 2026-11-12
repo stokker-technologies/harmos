@@ -103,8 +103,8 @@ pub enum ContractError {
     #[error("invalid protobuf operation: {0}")]
     Protobuf(String),
 
-    #[error("private operation `{id}` cannot declare a gRPC binding")]
-    PrivateGrpc { id: String },
+    #[error("Invoke `{id}`: only Public operations can declare a client-facing gRPC method")]
+    RestrictedGrpc { id: String },
 
     #[error("invalid wire operation metadata: {0}")]
     Operation(#[from] crate::operations::Error),
@@ -184,7 +184,9 @@ impl WireDeclaration {
                 else {
                     panic!("static gRPC declarations must borrow names");
                 };
-                Some(super::Grpc::new(package, service, method))
+                let mut copied = super::Grpc::new(package, service, method);
+                copied.managed = grpc.managed;
+                Some(copied)
             }
         };
         Self {
@@ -299,7 +301,77 @@ impl Contract {
     pub fn from_protobuf(
         operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
-        operation.validate()?;
+        if operation.id.as_str().starts_with("harmos.context.v1.") {
+            use prost::Message;
+            use prost_reflect::ReflectMessage;
+            let root = harmos_protocol::context::TimeGetRequest::default().descriptor();
+            let pool = root.parent_pool();
+            let (service, method) = operation.id.as_str().split_once('/').ok_or(ContractError::Grpc)?;
+            let service = pool.get_service_by_name(service).ok_or(ContractError::Grpc)?;
+            let method = service.methods().find(|candidate| candidate.name() == method).ok_or(ContractError::Grpc)?;
+            let request = method.input().full_name().to_owned();
+            let response = method.output().full_name().to_owned();
+            let types = prost_types::FileDescriptorSet {
+                file: pool.files().map(|file| file.file_descriptor_proto().clone()).collect(),
+            };
+            let types = harmos_protocol::schema::operation_types(&types, &[&request, &response])
+                .map_err(|error| ContractError::Protobuf(error.to_string()))?;
+            let expected = super::Protobuf {
+                descriptors: types.encode_to_vec(),
+                request,
+                response: response.clone(),
+                input: None,
+                output: method.is_server_streaming().then_some(response),
+            };
+            if protobuf != expected || binding.is_some() || operation.visibility != super::Visibility::Public {
+                return Err(ContractError::Protobuf("context declaration differs from its authoritative protocol".into()));
+            }
+            operation.policy.validate().map_err(crate::operations::Error::from)?;
+            return Self::generated(operation, protobuf, None, settings);
+        }
+        if crate::reserved(operation.id.as_str()) {
+            use prost::Message;
+            use prost_reflect::ReflectMessage;
+            let (request, response, service, method, output) = match operation.id.as_str() {
+                "harmos.v1.CatalogEntries/List" => {
+                    ("CatalogEntriesListRequest", "CatalogEntriesListResponse", "CatalogEntries", "List", false)
+                }
+                "harmos.v1.Invocations/Invoke" => ("InvocationsInvokeRequest", "InvocationsInvokeResponse", "Invocations", "Invoke", false),
+                "harmos.v1.Invocations/Get" => ("InvocationsGetRequest", "InvocationsGetResponse", "Invocations", "Get", false),
+                "harmos.v1.Invocations/Cancel" => ("InvocationsCancelRequest", "InvocationsCancelResponse", "Invocations", "Cancel", false),
+                "harmos.v1.Invocations/Watch" => ("InvocationsWatchRequest", "InvocationsWatchResponse", "Invocations", "Watch", true),
+                "harmos.context.v1.Samples/Append" => ("SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false),
+                _ => return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into()),
+            };
+            let package = if service == "Samples" { "harmos.context.v1" } else { "harmos.v1" };
+            let request = format!("{package}.{request}");
+            let response = format!("{package}.{response}");
+            let root = harmos_protocol::v1::CatalogEntriesListRequest::default().descriptor();
+            let types = prost_types::FileDescriptorSet {
+                file: root.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+            };
+            let expected = harmos_protocol::schema::operation_types(&types, &[&request, &response])
+                .map_err(|error| ContractError::Protobuf(error.to_string()))?;
+            let expected = super::Protobuf {
+                descriptors: expected.encode_to_vec(),
+                request,
+                response: response.clone(),
+                input: None,
+                output: output.then_some(response),
+            };
+            let mapping = (service != "Samples").then(|| super::Grpc {
+                package: "harmos.v1".into(),
+                service: service.to_owned().into(),
+                method: method.to_owned().into(),
+                managed: false,
+            });
+            if protobuf != expected || binding != mapping || operation.visibility != super::Visibility::Public {
+                return Err(ContractError::Protobuf("built-in declaration differs from its authoritative protocol".into()));
+            }
+            operation.policy.validate().map_err(crate::operations::Error::from)?;
+        } else {
+            operation.validate()?;
+        }
         Self::generated(operation, protobuf, binding, settings)
     }
 
@@ -308,9 +380,9 @@ impl Contract {
         use prost::Message;
         policy.validate().map_err(crate::operations::Error::from)?;
         let (id, request, response, method) = if sleep {
-            ("harmos.clock.sleep", "harmos.v1.Sleep", "harmos.v1.SleepResponse", "Sleep")
+            ("harmos.v1.Time/Sleep", "harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse", "Sleep")
         } else {
-            ("harmos.clock.now", "harmos.v1.Now", "harmos.v1.Time", "Now")
+            ("harmos.v1.Time/Get", "harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse", "Get")
         };
         let operation = OperationDefinition {
             id: harmos_domain::Identifier::new(id).map_err(crate::operations::Error::from)?,
@@ -321,13 +393,13 @@ impl Contract {
             fingerprint: harmos_domain::Fingerprint([0; 32]),
         };
         let protobuf = super::Protobuf {
-            descriptors: harmos_protocol::clock::catalog_types().encode_to_vec(),
+            descriptors: harmos_protocol::clock::client_types().encode_to_vec(),
             request: request.into(),
             response: response.into(),
             input: None,
             output: None,
         };
-        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.host.v1", "Clock", method)), settings)
+        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.v1", "Time", method)), settings)
     }
 
     fn generated(
@@ -362,10 +434,13 @@ impl Contract {
 
     pub fn with_grpc(mut self, binding: Option<super::Grpc>) -> Result<Self, ContractError> {
         if let Some(binding) = &binding {
-            if self.operation.visibility == super::Visibility::Private {
-                return Err(ContractError::PrivateGrpc { id: self.operation.id.to_string() });
+            if self.operation.visibility != super::Visibility::Public {
+                return Err(ContractError::RestrictedGrpc { id: self.operation.id.to_string() });
             }
             binding.validate()?;
+            if binding.managed && self.operation.policy.cancellation_timeout.is_zero() {
+                return Err(ContractError::Protobuf("Declare positive cancellation grace for a managed final result".into()));
+            }
         }
         self.grpc = binding;
         Ok(self)
@@ -404,7 +479,7 @@ impl Contract {
                 id: harmos_domain::Identifier::new(action.id()).map_err(crate::operations::Error::from)?,
                 description: String::new(),
                 policy: lifecycle::POLICY,
-                visibility: super::Visibility::Private,
+                visibility: super::Visibility::Protected,
                 replay: super::ReplaySafety::Unknown,
                 fingerprint: harmos_domain::Fingerprint([0; 32]),
             };
@@ -438,6 +513,45 @@ impl Contract {
             source: source.into(),
         })?;
         Self::canonical(operation.clone(), Some(operation.fingerprint), Codec::Protobuf, schema, &SchemaSettings::default())
+    }
+
+    /// Declare the Corresponding Context Capability With Its Own Wrappers.
+    pub fn context(&self, settings: &SchemaSettings) -> Result<Option<Self>, ContractError> {
+        use prost::Message;
+        use prost_reflect::ReflectMessage;
+        let Some(binding) = self.grpc() else {
+            return Ok(None);
+        };
+        if binding.package != "harmos.v1" {
+            return Ok(None);
+        }
+        let root = harmos_protocol::context::TimeGetRequest::default().descriptor();
+        let pool = root.parent_pool();
+        let service_name = format!("harmos.context.v1.{}", binding.service);
+        let Some(service) = pool.get_service_by_name(&service_name) else {
+            return Ok(None);
+        };
+        let Some(method) = service.methods().find(|method| method.name() == binding.method) else {
+            return Ok(None);
+        };
+        let request = method.input().full_name().to_owned();
+        let response = method.output().full_name().to_owned();
+        let types = prost_types::FileDescriptorSet {
+            file: pool.files().map(|file| file.file_descriptor_proto().clone()).collect(),
+        };
+        let types = harmos_protocol::schema::operation_types(&types, &[&request, &response])
+            .map_err(|error| ContractError::Protobuf(error.to_string()))?;
+        let mut operation = self.operation.clone();
+        operation.id =
+            harmos_domain::Identifier::new(format!("{service_name}/{}", method.name())).map_err(crate::operations::Error::from)?;
+        let protobuf = super::Protobuf {
+            descriptors: types.encode_to_vec(),
+            request,
+            response: response.clone(),
+            input: None,
+            output: method.is_server_streaming().then_some(response),
+        };
+        Self::generated(operation, protobuf, None, settings).map(Some)
     }
 
     pub fn operation(&self) -> &OperationDefinition {
@@ -533,9 +647,9 @@ impl TryFrom<DecodedContract> for Contract {
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
         if let Some(protobuf) = decoded.protobuf {
-            let expected = if matches!(decoded.operation.id.as_str(), "harmos.clock.sleep" | "harmos.clock.now") {
+            let expected = if matches!(decoded.operation.id.as_str(), "harmos.v1.Time/Sleep" | "harmos.v1.Time/Get") {
                 let clock = Self::clock(
-                    decoded.operation.id.as_str() == "harmos.clock.sleep",
+                    decoded.operation.id.as_str() == "harmos.v1.Time/Sleep",
                     decoded.operation.policy,
                     &SchemaSettings::default(),
                 )?;
@@ -653,7 +767,7 @@ mod tests {
                 ("/operation/description", json!("forged SDK contract")),
                 ("/operation/visibility", json!("public")),
                 ("/operation/policy/attempt_timeout/secs", json!(0)),
-                ("/operation/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
+                ("/operation/policy/retries", json!(RetryPolicy::OnTransient { total_attempts: 2, backoff })),
                 ("/fingerprint", json!("00".repeat(32))),
                 ("/schema", json!({"root": 0, "definitions": [[]]})),
             ] {
@@ -682,7 +796,7 @@ mod tests {
             for (pointer, replacement) in [
                 ("/fingerprint", json!("00".repeat(32))),
                 ("/policy/attempt_timeout/secs", json!(0)),
-                ("/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
+                ("/policy/retries", json!(RetryPolicy::OnTransient { total_attempts: 2, backoff })),
             ] {
                 let mut forged = encoded.clone();
                 *forged.pointer_mut(pointer).unwrap() = replacement;

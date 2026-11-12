@@ -34,6 +34,7 @@ pub(crate) type LocalFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 /* === Structs === */
 
+#[derive(Clone)]
 pub struct Operation {
     pub(crate) contract: v1::OperationContract,
     pub(crate) types: prost_types::FileDescriptorSet,
@@ -71,7 +72,7 @@ impl Operation {
                 id,
                 request: Q::name(),
                 response: R::name(),
-                visibility: Visibility::Private as i32,
+                visibility: Visibility::Unspecified as i32,
                 ..Default::default()
             },
             types,
@@ -88,6 +89,10 @@ impl Operation {
     }
     pub fn policy(mut self, policy: v1::OperationPolicy) -> Self {
         self.contract.policy = Some(policy);
+        self
+    }
+    pub fn replay_safe(mut self) -> Self {
+        self.contract.replay_safe = true;
         self
     }
     pub fn description(mut self, description: impl Into<String>) -> Self {

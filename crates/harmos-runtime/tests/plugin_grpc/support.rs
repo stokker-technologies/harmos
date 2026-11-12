@@ -34,10 +34,8 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
-use harmos_protocol::v1::{
-    self as v1,
-    plugin_server::{Plugin, PluginServer},
-};
+use harmos_protocol::plugin::instance_server::{Instance, InstanceServer};
+use harmos_protocol::v1;
 use harmos_runtime::{
     Runtime,
     clock::{Clock, Reading, Sleep, Source},
@@ -150,7 +148,7 @@ impl Remote {
         });
         let endpoint = service.clone();
         let server = tokio::spawn(async move {
-            tonic::transport::Server::builder().add_service(PluginServer::new(endpoint)).serve_with_incoming(incoming).await.unwrap();
+            tonic::transport::Server::builder().add_service(InstanceServer::new(endpoint)).serve_with_incoming(incoming).await.unwrap();
         });
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
@@ -211,9 +209,9 @@ impl Remote {
         receiver
     }
 
-    pub async fn describe(&self) -> v1::Description {
-        let mut client = v1::plugin_client::PluginClient::connect(self.address.clone()).await.unwrap();
-        client.describe(v1::DescribeRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner()
+    pub async fn get(&self) -> harmos_protocol::plugin::InstanceGetResponse {
+        let mut client = harmos_protocol::plugin::instance_client::InstanceClient::connect(self.address.clone()).await.unwrap();
+        client.get(harmos_protocol::plugin::InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner()
     }
 }
 
@@ -225,14 +223,16 @@ impl Drop for Remote {
 }
 
 #[tonic::async_trait]
-impl Plugin for Fixture {
-    async fn describe(&self, _: Request<v1::DescribeRequest>) -> Result<Response<v1::Description>, Status> {
+impl Instance for Fixture {
+    async fn get(
+        &self, _: Request<harmos_protocol::plugin::InstanceGetRequest>,
+    ) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         let pending = self.pending_description.lock().unwrap().take();
         if let Some(pending) = pending {
             let _ = pending.send(());
             return std::future::pending().await;
         }
-        Ok(Response::new(v1::Description {
+        Ok(Response::new(harmos_protocol::plugin::InstanceGetResponse {
             id: "remote".into(),
             version: "1.0.0".into(),
             revision: 1,
@@ -245,22 +245,28 @@ impl Plugin for Fixture {
             catalog: Some(self.catalog.lock().unwrap().clone()),
         }))
     }
-    type InvokeStream = Output<v1::PluginFrame>;
-    async fn invoke(&self, _: Request<Streaming<v1::HostFrame>>) -> Result<Response<Self::InvokeStream>, Status> {
+    type InvokeStream = Output<harmos_protocol::plugin::InstanceInvokeResponse>;
+    async fn invoke(
+        &self, _: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>,
+    ) -> Result<Response<Self::InvokeStream>, Status> {
         Err(Status::not_found("Unknown Operation"))
     }
-    type PublishStream = Output<v1::Samples>;
-    async fn publish(&self, _: Request<Streaming<v1::PublishFrame>>) -> Result<Response<Self::PublishStream>, Status> {
+    type SamplesStream = Output<harmos_protocol::plugin::InstanceSamplesResponse>;
+    async fn samples(
+        &self, _: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
+    ) -> Result<Response<Self::SamplesStream>, Status> {
         Err(Status::not_found("Unknown Stream"))
     }
-    async fn stop(&self, _: Request<v1::StopRequest>) -> Result<Response<v1::StopResponse>, Status> {
+    async fn stop(
+        &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
+    ) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         self.stops.fetch_add(1, Ordering::SeqCst);
         let pending = self.pending_stop.lock().unwrap().take();
         if let Some(pending) = pending {
             let _ = pending.send(());
             return std::future::pending().await;
         }
-        Ok(Response::new(v1::StopResponse {}))
+        Ok(Response::new(harmos_protocol::plugin::InstanceStopResponse {}))
     }
 }
 

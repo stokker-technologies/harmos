@@ -17,9 +17,9 @@ mod registration;
 /* === Re-Exports === */
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use catalog::{Catalog, limits};
-pub use harmos_protocol::host::DiscoveredOperation;
-pub use harmos_protocol::host::{CatalogKind, CatalogPage};
+pub use catalog::{List, limits};
+pub use harmos_protocol::v1::DiscoveredOperation;
+pub use harmos_protocol::v1::{CatalogEntriesListResponse, CatalogKind};
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use registration::host_catalog;
 

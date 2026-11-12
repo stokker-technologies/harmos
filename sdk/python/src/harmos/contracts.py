@@ -21,7 +21,7 @@ from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 
 # Local Imports
-from .v1 import plugin_pb2 as wire
+from .v1 import types_pb2 as wire
 
 # Type Checking Imports
 
@@ -39,15 +39,21 @@ class Operation[Q: Message, R: Message]:
     id: str
     request: type[Q]
     response: type[R]
-    visibility: wire.Visibility = wire.VISIBILITY_PUBLIC
+    visibility: wire.Visibility
     policy: wire.OperationPolicy | None = None
     description: str = ""
+    replay_safe: bool = False
+    watch: bool = False
 
     @property
     def fingerprint(self) -> bytes:
         request = message_types(self.request).SerializeToString(deterministic=True)
         response = message_types(self.response).SerializeToString(deterministic=True)
-        return sha256(self.id.encode() + b"\0" + request + response).digest()
+        base = sha256(self.id.encode() + b"\0" + request + response).digest()
+        if not self.watch:
+            return base
+        item = sha256(self.id.encode() + b"\0" + response + response).digest()
+        return sha256(b"harmos.protobuf.stream.v1\0" + base + b"\0\1" + item).digest()
 
     def contract(self) -> wire.OperationContract:
         return wire.OperationContract(
@@ -58,6 +64,7 @@ class Operation[Q: Message, R: Message]:
             policy=self.policy,
             fingerprint=self.fingerprint,
             description=self.description,
+            replay_safe=self.replay_safe,
         )
 
 
@@ -87,11 +94,12 @@ def operation[Q: Message, R: Message, F: Callable](
     *,
     request: type[Q],
     response: type[R],
-    visibility: wire.Visibility = wire.VISIBILITY_PUBLIC,
+    visibility: wire.Visibility,
     policy: wire.OperationPolicy | None = None,
     description: str = "",
+    replay_safe: bool = False,
 ) -> Callable[[F], F]:
-    definition = Operation(id, request, response, visibility, policy, description)
+    definition = Operation(id, request, response, visibility, policy, description, replay_safe)
 
     def decorate(handler: F) -> F:
         handler.__dict__["__harmos_operation__"] = definition

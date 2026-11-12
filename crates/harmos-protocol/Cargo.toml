@@ -23,6 +23,11 @@ publish.workspace = true
 
 # === Features === #
 
+[features]
+plugin = []
+client = []
+host = []
+
 # === Dependencies === #
 
 [dependencies]

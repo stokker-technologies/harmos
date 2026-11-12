@@ -75,14 +75,15 @@ static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
-                max_retries: 1,
+                total_attempts: 2,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(10),
                     jitter: Jitter::None,
                 },
             },
         },
-    );
+    )
+    .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
 
 const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);

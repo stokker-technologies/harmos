@@ -1,0 +1,6 @@
+
+x
+#harmos/context/v1/host_values.protoharmos.context.v1"6
+HostValuesGetResponse
+type (	
+payload (bproto3

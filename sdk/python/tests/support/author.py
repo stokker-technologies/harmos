@@ -19,7 +19,9 @@ from google.protobuf.duration_pb2 import Duration
 # Local Imports
 from harmos import Context, observer, on_stop, operation
 from harmos.conformance.v1.fixture_pb2 import Value
-from harmos.v1 import plugin_pb2 as wire
+from harmos.v1 import types_pb2 as wire
+
+from harmos.context.v1 import time_pb2 as clock
 
 # Type Checking Imports
 
@@ -39,17 +41,17 @@ class Author:
         self.reading = asyncio.Event()
         self.released = asyncio.Event()
 
-    @operation("author.wait", request=Value, response=wire.Time)
-    async def wait(self, ctx: Context, request: Value) -> wire.Time:
+    @operation("author.wait", request=Value, response=clock.TimeGetResponse, visibility=wire.VISIBILITY_PROTECTED)
+    async def wait(self, ctx: Context, request: Value) -> clock.TimeGetResponse:
         self.calls += 1
         ctx.set(request)
         await ctx.sleep(Duration(seconds=3600))
         at = await ctx.now()
         if ctx.get(Value) != request:
             raise ValueError("Execution Lost Its Resource")
-        return wire.Time(now=at)
+        return clock.TimeGetResponse(now=at)
 
-    @operation("author.state", request=Value, response=Value)
+    @operation("author.state", request=Value, response=Value, visibility=wire.VISIBILITY_PROTECTED)
     async def state(self, ctx: Context, request: Value) -> Value:
         try:
             ctx.get(Value)

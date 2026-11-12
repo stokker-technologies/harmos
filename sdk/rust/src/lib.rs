@@ -30,7 +30,7 @@
 //! fn main() -> Result<()> {
 //!     let set = Operation::new("thermal.set", set_temperature).visibility(Visibility::Public);
 //!     let temperature = Stream::<Temperature>::new("thermal.temperature");
-//!     let observer = Observer::new(&temperature, read_temperature).every_ms(1000);
+//!     let observer = Observer::new(&temperature, read_temperature).every(prost_types::Duration { seconds: 1, nanos: 0 });
 //!     Plugin::new("thermal", "1.0.0").operation(set).stream(temperature).observer(observer).serve()
 //! }
 //! ```
@@ -45,7 +45,7 @@
 //! `Context` resources live for one invocation or publication call. Observers answer
 //! host ticks and cannot make child calls. Device streams use `Stream::publish_on`
 //! and `Publisher::publish`, with backpressure and no replay after demand closes.
-//! Declare clock requirements with `clock::Sleep` and `clock::Now`; every wait and
+//! Declare clock requirements with `clock::TimeSleepRequest` and `clock::TimeGetRequest`; every wait and
 //! evidence-time read then travels on the invoking call. Independently spawned
 //! background work is invisible to virtual time and must be driven in real time.
 //!
@@ -60,20 +60,26 @@
 
 /* === Modules === */
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "client", not(target_arch = "wasm32")))]
 pub mod client;
+#[cfg(feature = "plugin")]
 pub mod clock;
+#[cfg(feature = "plugin")]
 mod context;
 mod error;
 mod message;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
 mod native;
+#[cfg(feature = "plugin")]
 mod operation;
+#[cfg(feature = "plugin")]
 mod plugin;
 pub mod prelude;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
 mod server;
+#[cfg(feature = "plugin")]
 mod storage_contracts;
+#[cfg(feature = "plugin")]
 mod stream;
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -82,16 +88,20 @@ pub mod wasm;
 
 extern crate self as harmos;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "client", not(target_arch = "wasm32")))]
 pub use client::{Client, ClientSettings};
+#[cfg(feature = "plugin")]
 pub use context::Context;
 pub use error::{Error, Result};
 pub use harmos_protocol::storage;
-pub use harmos_protocol::v1::{Classification, Failure, OperationPolicy, Section, Visibility};
+pub use harmos_protocol::v1::{Classification, Failure, OperationPolicy, RetryPolicy, Section, Visibility};
 pub use harmos_sdk_derive::Message;
 pub use message::{Message, OperationRequest};
+#[cfg(feature = "plugin")]
 pub use operation::Operation;
+#[cfg(feature = "plugin")]
 pub use plugin::Plugin;
+#[cfg(feature = "plugin")]
 pub use stream::{Observer, Publisher, Stream};
 
 // Dependencies Used by the Data Derive and Generated Protobuf Consumers.

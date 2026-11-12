@@ -185,7 +185,7 @@ pub(crate) const fn validate_identifier(value: &str) -> Result<(), IdentifierErr
     }
     let mut index = 1;
     while index < bytes.len() {
-        if !(bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'.' | b'_' | b'-')) {
+        if !(bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'.' | b'_' | b'-' | b'/')) {
             return Err(IdentifierError::InvalidCharacter);
         }
         index += 1;

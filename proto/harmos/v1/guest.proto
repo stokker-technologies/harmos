@@ -3,8 +3,8 @@
 syntax = "proto3";
 package harmos.v1;
 
-import "harmos/v1/plugin.proto";
-import "harmos/v1/host.proto";
+import "harmos/v1/types.proto";
+
 
 // Metadata only: registration must not initialize authored resources.
 message GuestRegistration {
@@ -50,7 +50,7 @@ message GuestValue {
 message GuestInitialize {
   bytes configuration = 1;
   bytes generation_context = 2;
-  harmos.host.v1.OperationAssignments assignments = 3;
+  harmos.v1.OperationAssignments assignments = 3;
 }
 message GuestShutdown {}
 message GuestChild {

@@ -1,0 +1,326 @@
+[
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "CatalogEntries",
+    "method": "List",
+    "package": "harmos.v1",
+    "path": [
+      "catalog_entries",
+      "list"
+    ],
+    "request": "harmos.v1.CatalogEntriesListRequest",
+    "response": "harmos.v1.CatalogEntriesListResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/catalog_entries.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Invocations",
+    "method": "Invoke",
+    "package": "harmos.v1",
+    "path": [
+      "invocations",
+      "invoke"
+    ],
+    "request": "harmos.v1.InvocationsInvokeRequest",
+    "response": "harmos.v1.InvocationsInvokeResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/invocations.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Invocations",
+    "method": "Get",
+    "package": "harmos.v1",
+    "path": [
+      "invocations",
+      "get"
+    ],
+    "request": "harmos.v1.InvocationsGetRequest",
+    "response": "harmos.v1.InvocationsGetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/invocations.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Invocations",
+    "method": "Cancel",
+    "package": "harmos.v1",
+    "path": [
+      "invocations",
+      "cancel"
+    ],
+    "request": "harmos.v1.InvocationsCancelRequest",
+    "response": "harmos.v1.InvocationsCancelResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/invocations.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Invocations",
+    "method": "Watch",
+    "package": "harmos.v1",
+    "path": [
+      "invocations",
+      "watch"
+    ],
+    "request": "harmos.v1.InvocationsWatchRequest",
+    "response": "harmos.v1.InvocationsWatchResponse",
+    "client_streaming": false,
+    "server_streaming": true,
+    "file": "harmos/v1/invocations.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "Capabilities",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "capabilities"
+    ],
+    "request": "harmos.storage.v1.Capabilities",
+    "response": "harmos.storage.v1.StorageCapabilities",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "OpenSnapshot",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "open_snapshot"
+    ],
+    "request": "harmos.storage.v1.OpenSnapshot",
+    "response": "harmos.storage.v1.SavedSnapshot",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "ReleaseSnapshot",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "release_snapshot"
+    ],
+    "request": "harmos.storage.v1.ReleaseSnapshot",
+    "response": "harmos.storage.v1.Empty",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "ScanArrow",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "scan_arrow"
+    ],
+    "request": "harmos.storage.v1.ScanArrow",
+    "response": "harmos.storage.v1.ArrowPage",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "ScanIndex",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "scan_index"
+    ],
+    "request": "harmos.storage.v1.ScanIndex",
+    "response": "harmos.storage.v1.IndexPage",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "RegisterIndex",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "register_index"
+    ],
+    "request": "harmos.storage.v1.RegisterIndex",
+    "response": "harmos.storage.v1.DefinitionRevision",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "RegisterProjection",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "register_projection"
+    ],
+    "request": "harmos.storage.v1.RegisterProjection",
+    "response": "harmos.storage.v1.DefinitionRevision",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "AdvanceProjection",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "advance_projection"
+    ],
+    "request": "harmos.storage.v1.AdvanceProjection",
+    "response": "harmos.storage.v1.DefinitionRevision",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "ReadProjection",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "read_projection"
+    ],
+    "request": "harmos.storage.v1.ReadProjection",
+    "response": "harmos.storage.v1.ProjectionPage",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "InspectProjection",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "inspect_projection"
+    ],
+    "request": "harmos.storage.v1.InspectProjection",
+    "response": "harmos.storage.v1.ProjectionState",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos.storage",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Storage",
+    "method": "CompareExchangeObject",
+    "package": "harmos.storage.v1",
+    "path": [
+      "storage",
+      "compare_exchange_object"
+    ],
+    "request": "harmos.storage.v1.CompareExchangeObject",
+    "response": "harmos.storage.v1.CompareExchangeOutcome",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/storage.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Time",
+    "method": "Get",
+    "package": "harmos.v1",
+    "path": [
+      "time",
+      "get"
+    ],
+    "request": "harmos.v1.TimeGetRequest",
+    "response": "harmos.v1.TimeGetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/time.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Time",
+    "method": "Sleep",
+    "package": "harmos.v1",
+    "path": [
+      "time",
+      "sleep"
+    ],
+    "request": "harmos.v1.TimeSleepRequest",
+    "response": "harmos.v1.TimeSleepResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/time.proto"
+  }
+]

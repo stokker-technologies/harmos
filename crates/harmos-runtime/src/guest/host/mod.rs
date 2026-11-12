@@ -462,14 +462,14 @@ impl<A: Application> Bridge<A> {
     fn publication_payload(
         &self, call: &mut crate::operations::WireChildCall,
     ) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, crate::operations::WireCodecError> {
-        if call.operation.split_once('.').map(|(_, local)| local) != Some("host.publish") {
+        if call.operation != "harmos.context.v1.Samples/Append" && !call.operation.ends_with(".harmos.context.v1.Samples/Append") {
             return Ok(None);
         }
-        let factory = harmos_operations::execution::operations::OperationFactory::protobuf::<harmos_operations::streams::Publish>()
+        let factory = harmos_operations::execution::operations::OperationFactory::protobuf::<harmos_operations::streams::Append>()
             .map_err(|_| crate::operations::WireCodecError::Shape)?;
         let bytes = factory.grpc_decoding_memory(&call.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
         let preparation = self.operations.claim_preparation(std::num::NonZeroUsize::new(bytes.max(1)).unwrap())?;
-        let mut request = harmos_protocol::host::Publish::decode(call.payload.as_slice())?;
+        let mut request = harmos_protocol::context::SamplesAppendRequest::decode(call.payload.as_slice())?;
         let catalog = self.declaration.registration.catalog.as_ref().ok_or(crate::operations::WireCodecError::Shape)?;
         let stream = catalog.streams.iter().find(|stream| stream.id == request.stream).ok_or(crate::operations::WireCodecError::Shape)?;
         let pool =

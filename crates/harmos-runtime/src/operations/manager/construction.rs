@@ -48,6 +48,8 @@ impl Manager {
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
                 service_runner: crate::services::authored_runner::<A>,
+                #[cfg(feature = "grpc")]
+                values: std::sync::RwLock::new(None),
                 middleware: crate::operations::middleware::Configuration::default(),
                 state: Mutex::new(State {
                     closing: false,

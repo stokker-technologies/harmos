@@ -21,6 +21,7 @@
 use prost_types::FileDescriptorSet;
 
 // Local Imports
+#[cfg(feature = "plugin")]
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -50,6 +51,7 @@ pub trait Message: prost::Message + Default + 'static {
 pub trait OperationRequest: Message {
     type Response: Message;
     const ID: &'static str;
+    const WATCH: bool = false;
 }
 
 /* === Implementations === */
@@ -76,10 +78,31 @@ impl Message for () {
 
 /* === Public Functions === */
 
+#[cfg(feature = "plugin")]
 pub fn fingerprint<Q: Message, R: Message>(id: &str) -> Result<Vec<u8>> {
     let mut types = Q::types();
     merge_descriptor_types(&mut types, R::types());
     harmos_protocol::schema::fingerprint(id, &types, &Q::name(), &R::name()).map_err(|error| Error::Invalid(error.to_string()))
+}
+
+#[cfg(feature = "plugin")]
+pub(crate) fn request_fingerprint<Q: OperationRequest>() -> Result<Vec<u8>> {
+    if !Q::WATCH {
+        return fingerprint::<Q, Q::Response>(Q::ID);
+    }
+    let mut types = Q::types();
+    merge_descriptor_types(&mut types, Q::Response::types());
+    harmos_protocol::schema::host_fingerprint(
+        Q::ID,
+        &harmos_protocol::v1::Protobuf {
+            descriptors: prost::Message::encode_to_vec(&types),
+            request: Q::name(),
+            response: Q::Response::name(),
+            input: None,
+            output: Some(Q::Response::name()),
+        },
+    )
+    .map_err(|error| Error::Invalid(error.to_string()))
 }
 
 /* === Private Functions === */
@@ -112,6 +135,7 @@ pub fn merge_descriptor_types(target: &mut FileDescriptorSet, source: FileDescri
     }
 }
 
+#[cfg(feature = "plugin")]
 pub(crate) fn merge_types(target: &mut FileDescriptorSet, source: FileDescriptorSet) -> Result<()> {
     merge_descriptor_types(target, source);
     let mut files = std::collections::HashSet::new();

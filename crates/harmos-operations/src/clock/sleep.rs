@@ -41,11 +41,11 @@ pub struct Sleep;
 /* === Implementations === */
 
 impl ProtobufOperation for Sleep {
-    type Request = harmos_protocol::v1::Sleep;
-    type Response = harmos_protocol::v1::SleepResponse;
+    type Request = harmos_protocol::v1::TimeSleepRequest;
+    type Response = harmos_protocol::v1::TimeSleepResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.clock.sleep";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Clock", "Sleep"));
+    const ID: &'static str = "harmos.v1.Time/Sleep";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Time", "Sleep"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];
@@ -56,7 +56,7 @@ impl ProtobufOperation for Sleep {
             return Err(ServingError::Codec(crate::MessageError::borrowed("invalid sleep duration")));
         }
         clock.0.sleep(std::time::Duration::new(duration.seconds as u64, duration.nanos as u32)).await;
-        Ok(harmos_protocol::v1::SleepResponse {})
+        Ok(harmos_protocol::v1::TimeSleepResponse {})
     }
 }
 

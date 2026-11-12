@@ -485,6 +485,50 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
 /* === Tests === */
 
 impl harmos_operations::execution::operations::instances::Instances for HostContext {
+    fn invoke(
+        &self, request: harmos_protocol::v1::InvocationsInvokeRequest,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::result::Result<Vec<u8>, harmos_operations::execution::ServingError>> + Send + '_>,
+    > {
+        Box::pin(async move {
+            use prost::Message;
+            let operation = request.operation.clone();
+            self.borrow().invoke_client(request).await.map_err(|source| {
+                use harmos_protocol::v1::Classification;
+                let failure = match source.failure() {
+                    Some(failure) => harmos_protocol::v1::Failure::from(&failure.clone().without_diagnostics()),
+                    None => harmos_protocol::v1::Failure {
+                        classification: if matches!(&source, Error::OperationUnauthorized { .. } | Error::InvalidInput { .. }) {
+                            Classification::Refused as i32
+                        } else {
+                            Classification::Permanent as i32
+                        },
+                        code: "invoke_failed".into(),
+                        message: match &source {
+                            Error::OperationUnauthorized { .. } | Error::InvalidInput { .. } => source.to_string(),
+                            _ => "Operation Failed".into(),
+                        },
+                        action: "Check the Operation and Its Visibility".into(),
+                        operation: operation.clone(),
+                        plugin: "host".into(),
+                        ..Default::default()
+                    },
+                };
+                let code = match failure.classification() {
+                    Classification::Refused => tonic::Code::PermissionDenied,
+                    Classification::Transient => tonic::Code::Unavailable,
+                    Classification::Cancelled => tonic::Code::Cancelled,
+                    Classification::TimedOut => tonic::Code::DeadlineExceeded,
+                    _ => tonic::Code::Internal,
+                };
+                let mut status =
+                    tonic::Status::with_details(code, format!("Invoke {operation}: {}", failure.message), failure.encode_to_vec().into());
+                status.set_source(Arc::new(source));
+                harmos_operations::execution::ServingError::Native(Arc::new(status))
+            })
+        })
+    }
+
     fn owned(&self, id: OperationInstanceId) -> Option<Arc<dyn harmos_operations::execution::operations::instances::InstanceControl>> {
         self.borrow()
             .owned_instance(id)
@@ -520,12 +564,14 @@ impl harmos_operations::execution::operations::access::Discovery for HostContext
         harmos_operations::execution::operations::access::AccessError,
     > {
         let context = self.borrow();
-        let request = harmos_protocol::host::Catalog {
-            kind: harmos_protocol::host::CatalogKind::Operations as i32,
+        let request = harmos_protocol::v1::CatalogEntriesListRequest {
+            kind: harmos_protocol::v1::CatalogKind::Operations as i32,
             schema: None,
-            after: after.map(str::to_owned),
-            rows: Some(rows as u64),
-            bytes: Some(bytes as u64),
+            page: Some(harmos_protocol::v1::PageRequest {
+                page_size: rows as u32,
+                max_bytes: bytes as u64,
+                page_token: after.unwrap_or_default().to_owned(),
+            }),
         };
         let page = context.operations.discover(&context.source, &request)?;
         Ok(page)

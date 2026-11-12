@@ -188,6 +188,14 @@ impl Manager {
                 return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
             }
         }
+        // Guest Assignments Retain Their Provider Beside the Canonical Service/Method Identity.
+        if let Some((owner, local)) = operation.split_once('.')
+            && local.starts_with("harmos.")
+            && local.contains('/')
+        {
+            let entry = self.capture_routed(local, owner, &origin)?;
+            return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+        }
         let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
             field: "encoded operation",
             reason: "routing requires an owner-qualified operation identity",
@@ -622,7 +630,7 @@ mod tests {
 
     #[cfg(feature = "grpc")]
     #[tokio::test]
-    async fn private_external_calls_are_refused() {
+    async fn protected_external_calls_are_refused() {
         let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
             setup.settings().operation_settings(crate::operations::Settings {
                 preparation_bytes: std::num::NonZeroUsize::new(4096),

@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package library.v1.plugins;
+service Settings { rpc Get(SettingsGetRequest) returns (SettingsGetResponse); }
+message SettingsGetRequest { string value = 1; }
+message SettingsGetResponse { string value = 1; }

@@ -35,6 +35,7 @@ pub struct Grpc {
     pub package: Cow<'static, str>,
     pub service: Cow<'static, str>,
     pub method: Cow<'static, str>,
+    pub managed: bool,
 }
 
 /* === Enums === */
@@ -49,6 +50,7 @@ impl Grpc {
             package: Cow::Borrowed(package),
             service: Cow::Borrowed(service),
             method: Cow::Borrowed(method),
+            managed: false,
         }
     }
 
@@ -59,14 +61,18 @@ impl Grpc {
             || !identifier(&self.service)
             || !identifier(&self.method)
             || self.package.starts_with("grpc.")
+            || self.package.contains(".context.v")
+            || self.package.contains(".plugin.v")
         {
             return Err(super::ContractError::Grpc);
         }
         Ok(())
     }
 
-    pub fn run_path(&self) -> String {
-        format!("/{}.{}/Run{}", self.package, self.service, self.method)
+    /// Promise A Cooperative Final Result On This Method's Control Stream.
+    pub const fn managed(mut self) -> Self {
+        self.managed = true;
+        self
     }
 
     pub fn path(&self) -> String {

@@ -161,7 +161,10 @@ pub async fn start<O: RequestShape>(
     settings.decode.validate()?;
     settings.encode.validate()?;
     let grpc = operation.declaration.grpc.as_ref().ok_or_else(|| Status::invalid_argument("operation has no gRPC declaration"))?;
-    let path = grpc.run_path().parse().map_err(|_| Status::invalid_argument("invalid managed path"))?;
+    if !grpc.managed {
+        return Err(Status::invalid_argument("start requires a declared cooperative final result"));
+    }
+    let path = grpc.path().parse().map_err(|_| Status::invalid_argument("invalid managed path"))?;
     let (outgoing, incoming) = crate::operations::stream::<Input<O>>(settings.input).map_err(super::server::status)?;
     let (metadata, extensions, request) = request.into_parts();
     let frame = ControlEnvelope::Request(request);
