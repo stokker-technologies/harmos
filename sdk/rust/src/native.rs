@@ -16,8 +16,8 @@
 /* === Imports === */
 
 use crate::{Context, Result};
+use harmos_protocol::plugin::instance_invoke_response;
 use harmos_protocol::v1::{self, child_response};
-use harmos_protocol::plugin::{instance_invoke_response};
 
 // Standard Library Imports
 

@@ -1189,7 +1189,9 @@ store cannot partly rotate or configure access. The host supplies this store, in
 its settings layout and compare/exchange semantics. Certificate replacement validates
 before persistence and reuses ServerCertificate's live resolver; rotation revokes all
 pairings while existing TLS connections remain alive and must use a new credential.
-Only the dedicated access listener requires bearer credentials; an application may retain
+Authentication inserts `access::Principal { pairing_id }` before application middleware
+and operation authorization, so policy can use an authenticated identity without
+duplicating credential checks. Only the dedicated access listener requires bearer credentials; an application may retain
 a separately authorized management listener to bootstrap and recover disabled access.
 Listener changes stage a replacement before commit, then retire the old attachment;
 same-endpoint security-name changes require Certificates.Create rather than a restart.
@@ -1213,11 +1215,13 @@ service Status {
 ```
 
 ```rust
-services.configure_status(settings, identity)?;
+services.configure_status(settings)?;
 let registration = services.status()?.contribute(provider)?;
 trait Contribution: Send + Sync {
-    fn health(&self) -> Result<Vec<Component>>;
-    fn diagnostics(&self) -> Result<Vec<Entry>>;
+    fn health(&self) -> Result<Vec<harmos_protocol::v1::HealthComponent>,
+        Box<dyn std::error::Error + Send + Sync>>;
+    fn diagnostics(&self) -> Result<Vec<services::status::Entry>,
+        Box<dyn std::error::Error + Send + Sync>>;
 }
 // A retained registration owns contribution lifetime; update notifies watchers.
 // Status's log/trace recording interface and tracing Layer redact before retention.
@@ -1245,12 +1249,22 @@ Registered secret values and sensitive field names redact before log/trace reten
 status reasons and diagnostics serialization; credentials and keys never enter archives.
 
 Ownership: grpc/access/**; services/status/**; operations/access/** and status/**;
-proto/harmos/v1/access/**, status.proto and status/**; five access/status stories;
+proto/harmos/v1/access/**, status.proto and status/**; five access/status stories in tests/grpc/access and tests/services/status,
+with tests/support/access_status.rs;
 docs/access-status.md. Coupling extensions: GrpcManager retains access and closes its
 attachment; ServiceManager retains status in its shared host resources; operation-manager
 resource provision supplies narrow access/status ports; protocol generation includes new
 client files/reflection; Rust generated roots consume their descriptors. Existing listener,
 resolver, authorization, operation policy and bounded output mechanisms remain authoritative.
+
+GrpcManager extensions are `configure_access` (one serialized setup), `access`
+(the retained control), internal `attach_access` (per-listener authentication before
+application middleware), and access settlement during shutdown. ServiceManager adds
+`configure_status` and `status`; its shared operation registry retains one status owner,
+its start time and narrow ports across manager handles. Operation-manager coupling is
+limited to those provided resources, the status shutdown notification and exact
+reserved-contract admission for the new protocol-owned operations. The listener and
+ServerCertificate resolver themselves are reused unchanged.
 
 - Receipt/position renames change fingerprints and admission: migrate descriptors,
   requirements and callers as one revision; never add silent compatibility aliases.
@@ -1270,6 +1284,15 @@ resolver, authorization, operation policy and bounded output mechanisms remain a
   before removing or reclaiming content. No stored-data deletion is authorized here.
 
 ## Open Questions
+
+Integration finding: the audience-layout checkpoint leaves removed `harmos_protocol::host`
+imports in `sdk/rust/src/wasm/context.rs` (assignments/state plus context Samples wrappers)
+and `sdk/rust/src/wasm/dispatch.rs` (assignments). These grammar-worker paths block runtime
+story compilation. A further import discrepancy in `crates/harmos-runtime/src/guest/host/mod.rs` imports
+`v1 as host` but uses `v1`; this blocks the focused example export that Python checks
+require. These grammar-worker corrections await ownership direction; no compatibility
+module is introduced. Diagnostics currently binds its narrow ContentSource
+boundary; the shared storage transfer owner's join remains an integration responsibility.
 
 Implementation decision (3.11): no library built-in promises a cooperative final result after cancellation: actions use unary receipts/status and watches end observation; explicit application `Grpc::managed()` declarations replace the canonical method. The Collect and Exchange fixtures promise the accepted-input aggregate, and Wait promises its typed cancellation summary; those three fixture declarations exercise the opt-in contract.
 

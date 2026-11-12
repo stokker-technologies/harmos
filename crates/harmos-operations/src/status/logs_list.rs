@@ -7,25 +7,19 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-use super::StatusAccess;
-
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-
+use super::StatusAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -37,7 +31,6 @@ use super::StatusAccess;
 
 pub struct LogsList;
 
-
 /* === Enums === */
 
 /* === Traits === */
@@ -48,7 +41,7 @@ impl ProtobufOperation for LogsList {
     type Request = harmos_protocol::status::LogsListRequest;
     type Response = harmos_protocol::status::LogsListResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.status.logs_list";
+    const ID: &'static str = "harmos.status.logs.list";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1.status", "Logs", "List"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -59,7 +52,6 @@ impl ProtobufOperation for LogsList {
         access.logs_list(request).await
     }
 }
-
 
 /* === Public Functions === */
 

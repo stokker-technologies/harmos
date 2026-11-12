@@ -7,25 +7,19 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-use super::StatusAccess;
-
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-
+use super::StatusAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -37,7 +31,6 @@ use super::StatusAccess;
 
 pub struct TraceEventsList;
 
-
 /* === Enums === */
 
 /* === Traits === */
@@ -48,7 +41,7 @@ impl ProtobufOperation for TraceEventsList {
     type Request = harmos_protocol::status::TraceEventsListRequest;
     type Response = harmos_protocol::status::TraceEventsListResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.status.trace_events_list";
+    const ID: &'static str = "harmos.status.trace_events.list";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1.status", "TraceEvents", "List"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -59,7 +52,6 @@ impl ProtobufOperation for TraceEventsList {
         access.trace_events_list(request).await
     }
 }
-
 
 /* === Public Functions === */
 

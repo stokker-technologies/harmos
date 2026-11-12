@@ -226,9 +226,7 @@ mod tests {
         assignments.install(&encoded).unwrap();
         assignments.install(&encoded).unwrap();
         let replacement = AssignedOperation { generation: 2, ..entry.clone() };
-        assert!(
-            assignments.install(&harmos_protocol::v1::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err()
-        );
+        assert!(assignments.install(&harmos_protocol::v1::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err());
         assert!(
             OperationAssignments::default()
                 .install(&harmos_protocol::v1::OperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())

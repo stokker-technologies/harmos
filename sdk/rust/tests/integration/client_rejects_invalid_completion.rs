@@ -26,7 +26,7 @@ use std::{
 // Third Party Imports
 use futures_core::Stream;
 use harmos::{Client, ClientSettings, client::Method};
-use harmos_protocol::{v1 as host, schema};
+use harmos_protocol::{schema, v1 as host};
 use prost_reflect::ReflectMessage;
 use tonic::{
     Request, Response, Status, Streaming,

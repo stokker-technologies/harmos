@@ -24,7 +24,7 @@ use prost_reflect::ReflectMessage;
 use tonic::{Status, codegen::http::uri::PathAndQuery};
 
 // Local Imports
-use harmos_protocol::{v1 as host, schema};
+use harmos_protocol::{schema, v1 as host};
 
 /* === Constants === */
 

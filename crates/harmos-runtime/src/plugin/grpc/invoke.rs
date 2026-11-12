@@ -23,8 +23,8 @@ use std::{
 
 // Third Party Imports
 use futures_util::{StreamExt, stream};
-use harmos_protocol::v1::{self};
 use harmos_protocol::plugin::{instance_invoke_request, instance_invoke_response};
+use harmos_protocol::v1::{self};
 use tokio::sync::mpsc;
 
 // Local Imports

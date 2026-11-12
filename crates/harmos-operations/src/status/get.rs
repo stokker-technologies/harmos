@@ -7,25 +7,19 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-use super::StatusAccess;
-
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-
+use super::StatusAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -36,7 +30,6 @@ use super::StatusAccess;
 /* === Structs === */
 
 pub struct Get;
-
 
 /* === Enums === */
 
@@ -59,7 +52,6 @@ impl ProtobufOperation for Get {
         access.get(request).await
     }
 }
-
 
 /* === Public Functions === */
 

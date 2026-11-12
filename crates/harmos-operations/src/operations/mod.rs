@@ -30,9 +30,9 @@ pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use error::{Error, Result};
 pub use grpc::Grpc;
-pub use harmos_protocol::v1::Protobuf;
 pub use harmos_protocol::policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy};
 pub use harmos_protocol::service::{RestartPolicy, ServicePolicy};
+pub use harmos_protocol::v1::Protobuf;
 pub use protobuf::ProtobufExt;
 pub use specification::{OperationSpec, RequestShape};
 

@@ -12,7 +12,9 @@ authorization policy and application services.
 enabled, socket endpoint and TLS certificate names. Pass the revision returned by
 Get to Set. A stale revision refuses with “get again and retry”. The reported bound
 endpoint includes the actual port when the configured socket uses port zero.
-Access always uses TLS and bearer authentication.
+Access always uses TLS and bearer authentication. Successful authentication supplies
+`grpc::access::Principal { pairing_id }` in the call context before application
+middleware and operation authorization.
 
 The host implements `grpc::access::CredentialStore`:
 
@@ -38,8 +40,8 @@ restarts; an expired selection fails explicitly.
 reloadable TLS resolver. Existing TLS connections survive, all pairing credentials
 are revoked, and new connections must trust the new certificate. Create and distribute
 fresh pairings after rotation. Changing certificate names through Listener.Set also
-rotates trust. Keys are validated before storage or publication. Store failures name
-the attempted action and preserve the live configuration.
+rotates trust. Keys are validated before storage or publication. Structured store failures name
+the attempted action in the shared Failure action field and preserve the live configuration.
 
 An application can retain a separately authorized management listener for bootstrap
 and recovery while access is disabled. Pairing authentication applies to the dedicated

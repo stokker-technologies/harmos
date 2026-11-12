@@ -129,8 +129,7 @@ async fn run(context: ExecutionContext, request: harmos_protocol::v1::CatalogEnt
 }
 
 async fn stored<T>(
-    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::v1::CatalogEntriesListRequest,
-    keep: impl Fn(&T) -> bool,
+    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::v1::CatalogEntriesListRequest, keep: impl Fn(&T) -> bool,
 ) -> Result<CatalogEntriesListResponse>
 where
     T: harmos_storage::follow::Entry,

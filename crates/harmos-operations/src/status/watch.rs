@@ -7,26 +7,20 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility, ProtobufOutput};
-use futures_util::StreamExt;
-use super::StatusAccess;
-
-
 // Standard Library Imports
 
 // Third Party Imports
+use futures_util::StreamExt;
 
 // Local Imports
-
+use super::StatusAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -37,7 +31,6 @@ use super::StatusAccess;
 /* === Structs === */
 
 pub struct Watch;
-
 
 /* === Enums === */
 
@@ -66,7 +59,6 @@ impl ProtobufOperation for Watch {
         Ok(last)
     }
 }
-
 
 /* === Public Functions === */
 

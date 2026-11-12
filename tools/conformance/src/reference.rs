@@ -33,8 +33,11 @@ use crate::{
     Result, fixture,
     schema_fixture::{Graph, Nested},
 };
+use harmos_protocol::plugin::{
+    instance_invoke_request, instance_invoke_response, instance_samples_request,
+    instance_server::{Instance, InstanceServer},
+};
 use harmos_protocol::v1::{self as v1, child_response, response};
-use harmos_protocol::plugin::{instance_invoke_request, instance_invoke_response, instance_samples_request, instance_server::{Instance, InstanceServer}};
 
 /* === Constants === */
 
@@ -59,7 +62,9 @@ struct Reference {
 
 #[tonic::async_trait]
 impl Instance for Reference {
-    async fn get(&self, _: Request<harmos_protocol::plugin::InstanceGetRequest>) -> std::result::Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
+    async fn get(
+        &self, _: Request<harmos_protocol::plugin::InstanceGetRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         Ok(Response::new(harmos_protocol::plugin::InstanceGetResponse {
             id: "conformance".into(),
             version: "1.0.0".into(),
@@ -134,7 +139,9 @@ impl Instance for Reference {
         ))))
     }
 
-    async fn stop(&self, _: Request<harmos_protocol::plugin::InstanceStopRequest>) -> std::result::Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
+    async fn stop(
+        &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         if let Some(shutdown) = self.shutdown.lock().await.take() {
             let _ = shutdown.send(());
         }
@@ -383,7 +390,8 @@ async fn invoke(
 }
 
 async fn send_child(
-    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, Status>>, call: u64, operation: &str, payload: Vec<u8>,
+    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, Status>>, call: u64, operation: &str,
+    payload: Vec<u8>,
 ) -> std::result::Result<(), Status> {
     let child = v1::ChildRequest {
         call,

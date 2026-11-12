@@ -29,8 +29,10 @@ use tonic::{Code, Streaming, transport::Channel};
 
 // Local Imports
 use crate::{Error, Result, fixture, schema_fixture};
-use harmos_protocol::v1::{self as v1, child_response, response, };
-use harmos_protocol::plugin::{instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request};
+use harmos_protocol::plugin::{
+    instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request,
+};
+use harmos_protocol::v1::{self as v1, child_response, response};
 
 /* === Constants === */
 
@@ -156,7 +158,9 @@ async fn terminal(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeR
     Ok(result)
 }
 
-async fn child(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>, id: u64, operation: &str, payload: &[u8]) -> Result<()> {
+async fn child(
+    input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>, id: u64, operation: &str, payload: &[u8],
+) -> Result<()> {
     let frame = input.message().await?.and_then(|frame| frame.frame);
     let Some(instance_invoke_response::Frame::Child(child)) = frame else {
         return Err(Error::Invalid(format!("Expected Child Request, Got {frame:?}")));
@@ -171,7 +175,9 @@ async fn child(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResp
     )
 }
 
-async fn send_child(send: &mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, call: u64, result: child_response::Result) -> Result<()> {
+async fn send_child(
+    send: &mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, call: u64, result: child_response::Result,
+) -> Result<()> {
     send.send(harmos_protocol::plugin::InstanceInvokeRequest {
         frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse { call, result: Some(result) })),
     })
@@ -195,7 +201,8 @@ async fn open(client: &mut Client, name: &str) -> Result<Publish> {
 }
 
 async fn tick(
-    send: &mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>, input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesResponse>, sequence: u64, seconds: i64,
+    send: &mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>,
+    input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesResponse>, sequence: u64, seconds: i64,
 ) -> Result<()> {
     let at = fixture::timestamp(seconds);
     send.send(harmos_protocol::plugin::InstanceSamplesRequest {
@@ -223,7 +230,8 @@ async fn invoke_status(
 }
 
 async fn publish_status(
-    result: std::result::Result<tonic::Response<Streaming<harmos_protocol::plugin::InstanceSamplesResponse>>, tonic::Status>, expected: Code,
+    result: std::result::Result<tonic::Response<Streaming<harmos_protocol::plugin::InstanceSamplesResponse>>, tonic::Status>,
+    expected: Code,
 ) -> Result<()> {
     let status = match result {
         Err(status) => status,
@@ -312,7 +320,11 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             ] {
                 invoke_status(client.invoke(stream::iter([frame])).await, Code::InvalidArgument).await?;
             }
-            invoke_status(client.invoke(stream::iter(Vec::<harmos_protocol::plugin::InstanceInvokeRequest>::new())).await, Code::InvalidArgument).await?;
+            invoke_status(
+                client.invoke(stream::iter(Vec::<harmos_protocol::plugin::InstanceInvokeRequest>::new())).await,
+                Code::InvalidArgument,
+            )
+            .await?;
             let frames = [request("conformance.cancel", fixture::payload(b"")), request("conformance.echo", fixture::payload(b""))];
             let mut input = client.invoke(stream::iter(frames)).await?.into_inner();
             child(&mut input, 1, "conformance.host.pending", &fixture::payload(b"")).await?;
@@ -468,7 +480,11 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             ] {
                 publish_status(client.samples(stream::iter([frame])).await, Code::InvalidArgument).await?;
             }
-            publish_status(client.samples(stream::iter(Vec::<harmos_protocol::plugin::InstanceSamplesRequest>::new())).await, Code::InvalidArgument).await?;
+            publish_status(
+                client.samples(stream::iter(Vec::<harmos_protocol::plugin::InstanceSamplesRequest>::new())).await,
+                Code::InvalidArgument,
+            )
+            .await?;
             let open = harmos_protocol::plugin::InstanceSamplesRequest {
                 frame: Some(instance_samples_request::Frame::Open(v1::SamplesSelection {
                     stream: "conformance.ticks".into(),

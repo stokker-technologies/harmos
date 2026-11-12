@@ -90,7 +90,10 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.
     for (package, module) in [("harmos.v1", "v1"), ("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin")] {
-        assert_eq!(fs::read(output.path().join(format!("{package}.rs")))?, fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?);
+        assert_eq!(
+            fs::read(output.path().join(format!("{package}.rs")))?,
+            fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?
+        );
     }
     assert_eq!(fs::read(output.path().join("harmos.v1.access.rs"))?, include_bytes!("../../src/access.rs"));
     assert_eq!(fs::read(output.path().join("harmos.v1.status.rs"))?, include_bytes!("../../src/status.rs"));

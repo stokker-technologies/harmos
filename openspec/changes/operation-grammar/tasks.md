@@ -47,8 +47,8 @@ compile-time consumers atomically.
 ## 2. Library Owners and Generic Services
 
 - [ ] 2.1 Integrate already-in-progress plugin-manager work and expose Plugins Create/Get/List/Watch/Set/Restart/Delete with managed/remote entries, verified bundles, persistence, state and failures. Migrate the protocol carriers to harmos.plugin.v1.Instance Get/Invoke/Samples/Stop and preserve activation fencing, disconnect isolation and cooperative settlement; migrate affected library consumers in the same compiling slice.
-- [ ] 2.2 Implement Access and access.Listener under GrpcManager: CreatePairing, CreateCertificate regeneration/key rotation and Listener.Get/Set with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
-- [ ] 2.3 Implement Status, status.Logs and status.TraceEvents under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and diagnostics archive references. Read archive bytes through Storage.GetFileBytes, with no second transfer implementation.
+- [ ] 2.2 Implement access.Listener Get/Set, durable access.Pairings Create/List/Delete and live access.Certificates.Create under GrpcManager with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
+- [ ] 2.3 Implement Status.Get/Watch, status.Logs/TraceEvents List/Watch and status.Diagnostics.Get under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and bounded diagnostics archive ranges through the narrow ContentSource join to shared storage ranges, with no second transfer engine.
 - [ ] 2.4 Add narrow product-contribution registration under ServiceManager for product version/identity and component health/availability; define registration lifetime, aggregation and provider failure handling, and prove focused registration/removal/failure behavior without a product-specific dependency.
 - [ ] 2.5 Implement generic context-only HostValues.Get and its host resolver registration under OperationManager, plus the plugin catalog's settings-declaration section. The product supplies settings/secrets stores, schemas, UI, archives, credential integration and policy. Verify scoped value delivery/failure behavior; add no library value store or client settings service.
 - [ ] 2.6 Retain OperationManager for face-local CatalogEntries/Invocations and client Invocations.Invoke, StreamManager for context Samples/publication, existing host-clock/service lifetime for face-local Time, and StateManager/RecordManager for their existing responsibilities; migrate names and declarations without duplicate managers or schedulers.
@@ -114,14 +114,16 @@ and the complete built-in mapping.
 
 ## Workflow Follow-Up
 
+- Canonical runtime story compilation, Rust lint and the Tests producer are blocked by the grammar-worker imports recorded in design.md. The five owned stories have focused native-consumer proof; this does not close canonical or cross-platform validation. Python checking requires generated example clients whose producer hits the guest-host import discrepancy. Repair/integrate those owned grammar paths, then rerun the canonical stories and required checks; AS.6 remains open.
+
 - This access/status worktree commits locally; no push, lifecycle commands or publication.
 - Its strict documentation validation does not close any future implementation or final-proof checkbox.
 
 ## Access and Status Implementation
 
 - [x] AS.1 Record access/status proto and Rust shapes, decisions, scenarios and exact ownership before implementation.
-- [ ] AS.2 Add client contracts and one operation per file; regenerate protocol and prove focused builds.
-- [ ] AS.3 Implement gRPC-owned listener Get/Set, durable pairings, credential-store atomicity and live certificate rotation.
-- [ ] AS.4 Implement service-owned identity/health, bounded redacted event histories/watches and ranged diagnostics with contributions.
-- [ ] AS.5 Add five deterministic client journeys, Rust client bindings and adoption guidance.
+- [x] AS.2 Add client contracts and one operation per file; regenerate protocol and prove focused builds.
+- [x] AS.3 Implement gRPC-owned listener Get/Set, durable pairings, credential-store atomicity and live certificate rotation.
+- [x] AS.4 Implement service-owned identity/health, bounded redacted event histories/watches and ranged diagnostics with contributions.
+- [x] AS.5 Add five deterministic client journeys, Rust client bindings and adoption guidance.
 - [ ] AS.6 Run required format, Rust/Python/repository checks, stories twice, existing listener/certificate tests and Tests build; repair findings.

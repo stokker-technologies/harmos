@@ -11,9 +11,9 @@
 
 /* === Modules === */
 
-pub mod status;
 mod restart;
 mod runner;
+pub mod status;
 
 /* === Re-Exports === */
 
@@ -180,21 +180,46 @@ impl ServiceManager {
         }
     }
     pub fn configure_status(&self, settings: status::StatusSettings) -> Result<Arc<status::Status>> {
-        if self.owner() != "host" { return Err(Error::PermissionDenied); }
+        if self.owner() != "host" {
+            return Err(Error::PermissionDenied);
+        }
         let mut owner = self.operations.registry.status_owner.lock().expect("status owner lock is healthy");
-        if owner.is_some() { return Err(Error::AlreadyRegistered { domain: "host status", name: "Status".into() }); }
+        if owner.is_some() {
+            return Err(Error::AlreadyRegistered {
+                domain: "host status",
+                name: "Status".into(),
+            });
+        }
         let status = status::Status::new(settings, self.operations.clock().clone(), self.operations.registry.status_started.clone())
-            .map_err(|source| Error::OperationFailed { operation: "Status.Configure".into(), source: Arc::new(source) })?;
-        status.refresh().map_err(|source| Error::OperationFailed { operation: "Status.Configure".into(), source: Arc::new(source) })?;
-        let catalog = harmos_operations::status::catalog().map_err(|source| Error::OperationFailed { operation: "Status.Configure".into(), source: Arc::new(source) })?;
+            .map_err(|source| Error::OperationFailed {
+                operation: "Status.Configure".into(),
+                source: Arc::new(source),
+            })?;
+        status.refresh().map_err(|source| Error::OperationFailed {
+            operation: "Status.Configure".into(),
+            source: Arc::new(source),
+        })?;
+        let catalog = harmos_operations::status::catalog().map_err(|source| Error::OperationFailed {
+            operation: "Status.Configure".into(),
+            source: Arc::new(source),
+        })?;
         use crate::operations::RegistrationExt;
         self.operations.register_native(catalog.lane(crate::operations::Lane::default()))?;
-        self.operations.registry.status.0.set(Arc::new(status::Port(status.clone()))).map_err(|_| Error::AlreadyRegistered { domain: "host status", name: "Status".into() })?;
+        self.operations.registry.status.0.set(Arc::new(status::Port(status.clone()))).map_err(|_| Error::AlreadyRegistered {
+            domain: "host status",
+            name: "Status".into(),
+        })?;
         *owner = Some(status.clone());
         Ok(status)
     }
     pub fn status(&self) -> Result<Arc<status::Status>> {
-        self.operations.registry.status_owner.lock().expect("status owner lock is healthy").clone().ok_or(Error::NotReady { domain: "Status" })
+        self.operations
+            .registry
+            .status_owner
+            .lock()
+            .expect("status owner lock is healthy")
+            .clone()
+            .ok_or(Error::NotReady { domain: "Status" })
     }
     fn owner(&self) -> &str {
         match &self.owner {

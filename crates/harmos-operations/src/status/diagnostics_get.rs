@@ -7,25 +7,19 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-use super::StatusAccess;
-
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-
+use super::StatusAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -37,7 +31,6 @@ use super::StatusAccess;
 
 pub struct DiagnosticsGet;
 
-
 /* === Enums === */
 
 /* === Traits === */
@@ -48,7 +41,7 @@ impl ProtobufOperation for DiagnosticsGet {
     type Request = harmos_protocol::status::DiagnosticsGetRequest;
     type Response = harmos_protocol::status::DiagnosticsGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.status.diagnostics_get";
+    const ID: &'static str = "harmos.status.diagnostics.get";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1.status", "Diagnostics", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -59,7 +52,6 @@ impl ProtobufOperation for DiagnosticsGet {
         access.diagnostics_get(request).await
     }
 }
-
 
 /* === Public Functions === */
 

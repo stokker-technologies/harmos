@@ -50,7 +50,8 @@ impl Manager {
             registry: Arc::new(Registry {
                 access: Arc::new(harmos_operations::access::AccessAccess::default()),
                 status: Arc::new(harmos_operations::status::StatusAccess::default()),
-                status_owner: std::sync::Mutex::new(None), status_started,
+                status_owner: std::sync::Mutex::new(None),
+                status_started,
                 service_runner: crate::services::authored_runner::<A>,
                 middleware: crate::operations::middleware::Configuration::default(),
                 state: Mutex::new(State {

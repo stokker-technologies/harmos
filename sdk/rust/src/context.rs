@@ -29,8 +29,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 // Local Imports
 use crate::{Error, OperationRequest, Result, message::fingerprint};
+use harmos_protocol::plugin::instance_invoke_response;
 use harmos_protocol::v1::{self};
-use harmos_protocol::plugin::{instance_invoke_response};
 
 /* === Constants === */
 

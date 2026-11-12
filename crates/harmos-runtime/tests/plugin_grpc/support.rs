@@ -34,8 +34,8 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
-use harmos_protocol::v1;
 use harmos_protocol::plugin::instance_server::{Instance, InstanceServer};
+use harmos_protocol::v1;
 use harmos_runtime::{
     Runtime,
     clock::{Clock, Reading, Sleep, Source},
@@ -224,7 +224,9 @@ impl Drop for Remote {
 
 #[tonic::async_trait]
 impl Instance for Fixture {
-    async fn get(&self, _: Request<harmos_protocol::plugin::InstanceGetRequest>) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
+    async fn get(
+        &self, _: Request<harmos_protocol::plugin::InstanceGetRequest>,
+    ) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         let pending = self.pending_description.lock().unwrap().take();
         if let Some(pending) = pending {
             let _ = pending.send(());
@@ -244,14 +246,20 @@ impl Instance for Fixture {
         }))
     }
     type InvokeStream = Output<harmos_protocol::plugin::InstanceInvokeResponse>;
-    async fn invoke(&self, _: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(
+        &self, _: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>,
+    ) -> Result<Response<Self::InvokeStream>, Status> {
         Err(Status::not_found("Unknown Operation"))
     }
     type SamplesStream = Output<harmos_protocol::plugin::InstanceSamplesResponse>;
-    async fn samples(&self, _: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
+    async fn samples(
+        &self, _: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
+    ) -> Result<Response<Self::SamplesStream>, Status> {
         Err(Status::not_found("Unknown Stream"))
     }
-    async fn stop(&self, _: Request<harmos_protocol::plugin::InstanceStopRequest>) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
+    async fn stop(
+        &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
+    ) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         self.stops.fetch_add(1, Ordering::SeqCst);
         let pending = self.pending_stop.lock().unwrap().take();
         if let Some(pending) = pending {

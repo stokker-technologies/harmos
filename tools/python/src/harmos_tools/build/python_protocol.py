@@ -32,9 +32,16 @@ from ..process import spawn_flags
 
 ROOT = Path(__file__).resolve().parents[5]
 PROTOCOLS = (
-    "harmos/v1/types.proto", "harmos/v1/catalog_entries.proto", "harmos/v1/invocations.proto", "harmos/v1/time.proto",
-    "harmos/plugin/v1/instance.proto", "harmos/context/v1/catalog_entries.proto", "harmos/context/v1/invocations.proto",
-    "harmos/context/v1/time.proto", "harmos/context/v1/samples.proto", "harmos/v1/storage.proto",
+    "harmos/v1/types.proto",
+    "harmos/v1/catalog_entries.proto",
+    "harmos/v1/invocations.proto",
+    "harmos/v1/time.proto",
+    "harmos/plugin/v1/instance.proto",
+    "harmos/context/v1/catalog_entries.proto",
+    "harmos/context/v1/invocations.proto",
+    "harmos/context/v1/time.proto",
+    "harmos/context/v1/samples.proto",
+    "harmos/v1/storage.proto",
     "harmos/conformance/v1/fixture.proto",
 )
 GENERATED = tuple(name.removesuffix(".proto") + suffix for name in PROTOCOLS for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))

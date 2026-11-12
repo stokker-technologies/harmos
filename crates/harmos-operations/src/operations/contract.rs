@@ -304,18 +304,51 @@ impl Contract {
         if crate::reserved(operation.id.as_str()) {
             use prost::Message;
             use prost_reflect::ReflectMessage;
-            let (request, response, service, method, output) = match operation.id.as_str() {
+            let (package, request, response, service, method, output) = match operation.id.as_str() {
                 "harmos.catalog_entries.list" => {
-                    ("CatalogEntriesListRequest", "CatalogEntriesListResponse", "CatalogEntries", "List", false)
+                    ("harmos.v1", "CatalogEntriesListRequest", "CatalogEntriesListResponse", "CatalogEntries", "List", false)
                 }
-                "harmos.invocations.get" => ("InvocationsGetRequest", "InvocationsGetResponse", "Invocations", "Get", false),
-                "harmos.invocations.cancel" => ("InvocationsCancelRequest", "InvocationsCancelResponse", "Invocations", "Cancel", false),
-                "harmos.invocations.watch" => ("InvocationsWatchRequest", "InvocationsWatchResponse", "Invocations", "Watch", true),
-                "harmos.samples.append" => ("SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false),
+                "harmos.invocations.get" => ("harmos.v1", "InvocationsGetRequest", "InvocationsGetResponse", "Invocations", "Get", false),
+                "harmos.invocations.cancel" => {
+                    ("harmos.v1", "InvocationsCancelRequest", "InvocationsCancelResponse", "Invocations", "Cancel", false)
+                }
+                "harmos.invocations.watch" => {
+                    ("harmos.v1", "InvocationsWatchRequest", "InvocationsWatchResponse", "Invocations", "Watch", true)
+                }
+                "harmos.samples.append" => {
+                    ("harmos.context.v1", "SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false)
+                }
+                "harmos.access.listener.get" => ("harmos.v1.access", "ListenerGetRequest", "ListenerGetResponse", "Listener", "Get", false),
+                "harmos.access.listener.set" => ("harmos.v1.access", "ListenerSetRequest", "ListenerSetResponse", "Listener", "Set", false),
+                "harmos.access.pairings.create" => {
+                    ("harmos.v1.access", "PairingsCreateRequest", "PairingsCreateResponse", "Pairings", "Create", false)
+                }
+                "harmos.access.pairings.list" => {
+                    ("harmos.v1.access", "PairingsListRequest", "PairingsListResponse", "Pairings", "List", false)
+                }
+                "harmos.access.pairings.delete" => {
+                    ("harmos.v1.access", "PairingsDeleteRequest", "PairingsDeleteResponse", "Pairings", "Delete", false)
+                }
+                "harmos.access.certificates.create" => {
+                    ("harmos.v1.access", "CertificatesCreateRequest", "CertificatesCreateResponse", "Certificates", "Create", false)
+                }
+                "harmos.status.get" => ("harmos.v1", "StatusGetRequest", "StatusGetResponse", "Status", "Get", false),
+                "harmos.status.watch" => ("harmos.v1", "StatusWatchRequest", "StatusWatchResponse", "Status", "Watch", true),
+                "harmos.status.logs.list" => ("harmos.v1.status", "LogsListRequest", "LogsListResponse", "Logs", "List", false),
+                "harmos.status.logs.watch" => ("harmos.v1.status", "LogsWatchRequest", "LogsWatchResponse", "Logs", "Watch", true),
+                "harmos.status.trace_events.list" => {
+                    ("harmos.v1.status", "TraceEventsListRequest", "TraceEventsListResponse", "TraceEvents", "List", false)
+                }
+                "harmos.status.trace_events.watch" => {
+                    ("harmos.v1.status", "TraceEventsWatchRequest", "TraceEventsWatchResponse", "TraceEvents", "Watch", true)
+                }
+                "harmos.status.diagnostics.get" => {
+                    ("harmos.v1.status", "DiagnosticsGetRequest", "DiagnosticsGetResponse", "Diagnostics", "Get", false)
+                }
                 _ => return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into()),
             };
-            let request = format!("harmos.v1.{request}");
-            let response = format!("harmos.v1.{response}");
+            let request = format!("{package}.{request}");
+            let response = format!("{package}.{response}");
             let root = harmos_protocol::v1::CatalogEntriesListRequest::default().descriptor();
             let types = prost_types::FileDescriptorSet {
                 file: root.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
@@ -330,7 +363,7 @@ impl Contract {
                 output: output.then_some(response),
             };
             let mapping = (service != "Samples").then(|| super::Grpc {
-                package: "harmos.v1".into(),
+                package: package.to_owned().into(),
                 service: service.to_owned().into(),
                 method: method.to_owned().into(),
                 managed: false,

@@ -7,9 +7,6 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 mod access;
@@ -23,7 +20,6 @@ mod access;
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 

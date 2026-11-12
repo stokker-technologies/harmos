@@ -7,26 +7,20 @@
  * ***
  */
 
-
-
-
 /* === Modules === */
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility, ProtobufOutput};
-use futures_util::StreamExt;
-use super::StatusAccess;
-
-
 // Standard Library Imports
 
 // Third Party Imports
+use futures_util::StreamExt;
 
 // Local Imports
-
+use super::StatusAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -38,7 +32,6 @@ use super::StatusAccess;
 
 pub struct LogsWatch;
 
-
 /* === Enums === */
 
 /* === Traits === */
@@ -49,7 +42,7 @@ impl ProtobufOperation for LogsWatch {
     type Request = harmos_protocol::status::LogsWatchRequest;
     type Response = harmos_protocol::status::LogsWatchResponse;
     type Endpoints = ProtobufOutput<harmos_protocol::status::LogsWatchResponse>;
-    const ID: &'static str = "harmos.status.logs_watch";
+    const ID: &'static str = "harmos.status.logs.watch";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1.status", "Logs", "Watch"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -66,7 +59,6 @@ impl ProtobufOperation for LogsWatch {
         Ok(last)
     }
 }
-
 
 /* === Public Functions === */
 
