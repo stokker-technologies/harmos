@@ -71,7 +71,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         "archive",
         "--locked",
         "--workspace",
-        "--tests",
+        "--timings",
         "--cargo-profile",
         compiler_profile,
         "--cargo-message-format",
@@ -125,7 +125,7 @@ def focused(directory: Path, operation: str, arguments: Sequence[str], *, messag
         raise ValueError("focused compilation requires a canonical Cargo profile")
     if operation == "test" and ("--release" in compiler_arguments or profile not in (None, "test")):
         raise ValueError("focused tests use Cargo's default test profile")
-    command = ["cargo", operation, *arguments]
+    command = ["cargo", operation, "--timings", *arguments]
     if messages is not None:
         messages.parent.mkdir(parents=True, exist_ok=True)
         command += ["--message-format", "json-render-diagnostics"]

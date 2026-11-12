@@ -57,7 +57,7 @@ def product(profile: str, scratch: Path) -> None:
     arguments = ["--locked", "--workspace", "--profile", profile]
     with messages.open("w", encoding="utf-8") as output:
         subprocess.run(
-            ["cargo", "build", *arguments, "--message-format=json-render-diagnostics"],
+            ["cargo", "build", "--timings", *arguments, "--message-format=json-render-diagnostics"],
             cwd=ROOT,
             stdout=output,
             stderr=sys.stderr,

@@ -93,7 +93,7 @@ def capture(name: str, directory: Path, profile: str, extra: list[str], scratch:
         )
     messages = destination / "messages.json"
     arguments = ["--manifest-path", str(directory / "Cargo.toml"), "--locked", "--profile", profile, *extra]
-    command = ["cargo", "build", *arguments, "--message-format=json"]
+    command = ["cargo", "build", "--timings", *arguments, "--message-format=json"]
     with messages.open("w", encoding="utf-8") as output:
         completed = subprocess.run(
             command,

@@ -28,6 +28,13 @@
 
 - [ ] 4.3 Verify the installed repository checker accepts the entry-point task model and generated protocol declarations; hand remaining checker defects to its owner.
 
+## 5. Developer Build Feedback
+
+- [x] 5.1 Measure focused clean and incremental check/build/test selections and the Tests producer before tuning; own build configuration, Cargo profile/dependency sections, `mise.toml`, `tools/python` build/task tooling and its tests, and `docs/tooling.md`.
+- [x] 5.2 Rank measured bottlenecks and improve configuration, dependency reuse and task orchestration without changing product behavior, release outputs or required checks.
+- [x] 5.3 Repeat the measurements, evaluate independent build concurrency and document the supported workstation layout and unmeasured platforms in `docs/tooling.md`.
+- [x] 5.4 Run formatting, Rust/Python/repository checks and the Tests producer; repair owned failures and report external blockers precisely.
+
 ## Workflow Follow-Up
 
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.

@@ -90,7 +90,7 @@ class FocusedCargoTests(unittest.TestCase):
                 self.assertEqual(status, 7)
                 self.assertEqual(len(events), 1)
                 command, options = events[0]
-                self.assertEqual(command, (["cargo", operation, *arguments],))
+                self.assertEqual(command, (["cargo", operation, "--timings", *arguments],))
                 self.assertEqual(options["cwd"], directory)
                 self.assertEqual(options["env"]["CARGO_BUILD_WARNINGS"], "deny")
                 self.assertEqual(options["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
@@ -112,6 +112,11 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_entry_points_dispatch_focused_cargo_directly(self):
         selections = [
+            (
+                ["build", "--package", "example", "--lib", "--check"],
+                "check",
+                ["--locked", "--profile", "dev", "-p", "example", "--lib"],
+            ),
             (
                 ["build", "--package", "example", "--manifest-path", "nested/Cargo.toml", "--check"],
                 "check",
@@ -163,6 +168,10 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_invalid_focused_selections_do_not_start_cargo(self):
         selections = [
+            ["build", "--lib"],
+            ["build", "--package", "example", "--example", "fixture", "--lib"],
+            ["build", "--package", "harmos-plugin", "--lib"],
+            ["build", "--language", "cpp", "--package", "example", "--lib"],
             ["build", "--manifest-path", "nested/Cargo.toml"],
             ["test", "--manifest-path", "nested/Cargo.toml", "--target", "lib"],
             ["build", "--features", "grpc"],

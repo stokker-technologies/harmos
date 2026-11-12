@@ -97,6 +97,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--messages", type=Path)
     build.add_argument("--features")
     build.add_argument("--example")
+    build.add_argument("--lib", action="store_true")
     build.add_argument("--check", action="store_true")
     build.add_argument("--compatibility", action="store_true")
     build.add_argument("--extended", action="store_true")
@@ -158,6 +159,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
         return workflow.run(options.command.partition(":")[2], options.arguments, options.profile)
     root = Path.cwd()
+
+    if options.command == "build" and options.lib:
+        if not options.package or options.package == "harmos-plugin" or options.example or options.language not in (None, "rust"):
+            parser.error("--lib requires a Rust --package without --example")
 
     # C# SDK Selections Remain Independent of Rust Lanes and Tooling Python Tests.
     if options.command in ("build", "test", "format", "check") and options.language == "csharp":
@@ -295,6 +300,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command += ["--features", options.features]
         if options.example:
             command += ["--example", options.example]
+        if options.lib:
+            command += ["--lib"]
         if options.target:
             command += ["--target", options.target]
         if options.messages is not None:

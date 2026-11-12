@@ -22,6 +22,7 @@ from pathlib import Path
 
 # Local Imports
 from ... import temporary
+from ...ci import summary
 from ...test import archive
 from .. import fixtures as staging
 from .. import cargo, paths
@@ -66,7 +67,8 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
     compiler_profile = "test"
     binaries = {}
     messages = archive.location(ROOT, profile).with_name(archive.MESSAGES)
-    for message in cargo.artifacts(ROOT, messages):
+    artifacts = list(cargo.artifacts(ROOT, messages))
+    for message in artifacts:
         fixture = Path(message["manifest_path"]) == ROOT / "tools/conformance/Cargo.toml"
         if not fixture or message["target"]["kind"] != ["bin"] or not message.get("executable"):
             continue
@@ -75,14 +77,19 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
         staging.copy(source, destination, files)
         binaries[message["target"]["name"]] = destination.relative_to(fixtures).as_posix()
 
-    tool = staging.driver(compiler_profile, scratch)
+    with summary.phase("Fixture Driver"):
+        tool = staging.executable(artifacts, "fixture-driver")
 
     sandbox = "harmos-sandbox-guest"
     manifest = GUESTS[sandbox]
-    capture = staging.capture(sandbox, manifest.parent, compiler_profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch)
+    with summary.phase("Guest Fixture"):
+        capture = staging.capture(
+            sandbox, manifest.parent, compiler_profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch
+        )
     built, receipt = staging.collect(tool, manifest, sandbox, "guest", compiler_profile, capture, scratch)
     artifact, build = staging.stage_build(built, receipt, sandbox, files, fixtures)
-    inputs = staging.offline_inputs(fixtures / "inputs")
+    with summary.phase("Offline Inputs"):
+        inputs = staging.offline_inputs(fixtures / "inputs")
     # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.
     selected_inputs = (path for path in inputs.rglob("*") if path.is_file() and path.stat().st_mode & stat.S_IXUSR)
     executables = [path.relative_to(fixtures).as_posix() for path in selected_inputs]

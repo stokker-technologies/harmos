@@ -30,22 +30,42 @@ not run Clippy. `check --repository` checks repository configuration without a b
 ## Workstation Builds
 
 Local builds use `RUSTC_WRAPPER=sccache`, `SCCACHE_DIR=<OS user cache>/sccache`
-and `SCCACHE_CACHE_SIZE=20G`. Cargo starts or reuses sccache's background server;
-tasks do not start, verify or stop a server for each local invocation. Incremental
-compilation uses Cargo's default locally; only workflows disable it. Each worktree
-keeps its own `target/`; Cargo owns its normal compilation lock. Project tooling
-never scans or reclaims compiler output before compilation.
+and `SCCACHE_CACHE_SIZE=20G`. Explicit shell settings override these defaults.
+`SCCACHE_CLIENT_SIDE=1` keeps compilation in the requesting client instead of
+queuing it through the machine-wide server's compiler jobserver. Cargo starts or
+reuses the persistent server for cache storage; tasks never restart it per invocation.
+`SCCACHE_BASEDIRS` defaults to the checkout root, normalizing cache keys across
+worktrees and drives. CI retains its explicitly configured cache settings.
+
+Leave `SCCACHE_LOG` unset during ordinary builds: in the pinned sccache version,
+setting it disables client-side mode. Read native statistics separately instead.
+Storage location and size apply when the server starts; inspect its actual settings
+before attributing misses to a checkout. Do not reset shared statistics or restart
+another session's server to collect measurements.
+
+Incremental compilation uses Cargo's default locally; only workflows disable it.
+Keep it enabled for edited workspace crates. Sccache reuses matching cacheable
+dependencies; it does not cache incremental crates, linked executables or procedural
+macro libraries. See [sccache's Rust limits](https://github.com/mozilla/sccache/blob/v0.19.0/docs/Rust.md).
+Each worktree keeps its own `target/`; Cargo owns its normal compilation lock.
+Retain that directory across edits and source revisions. Project tooling never
+scans or reclaims compiler output before compilation.
 
 ```sh
 mise run build -- --package harmos-domain
 mise run build -- --package harmos-domain --check
-mise run build -- --package harmos-runtime --features grpc,simulation --check
+mise run build -- --package harmos-runtime --lib --check
+mise run build -- --package harmos-runtime --lib
+mise run test -- --package harmos-runtime --target lib --exact grpc::codec::tests::absent_preparation_budget_preserves_native_encoding
 mise run test -- --package harmos-runtime --features simulation --target lib --exact simulation::clock::tests::evidence_dates_retain_the_host_epoch_across_reboot
 mise run test -- --package harmos-sdk-derive --target lib --exact stored_message::tests::map_field_shapes
 ```
 
 Focused builds select one package; focused tests select exactly one library or
 named integration target and use Cargo's default test profile, without an archive.
+Use `build --package <name> --lib` when editing a library: it skips unrelated package
+binaries, including the runtime's benchmark fixture. Omitting `--lib` retains Cargo's
+normal package targets. The Tests producer still builds the complete canonical selection.
 Both accept `--manifest-path examples/schematic/Cargo.toml` to select the separate
 example workspace while keeping compilation behind the same task interface.
 Focused Cargo subprocesses set `CARGO_TARGET_DIR` to the repository's `target/`,
@@ -70,6 +90,132 @@ Build the componentizer with the fixture-driver selection above, without `--chec
 
 Use `test --language python --exact tests.integration.<module>.<case>` for a
 focused tooling test.
+
+Focused compilation, Product, Tests and fixture builds write Cargo's native timing
+reports under `target/cargo-timings/`. The timestamped reports retain unit durations,
+features, dependency stalls and available frontend/code-generation sections.
+Wrapper waiting is included in a unit's elapsed time; a long frontend bar alone does
+not establish that rustc used that time on the CPU. Correlate it with process CPU
+sampling and native cache statistics:
+
+```sh
+mise exec -- sccache --show-stats
+mise exec -- sccache --show-stats --stats-format json
+```
+
+Set `BUILD_PHASE_FILE` to a JSONL output path to record the Tests producer's
+compilation/archive, fixture-driver, guest-fixture and offline-input stages separately.
+Use focused commands during edits; `build --artifact tests` prepares every test
+binary, the guest fixture and vendored/offline authoring inputs for archive consumers.
+Its scope is intentionally broader than one test target.
+The Tests producer uses Cargo's default test selection, which also compiles normal
+examples. It takes the guest fixture driver from those compiler messages instead
+of starting a second Cargo build with a different feature graph. Its canonical
+feature selection is unchanged; Product still builds its own fully capable driver.
+
+The example and sandbox workspaces use the root workspace's development debug
+settings: line tables for workspace members and no dependency debug information.
+Their existing optimized guest metadata dependencies retain their settings and
+fuel budgets. Release and bench optimization settings are unchanged.
+
+### Windows Measurements
+
+Measured on a Ryzen 9 5950X (16 cores / 32 threads), 80 GiB RAM and Rust 1.99.1.
+Other builds were active, so these are workstation observations, not isolated
+latency guarantees. Cold targets retain the shared compiler cache. The warm probe
+adds and removes an unused constant in the selected crate's `src/lib.rs`, then
+builds the runtime consumer. It measures invalidation and incremental reuse;
+function-body and public-schema changes can require more code generation.
+
+The warm rows below average the edit and restore runs. Each cell gives
+check / package build / one library test target, in seconds. The test selection
+executes the codec case shown above. Package builds retain their normal binaries.
+
+| Edited Crate | Before | After |
+| --- | --- | --- |
+| Runtime (leaf) | 8.9 / 15.1 / 36.6 | 4.7 / 21.1 / 14.7 |
+| Operations (middle) | 13.4 / 23.1 / 36.4 | 7.0 / 13.0 / 21.5 |
+| Protocol (foundation) | 20.7 / 26.2 / 35.6 | 15.5 / 22.6 / 36.7 |
+
+Not every warm selection improved under the background load. The new `--lib`
+selection took 7.0–8.5 seconds for the runtime leaf edit/restore, avoiding the
+benchmark fixture binary. Keep the package build when that binary needs proof.
+
+The focused runtime build from an empty native target fell from 186 to 110 seconds.
+The first example selection after the focused runs fell from 802 to 183 seconds.
+The final cold Tests run removed both native and Wasm development outputs first;
+its canonical features and all 32 test targets match the baseline.
+
+| Tests Producer Stage | Before | After |
+| --- | --- | --- |
+| Compilation and Archive | 576.3 s | 493.4 s |
+| Separate Fixture Driver | 167.9 s | <0.001 s |
+| Guest Fixture | 210.2 s | 43.7 s |
+| Offline Inputs | 24.6 s | 32.4 s |
+| Total, Including Staging and Startup | 998.4 s | 590.8 s |
+| Warm Repeat of the Complete Producer | 46.3 s | 41.5 s |
+
+The example selection saved 619 seconds, while the cold Tests producer saved
+408 seconds. Within Tests, eliminating the second driver build saved 168 seconds
+and the guest stage fell by 166 seconds. These observations overlap cache and
+profile effects and are not additive estimates of independent improvements.
+Offline staging remains necessary for the complete archive and varied with load;
+focused tests do not perform it.
+
+An independent empty-target protocol check took 499 seconds through server-side
+compilation and 80–97 seconds in client-side mode. Cargo counted wrapper waiting
+inside frontend durations: even tiny dependency units had 50–90-second bars in
+the server-side control. This is why raising an already available 32-job limit
+was not the first fix.
+
+A separate, bounded cache and server isolated the cross-drive test from other
+sessions' statistics. Identical protocol builds on two drives went from 0 hits /
+70 misses to 63 hits / 7 misses with checkout-root normalization; the second build
+fell from 64 to 45 seconds. Editing and restoring the protocol source then took
+6.6 and 4.3 seconds with its target retained. No Git branch switch was performed.
+
+### Concurrent Builders
+
+Independent source snapshots, each with its own target and the shared cache,
+completed the same warm runtime edit as follows. Each builder used the native
+`CARGO_BUILD_JOBS=8` override; the repository does not impose that machine budget.
+
+| Builders | Batch Wall Time | Throughput Versus One |
+| --- | --- | --- |
+| 1 | 24.6 s | 1.0× |
+| 2 | 25.0 s | 2.0× |
+| 4 | 28.8 s | 3.4× |
+
+Use two concurrent warm builders when individual latency matters, or four for
+throughput: four added about 17% to the batch latency while completing four builds.
+More than four and a controlled cold-build concurrency limit remain unmeasured.
+Coarse process sampling observed up to four simultaneous rustc processes and
+about 3.2 logical cores of compiler work in that warm probe; short-lived processes
+can fall between samples. Cargo's whole-machine CPU curves include other builds.
+One small edit's serial frontend dependency chain cannot occupy all 32 threads.
+
+Keep one target per independent worktree and one machine-wide compiler cache.
+Commands in one checkout share Cargo's target lock; batch or queue those requests.
+Do not give concurrent compiler-cache servers the same writable disk cache.
+
+LLD did not consistently improve the warm library-test loop: the runtime leaf
+edit/restore took 31.8 / 17.3 seconds versus 13.6 / 15.9 with MSVC in the client-side
+control. The default linker, root debug tuning, dependency optimization and codegen
+unit settings are retained. Warm runtime units spent roughly 2–5 seconds in their
+frontends and under one second in code generation; more codegen parallelism does
+not remove that chain. Separate native/Wasm targets, build/test feature variants
+and incompatible dependency API versions still require distinct compiler units.
+
+The remaining architectural cost is the runtime test dependency on packaging,
+which itself uses runtime bundle and gRPC projection APIs in
+`tools/packaging/src/{lib.rs,bundle/mod.rs,proto/mod.rs}`. A library test can therefore
+compile both normal and test runtime units. Revisit that boundary with the host
+rebuild; this tuning does not restructure the locked crate graph.
+
+Focused Rust commands do not invoke TypeScript, C# or C++ builds. The Tests producer
+also stages Python wheels and Rust vendor inputs; those retain their native caches
+and are intentionally absent from the focused loop. Linux performance, other SDK
+build timings and actual branch switching remain unmeasured.
 
 ## Protocol Generation
 

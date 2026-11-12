@@ -40,8 +40,10 @@ git-cliff = "2.14.2"
 RUFF_CACHE_DIR = "{{ config_root }}/tools/python/.ruff_cache"
 TAPLO_CONFIG = "{{ config_root }}/tools/config/taplo.toml"
 RUSTC_WRAPPER = "{{ get_env(name='RUSTC_WRAPPER', default='') if get_env(name='CI', default='') else get_env(name='RUSTC_WRAPPER', default='sccache') }}"
-SCCACHE_DIR = "{{ get_env(name='SCCACHE_DIR', default='') if get_env(name='CI', default='') else (get_env(name='LOCALAPPDATA', default=env.HOME ~ '/AppData/Local') if os() == 'windows' else get_env(name='XDG_CACHE_HOME', default=env.HOME ~ '/.cache')) ~ '/sccache' }}"
-SCCACHE_CACHE_SIZE = "{{ get_env(name='SCCACHE_CACHE_SIZE', default='') if get_env(name='CI', default='') else '20G' }}"
+SCCACHE_DIR = "{{ get_env(name='SCCACHE_DIR', default='') if get_env(name='CI', default='') else get_env(name='SCCACHE_DIR', default=(get_env(name='LOCALAPPDATA', default=env.HOME ~ '/AppData/Local') if os() == 'windows' else get_env(name='XDG_CACHE_HOME', default=env.HOME ~ '/.cache')) ~ '/sccache') }}"
+SCCACHE_CACHE_SIZE = "{{ get_env(name='SCCACHE_CACHE_SIZE', default='') if get_env(name='CI', default='') else get_env(name='SCCACHE_CACHE_SIZE', default='20G') }}"
+SCCACHE_CLIENT_SIDE = "{{ get_env(name='SCCACHE_CLIENT_SIDE', default='') if get_env(name='CI', default='') else get_env(name='SCCACHE_CLIENT_SIDE', default='1') }}"
+SCCACHE_BASEDIRS = "{{ get_env(name='SCCACHE_BASEDIRS', default='') if get_env(name='CI', default='') else get_env(name='SCCACHE_BASEDIRS', default=config_root) }}"
 
 # === Variables === #
 
@@ -211,7 +213,7 @@ hide = true
 description = "Lint Rust over Every Product and Tests Selection"
 usage = 'flag "--extended"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --lib --bins --tests --profile test --features harmos-runtime/plugin-guest,harmos-packaging/generate-python",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --lib --bins --tests --examples --profile test --features harmos-runtime/plugin-guest,harmos-packaging/generate-python",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-cli -p schematic-sidecar",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-guest --target wasm32-unknown-unknown",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml -p harmos-sandbox-guest --target wasm32-unknown-unknown",

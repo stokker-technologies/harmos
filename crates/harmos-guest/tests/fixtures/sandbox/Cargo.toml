@@ -88,6 +88,13 @@ harmos-guest = { path = "../../../../harmos-guest", default-features = false, fe
 
 # === Profiles === #
 
+# Match the Root Workspace's Development Debug Information.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Keep Full Guest Metadata Validation Within The Same Fuel Budget In Dev Builds.
 [profile.dev.package.harmos-domain]
 opt-level = 2
