@@ -99,6 +99,20 @@ impl Context {
         }
     }
 
+    /// Require An Execution-Scoped Invocation Before Entering Lifecycle Work.
+    pub fn execution_scope(&self) -> Result<&str> {
+        if self.scope.is_empty() {
+            return Err(v1::Failure {
+                classification: v1::Classification::Refused as i32,
+                code: "execution_scope".into(),
+                message: "Execution Scope Is Required".into(),
+                ..Default::default()
+            }
+            .into());
+        }
+        Ok(&self.scope)
+    }
+
     pub fn set<T: Send + Sync + 'static>(&self, value: T) {
         self.resources.lock().expect("Resource Store Poisoned").insert(TypeId::of::<T>(), Arc::new(value));
     }

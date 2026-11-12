@@ -122,7 +122,12 @@ pub(crate) async fn host_handler(
     request: Host, context: harmos_runtime::operations::FunctionContext<Host>,
 ) -> Result<harmos_runtime::Response<Reply>, std::convert::Infallible> {
     context.resource::<Signals>().expect("declared resource is registered").entered.notify_one();
-    Ok(Reply { value: request.value }.into())
+    let value = if request.value == b"scope" {
+        context.call().get::<harmos_runtime::operations::ExecutionScope>().unwrap().as_str().as_bytes().to_vec()
+    } else {
+        request.value
+    };
+    Ok(Reply { value }.into())
 }
 
 pub(crate) fn host_operation()
@@ -190,6 +195,20 @@ impl HostFixture {
                 codec.decode(&row.payload).unwrap()
             })
             .collect()
+    }
+
+    pub fn managed_sdk(&self, mode: &str) -> harmos_runtime::plugin::grpc::Placement {
+        harmos_runtime::plugin::grpc::Placement::Managed(harmos_runtime::plugin::grpc::Managed {
+            executable: support::binary("harmos-sdk-invoke-fixture"),
+            arguments: vec![
+                mode.into(),
+                self.types.path().join("host.pb").into_os_string(),
+                self.request.clone().into(),
+                self.response.clone().into(),
+                "--managed".into(),
+            ],
+            environment: Default::default(),
+        })
     }
 
     pub async fn sdk(&self, mode: &str) -> Sdk {

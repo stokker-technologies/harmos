@@ -134,6 +134,20 @@ impl Manager {
         Ok(None)
     }
 
+    /// Bind An Opaque Execution Scope To This Handle And All Its Descendants.
+    pub fn with_execution_scope(&self, scope: impl Into<String>) -> Result<Self> {
+        let scope = scope.into();
+        if scope.is_empty() {
+            return Err(Error::InvalidInput {
+                field: "execution scope",
+                reason: "execution scope must be nonempty",
+            });
+        }
+        let mut context = self.call_context().clone();
+        context.insert(crate::operations::ExecutionScope(scope))?;
+        Ok(self.with_context(context))
+    }
+
     pub fn with_context(&self, context: crate::operations::CallContext) -> Self {
         let mut handle = self.clone();
         handle.context = Arc::new(std::sync::OnceLock::from(context));

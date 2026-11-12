@@ -121,6 +121,10 @@ public:
     }
     template<class R> Plugin& stream(const Stream<R>& stream);
     template<class R> Plugin& observer(const Observer<R>& observer);
+    template<class T> Plugin& message() {
+        detail::merge(messages_, detail::types(T::descriptor()));
+        return *this;
+    }
     template<class T> Plugin& section(const T& value) {
         wire::Section section;
         section.set_type(T::descriptor()->full_name());
@@ -134,6 +138,7 @@ public:
     void serve(std::string address = {}) const;
 
 private:
+    google::protobuf::FileDescriptorSet messages_;
     std::string id_;
     std::string version_;
     std::vector<detail::OperationDefinition> operations_;

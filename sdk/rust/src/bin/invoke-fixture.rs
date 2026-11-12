@@ -236,6 +236,13 @@ fn main() -> Result<()> {
             }
             Ok(())
         })
+    } else if mode == "scoped" {
+        Plugin::new("scoped", "1.0.0")
+            .requires::<HostInput>()
+            .requires::<PublicInput>()
+            .operation(Operation::new("fixture.lifecycle", scoped))
+    } else if mode == "scoped-provider" {
+        Plugin::new("provider", "1.0.0").operation(Operation::new("fixture.public", scope_identity).visibility(Visibility::Public))
     } else if mode == "provider" {
         Plugin::new("provider", "1.0.0")
             .operation(Operation::new("fixture.public", echo).visibility(Visibility::Public))
@@ -261,7 +268,7 @@ fn main() -> Result<()> {
                 ..Default::default()
             }))
     };
-    plugin.remote().serve()
+    if args.next().as_deref() == Some("--managed") { plugin.serve() } else { plugin.remote().serve() }
 }
 
 async fn observe(context: &Context) -> Result<Value> {
@@ -290,6 +297,27 @@ async fn clock(context: &Context, _: Value) -> Result<Value> {
 
 async fn empty(_: &Context, _: ()) -> Result<()> {
     Ok(())
+}
+
+async fn scope_identity(context: &Context, _: Value) -> Result<Value> {
+    Ok(Value {
+        value: context.execution_scope()?.as_bytes().to_vec(),
+    })
+}
+
+async fn scoped(context: &Context, input: Value) -> Result<Value> {
+    let scope = context.execution_scope()?;
+    if input.value != scope.as_bytes() {
+        return Err(harmos::Error::Invalid("Lifecycle Identity Differs From Execution Scope".into()));
+    }
+    let host = context.operation(HostInput { value: b"scope".to_vec() }).await?;
+    let plugin = context.operation(PublicInput { value: Vec::new() }).await?;
+    let mut value = scope.as_bytes().to_vec();
+    value.push(0);
+    value.extend_from_slice(&host.value);
+    value.push(0);
+    value.extend_from_slice(&plugin.value);
+    Ok(Value { value })
 }
 
 async fn echo(_: &Context, input: Value) -> Result<Value> {

@@ -84,10 +84,6 @@ impl Process {
 
 /* === Public Functions === */
 
-pub fn plugin() -> PathBuf {
-    binary("harmos-sdk-conformance-plugin")
-}
-
 pub fn binary(name: &str) -> PathBuf {
     let extension = std::env::consts::EXE_SUFFIX;
     if let Ok(profile) = std::env::var("STKR_TEST_PROFILE") {

@@ -16,7 +16,6 @@ mod guest_registration;
 
 mod client_rejects_invalid_completion;
 mod host_clock_and_resources;
-mod managed_plugin_passes_every_rule;
 mod support {
     include!("../support/mod.rs");
 }

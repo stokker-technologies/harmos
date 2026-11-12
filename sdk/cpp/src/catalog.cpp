@@ -171,6 +171,7 @@ Plugin& Plugin::on_stop(std::function<void()> cleanup) {
 
 wire::Catalog Plugin::catalog() const {
     wire::Catalog catalog;
+    *catalog.mutable_types() = messages_;
     std::set<std::string> operations;
     std::set<std::string> requirements;
     std::set<std::string> streams;

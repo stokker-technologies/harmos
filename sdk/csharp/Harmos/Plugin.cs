@@ -37,6 +37,13 @@ public sealed class Plugin(string id, string version)
     return this;
   }
 
+  /// <summary>Register a payload descriptor independently of executable declarations.</summary>
+  public Plugin Message<T>() where T : IMessage<T>, new()
+  {
+    Descriptors.Merge(catalog.Types_, Descriptors.Types(new T().Descriptor));
+    return this;
+  }
+
   public Plugin Requires<TRequest, TResponse>(Operation<TRequest, TResponse> operation)
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()

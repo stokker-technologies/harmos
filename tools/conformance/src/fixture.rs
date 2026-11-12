@@ -183,6 +183,9 @@ pub fn catalog() -> Catalog {
         });
     }
     let mut types = schema_fixture::types();
+    let mut standalone = self::types().file.remove(0).message_type.remove(0);
+    standalone.name = Some("PayloadOnly".into());
+    types.file.iter_mut().find(|file| file.package.as_deref() == Some("harmos.conformance.v1")).unwrap().message_type.push(standalone);
     for file in harmos_protocol::clock::catalog_types().file {
         if !types.file.iter().any(|existing| existing.name == file.name) {
             types.file.push(file);

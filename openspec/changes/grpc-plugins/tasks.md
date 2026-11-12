@@ -307,6 +307,12 @@
 
 ## 8. Final Validation
 
+- [ ] 8.5 Complete the additive SDK follow-ups in this worktree; ownership is SDK client, registration and fixtures, tools/conformance, runtime plugin dispatch and its stories, and this change's design/tasks. Storage and storage-facing contracts remain with their existing owners. README impact is reviewed with the public API notes.
+  - [ ] 8.5.1 Add descriptor-backed generated-client decoded-memory admission and focused real-host refusal, round-trip and cancellation proof; settle returned-value claim ownership without silently changing the agreed call shape.
+  - [x] 8.5.2 Carry caller-owned execution scope through managed/remote plugin dispatch and inherited child calls; prove scoped lifecycle delivery and unscoped refusal. Windows focused proof passes: plugin_grpc::execution_scope::scoped_lifecycle_calls_inherit_scope_and_refuse_unscoped_calls, including two isolated scopes, native and plugin children, both placements, refusal and cleanup. The initial default-feature runtime check failed on denied storage dead-code warnings; the final gates remain separate under 8.5.4.
+  - [x] 8.5.3 Add independent message registration to all four SDKs and a shared descriptor-only conformance case. All 20 shared cases pass for Rust, Python, C# and C++ on Windows; C# also proves remote placement. Rust descriptor merging now retains top-level enums when independent messages are registered first.
+  - [ ] 8.5.4 Run requested format, Rust/Python/repository checks, test artifact build and four-SDK conformance; record failures separately from source closure. The complete Python check requires Product-generated clients, absent from this checkout; the SDK-specific Python check passes. The documentation owner must update the reference-case count in docs/tooling.md from 19 to 20.
+
 - [ ] 8.1 Run targeted transport, lifecycle, conformance and guest tests on Linux and Windows.
 
 - [ ] 8.2 Run each pilot SDK against the extended conformance suite on native Linux and Windows; retain failures and repair affected consumers.

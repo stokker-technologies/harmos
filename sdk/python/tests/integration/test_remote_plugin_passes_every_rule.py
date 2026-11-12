@@ -40,7 +40,7 @@ class RemotePlugin(unittest.IsolatedAsyncioTestCase):
         status, stdout, stderr = await host.run(endpoint.address)
         self.assertEqual(status, 0, stdout + stderr)
         rows = [line for line in stdout.splitlines() if line.endswith("| PASS |")]
-        self.assertEqual(len(rows), 19, stdout)
+        self.assertEqual(len(rows), 20, stdout)
 
 
 # === Public Functions === #
