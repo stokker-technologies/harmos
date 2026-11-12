@@ -92,10 +92,11 @@ pub(super) fn store(connection: &Connection, source: &ColumnSource, batch: &Reco
             )
             .map_err(db)?;
     }
+    super::index::maintain(connection, source, batch)?;
     Ok(())
 }
 
-pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation) -> Result<ArrowPage> {
+pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation, history: bool) -> Result<ArrowPage> {
     cancel.check()?;
     state.snapshot(snapshot)?;
     let after = read.position(snapshot)?;
@@ -189,7 +190,7 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
     if bytes_read.saturating_add(batch.get_array_memory_size().saturating_mul(3)) > read.work.bytes.get() {
         return Err(columnar::exhausted());
     }
-    if read.source.kind == ColumnKind::Objects {
+    if read.source.kind == ColumnKind::Objects && !history {
         let key = text(&read.source.schema)?;
         let mut query = state.connection.prepare("SELECT position FROM storage_rows WHERE kind=1 AND schema_key=?1 AND position>=?3 AND position<=?4 AND position<=?2 AND position=(SELECT max(o.position) FROM storage_rows o WHERE o.kind=1 AND o.schema_key=?1 AND o.item=storage_rows.item AND o.position<=?2)").map_err(db)?;
         let retained = query

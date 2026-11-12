@@ -14,6 +14,7 @@ mod columnar_snapshot;
 mod directory;
 mod exact_quantile_spill;
 mod file_sessions;
+mod index_seek;
 mod manager;
 mod query;
 mod state;

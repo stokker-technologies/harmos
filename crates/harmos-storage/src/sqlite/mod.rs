@@ -11,6 +11,7 @@
 
 mod columns;
 mod files;
+mod index;
 mod rows;
 
 /* === Re-Exports === */
@@ -97,6 +98,8 @@ impl SqliteBackend {
             CREATE TABLE IF NOT EXISTS storage_files(id TEXT PRIMARY KEY, metadata BLOB NOT NULL, length INTEGER NOT NULL, finished BLOB);
             CREATE TABLE IF NOT EXISTS storage_file_chunks(id TEXT NOT NULL REFERENCES storage_files(id), offset INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY(id,offset));
             CREATE TABLE IF NOT EXISTS storage_mutations(id TEXT PRIMARY KEY, data BLOB NOT NULL);
+            CREATE TABLE IF NOT EXISTS storage_indexes(name TEXT PRIMARY KEY,revision INTEGER NOT NULL,source TEXT NOT NULL,definition BLOB NOT NULL);
+            CREATE TABLE IF NOT EXISTS storage_index_entries(name TEXT NOT NULL,revision INTEGER NOT NULL,key BLOB NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(name,revision,key,position));
             CREATE TABLE IF NOT EXISTS object_releases(schema_key TEXT NOT NULL, item TEXT NOT NULL, through INTEGER NOT NULL, PRIMARY KEY(schema_key,item));").map_err(db)?;
         let encoded = text(&history)?;
         let stored: Option<String> =
@@ -161,6 +164,7 @@ impl StorageBackend for SqliteBackend {
     fn capabilities(&self) -> StorageCapabilities {
         StorageCapabilities {
             native_arrow: true,
+            native_index: true,
             ..StorageCapabilities::default()
         }
     }
@@ -288,9 +292,28 @@ impl StorageBackend for SqliteBackend {
         &'a self, snapshot: &'a BackendSnapshot, read: &'a ArrowScan, cancel: &'a Cancellation,
     ) -> StorageFuture<'a, ArrowPage> {
         let (snapshot, read, cancel) = (snapshot.clone(), read.clone(), cancel.clone());
-        Box::pin(self.call(move |state| columns::scan(state, &snapshot, &read, &cancel)))
+        Box::pin(self.call(move |state| columns::scan(state, &snapshot, &read, &cancel, false)))
     }
 
+    fn register_index<'a>(
+        &'a self, definition: &'a crate::query::index::IndexDefinition, rebuild: bool, work: ReadLimits, cancel: &'a Cancellation,
+    ) -> StorageFuture<'a, u64> {
+        let (definition, cancel) = (definition.clone(), cancel.clone());
+        Box::pin(self.call(move |state| index::register(state, &definition, rebuild, work, &cancel)))
+    }
+    fn index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
+        let name = name.clone();
+        Box::pin(self.call(move |state| {
+            state.check()?;
+            index::definition(&state.connection, &name)
+        }))
+    }
+    fn scan_index<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, read: &'a crate::query::index::IndexRead, cancel: &'a Cancellation,
+    ) -> StorageFuture<'a, crate::query::index::IndexPage> {
+        let (snapshot, read, cancel) = (snapshot.clone(), read.clone(), cancel.clone());
+        Box::pin(self.call(move |state| index::scan(state, &snapshot, &read, &cancel)))
+    }
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         let metadata = metadata.clone();
         Box::pin(self.call(move |state| files::create(state, &metadata)))

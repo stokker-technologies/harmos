@@ -33,6 +33,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("storage index `{name}` is not registered")]
+    IndexNotFound { name: crate::Identifier },
+
     #[error("operation `{operation}` failed")]
     OperationFailed {
         operation: String,

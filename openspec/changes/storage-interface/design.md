@@ -441,3 +441,13 @@ and release semantics while removing fixture work that dominated the baseline. S
 use a durable monotonically allocated identifier and an instance-owned live registry; reopening
 cannot accidentally accept an old token. Native column chunks carry exact integer time bounds
 and finite float bounds; pruning advances source continuation without fetching payload bytes.
+
+
+Index registration takes the definition, an explicit rebuild decision, consumer work limits and
+cancellation. SQLite builds existing keys under one immediate transaction and maintains future
+keys with the source write. Canonical scalar bytes plus source position form the total order;
+null sorts first, then boolean, signed, unsigned, finite float, text and datetime type tags.
+Within a declared field type its natural order is preserved; floating signed zero is normalized.
+Text escapes NUL before its terminator. Missing declarations return `Error::IndexNotFound`.
+The bounded fallback scans at most the supplied source work and retains only one output page
+plus its lookahead; it refuses rather than return an incomplete globally ordered answer.

@@ -14,6 +14,7 @@
 mod accumulate;
 pub mod columnar;
 mod execute;
+pub mod index;
 mod object_schemas;
 mod order_stats;
 mod ordering;

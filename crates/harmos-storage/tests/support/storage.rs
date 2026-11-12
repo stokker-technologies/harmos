@@ -167,6 +167,7 @@ pub struct Release {
 }
 
 pub struct Data {
+    indexes: Mutex<harmos_storage::query::index::IndexCatalog>,
     pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
     pub object_releases: Mutex<Vec<Release>>,
     catalog: ObjectCatalog,
@@ -267,6 +268,7 @@ impl Data {
 impl Data {
     pub fn with_catalog(catalog: ObjectCatalog, history: StoreHistory) -> Self {
         Self {
+            indexes: Mutex::default(),
             pruned_objects: Mutex::default(),
             object_releases: Mutex::new(Vec::new()),
             catalog,
@@ -299,6 +301,19 @@ impl Data {
 }
 
 impl StorageBackend for Data {
+    fn register_index<'a>(
+        &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, rebuild: bool, _work: ReadLimits,
+        cancel: &'a harmos_storage::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, u64> {
+        Box::pin(async move {
+            cancel.check()?;
+            self.indexes.lock().unwrap().register(definition, rebuild)
+        })
+    }
+    fn index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_storage::query::index::IndexDefinition, u64)> {
+        Box::pin(async move { self.indexes.lock().unwrap().definition(name) })
+    }
+
     fn release_object_history<'a>(
         &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()> {

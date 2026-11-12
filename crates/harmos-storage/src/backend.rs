@@ -71,6 +71,24 @@ pub struct ReadLimits {
 /* === Traits === */
 
 pub trait StorageBackend: Send + Sync + 'static {
+    fn register_index<'a>(
+        &'a self, _definition: &'a crate::query::index::IndexDefinition, _rebuild: bool, _work: ReadLimits,
+        _cancel: &'a crate::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, u64> {
+        unsupported("storage index registration")
+    }
+
+    fn index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
+        Box::pin(async move { Err(Error::IndexNotFound { name: name.clone() }) })
+    }
+
+    fn scan_index<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::index::IndexRead,
+        _cancel: &'a crate::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, crate::query::index::IndexPage> {
+        unsupported("native index scan")
+    }
+
     fn capabilities(&self) -> crate::query::columnar::StorageCapabilities {
         crate::query::columnar::StorageCapabilities::default()
     }
