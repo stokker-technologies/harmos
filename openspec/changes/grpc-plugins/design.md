@@ -735,7 +735,7 @@ virtual time.
 ### SDK Admission, Execution Scope and Independent Payload Types
 
 These additive follow-ups keep the SDK dependent only on protocol and transport support.
-Generated-client admission scans the bound message descriptors before Prost decoding, including
+Planned generated-client admission scans the bound message descriptors before Prost decoding, including
 repeated, map and nested allocations. Managed envelopes are scanned and merged from borrowed
 wire slices so no unclaimed payload accumulator is needed. The caller selects the byte bound;
 the returned-value claim lifetime must be settled before completing that API.
@@ -747,7 +747,7 @@ retained by callers requires an owning return wrapper. This ownership decision r
 the descriptor scanner is preparatory work, not a claim that client admission is delivered.
 
 ```rust
-// Generated client: additive setting; existing method and invocation shapes remain.
+// Planned client setting; the return-ownership decision above remains open.
 pub struct ClientSettings {
     pub retained_bytes: NonZeroUsize,
     // Existing wire and outgoing queue bounds.
@@ -783,6 +783,7 @@ an independent payload type while proving no executable declaration or section r
 The Rust SDK conformance journey lives with the executable runner in
 `tools/conformance/tests/integration`, retaining its fixture and shared cases without compiling
 the SDK's unrelated Wasm development dependencies for a native protocol journey.
+The SDK's unused development dependency on the runner is removed with that move.
 The public README's entry points and setup remain accurate; the additive shapes are specified
 here and in their SDK API documentation rather than changing unaffected README claims.
 

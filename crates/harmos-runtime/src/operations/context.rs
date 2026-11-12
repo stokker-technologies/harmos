@@ -32,7 +32,7 @@ use crate::Result;
 #[cfg(feature = "grpc")]
 pub(crate) struct Deadline(pub(crate) tokio::time::Instant);
 
-/// Opaque Execution Identity Inherited By Host And Plugin Child Calls.
+/// Opaque Execution Identity Inherited by Host and Plugin Child Calls.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExecutionScope(pub(crate) String);
 

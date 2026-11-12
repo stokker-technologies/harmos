@@ -134,7 +134,7 @@ impl Manager {
         Ok(None)
     }
 
-    /// Bind An Opaque Execution Scope To This Handle And All Its Descendants.
+    /// Bind an Opaque Execution Scope to This Handle and All Its Descendants.
     pub fn with_execution_scope(&self, scope: impl Into<String>) -> Result<Self> {
         let scope = scope.into();
         if scope.is_empty() {

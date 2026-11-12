@@ -89,7 +89,7 @@ impl Plugin {
         self.observers.push(observer);
         self
     }
-    /// Register A Payload Descriptor Without Adding An Operation, Stream Or Section.
+    /// Register a Payload Descriptor Without Adding an Operation, Stream or Section.
     pub fn message<T: Message>(mut self) -> Self {
         self.messages.push((T::name(), T::types()));
         self

@@ -99,7 +99,7 @@ impl Context {
         }
     }
 
-    /// Require An Execution-Scoped Invocation Before Entering Lifecycle Work.
+    /// Require an Execution-Scoped Invocation Before Entering Lifecycle Work.
     pub fn execution_scope(&self) -> Result<&str> {
         if self.scope.is_empty() {
             return Err(v1::Failure {
