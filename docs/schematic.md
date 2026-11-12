@@ -57,7 +57,7 @@ through `Runtime::launch_with` while keeping that preparation path.
 The native plugin depends on `harmos`; its unary protobuf contracts and
 operation builder values live in `sidecar/src/operations.rs`, using messages generated
 from `proto/schematic/v1/operations.proto`. It ends in `serve()`.
-The host uses managed gRPC placement and checks its `Plugin.Get` identity.
+The host uses managed gRPC placement and checks its `Instance.Get` identity.
 The guest uses `harmos/wasm` and one `harmos_register` function returning SDK builders.
 
 ## Streaming and Native Access
@@ -111,8 +111,8 @@ package-relative `.proto` files, preserving imports. The native catalogs include
 `ListDirectories`; the guest catalog includes only portable operations. The
 `schematic.v1.Schematic` schema describes known methods. Exporting it does not
 start a gRPC server. Client generation consumes the CLI host's captured schema;
-native plugin discovery uses `Plugin.Get` instead of an embedded inventory or an export flag.
-Native packages obtain identity through `Plugin.Get`, call `Stop`, and contain the
+native plugin discovery uses `Instance.Get` instead of an embedded inventory or an export flag.
+Native packages obtain identity through `Instance.Get`, call `Stop`, and contain the
 executable without framed-sidecar registrations. Bundle inspection and extraction
 remain inert; inspecting a standalone native executable starts it to read its catalog.
 

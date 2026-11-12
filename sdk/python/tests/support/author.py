@@ -41,7 +41,7 @@ class Author:
         self.reading = asyncio.Event()
         self.released = asyncio.Event()
 
-    @operation("author.wait", request=Value, response=clock.TimeGetResponse)
+    @operation("author.wait", request=Value, response=clock.TimeGetResponse, visibility=wire.VISIBILITY_PROTECTED)
     async def wait(self, ctx: Context, request: Value) -> clock.TimeGetResponse:
         self.calls += 1
         ctx.set(request)
@@ -51,7 +51,7 @@ class Author:
             raise ValueError("Execution Lost Its Resource")
         return clock.TimeGetResponse(now=at)
 
-    @operation("author.state", request=Value, response=Value)
+    @operation("author.state", request=Value, response=Value, visibility=wire.VISIBILITY_PROTECTED)
     async def state(self, ctx: Context, request: Value) -> Value:
         try:
             ctx.get(Value)

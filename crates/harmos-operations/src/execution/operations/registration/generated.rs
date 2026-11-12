@@ -75,7 +75,7 @@ pub trait ProtobufOperation: Send + Sync + 'static {
     const ID: &'static str;
     const GRPC: Option<Grpc> = None;
     const POLICY: OperationPolicy;
-    const VISIBILITY: Visibility = Visibility::Private;
+    const VISIBILITY: Visibility = Visibility::Protected;
     const DESCRIPTION: &'static str = "";
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[];
@@ -506,8 +506,8 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         replay: O::REPLAY,
         fingerprint: crate::execution::Fingerprint([0; 32]),
     };
-    if matches!(O::ID, "harmos.time.sleep" | "harmos.time.get") {
-        let clock = Contract::clock(O::ID == "harmos.time.sleep", O::POLICY, settings)?;
+    if matches!(O::ID, "harmos.v1.Time/Sleep" | "harmos.v1.Time/Get") {
+        let clock = Contract::clock(O::ID == "harmos.v1.Time/Sleep", O::POLICY, settings)?;
         let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
         let same_mapping = clock.grpc() == O::GRPC.as_ref();
         if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {

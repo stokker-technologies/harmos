@@ -181,6 +181,10 @@ wire::Catalog Plugin::catalog() const {
         if (!operations.insert(operation.contract.id()).second || !operation.handler) {
             throw std::invalid_argument("Duplicate or Unhandled Operation");
         }
+        const auto visibility = operation.contract.visibility();
+        if (visibility != wire::VISIBILITY_PRIVATE && visibility != wire::VISIBILITY_PROTECTED && visibility != wire::VISIBILITY_PUBLIC)
+            throw std::invalid_argument("Register " + operation.contract.id() + ": Explicit Visibility Is Required");
+        if (visibility == wire::VISIBILITY_PRIVATE) continue;
         *catalog.add_operations() = operation.contract;
         detail::merge(*catalog.mutable_types(), operation.types);
     }

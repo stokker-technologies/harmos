@@ -37,6 +37,9 @@ pub struct InstanceAccess(pub Arc<dyn Instances>);
 /* === Traits === */
 
 pub trait Instances: Send + Sync {
+    fn invoke(
+        &self, request: harmos_protocol::v1::InvocationsInvokeRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, super::ServingError>> + Send + '_>>;
     fn owned(&self, id: Id) -> Option<Arc<dyn InstanceControl>>;
 }
 pub trait InstanceControl: Send + Sync {

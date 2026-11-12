@@ -32,7 +32,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     var request = input.Current.Request;
     if (request.Invocation.Length == 0 || request.Attempt == 0)
       throw Invalid("Invocation and Attempt Are Required");
-    if (!operations.TryGetValue(request.Operation, out var handler))
+    if (!operations.TryGetValue(request.Operation, out var handler) || handler.Contract.Visibility == Visibility.Private)
       throw new RpcException(new Status(StatusCode.NotFound, "Unknown Operation"));
 
     IMessage decoded;
@@ -43,7 +43,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
 
     using var stopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
     var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
-    var context = new Context(request, description.Id, requires, stopped, frames.Writer);
+    var context = new Context(request, description.Id, requires, stopped, frames.Writer, operations);
     var processing = RunInvoke(input, handler, decoded, context, frames.Writer, call.CancellationToken);
     try
     {
@@ -90,10 +90,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         switch (frame.FrameCase)
         {
           case InstanceInvokeRequest.FrameOneofCase.Child:
-            context.Reply(frame.Child);
+            await context.Reply(frame.Child);
             break;
           case InstanceInvokeRequest.FrameOneofCase.Cancel:
-            context.Cancel(frame.Cancel.Reason);
+            await context.Cancel(frame.Cancel.Reason);
             break;
           default:
             throw Invalid("Expected Child Response or Cancel");
@@ -108,6 +108,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       {
         response = new V1.Response { Failure = context.CancellationFailure().Failure };
       }
+      await context.FlushCancellations();
       await output.WriteAsync(new InstanceInvokeResponse { Response = response }, transport);
       output.TryComplete();
     }

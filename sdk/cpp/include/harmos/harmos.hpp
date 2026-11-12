@@ -44,6 +44,7 @@ namespace wire = v1;
 class Context;
 template<class Q, class R> class Operation;
 template<class R> class Call;
+template<class R> class Watching;
 template<class R> class Stream;
 template<class R> class Observer;
 
@@ -54,6 +55,7 @@ google::protobuf::FileDescriptorSet types(const google::protobuf::Descriptor* de
 void merge(google::protobuf::FileDescriptorSet& target, const google::protobuf::FileDescriptorSet& source);
 struct OperationDefinition {
     wire::OperationContract contract;
+    bool watch = false;
     google::protobuf::FileDescriptorSet types;
     std::function<std::string(Context&, const std::string&)> handler;
 };
@@ -64,6 +66,11 @@ struct StreamDefinition {
     std::function<void(Context&, std::function<void(std::string, std::optional<google::protobuf::Timestamp>)>)> producer;
 };
 struct Invocation;
+struct Watch {
+    virtual ~Watch() = default;
+    virtual std::optional<std::string> next() = 0;
+    virtual void cancel() = 0;
+};
 }
 
 /* === Classes === */
@@ -90,6 +97,7 @@ public:
     explicit Context(std::shared_ptr<detail::Invocation> state);
     template<class Q, class R> Call<R> call(const Operation<Q, R>& operation, const Q& request,
                                            std::optional<wire::OperationPolicy> policy = {});
+    template<class Q, class R> Watching<R> watch(const Operation<Q, R>& operation, const Q& request, std::size_t max_item_bytes);
     void sleep(const google::protobuf::Duration& duration);
     google::protobuf::Timestamp now();
     std::string cancelled();
@@ -101,16 +109,21 @@ private:
     std::shared_ptr<detail::Invocation> state_;
     std::unordered_map<std::type_index, std::any> resources_;
     std::shared_future<std::string> send(wire::ChildRequest request);
+    std::shared_ptr<detail::Watch> open_watch(wire::ChildRequest request);
+    std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition& operation, const std::string& payload, std::optional<wire::OperationPolicy> policy);
 };
 
 class Plugin {
 public:
     Plugin(std::string id, std::string version);
     template<class Q, class R> Plugin& operation(const Operation<Q, R>& operation) {
+        if (operation.definition.watch) throw std::invalid_argument("Register " + operation.definition.contract.id() + ": Plugin Operations Are Unary");
         operations_.push_back(operation.definition);
         return *this;
     }
     template<class Q, class R> Plugin& requires_operation(const Operation<Q, R>& operation) {
+        if (operation.definition.contract.visibility() == wire::VISIBILITY_PRIVATE)
+            throw std::invalid_argument("Require " + operation.definition.contract.id() + ": Private Calls Are Local");
         wire::Requirement requirement;
         requirement.set_id(operation.definition.contract.id());
         requirement.set_fingerprint(operation.definition.contract.fingerprint());
@@ -169,14 +182,14 @@ private:
     friend class Context;
     detail::OperationDefinition definition;
 public:
-    explicit Operation(std::string id, std::function<R(Context&, Q)> handler = {}) {
+    explicit Operation(std::string id, wire::Visibility visibility, std::function<R(Context&, Q)> handler = {}) {
         auto request = detail::types(Q::descriptor());
         auto response = detail::types(R::descriptor());
         auto& contract = definition.contract;
         contract.set_id(id);
         contract.set_request(Q::descriptor()->full_name());
         contract.set_response(R::descriptor()->full_name());
-        contract.set_visibility(wire::VISIBILITY_PRIVATE);
+        contract.set_visibility(visibility);
         contract.set_fingerprint(detail::sha256(id + std::string(1, '\0') + detail::encode(request) + detail::encode(response)));
         definition.types = request;
         detail::merge(definition.types, response);
@@ -185,13 +198,47 @@ public:
         };
     }
     Operation& visibility(wire::Visibility value) { definition.contract.set_visibility(value); return *this; }
+    Operation& watch() {
+        if (definition.watch) return *this;
+        definition.watch = true;
+        const auto response = detail::encode(detail::types(R::descriptor()));
+        const auto item = detail::sha256(definition.contract.id() + std::string(1, '\0') + response + response);
+        definition.contract.set_fingerprint(detail::sha256(std::string("harmos.protobuf.stream.v1\0", 26) + definition.contract.fingerprint() + std::string("\0\1", 2) + item));
+        return *this;
+    }
     Operation& replay_safe() { definition.contract.set_replay_safe(true); return *this; }
     Operation& policy(wire::OperationPolicy value) { *definition.contract.mutable_policy() = std::move(value); return *this; }
     Operation& description(std::string value) { definition.contract.set_description(std::move(value)); return *this; }
 };
 
+template<class R> class Watching {
+public:
+    explicit Watching(std::shared_ptr<detail::Watch> state) : state_(std::move(state)) {}
+    Watching(const Watching&) = delete;
+    Watching& operator=(const Watching&) = delete;
+    Watching(Watching&&) = default;
+    ~Watching() { if (state_) state_->cancel(); }
+    std::optional<R> next() { auto value = state_->next(); return value ? std::optional<R>(decode<R>(*value)) : std::nullopt; }
+private:
+    std::shared_ptr<detail::Watch> state_;
+};
+
+template<class Q, class R> Watching<R> Context::watch(const Operation<Q, R>& operation, const Q& request, std::size_t max_item_bytes) {
+    if (!operation.definition.watch) throw std::invalid_argument("Watch " + operation.definition.contract.id() + ": Server-Streaming Contract Required");
+    wire::ChildRequest child;
+    child.set_operation(operation.definition.contract.id());
+    child.set_fingerprint(operation.definition.contract.fingerprint());
+    child.set_payload(detail::encode(request));
+    child.set_watch(true);
+    child.set_max_response_bytes(max_item_bytes);
+    return Watching<R>(open_watch(std::move(child)));
+}
+
 template<class Q, class R> Call<R> Context::call(const Operation<Q, R>& operation, const Q& request,
                                                std::optional<wire::OperationPolicy> policy) {
+    if (operation.definition.watch) throw std::invalid_argument("Call " + operation.definition.contract.id() + ": Use Watch for a Streaming Contract");
+    const auto payload = detail::encode(request);
+    if (auto result = local(operation.definition, payload, policy)) return Call<R>(*result);
     wire::ChildRequest child;
     child.set_operation(operation.definition.contract.id());
     child.set_fingerprint(operation.definition.contract.fingerprint());
@@ -259,6 +306,6 @@ template<class R> Plugin& Plugin::observer(const Observer<R>& observer) {
 
 /* === Public Declarations === */
 
-inline const Operation<context::v1::TimeSleepRequest, context::v1::TimeSleepResponse> SLEEP("harmos.time.sleep");
-inline const Operation<context::v1::TimeGetRequest, context::v1::TimeGetResponse> GET_TIME("harmos.time.get");
+inline const Operation<context::v1::TimeSleepRequest, context::v1::TimeSleepResponse> SLEEP("harmos.context.v1.Time/Sleep", wire::VISIBILITY_PUBLIC);
+inline const Operation<context::v1::TimeGetRequest, context::v1::TimeGetResponse> GET_TIME("harmos.context.v1.Time/Get", wire::VISIBILITY_PUBLIC);
 }

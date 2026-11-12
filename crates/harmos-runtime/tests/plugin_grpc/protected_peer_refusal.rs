@@ -7,7 +7,7 @@
  * ***
  */
 
-// Private Peer Operation Is Refused
+// Protected Admission Retains Owner Access and Refuses a Peer.
 
 /* === Imports === */
 
@@ -22,7 +22,7 @@ use harmos_runtime::plugin::grpc::Placement;
 /* === Tests === */
 
 #[tokio::test]
-async fn private_peer_operation_is_refused_across_plugins() {
+async fn protected_peer_operation_is_refused_across_plugins() {
     // Connect Caller And Peer SDK Plugins
     let host = HostFixture::new().await;
     let peer = host.sdk("provider").await;
@@ -33,10 +33,12 @@ async fn private_peer_operation_is_refused_across_plugins() {
     // Refuse The Call Across Plugin Owners
     let error = host.runtime.operations.call_encoded("fixture.forward", payload(b"secret")).await.unwrap_err();
     assert_eq!(call_error(&error).classification(), harmos_protocol::v1::Classification::Refused);
-    assert!(call_error(&error).to_string().contains("fixture.private"));
+    assert!(call_error(&error).to_string().contains("fixture.protected"));
 
-    // The Host Can Still Invoke That Private Operation
+    // The Host Can Still Invoke That Protected Operation
     let input = payload(b"host access");
-    assert_eq!(host.runtime.operations.call_encoded("fixture.private", input.clone()).await.unwrap(), input);
+    assert_eq!(host.runtime.operations.call_encoded("fixture.protected", input.clone()).await.unwrap(), input);
+    // The Declaring Plugin Also Calls It Through the Host Carrier.
+    assert_eq!(host.runtime.operations.call_encoded("fixture.self", input.clone()).await.unwrap(), input);
     host.runtime.shutdown().await.unwrap();
 }

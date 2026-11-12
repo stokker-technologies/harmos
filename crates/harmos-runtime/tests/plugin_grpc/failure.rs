@@ -27,6 +27,7 @@ async fn structured_failure_preserves_causes_and_leaves_the_connection_usable() 
     let harmos_runtime::plugin::grpc::CallError::Remote(failure) = super::invoke_support::call_error(&error) else {
         panic!("Expected An Application Failure");
     };
+    let failure = harmos_protocol::v1::Failure::from(failure.as_ref());
     assert_eq!(failure.classification(), harmos_protocol::v1::Classification::Permanent);
     assert_eq!(failure.code, "fixture_failure");
     assert_eq!(failure.operation, "fixture.failure");

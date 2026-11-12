@@ -34,6 +34,11 @@ class InvocationsStub:
         Args:
             channel: A grpc.Channel.
         """
+        self.Invoke = channel.unary_unary(
+                '/harmos.v1.Invocations/Invoke',
+                request_serializer=harmos_dot_v1_dot_invocations__pb2.InvocationsInvokeRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_invocations__pb2.InvocationsInvokeResponse.FromString,
+                _registered_method=True)
         self.Get = channel.unary_unary(
                 '/harmos.v1.Invocations/Get',
                 request_serializer=harmos_dot_v1_dot_invocations__pb2.InvocationsGetRequest.SerializeToString,
@@ -53,6 +58,12 @@ class InvocationsStub:
 
 class InvocationsServicer:
     """Missing associated documentation comment in .proto file."""
+
+    def Invoke(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def Get(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -75,6 +86,11 @@ class InvocationsServicer:
 
 def add_InvocationsServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'Invoke': grpc.unary_unary_rpc_method_handler(
+                    servicer.Invoke,
+                    request_deserializer=harmos_dot_v1_dot_invocations__pb2.InvocationsInvokeRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_invocations__pb2.InvocationsInvokeResponse.SerializeToString,
+            ),
             'Get': grpc.unary_unary_rpc_method_handler(
                     servicer.Get,
                     request_deserializer=harmos_dot_v1_dot_invocations__pb2.InvocationsGetRequest.FromString,
@@ -100,6 +116,33 @@ def add_InvocationsServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class Invocations:
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Invoke(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Invocations/Invoke',
+            harmos_dot_v1_dot_invocations__pb2.InvocationsInvokeRequest.SerializeToString,
+            harmos_dot_v1_dot_invocations__pb2.InvocationsInvokeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def Get(request,

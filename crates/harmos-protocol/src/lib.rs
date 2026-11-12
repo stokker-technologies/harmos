@@ -7,7 +7,7 @@
  * ***
  */
 
-//! Protobuf messages and gRPC bindings for the `harmos.v1` plugin protocol.
+//! Audience-separated client, context and instance protocol contracts.
 //! [`schema`] owns descriptor fingerprints and catalog digests shared by peers.
 
 /* === Modules === */

@@ -23,29 +23,31 @@ _sym_db = _symbol_database.Default()
 
 
 from harmos.v1 import types_pb2 as harmos_dot_v1_dot_types__pb2
-from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bharmos/v1/invocations.proto\x12\tharmos.v1\x1a\x15harmos/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/duration.proto\")\n\x15InvocationsGetRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\"<\n\x18InvocationsCancelRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\x12\x0e\n\x06reason\x18\x02 \x01(\t\"+\n\x17InvocationsWatchRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\"F\n\x16InvocationsGetResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState\"I\n\x19InvocationsCancelResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState\"H\n\x18InvocationsWatchResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState2\x82\x02\n\x0bInvocations\x12J\n\x03Get\x12 .harmos.v1.InvocationsGetRequest\x1a!.harmos.v1.InvocationsGetResponse\x12S\n\x06\x43\x61ncel\x12#.harmos.v1.InvocationsCancelRequest\x1a$.harmos.v1.InvocationsCancelResponse\x12R\n\x05Watch\x12\".harmos.v1.InvocationsWatchRequest\x1a#.harmos.v1.InvocationsWatchResponse0\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1bharmos/v1/invocations.proto\x12\tharmos.v1\x1a\x15harmos/v1/types.proto\")\n\x15InvocationsGetRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\"<\n\x18InvocationsCancelRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\x12\x0e\n\x06reason\x18\x02 \x01(\t\"+\n\x17InvocationsWatchRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\"F\n\x16InvocationsGetResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState\"I\n\x19InvocationsCancelResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState\"H\n\x18InvocationsWatchResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState\"S\n\x18InvocationsInvokeRequest\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x13\n\x0b\x66ingerprint\x18\x02 \x01(\x0c\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\",\n\x19InvocationsInvokeResponse\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\x32\xd7\x02\n\x0bInvocations\x12S\n\x06Invoke\x12#.harmos.v1.InvocationsInvokeRequest\x1a$.harmos.v1.InvocationsInvokeResponse\x12J\n\x03Get\x12 .harmos.v1.InvocationsGetRequest\x1a!.harmos.v1.InvocationsGetResponse\x12S\n\x06\x43\x61ncel\x12#.harmos.v1.InvocationsCancelRequest\x1a$.harmos.v1.InvocationsCancelResponse\x12R\n\x05Watch\x12\".harmos.v1.InvocationsWatchRequest\x1a#.harmos.v1.InvocationsWatchResponse0\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.v1.invocations_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_INVOCATIONSGETREQUEST']._serialized_start=130
-  _globals['_INVOCATIONSGETREQUEST']._serialized_end=171
-  _globals['_INVOCATIONSCANCELREQUEST']._serialized_start=173
-  _globals['_INVOCATIONSCANCELREQUEST']._serialized_end=233
-  _globals['_INVOCATIONSWATCHREQUEST']._serialized_start=235
-  _globals['_INVOCATIONSWATCHREQUEST']._serialized_end=278
-  _globals['_INVOCATIONSGETRESPONSE']._serialized_start=280
-  _globals['_INVOCATIONSGETRESPONSE']._serialized_end=350
-  _globals['_INVOCATIONSCANCELRESPONSE']._serialized_start=352
-  _globals['_INVOCATIONSCANCELRESPONSE']._serialized_end=425
-  _globals['_INVOCATIONSWATCHRESPONSE']._serialized_start=427
-  _globals['_INVOCATIONSWATCHRESPONSE']._serialized_end=499
-  _globals['_INVOCATIONS']._serialized_start=502
-  _globals['_INVOCATIONS']._serialized_end=760
+  _globals['_INVOCATIONSGETREQUEST']._serialized_start=65
+  _globals['_INVOCATIONSGETREQUEST']._serialized_end=106
+  _globals['_INVOCATIONSCANCELREQUEST']._serialized_start=108
+  _globals['_INVOCATIONSCANCELREQUEST']._serialized_end=168
+  _globals['_INVOCATIONSWATCHREQUEST']._serialized_start=170
+  _globals['_INVOCATIONSWATCHREQUEST']._serialized_end=213
+  _globals['_INVOCATIONSGETRESPONSE']._serialized_start=215
+  _globals['_INVOCATIONSGETRESPONSE']._serialized_end=285
+  _globals['_INVOCATIONSCANCELRESPONSE']._serialized_start=287
+  _globals['_INVOCATIONSCANCELRESPONSE']._serialized_end=360
+  _globals['_INVOCATIONSWATCHRESPONSE']._serialized_start=362
+  _globals['_INVOCATIONSWATCHRESPONSE']._serialized_end=434
+  _globals['_INVOCATIONSINVOKEREQUEST']._serialized_start=436
+  _globals['_INVOCATIONSINVOKEREQUEST']._serialized_end=519
+  _globals['_INVOCATIONSINVOKERESPONSE']._serialized_start=521
+  _globals['_INVOCATIONSINVOKERESPONSE']._serialized_end=565
+  _globals['_INVOCATIONS']._serialized_start=568
+  _globals['_INVOCATIONS']._serialized_end=911
 # @@protoc_insertion_point(module_scope)

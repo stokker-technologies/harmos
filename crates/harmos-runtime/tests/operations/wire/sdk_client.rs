@@ -164,7 +164,8 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
 
     // Discover And Bind The Exact Generated Application Types.
     let page = client
-        .catalog(RpcRequest::new(host::CatalogEntriesListRequest {
+        .catalog_entries
+        .list(RpcRequest::new(host::CatalogEntriesListRequest {
             kind: host::CatalogKind::Operations as i32,
             page: Some(harmos_protocol::v1::PageRequest {
                 page_size: 64,
@@ -312,7 +313,8 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
 
     // Discovery Uses The Same Admission; Smaller Pages Fit The Caller-Owned Bound.
     let error = bounded
-        .catalog(RpcRequest::new(host::CatalogEntriesListRequest {
+        .catalog_entries
+        .list(RpcRequest::new(host::CatalogEntriesListRequest {
             kind: host::CatalogKind::Operations as i32,
             page: Some(harmos_protocol::v1::PageRequest {
                 page_size: 64,

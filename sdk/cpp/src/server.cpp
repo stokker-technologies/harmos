@@ -104,9 +104,11 @@ public:
     void OnDone() override {
         closed();
         if (worker.joinable()) worker.join();
+        settle_children();
         delete this;
     }
     virtual void closed() = 0;
+    virtual void settle_children() {}
 };
 
 class InvocationCall final : public Duplex<plugin::v1::InstanceInvokeRequest, plugin::v1::InstanceInvokeResponse> {
@@ -114,12 +116,15 @@ public:
     InvocationCall(const std::vector<detail::OperationDefinition>& operations, const Requirements& requirements, const std::string& plugin)
         : operations_(operations), state_(std::make_shared<detail::Invocation>()) {
         state_->requirements = requirements;
+        for (const auto& operation : operations) if (operation.contract.visibility() == wire::VISIBILITY_PRIVATE)
+            state_->local.emplace(operation.contract.id(), operation);
         state_->plugin = plugin;
         state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) { write(std::move(frame)); };
         state_->read = [this] { read_next(); };
         read_next();
     }
 
+    void settle_children() override { state_->settle_workers(); }
     void closed() override {
         state_->close(std::make_exception_ptr(TransportError(14, "Transport Closed")));
     }
@@ -128,7 +133,7 @@ public:
         if (!ok) {
             if (!started_) { end({grpc::StatusCode::INVALID_ARGUMENT, "Request Must Be First"}); return; }
             bool pending;
-            { std::lock_guard lock(state_->mutex); pending = !state_->pending.empty(); }
+            { std::lock_guard lock(state_->mutex); pending = !state_->pending.empty() || !state_->watches.empty(); }
             if (pending) { closed(); end({grpc::StatusCode::UNAVAILABLE, "Host Closed Before Child Replies"}); }
             return;
         }
@@ -139,7 +144,7 @@ public:
             }
             state_->request = input.request();
             const detail::OperationDefinition* operation = nullptr;
-            for (const auto& candidate : operations_) if (candidate.contract.id() == input.request().operation()) operation = &candidate;
+            for (const auto& candidate : operations_) if (candidate.contract.visibility() != wire::VISIBILITY_PRIVATE && candidate.contract.id() == input.request().operation()) operation = &candidate;
             if (!operation) { end({grpc::StatusCode::NOT_FOUND, "Unknown Operation"}); return; }
             started_ = true;
             worker = std::thread([this, operation] {
@@ -166,12 +171,29 @@ public:
             {
                 std::lock_guard lock(state_->mutex);
                 const auto& child = input.child();
+                auto watching = state_->watches.find(child.call());
+                if (state_->retired.contains(child.call())) { valid = true; }
+                else if (watching != state_->watches.end()) {
+                    auto& watch = *watching->second;
+                    valid = child.result_case() != wire::ChildResponse::RESULT_NOT_SET && child.item().size() <= watch.max_item_bytes && child.payload().size() <= watch.max_item_bytes;
+                    if (child.has_item()) {
+                        valid = valid && watch.demanded && !watch.item && !watch.terminal;
+                        if (valid) watch.item = child;
+                    } else {
+                        valid = valid && !watch.terminal;
+                        if (valid) watch.terminal = child;
+                    }
+                    state_->changed.notify_all();
+                } else {
                 auto found = state_->pending.find(child.call());
-                valid = found != state_->pending.end() && child.result_case() != wire::ChildResponse::RESULT_NOT_SET;
+                valid = !child.has_item() && found != state_->pending.end() && child.result_case() != wire::ChildResponse::RESULT_NOT_SET;
                 if (valid) {
                     if (child.has_failure()) found->second.set_exception(std::make_exception_ptr(Failure(child.failure())));
                     else found->second.set_value(child.payload());
+                    state_->guards.erase(child.call());
                     state_->pending.erase(found);
+                    state_->changed.notify_all();
+                }
                 }
             }
             if (!valid) {
@@ -190,7 +212,8 @@ public:
             std::vector<std::uint64_t> pending;
             {
                 std::lock_guard lock(state_->mutex);
-                for (const auto& [id, promise] : state_->pending) pending.push_back(id);
+                for (const auto& [id, promise] : state_->pending) if (!state_->guards.contains(id)) pending.push_back(id);
+                for (const auto& [id, watch] : state_->watches) pending.push_back(id);
             }
             // Child Cancellation Precedes Waking the Handler's Terminal Failure.
             for (auto id : pending) {
@@ -203,7 +226,20 @@ public:
                 if (!state_->cancelled) state_->cancelled = input.cancel().reason();
                 state_->changed.notify_all();
             }
-            state_->close(std::make_exception_ptr(Failure(std::move(failure))));
+            {
+                std::lock_guard lock(state_->mutex);
+                for (auto id : pending) {
+                    auto found = state_->pending.find(id);
+                    if (found != state_->pending.end()) { found->second.set_exception(std::make_exception_ptr(Failure(failure))); state_->pending.erase(found); }
+                    auto watching = state_->watches.find(id);
+                    if (watching != state_->watches.end()) {
+                        wire::ChildResponse terminal; terminal.set_call(id); *terminal.mutable_failure() = failure;
+                        watching->second->terminal = std::move(terminal); state_->watches.erase(watching);
+                    }
+                    state_->retired.insert(id);
+                }
+                state_->changed.notify_all();
+            }
         } else {
             // Keep the Protocol Error Authoritative When Handler Cleanup Wakes.
             end({grpc::StatusCode::INVALID_ARGUMENT, "Repeated Request or Unset Frame"});

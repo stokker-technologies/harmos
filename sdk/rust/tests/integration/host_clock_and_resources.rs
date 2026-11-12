@@ -70,26 +70,26 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         let catalog = first.catalog.as_ref().ok_or("Missing Catalog")?;
         assert_eq!(
             catalog.requires.iter().map(|requirement| requirement.id.as_str()).collect::<Vec<_>>(),
-            ["harmos.time.sleep", "harmos.time.get"]
+            ["harmos.context.v1.Time/Sleep", "harmos.context.v1.Time/Get"]
         );
 
         // Begin an Execution That Stores a Resource and Requests an Hour-Long Host Wait.
         let (send, mut input) = support::invoke(&mut process.client, "execution.clock").await?;
         let sleep = support::child(&mut input).await?;
-        assert_eq!(sleep.operation, "harmos.time.sleep");
+        assert_eq!(sleep.operation, "harmos.context.v1.Time/Sleep");
         assert_eq!(sleep.fingerprint, catalog.requires[0].fingerprint);
         assert_eq!(
-            v1::TimeSleepRequest::decode(sleep.payload.as_slice())?.duration,
+            harmos_protocol::context::TimeSleepRequest::decode(sleep.payload.as_slice())?.duration,
             Some(prost_types::Duration { seconds: 3600, nanos: 0 })
         );
 
         // Complete the Wait by Protocol Event and Supply Literal Host Evidence Time.
-        support::reply(&send, sleep.call, v1::TimeSleepResponse {}).await?;
+        support::reply(&send, sleep.call, harmos_protocol::context::TimeSleepResponse {}).await?;
         let now = support::child(&mut input).await?;
-        assert_eq!(now.operation, "harmos.time.get");
+        assert_eq!(now.operation, "harmos.context.v1.Time/Get");
         assert_eq!(now.fingerprint, catalog.requires[1].fingerprint);
         let at = prost_types::Timestamp { seconds: 12345, nanos: 67890 };
-        support::reply(&send, now.call, v1::TimeGetResponse { now: Some(at) }).await?;
+        support::reply(&send, now.call, harmos_protocol::context::TimeGetResponse { now: Some(at) }).await?;
         let evidence = support::terminal::<Evidence>(&mut input).await?;
         assert_eq!(evidence.resource, 42);
         assert_eq!(evidence.at, Some(at));

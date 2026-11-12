@@ -22,7 +22,7 @@ mod release_native;
 
 use crate::{Context, Error, Message, OperationRequest, Result, context::ChildTransport, operation::LocalFuture};
 use harmos_protocol::{
-    host,
+    v1 as host,
     v1::{self, GuestChildAction, guest_child},
 };
 use prost::Message as _;
@@ -135,7 +135,7 @@ impl Context {
     }
     pub async fn submit_with<Q: OperationRequest>(&self, request: Q, policy: Option<v1::OperationPolicy>) -> Result<Child<Q::Response>> {
         let transport = self.guest_transport()?;
-        let fingerprint = crate::message::fingerprint::<Q, Q::Response>(Q::ID)?;
+        let fingerprint = crate::message::request_fingerprint::<Q>()?;
         if self.requires.get(Q::ID) != Some(&fingerprint) {
             return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
         }
@@ -147,6 +147,7 @@ impl Context {
                     payload: request.encode_to_vec(),
                     fingerprint,
                     policy,
+                    ..Default::default()
                 },
                 self.values.clone(),
                 true,
@@ -162,7 +163,7 @@ impl Context {
     }
     /// Publish through the original activation's host-owned stream lease.
     pub async fn publish<T: Message>(&self, stream: &crate::Stream<T>, row: T) -> Result<()> {
-        let request = host::SamplesAppendRequest {
+        let request = harmos_protocol::context::SamplesAppendRequest {
             stream: stream.definition.declaration.id.clone(),
             payload: row.encode_to_vec(),
             ..Default::default()
@@ -213,27 +214,6 @@ impl<R: Message> Child<R> {
         self.context.child_control(self.instance, GuestChildAction::Detach).await?;
         self.released = true;
         Ok(self.instance)
-    }
-}
-
-impl Message for host::SamplesAppendRequest {
-    fn name() -> String {
-        "harmos.context.v1.SamplesAppendRequest".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        protocol_types(&Self::name())
-    }
-}
-impl OperationRequest for host::SamplesAppendRequest {
-    type Response = host::SamplesAppendResponse;
-    const ID: &'static str = "harmos.samples.append";
-}
-impl Message for host::SamplesAppendResponse {
-    fn name() -> String {
-        "harmos.context.v1.SamplesAppendResponse".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        protocol_types(&Self::name())
     }
 }
 

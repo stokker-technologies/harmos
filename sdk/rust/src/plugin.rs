@@ -50,6 +50,7 @@ pub struct Plugin {
 
 pub(crate) struct Required {
     pub(crate) id: String,
+    pub(crate) watch: bool,
     pub(crate) request: String,
     pub(crate) response: String,
     pub(crate) types: prost_types::FileDescriptorSet,
@@ -113,6 +114,7 @@ impl Plugin {
             id: Q::ID.into(),
             request: Q::name(),
             response: Q::Response::name(),
+            watch: Q::WATCH,
             types,
         });
         self
@@ -148,6 +150,7 @@ impl Plugin {
                 return Err(Error::Invalid(format!("Duplicate or Empty Operation: {}", operation.contract.id)));
             }
             if operation.contract.visibility != v1::Visibility::Private as i32
+                && operation.contract.visibility != v1::Visibility::Protected as i32
                 && operation.contract.visibility != v1::Visibility::Public as i32
             {
                 return Err(Error::Invalid(format!("Invalid Visibility: {}", operation.contract.id)));
@@ -156,17 +159,35 @@ impl Plugin {
             contract.fingerprint =
                 harmos_protocol::schema::fingerprint(&contract.id, &operation.types, &contract.request, &contract.response)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
+            if contract.visibility == v1::Visibility::Private as i32 {
+                continue;
+            }
             catalog.operations.push(contract);
             merge_types(&mut types, operation.types.clone())?;
         }
         let mut requires = HashSet::new();
         for requirement in &self.requirements {
+            if self
+                .operations
+                .iter()
+                .any(|operation| operation.contract.id == requirement.id && operation.contract.visibility == v1::Visibility::Private as i32)
+            {
+                return Err(Error::Invalid(format!("Require {}: Private Calls Are Local", requirement.id)));
+            }
             if !requires.insert(&requirement.id) {
                 return Err(Error::Invalid(format!("Duplicate Requirement: {}", requirement.id)));
             }
-            let fingerprint =
-                harmos_protocol::schema::fingerprint(&requirement.id, &requirement.types, &requirement.request, &requirement.response)
-                    .map_err(|error| Error::Invalid(error.to_string()))?;
+            let fingerprint = harmos_protocol::schema::host_fingerprint(
+                &requirement.id,
+                &v1::Protobuf {
+                    descriptors: prost::Message::encode_to_vec(&requirement.types),
+                    request: requirement.request.clone(),
+                    response: requirement.response.clone(),
+                    input: None,
+                    output: requirement.watch.then(|| requirement.response.clone()),
+                },
+            )
+            .map_err(|error| Error::Invalid(error.to_string()))?;
             catalog.requires.push(v1::Requirement { id: requirement.id.clone(), fingerprint });
             merge_types(&mut types, requirement.types.clone())?;
         }
@@ -260,7 +281,7 @@ mod tests {
     #[test]
     fn catalog_describes_values_without_running_handlers_or_cleanup() {
         let plugin = Plugin::new("catalog_fixture", "1.0.0")
-            .operation(Operation::new("catalog.read", not_called))
+            .operation(Operation::new("catalog.read", not_called).visibility(harmos_protocol::v1::Visibility::Protected))
             .section(Settings { interval_ms: 250 })
             .on_stop(|| panic!("Catalog Inspection Entered Cleanup"));
         let catalog = plugin.catalog().unwrap();
@@ -274,8 +295,8 @@ mod tests {
     #[test]
     fn duplicate_operations_are_rejected_at_catalog_construction() {
         let plugin = Plugin::new("test", "1.0.0")
-            .operation(Operation::new("test.duplicate", empty))
-            .operation(Operation::new("test.duplicate", empty));
+            .operation(Operation::new("test.duplicate", empty).visibility(harmos_protocol::v1::Visibility::Protected))
+            .operation(Operation::new("test.duplicate", empty).visibility(harmos_protocol::v1::Visibility::Protected));
         assert!(plugin.catalog().is_err());
     }
 

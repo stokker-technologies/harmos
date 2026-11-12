@@ -27,8 +27,10 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming, transport::Channel};
 
 // Local Imports
-use harmos_protocol::v1;
-use harmos_protocol::plugin::{instance_client::InstanceClient, instance_server::{Instance, InstanceServer}};
+use harmos_protocol::plugin::{
+    instance_client::InstanceClient,
+    instance_server::{Instance, InstanceServer},
+};
 
 /* === Constants === */
 
@@ -92,7 +94,9 @@ impl CatalogFault {
 
 #[tonic::async_trait]
 impl Instance for Forward {
-    async fn get(&self, request: Request<harmos_protocol::plugin::InstanceGetRequest>) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
+    async fn get(
+        &self, request: Request<harmos_protocol::plugin::InstanceGetRequest>,
+    ) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         let mut response = self.client.clone().get(request).await?;
         let description = response.get_mut();
         match self.fault {
@@ -122,7 +126,9 @@ impl Instance for Forward {
 
     type InvokeStream = Streaming<harmos_protocol::plugin::InstanceInvokeResponse>;
 
-    async fn invoke(&self, request: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>,
+    ) -> Result<Response<Self::InvokeStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
         client.invoke(frames).await
@@ -130,13 +136,17 @@ impl Instance for Forward {
 
     type SamplesStream = Streaming<harmos_protocol::plugin::InstanceSamplesResponse>;
 
-    async fn samples(&self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
+    async fn samples(
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
+    ) -> Result<Response<Self::SamplesStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
         client.samples(frames).await
     }
 
-    async fn stop(&self, request: Request<harmos_protocol::plugin::InstanceStopRequest>) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
+    async fn stop(
+        &self, request: Request<harmos_protocol::plugin::InstanceStopRequest>,
+    ) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         self.client.clone().stop(request).await
     }
 }

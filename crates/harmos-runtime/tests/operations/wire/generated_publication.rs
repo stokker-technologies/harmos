@@ -12,8 +12,8 @@
 /* === Imports === */
 
 use harmos_operations::execution::operations::publication::{Publication, PublicationAccess, PublicationHost, Published};
-use harmos_protocol::v1::FollowingRow;
 use harmos_protocol::context::SamplesAppendRequest;
+use harmos_protocol::v1::FollowingRow;
 use std::sync::{Arc, Mutex};
 
 /* === Structs === */

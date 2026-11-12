@@ -44,7 +44,7 @@ impl ProtobufOperation for Sleep {
     type Request = harmos_protocol::v1::TimeSleepRequest;
     type Response = harmos_protocol::v1::TimeSleepResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.time.sleep";
+    const ID: &'static str = "harmos.v1.Time/Sleep";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Time", "Sleep"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;

@@ -95,6 +95,8 @@ pub(crate) struct WeakOperationManager {
 
 pub(crate) struct Registry {
     pub(crate) service_runner: crate::services::ServiceRunner,
+    #[cfg(feature = "grpc")]
+    pub(crate) values: std::sync::RwLock<Option<Arc<dyn super::values::Resolver>>>,
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
 }

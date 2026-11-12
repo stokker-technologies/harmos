@@ -78,9 +78,9 @@ fn main() -> Result<()> {
     })
     .every(prost_types::Duration { seconds: 1, nanos: 0 });
     Plugin::new("execution", "1.0.0")
-        .operation(Operation::new("execution.clock", clock_and_resource))
-        .operation(Operation::new("execution.isolation", isolation))
-        .operation(Operation::new("execution.reading_released", reading_released))
+        .operation(Operation::new("execution.clock", clock_and_resource).visibility(harmos_protocol::v1::Visibility::Protected))
+        .operation(Operation::new("execution.isolation", isolation).visibility(harmos_protocol::v1::Visibility::Protected))
+        .operation(Operation::new("execution.reading_released", reading_released).visibility(harmos_protocol::v1::Visibility::Protected))
         .stream(reading)
         .observer(observer)
         .requires::<clock::TimeSleepRequest>()

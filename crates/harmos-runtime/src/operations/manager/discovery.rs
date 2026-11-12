@@ -88,6 +88,9 @@ impl Manager {
         let mut position = after;
         while let Some((id, owner, entry)) = self.next_discovery(position.as_ref())? {
             position = Some((id.clone(), owner.clone()));
+            if entry.definition.visibility == crate::operations::Visibility::Private {
+                continue;
+            }
             if !entry.active.load(Ordering::Acquire) || entry.available().is_err() || entry.authorize(&origin).is_err() {
                 continue;
             }
@@ -227,6 +230,7 @@ fn describe(contract: &Contract) -> Result<host::DiscoveredContract> {
         description: definition.description.clone(),
         visibility: match definition.visibility {
             Visibility::Private => host::Visibility::Private,
+            Visibility::Protected => host::Visibility::Protected,
             Visibility::Public => host::Visibility::Public,
         } as i32,
         policy: Some(harmos_protocol::v1::OperationPolicy {

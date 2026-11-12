@@ -84,7 +84,11 @@ async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn std::error::Er
         let stdout = String::from_utf8(output.stdout)?;
         assert_eq!(output.status.code(), Some(1), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));
         assert!(stdout.lines().any(|line| line.starts_with("| 17 |") && line.contains("FAIL:")), "{stdout}");
-        assert_eq!(stdout.lines().filter(|line| line.ends_with("| PASS |")).count(), harmos_conformance::RULE_COUNT - 1, "{stdout}");
+        if matches!(corruption, support::Fault::Fingerprint) {
+            assert!(stdout.lines().any(|line| line.starts_with("| 01 |") && line.contains("FAIL:")), "{stdout}");
+        }
+        let failures = if matches!(corruption, support::Fault::Fingerprint) { 2 } else { 1 };
+        assert_eq!(stdout.lines().filter(|line| line.ends_with("| PASS |")).count(), harmos_conformance::RULE_COUNT - failures, "{stdout}");
         fault.close().await?;
     }
 

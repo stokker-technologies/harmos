@@ -215,7 +215,7 @@ mod tests {
     fn protobuf_assignments_validate_and_freeze_the_catalog() {
         use prost::Message;
         let entry = AssignedOperation {
-            operation: "host.harmos.catalog_entries.list".into(),
+            operation: "host.harmos.v1.CatalogEntries/List".into(),
             fingerprint: vec![7; 32],
             generation: 1,
         };
@@ -226,9 +226,7 @@ mod tests {
         assignments.install(&encoded).unwrap();
         assignments.install(&encoded).unwrap();
         let replacement = AssignedOperation { generation: 2, ..entry.clone() };
-        assert!(
-            assignments.install(&harmos_protocol::v1::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err()
-        );
+        assert!(assignments.install(&harmos_protocol::v1::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err());
         assert!(
             OperationAssignments::default()
                 .install(&harmos_protocol::v1::OperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())

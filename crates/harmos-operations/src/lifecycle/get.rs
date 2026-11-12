@@ -38,7 +38,7 @@ impl ProtobufOperation for Get {
     type Request = harmos_protocol::v1::InvocationsGetRequest;
     type Response = harmos_protocol::v1::InvocationsGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.invocations.get";
+    const ID: &'static str = "harmos.v1.Invocations/Get";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Invocations", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;

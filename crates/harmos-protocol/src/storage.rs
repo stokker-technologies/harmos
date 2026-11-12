@@ -1803,7 +1803,7 @@ impl StorageFailureKind {
     }
 }
 /// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
 pub mod storage_client {
     #![allow(
         unused_variables,
@@ -2154,7 +2154,7 @@ pub mod storage_client {
     }
 }
 /// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
 pub mod storage_server {
     #![allow(
         unused_variables,

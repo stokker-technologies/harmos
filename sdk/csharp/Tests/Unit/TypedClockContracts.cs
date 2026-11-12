@@ -17,8 +17,8 @@ public sealed class TypedClockContracts
   {
     var setting = new TimeSleepRequest { Duration = new Duration { Seconds = 2 } };
     var plugin = new Plugin("settings", "1.0.0")
-        .Observer("settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "harmos.v1.TimeSleepRequest.duration")
-        .Observer("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "harmos.v1.TimeSleepRequest.duration")
+        .Observer("settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "harmos.context.v1.TimeSleepRequest.duration")
+        .Observer("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "harmos.context.v1.TimeSleepRequest.duration")
         .Section(setting);
     var catalog = plugin.Catalog();
     Assert.Null(catalog.Streams[0].Interval);
@@ -35,7 +35,7 @@ public sealed class TypedClockContracts
   {
     var plugin = new Plugin("clock_client", "1.0.0").Requires(Clock.Sleep).Requires(Clock.GetTime);
     var catalog = plugin.Catalog();
-    var clock = Assert.Single(catalog.Types_.File, file => file.Name == "harmos/v1/plugin.proto");
+    var clock = Assert.Single(catalog.Types_.File, file => file.Name == "harmos/context/v1/time.proto");
     Assert.Equal(["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"], clock.MessageType.Select(message => message.Name));
     Assert.Equal(["google/protobuf/duration.proto", "google/protobuf/timestamp.proto"], clock.Dependency);
     Assert.Empty(clock.Service);
@@ -54,7 +54,7 @@ public sealed class TypedClockContracts
       {
         duration, new FileDescriptorProto
         {
-          Name = "harmos/v1/plugin.proto", Package = "harmos.v1", Syntax = "proto3", Dependency = { duration.Name },
+          Name = "harmos/context/v1/time.proto", Package = "harmos.context.v1", Syntax = "proto3", Dependency = { duration.Name },
           MessageType =
           {
             new DescriptorProto
@@ -76,11 +76,11 @@ public sealed class TypedClockContracts
     {
       File = { new FileDescriptorProto
       {
-        Name = "harmos/v1/plugin.proto", Package = "harmos.v1", Syntax = "proto3",
+        Name = "harmos/context/v1/time.proto", Package = "harmos.context.v1", Syntax = "proto3",
         MessageType = { new DescriptorProto { Name = "TimeSleepResponse" } }
       } }
     };
-    var bytes = System.Text.Encoding.UTF8.GetBytes("harmos.time.sleep\0")
+    var bytes = System.Text.Encoding.UTF8.GetBytes("harmos.context.v1.Time/Sleep\0")
       .Concat(request.ToByteArray()).Concat(response.ToByteArray()).ToArray();
     var fingerprint = ByteString.CopyFrom(System.Security.Cryptography.SHA256.HashData(bytes));
     Assert.Equal(fingerprint, catalog.Requires[0].Fingerprint);

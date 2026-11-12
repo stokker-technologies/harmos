@@ -70,6 +70,7 @@ message InstanceInvokeResponse {
     harmos.v1.ChildRequest child = 1;
     harmos.v1.ChildCancel child_cancel = 2;
     harmos.v1.Response response = 3;
+    harmos.v1.ChildDemand child_demand = 4;
   }
 }
 

@@ -29,8 +29,11 @@ use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
 use crate::{Context, Error, Plugin, Result, operation::Handler};
+use harmos_protocol::plugin::{
+    instance_invoke_request, instance_invoke_response, instance_samples_request,
+    instance_server::{Instance as Service, InstanceServer},
+};
 use harmos_protocol::v1::{self as v1, response};
-use harmos_protocol::plugin::{instance_invoke_request, instance_invoke_response, instance_samples_request, instance_server::{Instance as Service, InstanceServer}};
 
 /* === Constants === */
 
@@ -52,6 +55,7 @@ struct Settled(Option<oneshot::Sender<()>>);
 struct Server {
     description: harmos_protocol::plugin::InstanceGetResponse,
     operations: HashMap<String, Arc<dyn Handler>>,
+    local: Arc<HashMap<String, Arc<crate::Operation>>>,
     streams: HashMap<String, Publication>,
     requires: Arc<HashMap<String, Vec<u8>>>,
     jobs: mpsc::Sender<Job>,
@@ -103,7 +107,9 @@ impl Drop for Settled {
 
 #[tonic::async_trait]
 impl Service for Server {
-    async fn get(&self, request: Request<harmos_protocol::plugin::InstanceGetRequest>) -> std::result::Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
+    async fn get(
+        &self, request: Request<harmos_protocol::plugin::InstanceGetRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         if request.into_inner().revision == 0 {
             return Err(Status::invalid_argument("Revision Must Be at Least One"));
         }
@@ -126,6 +132,7 @@ impl Service for Server {
         handler.validate(&request.payload)?;
         let payload = request.payload.clone();
         let mut context = Context::new(request, self.description.id.clone(), self.requires.clone());
+        context.local = self.local.clone();
         let (output, receiver) = mpsc::channel(1);
         context.output = Some(output.clone());
         let jobs = self.jobs.clone();
@@ -170,7 +177,9 @@ impl Service for Server {
         Ok(Response::new(output_stream(receiver)))
     }
 
-    async fn stop(&self, _: Request<harmos_protocol::plugin::InstanceStopRequest>) -> std::result::Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
+    async fn stop(
+        &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         for cleanup in &self.cleanup {
             cleanup().map_err(|error| Status::internal(error.to_string()))?;
         }
@@ -214,7 +223,20 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
             sdk: "harmos_rust".into(),
             sdk_version: env!("CARGO_PKG_VERSION").into(),
         },
-        operations: plugin.operations.into_iter().map(|operation| (operation.contract.id, operation.handler)).collect(),
+        local: Arc::new(
+            plugin
+                .operations
+                .iter()
+                .filter(|operation| operation.contract.visibility == v1::Visibility::Private as i32)
+                .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
+                .collect(),
+        ),
+        operations: plugin
+            .operations
+            .into_iter()
+            .filter(|operation| operation.contract.visibility != v1::Visibility::Private as i32)
+            .map(|operation| (operation.contract.id, operation.handler))
+            .collect(),
         streams,
         requires,
         jobs,
@@ -305,7 +327,8 @@ async fn dispatch(
 }
 
 async fn invoke(
-    jobs: mpsc::Sender<Job>, handler: Arc<dyn Handler>, context: Context, payload: Vec<u8>, input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeRequest>,
+    jobs: mpsc::Sender<Job>, handler: Arc<dyn Handler>, context: Context, payload: Vec<u8>,
+    input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeRequest>,
     output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, Status>>,
 ) -> std::result::Result<(), Status> {
     let mut complete = dispatch(&jobs, handler, context.clone(), payload).await?;
@@ -314,15 +337,17 @@ async fn invoke(
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
+            _ = context.call_changes.notified() => context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?,
             result = &mut complete => break result.map_err(|_| Status::internal("Handler Panicked"))?,
             frame = input.message(), if !eof => match frame? {
-                Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child)?,
+                Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child).await?,
                 Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Cancel(cancel)) }) => context.cancel(cancel.reason).await.map_err(|error| Status::unavailable(error.to_string()))?,
                 None => { eof = true; if !context.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
                 _ => return Err(Status::invalid_argument("Repeated Request")),
             }
         }
     };
+    context.cancel_calls(false, "Invocation Settled", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
     let result = match result {
         Ok(payload) => response::Result::Payload(payload),
         Err(error) => error.response(&context.operation, &context.plugin)?,
@@ -338,7 +363,8 @@ async fn invoke(
 
 async fn samples(
     jobs: mpsc::Sender<Job>, observer: Option<Arc<dyn Handler>>, producer: Option<Arc<dyn Handler>>, mut context: Context,
-    input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesRequest>, output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceSamplesResponse, Status>>,
+    input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesRequest>,
+    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceSamplesResponse, Status>>,
 ) -> std::result::Result<(), Status> {
     let (samples, mut rows) = mpsc::channel(1);
     context.samples = Some(samples);

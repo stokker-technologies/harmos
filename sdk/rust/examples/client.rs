@@ -68,7 +68,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }),
             ..Default::default()
         };
-        let page = client.catalog(Request::new(request)).await?.into_inner();
+        let page = client.catalog_entries.list(Request::new(request)).await?.into_inner();
         if let Some(contract) =
             page.operations.into_iter().filter_map(|entry| entry.contract).find(|contract| contract.id == "schematic.validate")
         {

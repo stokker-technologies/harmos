@@ -22,7 +22,7 @@ generation retirement stops these observers with the plugin.
 Built-in host operations use generated `harmos_protocol::{host, storage}` messages
 directly. Their declarations and handlers stay together in `harmos-operations`; its
 former `runtime` feature is removed. Lifecycle requests/results are
-`harmos_protocol::host::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
+`harmos_protocol::v1::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
 `operations.call_protobuf::<harmos_operations::lifecycle::Get>(request)` for a
 native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
@@ -91,7 +91,7 @@ current definition by identity and compiled row type. Low-level declarations use
 `Definition::declared::<Row>(id, schema, window)` and return a derived definition.
 Every stream definition owns a schema; `Definition::schema()` returns it directly.
 Publication inventories,
-listener sources and `harmos.samples.append` do not accept schema ordinals. Listener
+listener sources and `harmos.context.v1.Samples/Append` do not accept schema ordinals. Listener
 publication binding uses `(id, after)` and `frontier(id)`.
 
 Register stream definitions as owned lists; no stream catalog enum or
@@ -433,7 +433,7 @@ contract. Protobuf payloads and RPC paths remain unchanged.
 
 Harmos serves no built-in operation by default. Place `builtins::lifecycle_catalog()` on a
 runtime lane with `setup.catalog(builtins::lifecycle_catalog(), lane)` to provide the
-Status, Cancel and Watch operations (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
+Status, Cancel and Watch operations (gRPC `/harmos.v1.Invocations/Get`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
 foreign and settled ids are refused alike. A watch streams every status change
@@ -441,8 +441,8 @@ from the moment it starts until the instance stops or settles. Plugins reach the
 so they must declare them as requirements.
 
 Register `harmos_operations::host_catalog()` by value on a chosen lane to serve the `List`
-declaration at `/harmos.host.v1.CatalogEntries/List`. Its generated request is
-`harmos_protocol::host::CatalogEntriesListRequest`, with `kind` (`Operations`, `Schemas`, `Streams`
+declaration at `/harmos.v1.CatalogEntries/List`. Its generated request is
+`harmos_protocol::v1::CatalogEntriesListRequest`, with `kind` (`Operations`, `Schemas`, `Streams`
 or `Objects`), optional `schema` and a shared `PageRequest` in `page`, carrying
 `page_token`, `page_size` and `max_bytes`. Defaults are
 64 rows and 64 KiB; maxima are 256 rows and 4 MiB. `CatalogEntriesListResponse::operations`
@@ -451,7 +451,7 @@ generation, policy, selected grants and current gRPC availability.
 `CatalogEntriesListResponse::entries` retains the UTF-8 JSON array for stored schemas and
 identities. The opaque `next_page_token` continues a bounded page.
 
-Stored kinds need the storage manager and a `harmos.catalog_entries.list` grant scoped
+Stored kinds need the storage manager and a `harmos.v1.CatalogEntries/List` grant scoped
 `schemas:*`, `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`).
 Listing operations needs no grant. Discovery applies readiness, caller visibility
 and dependency rules; `conditional_access` means invocation still checks
@@ -832,7 +832,7 @@ setup.catalog(operations_catalog()?, lane);
 for a complete registration and handler. `Catalog::extend(other)?` composes owned
 catalogs; `entry_named(factory, id)?` registers an explicit alias. Put platform
 `#[cfg]` attributes on ordinary modules and the corresponding builder statements.
-Private operations omit gRPC exposure; registration rejects incompatible metadata.
+Private operations remain inside their declaring SDK process and are absent from catalogs. Protected operations are host/owner callable over the instance carrier. Only Public operations can bind a client-facing gRPC method; registration rejects incompatible metadata.
 
 Application lifecycle preparation owns resources and registers their concrete
 `Arc<T>` values. Runtime startup checks catalogs, resources and lanes before
@@ -922,7 +922,7 @@ interruption remain physical mechanisms.
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
 Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:
-`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `harmos.invocations.cancel`, `harmos.initialize`
+`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `harmos.v1.Invocations/Cancel`, `harmos.initialize`
 and `storage.append_file`. A manual native message codec remains an ordinary trait implementation.
 
 Started operations return the same typed `Response<T>` from `join()` and
@@ -960,7 +960,7 @@ scalar fields cannot reference definitions, and representation indices must be u
 The storage schema validator checks the graph before mutation admission.
 
 
-The declaration's `GRPC` is optional; private native operations leave it `None`.
+The declaration's `GRPC` is optional; Protected and Private native operations leave it `None`.
 Declare typed callees in `OPERATIONS` and invoke them through the execution context:
 
 ```rust
@@ -982,10 +982,10 @@ Portable projection machinery serves native stored message values.
 `operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
 Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
 typed native declarations. Assignment catalogs use the generated
-`harmos.host.v1.OperationAssignments` messages, with frozen identity validation.
+`harmos.v1.OperationAssignments` messages, with frozen identity validation.
 
 Guest commands, answers and child controls use authoritative `harmos.v1` protobuf
-messages. Built-in `storage.hash_file` and `harmos.samples.append` calls use their generated
+messages. Built-in `storage.hash_file` and `harmos.context.v1.Samples/Append` calls use their generated
 contracts; no private guest payload mirrors are retained. Fingerprints, provider
 generations and host grants remain checked. Stored data encoding and schema
 revisions are unchanged.
@@ -1008,7 +1008,7 @@ decoding. A claim ends when its bare value reaches the caller; the caller owns i
 thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
 budget or request smaller pages.
 `catalog` calls `CatalogEntries.List` with a `PageRequest` containing `page_size`, `max_bytes` and `page_token`; continue with `next_page_token`.
-Bind the selected `harmos_protocol::host::OperationContract` to generated application messages:
+Bind the selected `harmos_protocol::v1::OperationContract` to generated application messages:
 
 ```rust
 use harmos::client::Method;
@@ -1151,7 +1151,7 @@ message names, and verifies operation fingerprints using the shared
 reference fixture and host use `harmos-protocol` for this computation. Inconsistent
 hashes or unresolved message names refuse admission before an activation becomes visible.
 
-The host opens one `Plugin.Samples` call for each catalog stream at admission. Interval streams
+The host opens one `Instance.Samples` call for each catalog stream at admission. Interval streams
 answer host-clock ticks; device streams publish without ticks. Each sample enters
 the existing stream storage consumer path in arrival order. Incoming protobuf rows
 are validated against their catalog type and converted to the host's canonical
@@ -1165,8 +1165,8 @@ An `interval_setting` names a fully qualified protobuf section field, such as
 The host resolves it from `Catalog.sections`; it takes precedence over the declared
 interval. An absent or invalid setting refuses admission.
 
-Plugins declare requirements for the Public `harmos.time.sleep` and
-`harmos.time.get` operations. Both use the host clock through ordinary child calls.
+Plugins declare requirements for the Public `harmos.v1.Time/Sleep` and
+`harmos.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
 Tests can configure `clock::Clock::virtual_at(epoch)` and drive its controller with
 `advance_until(bound, condition)`. An invocation or unanswered tick keeps virtual time
 still while work is in flight; only clock waits park that activity. Device streams

@@ -27,6 +27,22 @@ async fn python_plugin_sleep_and_now_share_the_virtual_host_clock() {
     let payload = super::invoke_support::payload(b"python");
     let reply = host.runtime.operations.submit_encoded("conformance.echo", payload.clone()).unwrap().await.unwrap();
     assert_eq!(reply, payload);
+    // A Valid Private Handler Is Local to the SDK and Never Admitted by the Host.
+    assert!(
+        !attached
+            .activation()
+            .unwrap()
+            .description
+            .catalog
+            .as_ref()
+            .unwrap()
+            .operations
+            .iter()
+            .any(|operation| operation.id == "conformance.local")
+    );
+    assert!(host.runtime.operations.submit_encoded("conformance.local", payload.clone()).is_err());
+    let reply = host.runtime.operations.call_encoded("conformance.local_call", payload.clone()).await.unwrap();
+    assert_eq!(reply, payload);
 
     // Close External Device Demand Before The Virtual Clock Journey
     attached.stop("Clock Journey").await.unwrap();

@@ -39,11 +39,24 @@
 
 /// Complete descriptor inventory for the two built-in clock operations.
 pub fn catalog_types() -> prost_types::FileDescriptorSet {
+    types("harmos.context.v1")
+}
+
+pub fn client_types() -> prost_types::FileDescriptorSet {
+    types("harmos.v1")
+}
+
+fn types(package: &str) -> prost_types::FileDescriptorSet {
     use prost::Message;
     let types = prost_types::FileDescriptorSet::decode(include_bytes!("descriptors.bin").as_slice()).expect("generated clock descriptors");
     crate::schema::operation_types(
         &types,
-        &["harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse", "harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse"],
+        &[
+            &format!("{package}.TimeSleepRequest"),
+            &format!("{package}.TimeSleepResponse"),
+            &format!("{package}.TimeGetRequest"),
+            &format!("{package}.TimeGetResponse"),
+        ],
     )
     .expect("generated clock roots")
 }

@@ -1,6 +1,4 @@
 from harmos.v1 import types_pb2 as _types_pb2
-from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from google.protobuf import duration_pb2 as _duration_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from collections.abc import Mapping as _Mapping
@@ -45,3 +43,19 @@ class InvocationsWatchResponse(_message.Message):
     INVOCATION_FIELD_NUMBER: _ClassVar[int]
     invocation: _types_pb2.InstanceState
     def __init__(self, invocation: _Optional[_Union[_types_pb2.InstanceState, _Mapping]] = ...) -> None: ...
+
+class InvocationsInvokeRequest(_message.Message):
+    __slots__ = ("operation", "fingerprint", "payload")
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    operation: str
+    fingerprint: bytes
+    payload: bytes
+    def __init__(self, operation: _Optional[str] = ..., fingerprint: _Optional[bytes] = ..., payload: _Optional[bytes] = ...) -> None: ...
+
+class InvocationsInvokeResponse(_message.Message):
+    __slots__ = ("payload",)
+    PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    payload: bytes
+    def __init__(self, payload: _Optional[bytes] = ...) -> None: ...

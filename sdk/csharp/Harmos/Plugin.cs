@@ -29,12 +29,19 @@ public sealed class Plugin(string id, string version)
       where TResponse : IMessage<TResponse>, new()
   {
     var contract = operation.Contract.Clone();
+    if (operation.IsWatch)
+      throw new ArgumentException($"Register {contract.Id}: Plugin Operations Are Unary");
+    if (contract.Visibility is not (Visibility.Private or Visibility.Protected or Visibility.Public))
+      throw new ArgumentException($"Register {contract.Id}: Explicit Visibility Is Required");
     if (!operations.TryAdd(contract.Id, new Handler(
         payload => Sdk.Operation<TRequest, TResponse>.Decode(payload),
-        async (context, request) => (await handler(context, (TRequest)request)).ToByteString())))
+        async (context, request) => (await handler(context, (TRequest)request)).ToByteString(), contract)))
       throw new ArgumentException($"Duplicate Operation: {contract.Id}");
-    catalog.Operations.Add(contract);
-    Descriptors.Merge(catalog.Types_, operation.Types);
+    if (contract.Visibility != Visibility.Private)
+    {
+      catalog.Operations.Add(contract);
+      Descriptors.Merge(catalog.Types_, operation.Types);
+    }
     return this;
   }
 
@@ -49,6 +56,8 @@ public sealed class Plugin(string id, string version)
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()
   {
+    if (operation.Contract.Visibility == Visibility.Private)
+      throw new ArgumentException($"Require {operation.Contract.Id}: Private Calls Are Local");
     if (catalog.Requires.Any(item => item.Id == operation.Contract.Id))
       throw new ArgumentException($"Duplicate Requirement: {operation.Contract.Id}");
     catalog.Requires.Add(new Requirement { Id = operation.Contract.Id, Fingerprint = operation.Contract.Fingerprint });
@@ -150,7 +159,7 @@ public sealed class Plugin(string id, string version)
   }
 }
 
-internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute);
+internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute, OperationContract Contract);
 
 internal sealed record Publication(Func<Context, Task<ByteString>>? Observer,
     Func<Context, System.Threading.Channels.ChannelWriter<Sample>, Task>? Producer);

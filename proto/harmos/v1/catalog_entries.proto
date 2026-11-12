@@ -2,8 +2,6 @@
 syntax = "proto3";
 package harmos.v1;
 import "harmos/v1/types.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
 
 service CatalogEntries {
   rpc List(CatalogEntriesListRequest) returns (CatalogEntriesListResponse);

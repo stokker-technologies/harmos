@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn structured_roots() {
         let original = Failure::originate(FailureKind::Permanent, &std::io::Error::other("token unavailable"), Origin::Plugin)
-            .with_detail("dokime.secret", "api_token");
+            .with_detail("application.secret", "api_token");
         let refusal = harmos_operations::Refusal::failed(10001, original);
         let original = refusal.failure().clone();
         let error = StartupError::aggregate(vec![
@@ -227,7 +227,7 @@ mod tests {
         assert_eq!(report.roots.len(), 2);
         assert!(report.consequences.is_empty());
         assert_eq!(report.roots[0].failure, original);
-        assert_eq!(report.roots[0].failure.detail("dokime.secret"), Some("api_token"));
+        assert_eq!(report.roots[0].failure.detail("application.secret"), Some("api_token"));
         assert_eq!(report.roots[0].failure.refusal_code(), Some(10001));
     }
 
@@ -235,13 +235,13 @@ mod tests {
     fn single_secret_root() {
         let refusal = harmos_operations::Refusal::failed(
             10001,
-            Failure::new(FailureKind::Permanent, "secret unavailable").with_detail("dokime.secret", "api_token"),
+            Failure::new(FailureKind::Permanent, "secret unavailable").with_detail("application.secret", "api_token"),
         );
         let original = refusal.failure().clone();
         let error = StartupError::Runtime { source: Box::new(refusal) };
         let received = StartupError::failure(&error, FailureKind::Permanent);
         assert_eq!(received.cause(), original.cause());
-        assert_eq!(received.detail("dokime.secret"), Some("api_token"));
+        assert_eq!(received.detail("application.secret"), Some("api_token"));
         assert_eq!(received.refusal_code(), Some(10001));
         assert_eq!(StartupReport::from_failure(&received).unwrap().roots[0].failure, original);
     }
@@ -257,7 +257,7 @@ mod tests {
                 .collect::<Vec<_>>();
             let refusal = harmos_operations::Refusal::failed(
                 10001,
-                Failure::new(FailureKind::Permanent, "token unavailable").with_detail("dokime.secret", "api_token"),
+                Failure::new(FailureKind::Permanent, "token unavailable").with_detail("application.secret", "api_token"),
             );
             let original = refusal.failure().clone();
             errors.insert(if first { 0 } else { errors.len() }, StartupError::Runtime { source: Box::new(refusal) });

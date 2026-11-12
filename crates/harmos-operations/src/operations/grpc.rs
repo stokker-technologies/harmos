@@ -61,6 +61,8 @@ impl Grpc {
             || !identifier(&self.service)
             || !identifier(&self.method)
             || self.package.starts_with("grpc.")
+            || self.package.contains(".context.v")
+            || self.package.contains(".plugin.v")
         {
             return Err(super::ContractError::Grpc);
         }
