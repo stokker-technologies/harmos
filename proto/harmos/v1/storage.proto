@@ -129,7 +129,7 @@ enum DownsampleAlgorithm { DECIMATE = 0; EXTREMA = 1; LTTB = 2; LTTB_LOG = 3; }
 message Downsample { uint64 max_rows = 1; DownsampleAlgorithm algorithm = 2; FieldPath value = 3; FieldPath axis = 4; }
 message SortKey { FieldPath field = 1; bool descending = 2; bool nulls_first = 3; }
 message Sort { repeated SortKey keys = 1; }
-message Transform { oneof transform { Filter filter = 1; Project project = 2; Aggregate aggregate = 3; Histogram histogram = 4; Downsample downsample = 5; Sort sort = 6; } }
+message Transform { oneof transform { Filter filter = 1; Project project = 2; Aggregate aggregate = 3; Histogram histogram = 4; Downsample downsample = 5; Sort sort = 6; TimeBucketPlan time_buckets = 7; } }
 message Query { StorageCursor at = 1; QuerySource source = 2; repeated Transform transforms = 3; RowSlice slice = 4; }
 message StoredRecord { StorageCursor position = 1; SchemaKey schema = 2; optional string scope = 3; string item = 4; optional string source = 5; google.protobuf.Timestamp source_time = 6; bytes payload = 7; }
 message StoredRow { StoredRecord record = 1; string stream = 2; uint64 sequence = 3; }
@@ -149,3 +149,58 @@ message WriteRecords { optional string scope = 1; }
 message WriteStreams { optional string scope = 1; }
 message WriteObjects { optional string scope = 1; }
 message WriteFile { FileMetadata metadata = 1; }
+
+// Native plans use separate output and source-work bounds supplied by the caller.
+message ReadLimits { uint64 rows = 1; uint64 bytes = 2; }
+message StorageCapabilities { bool native_arrow = 1; bool native_index = 2; bool durable_projections = 3; bool conditional_objects = 4; }
+enum ColumnKind { COLUMN_KIND_OBJECTS = 0; COLUMN_KIND_RECORDS = 1; COLUMN_KIND_STREAM = 2; }
+message ColumnSource { ColumnKind kind = 1; SchemaKey schema = 2; }
+message ColumnPredicate { string column = 1; optional double lower = 2; optional double upper = 3; }
+message TimeBounds { string column = 1; int64 lower_ns = 2; int64 upper_ns = 3; }
+message ArrowSeek { bytes snapshot = 1; bytes plan = 2; uint64 position = 3; }
+message ArrowScan { ColumnSource source = 1; repeated string columns = 2; ColumnPredicate predicate = 3; TimeBounds time = 4; uint64 start = 5; ArrowSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
+message ArrowPage { bytes ipc = 1; ArrowSeek next = 2; bool complete = 3; uint64 scanned = 4; uint64 bytes_read = 5; repeated string columns_read = 6; uint64 payload_rows = 7; }
+message IndexDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; repeated string columns = 4; }
+message IndexEntry { bytes key = 1; uint64 position = 2; }
+message IndexSeek { bytes snapshot = 1; bytes plan = 2; uint64 revision = 3; bytes key = 4; uint64 position = 5; }
+message IndexRead { string name = 1; optional bytes lower = 2; optional bytes upper = 3; bytes prefix = 4; bool descending = 5; IndexSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
+message IndexPage { repeated IndexEntry entries = 1; IndexSeek next = 2; bool complete = 3; }
+message TimeBucketPlan { int64 origin_ns = 1; uint64 width_ns = 2; string time = 3; string value = 4; string identity = 5; repeated string group = 6; uint64 max_samples = 7; uint64 max_bytes = 8; }
+message SelectColumns { repeated string columns = 1; }
+message ProjectionDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; oneof transform { SelectColumns select = 4; TimeBucketPlan time_buckets = 5; } }
+message ProjectionRead { string name = 1; uint64 revision = 2; StorageCursor frontier = 3; uint64 after = 4; ReadLimits limits = 5; ReadLimits work = 6; }
+message ProjectionPage { bytes ipc = 1; StorageCursor frontier = 2; uint64 revision = 3; repeated bytes changed_keys = 4; optional uint64 next = 5; }
+message ProjectionStatus { StorageCursor frontier = 1; uint64 revision = 2; uint64 rows = 3; uint64 changed_keys = 4; }
+// A saved snapshot is explicitly released. Its handle is opaque and instance scoped.
+message SavedSnapshot { bytes token = 1; StorageCursor at = 2; }
+message OpenSnapshot { StorageCursor at = 1; }
+message ReleaseSnapshot { SavedSnapshot snapshot = 1; }
+message Capabilities {}
+message ScanArrow { SavedSnapshot snapshot = 1; ArrowScan read = 2; }
+message ScanIndex { SavedSnapshot snapshot = 1; IndexRead read = 2; ColumnSource source = 3; }
+message RegisterIndex { IndexDefinition definition = 1; bool rebuild = 2; ReadLimits work = 3; }
+message RegisterProjection { ProjectionDefinition definition = 1; bool rebuild = 2; }
+message DefinitionRevision { uint64 revision = 1; }
+message AdvanceProjection { SavedSnapshot snapshot = 1; string name = 2; ReadLimits work = 3; ColumnSource source = 4; }
+message ReadProjection { ProjectionRead read = 1; ColumnSource source = 2; }
+message InspectProjection { string name = 1; uint64 revision = 2; StorageCursor frontier = 3; ColumnSource source = 4; }
+message ProjectionState { ProjectionStatus status = 1; }
+message CompareExchangeObject { MutationId mutation = 1; ObjectVersionToken expected = 2; SchemaInput schema = 3; ObjectValue value = 4; }
+message ObjectReceipt { StorageCursor position = 1; ObjectVersionToken version = 2; }
+message ObjectConflict { ObjectVersionToken current = 1; }
+message CompareExchangeOutcome { oneof outcome { ObjectReceipt applied = 1; ObjectConflict conflict = 2; } }
+enum StorageFailureKind { STORAGE_FAILURE_UNSPECIFIED = 0; STORAGE_FAILURE_UNSUPPORTED = 1; STORAGE_FAILURE_CONFLICT = 2; STORAGE_FAILURE_EXPIRED = 3; STORAGE_FAILURE_NOT_READY = 4; STORAGE_FAILURE_GAP = 5; STORAGE_FAILURE_EXHAUSTED = 6; STORAGE_FAILURE_INVALID = 7; STORAGE_FAILURE_MISSING_INDEX = 8; }
+message StorageFailure { StorageFailureKind kind = 1; string message = 2; }
+service Storage {
+  rpc Capabilities(.harmos.storage.v1.Capabilities) returns (StorageCapabilities);
+  rpc OpenSnapshot(.harmos.storage.v1.OpenSnapshot) returns (SavedSnapshot);
+  rpc ReleaseSnapshot(.harmos.storage.v1.ReleaseSnapshot) returns (Empty);
+  rpc ScanArrow(.harmos.storage.v1.ScanArrow) returns (ArrowPage);
+  rpc ScanIndex(.harmos.storage.v1.ScanIndex) returns (IndexPage);
+  rpc RegisterIndex(.harmos.storage.v1.RegisterIndex) returns (DefinitionRevision);
+  rpc RegisterProjection(.harmos.storage.v1.RegisterProjection) returns (DefinitionRevision);
+  rpc AdvanceProjection(.harmos.storage.v1.AdvanceProjection) returns (DefinitionRevision);
+  rpc ReadProjection(.harmos.storage.v1.ReadProjection) returns (ProjectionPage);
+  rpc InspectProjection(.harmos.storage.v1.InspectProjection) returns (ProjectionState);
+  rpc CompareExchangeObject(.harmos.storage.v1.CompareExchangeObject) returns (CompareExchangeOutcome);
+}

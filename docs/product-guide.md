@@ -1372,3 +1372,11 @@ New connections authenticate with the replacement; TLS resumption is disabled on
 this path so every connection presents the current certificate. Existing TLS
 connections and RPC streams retain their negotiated state and continue untouched.
 The listener's bind address, admission, middleware and shutdown ownership do not change.
+
+## Saved Storage Queries
+
+The built-in storage catalog exposes bounded Arrow scans, ordered indexes, exact-frontier
+projections and atomic conditional object updates through generated SDK contracts. Compose the
+backend explicitly and retain/release saved cuts; see [Generated Storage Clients](storage.md#generated-storage-clients)
+for requests, grants, outcomes and the Schematic query-storage journey. The ordinary query,
+streamed write receipts, files and recovery interfaces remain available.

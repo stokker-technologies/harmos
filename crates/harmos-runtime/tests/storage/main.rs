@@ -10,6 +10,7 @@
 /* === Modules === */
 
 mod generated_example_hash;
+mod generated_native_journey;
 
 #[path = "generated_capture.rs"]
 mod generated_capture;

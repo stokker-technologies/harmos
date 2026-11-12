@@ -130,6 +130,12 @@ The [JSONL adapter](../examples/schematic/storage/) is the example's persistence
 plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime
 settlement and publishes the document through an atomic file replacement.
 
+The optional [query service composition](../examples/schematic/app/src/services/queries.rs)
+constructs a SQLite/Arrow backend beside the JSONL adapter using caller-supplied history,
+catalog and storage budgets. The [saved preview journey](../examples/schematic/app/tests/storage/main.rs)
+uses generated Rust SDK requests for saved scans and conditional update/conflict outcomes.
+It leaves the document's recovery and stream persistence with their existing adapters.
+
 ## Transfer Benchmarks
 
 The guest's `benchmark` feature enables unary record, sample and file-byte

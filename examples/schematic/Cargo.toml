@@ -23,6 +23,7 @@ harmos-protocol = { path = "../../crates/harmos-protocol" }
 harmos-domain = { path = "../../crates/harmos-domain", default-features = false }
 harmos-packaging = { path = "../../tools/packaging", default-features = false }
 harmos = { path = "../../sdk/rust" }
+harmos-storage = { path = "../../crates/harmos-storage" }
 
 # Git
 
@@ -38,6 +39,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 sha2 = { version = "0.11.1", default-features = false }
 
 # Serialization
+arrow-array = { version = "=60.1.0", default-features = false }
 prost = { version = "0.14.4", default-features = false, features = ["derive", "std"] }
 prost-reflect = { version = "0.16.5", default-features = false }
 prost-types = { version = "0.14.4", default-features = false }

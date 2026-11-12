@@ -10,6 +10,7 @@
 /* === Modules === */
 
 pub mod guest;
+pub mod queries;
 pub mod sidecar;
 
 /* === Re-Exports === */

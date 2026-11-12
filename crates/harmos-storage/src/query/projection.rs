@@ -198,6 +198,9 @@ impl ProjectionCatalog {
         let revision = *self.active.get(name).ok_or(Error::NotReady { domain: "projection definition" })?;
         Ok((self.revisions.get(&(name.clone(), revision)).expect("active revision exists").definition.clone(), revision))
     }
+    pub fn definition_at(&self, name: &Identifier, revision: u64) -> Result<ProjectionDefinition> {
+        Ok(self.revision(name, revision)?.definition.clone())
+    }
     pub fn status(&self, name: &Identifier, revision: u64, frontier: &StorageCursor) -> Result<Option<ProjectionStatus>> {
         let definition = self.revision(name, revision)?;
         check_retired(definition.retired, frontier.sequence)?;
@@ -280,8 +283,24 @@ impl ProjectionCatalog {
 pub async fn advance_projection(
     backend: &dyn StorageBackend, snapshot: &BackendSnapshot, name: &Identifier, work: ReadLimits, cancel: &Cancellation,
 ) -> Result<u64> {
+    advance_projection_checked(backend, snapshot, name, None, work, cancel).await
+}
+
+pub async fn advance_projection_at(
+    backend: &dyn StorageBackend, snapshot: &BackendSnapshot, name: &Identifier, revision: u64, work: ReadLimits, cancel: &Cancellation,
+) -> Result<u64> {
+    advance_projection_checked(backend, snapshot, name, Some(revision), work, cancel).await
+}
+
+async fn advance_projection_checked(
+    backend: &dyn StorageBackend, snapshot: &BackendSnapshot, name: &Identifier, expected: Option<u64>, work: ReadLimits,
+    cancel: &Cancellation,
+) -> Result<u64> {
     cancel.check()?;
     let (definition, revision) = backend.projection_definition(name).await?;
+    if expected.is_some_and(|expected| expected != revision) {
+        return Err(conflict("projection rebuilt before advancement"));
+    }
     backend
         .read_schemas(
             snapshot,

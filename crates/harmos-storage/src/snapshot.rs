@@ -190,6 +190,18 @@ impl Snapshot {
         Ok(revision)
     }
 
+    pub async fn advance_projection_at(
+        &self, name: &crate::Identifier, revision: u64, work: super::ReadLimits, cancel: &crate::query::columnar::Cancellation,
+    ) -> Result<u64> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let result =
+            crate::query::projection::advance_projection_at(self.inner.primary.as_ref(), &self.backend, name, revision, work, cancel)
+                .await?;
+        self.check()?;
+        Ok(result)
+    }
+
     #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
     pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;

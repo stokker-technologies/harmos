@@ -48,6 +48,18 @@ pub fn storage_catalog() -> crate::execution::operations::Catalog {
 pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
     let mut batch = crate::execution::__private::Catalog::new();
     batch.operations.extend([
+        crate::execution::operations::OperationFactory::protobuf::<super::Capabilities>().expect("Capabilities declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::OpenSnapshot>().expect("OpenSnapshot declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ReleaseSnapshot>().expect("ReleaseSnapshot declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ScanArrow>().expect("ScanArrow declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ScanIndex>().expect("ScanIndex declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::RegisterIndex>().expect("RegisterIndex declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::RegisterProjection>().expect("RegisterProjection declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AdvanceProjection>().expect("AdvanceProjection declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ReadProjection>().expect("ReadProjection declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::InspectProjection>().expect("InspectProjection declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::CompareExchangeObject>()
+            .expect("CompareExchangeObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),

@@ -673,6 +673,7 @@ impl<A: Application> Builder<A> {
 
     pub fn storage(&mut self, storage: &crate::storage::StorageManager) -> &mut Self {
         self.resource(storage.engine());
+        self.resource(harmos_operations::storage::SavedSnapshots::new(storage.query_capacity()));
         self.startup_storage = Some(storage.clone());
         self
     }

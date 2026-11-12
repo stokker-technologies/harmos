@@ -26,6 +26,7 @@ simulation = ["harmos-runtime/simulation"]
 # Local
 harmos-runtime = { workspace = true, default-features = true, features = ["plugin-guest"] }
 harmos = { workspace = true }
+harmos-storage = { workspace = true, features = ["sqlite"] }
 schematic-domain = { path = "../domain" }
 schematic-protocol = { path = "../protocol", features = ["sdk"] }
 schematic-operations = { path = "../operations", features = ["runtime"] }
@@ -69,6 +70,7 @@ tempfile = { workspace = true, default-features = true }
 # === Dev Dependencies === #
 
 [dev-dependencies]
+arrow-array = { workspace = true }
 futures-util = { workspace = true, features = ["async-await-macro"] }
 harmos-packaging = { workspace = true, features = ["sidecar"] }
 tokio = { workspace = true, default-features = true, features = ["macros", "rt-multi-thread"] }
@@ -80,6 +82,10 @@ tokio = { workspace = true, default-features = true, features = ["macros", "rt-m
 [[test]]
 name = "native_plugin"
 path = "tests/native_plugin/main.rs"
+
+[[test]]
+name = "storage"
+path = "tests/storage/main.rs"
 
 # === Bench Targets === #
 

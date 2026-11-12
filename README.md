@@ -93,7 +93,7 @@ describes their repeated key/value entry representation.
 
 `harmos-storage/sqlite` adds an optional durable reference backend with bounded Arrow scans,
 ordered indexes, exact-frontier projections, grouped time buckets and atomic object updates.
-See [Storage Interfaces](docs/storage.md) for native APIs, backend obligations and pending consumer adoption.
+See [Storage Interfaces](docs/storage.md) for native and generated SDK APIs, backend obligations and saved-cut query examples.
 
 Structured operation and storage tracing supports performance investigation;
 applications control collection. See [Performance](docs/product-guide.md#performance).

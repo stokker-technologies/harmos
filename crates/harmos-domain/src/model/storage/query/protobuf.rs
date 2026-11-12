@@ -455,7 +455,7 @@ impl TryFrom<Transform> for wire::Transform {
                 Transform::Histogram(value) => Variant::Histogram(value.into()),
                 Transform::Downsample(value) => Variant::Downsample(value.into()),
                 Transform::Sort(value) => Variant::Sort(value.into()),
-                Transform::TimeBuckets(_) => return Err(invalid("TimeBuckets requires a storage protocol mapping")),
+                Transform::TimeBuckets(value) => Variant::TimeBuckets(value.try_into()?),
             }),
         })
     }
@@ -471,6 +471,7 @@ impl TryFrom<wire::Transform> for Transform {
             Variant::Histogram(value) => Self::Histogram(value.try_into()?),
             Variant::Downsample(value) => Self::Downsample(value.try_into()?),
             Variant::Sort(value) => Self::Sort(value.try_into()?),
+            Variant::TimeBuckets(value) => Self::TimeBuckets(value.try_into()?),
         })
     }
 }
@@ -619,3 +620,40 @@ fn invalid(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
+impl TryFrom<wire::TimeBucketPlan> for transform::TimeBucketPlan {
+    type Error = Error;
+    fn try_from(value: wire::TimeBucketPlan) -> Result<Self> {
+        Ok(Self {
+            origin_ns: value.origin_ns,
+            width_ns: std::num::NonZeroU64::new(value.width_ns).ok_or_else(|| invalid("bucket width must be nonzero"))?,
+            time: value.time,
+            value: value.value,
+            identity: value.identity,
+            group: value.group,
+            max_samples: usize::try_from(value.max_samples)
+                .ok()
+                .and_then(std::num::NonZeroUsize::new)
+                .ok_or_else(|| invalid("invalid sample limit"))?,
+            max_bytes: usize::try_from(value.max_bytes)
+                .ok()
+                .and_then(std::num::NonZeroUsize::new)
+                .ok_or_else(|| invalid("invalid byte limit"))?,
+        })
+    }
+}
+impl TryFrom<transform::TimeBucketPlan> for wire::TimeBucketPlan {
+    type Error = Error;
+    fn try_from(value: transform::TimeBucketPlan) -> Result<Self> {
+        Ok(Self {
+            origin_ns: value.origin_ns,
+            width_ns: value.width_ns.get(),
+            time: value.time,
+            value: value.value,
+            identity: value.identity,
+            group: value.group,
+            max_samples: value.max_samples.get().try_into().map_err(|_| invalid("sample limit exceeds wire range"))?,
+            max_bytes: value.max_bytes.get().try_into().map_err(|_| invalid("byte limit exceeds wire range"))?,
+        })
+    }
+}

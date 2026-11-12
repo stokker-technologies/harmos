@@ -550,3 +550,18 @@ Criterion samples. Verification runs outside timing. The owned temporary databas
 after close; `candidate.txt`, compiler metadata and Criterion samples remain for comparison.
 The existing baseline capture is not a durable-backend baseline; preserve its compiler metadata
 as `compiler-baseline.json` before a later run replaces `compiler.json`.
+
+## Storage Consumer Proof
+
+```sh
+mise run test -- --package harmos-runtime --target integration --story storage::generated_native_journey
+mise run test -- --package schematic-app --manifest-path examples/schematic/Cargo.toml --target storage --exact saved_preview_survives_atomic_replacement
+mise run generate -- --sdk rust
+mise run generate -- --sdk python
+mise run generate -- --sdk csharp
+mise run generate -- --sdk cpp
+```
+
+Storage protobuf generation refreshes messages, service stubs and reflection together. Rust
+contracts are exposed as `harmos::storage`; the other SDKs generate storage clients from the
+same `proto/harmos/v1/storage.proto`. See [Generated Storage Clients](storage.md#generated-storage-clients).

@@ -40,6 +40,19 @@ use crate::{Identifier, ReadLimits, Result, StorageCursor, StorageManager};
 /* === Implementations === */
 
 impl StorageManager {
+    pub fn query_capacity(&self) -> std::num::NonZeroUsize {
+        self.inner.settings.request.max_active_queries
+    }
+    pub async fn index_definition(&self, name: &Identifier) -> Result<(IndexDefinition, u64)> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
+        self.inner.bounded("primary.index_definition", self.inner.primary.index_definition(name)).await
+    }
+    pub async fn projection_definition(&self, name: &Identifier) -> Result<(ProjectionDefinition, u64)> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
+        self.inner.bounded("primary.projection_definition", self.inner.primary.projection_definition(name)).await
+    }
     pub fn capabilities(&self) -> StorageCapabilities {
         self.inner.primary.capabilities()
     }
@@ -54,6 +67,11 @@ impl StorageManager {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
         self.inner.bounded("primary.register_projection", self.inner.primary.register_projection(definition, rebuild)).await
+    }
+    pub async fn projection_definition_at(&self, name: &Identifier, revision: u64) -> Result<ProjectionDefinition> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
+        self.inner.bounded("primary.projection_definition_at", self.inner.primary.projection_definition_at(name, revision)).await
     }
     pub async fn projection_status(&self, name: &Identifier, revision: u64, frontier: &StorageCursor) -> Result<Option<ProjectionStatus>> {
         let _lifecycle = self.inner.lifecycle.read().await;
