@@ -454,10 +454,11 @@ the old `ci.build` command and `BUILD_SCRIPT` adapter are retired. Current setup
 cache environment inputs retain their meanings.
 
 
-## Focused Storage Baseline
+## Focused Storage Benchmarks
 
 ```sh
 mise run bench -- --storage --filter baseline
+mise run bench -- --storage --filter native
 ```
 
 This selection builds only `harmos-storage`'s `integration-multi-day` benchmark in the bench
@@ -470,3 +471,12 @@ Raw output and compiler metadata remain in `target/benchmarks/storage/`. Without
 filter, the same executable additionally uses ordinary Criterion sampling, whose native files
 remain under `target/benchmarks/storage/criterion/`. The storage-interface design owns workload
 identity and proposed acceptance budgets; this command does not establish a performance claim.
+
+The `native` selection constructs the same deterministic source in the optional durable SQLite
+backend and measures native full/window scans, exact-frontier projection windows/replay and
+index construction/seek reads. It does not construct the row-query baseline fixture. Ingest,
+catch-up and index construction report individual elapsed measurements; read cases retain ten
+Criterion samples. Verification runs outside timing. The owned temporary database is removed
+after close; `candidate.txt`, compiler metadata and Criterion samples remain for comparison.
+The existing baseline capture is not a durable-backend baseline; preserve its compiler metadata
+as `compiler-baseline.json` before a later run replaces `compiler.json`.

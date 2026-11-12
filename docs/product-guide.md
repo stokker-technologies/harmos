@@ -1249,6 +1249,7 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../sdk/rust/src/lib.rs) — the standalone protocol SDK.
 - [Cargo Features](../crates/harmos-runtime/Cargo.toml) — select the facilities your application needs.
+- [Storage Interfaces](storage.md) — saved Arrow reads, indexes, projections, conditional objects and the optional SQLite backend.
 - [Storage Adapter](../examples/schematic/storage/) — own your persistence format.
 
 

@@ -18,7 +18,12 @@
 - [x] 2.4 Add Transform::TimeBuckets and projection revision/changed-key support; prove late correction/replacement, saved-cut stability and equivalence with generic execution.
 - [x] 2.5 Add typed compare_exchange and atomic backend implementation; prove conflicting writers, create-if-absent, receipt replay and durability outcomes.
 - [ ] 2.6 Implement all five capabilities in the durable reference and deterministic test backends; migrate existing implementers and operation/protocol consumers without product-specific APIs.
+  - [x] Storage backend portion: all five capabilities in durable/test adapters, public manager/snapshot resources, exact retention gaps and files/receipt recovery proof.
+  - [ ] Remaining: protocol, operations, runtime, SDK and example consumer adoption in the design inventory.
 - [ ] 2.7 Update affected README/storage guides, examples and backend obligations; verify dependency direction and preservation of existing files, recovery and mutation receipts.
+
+  - [x] Storage documentation portion: native API guide, README claims, tooling commands and retained recovery/file obligations.
+  - [ ] Remaining: example consumer migration and linked usage claims after that migration.
 
 ## 3. Benchmark Proof
 

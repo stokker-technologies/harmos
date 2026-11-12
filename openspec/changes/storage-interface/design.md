@@ -209,7 +209,7 @@ wave remains pending; publication and consumer extraction are not claimed here.
 | Storage worker | `crates/harmos-storage/src/{backend.rs,objects.rs,query/}`; new `query/columnar.rs`, `query/index.rs`, `query/projection.rs`, `query/time_buckets.rs`, `sqlite/`; typed admission, bounded fallback and durable reference |
 | Storage worker | `crates/harmos-storage/tests/support/storage.rs`, focused storage stories and `benches/multi_day/`; deterministic parity, restart, invalidation, conditional writes and late replacement |
 | Storage worker | `tools/python/src/harmos_tools/storage_bench.py`, narrow bench dispatch in `ci/tasks.py`; existing task, focused compilation and native Criterion artifacts |
-| Storage worker | This change and storage sections of `docs/product-guide.md`, `docs/tooling.md`; README impact reviewed |
+| Storage worker | This change, `docs/storage.md` and storage links/commands in `docs/product-guide.md`, `docs/tooling.md`; README claims updated |
 | Minimal shared manifest edits | Workspace SQLite dependency/lock and the storage package's optional feature; inspect status before editing and stage only owned changes |
 | Deferred consumer adoption | `crates/harmos-domain/src/model/storage/query/{transform/,protobuf.rs}`, protocol storage protobuf/generated mappings, operations storage query/object handlers, runtime composition, SDK generated clients and examples; no new wire compatibility implied |
 | Preserved owners | `src/state/file/` recovery journal, all existing file/session/receipt contracts; these are not query backends |
@@ -220,18 +220,20 @@ wave remains pending; publication and consumer extraction are not claimed here.
 struct StorageCapabilities { native_arrow: bool, native_index: bool, durable_projections: bool, conditional_objects: bool }
 struct ColumnSource { kind: ColumnKind, schema: SchemaKey }
 enum ColumnKind { Objects, Records, Stream }
-struct WorkLimits { rows: NonZeroUsize, bytes: NonZeroUsize }
 struct ArrowScan {
     source: ColumnSource,
     columns: Vec<String>, // Dotted leaf paths; unique and nonempty.
     predicate: Option<ColumnPredicate>,
+    time: Option<TimeBounds>, // Exact half-open nanosecond bounds.
+    start: u64, // Initial exclusive source position.
     after: Option<ArrowSeek>, // Exclusive source position, not output-row offset.
     limits: ReadLimits,
     work: ReadLimits,
 }
 struct ColumnPredicate { column: String, lower: Option<f64>, upper: Option<f64> }
 struct ArrowSeek { snapshot: Vec<u8>, plan: [u8; 32], position: u64 }
-struct ArrowPage { batch: RecordBatch, next: Option<ArrowSeek>, complete: bool, scanned: usize, bytes_read: usize }
+struct TimeBounds { column: String, lower_ns: i64, upper_ns: i64 }
+struct ArrowPage { batch: RecordBatch, next: Option<ArrowSeek>, complete: bool, scanned: usize, bytes_read: usize, columns_read: Vec<String>, payload_rows: usize }
 fn scan_arrow(snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation) -> StorageFuture<ArrowPage>;
 struct IndexDefinition { name: Identifier, version: u32, source: ColumnSource, columns: Vec<String> }
 struct IndexRead { name: Identifier, lower: Option<Vec<u8>>, upper: Option<Vec<u8>>, prefix: Vec<u8>, descending: bool, after: Option<IndexSeek>, limits: ReadLimits, work: ReadLimits }
@@ -270,9 +272,9 @@ invalid input, exhausted work/memory and corrupt/incompatible durable data.
 ```rust,ignore
 enum ProjectionTransform { Select(Vec<String>), TimeBuckets(TimeBucketPlan) }
 struct ProjectionDefinition { name: Identifier, version: u32, source: ColumnSource, transform: ProjectionTransform }
-struct ProjectionRead { name: Identifier, revision: u64, frontier: StorageCursor, after: usize, limits: ReadLimits }
+struct ProjectionRead { name: Identifier, revision: u64, frontier: StorageCursor, after: usize, limits: ReadLimits, work: ReadLimits }
 struct ProjectionPage { batch: RecordBatch, frontier: StorageCursor, revision: u64, changed_keys: Vec<Vec<u8>>, next: Option<usize> }
-fn register_projection(definition: &ProjectionDefinition) -> StorageFuture<u64>;
+fn register_projection(definition: &ProjectionDefinition, rebuild: bool) -> StorageFuture<u64>;
 fn advance_projection(snapshot: &BackendSnapshot, name: &Identifier, work: ReadLimits, cancel: &Cancellation) -> StorageFuture<u64>;
 fn read_projection(read: &ProjectionRead) -> StorageFuture<ProjectionPage>;
 ```
@@ -308,15 +310,15 @@ values and invalid timestamps refuse. Empty buckets are absent. All contributing
 Welford accumulation; sum and sum-of-squares use ordered finite floating point accumulation
 and refuse overflow. Changed keys are the sorted
 union of changed/removed bucket keys compared with the preceding published cut in that revision;
-these keys are retained with that cut. Old cuts retain old values. The storage-native transform
-is implemented here; domain/wire conversion adoption is explicitly deferred to avoid modifying
-the other writer's consumers.
+these keys are retained with that cut. Old cuts retain old values. The native domain transform and its bounded storage executor are implemented here; wire
+mapping and consumer adoption remain deferred. Native-to-wire conversion refuses this variant.
 
 ### 1.5 Conditional Objects
 
 ```rust,ignore
 enum CompareExchange { Applied(ObjectReceipt), Conflict { current: Option<ObjectVersionToken> } }
-fn compare_exchange(expected: Option<&ObjectVersionToken>, value: &ObjectEntry) -> StorageFuture<CompareExchange>;
+struct ObjectExchange { expected: Option<ObjectVersionToken>, schema: StorageSchema, value: ObjectEntry }
+fn compare_exchange(exchange: &ObjectExchange) -> StorageFuture<CompareExchange>;
 async fn compare_exchange<T: StoredObject>(
     &self, expected: Option<ObjectVersionToken>, value: &T,
 ) -> Result<CompareExchange>; // StorageManager; validates, admits, then awaits the backend outcome.
@@ -381,7 +383,7 @@ disclosed with measurements; hosted Nightly remains the authoritative regression
 
 The original repeated baseline attempt exposed whole-snapshot cloning on every test-backend
 page and was interrupted before measurements. The baseline selection therefore records one
-timed traversal per case in raw stdout (	arget/benchmarks/storage/baseline.txt); these are
+timed traversal per case in raw stdout (`target/benchmarks/storage/baseline.txt`); these are
 single measurements, not medians. Repeated Criterion sampling remains available without the
 baseline selector. Budgets are unchanged and remain provisional until hosted repeated proof.
 
@@ -401,7 +403,7 @@ the checkout ran concurrently, so these are local single traversals, not authori
 | Next Window | 4,096 | 82.026233 | 98.431480 |
 
 Command: `mise run bench -- --storage --filter baseline` (successful). Raw output:
-`target/benchmarks/storage/baseline.txt`; compiler metadata: its sibling `compiler.json`.
+`target/benchmarks/storage/baseline.txt`; compiler metadata: its sibling `compiler-baseline.json`.
 All three row counts and sums agree with the deterministic generator outside timing. These
 measurements include retained-snapshot copying in the existing test backend and are not a
 previous durable-backend benchmark. The proposed native bounded-window/projection ceiling is
@@ -421,25 +423,40 @@ struct TimeBounds { column: String, lower_ns: i64, upper_ns: i64 }
 Reason: initial position seeks avoid scanning a known prefix, while integer time bounds avoid
 rounding nanoseconds through floating point predicates. The fallback applies identical bounds.
 
-README impact: no user-facing storage capability has landed, so its feature claims remain
-unchanged. The focused benchmark command is documented in `docs/tooling.md`.
+README and `docs/storage.md` now describe the landed native capabilities and the explicitly
+pending consumer migration. The focused benchmark commands are documented in `docs/tooling.md`.
+
+### Consumer Adoption
 
 Consumer adoption inventory for the next pass: domain transform and protobuf conversions in
 `crates/harmos-domain/src/model/storage/query/`; protocol storage messages in
 `proto/harmos/v1/storage.proto` and `crates/harmos-protocol/src/storage.rs`; operation handlers
 `crates/harmos-operations/src/storage/{query.rs,write_objects.rs,exchange.rs,registration.rs}`;
 runtime storage composition, SDK generated-contract client surfaces (`sdk/rust/src/client.rs`
-and generated application clients), and storage examples. All remain unmodified by this slice.
+and generated application clients), and storage examples. Only the minimal domain `TimeBucketPlan`/transform variant and fallible native-to-wire
+conversion were changed here; every protocol, operation, runtime, SDK and example adoption remains pending.
 The current host operation's exchange path must adopt the atomic primitive rather than preserve
-read-then-write preconditions when the interface lands. Remaining 2.6 also includes every
-existing backend implementer outside storage, so no complete migration is claimed.
+read-then-write preconditions when the interface lands. The locked tree contains exactly two `StorageBackend` implementers: the new SQLite reference
+and `crates/harmos-storage/tests/support/storage.rs::Data`; both are implemented. Schematic
+JSONL streams, journal and snapshot owners are consumer/recovery adapters, not implementations
+of this query backend trait. No external query-backend implementer is invented for migration.
+Complete consumer adoption is not claimed.
+
+
+| Deferred Owner | Exact Remaining Adoption |
+| --- | --- |
+| `proto/harmos/v1/storage.proto`, `crates/harmos-protocol/src/{storage.rs,storage_helpers.rs}`, domain `model/storage/query/protobuf.rs` | Define/map generic scan/index plans and seek state, projection definitions/frontiers/pages/changed keys, `TimeBuckets`, conditional object requests/outcomes and structured errors; regenerate owned protocol outputs. |
+| `crates/harmos-operations/src/storage/{query.rs,exchange.rs,write_objects.rs,registration.rs}` | Dispatch saved Arrow/index/projection resources, declare new handlers/grants, and replace operation-level read-then-write exchange with the atomic primitive and durable replay. |
+| `crates/harmos-runtime/src/storage/{mod.rs,manager.rs}` and runtime configuration | Validate capability negotiation and reference-backend selection/composition. Existing `Deref` already exposes the new native engine methods; no duplicate facade is required. |
+| `sdk/rust/src/{lib.rs,client.rs,client/method.rs}` and generated application clients | Adopt generated protocol contracts and typed handles while preserving the SDK's protocol-only dependency direction; expose new page/frontier/seek/outcome types without a concrete database dependency. |
+| `examples/schematic/storage/src/{lib.rs,streams.rs,snapshot.rs,journal.rs}`, example composition and affected guides | Decide/example the new reference-query backend and public resources alongside existing consumer callbacks; preserve their application journal/snapshot behavior. These are not missing `StorageBackend` methods. |
 
 
 The deterministic test backend now retains an immutable `Arc<Snapshot>` per token and checks
 its exact cut; page reads no longer clone the full saved image. This preserves snapshot contents
 and release semantics while removing fixture work that dominated the baseline. SQLite snapshots
-use a durable monotonically allocated identifier and an instance-owned live registry; reopening
-cannot accidentally accept an old token. Native column chunks carry exact integer time bounds
+use fresh 256-bit opaque tokens and an instance-owned live registry; token creation performs no
+database write. Reopening and independent owners cannot accidentally accept an old token. Native column chunks carry exact integer time bounds
 and finite float bounds; pruning advances source continuation without fetching payload bytes.
 
 
@@ -493,3 +510,83 @@ consumer retention: retired retries fail with a gap instead of being reapplied. 
 only outcomes they no longer need; a retention call does not create a cross-method transaction.
 The typed manager supplies ordinary and mutation-id `compare_exchange_once` entry points and
 waits for the durable outcome; cancellation after admission cannot retract queued work.
+
+
+`StorageManager::snapshot` now returns the public owned `Snapshot`, with `at`, `scan_arrow`,
+`scan_index` and `advance_projection`. Manager methods own index/projection registration,
+frontier inspection, reads and retirement. Operations can use these generic resources without
+access to a concrete backend or connection. Snapshot drop retains the existing worker-owned
+release path. Bucket computation runs on the blocking executor with a child cancellation token;
+dropping its awaiting future cancels the child without cancelling a caller's shared parent.
+
+Object retention records exact reclaimed positions and returns `Gap` for exact/revision reads
+that would cross them. Fully dead object chunks are reclaimed after live snapshots release.
+Future-frontier retirement is refused. Native snapshot tokens are random 256-bit owner tokens;
+the deterministic fixture encodes its instance scope and counter. Incompatible roots are
+validated before journal-mode changes, preserving their bytes when refused.
+
+Storage-side 2.6 covers both backends, the public manager/snapshot facade, retained files and
+mutation receipts, token ownership and bounded generic execution. Storage-side 2.7 covers
+`docs/storage.md`, README capabilities and tooling commands. The remaining adoption above
+keeps the combined task boxes open; this is not combined SOURCE COMPLETE or delivery.
+
+## Native Windows Measurements
+
+Command: `mise run bench -- --storage --filter native` (successful), same Windows machine,
+compiler and deterministic two-million-sample input as the locked baseline. Other writer work
+continued concurrently; SQLite setup and result verification are outside timing. These are
+local measurements, not hosted or consumer end-to-end claims. The full scan selects one value
+column; native windows start at the identical exclusive source positions used by baseline offsets.
+The reference physical layout is 16,384 rows/8 MiB. Selected result pages contain at most 4096
+rows. Projection verification checks the independent generator's count/sum; index verification
+sorts independently generated `(value, position)` pairs outside timing.
+
+| Native Case | Median Seconds (10 Criterion Samples) | Mean Seconds |
+| --- | ---: | ---: |
+| Full Projection, 2,000,000 Rows | 0.249443 | 0.253001 |
+| First Window, 4096 Rows | 0.000537 | 0.000545 |
+| Next Window, 4096 Rows | 0.001180 | 0.001184 |
+| Durable Projection Window, 4096 Rows | 0.000353 | 0.000360 |
+| Published Projection Replay | 0.000193 | 0.000196 |
+| Indexed Window, 4096 Entries | 0.093912 | 0.095857 |
+
+Single traversals: ingest 55.001403 seconds; initial projection catch-up 0.233137 seconds;
+index construction 47.170998 seconds. First full scan 0.276647 seconds and 128,359,376 fetched
+column bytes across its pages; first/next windows 262,992/525,984 bytes respectively. Each native
+scan reconstructed zero payload rows. The next window spans a physical chunk boundary and
+therefore fetches two chunks. These byte counts are measured encoded reads, not unique disk
+I/O or allocations. TempDir removes the owned database after close; raw stdout is
+`target/benchmarks/storage/candidate.txt`, compiler metadata its sibling `compiler.json`, and
+native Criterion samples/estimates are under `criterion/integration_multi_day_native/`.
+The baseline compiler capture is preserved separately as `compiler-baseline.json`.
+
+The previously proposed 2-second native read ceiling remains unchanged and these reads meet it.
+The baseline +20% ceilings also remain unchanged; no existing-path median regression conclusion
+is claimed from native-path measurements. Bucket catch-up/contention, memory/allocation, restart
+and cancellation cost measurements, native Linux and consumer workloads remain tasks 3.x.
+
+Minimal forced external edits, inspected clean before editing: domain
+`crates/harmos-domain/src/model/storage/query/transform/mod.rs` and `query/protobuf.rs`;
+`crates/harmos-runtime/src/error.rs` maps missing indexes to `NotRegistered`; runtime storage
+stories `generated_query_batches.rs`, `operation_plugins.rs` and `operation_schemas.rs` use
+fallible query conversion for existing supported transforms. These are compilation migrations,
+not adoption of the new wire/storage capabilities. No other worker's dirty paths were edited.
+
+## Targeted Proof and Remaining Gates
+
+Windows focused proof passes: 46 storage library tests and six integration journeys covering
+column scans, ordered seek, interrupted projection replay, late grouped replacements,
+conditional outcomes/retention and file/receipt recovery. Both default and `sqlite` package
+checks pass. `mise run format`, Python check and repository check pass. The storage findings
+from the common Rust lint selection were repaired without weakening checks.
+
+The latest common Rust check fails in the other writer's dirty
+`crates/harmos-runtime/src/guest/host/mod.rs` (`Epochs::ticks` unused) and
+`guest/host/envelope.rs` (`WireChild` large enum variant). The required test-artifact build
+was run and failed: six fallible query-conversion calls were repaired in clean storage stories;
+four remaining reported guest-story errors are owned by the other writer (`support.rs` resource
+error conversion/catalog registration, `dependencies.rs` and `lifecycle.rs` missing `Echoed: Debug`).
+A focused runtime schema story also stops at the unused `Epochs::ticks` warning. These failures
+remain repair obligations; the archive and common Rust check have not passed. Rerun them after
+the guest writer's handoff. Linux, full hosted validation, remaining 3.x measurements and
+publication are open. All storage commits stay local and no push is authorized.
