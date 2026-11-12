@@ -735,19 +735,11 @@ virtual time.
 ### SDK Admission, Execution Scope and Independent Payload Types
 
 These additive follow-ups keep the SDK dependent only on protocol and transport support.
-Planned generated-client admission scans the bound message descriptors before Prost decoding, including
-repeated, map and nested allocations. Managed envelopes are scanned and merged from borrowed
-wire slices so no unclaimed payload accumulator is needed. The caller selects the byte bound;
-the returned-value claim lifetime must be settled before completing that API.
-The existing `Running::next() -> Result<Option<O>, Status>` and
-`Running::join() -> Result<R, Status>` transfer bare generated messages to the caller.
-Those generated types cannot retain an SDK semaphore permit. Preserving those exact returns
-bounds SDK-owned decoding and buffering only, releasing claims at handoff; bounding values
-retained by callers requires an owning return wrapper. This ownership decision remains open;
-the descriptor scanner is preparatory work, not a claim that client admission is delivered.
+Generated-client admission scans bound message descriptors before Prost decoding, including repeated, map and nested allocations; managed envelopes merge borrowed wire slices without a payload accumulator.
+Accounting ends at handoff: required caller-owned `ClientSettings.retained_bytes: NonZeroUsize` bounds decoding and SDK-owned queued values across client clones/calls, releasing each claim when its bare value reaches the caller; callers own memory thereafter.
+Admission refuses before decoding when a claim cannot be granted and names `retained_bytes` with advice to raise it or request smaller pages; no consumer policy default is supplied.
 
 ```rust
-// Planned client setting; the return-ownership decision above remains open.
 pub struct ClientSettings {
     pub retained_bytes: NonZeroUsize,
     // Existing wire and outgoing queue bounds.
