@@ -6,7 +6,9 @@
 
 Projection SHALL NOT automatically generate RunMethod twins. Each operation SHALL
 have one canonical route. Ordinary long work SHALL use unary resource actions
-and Get/Watch observation. A managed stream SHALL replace the ordinary route only
+and Get/Watch observation. Server streaming SHALL be reserved for Watch and the
+plugin protocol's own carriers, except the explicit managed replacement below.
+A managed stream SHALL replace the ordinary route only
 when the declaration explicitly promises a cooperative final result after cancel.
 
 #### Scenario: Pure Getter Projection

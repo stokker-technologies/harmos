@@ -2,61 +2,92 @@
 
 ## ADDED Requirements
 
-### Requirement: Shared Resumable Unary Uploads
+### Requirement: Shared Resumable Unary Transfers
 
-Clients and plugins SHALL use the same resumable unary upload-session mechanism
-instead of streaming uploads. Session creation, status, bounded chunk admission,
-writer resume, finish and abandon SHALL use the file-production lifecycle.
-Plugin operations SHALL remain logically unary even when carried by duplex
-invocation-control frames.
+Clients and plugins SHALL share one unary, ranged, resumable transfer mechanism.
+Uploads SHALL create a session, Append ordered immutable chunks at stated offsets,
+Get status to resume, Publish to make content visible, and Delete to abandon.
+Chunk and download range sizes SHALL be bounded by configuration. Plugin
+operations SHALL remain logically unary within their own protocol carriers.
 
 #### Scenario: Client and Plugin Upload
 
-- **WHEN** a client and an authorized plugin each upload the same kind of content
-- **THEN** both use the same session implementation and receipt/integrity rules with bounded unary chunks, not separate client-stream and plugin paths
+- **WHEN** a client and an authorized plugin upload content
+- **THEN** both use the same session implementation and bounded unary chunk, receipt and integrity rules
 
-#### Scenario: No Streaming Fallback
+#### Scenario: Unsupported Provider
 
-- **WHEN** the selected provider does not support resumable productions
-- **THEN** upload fails with explicit capability refusal instead of silently choosing the old streaming route
+- **WHEN** a selected provider does not support resumable sessions
+- **THEN** upload fails explicitly instead of selecting a streaming fallback
 
 ### Requirement: Resumable Fenced Chunk Admission
 
 Session status SHALL expose accepted and durable progress. Resume SHALL fence the
-old writer. A chunk SHALL bind session, writer, offset, data and mutation identity;
-identical retries SHALL replay the original outcome, while changed retries,
-noncontiguous offsets and stale writers SHALL refuse without corrupting the
+old writer. A chunk SHALL bind session, writer, offset, data and mutation identity.
+Identical bytes replayed at an accepted offset SHALL succeed; different bytes at
+that offset SHALL conflict even if a new request identity is supplied.
+Noncontiguous new offsets and stale writers SHALL refuse without corrupting the
 retained prefix.
 
 #### Scenario: Lost Reply and Resume
 
-- **WHEN** a writer loses an acknowledged chunk reply, reads session status and resumes under a new writer generation
-- **THEN** retained progress is available, the previous writer is fenced and replay cannot duplicate bytes
+- **WHEN** a writer loses a chunk reply, reads status and resumes under a new writer generation
+- **THEN** retained progress permits continuation, the previous writer is fenced and identical replay cannot duplicate bytes
 
-#### Scenario: Conflicting Chunk
+#### Scenario: Conflicting Offset
 
-- **WHEN** a chunk reuses the identity of an admitted chunk with different bytes or an invalid offset
-- **THEN** the operation refuses and the original retained bytes remain unchanged
+- **WHEN** a chunk supplies different bytes at an already accepted offset
+- **THEN** it conflicts regardless of request identity and the original retained bytes remain unchanged
 
 ### Requirement: Explicit Upload Terminal Outcomes
 
-Finish SHALL validate expected length and integrity before returning a durable
-immutable file reference. Abandon SHALL end writing under the production's
-partial-data retention guarantee and SHALL remain distinct from DeleteFile.
-Observation loss SHALL NOT implicitly finish or delete a session. Admission and
-grant checks SHALL apply to each session action.
+PublishFileProduction SHALL validate expected length and digest before making
+content visible and returning a durable immutable reference. DeleteFileProduction
+SHALL abandon the unpublished session without publishing it. DeleteFile SHALL
+remain the separate action for published content; retained-reader reclamation is
+an open question to settle at its implementation task. Observation loss SHALL NOT
+publish or delete a session. Grant checks SHALL apply to every session action.
 
 #### Scenario: Integrity Mismatch
 
-- **WHEN** Finish receives a length or digest that disagrees with uploaded content
-- **THEN** it refuses without publishing a successful immutable reference
+- **WHEN** PublishFileProduction receives a length or digest inconsistent with uploaded content
+- **THEN** it refuses without exposing content or returning a successful immutable reference
 
-#### Scenario: Successful Finish
+#### Scenario: Successful Publication
 
-- **WHEN** Finish validates all content and required persistence completes
-- **THEN** it returns the final reference and durable receipt with matching length and digest
+- **WHEN** publication validates content and required persistence completes
+- **THEN** content becomes visible and its reference and durable receipt match its length and digest
 
-#### Scenario: Abandon and Disconnect
+#### Scenario: Abandon After Disconnect
 
-- **WHEN** an observer disconnects and a later authorized caller abandons the session
-- **THEN** disconnect did not publish or delete it, and Abandon ends writing while preserving its declared retained partial content
+- **WHEN** an observer disconnects and a later authorized caller deletes the unpublished session
+- **THEN** disconnect did not publish or delete it and deletion abandons it without publication
+
+### Requirement: Bounded Resumable Unary Downloads
+
+GetFileBytes SHALL accept offset, maximum bytes and optional at, returning a
+bounded byte range, total content length, content digest and resolved_at. Clients
+and plugins SHALL repeat that same unary Get to continue or resume. There SHALL
+be no streaming download operation or automatically generated twin.
+
+#### Scenario: Interrupted Download
+
+- **WHEN** a caller resumes with an offset into the same retained content selection
+- **THEN** Get returns the next bounded range and the same total length and digest
+
+#### Scenario: Configured Range Bound
+
+- **WHEN** a caller requests a range larger than the configured maximum
+- **THEN** the operation enforces that maximum and never returns an unbounded payload
+
+### Requirement: Nightly Transfer Throughput Evidence
+
+Before streaming transfers are deleted, the Nightly benchmark set SHALL measure
+large-file upload and download throughput with `integration/file_transfer` for
+client and plugin carriers, recording bytes, chunk/range configuration and
+throughput. This SHALL be a benchmark measurement, never a test assertion.
+
+#### Scenario: Transfer Removal Review
+
+- **WHEN** superseded streaming transfers are ready for deletion
+- **THEN** review includes measured large-file throughput from the Nightly benchmark case rather than a timing assertion in a test

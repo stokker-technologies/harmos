@@ -6,7 +6,7 @@
 
 Positioned data reads SHALL share one method per kind of data, accepting optional
 at and returning resolved_at. Absent at SHALL resolve once to latest durable data
-without waiting, conditional on the measured durable-lag bound below.
+without waiting; the durable-lag requirement below applies.
 A cut SHALL retain all required positions and revisions rather than silently
 reducing a composite selection to one sequence number.
 
@@ -29,14 +29,13 @@ reducing a composite selection to one sequence number.
 ### Requirement: Payload-Size-Independent Durable Lag
 
 The newest durable position SHALL trail the newest accepted data by no more than
-a stated bound at the 95th percentile, independent of payload size. The proposed
-bound is 250 ms; the owner SHALL set the final number. If the bound is missed,
+250 ms at the 95th percentile, independent of payload size. If the bound is missed,
 smaller flush pieces and size-triggered flushing SHALL be tried first; accepted-
 data snapshot reads SHALL be the named fallback if insufficient, not built here.
 
 #### Scenario: Lag Bound Review
 
-- **WHEN** evidence for the conditional latest-durable decision is reviewed
+- **WHEN** evidence for the latest-durable decision is reviewed
 - **THEN** the 100 ms cadence alone is insufficient proof: flush duration adds to it and grows with written data, with synchronous batches targeting 1 MB and capped at 16 MB
 - **AND** because nothing measures durable lag today, the three-load benchmark must demonstrate each load's p95 meets the owner's bound
 
@@ -44,7 +43,7 @@ data snapshot reads SHALL be the named fallback if insufficient, not built here.
 
 - **WHEN** any load's measured p95 exceeds the owner's stated bound
 - **THEN** review requires smaller flush pieces and flushing as soon as a size threshold is reached, alongside the cadence, to be tried first and all three loads remeasured
-- **AND** if those are insufficient, reads resolving against a snapshot of accepted data remain the named fallback, without claiming it is built or the conditional latest-durable decision is proven
+- **AND** if those are insufficient, reads resolving against a snapshot of accepted data remain the named fallback, without claiming it is built or the latest-durable decision is proven
 
 ### Requirement: Reusable Durable-Lag Benchmark
 
@@ -124,30 +123,19 @@ separate from response limits.
 - **WHEN** bounded physical work finds no matching rows but more source remains
 - **THEN** an empty bounded page can carry a continuation and does not falsely declare end-of-source
 
-### Requirement: Snapshot Then Durable Watch
+### Requirement: Position-Resolved Watch Boundary
 
-Watch SHALL use the corresponding read selector and optional at, open with its
-resolved boundary/snapshot, then emit changes strictly after it. Saved-data
-watches SHALL distinguish durable progress from accepted data and include progress
-past filtered-out positions. A gap or expired retained start SHALL require explicit
-resynchronization rather than silent loss.
+Watch SHALL use the corresponding read selector and optional at, resolving absent
+at to latest durable without waiting and reporting resolved_at. Exact opening,
+event/progress, gap and resynchronization semantics remain open for the Watch
+contract task; the candidate details in design.md do not close that question.
 
-#### Scenario: Writes During Opening
+#### Scenario: Watch Selection
 
-- **WHEN** data becomes durable while the watch's initial snapshot is being delivered
-- **THEN** the caller receives the snapshot boundary and subsequent changes once in position order without an opening gap
+- **WHEN** a watch opens without at
+- **THEN** it resolves to latest durable without waiting and reports resolved_at
 
-#### Scenario: Explicit Start
+#### Scenario: Issued Watch Position
 
-- **WHEN** a watch starts at a retained cut returned by a previous reply
-- **THEN** it opens with that boundary/snapshot and follows changes strictly after it instead of remaining frozen
-
-#### Scenario: Pending Data and Filter Progress
-
-- **WHEN** pending data is not durable and later committed positions are filtered out
-- **THEN** pending data is not labeled durable and the watch still reports the examined durable progress
-
-#### Scenario: Retention Gap
-
-- **WHEN** a consumer resumes from an issued position whose necessary changes have been reclaimed
-- **THEN** the watch returns explicit resynchronization information instead of skipping to the current frontier
+- **WHEN** a watch supplies at
+- **THEN** it accepts only a previously returned position or the product terminal boundary, never an arbitrary earlier position

@@ -2,37 +2,48 @@
 
 ## ADDED Requirements
 
-### Requirement: Masked Atomic Set
+### Requirement: Whole-Value Revision-Guarded Atomic Set
 
-Set SHALL accept an optional field mask; absence SHALL replace the whole writable
-value. Revisioned resources SHALL enforce an expected revision. The complete
-candidate SHALL be validated before atomic publication. Invalid masks, read-only
-fields and revision conflicts SHALL refuse without partial mutation. Atomic
-object replacement SHALL retain compare/exchange semantics.
+Get SHALL return the whole writable value and its revision. The matching Set
+SHALL send that whole writable value and the expected revision from Get. Set
+SHALL validate the complete candidate before atomic publication; stale revisions
+SHALL conflict without partial mutation, naming the action “get again and retry”.
+Atomic object replacement SHALL retain compare/exchange semantics.
 
-#### Scenario: Absent Mask
+#### Scenario: Whole Replacement
 
-- **WHEN** Set supplies a complete writable value with a matching expected revision and no mask
-- **THEN** the whole writable value is replaced atomically and the response returns the result and receipt
+- **WHEN** Set supplies the whole writable value with the revision returned by its matching Get
+- **THEN** that whole writable value is replaced atomically and the response returns the result and receipt
 
-#### Scenario: Selected Fields
+#### Scenario: Concurrent Writer
 
-- **WHEN** Set supplies a valid mask selecting one writable field
-- **THEN** only that field changes and unselected writable fields retain their prior values
+- **WHEN** another writer changes the resource after Get and Set sends the stale revision
+- **THEN** Set refuses without partial mutation and its conflict names the action “get again and retry”
 
-#### Scenario: Conflict or Invalid Mask
+#### Scenario: Combined Small Writable Part
 
-- **WHEN** expected revision is stale or the mask names an unknown or read-only field
-- **THEN** Set refuses without any visible partial mutation
+- **WHEN** product rename and archive setters are merged into SetExecution
+- **THEN** GetExecution returns the whole small writable part and revision and SetExecution replaces that part for only the identified execution
 
 #### Scenario: Create If Absent
 
 - **WHEN** a conditional object Set requests create-if-absent and another writer has already created the object
 - **THEN** the backend returns the conflict outcome rather than performing an unconditional overwrite
 
+### Requirement: Separately Settable Large Writable Parts
+
+Writable parts that are unreasonably large for whole replacement SHALL be split
+into separately settable sub-resources, each with its own Get, Set and revision.
+The mapping SHALL identify these sub-resources.
+
+#### Scenario: Large Writable Part
+
+- **WHEN** whole replacement of a writable part would be unreasonable
+- **THEN** its mapping identifies separately settable sub-resources with matching Get/Set pairs and their own revisions
+
 ### Requirement: Append Ordered Immutable Data
 
-Records, samples and other ordered immutable data SHALL use Append rather than
+Records, samples, log lines, upload bytes and other ordered immutable data SHALL use Append rather than
 Create or Set. Append SHALL assign ordered positions without modifying earlier
 entries, accept bounded batches, and preserve original outcomes under mutation
 replay. Bulk object-revision ingestion SHALL remain distinct from atomic SetObject.
