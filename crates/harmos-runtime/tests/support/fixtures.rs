@@ -61,7 +61,11 @@ pub fn manifest() -> PathBuf {
 }
 
 pub fn workspace() -> PathBuf {
-    manifest().ancestors().nth(2).expect("crates live two levels below the workspace").to_owned()
+    manifest()
+        .ancestors()
+        .find(|path| path.join("tools/project.toml").is_file())
+        .expect("the repository owns tools/project.toml")
+        .to_owned()
 }
 
 pub fn artifact(name: &str) -> PathBuf {

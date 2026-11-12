@@ -530,7 +530,6 @@ dependencies = [
  "postcard",
  "prost",
  "prost-reflect",
- "prost-types",
  "serde",
  "serde_json",
  "sha2",
