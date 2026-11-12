@@ -55,6 +55,7 @@ pub struct Activation {
     pub description: v1::Description,
     pub previous_started_at: Option<prost_types::Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
+    pub process_id: Option<u32>,
     connection: Arc<Connection>,
     clock: Clock,
     admission: Option<Arc<crate::operations::GrpcAdmission>>,
@@ -177,6 +178,7 @@ impl Attached {
                 Placement::Remote(address) => (None, address.clone()),
             };
             let mut activation = connect(&clock, &address, 1, None, process.as_ref().map(|process| process.digest)).await?;
+            activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
             })?;
@@ -291,6 +293,7 @@ async fn connect(
         description,
         previous_started_at,
         executable_digest,
+        process_id: None,
         connection,
         admission: None,
         clock: clock.clone(),

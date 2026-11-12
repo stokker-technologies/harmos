@@ -10,3 +10,4 @@
 /* === Modules === */
 
 pub mod grpc;
+pub mod manager;
