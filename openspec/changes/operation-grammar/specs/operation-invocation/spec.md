@@ -4,12 +4,12 @@
 
 ### Requirement: No Automatic Streaming Twins
 
-Projection SHALL NOT automatically generate RunMethod twins. Each operation SHALL
-have one canonical gRPC method. Ordinary long work SHALL use unary resource actions
-and Get/Watch observation. Server streaming SHALL be reserved for Watch and the
-plugin protocol's own carriers, except the explicit managed replacement below.
-A managed stream SHALL replace the ordinary gRPC method only
-when the declaration explicitly promises a cooperative final result after cancel.
+Projection SHALL NOT generate automatic RunMethod twins. Each operation SHALL
+have one canonical gRPC method. Ordinary long work SHALL use unary actions and
+Get/Watch observation. Server streams SHALL serve Watch semantics (including
+noun-only streamed parts) or plugin carriers. A managed stream SHALL replace the
+ordinary method only for an explicitly promised cooperative final result after
+cancel; never expose both for the same operation.
 
 #### Scenario: Pure Getter Projection
 

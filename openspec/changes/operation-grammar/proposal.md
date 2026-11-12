@@ -1,4 +1,5 @@
 Status: locked by the owner on 2026-11-12
+Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
 
 # Operation Grammar
 
@@ -17,7 +18,7 @@ the locked contract; implementation is not authorized by this documentation task
 
 | Decision | Status | Direction |
 | --- | --- | --- |
-| Names | Owner | Symmetric, predictable `VerbResource`; `<Method>Request` and `<Method>Response`. |
+| Names | Owner | Resource services with bare verbs; single-mode parts use nouns, multimode parts use verb plus part; mixed-resource services retain nouns. Service-qualified wrappers follow design.md. |
 | Reply envelopes | Owner | Always return the response wrapper, including empty results, rather than a bare resource. |
 | Ordinary verbs | Owner | Closed set: Get, List, Watch, Set, Create, Delete, Append. Update, Read, Browse, Put, Edit, Add, Remove, Follow, Scan, Inspect and Register are not verbs in the new grammar. |
 | Immutable ordered data | Owner | Use Append in both repositories for records, samples, log lines and upload bytes. |
@@ -29,6 +30,7 @@ the locked contract; implementation is not authorized by this documentation task
 | Rename | Owner | Renaming changes the identified resource only, never sibling attempts of its parent. This is a product behavior; no library rename RPC is invented. |
 | Transfers | Owner | One unary, ranged, resumable mechanism for clients and plugins: Create session, Append ordered bytes at offsets, Get status, Publish content, Delete to abandon; downloads use repeated bounded Get ranges returning total length and digest. Configuration bounds chunks and ranges. Measure large-file throughput in Nightly before deleting streaming transfers. |
 | Streaming gRPC methods | Owner | Never generate streaming twins automatically. Streams are reserved for Watch and plugin protocol carriers; use unary resource actions and Get/Watch; retain one managed stream only for an explicitly promised cooperative final result, replacing its ordinary gRPC method. |
+| Failed client calls | Owner | Resending is the client's responsibility; the same request identifier and normalized payload return the original receipt, and a changed payload under that identifier conflicts. |
 | Shared primitives | Owner | One paging, position, time, Failure, retry-policy and receipt vocabulary, as specified in design.md. |
 | SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Only four-language plugin parity and generic managed-client language scope remain open under SDKs. |
 

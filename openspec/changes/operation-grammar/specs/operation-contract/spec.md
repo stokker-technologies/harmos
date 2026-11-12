@@ -24,11 +24,11 @@ exists in all four languages or in Rust only, remain open under SDKs.
 
 ### Requirement: Predictable Public Method Grammar
 
-Public library methods SHALL use VerbResource names and method-specific
-MethodRequest and MethodResponse messages. Every reply SHALL use the response
-wrapper, including empty results. Ordinary verbs SHALL be limited to Get, List,
-Watch, Set, Create, Delete and Append. Singular and plural resources SHALL denote
-one resource and a collection respectively.
+Services SHALL name their resource with its plural noun, or singular noun for
+one thing such as Plugin. Methods acting on that resource SHALL be bare verbs
+and SHALL NOT repeat its noun. Ordinary verbs SHALL be limited to Get, List,
+Watch, Set, Create, Delete and Append. Every method SHALL have service-qualified
+request and response wrappers under design.md's grammar, including empty replies.
 
 #### Scenario: Descriptor Review
 
@@ -40,6 +40,36 @@ one resource and a collection respectively.
 
 - **WHEN** a getter exposes a runtime-owned fact such as current time or projection status
 - **THEN** the grammar does not create a setter for that fact merely to make a name pair
+
+### Requirement: Part Names and Mixed-Resource Services
+
+A part read in exactly one mode SHALL use its noun alone, whether streamed,
+paged or whole. Only parts with multiple read or change modes SHALL use verb
+plus part; prefer a small resource service where clearer, retaining exact
+Get/Set pairs. Mixed-resource services SHALL retain method resource nouns
+without repeating their own service name and SHALL NOT be split merely to
+shorten names.
+
+#### Scenario: Resource and Single-Mode Parts
+
+- **WHEN** the execution resource is described by Executions
+- **THEN** its actions are Start, Cancel and Get, its streamed progress is Progress, and its paged steps and parameters are Steps and Parameters
+
+#### Scenario: Multiple Modes and Mixed Resources
+
+- **WHEN** a part has List and Watch modes, or Get and Set modes
+- **THEN** its methods retain verb plus part or use bare verbs in its own resource service
+- **AND** Storage retains ListRows/WatchRows and GetObject/SetObject while its single-mode whole parts are Info and Capabilities
+
+### Requirement: Proto-Derived Short Client Names
+
+Generated clients SHALL derive short names directly from proto without a
+handwritten naming layer.
+
+#### Scenario: Generated Client Names
+
+- **WHEN** clients are generated from the execution descriptor
+- **THEN** they expose executions.start(request), executions.cancel(request), executions.get(request) and executions.progress(request) directly from proto
 
 ### Requirement: Explicit Domain Action Meanings
 
@@ -97,3 +127,20 @@ fingerprints and requirements before admission.
 
 - **WHEN** an authorized parent calls a child using an inherited scope
 - **THEN** the library preserves it unchanged and does not derive grants from its text
+
+### Requirement: Client-Owned Resending After Failed Calls
+
+When a call fails on the client, resending SHALL be the client's responsibility.
+The same request identifier and normalized payload SHALL return the original
+receipt; a changed payload under that identifier SHALL conflict. This does not
+change replay-safety admission, retention or expired-identifier refusal.
+
+#### Scenario: Lost Call Result
+
+- **WHEN** the client fails to receive a mutation result and resends the same request identifier and normalized payload
+- **THEN** the original receipt is returned without repeating the mutation
+
+#### Scenario: Changed Payload Under an Identifier
+
+- **WHEN** the client resends the same request identifier with a changed payload
+- **THEN** the call conflicts without replacing the original outcome
