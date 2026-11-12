@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::io::{self, Write};
 // Third Party Imports
 // Local Imports
-use super::{Error, Facility, Limits, Manifest, invalid};
+use super::{Error, Facility, Limits, Manifest};
 
 /* === Constants === */
 
@@ -53,55 +53,6 @@ impl Write for Bounded {
 }
 
 /* === Public Functions === */
-
-pub(super) fn path(path: &str) -> Result<(), Error> {
-    // A deliberately small USTAR/Windows/Unix intersection: no extensions or
-    // alternate separators are needed to interpret these names.
-    if path.is_empty() || path.len() > 100 {
-        return Err(invalid("file path must contain 1 to 100 ASCII bytes"));
-    }
-    for component in path.split('/') {
-        let upper = component.to_ascii_uppercase();
-        let stem = upper.split('.').next().unwrap_or_default();
-        if component.is_empty()
-            || component == "."
-            || component == ".."
-            || component.ends_with('.')
-            || !component.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-            || matches!(
-                stem,
-                "CON"
-                    | "PRN"
-                    | "AUX"
-                    | "NUL"
-                    | "COM1"
-                    | "COM2"
-                    | "COM3"
-                    | "COM4"
-                    | "COM5"
-                    | "COM6"
-                    | "COM7"
-                    | "COM8"
-                    | "COM9"
-                    | "LPT1"
-                    | "LPT2"
-                    | "LPT3"
-                    | "LPT4"
-                    | "LPT5"
-                    | "LPT6"
-                    | "LPT7"
-                    | "LPT8"
-                    | "LPT9"
-            )
-        {
-            return Err(invalid("nonportable file path"));
-        }
-    }
-    if path.split('/').next().is_some_and(|component| component.eq_ignore_ascii_case("manifest.json")) {
-        return Err(invalid("manifest.json is reserved"));
-    }
-    Ok(())
-}
 
 pub(super) fn encode(manifest: &Manifest, contents: &BTreeMap<String, &[u8]>, limits: Limits) -> Result<Vec<u8>, Error> {
     let mut json = Bounded {

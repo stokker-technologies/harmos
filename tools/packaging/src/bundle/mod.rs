@@ -62,7 +62,7 @@ pub fn build_with_settings(
     let mut total = 0usize;
     let mut metadata_bytes = metadata::identity_size(&identity, limits.manifest_bytes)?;
     for source in sources {
-        archive::path(source.path)?;
+        harmos_runtime::bundle::validate_path(source.path)?;
         total = total.checked_add(source.bytes.len()).ok_or(Error::Limit("total file bytes"))?;
         if source.bytes.len() > limits.file_bytes || total > limits.total_file_bytes {
             return Err(Error::Limit("file bytes"));

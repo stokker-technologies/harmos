@@ -16,6 +16,7 @@ mod metadata;
 
 /* === Re-Exports === */
 
+pub use archive::path as validate_path;
 pub use error::Error;
 pub use manifest::{Executable, Facility, File, Identity, Limits, Manifest, PackageMetadata};
 

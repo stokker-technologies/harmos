@@ -40,7 +40,7 @@ type Contents = BTreeMap<String, Range<usize>>;
 
 /* === Public Functions === */
 
-pub(super) fn path(path: &str) -> Result<(), Error> {
+pub fn path(path: &str) -> Result<(), Error> {
     // A deliberately small USTAR/Windows/Unix intersection: no extensions or
     // alternate separators are needed to interpret these names.
     if path.is_empty() || path.len() > 100 {
