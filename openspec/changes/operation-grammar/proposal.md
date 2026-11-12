@@ -22,37 +22,36 @@ the locked contract; implementation is not authorized by this documentation task
 | Names | Owner | Resource services with bare verbs; single-mode parts use nouns; multimode parts are nested resource services with bare verbs; mixed-resource Storage retains its resource nouns. Service-qualified wrappers follow design.md. |
 | Reply envelopes | Owner | Always return the response wrapper, including empty results, rather than a bare resource. |
 | Ordinary verbs | Owner | Closed set: Get, List, Watch, Set, Create, Delete, Append. Update, Read, Browse, Put, Edit, Add, Remove, Follow, Scan, Inspect and Register are not verbs in the new grammar. |
-| Immutable ordered data | Owner | Use Append in both repositories for records, samples, log lines and upload bytes. |
+| Immutable ordered data | Owner | Use Append for records, samples, log lines and upload bytes. |
 | Set | Owner | Whole writable value plus the expected revision returned by the matching Get; stale revisions conflict with the action “get again and retry”. Split large writable parts into separately settable sub-resources with their own Get/Set. |
 | Domain actions | Owner | Use the explicitly defined domain verbs only where a standard verb would hide a side effect; retain Sleep for the clock wait. |
 | Position-resolved reads | Owner | One read path per kind of data, optional `at`, absent means latest, reply reports `resolved_at`; paging and watches share the rule. Accept only previously returned positions for continuation or the product's terminal read selection, not arbitrary earlier positions. |
 | Latest selection | Owner | Resolve latest durable data without waiting. Durable lag must stay within 250 ms at p95, independent of payload size. A caller requiring its own write passes its receipt's durable position. Benchmark small, large and mixed loads; try smaller flush pieces and size-triggered flushing first if the bound is missed. Accepted-data snapshots are the named fallback, not built. |
 | Cancellation | Owner | Cancel interrupts running work; queued work is refused with an error naming the action. Stop finishes at a safe boundary and remains distinct. Product scheduling policy belongs to the product. |
-| Rename | Owner | Renaming changes the identified resource only, never sibling attempts of its parent. This is a product behavior; no library rename RPC is invented. |
+| Rename | Owner | Renaming changes the identified resource only, never sibling attempts of its parent. This is application behavior; no library rename RPC is invented. |
 | Transfers | Owner | One unary, ranged, resumable mechanism for clients and plugins: Create session, Append ordered bytes at offsets, Get status, Publish content, Delete to abandon; downloads use repeated bounded Get ranges returning total length and digest. Configuration bounds chunks and ranges. Measure large-file throughput in Nightly before deleting streaming transfers. |
 | Streaming gRPC methods | Owner | Never generate streaming twins automatically. Streams are reserved for Watch and plugin protocol carriers; use unary resource actions and Get/Watch; retain one managed stream only for an explicitly promised cooperative final result, replacing its ordinary gRPC method. |
 | Failed client calls | Owner | Resending is the client's responsibility; the same request identifier and normalized payload return the original receipt, and a changed payload under that identifier conflicts. |
 | Shared primitives | Owner | One paging, position, time, Failure, retry-policy and receipt vocabulary, as specified in design.md. |
-| SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Client roots expose package-derived resource hierarchies in all four languages; plugin semantic parity and generic managed-client execution scope remain open. |
+| SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Client roots expose package-derived resource hierarchies in all four languages; plugin semantic parity and generic managed-client invocation scope remain open. |
 | Library Boundary | LOCKED, 2026-11-12 | Generic plugin hosting/entry management, access, transfers, host status, operations/invocations, time, storage, streams, protocol and SDKs belong to the library, under their owning managers. A product serves these services directly by composition. |
 | Product Boundary | LOCKED, 2026-11-12 | A product defines its storage schemas, indexes, projections and latest selection, objects, object operations and authorization policy. Settings/secrets stores, schemas, UI declarations, archives and operating-system credential integration remain product-owned. |
 | Plugin Values | LOCKED, 2026-11-12 | The library owns only generic host-value delivery to plugins and the settings-declaration section of a plugin catalog; a product resolves settings/secrets. The per-plugin settings/secrets ownership question is closed. |
 | No Duplicate Machinery | LOCKED, 2026-11-12 | A product must compose the runtime rather than rebuild on the protocol crate alone: doing so previously duplicated plugin connection, dispatch, streams and process launch. |
-| Managers | LOCKED, 2026-11-12 | Apply the live-ownership rule in design.md once; split product execution, prompts, report publication and retained recordings accordingly. Plain storage operations and pure rendering need no manager. |
-| Nested Resources | LOCKED, 2026-11-12 | Use parent sub-packages and bare part-service verbs, including cross-library Plugins.Settings; generate hierarchical client roots mechanically from descriptors in all four languages. Progress has client Get/Watch, is included in Executions.Get and has a separate host-only producer operation. |
+| Managers | LOCKED, 2026-11-12 | Apply the live-ownership rule and library manager inventory in design.md; plain storage operations need no manager. |
+| Nested Resources | LOCKED, 2026-11-12 | Use parent sub-packages and bare part-service verbs, including cross-library Plugins.Settings; generate hierarchical client roots mechanically from descriptors in all four languages. Host applications may declare nested resources in their own packages beside library services, without redeclaring them. |
 
 **BREAKING:** rename the operations in the complete design inventory; merge the
 three row-follow operations into WatchRows; replace streaming uploads and downloads with
 the shared unary session and ranged Get reads; delete automatic `Run<Method>` gRPC methods and
-their envelopes. Remove separate checkpoint read families in the product, while
-retaining this library's distinct backend recovery records and file-production
-recovery metadata. No such public checkpoint RPC family exists here today.
+their envelopes. Retain distinct backend recovery records and file-production
+recovery metadata; no public checkpoint RPC family exists here today.
 
 Preserve bounded physical scans, ordered indexes, exact-revision projections,
 atomic object replacement, host-clock waits, device-driven publication,
 file replacement/truncation events, writer fencing and typed cancellation results.
 The proposal neither grants new external access nor removes capabilities merely
-because inspected product callers do not use them.
+because inspected callers do not use them.
 
 ## Capabilities
 
@@ -72,9 +71,9 @@ None; the candidate adds requirements to existing capability owners.
 
 The library gains Plugins, Access/Access.Listener, Status/Status.Logs/Status.TraceEvents
 and host-only HostValues contracts. Existing plugin-manager work is integrated,
-not reimplemented. The complete owner-qualified inventory in design.md records
-67 library and 110 product operation templates; product resources are handoff
-contracts, not implementation scope in this repository.
+not reimplemented. The library-only inventory in design.md records 13 logical
+services (3 nested), 67 operations, 61 gRPC methods in 11 exposed services,
+67 request messages and 67 response messages.
 
 Future implementation touches `proto/harmos/v1/`, `crates/harmos-protocol/`,
 `crates/harmos-operations/`, `crates/harmos-storage/`, runtime gRPC projection and

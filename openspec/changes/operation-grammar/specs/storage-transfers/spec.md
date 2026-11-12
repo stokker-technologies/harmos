@@ -82,7 +82,7 @@ be no streaming download operation or automatically generated twin.
 - **WHEN** a caller requests a range larger than the configured maximum
 - **THEN** the operation enforces that maximum and never returns an unbounded payload
 
-### Requirement: Nightly Transfer Throughput Evidence
+### Requirement: Nightly Transfer Throughput Verification
 
 Before streaming transfers are deleted, the Nightly benchmark set SHALL measure
 large-file upload and download throughput with `integration/file_transfer` for

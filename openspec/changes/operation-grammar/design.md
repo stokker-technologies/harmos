@@ -11,7 +11,7 @@ Only the explicitly listed open questions await decisions when their work is rea
 
 See proposal.md for motivation and decision status. Both supplied research
 reports were read in full. Current declarations, provider traits, protocol rules,
-SDKs and documentation were checked where locally available. Evidence paths below
+SDKs and documentation were checked where locally available. Verification paths below
 are relative to this repository; sibling facts are described generically.
 
 ## Goals and Non-Goals
@@ -20,43 +20,42 @@ Make public operations predictable without flattening storage guarantees. Keep
 consumer policy with consumers, and retain native storage optimization and
 recovery responsibilities. Do not add a second scheduler, silently migrate stored
 encodings or promise arbitrary historical presentation. Keep the library protocol,
-SDKs and conformance suite self-sufficient without product vocabulary.
+SDKs and conformance checks self-sufficient without product vocabulary.
 
 ## Shared Grammar and Vocabulary
 
 The following shared text uses the supplied decisions and both reports' Shared
-Vocabulary sections. Product-specific meanings belong in the next section.
+Vocabulary sections. Application-specific meanings belong to their owners.
 
 - **Names (Owner):** a service names its resource with a plural noun, or a
   singular noun for one thing, such as Plugin. Methods acting on that resource
   are bare verbs. A part read in exactly one way keeps its noun on its parent:
-  Executions.Steps and Executions.Parameters are bounded pages.
+  Jobs.Steps is a bounded page.
   A part with more than one read/change mode is a nested resource with its own
-  bare verbs: Plugins.Settings.Get/Set, Executions.Progress.Get/Watch and
-  Plots.Settings.Get/Set. This replaces the earlier verb-plus-part rule and flat
-  compound services. Mixed-resource Storage retains distinguishing resource nouns
+  bare verbs: Jobs.Progress.Get/Watch and Documents.Settings.Get/Set. This replaces
+  the earlier verb-plus-part rule and flat compound services. Mixed-resource Storage retains distinguishing resource nouns
   (ListRows/WatchRows, GetObject/SetObject); these are independent storage resources,
   not differently named parts of one resource. It is not split merely for brevity.
   Always return a response wrapper, including empty replies. Within each package,
   messages are `<Service><Method>Request/Response`, such as SettingsGetRequest in
-  product.v1.plugins. Package qualification disambiguates equal message names.
+  application.v1.plugins. Package qualification disambiguates equal message names.
   Operation IDs derive mechanically from the complete service namespace and method.
 - **Nested Wire Layout (Owner):** a nested service lives in package
   `<owner>.v1.<lowercase parent>`, where `<owner>` is the library or a product's
   namespace, with the part as service name. One proto file per service, in a
-  folder per parent: product/v1/plugins/settings.proto declares
-  product.v1.plugins.Settings; its Get method's full name is
-  product.v1.plugins.Settings/Get. Deeper parents extend the package path the same
+  folder per parent: application/v1/plugins/settings.proto declares
+  application.v1.plugins.Settings; its Get method's full name is
+  application.v1.plugins.Settings/Get. Deeper parents extend the package path the same
   way. Namespace-only parents need no empty service. A nested resource may have
   a different owner: the library declares harmos.v1.Plugins while a product
-  declares product.v1.plugins.Settings on the same host endpoint. This is intended.
+  declares application.v1.plugins.Settings on the same host endpoint. This is intended.
 - **Client Roots (Owner):** each of Rust, Python, C# and C++ exposes the same
   hierarchy from service packages/names, with its normal language casing:
 
   ```python
   client.plugins.settings.get(request)
-  client.executions.progress.watch(request)
-  client.executions.start(request)
+  client.jobs.progress.watch(request)
+  client.jobs.start(request)
   ```
 
   A small generator in each SDK build consumes a common table produced from the
@@ -67,7 +66,7 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   product plugins.Settings share the plugins node. Reject actual leaf collisions;
   preserve package-qualified message identities. No hand-written per-operation
   naming or forwarding layer. This four-language naming commitment does not settle
-  generic managed-client execution coverage or plugin semantic parity.
+  generic managed-client invocation coverage or plugin semantic parity.
 
 - **Ordinary verbs (Owner):** the closed set is Get, List, Watch, Set, Create,
   Delete and Append. Get observes one identified or derived value; List enumerates
@@ -82,20 +81,18 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   Field masks were rejected because path validation, nested-path rules, per-language helpers and subtle errors add complexity to small writable resources while a revision guard already prevents lost updates.
   Read-only and runtime-owned facts do not acquire a Set merely for symmetry.
   Split an unreasonably large writable part into separately settable sub-resources,
-  each with its own Get and Set. Product execution rename and archive merge into
-  Executions.Set carrying the whole small writable part returned by Executions.Get;
-  only that identified execution changes.
+  each with its own Get and Set. Documents.Set carries the whole small writable
+  value returned by Documents.Get; only that identified document changes.
 - **Domain verbs (Owner):** use a domain verb only where a standard verb would
   hide a side effect, and state its one meaning. Start activates; Stop finishes at
-  a safe boundary; Cancel interrupts; Restart replaces an activation; Seal closes
-  an evidence lifecycle; Publish commits prepared visibility; Import admits an
-  external representation; Export produces an external representation; Invoke
+  a safe boundary; Cancel interrupts; Restart replaces an activation; Publish commits
+  prepared visibility; Import admits an external representation; Export produces an external representation; Invoke
   calls a declared operation; Advance materializes a projection frontier; Capture
   freezes external data. Storage.PublishFileProduction validates and publishes an upload;
   Storage.DeleteFileProduction abandons its unpublished session. Plugin lifecycle verbs keep
   their distinct meanings. The clock wait keeps the name Sleep.
 - **Operation and invocation (Owner):** an operation is a declaration, an
-  invocation is one execution of it, and an attempt is one retry attempt.
+  invocation is one call of it, and an attempt is one retry attempt.
 - **Identifiers and scope (Owner):** opaque resource and `*_id` strings;
   `name` identifies a full resource, `parent` its ownership. Invocation and child
   IDs are correlation identities, never authorization or deduplication tokens.
@@ -107,7 +104,7 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   histories. A position is not wall time, a process epoch or a page token.
 - **Cut (Owner):** an atomic read selection, potentially containing several
   positions/revisions. A cut is not a timestamp, page token, process epoch, snapshot
-  lease or seal digest. A scalar sequence alone cannot represent a composite cut.
+  lease or content digest. A scalar sequence alone cannot represent a composite cut.
 - **Reads (Owner):** one read path per kind of data; optional position `at`;
   absent resolves to latest; the reply states `resolved_at`; paging and watches
   follow the same rule. Accept `at` only as a position a previous reply returned
@@ -136,13 +133,13 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   boundary/snapshot-then-changes union below is a candidate for that task; it does
   not settle the open question.
 - **Time (Owner):** protobuf Timestamp for instants and Duration for elapsed
-  budgets; host evidence time and optional source time remain distinct. Acceptance
+  budgets; host observation time and optional source time remain distinct. Acceptance
   and saved time are separate. Source-time windows are half-open filters, separate
   from ingestion positions.
 - **Failures (Owner):** one Failure vocabulary: classification, stable code,
   message, action, operation, plugin, cause and safe details; preserve causes and
   map consistently to canonical gRPC status/details. Diagnostics remain separate.
-  Missing evidence, gaps and unavailable positions cannot become empty success.
+  Missing data, gaps and unavailable positions cannot become empty success.
 - **Receipts (Owner):** admission, application and durability are separate
   facts. Receipts identify the semantic mutation and accepted/durable positions;
   accepted is not durable. When a call fails on the client, resending is the
@@ -205,15 +202,14 @@ need none. This is the single manager-selection rule for both owners.
 | State manager | State lifecycle, replay and recovery; no new public grammar service | StateManager in state/manager.rs exists. |
 | Record manager | Record registration and lifecycle; persistence through Storage | RecordManager in records/manager.rs exists. |
 
-Evidence paths in this table are relative to crates/harmos-runtime/src/.
-Existing types are evidence of orchestration homes, not claims that the new
+Verification paths in this table are relative to crates/harmos-runtime/src/.
+Existing types identify orchestration homes, not claims that the new
 client-facing services are implemented.
 
 Status describes the host process. A narrow ServiceManager registration lets a
 product contribute its version/identity facts and component health/availability
 through typed providers with host-owned lifetime and failure reporting. It does
 not let a product replace generic collection or create a competing status service.
-Product-only overview, appearance and environment reads remain under Backend.
 Diagnostics returns an archive content reference; bytes use Storage.GetFileBytes.
 
 Settings and secrets are too opinionated for a generic library. A product owns
@@ -224,51 +220,24 @@ the host application's registered resolver supplies it under product policy.
 No library settings/secret store, UI schema or client-facing settings service is
 introduced. This closes the per-plugin settings/secrets ownership question.
 
-| Product Orchestration Home | Responsibilities |
-| --- | --- |
-| Execution manager | Queueing, lifecycle, retries, Stop/Cancel, recovery; choose cycles here or a small cycle manager when splitting, using the simplest complete option. |
-| Prompt manager | Pending operator questions and answer lifecycle. |
-| Report manager | Atomic publication; rendering remains a pure function with no manager. |
-| Capture manager, only if recordings remain | Recording lifecycle and retained results; do not create a manager for still-image transformations. |
-| Operations over storage | Evidence, catalog, notes, aggregates, plots and documents; no manager. Settings/secrets keep their product-owned storage/policy. |
-
-Replace the product's single host object/shared state module with these owners.
-Each service method is thin: it maps to one operation file, which calls a manager
-or storage. File capture and prepared-effect recovery retain their existing
-execution/resource lifecycle owner; do not invent collection managers.
-
-Executions.Progress.Get returns the current value, and Executions.Get includes
-that same current progress. Executions.Progress.Watch streams it. A plugin produces
-progress by calling a host-only Executions.Progress.Set operation; no client-facing
-Set is declared or projected. Producer authority comes from its invocation scope,
-not from exposing runtime-owned progress as client-writable metadata.
-
 ### Library Interpretation of Shared Decisions
 
-The shared vocabulary uses generic resources. The product decides what latest
-means: a running execution uses its live frontier and a sealed execution uses its
-seal. The shared glossary's terminal-boundary/digest distinction refers only to
-that product latest selection; the library does not own those product states.
+The shared vocabulary uses generic resources. A host application decides what
+latest and a terminal read boundary mean for its own objects; the library does
+not define application lifecycles or equate a read boundary with a content digest.
 
-**Owner, 2026-11-12:** Cancel applies to running work only; queued product control
+**Owner, 2026-11-12:** Cancel applies to running work only; queued control
 refuses Cancel with an error naming the action. Stop finishes at a safe boundary
 and remains distinct. Renaming changes one identified resource, not its sibling
-attempts; the library preserves the product-selected mutation scope.
-
-**Owner:** domain lifecycle meanings are Materialize (produce a catalog-defined
-resource), Initialize (prepare invocation context), Execute (perform a declared
-step), Evaluate (determine a criterion result), Cleanup (release context resources),
-Copy (copy selected file content), Prepare (reserve an external effect's identity
-and preconditions) and Confirm (record that prepared effect's outcome). These are
-application actions rather than new generic library RPCs.
+attempts; the library preserves the caller-selected mutation scope.
 
 **Owner:** Set validates and atomically replaces the whole writable value under
 its expected revision. Saved-data watches must not label accepted data durable;
 exact watch event and opening semantics remain an open question for their task.
 
-### Current Evidence and Corrections
+### Current Verification and Corrections
 
-| Finding | Current Tree Evidence and Interpretation |
+| Finding | Current Tree Verification and Interpretation |
 | --- | --- |
 | 41 built-ins | `crates/harmos-operations/src/{host,lifecycle,storage,streams,clock}/`: 1 catalog, 3 invocation controls, 34 storage, 1 publication, 2 clock operations. Clock is registered separately from `builtins_catalog()`. |
 | 30 projected bindings | `const GRPC` declarations in those directories: 24 storage, 4 host/control and 2 clock. |
@@ -282,7 +251,7 @@ exact watch event and opening semantics remain an open question for their task.
 The library report's present-operation totals agree with this tree. Its suggested
 WaitTime is superseded by Sleep. Its bare-resource replies are superseded by response wrappers; whole-value
 revision-guarded Set is locked. Its barrier-before-
-latest recommendation and the product report's latest-accepted wording are
+latest recommendation is
 superseded by the owner's latest-durable selection. Its 34-gRPC method/204-message
 replacement budgets do not describe this candidate: unary sessions need client
 bindings and wrappers change reachable messages. Do not carry those totals forward.
@@ -538,12 +507,12 @@ request and final reply; current stream item types are noted in the reason. Lock
 request/reply names always follow the method-wrapper rule. All target names and
 dispositions are Owner decisions, including retained names whose payloads change.
 
-Evidence key: paths below are under `crates/harmos-runtime/tests/storage/` for
+Verification key: paths below are under `crates/harmos-runtime/tests/storage/` for
 storage tests, under `crates/harmos-operations/src/` for declarations, and under
 `crates/harmos-runtime/src/plugin/grpc/` for plugin-host callers. Named test sources
-are invocation evidence, not claims that tests were run in this authoring task.
+are invocation verification, not claims that tests were run in this authoring task.
 
-| Present Operation | Present Request → Final Reply | Locked Operation | Destination Owner | Disposition and Reason / Caller Evidence |
+| Present Operation | Present Request → Final Reply | Locked Operation | Destination Owner | Disposition and Reason / Caller Verification |
 | --- | --- | --- | --- | --- |
 | Plugin.Describe | DescribeRequest → Description | Plugin.Get | Library | Renamed; connection.rs and SDK servers use identity/catalog admission. |
 | Plugin.Invoke | HostFrame → PluginFrame | Plugin.Invoke | Library | Kept; invoke.rs; duplex control carrier still conveys one unary operation attempt. |
@@ -612,12 +581,9 @@ visibility, fingerprints, digest, descriptors and failure causes used in admissi
 | Storage.GetSchema | Native-only, matching SetSchema | Whole writable schema and revision, mirrored by SetSchema. |
 | Storage.GetFileProduction | Storage RPC | Accepted/durable upload progress, writer generation and resume status. |
 
-These small writable parts need no subdivision. Large product configuration or
-artifact metadata must instead map to separately settable named sub-resources,
+These small writable parts need no subdivision. Large application writable values
+must instead map to separately settable named sub-resources,
 each with its own Get/Set and revision, rather than a monolithic replacement.
-Product rename/archive setters map to Executions.Get/Executions.Set of the whole small
-writable execution part; rename affects only the selected execution. These product
-methods are not added to the library counts.
 
 ### Added Generic Machinery Inventory
 
@@ -648,10 +614,12 @@ resources. The nested-part rule does not invent a generic Storage settings store
 
 The added services are Plugins, Access, Access.Listener, Status, Status.Logs,
 Status.TraceEvents and native-only HostValues. Nested services use their parent's
-subpackage, not a compound top-level name. A product may add plugins.Settings and
-storage.Sources in its own namespace beside library services.
+subpackage, not a compound top-level name. A host application may declare a
+nested resource in its own package beside a library service, such as
+`<application>.v1.plugins.Settings` with Get and Set
+beside harmos.v1.Plugins; it does not redeclare the library service.
 
-### Resulting Counts by Owner
+### Library-Only Counts
 
 Counts are templates, not resource instances. A logical service is a namespace
 with operations; a namespace-only parent is not an empty service. A gRPC service
@@ -664,10 +632,12 @@ client gRPC methods merely because their logical namespace also has client reads
 | Library, locked all operations | 13 logical, 3 nested | 67 | 61 | 67 | 67 |
 | Library, exposed subset | 11 gRPC, 3 nested | 61 | 61 | 61 | 61 |
 | Library, native/host-only subset | Samples and HostValues; 4 further native Storage operations | 6 | 0 | 6 | 6 |
-| Product, present client surface | 23 gRPC | 132 ordinary | 264, including 132 automatic twins | Not the target wrapper census | Not the target wrapper census |
-| Product, locked client subset | 32 gRPC, 20 nested | 92 | 92 | 92 | 92 |
-| Product, additional host/plugin-only templates | 7 additional logical services, 2 nested; 8 methods on shared logical namespaces | 18 | 0 | 18 | 18 |
-| Product, locked all operations | 39 logical, 22 nested | 110 | 92 | 110 | 110 |
+
+The 13 logical services are Plugin (4 operations), CatalogEntries (1),
+Invocations (3), Time (2), Samples (1), Storage (36), Plugins (7), Access (2),
+Access.Listener (2), Status (4), Status.Logs (2), Status.TraceEvents (2) and
+HostValues (1). The three nested services are Access.Listener, Status.Logs and
+Status.TraceEvents. Plugin.Samples is a method, not a nested service.
 
 Library arithmetic: 45 present operations yield 42 surviving destinations
 (6 method spellings retained, 35 renamed, 3 follow operations merged into one,
@@ -680,10 +650,9 @@ Storage.DeleteFile and HostValues.Get. Storage remains 36 declarations,
 StateBackend 8 to 8, for 66 present / 60 target provider hooks.
 
 Library messages: 134 = 67 requests + 67 responses, including 122 exposed
-and 12 native/host-only. Product messages: 220 = 110 requests + 110 responses,
-including 184 for client methods and 36 additional host/plugin-only wrappers.
-Shared methods used by plugins are counted once. Neither count includes domain
-payloads, shared primitives, nested event/control frames or imported protobuf
+and 12 native/host-only.
+Shared methods used by plugins are counted once. The count excludes application
+payloads, shared primitives, nested event/control frames and imported protobuf
 messages; the implementation descriptor inventory must census those separately.
 
 The library's earlier exposed arithmetic remains 64 - 30 twins - 1 WriteFile
@@ -691,285 +660,9 @@ The library's earlier exposed arithmetic remains 64 - 30 twins - 1 WriteFile
 All six session methods are exposed. ReadFile is replaced in place by ranged
 GetFileBytes; WatchFileBytes preserves growth/replacement/truncation observation.
 
-The product's earlier 118-method candidate gives 92 after removing 7 Plugins,
-4 Access, 8 host-status and 7 content methods now supplied by the library.
-Those 7 content methods are 5 upload actions, ranged bytes Get and identified-file
-bytes Watch. Product artifact/file metadata and collection watches remain.
-This does not add 26 methods to the library: transfer methods already exist there.
-No client progress Set is included. Product host/plugin-only counts enumerate
-18 distinct additional templates below, rather than adding 24 mapping rows to 92.
-
 No automatic twins remain. Only Watch semantics (including single-mode streamed
 parts), plugin carriers and explicitly promised cooperative final-result
 replacements stream. Such a replacement changes no method count.
-
-### Complete Product Client Mapping
-
-This generic handoff inventory is derived from the sibling change's 132 present
-ordinary client methods, read without editing that checkout. All 132 automatic
-Run<Method> twins are removed and map to the same canonical destination as their
-ordinary row; the table therefore accounts for all 264 current gRPC methods.
-Each present operation has exactly one canonical destination and owner. Required
-follow-up resource workflows are explained in the reason, not additional or
-alternative mapping destinations. There is no new aggregate compatibility RPC.
-
-Callers: G = desktop/native bridge, C = CLI/client, S = SDK convenience/host
-story, T = integration story, N = no named production caller found (not dead).
-Product source paths and names are intentionally omitted; operation identifiers
-below use generic resource vocabulary.
-
-| Present Operation | Locked Destination | Destination Owner | Disposition / Preserved Workflow | Callers |
-| --- | --- | --- | --- | --- |
-| `Appearance.GetAppearance` | Backend.Appearance | Product | Merged: Move appearance ownership. | G |
-| `Backend.CollectDiagnostics` | Status.Diagnostics | Library | Renamed: Read bounded diagnostic output. | G |
-| `Backend.GetAvailability` | Status.Availability | Library | Renamed: Retain availability. | CS |
-| `Backend.GetHealth` | Status.Health | Library | Merged: One health owner. | CS |
-| `Backend.GetIdentity` | Status.Identity | Library | Merged: One identity owner. | GCS |
-| `Backend.WatchLogs` | Status.Logs.Watch | Library | Kept: Durable log watch. | T |
-| `Backend.WatchTrace` | Status.TraceEvents.Watch | Library | Renamed: Name trace event resource. | G |
-| `Catalog.GetRecordSchema` | Catalog.RecordSchemas.Get | Product | Merged: Catalog or frozen execution parent. | N |
-| `Catalog.GetSuite` | Catalog.Suites.Get | Product | Kept: Retain suite definition. | GCS |
-| `Catalog.GetTelemetrySchema` | Catalog.StreamSchemas.Get | Product | Renamed: Use stream vocabulary. | N |
-| `Catalog.ListRecordSchemas` | Catalog.RecordSchemas.List | Product | Merged: Catalog or frozen execution parent. | N |
-| `Catalog.ListSuites` | Catalog.Suites.List | Product | Kept: Retain suite catalog. | GCS |
-| `Catalog.ListTelemetrySchemas` | Catalog.StreamSchemas.List | Product | Merged: Use stream vocabulary. | N |
-| `Content.DownloadAppearanceAsset` | Storage.GetFileBytes | Library | Merged: Bounded bytes by content identity. | G |
-| `Content.DownloadArtifact` | Content.Artifacts.Get | Product | Then use the returned immutable reference with library Storage.GetFileBytes. | GC |
-| `Content.DownloadEvidence` | Storage.GetFileBytes | Library | Merged: Ranged archive content; preserve scope, cut and digest verification. | C |
-| `Content.DownloadExecutionFile` | Content.ExecutionFiles.Get | Product | Then use library Storage.GetFileBytes for bounded content ranges. | C |
-| `Content.FollowExecutionFile` | Storage.WatchFileBytes | Library | Direct library bytes Watch preserves growth, replacement and truncation; product Content.ExecutionFiles.Watch remains the metadata/collection watch. | G |
-| `Content.ListArtifacts` | Content.Artifacts.List | Product | Merged: Retain bounded artifact selection. | N |
-| `Content.ListExecutionFiles` | Content.ExecutionFiles.List | Product | Merged: Retain bounded file selection. | G |
-| `Content.ReadExecutionFile` | Content.ExecutionFiles.Get | Product | Merged: Same file resource, text/byte ranges. | G |
-| `Content.UploadArtifact` | Content.Artifacts.Create | Product | First use library Storage.CreateFileProduction, AppendFileBytes, GetFileProduction, CreateFileWriter as needed, PublishFileProduction or DeleteFileProduction; Create registers the product artifact reference. | GC |
-| `Documents.CaptureCurrentDocument` | Documents.Get | Product | Merged: Evaluated output without publication. | G |
-| `Documents.UpdatePlotSettings` | Plots.Settings.Set | Product | Renamed: Whole small writable plot value and expected revision from Plots.Settings.Get. | G |
-| `Evidence.GetCapturedRecordSchema` | Catalog.RecordSchemas.Get | Product | Merged: Execution parent selects frozen schema. | N |
-| `Evidence.ListRecords` | Evidence.Records.List | Product | Merged: One selector/cut contract. | GC |
-| `Evidence.WatchRecords` | Evidence.Records.Watch | Product | Kept: Snapshot then durable changes. | GC |
-| `Execution.AppendExecutions` | Executions.Create | Product | Renamed: Allocate mutable execution resources. | GC |
-| `Execution.CancelExecution` | Executions.Cancel | Product | Renamed: Running only, queued refusal names action. | G |
-| `Execution.CreateCycle` | Cycles.Create | Product | Merged: Preserve new-cycle admission. | GCS |
-| `Execution.DeleteCase` | Cases.Delete | Product | Renamed: Preserve lifecycle admission. | G |
-| `Execution.GetCase` | Cases.Get | Product | Renamed: Retain planned case. | G |
-| `Execution.GetCycle` | Cycles.Get | Product | Merged: One operational/saved read. | GC |
-| `Execution.GetExecution` | Executions.Get | Product | Merged: One operational/saved read with seal. | GCS |
-| `Execution.GetExecutionCommand` | Executions.Commands.Get | Product | Renamed: Retained command receipt. | C |
-| `Execution.ListCaseParameters` | Cases.Parameters | Product | Renamed: Pinned definition values. | G |
-| `Execution.ListCases` | Cases.List | Product | Renamed: Retain ordered cases. | G |
-| `Execution.ListCycles` | Cycles.List | Product | Merged: Operational/query/history selection. | G |
-| `Execution.ListExecutionParameters` | Executions.Parameters | Product | Renamed: Frozen execution values. | G |
-| `Execution.ListExecutionSteps` | Executions.Steps | Product | Renamed: Frozen steps and state. | G |
-| `Execution.ListExecutions` | Executions.List | Product | Merged: Operational/query/history selection. | GC |
-| `Execution.PauseCycle` | Cycles.Set | Product | Merged: Whole small writable value and Get revision; preserve pause admission. | S |
-| `Execution.PauseExecution` | Executions.Set | Product | Merged: Whole small writable value and Get revision; preserve pause admission. | GC |
-| `Execution.RenameCycle` | Cycles.Set | Product | Merged: Whole small writable value and Get revision, including label. | G |
-| `Execution.RenameExecution` | Executions.Set | Product | Merged: Whole small writable value and Get revision; rename only this execution. | G |
-| `Execution.RerunCycle` | Cycles.Create | Product | Merged: source_cycle preserves rerun notices. | GC |
-| `Execution.ResumeCycle` | Cycles.Set | Product | Merged: Whole small writable value and Get revision, with paused=false. | S |
-| `Execution.ResumeExecution` | Executions.Set | Product | Merged: Whole small writable value and Get revision, with paused=false. | GC |
-| `Execution.SealCycle` | Cycles.Seal | Product | Renamed: Preserve durable finalization. | GC |
-| `Execution.SetCycleArchived` | Cycles.Set | Product | Merged: Whole small writable value and Get revision, including archived. | G |
-| `Execution.SetExecutionArchived` | Executions.Set | Product | Merged: Whole small writable value and Get revision, including archived. | G |
-| `Execution.StartExecution` | Executions.Start | Product | Renamed: Activate selected execution. | GC |
-| `Execution.StopExecution` | Executions.Stop | Product | Renamed: Stop scheduling at safe boundary. | GC |
-| `Execution.SubmitExecutionCommand` | Executions.Commands.Create | Product | Renamed: Interactive Next/RunStep/Finish, replay receipt. | C |
-| `Execution.UpdateCyclePolicy` | Cycles.Set | Product | Merged: Whole small writable cycle value and Get revision, including policy. | G |
-| `Health.ListHealth` | Evidence.HealthEvents.List | Product | Merged: Name evidence collection. | GS |
-| `History.BrowseCycles` | Cycles.List | Product | Merged: Retain saved filtering and ordering. | G |
-| `History.BrowseExecutions` | Executions.List | Product | Merged: Retain live/saved availability. | G |
-| `History.DeleteExecution` | Executions.Delete | Product | Renamed: Keep seal precondition and replay protection. | G |
-| `History.DownloadCheckpointArtifact` | Content.Artifacts.Get | Product | Select metadata at the returned cut/seal, then use library Storage.GetFileBytes. | G |
-| `History.GetCheckpointContext` | Executions.Get | Product | Returns the issued cut and resource references; read Cycles.Get, Documents.Get, Prompts.List, Evidence.HealthEvents.List, Evidence.Notes.List, Evidence.Traceability.Get and Backend.Appearance at that cut. No checkpoint DTO or aggregate wrapper is added. | GC |
-| `History.GetCheckpointDocument` | Documents.Get | Product | Merged: Same read at returned cut/seal. | GC |
-| `History.GetCheckpointEvidence` | Content.Artifacts.List | Product | Use the same cut for Content.ExecutionFiles.List, Catalog.RecordSchemas.List and Catalog.StreamSchemas.List; frozen availability and schemas are preserved. | G |
-| `History.GetExecutionCheckpoint` | Executions.Get | Product | Merged: Return position and seal in ordinary read. | C |
-| `History.ListCheckpointRecords` | Evidence.Records.List | Product | Merged: Same selector at returned cut/seal. | G |
-| `History.ListCheckpointTelemetry` | Evidence.Samples.List | Product | Merged: Same selector at returned cut/seal. | G |
-| `History.ReadCheckpointOutput` | Content.ExecutionFiles.Get | Product | Merged: Same bounded file read at cut/seal. | G |
-| `Media.AudioRecording` | Media.Captures.Create | Product | Follow with Media.Captures.Watch/Get/Stop for the retained recording. | G |
-| `Media.CameraRecording` | Media.Captures.Create | Product | Follow with Media.Captures.Watch/Get/Stop; preserve unsupported-kind refusal. | N |
-| `Media.Photo` | Media.Captures.Create | Product | Merged: Typed photo source. | G |
-| `Media.ScreenRecording` | Media.Captures.Create | Product | Follow with Media.Captures.Watch/Get/Stop; preserve unsupported-kind refusal. | N |
-| `Media.Screenshot` | Media.Captures.Create | Product | Merged: Typed screenshot source. | G |
-| `Notes.CreateNote` | Evidence.Notes.Create | Product | Kept: Allocate identified note. | G |
-| `Notes.EditNote` | Evidence.Notes.Set | Product | Renamed: Whole note writable value and revision from Evidence.Notes.Get. | G |
-| `Notes.ListNotes` | Evidence.Notes.List | Product | Merged: Retain note collection. | G |
-| `Observation.GetRuntimeShell` | Backend.Overview.Get | Product | Renamed: Runtime overview resource. | G |
-| `Observation.GetTraceability` | Evidence.Traceability.Get | Product | Merged: Retain evidence context. | G |
-| `Observation.WatchExecutionProgress` | Executions.Progress.Watch | Product | Renamed: Paired progress read/watch. | GS |
-| `Observation.WatchRuntime` | Backend.Overview.Watch | Product | Renamed: Same overview selection. | G |
-| `Planning.MaterializeTemplate` | Cases.Create | Product | Merged: Single materialized selection. | GCS |
-| `Planning.PreviewSelection` | Cases.Create | Product | Merged: validate_only, no registration. | GC |
-| `Planning.RegisterSelection` | Cases.Create | Product | Merged: Atomic plan with replay key. | C |
-| `Plots.ListAnalyses` | Catalog.Analyses | Product | Renamed: Move immutable declarations. | N |
-| `Plots.QuerySnapshots` | Plots.Snapshots.List | Product | Renamed: Bounded evaluated snapshots. | G |
-| `Plots.Watch` | Plots.Snapshots.Watch | Product | Renamed: Same plot selector/cut. | G |
-| `Plugins.GetInstallation` | Plugins.Get | Library | Renamed: One managed/remote entry. | G |
-| `Plugins.Install` | Plugins.Create | Library | First transfer/verify the bundle through the same library Storage session; Plugins.Create admits that verified bundle. | GC |
-| `Plugins.ListAdmittedPlugins` | Plugins.List | Library | Merged: state=READY filter. | G |
-| `Plugins.ListInstallations` | Plugins.List | Library | Merged: One entry selection. | G |
-| `Plugins.Reload` | Plugins.Restart | Library | Renamed: Replace activation, retain finalization rules. | GS |
-| `Plugins.Remove` | Plugins.Delete | Library | Renamed: Remove entry, migrate old payload. | G |
-| `Plugins.SetEnabled` | Plugins.Set | Library | Renamed: Whole small plugin writable value and Plugins.Get revision, including enabled. | G |
-| `Plugins.List` | Plugins.List | Library | Merged: One managed/remote entry list. | S |
-| `Plugins.Add` | Plugins.Create | Library | Merged: Remote placement admission. | S |
-| `Prompts.GetDefinition` | Catalog.PromptDefinitions.Get | Product | Renamed: Separate definition from asked prompt. | S |
-| `Prompts.GetPrompt` | Prompts.Get | Product | Renamed: Retain asked prompt state. | GCS |
-| `Prompts.ListDefinitions` | Catalog.PromptDefinitions.List | Product | Renamed: Immutable definitions. | S |
-| `Prompts.ListPending` | Prompts.List | Product | Merged: state=PENDING filter. | GCS |
-| `Prompts.Respond` | Prompts.Answers.Create | Product | Renamed: One answer resource and replay receipt. | GCS |
-| `Query.Aggregate` | Aggregates.Get | Product | Renamed: Complete read-only aggregate. | T |
-| `Query.AggregateSamples` | Evidence.Statistics | Product | Renamed: Retain stream statistics selectors. | T |
-| `Query.ListCycles` | Cycles.List | Product | Merged: Preserve projection/filter semantics. | T |
-| `Query.ListExecutions` | Executions.List | Product | Merged: Preserve projection/filter semantics. | TS |
-| `Query.ListRecords` | Evidence.Records.List | Product | Merged: One canonical evidence read. | T |
-| `Query.ListSamples` | Evidence.Samples.List | Product | Merged: One canonical sample read. | T |
-| `Remote.CreatePairing` | Access.CreatePairing | Library | Kept: Preserve access material lifecycle. | G |
-| `Remote.ReadListener` | Access.Listener.Get | Library | Renamed: Derived listener state. | G |
-| `Remote.RegenerateCertificate` | Access.CreateCertificate | Library | Renamed: Allocate replacement certificate. | G |
-| `Remote.UpdateListener` | Access.Listener.Set | Library | Renamed: Whole listener writable settings and revision from Access.Listener.Get. | G |
-| `Reports.PublishExecutionReport` | Reports.Publish | Product | Renamed: Explicit durable publication, never implicit download. | S |
-| `Reports.DownloadCycleReport` | Reports.Get | Product | Returns a published content reference or explicit preview-needed outcome; Reports.Create renders an explicit preview, and library Storage.GetFileBytes reads either reference. Publication remains Reports.Publish. | GCS |
-| `Reports.DownloadExecutionReport` | Reports.Get | Product | Returns a published content reference or explicit preview-needed outcome; Reports.Create renders an explicit preview, and library Storage.GetFileBytes reads either reference. Publication remains Reports.Publish. | GCS |
-| `Reports.MaterializeReport` | Reports.Create | Product | Merged: Render only, no publication. | N |
-| `Runtime.GetHealth` | Status.Health | Library | Removed: Remove duplicate health gRPC method. | C |
-| `Runtime.GetIdentity` | Status.Identity | Library | Removed: Remove duplicate identity gRPC method. | C |
-| `Secrets.Export` | Secrets.Export | Product | Renamed: Existing Base64 JSON transfer, not encryption. | G |
-| `Secrets.Import` | Secrets.Import | Product | Merged: Preserve choices and generation conflict. | G |
-| `Secrets.List` | Secrets.List | Product | Renamed: Bounded metadata, not secret values. | G |
-| `Secrets.Lookup` | Secrets.Get | Product | Renamed: Granted identifier only. | N |
-| `Secrets.Preview` | Secrets.Import | Product | Merged: validate_only, no writes. | G |
-| `Secrets.Put` | Secrets.Set | Product | Renamed: Whole writable secret value and revision from Secrets.Get. | G |
-| `Secrets.Remove` | Secrets.Delete | Product | Renamed: Preserve keyring/catalog cleanup. | G |
-| `Settings.GetPluginSettings` | Plugins.Settings.Get | Product | Renamed: Saved values, not UI declarations. | G |
-| `Settings.GetSettings` | Settings.Schema | Product | Renamed: UI declarations/cards/bootstrap metadata. | G |
-| `Settings.ListStorageSources` | Storage.Sources.Get | Product | Renamed: One ordered value. | G |
-| `Settings.ReadApplicationSettings` | Settings.Get | Product | Renamed: Revisioned application values. | G |
-| `Settings.ReorderStorageSources` | Storage.Sources.Set | Product | Merged: Whole small ordered value and revision from Storage.Sources.Get. | G |
-| `Settings.SetStorageSourceEnabled` | Storage.Sources.Set | Product | Merged: Whole small ordered value and Get revision, including enabled state. | G |
-| `Settings.UpdateApplicationSettings` | Settings.Set | Product | Renamed: Whole writable value and matching Get revision. | G |
-| `Settings.UpdatePluginSettings` | Plugins.Settings.Set | Product | Renamed: Whole writable value and matching Get revision; if large, use separately revisioned setting sub-resources with Plugins.Settings.Get/Plugins.Settings.Set. | G |
-| `Telemetry.ListSamples` | Evidence.Samples.List | Product | Merged: One canonical sample read. | CS |
-| `Telemetry.WatchSamples` | Evidence.Samples.Watch | Product | Kept: Same source selector and durable boundary. | C |
-
-### Product Client Service Inventory
-
-Every row is Product-owned, declared in its namespace. No Plugins, Access,
-Status or transfer implementation is redeclared. Namespace-only parents Content,
-Plots, Media and Storage need no empty product service. A product owns
-plugins.Settings beside the library Plugins, and storage.Sources describes its
-own storage-source policy rather than library transfer machinery.
-
-| Service | Nested | Methods | Count |
-| --- | --- | --- | ---: |
-| Backend | No | Appearance | 1 |
-| Backend.Overview | Yes | Get, Watch | 2 |
-| Catalog.Suites | Yes | Get, List | 2 |
-| Catalog.RecordSchemas | Yes | Get, List | 2 |
-| Catalog.StreamSchemas | Yes | Get, List | 2 |
-| Catalog.PromptDefinitions | Yes | Get, List | 2 |
-| Catalog | No | Analyses | 1 |
-| Cases | No | Create, Get, List, Watch, Delete, Parameters | 6 |
-| Cycles | No | Get, List, Watch, Create, Set, Seal | 6 |
-| Executions | No | Get, List, Watch, Create, Set, Start, Stop, Cancel, Delete, Parameters, Steps | 11 |
-| Executions.Commands | Yes | Get, Create | 2 |
-| Executions.Progress | Yes | Get, Watch | 2 |
-| Evidence.Records | Yes | List, Watch | 2 |
-| Evidence | No | Statistics | 1 |
-| Evidence.Traceability | Yes | Get, Watch | 2 |
-| Evidence.Notes | Yes | List, Watch, Get, Create, Set | 5 |
-| Evidence.HealthEvents | Yes | List, Watch | 2 |
-| Evidence.Samples | Yes | List, Watch | 2 |
-| Content.Artifacts | Yes | Get, Create, List, Watch | 4 |
-| Content.ExecutionFiles | Yes | Get, List, Watch | 3 |
-| Documents | No | Get, Watch | 2 |
-| Plots.Snapshots | Yes | List, Watch | 2 |
-| Plots.Settings | Yes | Get, Set | 2 |
-| Prompts | No | Get, List, Watch | 3 |
-| Prompts.Answers | Yes | Create | 1 |
-| Settings | No | Schema, Get, Set | 3 |
-| Plugins.Settings | Yes | Get, Set | 2 |
-| Storage.Sources | Yes | Get, Set | 2 |
-| Secrets | No | List, Watch, Get, Set, Delete, Export, Import | 7 |
-| Reports | No | Get, Create, Publish | 3 |
-| Media.Captures | Yes | Create, Get, Watch, Stop | 4 |
-| Aggregates | No | Get | 1 |
-
-Total: 32 product client services (20 nested), 92 operations/gRPC methods,
-92 requests and 92 responses. Current progress is also included in Executions.Get;
-Progress.Set is absent from this client inventory.
-
-The 132 rows reach 75 distinct product client destinations. Seventeen added
-companions complete the 92-method client set: Cases.Watch, Cycles.Watch,
-Documents.Watch, Executions.Watch, Executions.Progress.Get, Content.Artifacts.Watch,
-Content.ExecutionFiles.Watch, Evidence.HealthEvents.Watch, Evidence.Notes.Get/Watch,
-Evidence.Traceability.Watch, Media.Captures.Get/Watch/Stop, Plots.Settings.Get,
-Prompts.Watch and Secrets.Watch. Workflow follow-ups in the mapping reasons use
-these same canonical methods and do not increase the count.
-
-### Complete Plugin-Facing Mapping
-
-These 24 present rows cover 17 product context bindings, 2 library clock
-operations and 5 dynamic lifecycle families. They are logical operations over the
-library carrier, not additional client RPCs or protocol frames. Generic host
-value delivery is library-owned; a product's resolver keeps settings/secrets
-policy and storage. Dynamic identities do not multiply operation templates.
-
-| Present Operation or Family | Locked Destination | Destination Owner | Preserved Behavior |
-| --- | --- | --- | --- |
-| `<template>.materialize` | TestCases.Materialize | Product | Renamed; pure materialization, request/response wrapper. |
-| `<template>.initialize` | Executions.Initialize | Product | Renamed; acquire execution-local suite resources. |
-| `Step.operation` | Steps.Execute | Product | Renamed family; frozen step identity and retry evidence. |
-| `Criterion.operation` | Criteria.Evaluate | Product | Renamed family; captured-evidence judgment. |
-| `<template>.cleanup` | Executions.Cleanup | Product | Renamed; required cleanup after initialization. |
-| `host.execution.prompt` | Prompts.Create | Product | Renamed; wait for answer, preserve scope and cancellation. |
-| `host.settings.read` | HostValues.Get | Library | Generic declared-value host operation; the product resolver supplies settings or secrets under caller scope and product policy. Product client settings/secrets services are not library stores. |
-| `host.secrets.read` | HostValues.Get | Library | Generic declared-value host operation; the product resolver supplies settings or secrets under caller scope and product policy. Product client settings/secrets services are not library stores. |
-| `harmos.clock.sleep` | Time.Sleep | Library | Kept meaning; normalized carriers, library-owned clock. |
-| `harmos.clock.now` | Time.Get | Library | Renamed; library-owned clock. |
-| `host.execution.record` | Evidence.Records.Append | Product | Renamed; ordered immutable data, durable receipt. |
-| `host.execution.records` | Evidence.Records.List | Product | Merged; preserve count/last selection and bounded reads. |
-| `host.execution.statistics` | Evidence.Statistics | Product | Merged; stream/field/step selectors and complete statistics. |
-| `host.execution.artifact` | Content.Artifacts.Create | Product | First use library Storage.CreateFileProduction, AppendFileBytes, GetFileProduction, CreateFileWriter as needed, PublishFileProduction or DeleteFileProduction; Create registers the product artifact reference. |
-| `host.execution.progress` | Executions.Progress.Set | Product | Host-only producer called by a plugin, using the whole progress value and Get revision; never client-facing Set. Get and Executions.Get return the current value; Watch observes it. |
-| `host.execution.log` | Evidence.Logs.Append | Product | Renamed; ordered immutable log lines. |
-| `host.execution.traceability` | Evidence.Traceability.Set | Product | Renamed; whole small writable value, Evidence.Traceability.Get revision and scope; large writable parts split into separately revisioned entry Get/Set sub-resources. |
-| `host.execution.document` | Documents.AppendParts | Product | Renamed; ordered immutable document contributions. |
-| `host.files.copy_files` | Files.Capture | Product | Renamed; freeze file copies, preserve originals. |
-| `host.files.start_capture` | Files.Captures.Start | Product | Renamed; start capture lifecycle. |
-| `host.files.stop_capture` | Files.Captures.Stop | Product | Renamed; finish capture at safe boundary. |
-| `host.execution.environment` | Backend.Environment | Product | Renamed; derived environment read. |
-| `host.execution.effect.prepare` | Effects.Create | Product | Renamed; durable inverse ticket, no hardware write. |
-| `host.execution.effect.applied` | Effects.Set | Product | Renamed; whole writable application state and Effects.Get revision; preserve earliest inverse. |
-
-Effects.Get is one added host/plugin-only companion, not a 25th present row.
-The 18 distinct product templates additional to its client inventory are:
-
-| Product Host/Plugin-Only Service | Additional Methods | Count |
-| --- | --- | ---: |
-| TestCases | Materialize | 1 |
-| Executions | Initialize, Cleanup | 2 |
-| Steps | Execute | 1 |
-| Criteria | Evaluate | 1 |
-| Prompts | Create | 1 |
-| Evidence.Records | Append | 1 |
-| Executions.Progress | Set | 1 |
-| Evidence.Logs | Append | 1 |
-| Evidence.Traceability | Set | 1 |
-| Documents | AppendParts | 1 |
-| Files | Capture | 1 |
-| Files.Captures | Start, Stop | 2 |
-| Backend | Environment | 1 |
-| Effects | Create, Set, Get | 3 |
-
-These add 7 logical services (TestCases, Steps, Criteria, Evidence.Logs, Files,
-Files.Captures and Effects); Evidence.Logs and Files.Captures are nested. Seven
-other namespaces in the table already exist in the product client inventory. The 18 operations consist of 10 methods in
-those 7 added services and 8 methods in shared namespaces. They have 18 requests
-and 18 responses; no client gRPC methods. Library HostValues.Get and Time.Get/Sleep
-are counted only under the library. Shared product client operations are counted
-once in the 110-template union.
 
 ### Nested Resource Proto Examples
 
@@ -988,8 +681,8 @@ service Plugins {
 ```
 
 ```proto
-// proto/product/v1/plugins/settings.proto (product-owned)
-package product.v1.plugins;
+// proto/application/v1/plugins/settings.proto (product-owned)
+package application.v1.plugins;
 message SettingsGetRequest { string name = 1; }
 message SettingsGetResponse { SettingsValue value = 1; bytes revision = 2; }
 message SettingsSetRequest { SettingsValue value = 1; bytes expected_revision = 2; string request_id = 3; }
@@ -998,21 +691,6 @@ service Settings {
   rpc Get(SettingsGetRequest) returns (SettingsGetResponse);
   rpc Set(SettingsSetRequest) returns (SettingsSetResponse);
 }
-```
-
-```proto
-// proto/product/v1/executions/progress.proto (client-facing product reads)
-package product.v1.executions;
-message ProgressGetRequest { string name = 1; }
-message ProgressGetResponse { ProgressValue value = 1; bytes revision = 2; }
-message ProgressWatchRequest { string name = 1; }
-message ProgressWatchResponse { ProgressValue value = 1; bytes revision = 2; }
-service Progress {
-  rpc Get(ProgressGetRequest) returns (ProgressGetResponse);
-  rpc Watch(ProgressWatchRequest) returns (stream ProgressWatchResponse);
-}
-// No client Set RPC. The plugin calls a separately declared host operation.
-// product.v1.ExecutionsGetResponse also contains the current ProgressValue.
 ```
 
 ```proto
@@ -1041,7 +719,7 @@ service Logs {
 }
 ```
 
-Plots.Settings and Status.TraceEvents follow the same per-service file,
+Status.TraceEvents follows the same per-service file,
 subpackage and wrapper rule. A host-only operation wrapper is not a client RPC:
 its descriptor/declaration records exposure separately from its logical name.
 
@@ -1145,30 +823,30 @@ remain distinct because their replacement, fencing and terminal guarantees diffe
 
 **Owner, 2026-11-12:** other products besides the first will host plugins on this
 library, so language SDKs stay here and product SDKs keep building on them; the
-library protocol, SDKs and conformance suite remain self-sufficient, with no
+library protocol, SDKs and conformance checks remain self-sufficient, with no
 product vocabulary. Moving SDKs into a product was considered and not chosen
 because a second plugin-hosting product would have to reimplement the plugin
 protocol in every language and the library could not be proven end to end by itself.
 Current SDKs contain substantive protocol behavior, not merely protobuf bindings.
 
-| Language | Library SDK Contains | Current Consumers |
-| --- | --- | --- |
-| Rust | Descriptor/fingerprint authoring, builders, invocation resources, server, clock/publication, guest/native support, generic managed application client and 11 storage request bindings. | Library examples, fixtures and runtime tests; product Rust SDK and its clients/plugins. |
-| Python | Plugin decorators/descriptors, fingerprint validation, server/context, resources, clock/publication and generated protobuf/Storage stubs. | Python fixtures and SDK tests; product Python SDK and SDK stories. |
-| C# | Plugin declarations, fingerprinting, service/context, child calls, clock/publication and generated build-time protocol clients. | C# fixture and SDK stories; product C# SDK consumes the pinned source. |
-| C++ | Plugin builders, schema/fingerprints, gRPC server/context, resources, clock/publication and generated build-time protocol stubs. | C++ fixture/tests; product C++ SDK links the library SDK. |
+| Language | Library SDK Contains and Consumers |
+| --- | --- |
+| Rust | Descriptor/fingerprint authoring, builders, invocation resources, server, clock/publication, guest/native support, generic managed application client and 11 storage request bindings. Library examples, fixtures and runtime tests. |
+| Python | Plugin decorators/descriptors, fingerprint validation, server/context, resources, clock/publication and generated protobuf/Storage stubs. Python fixtures and SDK tests. |
+| C# | Plugin declarations, fingerprinting, service/context, child calls, clock/publication and generated build-time protocol clients. C# fixture and SDK checks. |
+| C++ | Plugin builders, schema/fingerprints, gRPC server/context, resources, clock/publication and generated build-time protocol stubs. C++ fixture/tests. |
 
 Measured on 2026-11-12 from tracked source files only (`.rs`, `.py`, `.pyi`, `.cs`,
 `.cpp`, `.hpp`, `.h`); counts include tests, examples and source tooling, exclude
 locks/configuration and untracked build output. These are physical lines and file
-bytes, not package download size. The product checkout was inspected read-only.
+bytes, not package download size.
 
-| Language | Library Files / Lines / Bytes | Product Files / Lines / Bytes |
-| --- | --- | --- |
-| Rust | 72 / 10,643 / 349,939 | 34 / 5,188 / 161,409 |
-| Python | 25 / 4,590 / 216,097 | 22 / 3,035 / 104,027 |
-| C# | 10 / 1,113 / 44,042 | 23 / 1,441 / 67,539 |
-| C++ | 12 / 1,535 / 54,670 | 19 / 1,893 / 63,260 |
+| Language | Library Files / Lines / Bytes |
+| --- | --- |
+| Rust | 72 / 10,643 / 349,939 |
+| Python | 25 / 4,590 / 216,097 |
+| C# | 10 / 1,113 / 44,042 |
+| C++ | 12 / 1,535 / 54,670 |
 
 Excluding test/example directories leaves library Rust 7,534 lines, Python 4,138,
 C# 1,113 and C++ 1,037. Python includes 3,131 tracked generated lines under `v1/`;
@@ -1184,13 +862,13 @@ reconnect/restart and managed/remote stop behavior. These remain library-owned
 proof obligations. The library currently has only one generic managed application
 client, in Rust. Only plugin semantic parity across Rust, Python, C# and C++, and
 whether the generic managed client exists in all four or in Rust only, remain
-open under SDKs; four-language managed-execution parity is not a landed fact or an approved
+open under SDKs; four-language managed-invocation parity is not a landed fact or an approved
 new requirement. Descriptor-derived client-root naming in all four languages is
 separately locked.
 
 ### Defects to Fix Regardless
 
-| Defect | Evidence | Locked Independent Correction |
+| Defect | Verification | Locked Independent Correction |
 | --- | --- | --- |
 | Python defaults to Public; other SDKs default to Private | `sdk/python/src/harmos/contracts.py`, Rust operation declarations, C# Operation and C++ header. | Align Python to Private and require explicit Public intent. |
 | C# lacks invocation-local typed resources and returned cancellation reason | `sdk/csharp/Harmos/Context.cs`: internal cancelReason exists, CancelledAsync returns Task only; no public resource store. | Add per-invocation resource ownership and reason-bearing cancellation, with child settlement parity. These are not persisted settings. |
@@ -1203,10 +881,8 @@ message registration already exist here. Do not reimplement them based on stale
 sibling pins. Typed operation discovery already fills CatalogPage.operations;
 stored schema/identity catalogs remain JSON bytes and need a typed replacement.
 
-Product-only host-operation gaps remain product work. Generic plugin, access,
-transfer and status gaps are now library work under the manager inventory above.
-The product desktop moves once, after all services have their final names and the
-exact library revision is available; it consumes composed services directly.
+Generic plugin, access, transfer and status gaps are library work under the
+manager inventory above; application operations remain outside this repository.
 
 ## Risks and Trade-offs
 
@@ -1259,17 +935,10 @@ generic host-value mechanism under OperationManager. Reuse Storage sessions and
 the existing StreamManager. Preserve stored encodings; update conformance,
 examples and affected guidance with the corresponding code.
 
-Under later authorization publish/pin one exact library revision. The product
-defines its storage layer and policy, composes the library services directly,
-splits execution/prompt/report/retained-recording orchestration and migrates its
-SDKs and CLI. Delete its duplicate plugin connection, dispatch, streams, process
-launch, entry management, listener/pairing, upload handling and host-status code
-in the same compiling adoption slices. Product-only operations call their manager
-or storage through one operation file per service method.
-
-Once every service has its final name, migrate the product desktop and regenerate
-its root exactly once. Do not move it to an intermediate host or grammar. Remove
-all remaining superseded code only after consumers migrate and Nightly large-file
-throughput is measured. No compatibility aliases, second long-lived authorities,
-implicit data migration or stored-data reset. Rollback uses a matched prior
-host/SDK revision. Final validation remains separate from source closure.
+Under later authorization publish one exact library revision for consumers to pin.
+Host applications compose library services directly and retain their definitions,
+objects and policy. Remove remaining superseded library code only after consumers
+migrate and Nightly large-file throughput is measured. No compatibility aliases,
+second long-lived authorities, implicit data migration or stored-data reset.
+Rollback uses a matched prior host/SDK revision. Final validation remains separate
+from source closure.

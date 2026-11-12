@@ -35,7 +35,7 @@ data snapshot reads SHALL be the named fallback if insufficient, not built here.
 
 #### Scenario: Lag Bound Review
 
-- **WHEN** evidence for the latest-durable decision is reviewed
+- **WHEN** verification for the latest-durable decision is reviewed
 - **THEN** the 100 ms cadence alone is insufficient proof: flush duration adds to it and grows with written data, with synchronous batches targeting 1 MB and capped at 16 MB
 - **AND** because nothing measures durable lag today, the three-load benchmark must demonstrate each load's p95 meets the owner's bound
 
@@ -54,7 +54,7 @@ including backlog and synchronous commit contribution. Consumers SHALL be able t
 reuse the case against their own backend. Measurements SHALL NOT become
 wall-clock assertions in tests.
 
-#### Scenario: Nightly Lag Evidence
+#### Scenario: Nightly Lag Verification
 
 - **WHEN** the Nightly benchmark set runs `integration/durable_lag` against a backend
 - **THEN** its stable load cases cover small samples at a high rate, multi-megabyte batches and a mix, reporting p50, p95 and maximum durable lag for each

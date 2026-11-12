@@ -6,7 +6,7 @@
 
 The library SHALL retain self-sufficient language SDKs, protocol and conformance
 without product vocabulary. Product SDKs SHALL build on them. Ownership is locked
-on 2026-11-12. Plugin semantic parity and generic managed-client execution language
+on 2026-11-12. Plugin semantic parity and generic managed-client invocation language
 scope remain open; four-language descriptor-derived naming is separately locked.
 
 #### Scenario: Additional Plugin-Hosting Product
@@ -16,7 +16,7 @@ scope remain open; four-language descriptor-derived naming is separately locked.
 
 #### Scenario: Independent Conformance Review
 
-- **WHEN** the library protocol, SDKs and conformance suite are reviewed together
+- **WHEN** the library protocol, SDKs and conformance checks are reviewed together
 - **THEN** the library can be proven end to end by itself without product vocabulary or a product-owned protocol implementation
 - **AND** SDK retention does not imply a settled four-language plugin-parity promise or generic managed-client scope
 
@@ -42,21 +42,21 @@ request and response wrappers under design.md's grammar, including empty replies
 ### Requirement: Nested Resources and Single-Mode Parts
 
 A part read in exactly one way SHALL use its noun alone on its parent, including
-paged Steps and Parameters. A part with several read/change modes SHALL be a
+paged Jobs.Steps. A part with several read/change modes SHALL be a
 nested resource service with its own bare verbs, replacing verb-plus-part methods
 and flat compound services. Mixed-resource Storage SHALL retain names identifying
 independent storage resources, including ListRows/WatchRows and GetObject/SetObject;
 its single-mode whole parts SHALL be Info and Capabilities.
 
-#### Scenario: Execution Parts
+#### Scenario: Job Parts
 
-- **WHEN** execution steps are read as one bounded page and progress is read or watched
-- **THEN** the names are Executions.Steps and Executions.Progress.Get/Watch, with no Executions.GetProgress or flat ExecutionProgress service
+- **WHEN** job steps are read as one bounded page and progress is read or watched
+- **THEN** the names are Jobs.Steps and Jobs.Progress.Get/Watch, with no Jobs.GetProgress or flat JobProgress service
 
 #### Scenario: Writable Nested Parts
 
-- **WHEN** plugin settings or plot settings have matching Get and Set
-- **THEN** their names are Plugins.Settings.Get/Set and Plots.Settings.Get/Set, with no flat compound settings service
+- **WHEN** application-owned plugin settings or document settings have matching Get and Set
+- **THEN** their names are Plugins.Settings.Get/Set and Documents.Settings.Get/Set, with no flat compound settings service
 
 ### Requirement: Nested Wire Packages and Wrappers
 
@@ -68,7 +68,7 @@ Nested resources MAY have a different library owner from their parent.
 #### Scenario: Product Settings Beside Library Plugins
 
 - **WHEN** a product serves plugin settings beside the library's Plugins service
-- **THEN** it declares product.v1.plugins.Settings in product/v1/plugins/settings.proto and calls use product.v1.plugins.Settings/Get with SettingsGetRequest/SettingsGetResponse
+- **THEN** it declares application.v1.plugins.Settings in application/v1/plugins/settings.proto and calls use application.v1.plugins.Settings/Get with SettingsGetRequest/SettingsGetResponse
 - **AND** the host exposes both owners' services directly without redeclaring Plugins
 
 ### Requirement: Descriptor-Derived Hierarchical Client Roots
@@ -78,12 +78,12 @@ from a common descriptor-derived table, using normal language casing. Packages,
 service names, wrappers, cardinality and exposure SHALL determine the root under
 design.md. Library/product tables SHALL compose and reject leaf collisions.
 No hand-written per-operation naming/forwarding layer SHALL exist. This naming
-requirement SHALL NOT settle managed-execution coverage.
+requirement SHALL NOT settle managed-invocation coverage.
 
 #### Scenario: Composed Client Root
 
-- **WHEN** a root is generated from library Plugins and product plugins.Settings/executions.Progress descriptors
-- **THEN** calls read client.plugins.settings.get(request), client.executions.progress.watch(request) and client.executions.start(request)
+- **WHEN** a root is generated from library Plugins and application plugins.Settings/jobs.Progress descriptors
+- **THEN** calls read client.plugins.settings.get(request), client.jobs.progress.watch(request) and client.jobs.start(request)
 - **AND** the plugins node also exposes library plugin entry methods
 
 ### Requirement: Explicit Domain Action Meanings
@@ -197,23 +197,14 @@ resolver. This SHALL close the per-plugin settings/secrets ownership question.
 
 ### Requirement: Manager Ownership and Thin Service Methods
 
-Managers SHALL follow design.md's single live-ownership rule and responsibility
-inventory. The product SHALL split its host/shared state into execution, prompt
-and report managers, with a capture manager only if recordings remain. Rendering
-SHALL stay pure; evidence, catalog, notes, aggregates, plots and documents SHALL
-remain operations over storage. Each service method SHALL map to one operation
-file calling a manager or storage.
+Managers SHALL follow design.md's single live-ownership rule and library
+responsibility inventory. Each service method SHALL map to one operation file
+calling a manager or storage.
 
 #### Scenario: Service Dispatch Review
 
-- **WHEN** a product service method is reviewed after the split
+- **WHEN** a library service method is reviewed
 - **THEN** orchestration resides in the owning manager and plain storage operations call storage through their operation file
-- **AND** the execution manager owns queueing, lifecycle, retries, Stop/Cancel and recovery; cycle ownership is chosen at the split using the simplest complete option
-
-#### Scenario: Report Preview
-
-- **WHEN** a report preview is rendered without publication
-- **THEN** pure rendering does not allocate a manager or publish content; the report manager owns explicit atomic publication only
 
 ### Requirement: Library Access and Host Status Owners
 
