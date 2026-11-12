@@ -19,6 +19,7 @@ mod cancellation;
 mod cursors;
 mod exhaustion;
 mod files;
+#[path = "../../support/fixture.rs"]
 pub(crate) mod fixture;
 mod mapping;
 mod mutations;

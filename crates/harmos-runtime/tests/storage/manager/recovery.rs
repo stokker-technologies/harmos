@@ -95,7 +95,7 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
     )
     .unwrap();
     storage.start(&runtime).await.unwrap();
-    Fixture { runtime, storage, data, recovery }
+    Fixture::from_parts(runtime, storage, data, recovery)
 }
 
 /* === Tests === */
