@@ -66,6 +66,29 @@ pub(crate) async fn perform(inner: &Arc<crate::manager::Inner>, action: &FileAct
             inner.bounded("primary.append_file_bytes", inner.primary.append_file_bytes(staging, *offset, bytes.clone())).await?;
             Ok(FileCompleted::Written)
         }
+        FileAction::Replay { staging, offset, bytes, .. } => {
+            let mut checked = 0;
+            while checked < bytes.len() {
+                let maximum = std::num::NonZeroUsize::new(bytes.len() - checked).expect("remaining accepted prefix");
+                let retained = inner
+                    .bounded(
+                        "primary.get_file_production_bytes",
+                        inner.primary.get_file_production_bytes(staging, *offset + checked as u64, maximum),
+                    )
+                    .await?;
+                if retained.is_empty() || retained.len() > maximum.get() || retained.capacity() > maximum.get() {
+                    return Err(Error::InvalidInput {
+                        field: "AppendFileBytes",
+                        reason: "backend returned an empty or oversized accepted prefix",
+                    });
+                }
+                if retained.as_slice() != &bytes.as_slice()[checked..checked + retained.len()] {
+                    return Ok(FileCompleted::Replayed(false));
+                }
+                checked += retained.len();
+            }
+            Ok(FileCompleted::Replayed(true))
+        }
         FileAction::Finish {
             staging,
             metadata,

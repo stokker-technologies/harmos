@@ -64,7 +64,7 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
         chunk_bytes: nz(65536),
     };
     let backend = SqliteBackend::new(&path, history.clone(), settings).unwrap();
-    backend.create_storage_session().await.unwrap();
+    backend.create_session().await.unwrap();
     let content = b"abcdefgh";
     let sha256 = Sha256::digest(content).into();
     let metadata = FileMetadata {
@@ -107,7 +107,7 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
     conflict.fingerprint[0] ^= 1;
     assert!(backend.append_mutation_receipts(StorageBatch::new(vec![conflict])).await.is_err());
     backend.delete_snapshot(&saved).await.unwrap();
-    backend.delete_storage_session().await.unwrap();
+    backend.delete_session().await.unwrap();
     drop(backend);
 
     // Refuse A Different History Before Modifying The Database.
@@ -118,14 +118,14 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
     assert_eq!(error.backend_failure(), Some(BackendFailure::Corrupt));
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
     let backend = SqliteBackend::new(&path, history.clone(), settings).unwrap();
-    backend.create_storage_session().await.unwrap();
+    backend.create_session().await.unwrap();
     let snapshot = backend.create_snapshot(&cut).await.unwrap();
     assert_eq!(backend.get_file_bytes(&snapshot, &reference, 0, nz(content.len())).await.unwrap(), content);
     assert_eq!(backend.list_mutation_receipts(ReadLimits { rows: nz(4), bytes: nz(4096) }).await.unwrap(), vec![receipt]);
 
     // Foreign Tokens At The Same History And Cut Must Still Refuse.
     let other = SqliteBackend::new(root.path().join("other.sqlite"), history.clone(), settings).unwrap();
-    other.create_storage_session().await.unwrap();
+    other.create_session().await.unwrap();
     let staged = other.create_file_staging(&metadata).await.unwrap();
     other.append_file_bytes(&staged, 0, StorageBatch::new(content.to_vec())).await.unwrap();
     let published = other.publish_file_production(&staged, &cut, content.len() as u64, sha256).await.unwrap();
@@ -134,9 +134,9 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
     assert!(backend.get_file_bytes(&foreign, &reference, 0, nz(1)).await.is_err());
     assert!(other.get_file_bytes(&snapshot, &published, 0, nz(1)).await.is_err());
     other.delete_snapshot(&foreign).await.unwrap();
-    other.delete_storage_session().await.unwrap();
+    other.delete_session().await.unwrap();
     backend.delete_snapshot(&snapshot).await.unwrap();
-    backend.delete_storage_session().await.unwrap();
+    backend.delete_session().await.unwrap();
     drop(other);
     drop(backend);
 

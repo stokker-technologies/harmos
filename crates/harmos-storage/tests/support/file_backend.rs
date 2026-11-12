@@ -225,7 +225,9 @@ impl Data {
             let _io = self.file_io.lock().unwrap();
             let copy = |bytes: &[u8]| -> Result<Vec<u8>> {
                 let offset = usize::try_from(offset).map_err(|_| failure(BackendFailure::Permanent))?;
-                let end = bytes.len().min(offset.saturating_add(max_bytes.get()));
+                let configured = self.control.production_read_bytes.load(Ordering::SeqCst);
+                let maximum = if configured == 0 { max_bytes.get() } else { max_bytes.get().min(configured) };
+                let end = bytes.len().min(offset.saturating_add(maximum));
                 let chunk = bytes.get(offset..end).ok_or_else(|| failure(BackendFailure::Permanent))?;
                 Ok(Box::<[u8]>::from(chunk).into_vec())
             };

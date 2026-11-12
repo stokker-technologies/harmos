@@ -292,7 +292,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         drop(held);
 
         // A Dropped Caller Cannot Retract Work Already Admitted To The Worker.
-        if !primary.get_storage_capabilities().native_arrow {
+        if !primary.capabilities().native_arrow {
             deterministic.control.block_write.store(true, Ordering::SeqCst);
             let mutation = MutationId {
                 window,
@@ -323,7 +323,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
 
     // Abort An Index Update Inside The Real Object Transaction, Then Retry It.
     let (create, existing, initial, existing_outcome, winner) = retained.unwrap();
-    native.create_storage_session().await.unwrap();
+    native.create_session().await.unwrap();
     let before = native.get_saved_position().await.unwrap();
     while !native.delete_expired_object_revisions(&before, nz(64), &catalog()).await.unwrap() {}
     let pruned = native.create_snapshot(&before).await.unwrap();
@@ -373,7 +373,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
     let mut forged = exchange.clone();
     forged.value.value.payload = Counter { id: 1, value: 444 }.encode();
     assert!(native.set_object(&forged).await.is_err());
-    native.delete_storage_session().await.unwrap();
+    native.delete_session().await.unwrap();
     drop(native);
     drop(fault);
 

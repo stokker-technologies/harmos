@@ -53,8 +53,8 @@ impl StorageManager {
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
         self.inner.bounded("primary.get_projection_definition", self.inner.primary.get_projection_definition(name, revision)).await
     }
-    pub fn get_storage_capabilities(&self) -> StorageCapabilities {
-        self.inner.primary.get_storage_capabilities()
+    pub fn capabilities(&self) -> StorageCapabilities {
+        self.inner.primary.capabilities()
     }
     pub async fn set_index_definition(
         &self, definition: &IndexDefinition, rebuild: bool, work: ReadLimits, cancel: &Cancellation,

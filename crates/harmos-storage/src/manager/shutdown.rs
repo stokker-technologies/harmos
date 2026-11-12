@@ -81,8 +81,8 @@ impl StorageManager {
             }
             if lifecycle.primary_touched && !lifecycle.primary_closed {
                 tracing::Instrument::instrument(
-                    self.inner.primary.delete_storage_session(),
-                    tracing::debug_span!("storage.backend", method = "primary.delete_storage_session"),
+                    self.inner.primary.delete_session(),
+                    tracing::debug_span!("storage.backend", method = "primary.delete_session"),
                 )
                 .await?;
                 lifecycle.primary_closed = true;

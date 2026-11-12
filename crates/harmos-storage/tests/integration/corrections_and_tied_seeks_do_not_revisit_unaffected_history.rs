@@ -76,7 +76,7 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
         chunk_bytes: workload.page().bytes,
     };
     let backend = SqliteBackend::new(&path, workload.history.clone(), settings).unwrap();
-    backend.create_storage_session().await.unwrap();
+    backend.create_session().await.unwrap();
     backend.append_schemas(StorageBatch::new(vec![workload.schema(1)])).await.unwrap();
     let records = (0..workload.rows)
         .map(|index| {
@@ -171,12 +171,12 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
     assert_eq!(saved.batch, original.batch);
     backend.delete_snapshot(&late).await.unwrap();
     backend.delete_snapshot(&snapshot).await.unwrap();
-    backend.delete_storage_session().await.unwrap();
+    backend.delete_session().await.unwrap();
     drop(backend);
 
     // Reopen The Checkpoint And Replay Without Reexamining Any Source Rows.
     let backend = SqliteBackend::new(&path, workload.history.clone(), settings).unwrap();
-    backend.create_storage_session().await.unwrap();
+    backend.create_session().await.unwrap();
     let snapshot = backend.create_snapshot(&next).await.unwrap();
     let before = backend.get_work().await.unwrap();
     advance_projection(&backend, &snapshot, &definition.name, None, workload.work(), &cancel).await.unwrap();
@@ -207,7 +207,7 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
     .await;
 
     backend.delete_snapshot(&snapshot).await.unwrap();
-    backend.delete_storage_session().await.unwrap();
+    backend.delete_session().await.unwrap();
     drop(backend);
 
     // Reopen A Version-One Store Whose Published Outputs Use Legacy Arrow Pages.
@@ -228,7 +228,7 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
     connection.execute_batch("DELETE FROM projection_bucket_members; DELETE FROM projection_bucket_outputs; DELETE FROM projection_bucket_state; DELETE FROM projection_bucket_cuts;").unwrap();
     drop(connection);
     let backend = SqliteBackend::new(&path, workload.history.clone(), settings).unwrap();
-    backend.create_storage_session().await.unwrap();
+    backend.create_session().await.unwrap();
     let mut value = sample(0);
     value.time_ns -= 60 * 1_000_000_000;
     value.value = 3.0;
@@ -285,5 +285,5 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
     let sums = continued.column_by_name("sum").unwrap().as_any().downcast_ref::<arrow_array::Float64Array>().unwrap();
     assert_eq!(sums.values().iter().sum::<f64>(), workload.rows as f64 + 3.0);
     backend.delete_snapshot(&snapshot).await.unwrap();
-    backend.delete_storage_session().await.unwrap();
+    backend.delete_session().await.unwrap();
 }

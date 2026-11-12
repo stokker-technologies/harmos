@@ -845,6 +845,24 @@ The increased commit count and total commit contribution remain visible. Accepte
 snapshots were not built. The benchmark emits backlog positions and admission wait as
 well as this table; Nightly retains the raw observations and platform-qualified metrics.
 
+A fresh Windows confirmation on the same workload after the provider migration measured
+`small_high_rate` 54.76 / 98.76 / 104.70 ms, `multi_megabyte`
+272.72 / 359.90 / 702.77 ms, and `mixed` 333.83 / 427.73 / 486.73 ms
+(p50 / p95 / maximum). Commit counts were 23 / 1664 / 827 and synchronous commit
+totals 19.77 / 17809.58 / 9791.44 ms; maximum backlogs were 18,816 / 12,602,304 /
+12,614,064 bytes. Large and mixed p95 **miss 250 ms after task 3.7**. The earlier
+passing measurement does not establish acceptance; the bound remains unmet in this
+confirmation. No budget, deadline or workload was changed and no accepted-data
+snapshot was built. The owner decides the fallback.
+
+The upload owner now verifies a replayed accepted prefix under the file's serialized
+command ownership, including short backend reads. Matching bytes under a different
+request identifier return the unchanged producer state; different bytes retain a
+rejected receipt and never alter the length or hash. Focused proof is
+`replayed_file_bytes_preserve_the_accepted_prefix::replayed_file_bytes_preserve_the_accepted_prefix`,
+including fencing, restart and terminal digest integrity. This closes only the
+file-byte replay part of task 3.4; the task stays open for the other Append families.
+
 ### Native Storage Migration
 
 The 52 storage and eight recovery hooks are implemented with no old-name aliases;

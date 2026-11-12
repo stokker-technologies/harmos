@@ -35,6 +35,6 @@ impl ProtobufOperation for Capabilities {
         let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
 
         let cancel = Cancellation::default();
-        super::native::run(&context, async { Ok(storage.get_storage_capabilities().into()) }, cancel.clone()).await
+        super::native::run(&context, async { Ok(storage.capabilities().into()) }, cancel.clone()).await
     }
 }

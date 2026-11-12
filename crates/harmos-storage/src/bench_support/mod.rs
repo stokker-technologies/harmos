@@ -97,7 +97,7 @@ pub fn run_with_reopen(runtime: &tokio::runtime::Runtime, workload: &Workload, m
 pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, workload: &Workload) -> Completed {
     // Populate Identical Source Batches.
     assert_eq!(workload.rows, workload::ROWS, "published case names require the locked two-million-row workload");
-    assert_eq!(runtime.block_on(backend.create_storage_session()).unwrap().sequence, 0, "benchmark backend must be empty");
+    assert_eq!(runtime.block_on(backend.create_session()).unwrap().sequence, 0, "benchmark backend must be empty");
     runtime.block_on(backend.append_schemas(StorageBatch::new(vec![workload.schema(1)]))).unwrap();
     let batches = (0..workload.rows)
         .step_by(CHUNK_ROWS)
@@ -335,13 +335,13 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
     assert_eq!(replayed, outcome);
     let final_cut = runtime.block_on(backend.get_saved_position()).unwrap();
     verify_object(runtime, backend, &final_cut, &winner);
-    measure("storage.close.2m", 1, || runtime.block_on(backend.delete_storage_session()).unwrap());
+    measure("storage.close.2m", 1, || runtime.block_on(backend.delete_session()).unwrap());
     Completed { replay, outcome, cut: final_cut, winner }
 }
 
 /// Verify durable outcomes and retained projection output on a freshly reopened owner.
 pub fn verify_reopened(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, workload: &Workload, completed: &Completed) {
-    let cut = runtime.block_on(backend.create_storage_session()).unwrap();
+    let cut = runtime.block_on(backend.create_session()).unwrap();
     assert_eq!(cut, completed.cut);
     verify_object(runtime, backend, &cut, &completed.winner);
     let outcome =
@@ -355,7 +355,7 @@ pub fn verify_reopened(runtime: &tokio::runtime::Runtime, backend: &dyn StorageB
             .unwrap()
     });
     runtime.block_on(backend.delete_snapshot(&snapshot)).unwrap();
-    runtime.block_on(backend.delete_storage_session()).unwrap();
+    runtime.block_on(backend.delete_session()).unwrap();
 }
 
 pub fn measure<T>(name: &str, samples: usize, mut action: impl FnMut() -> T) -> T {

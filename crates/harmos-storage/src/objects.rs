@@ -150,7 +150,7 @@ impl StorageManager {
         &self, mutation: Option<&crate::MutationId>, expected: Option<ObjectVersionToken>, value: ObjectValue,
         graph: crate::schema::graph::Schema,
     ) -> Result<CompareExchange> {
-        if !self.inner.primary.get_storage_capabilities().conditional_objects {
+        if !self.inner.primary.capabilities().conditional_objects {
             return Err(crate::Error::backend(
                 "conditional objects",
                 crate::BackendFailure::Unsupported,

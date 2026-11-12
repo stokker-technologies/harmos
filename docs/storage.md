@@ -34,7 +34,7 @@ incompatible data. Application owners choose backup and migration policy.
 ## Saved Reads and Capabilities
 
 ```rust,ignore
-let capabilities = storage.get_storage_capabilities();
+let capabilities = storage.capabilities();
 let snapshot = storage.snapshot(&saved_cursor).await?;
 let saved = snapshot.at();
 let page = snapshot.list_column_rows(&read, &cancel).await?;
@@ -392,10 +392,16 @@ aliases. Storage and recovery sessions have distinct Create/Delete hooks. Append
 retain their assigned-position replay and durable-receipt contracts. Private flush
 remains an explicit recovery barrier.
 
-`get_storage_capabilities()` owns `file_sessions`, `file_deletion` and
+`capabilities()` owns `file_sessions`, `file_deletion` and
 `mutation_receipts` alongside query capabilities. Unsupported capabilities refuse
 explicitly. `get_projection_definition(name, revision)` returns a definition and
 revision, selecting current when revision is absent. `get_projection_status` accepts
 an optional exact frontier; absence returns the newest readable durable status for
 that revision. `advance_projection` accepts an optional expected revision, preserving
 atomic checked native publication and the checked shared fallback.
+
+An append wholly inside an accepted file-production prefix verifies the original
+bytes. Identical bytes succeed with a new request identifier without extending or
+rehashing the file; different bytes conflict. A batch crossing the accepted end
+or leaving a gap is refused. Reusing an existing request identifier still requires
+the identical request and returns its original receipt.

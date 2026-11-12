@@ -334,7 +334,7 @@ impl Receipts {
 impl StorageManager {
     #[tracing::instrument(name = "storage.receipts.recover_receipts", level = "debug", skip_all)]
     pub(super) async fn recover_receipts(&self) -> Result<()> {
-        if !self.inner.primary.get_storage_capabilities().mutation_receipts {
+        if !self.inner.primary.capabilities().mutation_receipts {
             return Ok(());
         }
         let limits = self.inner.state.lock().unwrap().receipts.recovery_limits();
@@ -394,7 +394,7 @@ impl StorageManager {
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage" });
         }
-        let mutations = if self.inner.primary.get_storage_capabilities().mutation_receipts {
+        let mutations = if self.inner.primary.capabilities().mutation_receipts {
             Some(state.receipts.window(self.inner.primary.get_history(), MUTATION_RETENTION)?)
         } else {
             None
@@ -408,7 +408,7 @@ impl StorageManager {
     }
 
     pub fn mutation_window(&self) -> Result<MutationWindow> {
-        if !self.inner.primary.get_storage_capabilities().mutation_receipts {
+        if !self.inner.primary.capabilities().mutation_receipts {
             return Err(Error::InvalidInput {
                 field: "storage mutations",
                 reason: "backend does not support mutation receipts",

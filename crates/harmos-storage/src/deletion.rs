@@ -64,9 +64,7 @@ impl StorageManager {
     pub async fn delete_file_once(&self, mutation: &MutationId, file: &StagedFile) -> Result<StagedFile> {
         let result = async {
             self.inner.primary.get_history().check(&file.history)?;
-            if !self.inner.primary.get_storage_capabilities().mutation_receipts
-                || !self.inner.primary.get_storage_capabilities().file_deletion
-            {
+            if !self.inner.primary.capabilities().mutation_receipts || !self.inner.primary.capabilities().file_deletion {
                 return Err(invalid("backend must support durable deletion"));
             }
             let fingerprint = fingerprint(file);

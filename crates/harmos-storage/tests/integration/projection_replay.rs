@@ -105,7 +105,7 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     let work = ReadLimits { rows: nz(32), bytes: nz(1024 * 1024) };
     let cancel = Cancellation::default();
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.create_storage_session().await.unwrap();
+        backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
         backend.append_records(StorageBatch::new(records[..2].to_vec())).await.unwrap();
         assert_eq!(
@@ -148,12 +148,12 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     }
     let partial: i64 = fault.query_row("SELECT count(*) FROM projection_pages WHERE frontier=6", [], |row| row.get(0)).unwrap();
     assert_eq!(partial, 0);
-    native.delete_storage_session().await.unwrap();
+    native.delete_session().await.unwrap();
     drop(native);
 
     // Reopen, Keep The Published Cut, And Replay The Interrupted Candidate Once.
     let native = SqliteBackend::new(&path, history.clone(), settings).unwrap();
-    native.create_storage_session().await.unwrap();
+    native.create_session().await.unwrap();
     let old = native.list_projection_rows(&old_read).await.unwrap();
     assert_eq!(old.batch.column(0).as_any().downcast_ref::<Float64Array>().unwrap().values().as_ref(), &[0.0, 1.0]);
     fault.execute_batch("DROP TRIGGER interrupt_projection;").unwrap();
@@ -204,8 +204,8 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
         assert!(backend.list_projection_rows(&preserved).await.is_ok());
     }
     native.delete_snapshot(&fresh).await.unwrap();
-    native.delete_storage_session().await.unwrap();
+    native.delete_session().await.unwrap();
     fallback.delete_snapshot(&first_fallback).await.unwrap();
     fallback.delete_snapshot(&next_fallback).await.unwrap();
-    fallback.delete_storage_session().await.unwrap();
+    fallback.delete_session().await.unwrap();
 }

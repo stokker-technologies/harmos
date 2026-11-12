@@ -214,7 +214,7 @@ impl StorageBackend for SqliteBackend {
         &self.history
     }
 
-    fn get_storage_capabilities(&self) -> StorageCapabilities {
+    fn capabilities(&self) -> StorageCapabilities {
         StorageCapabilities {
             file_sessions: false,
             file_deletion: false,
@@ -226,7 +226,7 @@ impl StorageBackend for SqliteBackend {
         }
     }
 
-    fn create_storage_session(&self) -> StorageFuture<'_, StorageCursor> {
+    fn create_session(&self) -> StorageFuture<'_, StorageCursor> {
         Box::pin(self.call(|state| {
             state.closed = false;
             state.cursor()
@@ -238,7 +238,7 @@ impl StorageBackend for SqliteBackend {
             state.cursor()
         }))
     }
-    fn delete_storage_session(&self) -> StorageFuture<'_, ()> {
+    fn delete_session(&self) -> StorageFuture<'_, ()> {
         Box::pin(self.call(|state| {
             state.snapshots.clear();
             state.closed = true;

@@ -55,7 +55,7 @@ impl StorageManager {
         }
         let fingerprint = hash.finalize().into();
         self.mutate_file(mutation, fingerprint, |state| {
-            if !self.inner.primary.get_storage_capabilities().file_sessions {
+            if !self.inner.primary.capabilities().file_sessions {
                 return Err(invalid("backend does not support resumable production"));
             }
             let reference_bytes = file_bytes(metadata, self.inner.primary.get_history())?;

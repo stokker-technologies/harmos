@@ -65,7 +65,7 @@ async fn shared_workload_keeps_boundary_pages_and_replayed_projection_identical(
     .unwrap();
     let fallback = backend::Data::new(workload.history.clone());
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.create_storage_session().await.unwrap();
+        backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![workload.schema(1)])).await.unwrap();
         backend.append_records(workload.records(0, CHUNK_ROWS)).await.unwrap();
         backend.append_records(workload.records(CHUNK_ROWS, workload.rows)).await.unwrap();
@@ -108,6 +108,6 @@ async fn shared_workload_keeps_boundary_pages_and_replayed_projection_identical(
         assert_eq!(projected, values);
         assert_eq!(backend.get_saved_position().await.unwrap(), workload.cut());
         backend.delete_snapshot(&snapshot).await.unwrap();
-        backend.delete_storage_session().await.unwrap();
+        backend.delete_session().await.unwrap();
     }
 }

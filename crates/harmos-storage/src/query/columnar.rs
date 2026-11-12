@@ -226,7 +226,7 @@ pub async fn list_column_rows(
 ) -> Result<ArrowPage> {
     cancel.check()?;
     read.position(snapshot)?;
-    if backend.get_storage_capabilities().native_arrow {
+    if backend.capabilities().native_arrow {
         return backend.list_column_rows(snapshot, read, cancel).await;
     }
     fallback(backend, snapshot, read, cancel).await

@@ -84,7 +84,7 @@ impl StorageManager {
     async fn mutate_file(
         &self, mutation: &MutationId, fingerprint: [u8; 32], mut admit: impl FnMut(&mut State) -> Result<bool>,
     ) -> Result<MutationValue> {
-        if !self.inner.primary.get_storage_capabilities().mutation_receipts {
+        if !self.inner.primary.capabilities().mutation_receipts {
             return Err(invalid("backend does not support mutation receipts"));
         }
         let mut retry = true;

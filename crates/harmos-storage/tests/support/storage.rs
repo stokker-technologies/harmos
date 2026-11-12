@@ -101,6 +101,7 @@ pub struct Control {
     pub chunk_release: Notify,
     pub chunk_failures: AtomicUsize,
     pub chunk_sizes: Mutex<Vec<usize>>,
+    pub production_read_bytes: AtomicUsize,
     pub chunk_offsets: Mutex<Vec<u64>>,
     pub block_finish: AtomicBool,
     pub finish_entered: Notify,
@@ -387,7 +388,7 @@ impl StorageBackend for Data {
         })
     }
 
-    fn get_storage_capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
+    fn capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
         harmos_storage::query::columnar::StorageCapabilities {
             file_sessions: true,
             file_deletion: true,
@@ -534,7 +535,7 @@ impl StorageBackend for Data {
     fn get_history(&self) -> &StoreHistory {
         &self.history
     }
-    fn create_storage_session(&self) -> StorageFuture<'_, StorageCursor> {
+    fn create_session(&self) -> StorageFuture<'_, StorageCursor> {
         Box::pin(async move {
             self.control.open.store(true, Ordering::SeqCst);
             if self.control.block_open.load(Ordering::SeqCst) {
@@ -676,7 +677,7 @@ impl StorageBackend for Data {
             Ok(done)
         })
     }
-    fn delete_storage_session(&self) -> StorageFuture<'_, ()> {
+    fn delete_session(&self) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             self.control.close()?;
             self.snapshots.lock().unwrap().clear();

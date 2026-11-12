@@ -76,8 +76,8 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     )
     .unwrap();
     let fallback = Arc::new(backend::Data::new(history.clone()));
-    native.create_storage_session().await.unwrap();
-    fallback.create_storage_session().await.unwrap();
+    native.create_session().await.unwrap();
+    fallback.create_session().await.unwrap();
     let key = SchemaKey {
         id: Identifier::new("sample").unwrap(),
         version: NonZeroU32::MIN,
@@ -207,7 +207,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     // Refuse Released And Restarted Snapshot Tokens.
     native.delete_snapshot(&saved).await.unwrap();
     assert!(list_column_rows(&native, &saved, &read, &Cancellation::default()).await.is_err());
-    native.delete_storage_session().await.unwrap();
+    native.delete_session().await.unwrap();
     drop(native);
     let reopened = SqliteBackend::new(
         root.path().join("storage.sqlite"),
@@ -218,12 +218,12 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         },
     )
     .unwrap();
-    reopened.create_storage_session().await.unwrap();
+    reopened.create_session().await.unwrap();
     assert!(list_column_rows(&reopened, &saved, &read, &Cancellation::default()).await.is_err());
     let current = reopened.create_snapshot(&cut).await.unwrap();
     assert_ne!(current.token, saved.token);
     reopened.delete_snapshot(&current).await.unwrap();
-    reopened.delete_storage_session().await.unwrap();
+    reopened.delete_session().await.unwrap();
     fallback.delete_snapshot(&saved_fallback).await.unwrap();
-    fallback.delete_storage_session().await.unwrap();
+    fallback.delete_session().await.unwrap();
 }

@@ -99,7 +99,7 @@ impl StorageManager {
         }
         if !lifecycle.primary_open {
             lifecycle.primary_touched = true;
-            let saved = self.inner.bounded("primary.create_storage_session", self.inner.primary.create_storage_session()).await?;
+            let saved = self.inner.bounded("primary.create_session", self.inner.primary.create_session()).await?;
             self.inner.primary.get_history().check(&saved.history)?;
             let mut state = self.inner.state.lock().unwrap();
             state.status.accepted = saved.clone();

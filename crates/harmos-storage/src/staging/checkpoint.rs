@@ -77,7 +77,7 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.staging.checkpoint.recover_files", level = "debug", skip_all)]
     pub(crate) async fn recover_files(&self) -> Result<()> {
-        if !self.inner.primary.get_storage_capabilities().file_sessions {
+        if !self.inner.primary.capabilities().file_sessions {
             return Ok(());
         }
         // Recover The Complete Bounded Checkpoint Set.

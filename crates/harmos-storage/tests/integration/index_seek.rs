@@ -102,7 +102,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     let work = ReadLimits { rows: nz(32), bytes: nz(1024 * 1024) };
     let cancel = Cancellation::default();
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.create_storage_session().await.unwrap();
+        backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
         backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
         let before = backend.get_work().await.unwrap();
@@ -111,7 +111,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
             backend.set_index_definition(&definition, false, work, &cancel).await.unwrap()
         );
         let after = backend.get_work().await.unwrap();
-        if backend.get_storage_capabilities().native_index {
+        if backend.capabilities().native_index {
             assert_eq!(after.source_rows - before.source_rows, records.len() as u64);
             assert_eq!(after.decoded_chunks - before.decoded_chunks, (records.len() / settings.chunk_rows.get()) as u64);
             assert_eq!(after.index_prepares - before.index_prepares, 1);
@@ -194,12 +194,12 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     }
     resumed.descending = false;
     assert!(list_index_entries(&native, &saved, &resumed, &cancel).await.is_err());
-    native.delete_storage_session().await.unwrap();
+    native.delete_session().await.unwrap();
     drop(native);
 
     // Reopen The Durable Catalog And Acquire A Fresh Saved-Cut Token.
     let native = SqliteBackend::new(root.path().join("index.sqlite"), history, settings).unwrap();
-    native.create_storage_session().await.unwrap();
+    native.create_session().await.unwrap();
     assert_eq!(native.get_index_definition(&definition.name).await.unwrap().0, rebuilt);
     assert!(list_index_entries(&native, &saved, &read, &cancel).await.is_err());
     let fresh = native.create_snapshot(&cut).await.unwrap();
@@ -209,7 +209,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     all.limits = work;
     assert_eq!(list_index_entries(&native, &fresh, &all, &cancel).await.unwrap().entries.len(), records.len());
     native.delete_snapshot(&fresh).await.unwrap();
-    native.delete_storage_session().await.unwrap();
+    native.delete_session().await.unwrap();
     fallback.delete_snapshot(&saved_fallback).await.unwrap();
-    fallback.delete_storage_session().await.unwrap();
+    fallback.delete_session().await.unwrap();
 }

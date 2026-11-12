@@ -161,7 +161,7 @@ pub async fn list_index_entries(
     cancel.check()?;
     let (definition, revision) = backend.get_index_definition(&read.name).await?;
     read.validate(snapshot, &definition, revision)?;
-    if backend.get_storage_capabilities().native_index {
+    if backend.capabilities().native_index {
         return backend.list_index_entries(snapshot, read, cancel).await;
     }
     let mut scan = ArrowScan {

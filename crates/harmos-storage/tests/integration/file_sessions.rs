@@ -45,7 +45,7 @@ impl WorkerOwner for Task {
 
 /* === Private Functions === */
 
-async fn storage(primary: &Arc<Data>) -> StorageManager {
+pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
     let pending = NonZeroUsize::new(1024 * 1024).unwrap();
     let batch = NonZeroUsize::new(4096).unwrap();
     let settings = StorageSettings {
@@ -86,7 +86,7 @@ async fn storage(primary: &Arc<Data>) -> StorageManager {
     storage
 }
 
-fn mutation(storage: &StorageManager, key: &str) -> MutationId {
+pub(super) fn mutation(storage: &StorageManager, key: &str) -> MutationId {
     MutationId {
         window: storage.mutation_window().unwrap().id,
         key: Identifier::new(key).unwrap(),
@@ -95,7 +95,7 @@ fn mutation(storage: &StorageManager, key: &str) -> MutationId {
 
 /* === Tests === */
 
-fn metadata(id: &str) -> FileMetadata {
+pub(super) fn metadata(id: &str) -> FileMetadata {
     FileMetadata {
         id: Identifier::new(id).unwrap(),
         scope: None,

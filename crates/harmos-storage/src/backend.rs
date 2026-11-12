@@ -178,7 +178,7 @@ pub trait StorageBackend: Send + Sync + 'static {
         unsupported("native index scan")
     }
 
-    fn get_storage_capabilities(&self) -> crate::query::columnar::StorageCapabilities {
+    fn capabilities(&self) -> crate::query::columnar::StorageCapabilities {
         crate::query::columnar::StorageCapabilities::default()
     }
 
@@ -191,9 +191,9 @@ pub trait StorageBackend: Send + Sync + 'static {
 
     // Lifecycle
     fn get_history(&self) -> &StoreHistory;
-    fn create_storage_session(&self) -> StorageFuture<'_, StorageCursor>;
+    fn create_session(&self) -> StorageFuture<'_, StorageCursor>;
     fn get_saved_position(&self) -> StorageFuture<'_, StorageCursor>;
-    fn delete_storage_session(&self) -> StorageFuture<'_, ()>;
+    fn delete_session(&self) -> StorageFuture<'_, ()>;
 
     // Independent Durable Writes; Replayed Positions Must Be Idempotent.
     fn append_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor>;

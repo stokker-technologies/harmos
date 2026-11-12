@@ -207,7 +207,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let cut = StorageCursor { history: history.clone(), sequence: 7 };
     let mut saved = Vec::new();
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.create_storage_session().await.unwrap();
+        backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
         backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
         backend.set_projection_definition(&definition, false).await.unwrap();
@@ -245,7 +245,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         let before = backend.get_work().await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
         let after = backend.get_work().await.unwrap();
-        if backend.get_storage_capabilities().native_arrow {
+        if backend.capabilities().native_arrow {
             assert_eq!(after.source_rows - before.source_rows, additions.len() as u64);
             assert_eq!(after.buckets - before.buckets, 2);
             assert!(after.bucket_rows - before.bucket_rows < records.len() as u64);
@@ -397,7 +397,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         backend.delete_snapshot(&snapshot).await.unwrap();
     }
     native.delete_snapshot(&saved[0]).await.unwrap();
-    native.delete_storage_session().await.unwrap();
+    native.delete_session().await.unwrap();
     fallback.delete_snapshot(&saved[1]).await.unwrap();
-    fallback.delete_storage_session().await.unwrap();
+    fallback.delete_session().await.unwrap();
 }

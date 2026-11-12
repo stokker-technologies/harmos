@@ -97,7 +97,7 @@ impl Session {
 impl StorageManager {
     #[tracing::instrument(name = "storage.staging.session.produce_file", level = "debug", skip_all)]
     pub async fn produce_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
-        if !self.inner.primary.get_storage_capabilities().file_sessions {
+        if !self.inner.primary.capabilities().file_sessions {
             return Err(Error::InvalidInput {
                 field: "file session",
                 reason: "backend does not support resumable file sessions",
