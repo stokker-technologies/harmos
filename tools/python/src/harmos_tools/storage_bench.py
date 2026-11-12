@@ -42,12 +42,34 @@ from .test import archive
 def run(directory: Path, selected: str | None) -> int:
     output = directory / "target/benchmarks/storage"
     output.mkdir(parents=True, exist_ok=True)
-    target = "integration-durable-lag" if selected == "durable_lag" else "integration-multi-day"
-    messages = output / ("durable-lag-compiler.json" if selected == "durable_lag" else "compiler.json")
+    target = (
+        "integration-file-transfer"
+        if selected == "file_transfer"
+        else "integration-durable-lag"
+        if selected == "durable_lag"
+        else "integration-multi-day"
+    )
+    messages = output / (
+        "file-transfer-compiler.json"
+        if selected == "file_transfer"
+        else "durable-lag-compiler.json"
+        if selected == "durable_lag"
+        else "compiler.json"
+    )
     status = cargo.focused(
         directory,
         "build",
-        ["--locked", "--profile", "bench", "-p", "harmos-storage", "--features", "testing,sqlite", "--bench", target],
+        [
+            "--locked",
+            "--profile",
+            "bench",
+            "-p",
+            "harmos-runtime" if selected == "file_transfer" else "harmos-storage",
+            "--features",
+            "storage-benchmarks" if selected == "file_transfer" else "testing,sqlite",
+            "--bench",
+            target,
+        ],
         messages=messages,
     )
     if status:
@@ -70,13 +92,21 @@ def run(directory: Path, selected: str | None) -> int:
     command = [executables[-1], "--bench", "--sample-size", "10", "--warm-up-time", "1", "--measurement-time", "1"]
     if selected:
         command.append(selected)
-    suite = "storage-durable-lag" if selected == "durable_lag" else "storage"
+    suite = "storage-file-transfer" if selected == "file_transfer" else "storage-durable-lag" if selected == "durable_lag" else "storage"
     destination = directory / "target/benchmarks" / f"benchmarks-{suite}-{platform.system().lower()}.json"
-    if selected in {"native", "durable_lag"}:
+    if selected in {"native", "durable_lag", "file_transfer"}:
         policy.write_json(destination, {"benchmarks": []})
     lines = []
     peak = 0
-    log_name = "durable-lag.txt" if selected == "durable_lag" else "baseline.txt" if selected == "baseline" else "candidate.txt"
+    log_name = (
+        "file-transfer.txt"
+        if selected == "file_transfer"
+        else "durable-lag.txt"
+        if selected == "durable_lag"
+        else "baseline.txt"
+        if selected == "baseline"
+        else "candidate.txt"
+    )
     with (output / log_name).open("w", encoding="utf-8") as log:
         with subprocess.Popen(
             command,
@@ -96,12 +126,18 @@ def run(directory: Path, selected: str | None) -> int:
                 lines.append(line)
                 peak = max(peak, _peak_memory(child))
             status = child.wait()
-    if selected not in {"native", "durable_lag"}:
+    if selected not in {"native", "durable_lag", "file_transfer"}:
         return status
     revision = os.environ.get("GITHUB_SHA") or archive.revision(directory) or "unknown"
     document = measurements(lines, revision, platform.system().lower())
     if peak:
-        name = "integration/durable_lag/process_peak_bytes" if selected == "durable_lag" else "storage.process.peak.bytes"
+        name = (
+            "integration/file_transfer/process_peak_bytes"
+            if selected == "file_transfer"
+            else "integration/durable_lag/process_peak_bytes"
+            if selected == "durable_lag"
+            else "storage.process.peak.bytes"
+        )
         document["benchmarks"].append(_row(name, peak, "bytes", revision, platform.system().lower()))
     policy.write_json(destination, document)
     print(f"Storage measurements: {destination}; peak resident memory: {peak} bytes")
@@ -120,7 +156,11 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
     counters = []
     work = []
     lag = []
+    transfers: dict[str, list[dict]] = {}
     for line in lines:
+        if line.startswith("STORAGE_FILE_TRANSFER "):
+            value = json.loads(line.removeprefix("STORAGE_FILE_TRANSFER "))
+            transfers.setdefault(value["case"], []).append(value["measurement"])
         if line.startswith("STORAGE_DURABLE_LAG "):
             lag.append(json.loads(line.removeprefix("STORAGE_DURABLE_LAG ")))
         if line.startswith("STORAGE_MEASUREMENT "):
@@ -182,6 +222,17 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
             rows.append(_row(case["case"] + "/" + field, case["measurement"][field], unit, revision, system, backend))
         for field, unit in (("synchronous_commits", "count"), ("synchronous_commit_ms", "ms")):
             rows.append(_row(case["case"] + "/" + field, case[field], unit, revision, system, backend))
+    for name, samples in sorted(transfers.items()):
+        for field, unit in (
+            ("bytes", "bytes"),
+            ("chunk_bytes", "bytes"),
+            ("calls", "count"),
+            ("seconds", "s"),
+            ("bytes_per_second", "bytes/s"),
+        ):
+            rows.append(
+                _row(name + "/" + field, statistics.median(sample[field] for sample in samples), unit, revision, system, "reference-memory")
+            )
     return {"benchmarks": rows}
 
 

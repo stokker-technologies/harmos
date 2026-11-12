@@ -466,3 +466,19 @@ configuration bounds oversized ranges. Native embedders can call
 `StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Streaming
 transfers remain for the required throughput comparison before their removal.
 
+## File-Transfer Benchmark
+
+`mise run bench -- --storage --filter file_transfer` builds only the runtime's
+`integration-file-transfer` target. The reusable workload transfers a deterministic
+30 MiB file with the configured 64 KiB chunks/ranges, checks its length and digest,
+and reports three repetitions for each available carrier/mode. Client unary and
+streaming calls cross a host socket; plugin unary calls cross the host/plugin
+carrier as context child calls. The existing plugin carrier cannot call streaming
+host operations, so it reports that comparison unavailable.
+
+The benchmark composes the existing reference memory backend. Its saved snapshots
+copy file blobs, which disproportionately costs repeated unary ranges; the figures
+are not a claim about durable filesystem throughput. Consumer backends can reuse
+`harmos_storage::bench_support::file_transfer::{Carrier, run}`. Nightly retains raw
+native output and median throughput with bytes, call counts and configured range
+sizes. Streaming remains available for owner review of that evidence.

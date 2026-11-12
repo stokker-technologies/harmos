@@ -1299,3 +1299,33 @@ then checks exact ranges, corruption refusal and the complete encoded response c
 Structured transient failures retain retry classification, and replay payload/prefix
 conflicts retain the conflict classification. The existing lost-reply/cancellation
 receipt story passes without changing its retry budget or durability guarantees.
+
+### Windows Unary Transfer Measurements
+
+The focused `integration/file_transfer` case uses the existing resumable reference
+memory backend, real client sockets and a real plugin child-call carrier. Each of
+three repetitions transfers the same deterministic 30 MiB file using the existing
+64 KiB response/chunk configuration, verifies its published length/digest and checks
+every downloaded byte. Setup and final verification are outside timing; session
+creation and publication are included. No workload, consumer budget or deadline was
+changed. The reusable workload accepts consumer-supplied carrier/backend composition.
+
+Local measurements after transfer progress/range proof on 2026-11-12 (MiB/s; median and minimum–maximum of three):
+
+| Carrier and Direction | Unary | Retained Streaming |
+| --- | ---: | ---: |
+| Client Upload | 73.16 (70.72–89.61) | 341.38 (218.21–360.01) |
+| Client Download | 7.13 (7.10–7.96) | 270.61 (166.60–305.41) |
+| Plugin Upload | 46.96 (33.67–48.74) | Unavailable |
+| Plugin Download | 6.11 (5.85–6.37) | Unavailable |
+
+These are transport/reference-backend measurements, not disk throughput or hosted
+Windows/Linux evidence. The reference backend copies all file blobs when opening
+its saved snapshot. A unary range currently opens a snapshot per call, so download
+pays that whole-file copy repeatedly while streaming opens it once. This limits any
+cross-backend interpretation; it is not a reason to alter the benchmark or remove
+streaming. Plugin child calls are unary and refuse streaming host operations: there
+is no existing plugin-carrier streaming baseline to measure. That absence is reported
+explicitly rather than represented by zero throughput or a native-call substitute.
+Raw native output and compiler evidence remain under `target/benchmarks/storage/`;
+Nightly runs the same focused case and exports its medians.

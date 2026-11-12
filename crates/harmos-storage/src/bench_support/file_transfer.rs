@@ -65,7 +65,7 @@ pub trait Carrier {
     fn append<'a>(&'a self, producer: &'a FileProducer, offset: u64, data: &'a [u8]) -> StorageFuture<'a, FileProducer>;
     fn publish<'a>(&'a self, producer: &'a FileProducer) -> StorageFuture<'a, FileReference>;
     fn get<'a>(&'a self, file: &'a FileReference, offset: u64, maximum: NonZeroUsize) -> StorageFuture<'a, Range>;
-    fn upload_stream<'a>(&'a self, data: &'a [u8], chunk_bytes: NonZeroUsize) -> StorageFuture<'a, FileReference>;
+    fn upload_stream(&self, data: std::sync::Arc<[u8]>, chunk_bytes: NonZeroUsize, sha256: [u8; 32]) -> StorageFuture<'_, FileReference>;
     fn download_stream<'a>(&'a self, file: &'a FileReference) -> StorageFuture<'a, Vec<u8>>;
 }
 
@@ -76,12 +76,12 @@ pub trait Carrier {
 /// Measure the same deterministic large file through either existing streams or
 /// unary session actions. The consumer supplies its configured chunk/range bound.
 pub async fn run(carrier: &impl Carrier, chunk_bytes: NonZeroUsize, streaming: bool) -> Result<[Measurement; 2]> {
-    let data = (0..FILE_BYTES).map(|index| (index % 251) as u8).collect::<Vec<_>>();
+    let data: std::sync::Arc<[u8]> = (0..FILE_BYTES).map(|index| (index % 251) as u8).collect::<Vec<_>>().into();
     let digest: [u8; 32] = Sha256::digest(&data).into();
     let transfer = if streaming { "streaming" } else { "unary" };
     let started = Instant::now();
     let (file, calls) = if streaming {
-        (carrier.upload_stream(&data, chunk_bytes).await?, 1)
+        (carrier.upload_stream(data.clone(), chunk_bytes, digest).await?, 1)
     } else {
         let mut producer = carrier.create(FILE_BYTES as u64, digest).await?;
         for (index, chunk) in data.chunks(chunk_bytes.get()).enumerate() {
