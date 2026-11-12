@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package harmos.v1.access;
-import "harmos/v1/plugin.proto";
+import "harmos/v1/types.proto";
 message Pairing { string id = 1; string label = 2; }
 message PairingsCreateRequest { string label = 1; }
 message PairingsCreateResponse { Pairing pairing = 1; string endpoint = 2; string pinned_certificate_pem = 3; string credential = 4; }

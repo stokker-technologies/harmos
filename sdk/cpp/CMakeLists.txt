@@ -9,28 +9,26 @@ include(cmake/Dependencies.cmake)
 set(HARMOS_PROTO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../proto")
 set(HARMOS_GENERATED "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${HARMOS_GENERATED}")
-add_custom_command(
-    OUTPUT "${HARMOS_GENERATED}/harmos/v1/plugin.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.pb.h"
-        "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.h"
-        "${HARMOS_GENERATED}/harmos/v1/storage.pb.cc" "${HARMOS_GENERATED}/harmos/v1/storage.pb.h"
-        "${HARMOS_GENERATED}/harmos/v1/storage.grpc.pb.cc" "${HARMOS_GENERATED}/harmos/v1/storage.grpc.pb.h"
-        "${HARMOS_GENERATED}/harmos/v1/host.pb.cc" "${HARMOS_GENERATED}/harmos/v1/host.pb.h"
-        "${HARMOS_GENERATED}/harmos/v1/host.grpc.pb.cc" "${HARMOS_GENERATED}/harmos/v1/host.grpc.pb.h"
+set(HARMOS_PROTOCOLS harmos/v1/types harmos/v1/storage harmos/plugin/v1/instance
+    harmos/context/v1/catalog_entries harmos/context/v1/invocations harmos/context/v1/time harmos/context/v1/samples)
+set(HARMOS_PROTO_INPUTS)
+set(HARMOS_PROTO_OUTPUTS)
+foreach(protocol IN LISTS HARMOS_PROTOCOLS)
+    list(APPEND HARMOS_PROTO_INPUTS "${HARMOS_PROTO_ROOT}/${protocol}.proto")
+    list(APPEND HARMOS_PROTO_OUTPUTS "${HARMOS_GENERATED}/${protocol}.pb.cc" "${HARMOS_GENERATED}/${protocol}.pb.h"
+        "${HARMOS_GENERATED}/${protocol}.grpc.pb.cc" "${HARMOS_GENERATED}/${protocol}.grpc.pb.h")
+endforeach()
+add_custom_command(OUTPUT ${HARMOS_PROTO_OUTPUTS}
     COMMAND $<TARGET_FILE:protoc>
         --proto_path=${HARMOS_PROTO_ROOT}
         --proto_path=${grpc_SOURCE_DIR}/third_party/protobuf/src
         --cpp_out=${HARMOS_GENERATED}
         --grpc_out=allow_sync_server_api=false,allow_cq_api=false:${HARMOS_GENERATED}
-        --plugin=protoc-gen-grpc=$<TARGET_FILE:grpc_cpp_plugin>
-        "${HARMOS_PROTO_ROOT}/harmos/v1/plugin.proto"
-        "${HARMOS_PROTO_ROOT}/harmos/v1/storage.proto"
-        "${HARMOS_PROTO_ROOT}/harmos/v1/host.proto"
-    DEPENDS protoc grpc_cpp_plugin "${HARMOS_PROTO_ROOT}/harmos/v1/host.proto" "${HARMOS_PROTO_ROOT}/harmos/v1/plugin.proto" "${HARMOS_PROTO_ROOT}/harmos/v1/storage.proto"
+        --plugin=protoc-gen-grpc=$<TARGET_FILE:grpc_cpp_plugin> ${HARMOS_PROTO_INPUTS}
+    DEPENDS protoc grpc_cpp_plugin ${HARMOS_PROTO_INPUTS}
     VERBATIM)
-add_library(harmos_cpp_protocol STATIC
-    "${HARMOS_GENERATED}/harmos/v1/host.pb.cc" "${HARMOS_GENERATED}/harmos/v1/host.grpc.pb.cc"
-    "${HARMOS_GENERATED}/harmos/v1/plugin.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.cc"
-    "${HARMOS_GENERATED}/harmos/v1/storage.pb.cc" "${HARMOS_GENERATED}/harmos/v1/storage.grpc.pb.cc")
+add_library(harmos_cpp_protocol STATIC ${HARMOS_PROTO_OUTPUTS})
+
 target_include_directories(harmos_cpp_protocol SYSTEM PUBLIC "${HARMOS_GENERATED}")
 target_link_libraries(harmos_cpp_protocol PUBLIC grpc++ libprotobuf)
 add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp)

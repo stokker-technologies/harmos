@@ -51,7 +51,7 @@ impl Access {
   if state.attached.is_none(){return Err(failure(action,"enable the listener before creating a pairing"));}
   if request.label.is_empty() || request.label.len()>self.settings.label_bytes.get(){return Err(failure(action,"label is empty or exceeds configured bound"));}
   if state.value.pairings.len()>=self.settings.pairings.get(){return Err(failure(action,"pairing capacity exceeded"));}
-  let credential=identifier()?;let id=identifier()?;
+  let credential=identifier(action)?;let id=identifier(action)?;
   let mut candidate=state.value.clone();candidate.pairings.push(Pairing{id:id.clone(),label:request.label.clone(),credential_sha256:Sha256::digest(credential.as_bytes()).to_vec()});
   self.persist(&state,&mut candidate,action).await?;self.publish(&mut state,candidate);
   Ok(wire::PairingsCreateResponse{pairing:Some(wire::Pairing{id,label:request.label}),endpoint:Self::endpoint(&state),pinned_certificate_pem:state.value.certificate_pem.clone(),credential})

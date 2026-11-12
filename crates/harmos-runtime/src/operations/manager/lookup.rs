@@ -175,7 +175,7 @@ impl Manager {
             })
             .collect::<Result<Vec<_>>>()?;
         use prost::Message;
-        Ok(harmos_protocol::host::OperationAssignments { operations: assignments }.encode_to_vec())
+        Ok(harmos_protocol::v1::OperationAssignments { operations: assignments }.encode_to_vec())
     }
 
     // Capture Does Not Grant Readiness; Submission Rechecks The Exact Entry.

@@ -30,7 +30,8 @@
 #include <google/protobuf/message.h>
 
 // Local Imports
-#include "harmos/v1/plugin.pb.h"
+#include "harmos/v1/types.pb.h"
+#include "harmos/context/v1/time.pb.h"
 
 /* === Macros === */
 
@@ -258,6 +259,6 @@ template<class R> Plugin& Plugin::observer(const Observer<R>& observer) {
 
 /* === Public Declarations === */
 
-inline const Operation<wire::TimeSleepRequest, wire::TimeSleepResponse> SLEEP("harmos.time.sleep");
-inline const Operation<wire::TimeGetRequest, wire::TimeGetResponse> GET_TIME("harmos.time.get");
+inline const Operation<context::v1::TimeSleepRequest, context::v1::TimeSleepResponse> SLEEP("harmos.time.sleep");
+inline const Operation<context::v1::TimeGetRequest, context::v1::TimeGetResponse> GET_TIME("harmos.time.get");
 }

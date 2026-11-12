@@ -20,6 +20,7 @@
 
 // Local Imports
 #include "harmos/harmos.hpp"
+#include "harmos/plugin/v1/instance.pb.h"
 
 /* === Macros === */
 
@@ -35,7 +36,7 @@ struct Invocation {
     std::condition_variable changed;
     std::map<std::uint64_t, std::promise<std::string>> pending;
     std::map<std::string, std::string> requirements;
-    std::function<void(wire::PluginInvokeResponse)> emit;
+    std::function<void(plugin::v1::InstanceInvokeResponse)> emit;
     std::function<void()> read;
     std::once_flag reading;
     wire::Request request;

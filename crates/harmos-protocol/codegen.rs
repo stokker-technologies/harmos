@@ -43,49 +43,36 @@ pub fn generate(
     let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
-    config.type_attribute(".harmos.host.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
+    config.type_attribute(".harmos.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
     config.file_descriptor_set_path(output.join("descriptors.bin"));
+    let mut inputs = Vec::new();
+    let mut directories = vec![proto.join("harmos/v1"), proto.join("harmos/context/v1"), proto.join("harmos/plugin/v1")];
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let path = entry?.path();
+            if path.is_dir() { directories.push(path); }
+            else if path.extension().is_some_and(|extension| extension == "proto") { inputs.push(path); }
+        }
+    }
+    inputs.sort();
     tonic_prost_build::configure()
-        .client_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
-        .server_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
-        .client_mod_attribute("harmos.storage.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
-        .server_mod_attribute("harmos.storage.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
-        .client_mod_attribute("harmos.host.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
-        .server_mod_attribute("harmos.host.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
+        .client_mod_attribute(".", "#[cfg(not(target_arch = \"wasm32\"))]")
+        .server_mod_attribute(".", "#[cfg(not(target_arch = \"wasm32\"))]")
         .build_client(true)
         .build_server(true)
         .out_dir(output)
-        .compile_with_config(
-            config,
-            &[
-                proto.join("harmos/v1/plugin.proto"),
-                proto.join("harmos/v1/host.proto"),
-                proto.join("harmos/v1/storage.proto"),
-                proto.join("harmos/v1/guest.proto"),
-                proto.join("harmos/v1/access/listener.proto"),
-                proto.join("harmos/v1/access/pairings.proto"),
-                proto.join("harmos/v1/access/certificates.proto"),
-                proto.join("harmos/v1/status.proto"),
-                proto.join("harmos/v1/status/logs.proto"),
-                proto.join("harmos/v1/status/trace_events.proto"),
-                proto.join("harmos/v1/status/diagnostics.proto"),
-
-            ],
-            &[proto, includes.into()],
-        )?;
-    for (package, module) in [("harmos.v1.access", "access"), ("harmos.v1.status", "status")] {
+        .compile_with_config(config, &inputs, &[proto, includes.into()])?;
+    // Flatten Protobuf Packages Into Deliberate Public Rust Modules.
+    for package in ["harmos.v1", "harmos.context.v1", "harmos.plugin.v1", "harmos.storage.v1", "harmos.v1.access", "harmos.v1.status"] {
         let path = output.join(format!("{package}.rs"));
-        let source = std::fs::read_to_string(&path)?.replace("super::Position", "crate::v1::Position").replace("super::PageRequest", "crate::v1::PageRequest");
-        let _ = module;
-        std::fs::write(path, source)?;
+        let mut messages = std::fs::read_to_string(&path)?;
+        messages = messages.replace("super::super::super::v1::", "crate::v1::");
+        messages = messages.replace("super::super::v1::", "crate::v1::");
+        if package == "harmos.v1.access" || package == "harmos.v1.status" {
+            messages = messages.replace("super::Position", "crate::v1::Position").replace("super::PageRequest", "crate::v1::PageRequest");
+        }
+        std::fs::write(path, messages)?;
     }
-    // The Public Rust Modules Flatten Each Versioned Protobuf Package.
-    let messages = std::fs::read_to_string(output.join("harmos.v1.rs"))?;
-    let messages = messages.replace("super::host::v1::", "crate::host::");
-    std::fs::write(output.join("harmos.v1.rs"), messages)?;
-    let messages = std::fs::read_to_string(output.join("harmos.host.v1.rs"))?;
-    let messages = messages.replace("super::super::super::v1::", "crate::v1::").replace("super::super::v1::", "crate::v1::");
-    std::fs::write(output.join("harmos.host.v1.rs"), messages)?;
     let mut descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("descriptors.bin"))?.as_slice())?;
     // Source Locations Belong to Authoring, Not Runtime Descriptor Validation.
@@ -99,8 +86,8 @@ pub fn generate(
         &[
             "harmos.v1.GuestInitialize",
             "harmos.v1.GuestShutdown",
-            "harmos.host.v1.SamplesAppendRequest",
-            "harmos.host.v1.SamplesAppendResponse",
+            "harmos.context.v1.SamplesAppendRequest",
+            "harmos.context.v1.SamplesAppendResponse",
             "harmos.storage.v1.HashFile",
             "harmos.storage.v1.FileHash",
         ],
@@ -109,7 +96,7 @@ pub fn generate(
     let mut reflection = String::from(
         "// This file is @generated by the protocol generator.\nuse std::sync::OnceLock;\nuse prost_reflect::{DescriptorPool, MessageDescriptor, ReflectMessage};\nfn pool() -> &'static DescriptorPool {\n    static POOL: OnceLock<DescriptorPool> = OnceLock::new();\n    POOL.get_or_init(|| DescriptorPool::decode(include_bytes!(\"descriptors.bin\").as_slice()).expect(\"generated protocol descriptors\"))\n}\n",
     );
-    for (package, module) in [("harmos.v1", "v1"), ("harmos.host.v1", "host"), ("harmos.storage.v1", "storage"), ("harmos.v1.access", "access"), ("harmos.v1.status", "status")] {
+    for (package, module) in [("harmos.v1", "v1"), ("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin"), ("harmos.storage.v1", "storage"), ("harmos.v1.access", "access"), ("harmos.v1.status", "status")] {
         for file in descriptors.file.iter().filter(|file| file.package.as_deref() == Some(package)) {
             for message in &file.message_type {
                 let name = message.name.as_deref().ok_or("missing message name")?;

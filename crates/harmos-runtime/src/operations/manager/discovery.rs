@@ -19,7 +19,7 @@ use std::ops::Bound;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 // Third Party Imports
-use harmos_protocol::host;
+use harmos_protocol::v1 as host;
 use prost::Message;
 // Local Imports
 use super::{Entry, Manager};
@@ -27,7 +27,7 @@ use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::{Error, Identifier, Result};
 use harmos_operations::plugin::Grant;
-use harmos_protocol::host::{CatalogEntriesListRequest, CatalogEntriesListResponse};
+use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse};
 
 /* === Constants === */
 
@@ -203,7 +203,7 @@ impl Manager {
 
 /* === Private Functions === */
 
-fn describe(contract: &Contract) -> Result<host::OperationContract> {
+fn describe(contract: &Contract) -> Result<host::DiscoveredContract> {
     use crate::operations::{Backoff, Jitter, ReplaySafety, RetryPolicy, Visibility};
     let definition = contract.operation();
     let policy = definition.policy;
@@ -222,7 +222,7 @@ fn describe(contract: &Contract) -> Result<host::OperationContract> {
             })
         }
     };
-    Ok(host::OperationContract {
+    Ok(host::DiscoveredContract {
         id: definition.id.to_string(),
         description: definition.description.clone(),
         visibility: match definition.visibility {

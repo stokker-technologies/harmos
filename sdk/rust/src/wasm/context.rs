@@ -218,7 +218,7 @@ impl<R: Message> Child<R> {
 
 impl Message for host::SamplesAppendRequest {
     fn name() -> String {
-        "harmos.host.v1.SamplesAppendRequest".into()
+        "harmos.context.v1.SamplesAppendRequest".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         protocol_types(&Self::name())
@@ -230,7 +230,7 @@ impl OperationRequest for host::SamplesAppendRequest {
 }
 impl Message for host::SamplesAppendResponse {
     fn name() -> String {
-        "harmos.host.v1.SamplesAppendResponse".into()
+        "harmos.context.v1.SamplesAppendResponse".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         protocol_types(&Self::name())

@@ -27,11 +27,8 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming, transport::Channel};
 
 // Local Imports
-use harmos_protocol::v1::{
-    self as v1,
-    plugin_client::PluginClient,
-    plugin_server::{Plugin, PluginServer},
-};
+use harmos_protocol::v1;
+use harmos_protocol::plugin::{instance_client::InstanceClient, instance_server::{Instance, InstanceServer}};
 
 /* === Constants === */
 
@@ -48,7 +45,7 @@ pub struct CatalogFault {
 }
 
 struct Forward {
-    client: PluginClient<Channel>,
+    client: InstanceClient<Channel>,
     fault: Fault,
 }
 
@@ -67,7 +64,7 @@ pub enum Fault {
 
 impl CatalogFault {
     pub async fn start(address: &str, fault: Fault) -> Result<Self, Box<dyn std::error::Error>> {
-        let client = PluginClient::connect(format!("http://{address}")).await?;
+        let client = InstanceClient::connect(format!("http://{address}")).await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?.to_string();
         let incoming = stream::unfold(listener, |listener| async {
@@ -77,7 +74,7 @@ impl CatalogFault {
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(PluginServer::new(Forward { client, fault }))
+                .add_service(InstanceServer::new(Forward { client, fault }))
                 .serve_with_incoming_shutdown(incoming, async {
                     let _ = stopped.await;
                 })
@@ -94,8 +91,8 @@ impl CatalogFault {
 }
 
 #[tonic::async_trait]
-impl Plugin for Forward {
-    async fn get(&self, request: Request<v1::PluginGetRequest>) -> Result<Response<v1::PluginGetResponse>, Status> {
+impl Instance for Forward {
+    async fn get(&self, request: Request<harmos_protocol::plugin::InstanceGetRequest>) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         let mut response = self.client.clone().get(request).await?;
         let description = response.get_mut();
         match self.fault {
@@ -123,23 +120,23 @@ impl Plugin for Forward {
         Ok(response)
     }
 
-    type InvokeStream = Streaming<v1::PluginInvokeResponse>;
+    type InvokeStream = Streaming<harmos_protocol::plugin::InstanceInvokeResponse>;
 
-    async fn invoke(&self, request: Request<Streaming<v1::PluginInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(&self, request: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
         client.invoke(frames).await
     }
 
-    type SamplesStream = Streaming<v1::PluginSamplesResponse>;
+    type SamplesStream = Streaming<harmos_protocol::plugin::InstanceSamplesResponse>;
 
-    async fn samples(&self, request: Request<Streaming<v1::PluginSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
+    async fn samples(&self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
         client.samples(frames).await
     }
 
-    async fn stop(&self, request: Request<v1::PluginStopRequest>) -> Result<Response<v1::PluginStopResponse>, Status> {
+    async fn stop(&self, request: Request<harmos_protocol::plugin::InstanceStopRequest>) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         self.client.clone().stop(request).await
     }
 }

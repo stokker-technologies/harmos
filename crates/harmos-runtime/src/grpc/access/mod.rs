@@ -84,15 +84,15 @@ impl Access {
    Some(value)=>value,
    None=>{
     let (certificate_pem,private_key_pem)=generate(&settings.listener.certificate_names,action)?;
-    let value=Credentials{revision:1,listener:settings.listener.clone(),certificate_pem,private_key_pem,pairings:Vec::new()};
+    let value=Credentials{revision:1,listener_revision:1,listener:settings.listener.clone(),certificate_pem,private_key_pem,pairings:Vec::new()};
     store.commit(0,value.clone()).await.map_err(|_|failure(action,"credential store unavailable"))?; value
    }
   };
   validate(&value.listener,action)?;
-  if value.revision==0 || value.pairings.len()>settings.pairings.get() { return Err(failure(action,"stored credentials exceed configured bounds or have an invalid revision")); }
+  if value.revision==0 || value.listener_revision==0 || value.pairings.len()>settings.pairings.get() { return Err(failure(action,"stored credentials exceed configured bounds or have an invalid revision")); }
   let certificate=ServerCertificate::from_pem(value.certificate_pem.as_bytes(),value.private_key_pem.as_bytes()).map_err(|_|failure(action,"stored certificate is invalid"))?;
   let authorized=value.pairings.iter().map(|p|p.credential_sha256.clone()).collect();
-  let control=Arc::new(Self{manager,store,settings,authorized:std::sync::RwLock::new(authorized),state:Mutex::new(State{value,certificate,attached:None,admission:Arc::new(AtomicBool::new(false)),issued:None,tokens:BTreeSet::new(),epoch:identifier()?})});
+  let control=Arc::new(Self{manager,store,settings,authorized:std::sync::RwLock::new(authorized),state:Mutex::new(State{value,certificate,attached:None,admission:Arc::new(AtomicBool::new(false)),issued:None,tokens:BTreeSet::new(),epoch:identifier(action)?})});
   Ok(control)
  }
  pub(super) async fn activate(self:&Arc<Self>) -> Result<(),ServingError> {
@@ -131,13 +131,14 @@ impl Access {
 impl harmos_operations::access::Access for Port{
  fn listener_get(&self,_:wire::ListenerGetRequest)->Operation<'_,wire::ListenerGetResponse>{Box::pin(async move{
   let state=self.state.lock().await;self.loaded(&state,"Access.Listener.Get").await?;
-  Ok(wire::ListenerGetResponse{value:Some(state.value.listener.clone()),revision:state.value.revision.to_be_bytes().to_vec(),bound_endpoint:Access::endpoint(&state)})
+  Ok(wire::ListenerGetResponse{value:Some(state.value.listener.clone()),revision:state.value.listener_revision.to_be_bytes().to_vec(),bound_endpoint:Access::endpoint(&state)})
  })}
  fn listener_set(&self,request:wire::ListenerSetRequest)->Operation<'_,wire::ListenerSetResponse>{Box::pin(async move{
   let action="Access.Listener.Set";let value=request.value.ok_or_else(||failure(action,"whole listener value is required"))?;validate(&value,action)?;
   let mut state=self.state.lock().await;self.loaded(&state,action).await?;
-  if request.expected_revision!=state.value.revision.to_be_bytes(){return Err(failure(action,"revision conflict: get again and retry"));}
+  if request.expected_revision!=state.value.listener_revision.to_be_bytes(){return Err(failure(action,"revision conflict: get again and retry"));}
   let mut candidate=state.value.clone(); candidate.listener=value.clone();
+  candidate.listener_revision=state.value.listener_revision.checked_add(1).ok_or_else(||failure(action,"listener revision exhausted"))?;
   let rotate=candidate.listener.certificate_names!=state.value.listener.certificate_names;
   if rotate {let(cert,key)=generate(&candidate.listener.certificate_names,action)?;candidate.certificate_pem=cert;candidate.private_key_pem=key;candidate.pairings.clear();}
   let certificate=ServerCertificate::from_pem(candidate.certificate_pem.as_bytes(),candidate.private_key_pem.as_bytes()).map_err(|_|failure(action,"invalid certificate"))?;
@@ -154,7 +155,7 @@ impl harmos_operations::access::Access for Port{
    // Retirement Is Owned by the Listener Manager; Drop Signals Its Graceful Stop.
    drop(old);
   }else if !value.enabled{state.admission.store(false,Ordering::Release);drop(state.attached.take());}
-  Ok(wire::ListenerSetResponse{value:Some(value),revision:state.value.revision.to_be_bytes().to_vec(),bound_endpoint:Access::endpoint(&state)})
+  Ok(wire::ListenerSetResponse{value:Some(value),revision:state.value.listener_revision.to_be_bytes().to_vec(),bound_endpoint:Access::endpoint(&state)})
  })}
  fn pairings_create(&self,request:wire::PairingsCreateRequest)->Operation<'_,wire::PairingsCreateResponse>{Box::pin(self.create_pairing(request))}
  fn pairings_list(&self,request:wire::PairingsListRequest)->Operation<'_,wire::PairingsListResponse>{Box::pin(self.list_pairings(request))}

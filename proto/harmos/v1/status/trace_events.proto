@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package harmos.v1.status;
-import "harmos/v1/plugin.proto";
+import "harmos/v1/types.proto";
 import "harmos/v1/status/logs.proto";
 message TraceEventsListRequest { harmos.v1.Position at = 1; harmos.v1.PageRequest page = 2; }
 message TraceEventsListResponse { repeated Event events = 1; harmos.v1.Position resolved_at = 2; string next_page_token = 3; }

@@ -21,7 +21,7 @@ from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 
 # Local Imports
-from .v1 import plugin_pb2 as wire
+from .v1 import types_pb2 as wire
 
 # Type Checking Imports
 

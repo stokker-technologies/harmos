@@ -68,6 +68,7 @@ async fn client_pairs_and_rotates_access()->Result{
  let second=pairings.create(access::PairingsCreateRequest{label:"Current Client".into()}).await?.into_inner();
  let mut current=v1::status_client::StatusClient::new(paired(&second).await?);
  let after=current.get(authorized(v1::StatusGetRequest{},&second.credential)).await?.into_inner().status.unwrap().identity.unwrap();assert_eq!(identity,after);
+ assert_eq!(listener.get(access::ListenerGetRequest{}).await?.into_inner().revision,enabled.revision);
  // List and Revoke a Durable Pairing Without Exposing Its Credential
  let page=pairings.list(access::PairingsListRequest{page:Some(page(1,String::new())),at:None}).await?.into_inner();assert_eq!(page.pairings.len(),1);assert_eq!(page.pairings[0].id,second.pairing.as_ref().unwrap().id);
  let store=host.store.clone();drop((client,channel,current,listener,pairings,certificates));host.close().await?;

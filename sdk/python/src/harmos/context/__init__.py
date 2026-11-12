@@ -19,8 +19,12 @@ from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 # Local Imports
-from .contracts import Operation
-from .v1 import plugin_pb2 as wire
+from ..contracts import Operation
+from ..v1 import types_pb2 as wire
+
+from harmos.plugin.v1 import instance_pb2 as carrier
+
+from harmos.context.v1 import time_pb2 as clock
 
 # Type Checking Imports
 
@@ -28,8 +32,8 @@ from .v1 import plugin_pb2 as wire
 
 # === Constants === #
 
-SLEEP = Operation("harmos.time.sleep", wire.TimeSleepRequest, wire.TimeSleepResponse)
-GET_TIME = Operation("harmos.time.get", wire.TimeGetRequest, wire.TimeGetResponse)
+SLEEP = Operation("harmos.time.sleep", clock.TimeSleepRequest, clock.TimeSleepResponse)
+GET_TIME = Operation("harmos.time.get", clock.TimeGetRequest, clock.TimeGetResponse)
 
 # === Types === #
 
@@ -108,21 +112,21 @@ class Context:
             call=call, operation=operation.id, payload=request.SerializeToString(), fingerprint=operation.fingerprint, policy=policy
         )
         try:
-            await self._output.put(wire.PluginInvokeResponse(child=child))
+            await self._output.put(carrier.InstanceInvokeResponse(child=child))
             reply = await complete
             if reply.WhichOneof("result") == "failure":
                 raise Failure(reply.failure)
             return operation.response.FromString(reply.payload)
         except asyncio.CancelledError:
             if self._pending.pop(call, None) is not None:
-                await self._output.put(wire.PluginInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
+                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
             raise
 
     async def sleep(self, duration: Duration) -> None:
-        await self.call(SLEEP, wire.TimeSleepRequest(duration=duration))
+        await self.call(SLEEP, clock.TimeSleepRequest(duration=duration))
 
     async def now(self) -> Timestamp:
-        reply = await self.call(GET_TIME, wire.TimeGetRequest())
+        reply = await self.call(GET_TIME, clock.TimeGetRequest())
         if not reply.HasField("now"):
             raise ProtocolError("Host Time Missing")
         validate_timestamp(reply.now)
@@ -148,7 +152,7 @@ class Context:
         pending, self._pending = self._pending, {}
         for call, complete in pending.items():
             if self._output is not None:
-                await self._output.put(wire.PluginInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
+                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
             if not complete.done():
                 complete.set_exception(self._cancel_failure())
 

@@ -267,7 +267,8 @@ Status describes the host process. A narrow ServiceManager registration lets a
 product contribute its version/identity facts and component health/availability
 through typed providers with host-owned lifetime and failure reporting. It does
 not let a product replace generic collection or create a competing status service.
-Diagnostics returns an archive content reference; bytes use Storage.GetFileBytes.
+Diagnostics.Get returns bounded unary archive ranges through a narrow content-source
+boundary that joins the shared storage range mechanism.
 
 Settings and secrets are too opinionated for a generic library. A product owns
 their stores, schemas, user-interface declarations, archives and operating-system
@@ -646,28 +647,20 @@ child request/result, parent cancel/child cancel, and publication opening/ticks.
 They are frames, not additional public RPCs. Keep catalog sections, requirements,
 visibility, fingerprints, digest, descriptors and failure causes used in admission.
 
-### Non-Storage Protocol Inventory
+### Non-Storage Package Layout
 
-The implemented non-storage inventory has 11 logical operations: four Plugin
-carriers, CatalogEntries.List, Invocations.Get/Cancel/Watch, Time.Get/Sleep, and
-native-only Samples.Append. Ten are exposed, with 20 method-specific messages;
-Samples.Append adds its two native-only messages. All 22 wrappers use the
-service-qualified names in the mapping. Time messages live in plugin.proto so
-plugin SDKs retain a protocol-only clock dependency; host.proto declares the Time
-service using those messages.
-
-Shared messages are History, Position, ResourceRevision, ReadCut, PageRequest,
-Receipt, OperationPolicy, RetryPolicy and Failure. Plugin domain/control messages
-are Catalog, OperationContract, Requirement, StreamDeclaration, Section, Request,
-Cancel, Response, ChildRequest/ChildCancel/ChildResponse, SamplesSelection, Tick
-and Sample. Host domain messages are AssignedOperation/OperationAssignments,
-InstanceState, Protobuf, Grpc, Grant, DiscoveredOperation and FollowingRow.
-Visibility, Classification and CatalogKind are enums; carrier frame alternatives
-and Failure details are nested payloads. Imported descriptors, Duration and
-Timestamp remain protobuf-owned. Generated reflection and descriptor sets retain
-only the roots reachable by each operation's canonical fingerprint projection.
-The storage inventory is owned by its separate implementation task.
-
+The running-instance service is `harmos.plugin.v1.Instance` in
+`proto/harmos/plugin/v1/instance.proto`, with Instance-qualified wrappers.
+CatalogEntries, Invocations and Time have separate service files and independent
+wrappers in `harmos.context.v1` and `harmos.v1`. Samples.Append has only a context
+file. Reusable primitives, plugin catalog/control payloads and discovery values
+live in service-free `harmos/v1/types.proto`; the discovery contract is
+DiscoveredContract, distinct from the plugin catalog's OperationContract.
+Rust exposes `plugin`, `context` and `v1` modules; the superseded `host` module is
+removed. Python's authoring Context and Plugin retain their public imports from
+package roots, making room for generated child packages without name collisions.
+Storage face inventory and management services are integrated by their owners.
+Runtime face admission and generation filtering are tracked separately from file moves.
 
 ### Current Visibility Discrepancy
 
@@ -709,8 +702,8 @@ host-driven controls becomes invisible to its host by being relabelled Private.
 | harmos.initialize, harmos.shutdown | Private | Protected: host-driven plugin lifecycle controls, no client binding. |
 
 New context/client built-ins in the generic machinery inventory are Public:
-Plugins and its nested library services, Access/access.Listener,
-Status/status.Logs/status.TraceEvents, Invocations.Invoke, Storage definition Get
+Plugins and its nested library services, access.Listener/access.Pairings/access.Certificates,
+Status/status.Logs/status.TraceEvents/status.Diagnostics, Invocations.Invoke, Storage definition Get
 mirrors (except native-only Protected GetSchema) and GetFileProduction. Context-only HostValues.Get is Public within its
 face and resolver policy, like Samples.Append. Carrier methods are protocol
 controls, not user operations with a visibility choice. A future host-only request
@@ -746,9 +739,11 @@ not a second upload state or implementation. Each row specifies one face only.
 | Package | Service | Methods | Face / Value Contract |
 | --- | --- | --- | --- |
 | harmos.v1 | Plugins | Create, Get, List, Watch, Set, Restart, Delete | Client; managed/remote entries, verified bundles, persistence, activation state and failures; revision-guarded whole-value Get/Set. |
-| harmos.v1 | Access | CreatePairing, CreateCertificate | Client; pairing and certificate regeneration/rotation under GrpcManager. |
+| harmos.v1.access | Pairings | Create, List, Delete | Client; durable independent pairings under GrpcManager. |
+| harmos.v1.access | Certificates | Create | Client; live trust regeneration under GrpcManager. |
 | harmos.v1.access | Listener | Get, Set | Client; writable listener value/revision and separate runtime facts. |
-| harmos.v1 | Status | Identity, Health, Availability, Diagnostics | Client; host facts and diagnostics archive reference, whose bytes use Storage.GetFileBytes. |
+| harmos.v1 | Status | Get, Watch | Client; identity, availability and contributed health. |
+| harmos.v1.status | Diagnostics | Get | Client; bounded immutable archive ranges. |
 | harmos.v1.status | Logs | List, Watch | Client; bounded log selector and positions. |
 | harmos.v1.status | TraceEvents | List, Watch | Client; bounded trace selector and positions. |
 | harmos.context.v1 | HostValues | Get | Context; declared-value resolution through the product-owned resolver/policy; no value store or client method. |
@@ -774,9 +769,11 @@ separate services with separate wrappers, authorization and fingerprints.
 | Client / harmos.v1 | Time | Get, Sleep | Host-clock reads/waits for client callers. |
 | Client / harmos.v1 | Storage | The 32 operations enumerated below | Authorized storage reads/mutations/transfers. |
 | Client / harmos.v1 | Plugins | Create, Get, List, Watch, Set, Restart, Delete | Entry management, distinct from a running instance. |
-| Client / harmos.v1 | Access | CreatePairing, CreateCertificate | Client access management. |
+| Client / harmos.v1.access | Pairings | Create, List, Delete | Durable independent client credentials. |
+| Client / harmos.v1.access | Certificates | Create | Live trust rotation. |
 | Client / harmos.v1.access | Listener | Get, Set | Nested access resource. |
-| Client / harmos.v1 | Status | Identity, Health, Availability, Diagnostics | Host status. |
+| Client / harmos.v1 | Status | Get, Watch | Host status. |
+| Client / harmos.v1.status | Diagnostics | Get | Bounded archive ranges. |
 | Client / harmos.v1.status | Logs | List, Watch | Nested status resource. |
 | Client / harmos.v1.status | TraceEvents | List, Watch | Nested status resource. |
 
@@ -813,10 +810,10 @@ messages are excluded from wrapper totals and require a separate descriptor cens
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Plugin protocol / harmos.plugin.v1 | 1 | 4 | 4 | 4 | 4 |
 | Context / harmos.context.v1 | 6 | 40 | 40 (0 standalone) | 40 | 40 |
-| Client / harmos.v1 and nested packages | 10 (3 nested) | 58 | 58 | 58 | 58 |
-| All wire faces | 17 (3 nested) | 102 | 102 (62 standalone) | 102 | 102 |
+| Client / harmos.v1 and nested packages | 12 (6 nested) | 59 | 59 | 59 | 59 |
+| All wire faces | 19 (6 nested) | 103 | 103 (63 standalone) | 103 | 103 |
 | Native storage hooks, no wire package or service | 0 | 4 (not method signatures) | 0 | 4 | 4 |
-| Whole library inventory | 17 (3 nested) | 106 | 102 (62 standalone) | 106 | 106 |
+| Whole library inventory | 19 (6 nested) | 107 | 103 (63 standalone) | 107 | 107 |
 
 Native Storage.Info, SetSchema, GetSchema and DeleteFile remain Protected native-only
 operations/hooks, not a fourth wire face or additional service. Their existing
@@ -825,14 +822,13 @@ as face methods. Storage has 32 declarations on each wire face plus four native
 hooks: 68 inventory entries, preserving 36 underlying capabilities. StorageBackend
 remains 58 to 52 hooks and StateBackend 8 to 8, or 66 present / 60 target hooks.
 
-Arithmetic: the previous 67-operation inventory becomes 106 by adding 38 separate
-context/client declarations and client Invocations.Invoke. The former 61 directly
-opened methods become 62 with Invoke; 40 context descriptor methods stay
-child-carried, for 102 declared gRPC methods overall. Context
-40 = 1 catalog + 3 controls + 2 clock + 32 storage + 1 publication + 1 values.
-Client 58 = 1 catalog + 4 invocations + 2 clock + 32 storage + 7 entries
-+ 4 access + 8 status. Protocol 4 + context 40 + client 58 = 102 face operations and 204
-face wrappers; native 4 adds 8 wrappers, for 212 library wrappers.
+Arithmetic: context 40 = 1 catalog + 3 controls + 2 clock + 32 storage
++ 1 publication + 1 values. Client 59 = 1 catalog + 4 invocations + 2 clock
++ 32 storage + 7 entries + 6 access + 7 status. The owner's nested access/status
+instruction adds one net method to the earlier inventory. Protocol 4 + context 40
++ client 59 = 103 face operations and 206 face wrappers; four native hooks add
+8 wrappers, for 214 overall. Context signatures remain child-carried; 63 methods
+open standalone calls. Namespace parents Access and status add no empty services.
 
 The current tree still has 45 plugin-carrier/built-in operations and 64 projected
 methods including 30 automatic twins. Migration merges three row follows into
@@ -1185,7 +1181,8 @@ trait CredentialStore: Send + Sync {
 }
 ```
 
-Decisions: pairings are durable independent credentials, so List and Delete are necessary
+Decisions: listener revisions change only when replacing its writable value; a separate
+credential-store revision serializes all atomic transactions. Pairings are durable independent credentials, so List and Delete are necessary
 for discovery and revocation; List never returns a secret. One atomic store transaction
 replaces listener settings, certificate/key and pairing hashes together, so an unavailable
 store cannot partly rotate or configure access. The host supplies this store, including

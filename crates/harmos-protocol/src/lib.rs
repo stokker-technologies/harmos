@@ -21,7 +21,9 @@ pub mod guest;
 pub mod policy;
 pub mod service;
 #[rustfmt::skip]
-pub mod host;
+pub mod context;
+#[rustfmt::skip]
+pub mod plugin;
 #[rustfmt::skip]
 mod reflection;
 #[rustfmt::skip]

@@ -117,9 +117,9 @@ impl Client {
 
     /// Read One Consumer-Bounded Discovery Page Through The Shared Host Protocol.
     pub async fn catalog(
-        &self, request: Request<harmos_protocol::host::CatalogEntriesListRequest>,
-    ) -> Result<tonic::Response<harmos_protocol::host::CatalogEntriesListResponse>, Status> {
-        self.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.host.v1.CatalogEntries/List"), request, host_page()).await
+        &self, request: Request<harmos_protocol::v1::CatalogEntriesListRequest>,
+    ) -> Result<tonic::Response<harmos_protocol::v1::CatalogEntriesListResponse>, Status> {
+        self.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), request, host_page()).await
     }
 
     /// Call The Ordinary Unary Method With Generated Messages And Caller Metadata.
@@ -354,7 +354,7 @@ impl<R: Message + Default, I: Message + Default, O: Message + Default> Running<R
 /* === Private Functions === */
 
 fn host_page() -> MessageDescriptor {
-    harmos_protocol::host::CatalogEntriesListResponse::default().descriptor()
+    harmos_protocol::v1::CatalogEntriesListResponse::default().descriptor()
 }
 
 fn descriptors<Q, R, I, O>(method: &Method<Q, R, I, O>) -> Result<(MessageDescriptor, Option<MessageDescriptor>), Status> {

@@ -94,7 +94,7 @@ impl Status {
   if settings.application_name.is_empty() || settings.application_version.is_empty() || settings.host_id.is_empty() || settings.range_bytes > settings.archive_bytes {
    return Err(failure("Status.Configure", "identity must be complete and range_bytes must not exceed archive_bytes"));
   }
-  let epoch = identifier()?;
+  let epoch = identifier("Status.Configure")?;
   let history = |name| History::new(name, &epoch, settings.history_items.get(), settings.history_bytes.get(), settings.read_leases.get());
   let identity = v1::HostIdentity { application_name: settings.application_name.clone(), application_version: settings.application_version.clone(),
    host_id: settings.host_id.clone(), library_version: env!("CARGO_PKG_VERSION").into(), process_started_at: Some(started) };
@@ -244,8 +244,8 @@ pub(crate) fn failure(action: &'static str, reason: &str) -> ServingError {
 
 /* === Private Functions === */
 
-pub(crate) fn identifier() -> Result<String,ServingError> {
- let mut bytes = [0u8;32]; getrandom::fill(&mut bytes).map_err(|_| failure("Status.Configure","secure randomness unavailable"))?;
+pub(crate) fn identifier(action: &'static str) -> Result<String,ServingError> {
+ let mut bytes = [0u8;32]; getrandom::fill(&mut bytes).map_err(|_| failure(action,"secure randomness unavailable"))?;
  Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 

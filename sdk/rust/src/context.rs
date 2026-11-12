@@ -29,7 +29,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 // Local Imports
 use crate::{Error, OperationRequest, Result, message::fingerprint};
-use harmos_protocol::v1::{self, plugin_invoke_response};
+use harmos_protocol::v1::{self};
+use harmos_protocol::plugin::{instance_invoke_response};
 
 /* === Constants === */
 
@@ -53,7 +54,7 @@ pub struct Context {
     pub(crate) plugin: String,
     resources: Arc<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
     pub(crate) calls: Arc<Mutex<Calls>>,
-    pub(crate) output: Option<mpsc::Sender<std::result::Result<v1::PluginInvokeResponse, tonic::Status>>>,
+    pub(crate) output: Option<mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, tonic::Status>>>,
     pub(crate) cancellation: watch::Sender<Option<String>>,
     pub(crate) requires: Arc<HashMap<String, Vec<u8>>>,
     pub(crate) sequence: u64,
@@ -219,8 +220,8 @@ impl Context {
             policy,
         };
         output
-            .send(Ok(v1::PluginInvokeResponse {
-                frame: Some(plugin_invoke_response::Frame::Child(child)),
+            .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
+                frame: Some(instance_invoke_response::Frame::Child(child)),
             }))
             .await
             .map_err(|_| tonic::Status::unavailable("Host Closed"))?;

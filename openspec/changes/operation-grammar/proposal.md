@@ -74,20 +74,20 @@ None; the candidate adds requirements to existing capability owners.
 
 ## Impact
 
-The library gains client Plugins, Access/Access.Listener and
-Status/Status.Logs/Status.TraceEvents, plus context-only HostValues. Existing
+The library gains client Plugins, Access.Listener/Pairings/Certificates and
+Status with Get/Watch plus Status.Logs/TraceEvents/Diagnostics, plus context-only HostValues. Existing
 plugin-manager work is integrated, not reimplemented. The wire inventory is:
 
 | Face | Services | Operations | gRPC Methods | Requests / Responses |
 | --- | ---: | ---: | ---: | ---: |
 | harmos.plugin.v1 | 1 | 4 | 4 | 4 / 4 |
 | harmos.context.v1 | 6 | 40 | 40 (0 standalone) | 40 / 40 |
-| harmos.v1 and nested packages | 10 (3 nested) | 58 | 58 | 58 / 58 |
+| harmos.v1 and nested packages | 12 (6 nested) | 59 | 59 | 59 / 59 |
 
-Totals: 17 services, 102 face operations, 102 declared gRPC methods (62 standalone) and
-102 request/response pairs. Four retained native-only storage hooks add four
-request/response pairs without a wire service: 106 inventory operations and
-212 wrappers overall. The full mapping and 38 capabilities declared separately
+Totals: 19 services, 103 face operations, 103 declared gRPC methods (63 standalone) and
+103 request/response pairs. Four retained native-only storage hooks add four
+request/response pairs without a wire service: 107 inventory operations and
+214 wrappers overall. The full mapping and 38 capabilities declared separately
 on context and client faces are in design.md; no client or plugin can bypass the
 host to reach another instance. These counts describe the locked candidate only.
 

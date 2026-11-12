@@ -19,7 +19,7 @@ pub use cancel::Cancel;
 pub use harmos_operations::model::operations::lifecycle::*;
 
 pub use get::Get;
-pub use harmos_protocol::host::InstanceState;
+pub use harmos_protocol::v1::InstanceState;
 pub use watch::Watch;
 
 /* === Imports === */

@@ -20,10 +20,14 @@ from google.protobuf.timestamp_pb2 import Timestamp
 # Local Imports
 from harmos import GET_TIME, SLEEP, Plugin
 from harmos.conformance.v1.fixture_pb2 import Value
-from harmos.v1 import plugin_pb2 as wire
-from harmos.v1.plugin_pb2_grpc import PluginStub
+from harmos.v1 import types_pb2 as wire
+from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
 from tests.support import calls
 from tests.support.author import Author
+
+from harmos.plugin.v1 import instance_pb2 as carrier
+
+from harmos.context.v1 import time_pb2 as clock
 
 # Type Checking Imports
 
@@ -45,8 +49,8 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(endpoint.close)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
-        client = PluginStub(channel)
-        description = await client.Get(wire.PluginGetRequest(revision=1))
+        client = InstanceStub(channel)
+        description = await client.Get(carrier.InstanceGetRequest(revision=1))
         self.assertEqual(description.catalog.streams[0].interval_setting, "author.interval")
         self.assertEqual(Value.FromString(description.catalog.sections[0].payload).value, b"settings")
 
@@ -54,17 +58,17 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
         call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
         self.assertEqual(sleep.operation, "harmos.time.sleep")
-        self.assertEqual(wire.TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
+        self.assertEqual(clock.TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
         self.assertEqual(sleep.fingerprint, description.catalog.requires[0].fingerprint)
-        await calls.reply(call, sleep, wire.TimeSleepResponse())
+        await calls.reply(call, sleep, clock.TimeSleepResponse())
 
         # Supply Host Evidence Time Through the Next Child Call.
         now = (await call.read()).child
         self.assertEqual(now.operation, "harmos.time.get")
         at = Timestamp(seconds=12345, nanos=67890)
-        await calls.reply(call, now, wire.TimeGetResponse(now=at))
+        await calls.reply(call, now, clock.TimeGetResponse(now=at))
         result = (await call.read()).response
-        self.assertEqual(wire.TimeGetResponse.FromString(result.payload).now, at)
+        self.assertEqual(clock.TimeGetResponse.FromString(result.payload).now, at)
         self.assertIs(await call.read(), grpc.aio.EOF)
 
         # Instance State Survives Calls While Invocation Resources Stay Isolated.
@@ -74,8 +78,8 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
 
         # Closing Demand Cancels an Observer's In-Progress Read.
         demand = client.Samples()
-        await demand.write(wire.PluginSamplesRequest(open=wire.SamplesSelection(stream="author.reading")))
-        await demand.write(wire.PluginSamplesRequest(tick=wire.Tick(at=at)))
+        await demand.write(carrier.InstanceSamplesRequest(open=wire.SamplesSelection(stream="author.reading")))
+        await demand.write(carrier.InstanceSamplesRequest(tick=wire.Tick(at=at)))
         await author.reading.wait()
         await demand.done_writing()
         self.assertIs(await demand.read(), grpc.aio.EOF)
@@ -83,16 +87,16 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
 
         # Reject Invalid Timestamp Ranges Without Losing the Connection.
         invalid = client.Samples()
-        await invalid.write(wire.PluginSamplesRequest(open=wire.SamplesSelection(stream="author.reading")))
-        await invalid.write(wire.PluginSamplesRequest(tick=wire.Tick(at=Timestamp(seconds=0, nanos=-1))))
+        await invalid.write(carrier.InstanceSamplesRequest(open=wire.SamplesSelection(stream="author.reading")))
+        await invalid.write(carrier.InstanceSamplesRequest(tick=wire.Tick(at=Timestamp(seconds=0, nanos=-1))))
         with self.assertRaises(grpc.aio.AioRpcError) as error:
             await invalid.read()
         self.assertEqual(error.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
 
         # Stop Finishes Cleanup and Preserves the Remote Endpoint's Identity.
-        await client.Stop(wire.PluginStopRequest(reason="Story Complete"))
+        await client.Stop(carrier.InstanceStopRequest(reason="Story Complete"))
         self.assertEqual(author.cleaned, 1)
-        self.assertEqual(await client.Get(wire.PluginGetRequest(revision=1)), description)
+        self.assertEqual(await client.Get(carrier.InstanceGetRequest(revision=1)), description)
 
         # Duplicate Declarations Fail When the Author Builds the Catalog.
         with self.assertRaises(ValueError):

@@ -42,7 +42,7 @@ pub type Pending<'a,T> = Pin<Box<dyn Future<Output=StoreResult<T>> + Send + 'a>>
 /// Complete Atomic Access State. The Host Chooses Its Persistence and Encryption.
 #[derive(Clone)]
 pub struct Credentials {
- pub revision: u64, pub listener: ListenerValue, pub certificate_pem: String, pub private_key_pem: String,
+ pub revision: u64, pub listener_revision: u64, pub listener: ListenerValue, pub certificate_pem: String, pub private_key_pem: String,
  pub pairings: Vec<Pairing>,
 }
 #[derive(Clone)]
