@@ -26,6 +26,8 @@ mod grpc;
 #[cfg(feature = "grpc")]
 mod grpc_manager;
 mod owned_wire;
+#[cfg(feature = "grpc")]
+mod sdk_client;
 
 /* === Re-Exports === */
 

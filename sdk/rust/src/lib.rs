@@ -7,7 +7,7 @@
  * ***
  */
 
-//! Plugin authoring over the generated `harmos.v1` protocol.
+//! Plugin Authoring And Generated-Contract Clients Over The Harmos Protocol.
 //!
 //! ```no_run
 //! use harmos::{Context, Message, Observer, Operation, Plugin, Result, Stream, Visibility};
@@ -54,6 +54,7 @@
 
 /* === Modules === */
 
+pub mod client;
 pub mod clock;
 mod context;
 mod error;
@@ -68,6 +69,7 @@ mod stream;
 
 extern crate self as harmos;
 
+pub use client::{Client, ClientSettings};
 pub use context::Context;
 pub use error::{Error, Result};
 pub use harmos_protocol::v1::{Classification, Failure, OperationPolicy, Section, Visibility};

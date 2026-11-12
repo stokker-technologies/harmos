@@ -254,9 +254,9 @@
     - [x] 4.5.1.2 Finish the runtime guest host extraction: private `src/guest/host/envelope/` owns its codec and `src/guest/host/plugin/` owns guest lifecycle, child controls and scopes; native placement shares no guest table or generation scope.
 - [x] 4.6 Verify plugin and client SDK dependency closures contain no host crates; migrate example/build-script imports to protocol or runtime as appropriate, and update README/product guidance for the public entry point.
 
-- [ ] 4.7 Build the SDK client half over generated application contracts and protocol without host dependencies; add client examples and dependency-closure proof, updating README and product guidance. Task 4.6 proves the existing SDK boundary, not a completed client implementation.
-  - [ ] 4.7.1 Add typed generated-contract binding, bounded managed unary/upload/download/exchange calls and cancellation settlement in `sdk/rust/src/client*`.
-  - [ ] 4.7.2 Prove real host interoperability, malformed completion/status handling and the normal/build dependency closure; compile the SDK client example and update README/product guidance.
+- [x] 4.7 Build the SDK client half over generated application contracts and protocol without host dependencies; add client examples and dependency-closure proof, updating README and product guidance. Task 4.6 proves the existing SDK boundary, not a completed client implementation.
+  - [x] 4.7.1 Add typed generated-contract binding, bounded managed unary/upload/download/exchange calls and cancellation settlement in `sdk/rust/src/client*`.
+  - [x] 4.7.2 Prove real host interoperability, malformed completion/status handling and the normal/build dependency closure; compile the SDK client example and update README/product guidance.
 
 ## 5. Pilot SDKs
 
@@ -310,6 +310,7 @@
 - [ ] 8.2 Run each pilot SDK against the extended conformance suite on native Linux and Windows; retain failures and repair affected consumers.
 
 - [x] 8.3 For the generated host contract and wire cutover, run format, Rust/Python/repository checks and the test artifact build on Windows; keep native Linux proof under 8.1.
+- [ ] 8.4 Complete the requested Windows format, Rust/Python/repository checks, test-artifact build and four-SDK conformance after the domain reduction and generated Rust client; native Linux proof remains under 8.1.
 
 ## Workflow Follow-Up
 

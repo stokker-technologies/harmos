@@ -297,6 +297,23 @@ The protocol drift test runs the pinned `protoc` from the transferred offline
 vendor inputs and restores its executable permission on Unix. Focused Cargo
 tests use the pinned compiler in the local Cargo registry.
 
+## Rust SDK Dependency Boundary
+
+The generated-client and plugin SDK share one protocol-only product dependency closure.
+The focused tooling test inspects Cargo metadata without compiling or resolving registry updates:
+
+```powershell
+$env:PYTHONPATH = (Get-Location).Path
+mise run test -- --language python --exact sdk.rust.tests.dependency_closure
+Remove-Item Env:PYTHONPATH
+```
+
+The client example consumes Schematic's generated protocol package and needs no host dependency:
+
+```sh
+mise run build -- --package harmos --example client --check
+```
+
 ## Validation
 
 Run targeted tasks locally. Hosted CI and Nightly provide full validation.

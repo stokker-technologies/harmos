@@ -13,10 +13,10 @@ Final validation waits for source closure; completed source does not close nativ
 | 2 | Host 3.1–3.9; Rust SDK 4.1–4.6; removal 6.1–6.4, 6.6–6.7; pilot SDKs 5.x | Native cutover, virtual clock, SDK rename, engine relocation and framed-path removal landed; cross-platform final proof remains open | Runtime, operations, SDKs, examples and retained tests |
 | 3 | Authoritative host protobuf: 2.6, 3.10–3.12, host portion of 6.5; 6.9 | Built-in and native example handlers use generated messages; replaced host DTOs/codecs and the operations runtime feature are removed | Protocol, operations, runtime; contract-only consumers |
 | 4 | `authoring-without-macros`; 6.10 | Agreed, implementation not started; follow its steps 1–11, migrate live aliases before deleting them, then consolidate surviving field-reading derives | Macro consumers, `crates/harmos-macros`, `sdk/rust/derive` |
-| 5 | Reduced domain: 6.8 | Foundation reduction in progress; operation behavior and retained guest declarations move to operations, portable policy values to protocol | Domain, protocol, operations, runtime and consumers |
+| 5 | Reduced domain: 6.8 | Foundation reduction landed; operation behavior and retained guest declarations live in operations, portable policy values in protocol | Domain, protocol, operations, runtime and consumers |
 | 6 | Guests 7.1 and guest portion of 6.5 | Deferred until lifecycle/child-control design; after wave 5, fold guests into optional SDK Wasm support and delete guest macros together | SDK adapter, guest fixtures and runtime guest host |
 | Any | Conformance 6.11; packaging 6.12 | Low-risk placement work may run at any time; preserve executable/release interfaces and runtime bundle reading | `tools/conformance`, `tools/packaging`, runtime and tooling callers |
-| Final | `test-stories`; SDK client 4.7; guides; validation 8.x | Story work and client implementation remain; native Linux/Windows and hosted proof stay open | Tests, SDK client, documentation and CI |
+| Final | `test-stories`; SDK client 4.7; guides; validation 8.x | Story work and native Linux/Windows/hosted proof remain; SDK client source is implemented | Tests, SDK client, documentation and CI |
 
 After the last gRPC wave in both products, `storage-interface` designs and implements the Harmos
 extensions first. Dokime consumes them and extracts storage in its own `storage-interface` change.
@@ -32,7 +32,8 @@ Status: implementation is partial. Native plugins now use gRPC placement; the fr
 `plugin-grpc` feature are gone. Runtime defaults to `grpc`; `plugin-guest` still selects the
 existing Wasm host path, and `generate-proto` selects contract generation. `sdk/rust` is the
 public package/library `harmos`, with native plugin builders and its Message derive landed.
-The client half is still to be built. The former `crates/harmos-sdk` engine lives in
+The SDK client binds generated application messages to protocol contracts; managed calls
+retain cancellation settlement and bounded outgoing queues without host dependencies. The former `crates/harmos-sdk` engine lives in
 `crates/harmos-operations/src/execution/`; the old SDK root and `crates/harmos` facade are deleted.
 Guest-private dispatch and lifecycle extraction have landed in `harmos-guest` and the runtime
 guest host. Host protobuf adoption, macro replacement and derive consolidation have landed.
@@ -46,7 +47,7 @@ not a claim that the current manifests already implement it:
 
 | Package / Path | Target Ownership |
 | --- | --- |
-| `harmos` at `sdk/rust` | Public plugin and client entry point; no host code; client half still to be built |
+| `harmos` at `sdk/rust` | Public plugin and generated-contract client entry point; no host code |
 | `harmos-protocol` at `crates/harmos-protocol` | Authoritative generated protobuf messages/services, descriptors and light helpers |
 | `harmos-domain` at `crates/harmos-domain` | Reduced native schema, identity, state/recovery and storage foundation |
 | `harmos-storage` at `crates/harmos-storage` | Generic persistence, query kernels, capture and backends |

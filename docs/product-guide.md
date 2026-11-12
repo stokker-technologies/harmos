@@ -988,6 +988,39 @@ checked. The small storage codec adapters still needed by guest hashing and the
 bounded persisted identity codecs remain; unused host payload codecs are deleted.
 Stored data encoding and schema revisions are unchanged.
 
+### Generated Rust Clients
+
+`harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
+The caller sets the wire-message limit, outgoing item count and outgoing byte budget.
+`catalog` reads one bounded discovery page; continue with its opaque `next` cursor.
+Bind the selected `harmos_protocol::host::OperationContract` to generated application messages:
+
+```rust
+use harmos::client::Method;
+use schematic_protocol::{ValidateSchematic, Validation};
+
+let method = Method::<ValidateSchematic, Validation>::new(contract)?;
+let response = client.call(&method, tonic::Request::new(request)).await?.into_inner();
+let running = client.start(&method, tonic::Request::new(next_request)).await?;
+let response = running.cancel().await?;
+```
+
+`Method::new` checks the advertised fingerprint and the reachable generated descriptor graphs.
+For streams, bind every declared direction with `with_input::<Item>()` and
+`with_output::<Item>()` before starting. Managed calls expose `send`, `finish_input`,
+`next`, `request_cancel`, `cancel` and `join`; they retain the final generated result
+separately from output items. Cancellation observes the final response or gRPC status,
+including binary status details. Caller request metadata, extensions and timeout overrides
+travel with the opening request. The server continues to own operation deadlines and retries.
+Dropping a call abandons its result. No reconnect, replay or automatic retry is added.
+
+The [runnable Schematic client](../sdk/rust/examples/client.rs) discovers and calls a
+generated application contract without linking domain, storage, operations or runtime.
+Build it with `mise run build -- --package harmos --example client`; pass a running
+Schematic application's gRPC URL when launching `target/debug/examples/client`.
+The dependency proof at `sdk/rust/tests/dependency_closure.py` traverses normal/build
+workspace dependencies, excluding development-only edges.
+
 For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
 Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and
 `cancel` (tag 3, an empty message) requests cooperative cancellation.

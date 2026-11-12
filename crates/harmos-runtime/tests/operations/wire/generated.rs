@@ -51,12 +51,12 @@ const POLICY: OperationPolicy = OperationPolicy {
 
 #[rustfmt::skip]
 #[path = "../../fixtures/protobuf/generated.rs"]
-mod messages;
+pub(super) mod messages;
 use messages::{Reply, Request};
 
-struct Echo;
+pub(super) struct Echo;
 struct Forward;
-struct Watch;
+pub(super) struct Watch;
 struct Access(AtomicBool);
 
 #[derive(Clone, PartialEq, prost::Message)]

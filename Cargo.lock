@@ -1128,12 +1128,14 @@ dependencies = [
  "prost",
  "prost-reflect",
  "prost-types",
+ "schematic-protocol",
  "semver",
  "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
  "tonic",
+ "tonic-prost",
  "tracing",
 ]
 

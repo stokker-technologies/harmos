@@ -13,6 +13,7 @@
 
 /* === Re-Exports === */
 
+pub use crate::client::{Client, ClientSettings, Method};
 pub use crate::{Context, Error, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility};
 
 /* === Imports === */
