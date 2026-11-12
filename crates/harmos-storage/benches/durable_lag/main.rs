@@ -143,14 +143,15 @@ fn main() {
             .unwrap();
             storage.write_schema(schema.clone(), graph).await.unwrap();
             storage.flush().await.unwrap();
-            let before = primary.work().await.unwrap();
+            let before = primary.get_work().await.unwrap();
             let result = durable_lag::run(&storage, &schema, load).await.unwrap();
-            let after = primary.work().await.unwrap();
+            let after = primary.get_work().await.unwrap();
             println!(
                 "STORAGE_DURABLE_LAG {}",
                 serde_json::json!({
                     "case": format!("integration/durable_lag/{}", load.name()),
-                    "measurement": result, "durability": "sqlite WAL synchronous=FULL",
+                    "p95_bound_ms": durable_lag::P95_BOUND_MS, "p95_within_bound": result.p95_ms <= durable_lag::P95_BOUND_MS,
+                "measurement": result, "durability": "sqlite WAL synchronous=FULL",
                     "synchronous_commits": after.synchronous_commits - before.synchronous_commits,
                     "synchronous_commit_ms": (after.synchronous_commit_ns - before.synchronous_commit_ns) as f64 / 1_000_000.0,
                 })

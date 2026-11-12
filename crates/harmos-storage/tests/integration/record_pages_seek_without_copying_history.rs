@@ -75,7 +75,7 @@ async fn record_pages_seek_without_copying_history() {
     let harmos_storage::query::Source::Records(selection) = &query.source else { unreachable!() };
     mapped
         .storage
-        .write_records(vec![RecordInput {
+        .append_records(vec![RecordInput {
             schema: selection.schema.clone(),
             scope: None,
             item: Identifier::new("appended").unwrap(),

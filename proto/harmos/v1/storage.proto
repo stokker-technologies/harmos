@@ -152,7 +152,7 @@ message WriteFile { FileMetadata metadata = 1; }
 
 // Native plans use separate output and source-work bounds supplied by the caller.
 message ReadLimits { uint64 rows = 1; uint64 bytes = 2; }
-message StorageCapabilities { bool native_arrow = 1; bool native_index = 2; bool durable_projections = 3; bool conditional_objects = 4; }
+message StorageCapabilities { bool native_arrow = 1; bool native_index = 2; bool durable_projections = 3; bool conditional_objects = 4; bool file_sessions = 5; bool file_deletion = 6; bool mutation_receipts = 7; }
 enum ColumnKind { COLUMN_KIND_OBJECTS = 0; COLUMN_KIND_RECORDS = 1; COLUMN_KIND_STREAM = 2; }
 message ColumnSource { ColumnKind kind = 1; SchemaKey schema = 2; }
 message ColumnPredicate { string column = 1; optional double lower = 2; optional double upper = 3; }

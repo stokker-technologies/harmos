@@ -171,9 +171,9 @@ jobs:
       with:
         platform: ${{ matrix.platform }}
     - name: Measure SQLite Storage
-      run: |
-        mise run bench -- --storage --filter native
-        mise run bench -- --storage --filter durable_lag
+      run: mise run bench -- --storage --filter native
+    - name: Measure Durable Lag
+      run: mise run bench -- --storage --filter durable_lag
     - if: always()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:

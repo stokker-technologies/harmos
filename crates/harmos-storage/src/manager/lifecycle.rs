@@ -99,8 +99,8 @@ impl StorageManager {
         }
         if !lifecycle.primary_open {
             lifecycle.primary_touched = true;
-            let saved = self.inner.bounded("primary.open", self.inner.primary.open()).await?;
-            self.inner.primary.history().check(&saved.history)?;
+            let saved = self.inner.bounded("primary.create_storage_session", self.inner.primary.create_storage_session()).await?;
+            self.inner.primary.get_history().check(&saved.history)?;
             let mut state = self.inner.state.lock().unwrap();
             state.status.accepted = saved.clone();
             state.status.saved = saved;
@@ -118,8 +118,8 @@ impl StorageManager {
         }
         if !lifecycle.recovery_open {
             lifecycle.recovery_touched = true;
-            let saved = self.inner.bounded("recovery.open", self.inner.recovery.open()).await?;
-            self.inner.recovery.history().check(&saved.history)?;
+            let saved = self.inner.bounded("recovery.create_recovery_session", self.inner.recovery.create_recovery_session()).await?;
+            self.inner.recovery.get_history().check(&saved.history)?;
             let mut state = self.inner.state.lock().unwrap();
             state.status.recovery_accepted = saved.clone();
             state.status.recovery_saved = saved;
@@ -160,7 +160,7 @@ impl StorageManager {
         self.inner.state.lock().unwrap().status.accepted.clone()
     }
 
-    pub fn cursor_saved(&self) -> StorageCursor {
+    pub fn get_saved_position(&self) -> StorageCursor {
         self.inner.state.lock().unwrap().status.saved.clone()
     }
 

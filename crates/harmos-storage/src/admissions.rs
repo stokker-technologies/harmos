@@ -61,7 +61,7 @@ impl StorageManager {
     pub(crate) async fn admit_record_values(&self, mutation: &MutationId, records: Vec<RecordInput>) -> Result<StorageCursor> {
         nonempty(records.len())?;
         let mut hash = Sha256::new();
-        part(&mut hash, b"storage.write_records:v1");
+        part(&mut hash, b"storage.append_records:v1");
         hash.update((records.len() as u64).to_le_bytes());
         for record in &records {
             hash_record(&mut hash, &record.borrowed());

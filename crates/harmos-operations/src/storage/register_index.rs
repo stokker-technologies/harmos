@@ -46,7 +46,8 @@ impl ProtobufOperation for RegisterIndex {
             async {
                 let definition: harmos_storage::query::index::IndexDefinition = required(request.definition)?.try_into()?;
                 super::native::admit(&context, Self::ID, &definition.source)?;
-                let revision = storage.register_index(&definition, request.rebuild, required(request.work)?.try_into()?, &cancel).await?;
+                let revision =
+                    storage.set_index_definition(&definition, request.rebuild, required(request.work)?.try_into()?, &cancel).await?;
                 Ok(wire::DefinitionRevision { revision })
             },
             cancel.clone(),

@@ -37,7 +37,7 @@ use super::*;
 impl StorageManager {
     #[tracing::instrument(name = "storage.manager.arrow.lookup_schema", level = "debug", skip_all)]
     pub async fn lookup_schema(&self, key: &SchemaKey) -> Result<StorageSchema> {
-        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        let snapshot = self.snapshot(&self.get_saved_position()).await?;
         crate::query::schema_at(&self.inner, &snapshot, key).await
     }
 
@@ -119,7 +119,7 @@ impl StorageManager {
             field: "object revision",
             reason: "expected_revision must be nullable UInt64",
         })?;
-        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        let snapshot = self.snapshot(&self.get_saved_position()).await?;
         let page_bytes = self.inner.settings.scan_bytes();
         let store = metadata.column_by_name("store").and_then(|array| array.as_any().downcast_ref::<arrow_array::StringArray>());
         let epoch = metadata.column_by_name("epoch").and_then(|array| array.as_any().downcast_ref::<arrow_array::StringArray>());
@@ -128,8 +128,8 @@ impl StorageManager {
                 continue;
             }
             if expected.value(row) != 0
-                && (store.is_none_or(|store| store.is_null(row) || store.value(row) != self.inner.primary.history().store.as_str())
-                    || epoch.is_none_or(|epoch| epoch.is_null(row) || epoch.value(row) != self.inner.primary.history().epoch.as_str()))
+                && (store.is_none_or(|store| store.is_null(row) || store.value(row) != self.inner.primary.get_history().store.as_str())
+                    || epoch.is_none_or(|epoch| epoch.is_null(row) || epoch.value(row) != self.inner.primary.get_history().epoch.as_str()))
             {
                 return Err(Error::InvalidInput {
                     field: "object revision",

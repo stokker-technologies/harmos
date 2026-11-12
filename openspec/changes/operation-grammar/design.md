@@ -3,7 +3,7 @@
 Status: locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
 
-Nothing here claims implementation.
+Locked contract; the owning task sections below distinguish landed source and proof.
 Only the explicitly listed open questions await decisions when their work is reached.
 
 ## Context
@@ -587,6 +587,8 @@ Storage.GetSchema and Storage.DeleteFile. All six upload-session methods are exp
 
 ### Complete Native Provider Mapping
 
+The present-hook column records the starting inventory; task checkboxes identify landed work.
+
 These 66 present hooks are not additional RPCs or resource services. The two
 provider traits cover multiple resources; their semantic names retain those
 resource nouns, without repeating the provider's own Storage name. Locked names below are semantic
@@ -842,3 +844,19 @@ the large-load maximum exceeds 250 ms, which is not a maximum-latency promise.
 The increased commit count and total commit contribution remain visible. Accepted-data
 snapshots were not built. The benchmark emits backlog positions and admission wait as
 well as this table; Nightly retains the raw observations and platform-qualified metrics.
+
+### Native Storage Migration
+
+The 52 storage and eight recovery hooks are implemented with no old-name aliases;
+projection definition/status/advancement pairs use optional retained revision/frontier
+arguments and capability flags have one owner. Stored encodings and atomic publication
+are unchanged. Focused Windows proof covers projection rebuild/restart, finished-file
+and mutation replay, and recovery checkpoint/journal restoration.
+
+Required call-site edits outside the storage split are confined to
+`crates/harmos-runtime/tests/{streams/revisions.rs,support/storage_fixture.rs,system/runtime.rs}`.
+The required Rust check also needed the example guest's one-attempt policy literal
+migrated to `retries: None` in `examples/schematic/guest/src/lib.rs`, preserving its
+budgets. The required formatter wrapped one Python conformance-fixture policy call.
+Protocol Rust, example descriptor and Python storage outputs were regenerated from
+`storage.proto` to expose the three capability flags; generated files were not edited by hand.

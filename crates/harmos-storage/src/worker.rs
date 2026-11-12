@@ -612,17 +612,20 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
         Action::Prune(through) => inner
-            .bounded("primary.prune_objects", inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES, &inner.catalog))
+            .bounded(
+                "primary.delete_expired_object_revisions",
+                inner.primary.delete_expired_object_revisions(through, super::config::OBJECT_PRUNE_ENTRIES, &inner.catalog),
+            )
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
         Action::Snapshot(SnapshotAction::Open(id, at)) => {
-            let opened = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at)).await;
+            let opened = inner.bounded("primary.create_snapshot", inner.primary.create_snapshot(at)).await;
             Ok(Completed::Opened(*id, opened))
         }
         Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {
             if let Some(snapshot) = snapshot {
-                inner.bounded("primary.release_snapshot", inner.primary.release_snapshot(snapshot)).await?;
+                inner.bounded("primary.delete_snapshot", inner.primary.delete_snapshot(snapshot)).await?;
             }
             Ok(Completed::Released(*id))
         }
@@ -647,7 +650,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                                 });
                             }
                         }
-                        inner.bounded("recovery.write_entries", inner.recovery.write_entries(entries.clone())).await?;
+                        inner.bounded("recovery.append_recovery_entries", inner.recovery.append_recovery_entries(entries.clone())).await?;
                         Ok(Completed::Write {
                             data: None,
                             saved: None,
@@ -667,7 +670,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                                 reason: "snapshot cannot precede required primary persistence",
                             });
                         }
-                        inner.bounded("recovery.write_snapshot", inner.recovery.write_snapshot(snapshot.clone())).await?;
+                        inner.bounded("recovery.set_recovery_snapshot", inner.recovery.set_recovery_snapshot(snapshot.clone())).await?;
                         Ok(Completed::Write {
                             data: None,
                             saved: None,
@@ -696,7 +699,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
 
         Action::Recovery(target) => {
             let through = RecoveryPosition {
-                history: inner.recovery.history().clone(),
+                history: inner.recovery.get_history().clone(),
                 sequence: target.sequence,
             };
             let saved = inner.bounded("recovery.flush", inner.recovery.flush(&through)).await?;

@@ -28,7 +28,7 @@ async fn native_stream_reads_preserve_snapshot_and_cursor() {
     assert_eq!(read.completed_rows, expected.len() as u64);
     let mut reader = fixture
         .storage
-        .read_stream(StreamRead {
+        .list_samples(StreamRead {
             at: fixture.durable.clone(),
             selection: fixture.period(),
         })
@@ -47,7 +47,7 @@ async fn native_stream_reads_preserve_snapshot_and_cursor() {
     let after = actual[actual.len() / 2].0;
     let mut selection = fixture.period();
     selection.after = after;
-    let mut reader = fixture.storage.read_stream(StreamRead { at: fixture.durable.clone(), selection }).await.unwrap();
+    let mut reader = fixture.storage.list_samples(StreamRead { at: fixture.durable.clone(), selection }).await.unwrap();
     let mut resumed = Vec::new();
     while let Some(page) = reader.next().await.unwrap() {
         resumed.extend(page.iter().map(|row| (row.record.position.sequence, row.sequence)));

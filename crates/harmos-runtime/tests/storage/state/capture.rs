@@ -616,7 +616,7 @@ async fn capture_reserves_actual() {
     }
     assert_eq!(store.calls.load(Ordering::SeqCst), 4);
     assert_eq!(storage.cursor_accepted().sequence, 5);
-    assert_eq!(storage.cursor_saved().sequence, 1);
+    assert_eq!(storage.get_saved_position().sequence, 1);
     assert!(storage.status().pending_bytes < 32 * 1024);
     assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 4);
     crate::support::app::shutdown(&runtime).await.unwrap();
@@ -655,7 +655,7 @@ async fn partial_projection_refused() {
         if cancel {
             store.data.control.block_write.store(true, Ordering::SeqCst);
             let item = Identifier::new("already-accepted").unwrap();
-            storage.write_records(vec![record(&schema(), &item, &vec![0; 50 * 1024])]).await.unwrap();
+            storage.append_records(vec![record(&schema(), &item, &vec![0; 50 * 1024])]).await.unwrap();
         }
         let accepted = storage.cursor_accepted();
         assert!(runtime.state.commit(Advance { panic: false }).await.is_err());
@@ -717,7 +717,7 @@ async fn registration_stores_schema() {
     storage.flush().await.unwrap();
     let mut reader = storage
         .query(harmos_runtime::storage::Query {
-            at: storage.cursor_saved(),
+            at: storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Schemas(harmos_runtime::storage::query::SchemaSelection {
                 schema: Some(key.clone()),
             }),

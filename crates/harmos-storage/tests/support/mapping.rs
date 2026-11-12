@@ -93,7 +93,7 @@ impl Mapped {
                     }
                 })
                 .collect();
-            storage.write_records(records).await.unwrap();
+            storage.append_records(records).await.unwrap();
         }
         let at = storage.flush().await.unwrap();
         Self { storage, data: fixture.data, schema, at }

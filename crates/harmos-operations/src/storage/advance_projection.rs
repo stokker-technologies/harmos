@@ -55,11 +55,11 @@ impl ProtobufOperation for AdvanceProjection {
                     field: "projection",
                     reason: "invalid name",
                 })?;
-                let (definition, expected_revision) = storage.projection_definition(&name).await?;
+                let (definition, expected_revision) = storage.get_projection_definition(&name, None).await?;
                 super::native::source_matches(&source, &definition.source)?;
                 let mut snapshot = snapshots.read(required(request.snapshot)?)?;
                 let revision =
-                    snapshot.advance_projection_at(&name, expected_revision, required(request.work)?.try_into()?, &cancel).await?;
+                    snapshot.advance_projection(&name, Some(expected_revision), required(request.work)?.try_into()?, &cancel).await?;
                 snapshot.retain();
                 Ok(wire::DefinitionRevision { revision })
             },

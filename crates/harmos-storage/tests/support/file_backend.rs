@@ -39,14 +39,6 @@ impl Drop for Chunk<'_> {
 }
 
 impl Data {
-    pub(super) fn fixture_supports_file_sessions(&self) -> bool {
-        true
-    }
-
-    pub(super) fn fixture_supports_mutation_receipts(&self) -> bool {
-        true
-    }
-
     pub(super) fn fixture_save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
@@ -247,10 +239,6 @@ impl Data {
             let (_, bytes) = staged.get(file.id.as_str()).ok_or_else(|| failure(BackendFailure::Permanent))?;
             copy(bytes)
         })
-    }
-
-    pub(super) fn fixture_supports_file_deletion(&self) -> bool {
-        true
     }
 
     pub(super) fn fixture_delete_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {

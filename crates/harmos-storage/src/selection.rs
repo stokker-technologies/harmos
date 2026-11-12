@@ -103,8 +103,8 @@ impl Entry for ObjectEntry {
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
-        let future = backend.read_objects(snapshot, selection, page);
-        let span = tracing::trace_span!("storage.backend.scan", method = "primary.read_objects");
+        let future = backend.list_object_revisions(snapshot, selection, page);
+        let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_object_revisions");
         Box::pin(tracing::Instrument::instrument(future, span))
     }
 }
@@ -133,8 +133,8 @@ impl Entry for StoredRecord {
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
-        let future = backend.read_records(snapshot, selection, page);
-        let span = tracing::trace_span!("storage.backend.scan", method = "primary.read_records");
+        let future = backend.list_records(snapshot, selection, page);
+        let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_records");
         Box::pin(tracing::Instrument::instrument(future, span))
     }
 }
@@ -170,8 +170,8 @@ impl Entry for StoredRow {
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
-        let future = backend.read_stream(snapshot, selection, page);
-        let span = tracing::trace_span!("storage.backend.scan", method = "primary.read_stream");
+        let future = backend.list_samples(snapshot, selection, page);
+        let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_samples");
         Box::pin(tracing::Instrument::instrument(future, span))
     }
 }
@@ -198,8 +198,8 @@ impl Entry for StorageSchema {
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
-        let future = backend.read_schemas(snapshot, selection, page);
-        let span = tracing::trace_span!("storage.backend.scan", method = "primary.read_schemas");
+        let future = backend.list_schemas(snapshot, selection, page);
+        let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_schemas");
         Box::pin(tracing::Instrument::instrument(future, span))
     }
 }
@@ -225,8 +225,8 @@ impl Entry for FileReference {
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
-        let future = backend.read_files(snapshot, selection, page);
-        let span = tracing::trace_span!("storage.backend.scan", method = "primary.read_files");
+        let future = backend.list_files(snapshot, selection, page);
+        let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_files");
         Box::pin(tracing::Instrument::instrument(future, span))
     }
 }
@@ -250,8 +250,8 @@ impl Entry for StoredIdentity {
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a IdentitySelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>> {
-        let future = backend.read_identities(snapshot, selection, page);
-        let span = tracing::trace_span!("storage.backend.scan", method = "primary.read_identities");
+        let future = backend.list_identities(snapshot, selection, page);
+        let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_identities");
         Box::pin(tracing::Instrument::instrument(future, span))
     }
 }

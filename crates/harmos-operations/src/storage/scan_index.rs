@@ -52,11 +52,11 @@ impl ProtobufOperation for ScanIndex {
                 let source: ColumnSource = required(request.source)?.try_into()?;
                 super::native::admit(&context, Self::ID, &source)?;
                 let read: harmos_storage::query::index::IndexRead = required(request.read)?.try_into()?;
-                let (definition, revision) = storage.index_definition(&read.name).await?;
+                let (definition, revision) = storage.get_index_definition(&read.name).await?;
                 super::native::source_matches(&source, &definition.source)?;
                 let mut snapshot = snapshots.read(required(request.snapshot)?)?;
-                let page = snapshot.scan_index(&read, &cancel).await?;
-                let (_, current) = storage.index_definition(&read.name).await?;
+                let page = snapshot.list_index_entries(&read, &cancel).await?;
+                let (_, current) = storage.get_index_definition(&read.name).await?;
                 if current != revision {
                     return Err(crate::Error::InvalidInput {
                         field: "index revision",

@@ -350,7 +350,7 @@ async fn sessions_survive_reopen() {
     // Reopen The Finished Publication And Verify Every Stored Byte.
     let third = storage(&data).await;
     assert_eq!(
-        third.file_progress(&file).await.unwrap(),
+        third.get_file_production(&file).await.unwrap(),
         FileProgress {
             length: expected.len() as u64,
             phase: FilePhase::Finished
@@ -379,14 +379,14 @@ async fn sessions_survive_reopen() {
     let deletion = mutation(&third, "delete");
     assert_eq!(third.delete_file_once(&deletion, &file).await.unwrap(), file);
     assert_eq!(third.delete_file_once(&deletion, &file).await.unwrap(), file);
-    assert!(third.file_progress(&file).await.is_err());
+    assert!(third.get_file_production(&file).await.is_err());
     third.close().await.unwrap();
 
     // Deletion And Earlier Terminal Replies Keep Their Original Identities.
     let fourth = storage(&data).await;
     assert_eq!(fourth.delete_file_once(&deletion, &file).await.unwrap(), file);
     assert_eq!(fourth.finish_file_once(&finish, &resumed.session).await.unwrap(), reference);
-    assert!(fourth.file_progress(&file).await.is_err());
+    assert!(fourth.get_file_production(&file).await.is_err());
     fourth.close().await.unwrap();
 }
 

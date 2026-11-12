@@ -43,7 +43,7 @@ impl StorageManager {
     #[tracing::instrument(name = "storage.staging.creation.create", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub(super) async fn create(&self, metadata: FileMetadata, resumable: bool) -> Result<StorageFile> {
         let result = async {
-            let reference_bytes = file_bytes(&metadata, self.inner.primary.history())?;
+            let reference_bytes = file_bytes(&metadata, self.inner.primary.get_history())?;
             // Bound The Finished Reference Before Creating Its Producer.
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(Error::InvalidInput {
@@ -56,7 +56,7 @@ impl StorageManager {
                 ..Progress::default()
             }));
             let token = resumable.then(|| FileSession {
-                history: self.inner.primary.history().clone(),
+                history: self.inner.primary.get_history().clone(),
                 id: metadata.id.clone(),
                 generation: 1,
             });
@@ -82,7 +82,7 @@ impl StorageManager {
                             NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)).map_err(|_| size_error())?;
                         let metadata = metadata.take().expect("unadmitted file metadata");
                         let staging = StagedFile {
-                            history: self.inner.primary.history().clone(),
+                            history: self.inner.primary.get_history().clone(),
                             id: metadata.id.clone(),
                         };
                         state.files.insert(

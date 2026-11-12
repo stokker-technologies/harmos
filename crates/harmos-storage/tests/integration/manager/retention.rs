@@ -155,7 +155,7 @@ async fn snapshots_progress_during_persistence() {
         tokio::spawn(async move { storage.flush_until(&pending.position).await })
     };
     data.control.write_entered.notified().await;
-    let read = storage.read_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
+    let read = storage.get_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
     assert_eq!(read.value, first);
     data.snapshots_released().await;
     assert!(!flushing.is_finished());
@@ -176,10 +176,10 @@ async fn snapshots_progress_during_persistence() {
     data.control.block_finish.store(true, Ordering::SeqCst);
     let finishing = tokio::spawn(async move { file.finish().await });
     data.control.finish_entered.notified().await;
-    let read = storage.read_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
+    let read = storage.get_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
     assert_eq!(read.value, first);
     data.snapshots_released().await;
-    assert_eq!(storage.cursor_saved(), durable);
+    assert_eq!(storage.get_saved_position(), durable);
     data.control.block_finish.store(false, Ordering::SeqCst);
     data.control.finish_release.notify_one();
     let reference = finishing.await.unwrap().unwrap();
@@ -190,11 +190,11 @@ async fn snapshots_progress_during_persistence() {
     let reading = {
         let storage = storage.clone();
         let id = first.id.clone();
-        tokio::spawn(async move { storage.read_object::<Experiment>(&id, ObjectVersion::Exact(receipt.version)).await })
+        tokio::spawn(async move { storage.get_object::<Experiment>(&id, ObjectVersion::Exact(receipt.version)).await })
     };
     data.control.view_entered.notified().await;
     let encoded = objects_catalog().encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
-    storage.release_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
+    storage.delete_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
     let third = Experiment {
         id: first.id.clone(),
         label: "replacement".into(),
@@ -219,9 +219,9 @@ async fn reads_pin_cursor() {
     assert_eq!(latest(&r.durable).await.unwrap(), ["second"]);
     assert_eq!(labels(&r.storage, &r.durable, &r.schema, ObjectVersions::Revisions).await.unwrap(), ["first", "second"]);
     let exact =
-        r.storage.read_object::<Experiment>(&r.first.id, ObjectVersion::Exact(r.first_receipt.version.clone())).await.unwrap().unwrap();
+        r.storage.get_object::<Experiment>(&r.first.id, ObjectVersion::Exact(r.first_receipt.version.clone())).await.unwrap().unwrap();
     assert_eq!(exact.value, r.first);
-    let current = r.storage.read_object::<Experiment>(&r.first.id, ObjectVersion::Latest).await.unwrap().unwrap();
+    let current = r.storage.get_object::<Experiment>(&r.first.id, ObjectVersion::Latest).await.unwrap().unwrap();
     assert_eq!(current.version, r.second_receipt.version);
 
     // A Cursor From Another History Is Refused Before Any Output.
@@ -259,7 +259,7 @@ async fn release_reclaims_history() {
 
     assert_eq!(data.objects.lock().unwrap().len(), 2);
     data.control.block_prune_result.store(true, Ordering::SeqCst);
-    storage.release_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
+    storage.delete_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
     data.control.prune_result_entered.notified().await;
     assert_eq!(data.objects.lock().unwrap().len(), 1);
     data.control.block_prune_result.store(false, Ordering::SeqCst);

@@ -40,7 +40,7 @@ impl StorageManager {
         &self, mutation: &MutationId, token: &FileSession, offset: u64, bytes: impl Into<crate::FileChunk>,
     ) -> Result<FileProducer> {
         let bytes = bytes.into();
-        self.inner.primary.history().check(&token.history)?;
+        self.inner.primary.get_history().check(&token.history)?;
         let mut hash = Sha256::new();
         hash_part(&mut hash, b"storage.append_file:v1");
         hash_session(&mut hash, token);

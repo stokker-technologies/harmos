@@ -101,7 +101,8 @@ def run(directory: Path, selected: str | None) -> int:
     revision = os.environ.get("GITHUB_SHA") or archive.revision(directory) or "unknown"
     document = measurements(lines, revision, platform.system().lower())
     if peak:
-        document["benchmarks"].append(_row("storage.process.peak.bytes", peak, "bytes", revision, platform.system().lower()))
+        name = "integration/durable_lag/process_peak_bytes" if selected == "durable_lag" else "storage.process.peak.bytes"
+        document["benchmarks"].append(_row(name, peak, "bytes", revision, platform.system().lower()))
     policy.write_json(destination, document)
     print(f"Storage measurements: {destination}; peak resident memory: {peak} bytes")
     if not document["benchmarks"]:

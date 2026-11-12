@@ -55,10 +55,10 @@ impl StorageManager {
         }
         let fingerprint = hash.finalize().into();
         self.mutate_file(mutation, fingerprint, |state| {
-            if !self.inner.primary.supports_file_sessions() {
+            if !self.inner.primary.get_storage_capabilities().file_sessions {
                 return Err(invalid("backend does not support resumable production"));
             }
-            let reference_bytes = file_bytes(metadata, self.inner.primary.history())?;
+            let reference_bytes = file_bytes(metadata, self.inner.primary.get_history())?;
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(invalid("reference exceeds max_batch_bytes"));
             }
@@ -80,7 +80,7 @@ impl StorageManager {
                     queued: Some(tracing::debug_span!("storage.file.queue")),
                     metadata: Arc::new(metadata.clone()),
                     staging: StagedFile {
-                        history: self.inner.primary.history().clone(),
+                        history: self.inner.primary.get_history().clone(),
                         id: metadata.id.clone(),
                     },
                     session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution.clone())),

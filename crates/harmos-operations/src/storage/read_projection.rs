@@ -50,9 +50,9 @@ impl ProtobufOperation for ReadProjection {
                 let source: ColumnSource = required(request.source)?.try_into()?;
                 super::native::admit(&context, Self::ID, &source)?;
                 let read: harmos_storage::query::projection::ProjectionRead = required(request.read)?.try_into()?;
-                let definition = storage.projection_definition_at(&read.name, read.revision).await?;
+                let definition = storage.get_projection_definition(&read.name, Some(read.revision)).await?.0;
                 super::native::source_matches(&source, &definition.source)?;
-                let page = storage.read_projection(&read).await?;
+                let page = storage.list_projection_rows(&read).await?;
                 super::native::admit(&context, Self::ID, &source)?;
                 let page: wire::ProjectionPage = page.try_into()?;
                 super::native::page_bytes(page.buffer_bytes(), read.limits.bytes.get())?;

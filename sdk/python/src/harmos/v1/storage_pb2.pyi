@@ -1039,16 +1039,22 @@ class ReadLimits(_message.Message):
     def __init__(self, rows: _Optional[int] = ..., bytes: _Optional[int] = ...) -> None: ...
 
 class StorageCapabilities(_message.Message):
-    __slots__ = ("native_arrow", "native_index", "durable_projections", "conditional_objects")
+    __slots__ = ("native_arrow", "native_index", "durable_projections", "conditional_objects", "file_sessions", "file_deletion", "mutation_receipts")
     NATIVE_ARROW_FIELD_NUMBER: _ClassVar[int]
     NATIVE_INDEX_FIELD_NUMBER: _ClassVar[int]
     DURABLE_PROJECTIONS_FIELD_NUMBER: _ClassVar[int]
     CONDITIONAL_OBJECTS_FIELD_NUMBER: _ClassVar[int]
+    FILE_SESSIONS_FIELD_NUMBER: _ClassVar[int]
+    FILE_DELETION_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_RECEIPTS_FIELD_NUMBER: _ClassVar[int]
     native_arrow: bool
     native_index: bool
     durable_projections: bool
     conditional_objects: bool
-    def __init__(self, native_arrow: _Optional[bool] = ..., native_index: _Optional[bool] = ..., durable_projections: _Optional[bool] = ..., conditional_objects: _Optional[bool] = ...) -> None: ...
+    file_sessions: bool
+    file_deletion: bool
+    mutation_receipts: bool
+    def __init__(self, native_arrow: _Optional[bool] = ..., native_index: _Optional[bool] = ..., durable_projections: _Optional[bool] = ..., conditional_objects: _Optional[bool] = ..., file_sessions: _Optional[bool] = ..., file_deletion: _Optional[bool] = ..., mutation_receipts: _Optional[bool] = ...) -> None: ...
 
 class ColumnSource(_message.Message):
     __slots__ = ("kind", "schema")

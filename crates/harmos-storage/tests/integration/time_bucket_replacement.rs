@@ -24,9 +24,9 @@ use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
 use harmos_storage::query::{
     TableWriter,
-    columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource, scan_arrow},
+    columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource, list_column_rows},
     index::encode_key,
-    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform, advance_projection, advance_projection_at},
+    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform, advance_projection},
     scalar::ScalarValue,
     time_buckets::TimeBucketPlan,
     transform::Transform,
@@ -117,7 +117,7 @@ async fn read_all(backend: &dyn StorageBackend, mut read: ProjectionRead) -> (Ve
     let mut buckets = Vec::new();
     let mut changed = Vec::new();
     loop {
-        let page = backend.read_projection(&read).await.unwrap();
+        let page = backend.list_projection_rows(&read).await.unwrap();
         buckets.extend(decode(&page.batch));
         changed.extend(page.changed_keys);
         let Some(next) = page.next else {
@@ -207,12 +207,12 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let cut = StorageCursor { history: history.clone(), sequence: 7 };
     let mut saved = Vec::new();
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.open().await.unwrap();
-        backend.write_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
-        backend.write_records(StorageBatch::new(records.clone())).await.unwrap();
-        backend.register_projection(&definition, false).await.unwrap();
-        let snapshot = backend.open_snapshot(&cut).await.unwrap();
-        advance_projection(backend, &snapshot, &definition.name, work, &cancel).await.unwrap();
+        backend.create_storage_session().await.unwrap();
+        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
+        backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
+        backend.set_projection_definition(&definition, false).await.unwrap();
+        let snapshot = backend.create_snapshot(&cut).await.unwrap();
+        advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
         saved.push(snapshot);
     }
     let read = ProjectionRead {
@@ -240,18 +240,18 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let additions = vec![record(&history, &schema, 8, "late", 5, 0, -2.0), record(&history, &schema, 9, "c", 11, 0, 2.0)];
     let next = StorageCursor { history: history.clone(), sequence: 9 };
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.write_records(StorageBatch::new(additions.clone())).await.unwrap();
-        let snapshot = backend.open_snapshot(&next).await.unwrap();
-        let before = backend.work().await.unwrap();
-        advance_projection(backend, &snapshot, &definition.name, work, &cancel).await.unwrap();
-        let after = backend.work().await.unwrap();
-        if backend.capabilities().native_arrow {
+        backend.append_records(StorageBatch::new(additions.clone())).await.unwrap();
+        let snapshot = backend.create_snapshot(&next).await.unwrap();
+        let before = backend.get_work().await.unwrap();
+        advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
+        let after = backend.get_work().await.unwrap();
+        if backend.get_storage_capabilities().native_arrow {
             assert_eq!(after.source_rows - before.source_rows, additions.len() as u64);
             assert_eq!(after.buckets - before.buckets, 2);
             assert!(after.bucket_rows - before.bucket_rows < records.len() as u64);
             assert!(after.bucket_steps - before.bucket_steps < (after.bucket_rows - before.bucket_rows) * 40 + 60);
         }
-        backend.release_snapshot(&snapshot).await.unwrap();
+        backend.delete_snapshot(&snapshot).await.unwrap();
         assert_eq!(read_all(backend, read.clone()).await.0, initial);
         let (current, changed) = read_all(backend, ProjectionRead { frontier: next.clone(), ..read.clone() }).await;
         assert_eq!(current.len(), initial.len());
@@ -280,10 +280,10 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let moved_cut = StorageCursor { history: history.clone(), sequence: 10 };
     let final_cut = StorageCursor { history: history.clone(), sequence: 14 };
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.write_records(StorageBatch::new(moved[..1].to_vec())).await.unwrap();
-        let snapshot = backend.open_snapshot(&moved_cut).await.unwrap();
-        advance_projection(backend, &snapshot, &definition.name, work, &cancel).await.unwrap();
-        backend.release_snapshot(&snapshot).await.unwrap();
+        backend.append_records(StorageBatch::new(moved[..1].to_vec())).await.unwrap();
+        let snapshot = backend.create_snapshot(&moved_cut).await.unwrap();
+        advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
+        backend.delete_snapshot(&snapshot).await.unwrap();
         let (buckets, changed) = read_all(
             backend,
             ProjectionRead {
@@ -294,10 +294,10 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         .await;
         assert_eq!(buckets.len(), 3);
         assert_eq!(changed, vec![key(0, -1), key(0, 1)]);
-        backend.write_records(StorageBatch::new(moved[1..].to_vec())).await.unwrap();
-        let snapshot = backend.open_snapshot(&final_cut).await.unwrap();
-        advance_projection(backend, &snapshot, &definition.name, work, &cancel).await.unwrap();
-        backend.release_snapshot(&snapshot).await.unwrap();
+        backend.append_records(StorageBatch::new(moved[1..].to_vec())).await.unwrap();
+        let snapshot = backend.create_snapshot(&final_cut).await.unwrap();
+        advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
+        backend.delete_snapshot(&snapshot).await.unwrap();
         let (buckets, changed) = read_all(
             backend,
             ProjectionRead {
@@ -313,7 +313,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     }
 
     // Apply The Native Transform To Replayed Paged Arrow Input.
-    let snapshot = native.open_snapshot(&final_cut).await.unwrap();
+    let snapshot = native.create_snapshot(&final_cut).await.unwrap();
     let mut scan = ArrowScan {
         source: definition.source.clone(),
         columns: vec![
@@ -332,7 +332,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     };
     let mut writer = None;
     loop {
-        let page = scan_arrow(&native, &snapshot, &scan, &cancel).await.unwrap();
+        let page = list_column_rows(&native, &snapshot, &scan, &cancel).await.unwrap();
         let writer = writer.get_or_insert_with(|| TableWriter::new(page.batch.schema()).unwrap());
         writer.push(&page.batch, &mut || Ok(())).unwrap();
         writer.push(&page.batch, &mut || Ok(())).unwrap();
@@ -368,30 +368,36 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let invalid = record(&history, &schema, 15, "invalid", 1, 0, f64::NAN);
     let invalid_cut = StorageCursor { history: history.clone(), sequence: 15 };
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.write_records(StorageBatch::new(vec![invalid.clone()])).await.unwrap();
-        let snapshot = backend.open_snapshot(&invalid_cut).await.unwrap();
-        assert!(advance_projection(backend, &snapshot, &definition.name, work, &cancel).await.is_err());
-        assert_eq!(backend.projection_frontier(&definition.name, 1).await.unwrap(), Some(final_cut.clone()));
-        backend.release_snapshot(&snapshot).await.unwrap();
+        backend.append_records(StorageBatch::new(vec![invalid.clone()])).await.unwrap();
+        let snapshot = backend.create_snapshot(&invalid_cut).await.unwrap();
+        assert!(advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.is_err());
+        assert_eq!(
+            backend.get_projection_status(&definition.name, 1, None).await.unwrap().map(|status| status.frontier),
+            Some(final_cut.clone())
+        );
+        backend.delete_snapshot(&snapshot).await.unwrap();
     }
-    native.release_snapshot(&snapshot).await.unwrap();
+    native.delete_snapshot(&snapshot).await.unwrap();
     // Refuse A Rebuilt Projection Before Native Or Fallback Advancement.
     let mut rebuilt = definition.clone();
     rebuilt.version += 1;
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        let revision = backend.register_projection(&rebuilt, true).await.unwrap();
-        let snapshot = backend.open_snapshot(&final_cut).await.unwrap();
+        let revision = backend.set_projection_definition(&rebuilt, true).await.unwrap();
+        let snapshot = backend.create_snapshot(&final_cut).await.unwrap();
         assert!(matches!(
-            advance_projection_at(backend, &snapshot, &definition.name, 1, work, &cancel).await,
+            advance_projection(backend, &snapshot, &definition.name, Some(1), work, &cancel).await,
             Err(Error::Backend { kind: BackendFailure::Conflict, .. })
         ));
-        assert_eq!(backend.projection_frontier(&definition.name, revision).await.unwrap(), None);
-        advance_projection_at(backend, &snapshot, &definition.name, revision, work, &cancel).await.unwrap();
-        assert_eq!(backend.projection_frontier(&definition.name, revision).await.unwrap(), Some(final_cut.clone()));
-        backend.release_snapshot(&snapshot).await.unwrap();
+        assert_eq!(backend.get_projection_status(&definition.name, revision, None).await.unwrap().map(|status| status.frontier), None);
+        advance_projection(backend, &snapshot, &definition.name, Some(revision), work, &cancel).await.unwrap();
+        assert_eq!(
+            backend.get_projection_status(&definition.name, revision, None).await.unwrap().map(|status| status.frontier),
+            Some(final_cut.clone())
+        );
+        backend.delete_snapshot(&snapshot).await.unwrap();
     }
-    native.release_snapshot(&saved[0]).await.unwrap();
-    native.close().await.unwrap();
-    fallback.release_snapshot(&saved[1]).await.unwrap();
-    fallback.close().await.unwrap();
+    native.delete_snapshot(&saved[0]).await.unwrap();
+    native.delete_storage_session().await.unwrap();
+    fallback.delete_snapshot(&saved[1]).await.unwrap();
+    fallback.delete_storage_session().await.unwrap();
 }

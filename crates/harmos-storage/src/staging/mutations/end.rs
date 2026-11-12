@@ -37,7 +37,7 @@ use super::*;
 impl StorageManager {
     #[tracing::instrument(name = "storage.staging.mutations.end.finish_file_once", level = "debug", skip_all)]
     pub async fn finish_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileReference> {
-        self.inner.primary.history().check(&token.history)?;
+        self.inner.primary.get_history().check(&token.history)?;
         let fingerprint = fingerprint("storage.finish_file:v1", token);
         self.mutate_file(mutation, fingerprint, |state| {
             let (id, file) = active(state, token)?;
@@ -66,7 +66,7 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.staging.mutations.end.abandon_file_once", level = "debug", skip_all)]
     pub async fn abandon_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileProgress> {
-        self.inner.primary.history().check(&token.history)?;
+        self.inner.primary.get_history().check(&token.history)?;
         let fingerprint = fingerprint("storage.abandon_file:v1", token);
         self.mutate_file(mutation, fingerprint, |state| {
             let (id, file) = active(state, token)?;

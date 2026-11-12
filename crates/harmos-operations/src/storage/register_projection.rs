@@ -46,7 +46,7 @@ impl ProtobufOperation for RegisterProjection {
             async {
                 let definition: harmos_storage::query::projection::ProjectionDefinition = required(request.definition)?.try_into()?;
                 super::native::admit(&context, Self::ID, &definition.source)?;
-                let revision = storage.register_projection(&definition, request.rebuild).await?;
+                let revision = storage.set_projection_definition(&definition, request.rebuild).await?;
                 Ok(wire::DefinitionRevision { revision })
             },
             cancel.clone(),

@@ -25,7 +25,7 @@ use arrow_array::{Float64Array, UInt64Array};
 // Local Imports
 use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
-use harmos_storage::query::columnar::{ArrowScan, Cancellation, ColumnKind, ColumnPredicate, ColumnSource, TimeBounds, scan_arrow};
+use harmos_storage::query::columnar::{ArrowScan, Cancellation, ColumnKind, ColumnPredicate, ColumnSource, TimeBounds, list_column_rows};
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 
@@ -76,8 +76,8 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     )
     .unwrap();
     let fallback = Arc::new(backend::Data::new(history.clone()));
-    native.open().await.unwrap();
-    fallback.open().await.unwrap();
+    native.create_storage_session().await.unwrap();
+    fallback.create_storage_session().await.unwrap();
     let key = SchemaKey {
         id: Identifier::new("sample").unwrap(),
         version: NonZeroU32::MIN,
@@ -87,8 +87,8 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         harmos_domain::schema::graph::Schema::from_declaration(Sample::DEFINITION, &harmos_domain::config::SchemaSettings::default())
             .unwrap();
     let schema = StorageSchema::new(StorageCursor { history: history.clone(), sequence: 1 }, key.clone(), graph);
-    native.write_schemas(StorageBatch::new(vec![schema.clone()])).await.unwrap();
-    fallback.write_schemas(StorageBatch::new(vec![schema])).await.unwrap();
+    native.append_schemas(StorageBatch::new(vec![schema.clone()])).await.unwrap();
+    fallback.append_schemas(StorageBatch::new(vec![schema])).await.unwrap();
     let records = (0..8)
         .map(|index| StoredRecord {
             position: StorageCursor {
@@ -108,17 +108,17 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
             .encode(),
         })
         .collect::<Vec<_>>();
-    native.write_records(StorageBatch::new(records.clone())).await.unwrap();
-    fallback.write_records(StorageBatch::new(records.clone())).await.unwrap();
+    native.append_records(StorageBatch::new(records.clone())).await.unwrap();
+    fallback.append_records(StorageBatch::new(records.clone())).await.unwrap();
     let cut = StorageCursor { history: history.clone(), sequence: 9 };
-    let saved = native.open_snapshot(&cut).await.unwrap();
-    let saved_fallback = fallback.open_snapshot(&cut).await.unwrap();
+    let saved = native.create_snapshot(&cut).await.unwrap();
+    let saved_fallback = fallback.create_snapshot(&cut).await.unwrap();
 
     // Save A Later Sample Without Changing Either Retained Cut.
     let mut late = records[4].clone();
     late.position.sequence = 10;
-    native.write_records(StorageBatch::new(vec![late.clone()])).await.unwrap();
-    fallback.write_records(StorageBatch::new(vec![late])).await.unwrap();
+    native.append_records(StorageBatch::new(vec![late.clone()])).await.unwrap();
+    fallback.append_records(StorageBatch::new(vec![late])).await.unwrap();
     let read = ArrowScan {
         source: ColumnSource { kind: ColumnKind::Records, schema: key },
         columns: vec!["_storage.position".into(), "payload.value".into()],
@@ -147,7 +147,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         let mut values = Vec::new();
         let mut positions = Vec::new();
         loop {
-            let page = scan_arrow(backend, snapshot, &read, &Cancellation::default()).await.unwrap();
+            let page = list_column_rows(backend, snapshot, &read, &Cancellation::default()).await.unwrap();
             values.extend_from_slice(page.batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap().values());
             positions.extend_from_slice(page.batch.column(0).as_any().downcast_ref::<UInt64Array>().unwrap().values());
             if native_path {
@@ -174,7 +174,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         upper_ns: 101,
     });
     loop {
-        let page = scan_arrow(&native, &saved, &pruned, &Cancellation::default()).await.unwrap();
+        let page = list_column_rows(&native, &saved, &pruned, &Cancellation::default()).await.unwrap();
         assert_eq!(page.batch.num_rows(), 0);
         assert_eq!(page.bytes_read, 0);
         if page.complete {
@@ -184,11 +184,11 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     }
 
     // Reject A Changed Plan And Cancel An Already Entered Fallback Read.
-    let page = scan_arrow(&native, &saved, &read, &Cancellation::default()).await.unwrap();
+    let page = list_column_rows(&native, &saved, &read, &Cancellation::default()).await.unwrap();
     let mut changed = read.clone();
     changed.after = page.next;
     changed.columns.reverse();
-    assert!(scan_arrow(&native, &saved, &changed, &Cancellation::default()).await.is_err());
+    assert!(list_column_rows(&native, &saved, &changed, &Cancellation::default()).await.is_err());
     fallback.control.block_read.store(true, Ordering::SeqCst);
     let cancelled = Cancellation::default();
     let pending = {
@@ -196,7 +196,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         let snapshot = saved_fallback.clone();
         let read = read.clone();
         let cancel = cancelled.clone();
-        tokio::spawn(async move { scan_arrow(fallback.as_ref(), &snapshot, &read, &cancel).await })
+        tokio::spawn(async move { list_column_rows(fallback.as_ref(), &snapshot, &read, &cancel).await })
     };
     fallback.control.read_entered.notified().await;
     cancelled.cancel();
@@ -205,9 +205,9 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     fallback.control.block_read.store(false, Ordering::SeqCst);
 
     // Refuse Released And Restarted Snapshot Tokens.
-    native.release_snapshot(&saved).await.unwrap();
-    assert!(scan_arrow(&native, &saved, &read, &Cancellation::default()).await.is_err());
-    native.close().await.unwrap();
+    native.delete_snapshot(&saved).await.unwrap();
+    assert!(list_column_rows(&native, &saved, &read, &Cancellation::default()).await.is_err());
+    native.delete_storage_session().await.unwrap();
     drop(native);
     let reopened = SqliteBackend::new(
         root.path().join("storage.sqlite"),
@@ -218,12 +218,12 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         },
     )
     .unwrap();
-    reopened.open().await.unwrap();
-    assert!(scan_arrow(&reopened, &saved, &read, &Cancellation::default()).await.is_err());
-    let current = reopened.open_snapshot(&cut).await.unwrap();
+    reopened.create_storage_session().await.unwrap();
+    assert!(list_column_rows(&reopened, &saved, &read, &Cancellation::default()).await.is_err());
+    let current = reopened.create_snapshot(&cut).await.unwrap();
     assert_ne!(current.token, saved.token);
-    reopened.release_snapshot(&current).await.unwrap();
-    reopened.close().await.unwrap();
-    fallback.release_snapshot(&saved_fallback).await.unwrap();
-    fallback.close().await.unwrap();
+    reopened.delete_snapshot(&current).await.unwrap();
+    reopened.delete_storage_session().await.unwrap();
+    fallback.delete_snapshot(&saved_fallback).await.unwrap();
+    fallback.delete_storage_session().await.unwrap();
 }

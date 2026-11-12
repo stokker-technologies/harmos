@@ -281,38 +281,23 @@ impl ProjectionCatalog {
 /* === Public Functions === */
 
 pub async fn advance_projection(
-    backend: &dyn StorageBackend, snapshot: &BackendSnapshot, name: &Identifier, work: ReadLimits, cancel: &Cancellation,
-) -> Result<u64> {
-    advance_projection_checked(backend, snapshot, name, None, work, cancel).await
-}
-
-pub async fn advance_projection_at(
-    backend: &dyn StorageBackend, snapshot: &BackendSnapshot, name: &Identifier, revision: u64, work: ReadLimits, cancel: &Cancellation,
-) -> Result<u64> {
-    advance_projection_checked(backend, snapshot, name, Some(revision), work, cancel).await
-}
-
-async fn advance_projection_checked(
     backend: &dyn StorageBackend, snapshot: &BackendSnapshot, name: &Identifier, expected: Option<u64>, work: ReadLimits,
     cancel: &Cancellation,
 ) -> Result<u64> {
     cancel.check()?;
     let native_cancel = cancel.child();
     let native_guard = CancelWork(native_cancel.clone());
-    let native = match expected {
-        Some(revision) => backend.advance_projection_native_at(snapshot, name, revision, work, &native_cancel).await?,
-        None => backend.advance_projection_native(snapshot, name, work, &native_cancel).await?,
-    };
+    let native = backend.advance_projection(snapshot, name, expected, work, &native_cancel).await?;
     drop(native_guard);
     if let Some(revision) = native {
         return Ok(revision);
     }
-    let (definition, revision) = backend.projection_definition(name).await?;
+    let (definition, revision) = backend.get_projection_definition(name, None).await?;
     if expected.is_some_and(|expected| expected != revision) {
         return Err(conflict("projection rebuilt before advancement"));
     }
     backend
-        .read_schemas(
+        .list_schemas(
             snapshot,
             &super::SchemaSelection {
                 schema: Some(definition.source.schema.clone()),
@@ -324,10 +309,10 @@ async fn advance_projection_checked(
             },
         )
         .await?;
-    if backend.projection_status(name, revision, &snapshot.at).await?.is_some() {
+    if backend.get_projection_status(name, revision, Some(&snapshot.at)).await?.is_some() {
         return Ok(revision);
     }
-    let previous = backend.projection_frontier(name, revision).await?;
+    let previous = backend.get_projection_status(name, revision, None).await?.map(|status| status.frontier);
     if previous.as_ref().is_some_and(|frontier| frontier.sequence > snapshot.at.sequence) {
         return Err(conflict("projection frontiers must advance monotonically"));
     }
@@ -359,7 +344,7 @@ async fn advance_projection_checked(
             bytes: std::num::NonZeroUsize::new(work.bytes.get() - bytes - retained).unwrap(),
         };
         scan.limits = scan.work;
-        let page = columnar::scan_arrow(backend, snapshot, &scan, cancel).await?;
+        let page = columnar::list_column_rows(backend, snapshot, &scan, cancel).await?;
         rows += page.scanned;
         bytes = bytes.saturating_add(page.bytes_read);
         retained = retained.saturating_add(page.batch.get_array_memory_size());
@@ -414,7 +399,7 @@ async fn advance_projection_checked(
                 };
                 loop {
                     cancel.check()?;
-                    let page = backend.read_projection(&read).await?;
+                    let page = backend.list_projection_rows(&read).await?;
                     for (key, value) in super::time_buckets::fingerprints(&page.batch, budget)? {
                         prior_key_bytes = prior_key_bytes.saturating_add(key.capacity());
                         prior.insert(key, value);
@@ -462,7 +447,7 @@ async fn advance_projection_checked(
         cancel: cancel.clone(),
         previous,
     };
-    backend.publish_projection(publication).await?;
+    backend.set_projection_output(publication).await?;
     Ok(revision)
 }
 

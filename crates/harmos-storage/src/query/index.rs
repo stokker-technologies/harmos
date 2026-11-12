@@ -155,14 +155,14 @@ impl IndexRead {
 
 /* === Public Functions === */
 
-pub async fn scan_index(
+pub async fn list_index_entries(
     backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read: &IndexRead, cancel: &Cancellation,
 ) -> Result<IndexPage> {
     cancel.check()?;
-    let (definition, revision) = backend.index_definition(&read.name).await?;
+    let (definition, revision) = backend.get_index_definition(&read.name).await?;
     read.validate(snapshot, &definition, revision)?;
-    if backend.capabilities().native_index {
-        return backend.scan_index(snapshot, read, cancel).await;
+    if backend.get_storage_capabilities().native_index {
+        return backend.list_index_entries(snapshot, read, cancel).await;
     }
     let mut scan = ArrowScan {
         source: definition.source.clone(),
@@ -190,7 +190,7 @@ pub async fn scan_index(
             bytes: std::num::NonZeroUsize::new(read.work.bytes.get() - bytes).unwrap(),
         };
         scan.limits = scan.work;
-        let page = columnar::scan_arrow(backend, snapshot, &scan, cancel).await?;
+        let page = columnar::list_column_rows(backend, snapshot, &scan, cancel).await?;
         rows += page.scanned;
         bytes = bytes.saturating_add(page.bytes_read);
         for row in 0..page.batch.num_rows() {

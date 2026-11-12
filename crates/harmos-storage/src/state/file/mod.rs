@@ -110,11 +110,11 @@ impl FileBackend {
 }
 
 impl StateBackend for FileBackend {
-    fn history(&self) -> &StoreHistory {
+    fn get_history(&self) -> &StoreHistory {
         &self.history
     }
 
-    fn open(&self) -> StorageFuture<'_, RecoveryPosition> {
+    fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "open", outcome = "cancelled"));
@@ -154,7 +154,7 @@ impl StateBackend for FileBackend {
         })
     }
 
-    fn read_snapshot(&self, maximum: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
+    fn get_recovery_snapshot(&self, maximum: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "read_snapshot", outcome = "cancelled"));
@@ -162,7 +162,7 @@ impl StateBackend for FileBackend {
         })
     }
 
-    fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
+    fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "write_snapshot", outcome = "cancelled"));
@@ -178,7 +178,7 @@ impl StateBackend for FileBackend {
         })
     }
 
-    fn read_entries<'a>(
+    fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
@@ -196,7 +196,7 @@ impl StateBackend for FileBackend {
         })
     }
 
-    fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
+    fn append_recovery_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "write_entries", outcome = "cancelled"));
@@ -225,7 +225,7 @@ impl StateBackend for FileBackend {
         })
     }
 
-    fn close(&self) -> StorageFuture<'_, ()> {
+    fn delete_recovery_session(&self) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let context = crate::execution::Context::current();
             let span = context.sync(|| tracing::debug_span!("storage.state.backend", method = "close", outcome = "cancelled"));

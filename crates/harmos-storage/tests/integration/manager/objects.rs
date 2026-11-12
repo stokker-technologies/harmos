@@ -149,10 +149,10 @@ async fn numeric_keys_roundtrip() {
     let object = Counter { id: 42, value: 7 };
     let admitted = storage.write_object(&object).await.unwrap();
     storage.flush_until(&admitted.position).await.unwrap();
-    let found = storage.read_object::<Counter>(&42, harmos_storage::ObjectVersion::Exact(admitted.version.clone())).await.unwrap().unwrap();
+    let found = storage.get_object::<Counter>(&42, harmos_storage::ObjectVersion::Exact(admitted.version.clone())).await.unwrap().unwrap();
     assert_eq!(found.value, object);
     assert_eq!(found.version, admitted.version);
-    assert!(storage.read_object::<Counter>(&43, harmos_storage::ObjectVersion::Latest,).await.unwrap().is_none());
+    assert!(storage.get_object::<Counter>(&43, harmos_storage::ObjectVersion::Latest,).await.unwrap().is_none());
     storage.close().await.unwrap();
 }
 

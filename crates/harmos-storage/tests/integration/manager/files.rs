@@ -361,7 +361,7 @@ async fn pressure_preserves_owner() {
     let capacity = bytes.capacity();
     let mut file = f.storage.create_file(metadata("pressure", &bytes)).await.unwrap();
     f.data.control.block_write.store(true, Ordering::SeqCst);
-    f.storage.write_records(vec![record(&schema(), &Identifier::new("queued").unwrap(), &vec![7; 16_000])]).await.unwrap();
+    f.storage.append_records(vec![record(&schema(), &Identifier::new("queued").unwrap(), &vec![7; 16_000])]).await.unwrap();
     f.data.control.block_chunk.store(true, Ordering::SeqCst);
     let writing = tokio::spawn(async move {
         file.write_all(bytes).await.unwrap();
@@ -471,7 +471,7 @@ async fn file_bypasses_persistence() {
     f.data.control.write_entered.notified().await;
     file.write_all(b"abc".to_vec()).await.unwrap();
     assert_eq!(file.length(), 3);
-    assert_eq!(f.storage.cursor_saved().sequence, 0);
+    assert_eq!(f.storage.get_saved_position().sequence, 0);
     assert!(!flushing.is_finished());
     {
         let finishing = file.finish();
@@ -649,7 +649,7 @@ async fn opened_capture_verifies_retained_prefix() {
             assert_eq!(result.unwrap().length, source_bytes.len() as u64);
         } else {
             assert!(matches!(result, Err(Error::InvalidInput { .. })));
-            assert_eq!(f.storage.file_progress(&file).await.unwrap().length, 6);
+            assert_eq!(f.storage.get_file_production(&file).await.unwrap().length, 6);
             assert_eq!(capture.acknowledged(), 6);
             assert!(capture.finish().await.is_err());
         }
@@ -681,13 +681,13 @@ async fn opened_capture_synchronizes_one_original_production() {
     assert_eq!(capture.acknowledged(), 6);
     assert!(capture.synchronize(6).await.unwrap());
     assert_eq!(capture.acknowledged(), 6);
-    let progress = session.file_progress(&staged).await.unwrap();
+    let progress = session.get_file_production(&staged).await.unwrap();
     assert_eq!(progress.phase, FilePhase::Producing);
     assert_eq!(progress.length, 6);
     source.write_all(b"suffix").unwrap();
     assert!(capture.synchronize(12).await.unwrap());
     assert_eq!(capture.acknowledged(), 12);
-    assert_eq!(session.file_progress(&staged).await.unwrap().phase, FilePhase::Producing);
+    assert_eq!(session.get_file_production(&staged).await.unwrap().phase, FilePhase::Producing);
     let reference = capture.finish_at(12).await.unwrap();
     assert_eq!(reference.metadata.id, staged.id);
     assert_eq!(reference.length, 12);

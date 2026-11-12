@@ -115,7 +115,7 @@ impl StorageManager {
 
     async fn read_stored_file(&self, file: FileReference, range: ByteRange) -> Result<StoredReader> {
         let end = range.end(file.length)?;
-        self.inner.primary.history().check(&file.position.history)?;
+        self.inner.primary.get_history().check(&file.position.history)?;
 
         // Accepted References Not Yet Saved Must Match The Queued Publication.
         let (saved, pending) = {

@@ -997,6 +997,12 @@ pub struct StorageCapabilities {
     pub durable_projections: bool,
     #[prost(bool, tag = "4")]
     pub conditional_objects: bool,
+    #[prost(bool, tag = "5")]
+    pub file_sessions: bool,
+    #[prost(bool, tag = "6")]
+    pub file_deletion: bool,
+    #[prost(bool, tag = "7")]
+    pub mutation_receipts: bool,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

@@ -81,16 +81,16 @@ impl StorageManager {
             }
             if lifecycle.primary_touched && !lifecycle.primary_closed {
                 tracing::Instrument::instrument(
-                    self.inner.primary.close(),
-                    tracing::debug_span!("storage.backend", method = "primary.close"),
+                    self.inner.primary.delete_storage_session(),
+                    tracing::debug_span!("storage.backend", method = "primary.delete_storage_session"),
                 )
                 .await?;
                 lifecycle.primary_closed = true;
             }
             if lifecycle.recovery_touched && !lifecycle.recovery_closed {
                 tracing::Instrument::instrument(
-                    self.inner.recovery.close(),
-                    tracing::debug_span!("storage.backend", method = "recovery.close"),
+                    self.inner.recovery.delete_recovery_session(),
+                    tracing::debug_span!("storage.backend", method = "recovery.delete_recovery_session"),
                 )
                 .await?;
                 lifecycle.recovery_closed = true;

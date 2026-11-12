@@ -198,30 +198,27 @@ impl State {
 }
 
 impl StorageBackend for SqliteBackend {
-    fn advance_projection_native<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, name: &'a crate::Identifier, work: ReadLimits, cancel: &'a Cancellation,
+    fn advance_projection<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, name: &'a crate::Identifier, expected_revision: Option<u64>, work: ReadLimits,
+        cancel: &'a Cancellation,
     ) -> StorageFuture<'a, Option<u64>> {
         let (snapshot, name, cancel) = (snapshot.clone(), name.clone(), cancel.clone());
-        Box::pin(self.call(move |state| buckets::advance(state, &snapshot, &name, None, work, &cancel)))
+        Box::pin(self.call(move |state| buckets::advance(state, &snapshot, &name, expected_revision, work, &cancel)))
     }
 
-    fn advance_projection_native_at<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, name: &'a crate::Identifier, revision: u64, work: ReadLimits, cancel: &'a Cancellation,
-    ) -> StorageFuture<'a, Option<u64>> {
-        let (snapshot, name, cancel) = (snapshot.clone(), name.clone(), cancel.clone());
-        Box::pin(self.call(move |state| buckets::advance(state, &snapshot, &name, Some(revision), work, &cancel)))
-    }
-
-    fn work(&self) -> StorageFuture<'_, crate::StorageWork> {
+    fn get_work(&self) -> StorageFuture<'_, crate::StorageWork> {
         Box::pin(self.call(|state| Ok(state.work.get())))
     }
 
-    fn history(&self) -> &StoreHistory {
+    fn get_history(&self) -> &StoreHistory {
         &self.history
     }
 
-    fn capabilities(&self) -> StorageCapabilities {
+    fn get_storage_capabilities(&self) -> StorageCapabilities {
         StorageCapabilities {
+            file_sessions: false,
+            file_deletion: false,
+            mutation_receipts: true,
             native_arrow: true,
             native_index: true,
             durable_projections: true,
@@ -229,19 +226,19 @@ impl StorageBackend for SqliteBackend {
         }
     }
 
-    fn open(&self) -> StorageFuture<'_, StorageCursor> {
+    fn create_storage_session(&self) -> StorageFuture<'_, StorageCursor> {
         Box::pin(self.call(|state| {
             state.closed = false;
             state.cursor()
         }))
     }
-    fn cursor_saved(&self) -> StorageFuture<'_, StorageCursor> {
+    fn get_saved_position(&self) -> StorageFuture<'_, StorageCursor> {
         Box::pin(self.call(|state| {
             state.check()?;
             state.cursor()
         }))
     }
-    fn close(&self) -> StorageFuture<'_, ()> {
+    fn delete_storage_session(&self) -> StorageFuture<'_, ()> {
         Box::pin(self.call(|state| {
             state.snapshots.clear();
             state.closed = true;
@@ -249,23 +246,23 @@ impl StorageBackend for SqliteBackend {
         }))
     }
 
-    fn write_schemas(&self, values: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(self.call(move |state| rows::write_schemas(state, values.as_slice())))
+    fn append_schemas(&self, values: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
+        Box::pin(self.call(move |state| rows::append_schemas(state, values.as_slice())))
     }
-    fn write_objects(&self, values: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(self.call(move |state| rows::write_objects(state, values.as_slice())))
+    fn append_object_revisions(&self, values: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
+        Box::pin(self.call(move |state| rows::append_object_revisions(state, values.as_slice())))
     }
-    fn write_records(&self, values: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(self.call(move |state| rows::write_records(state, values.as_slice())))
+    fn append_records(&self, values: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor> {
+        Box::pin(self.call(move |state| rows::append_records(state, values.as_slice())))
     }
-    fn write_stream(&self, values: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(self.call(move |state| rows::write_stream(state, values.as_slice())))
+    fn append_samples(&self, values: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
+        Box::pin(self.call(move |state| rows::append_samples(state, values.as_slice())))
     }
-    fn write_files(&self, values: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(self.call(move |state| rows::write_files(state, values.as_slice())))
+    fn append_file_references(&self, values: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor> {
+        Box::pin(self.call(move |state| rows::append_file_references(state, values.as_slice())))
     }
 
-    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
+    fn create_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         let at = at.clone();
         Box::pin(self.call(move |state| {
             state.check()?;
@@ -285,7 +282,7 @@ impl StorageBackend for SqliteBackend {
         }))
     }
 
-    fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+    fn delete_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
         let snapshot = snapshot.clone();
         Box::pin(self.call(move |state| {
             state.snapshot(&snapshot)?;
@@ -294,41 +291,41 @@ impl StorageBackend for SqliteBackend {
         }))
     }
 
-    fn read_schemas<'a>(
+    fn list_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
         let (snapshot, selection) = (snapshot.clone(), selection.clone());
-        Box::pin(self.call(move |state| rows::read_schemas(state, &snapshot, &selection, page)))
+        Box::pin(self.call(move |state| rows::list_schemas(state, &snapshot, &selection, page)))
     }
-    fn read_objects<'a>(
+    fn list_object_revisions<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         let (snapshot, selection) = (snapshot.clone(), selection.clone());
-        Box::pin(self.call(move |state| rows::read_objects(state, &snapshot, &selection, page)))
+        Box::pin(self.call(move |state| rows::list_object_revisions(state, &snapshot, &selection, page)))
     }
-    fn read_records<'a>(
+    fn list_records<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         let (snapshot, selection) = (snapshot.clone(), selection.clone());
-        Box::pin(self.call(move |state| rows::read_records(state, &snapshot, &selection, page)))
+        Box::pin(self.call(move |state| rows::list_records(state, &snapshot, &selection, page)))
     }
-    fn read_stream<'a>(
+    fn list_samples<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         let (snapshot, selection) = (snapshot.clone(), selection.clone());
-        Box::pin(self.call(move |state| rows::read_stream(state, &snapshot, &selection, page)))
+        Box::pin(self.call(move |state| rows::list_samples(state, &snapshot, &selection, page)))
     }
-    fn read_files<'a>(
+    fn list_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>> {
         let (snapshot, selection) = (snapshot.clone(), selection.clone());
-        Box::pin(self.call(move |state| rows::read_files(state, &snapshot, &selection, page)))
+        Box::pin(self.call(move |state| rows::list_files(state, &snapshot, &selection, page)))
     }
-    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
+    fn get_object<'a>(&'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
         let (snapshot, point) = (snapshot.clone(), point.clone());
-        Box::pin(self.call(move |state| rows::read_object(state, &snapshot, &point)))
+        Box::pin(self.call(move |state| rows::get_object(state, &snapshot, &point)))
     }
-    fn release_object_history<'a>(
+    fn delete_object_history<'a>(
         &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()> {
         let (schema, item, through) = (schema.clone(), item.clone(), through.clone());
@@ -339,122 +336,123 @@ impl StorageBackend for SqliteBackend {
             Ok(())
         }))
     }
-    fn prune_objects<'a>(
+    fn delete_expired_object_revisions<'a>(
         &'a self, through: &'a StorageCursor, maximum: NonZeroUsize, retention: &'a ObjectCatalog,
     ) -> StorageFuture<'a, bool> {
         let (through, retention) = (through.clone(), retention.clone());
         Box::pin(self.call(move |state| rows::prune(state, &through, maximum, &retention)))
     }
 
-    fn scan_arrow<'a>(
+    fn list_column_rows<'a>(
         &'a self, snapshot: &'a BackendSnapshot, read: &'a ArrowScan, cancel: &'a Cancellation,
     ) -> StorageFuture<'a, ArrowPage> {
         let (snapshot, read, cancel) = (snapshot.clone(), read.clone(), cancel.clone());
         Box::pin(self.call(move |state| columns::scan(state, &snapshot, &read, &cancel, false)))
     }
 
-    fn register_index<'a>(
+    fn set_index_definition<'a>(
         &'a self, definition: &'a crate::query::index::IndexDefinition, rebuild: bool, work: ReadLimits, cancel: &'a Cancellation,
     ) -> StorageFuture<'a, u64> {
         let (definition, cancel) = (definition.clone(), cancel.clone());
         Box::pin(self.call(move |state| index::register(state, &definition, rebuild, work, &cancel)))
     }
-    fn index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
+    fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
         let name = name.clone();
         Box::pin(self.call(move |state| {
             state.check()?;
             index::definition(&state.connection, &name)
         }))
     }
-    fn scan_index<'a>(
+    fn list_index_entries<'a>(
         &'a self, snapshot: &'a BackendSnapshot, read: &'a crate::query::index::IndexRead, cancel: &'a Cancellation,
     ) -> StorageFuture<'a, crate::query::index::IndexPage> {
         let (snapshot, read, cancel) = (snapshot.clone(), read.clone(), cancel.clone());
         Box::pin(self.call(move |state| index::scan(state, &snapshot, &read, &cancel)))
     }
-    fn register_projection<'a>(
+    fn set_projection_definition<'a>(
         &'a self, definition: &'a crate::query::projection::ProjectionDefinition, rebuild: bool,
     ) -> StorageFuture<'a, u64> {
         let definition = definition.clone();
         Box::pin(self.call(move |state| projection::register(state, &definition, rebuild)))
     }
-    fn projection_definition<'a>(
-        &'a self, name: &'a crate::Identifier,
+    fn get_projection_definition<'a>(
+        &'a self, name: &'a crate::Identifier, revision: Option<u64>,
     ) -> StorageFuture<'a, (crate::query::projection::ProjectionDefinition, u64)> {
         let name = name.clone();
         Box::pin(self.call(move |state| {
             state.check()?;
-            projection::definition(&state.connection, &name)
+            match revision {
+                Some(revision) => Ok((projection::definition_at(&state.connection, &name, revision)?, revision)),
+                None => projection::definition(&state.connection, &name),
+            }
         }))
     }
-    fn projection_definition_at<'a>(
-        &'a self, name: &'a crate::Identifier, revision: u64,
-    ) -> StorageFuture<'a, crate::query::projection::ProjectionDefinition> {
-        let name = name.clone();
-        Box::pin(self.call(move |state| {
-            state.check()?;
-            projection::definition_at(&state.connection, &name, revision)
-        }))
-    }
-    fn projection_status<'a>(
-        &'a self, name: &'a crate::Identifier, revision: u64, frontier: &'a StorageCursor,
+
+    fn get_projection_status<'a>(
+        &'a self, name: &'a crate::Identifier, revision: u64, frontier: Option<&'a StorageCursor>,
     ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {
-        let (name, frontier) = (name.clone(), frontier.clone());
-        Box::pin(self.call(move |state| projection::status(state, &name, revision, &frontier)))
+        let (name, frontier) = (name.clone(), frontier.cloned());
+        Box::pin(self.call(move |state| {
+            let frontier = match frontier {
+                Some(frontier) => frontier,
+                None => match projection::frontier(state, &name, revision)? {
+                    Some(frontier) => frontier,
+                    None => return Ok(None),
+                },
+            };
+            projection::status(state, &name, revision, &frontier)
+        }))
     }
-    fn projection_frontier<'a>(&'a self, name: &'a crate::Identifier, revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
-        let name = name.clone();
-        Box::pin(self.call(move |state| projection::frontier(state, &name, revision)))
-    }
-    fn publish_projection(&self, publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+
+    fn set_projection_output(&self, publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
         Box::pin(self.call(move |state| projection::publish(state, &publication)))
     }
-    fn read_projection<'a>(
+    fn list_projection_rows<'a>(
         &'a self, read: &'a crate::query::projection::ProjectionRead,
     ) -> StorageFuture<'a, crate::query::projection::ProjectionPage> {
         let read = read.clone();
         Box::pin(self.call(move |state| projection::read(state, &read)))
     }
-    fn retire_projection<'a>(&'a self, name: &'a crate::Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+    fn delete_projection_history<'a>(
+        &'a self, name: &'a crate::Identifier, revision: u64, through: &'a StorageCursor,
+    ) -> StorageFuture<'a, ()> {
         let (name, through) = (name.clone(), through.clone());
         Box::pin(self.call(move |state| projection::retire(state, &name, revision, &through)))
     }
-    fn compare_exchange<'a>(&'a self, exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
+    fn set_object<'a>(&'a self, exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
         let exchange = exchange.clone();
         Box::pin(self.call(move |state| objects::exchange(state, &exchange)))
     }
-    fn retire_object_receipts<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+    fn delete_object_receipts<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
         let through = through.clone();
         Box::pin(self.call(move |state| objects::retire(state, &through)))
     }
-    fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+    fn create_file_staging<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         let metadata = metadata.clone();
         Box::pin(self.call(move |state| files::create(state, &metadata)))
     }
-    fn write_file<'a>(&'a self, file: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
+    fn append_file_bytes<'a>(&'a self, file: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
         let file = file.clone();
         Box::pin(self.call(move |state| files::write(state, &file, offset, bytes.as_slice())))
     }
-    fn finish_file<'a>(
+    fn publish_file_production<'a>(
         &'a self, file: &'a StagedFile, position: &'a StorageCursor, length: u64, sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference> {
         let (file, position) = (file.clone(), position.clone());
         Box::pin(self.call(move |state| files::finish(state, &file, &position, length, sha256)))
     }
-    fn abort_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
+    fn delete_file_staging<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
         let file = file.clone();
         Box::pin(self.call(move |state| files::abort(state, &file)))
     }
-    fn read_file<'a>(
+    fn get_file_bytes<'a>(
         &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
         let (snapshot, file) = (snapshot.clone(), file.clone());
         Box::pin(self.call(move |state| files::read(state, &snapshot, &file, offset, max_bytes)))
     }
-    fn supports_mutation_receipts(&self) -> bool {
-        true
-    }
-    fn save_mutations(&self, receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
+
+    fn append_mutation_receipts(&self, receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
         Box::pin(self.call(move |state| {
             state.check()?;
             let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
@@ -471,7 +469,7 @@ impl StorageBackend for SqliteBackend {
             tx.commit().map_err(db)
         }))
     }
-    fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    fn list_mutation_receipts(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         Box::pin(self.call(move |state| {
             state.check()?;
             let mut query = state.connection.prepare("SELECT data FROM storage_mutations ORDER BY id").map_err(db)?;

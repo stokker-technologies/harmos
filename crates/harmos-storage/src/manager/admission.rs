@@ -48,7 +48,7 @@ impl StorageManager {
         build: impl FnOnce(u64) -> Result<Operation>,
     ) -> Result<u64> {
         let result = async {
-            if mutation.is_some() && !self.inner.primary.supports_mutation_receipts() {
+            if mutation.is_some() && !self.inner.primary.get_storage_capabilities().mutation_receipts {
                 return Err(Error::InvalidInput {
                     field: "storage mutation",
                     reason: "backend does not support mutation receipts",

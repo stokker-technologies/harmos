@@ -63,8 +63,10 @@ impl StorageManager {
     #[tracing::instrument(name = "storage.deletion.delete_file_once", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn delete_file_once(&self, mutation: &MutationId, file: &StagedFile) -> Result<StagedFile> {
         let result = async {
-            self.inner.primary.history().check(&file.history)?;
-            if !self.inner.primary.supports_mutation_receipts() || !self.inner.primary.supports_file_deletion() {
+            self.inner.primary.get_history().check(&file.history)?;
+            if !self.inner.primary.get_storage_capabilities().mutation_receipts
+                || !self.inner.primary.get_storage_capabilities().file_deletion
+            {
                 return Err(invalid("backend must support durable deletion"));
             }
             let fingerprint = fingerprint(file);
@@ -237,7 +239,7 @@ impl DeleteWork {
     #[tracing::instrument(name = "storage.deletion.perform", level = "debug", skip_all)]
     pub(super) async fn perform(&self, inner: &Arc<Inner>) -> Result<()> {
         inner.bounded("primary.delete_file", inner.primary.delete_file(&self.file)).await?;
-        inner.bounded("primary.save_mutations", inner.primary.save_mutations(self.receipt.clone())).await?;
+        inner.bounded("primary.append_mutation_receipts", inner.primary.append_mutation_receipts(self.receipt.clone())).await?;
         tracing::info!(file = %self.file.id, mutation = %self.receipt.as_slice()[0].mutation.key, reason = "explicit deletion", "file deleted");
         Ok(())
     }

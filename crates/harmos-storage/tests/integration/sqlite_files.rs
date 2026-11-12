@@ -64,7 +64,7 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
         chunk_bytes: nz(65536),
     };
     let backend = SqliteBackend::new(&path, history.clone(), settings).unwrap();
-    backend.open().await.unwrap();
+    backend.create_storage_session().await.unwrap();
     let content = b"abcdefgh";
     let sha256 = Sha256::digest(content).into();
     let metadata = FileMetadata {
@@ -74,22 +74,22 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
         expected_length: Some(content.len() as u64),
         expected_sha256: Some(sha256),
     };
-    let file = backend.create_file(&metadata).await.unwrap();
-    backend.write_file(&file, 0, StorageBatch::new(content[..3].to_vec())).await.unwrap();
-    backend.write_file(&file, 3, StorageBatch::new(content[3..].to_vec())).await.unwrap();
-    backend.write_file(&file, 3, StorageBatch::new(content[3..].to_vec())).await.unwrap();
-    assert!(backend.write_file(&file, 3, StorageBatch::new(vec![0; content.len() - 3])).await.is_err());
+    let file = backend.create_file_staging(&metadata).await.unwrap();
+    backend.append_file_bytes(&file, 0, StorageBatch::new(content[..3].to_vec())).await.unwrap();
+    backend.append_file_bytes(&file, 3, StorageBatch::new(content[3..].to_vec())).await.unwrap();
+    backend.append_file_bytes(&file, 3, StorageBatch::new(content[3..].to_vec())).await.unwrap();
+    assert!(backend.append_file_bytes(&file, 3, StorageBatch::new(vec![0; content.len() - 3])).await.is_err());
     let cut = StorageCursor { history: history.clone(), sequence: 1 };
     let mut wrong = sha256;
     wrong[0] ^= 1;
-    assert!(backend.finish_file(&file, &cut, content.len() as u64, wrong).await.is_err());
-    let reference = backend.finish_file(&file, &cut, content.len() as u64, sha256).await.unwrap();
-    backend.write_files(StorageBatch::new(vec![reference.clone()])).await.unwrap();
-    backend.write_files(StorageBatch::new(vec![reference.clone()])).await.unwrap();
-    assert_eq!(backend.finish_file(&file, &cut, content.len() as u64, sha256).await.unwrap(), reference);
-    let saved = backend.open_snapshot(&cut).await.unwrap();
-    assert_eq!(backend.read_file(&saved, &reference, 2, nz(4)).await.unwrap(), content[2..6]);
-    assert!(backend.abort_file(&file).await.is_err());
+    assert!(backend.publish_file_production(&file, &cut, content.len() as u64, wrong).await.is_err());
+    let reference = backend.publish_file_production(&file, &cut, content.len() as u64, sha256).await.unwrap();
+    backend.append_file_references(StorageBatch::new(vec![reference.clone()])).await.unwrap();
+    backend.append_file_references(StorageBatch::new(vec![reference.clone()])).await.unwrap();
+    assert_eq!(backend.publish_file_production(&file, &cut, content.len() as u64, sha256).await.unwrap(), reference);
+    let saved = backend.create_snapshot(&cut).await.unwrap();
+    assert_eq!(backend.get_file_bytes(&saved, &reference, 2, nz(4)).await.unwrap(), content[2..6]);
+    assert!(backend.delete_file_staging(&file).await.is_err());
 
     // Save And Replay One Durable Mutation Receipt.
     let receipt = MutationReceipt {
@@ -101,13 +101,13 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
         expires_at: UNIX_EPOCH + Duration::from_secs(1000),
         value: MutationValue::Cursor(cut.clone()),
     };
-    backend.save_mutations(StorageBatch::new(vec![receipt.clone()])).await.unwrap();
-    backend.save_mutations(StorageBatch::new(vec![receipt.clone()])).await.unwrap();
+    backend.append_mutation_receipts(StorageBatch::new(vec![receipt.clone()])).await.unwrap();
+    backend.append_mutation_receipts(StorageBatch::new(vec![receipt.clone()])).await.unwrap();
     let mut conflict = receipt.clone();
     conflict.fingerprint[0] ^= 1;
-    assert!(backend.save_mutations(StorageBatch::new(vec![conflict])).await.is_err());
-    backend.release_snapshot(&saved).await.unwrap();
-    backend.close().await.unwrap();
+    assert!(backend.append_mutation_receipts(StorageBatch::new(vec![conflict])).await.is_err());
+    backend.delete_snapshot(&saved).await.unwrap();
+    backend.delete_storage_session().await.unwrap();
     drop(backend);
 
     // Refuse A Different History Before Modifying The Database.
@@ -118,25 +118,25 @@ async fn finished_files_and_mutation_receipts_reopen_without_resetting_incompati
     assert_eq!(error.backend_failure(), Some(BackendFailure::Corrupt));
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
     let backend = SqliteBackend::new(&path, history.clone(), settings).unwrap();
-    backend.open().await.unwrap();
-    let snapshot = backend.open_snapshot(&cut).await.unwrap();
-    assert_eq!(backend.read_file(&snapshot, &reference, 0, nz(content.len())).await.unwrap(), content);
-    assert_eq!(backend.recover_mutations(ReadLimits { rows: nz(4), bytes: nz(4096) }).await.unwrap(), vec![receipt]);
+    backend.create_storage_session().await.unwrap();
+    let snapshot = backend.create_snapshot(&cut).await.unwrap();
+    assert_eq!(backend.get_file_bytes(&snapshot, &reference, 0, nz(content.len())).await.unwrap(), content);
+    assert_eq!(backend.list_mutation_receipts(ReadLimits { rows: nz(4), bytes: nz(4096) }).await.unwrap(), vec![receipt]);
 
     // Foreign Tokens At The Same History And Cut Must Still Refuse.
     let other = SqliteBackend::new(root.path().join("other.sqlite"), history.clone(), settings).unwrap();
-    other.open().await.unwrap();
-    let staged = other.create_file(&metadata).await.unwrap();
-    other.write_file(&staged, 0, StorageBatch::new(content.to_vec())).await.unwrap();
-    let published = other.finish_file(&staged, &cut, content.len() as u64, sha256).await.unwrap();
-    other.write_files(StorageBatch::new(vec![published.clone()])).await.unwrap();
-    let foreign = other.open_snapshot(&cut).await.unwrap();
-    assert!(backend.read_file(&foreign, &reference, 0, nz(1)).await.is_err());
-    assert!(other.read_file(&snapshot, &published, 0, nz(1)).await.is_err());
-    other.release_snapshot(&foreign).await.unwrap();
-    other.close().await.unwrap();
-    backend.release_snapshot(&snapshot).await.unwrap();
-    backend.close().await.unwrap();
+    other.create_storage_session().await.unwrap();
+    let staged = other.create_file_staging(&metadata).await.unwrap();
+    other.append_file_bytes(&staged, 0, StorageBatch::new(content.to_vec())).await.unwrap();
+    let published = other.publish_file_production(&staged, &cut, content.len() as u64, sha256).await.unwrap();
+    other.append_file_references(StorageBatch::new(vec![published.clone()])).await.unwrap();
+    let foreign = other.create_snapshot(&cut).await.unwrap();
+    assert!(backend.get_file_bytes(&foreign, &reference, 0, nz(1)).await.is_err());
+    assert!(other.get_file_bytes(&snapshot, &published, 0, nz(1)).await.is_err());
+    other.delete_snapshot(&foreign).await.unwrap();
+    other.delete_storage_session().await.unwrap();
+    backend.delete_snapshot(&snapshot).await.unwrap();
+    backend.delete_storage_session().await.unwrap();
     drop(other);
     drop(backend);
 

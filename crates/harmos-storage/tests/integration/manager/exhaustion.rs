@@ -44,7 +44,7 @@ async fn oversized_batch_refused() {
     let item = Identifier::new("oversized").unwrap();
     let payload = waveforms::binary(16 * 1024);
     let result = storage
-        .write_records(vec![RecordInput {
+        .append_records(vec![RecordInput {
             schema: schema.clone(),
             scope: None,
             item: item.clone(),
@@ -56,11 +56,11 @@ async fn oversized_batch_refused() {
     assert!(matches!(result, Err(Error::ResourceExhausted { .. }) | Err(Error::InvalidInput { .. })));
     assert_eq!(storage.cursor_accepted().sequence, 0);
     assert_eq!(storage.status().pending_bytes, 0);
-    assert_eq!(data.cursor_saved().await.unwrap().sequence, 0);
+    assert_eq!(data.get_saved_position().await.unwrap().sequence, 0);
 
     // Refusal Does Not Poison The Writer; A Following Small Batch Completes.
     storage
-        .write_records(vec![RecordInput {
+        .append_records(vec![RecordInput {
             schema: schema.clone(),
             scope: None,
             item: item.clone(),
@@ -72,7 +72,7 @@ async fn oversized_batch_refused() {
         .unwrap();
     let durable = storage.flush().await.unwrap();
     assert_eq!(durable.sequence, 1);
-    let snapshot = data.open_snapshot(&durable).await.unwrap();
+    let snapshot = data.create_snapshot(&durable).await.unwrap();
     let selection = harmos_storage::query::RecordSelection {
         schema,
         scope: None,
@@ -85,9 +85,9 @@ async fn oversized_batch_refused() {
         rows: NonZeroUsize::new(2).unwrap(),
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let records = data.read_records(&snapshot, &selection, page).await.unwrap();
+    let records = data.list_records(&snapshot, &selection, page).await.unwrap();
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].payload, [1, 2, 3]);
-    data.release_snapshot(&snapshot).await.unwrap();
+    data.delete_snapshot(&snapshot).await.unwrap();
     storage.close().await.unwrap();
 }

@@ -55,7 +55,7 @@ async fn query_operation_batches() {
             payload: (payload).to_vec(),
         })
         .collect::<Vec<_>>();
-    fixture.storage.write_records((records).to_vec()).await.unwrap();
+    fixture.storage.append_records((records).to_vec()).await.unwrap();
     let at = fixture.storage.flush().await.unwrap();
 
     // A Later Durable Row Must Not Advance The Requested Query Boundary.
@@ -63,7 +63,7 @@ async fn query_operation_batches() {
     let late_payload = Reading { value: 100 }.encode();
     fixture
         .storage
-        .write_records(vec![RecordInput {
+        .append_records(vec![RecordInput {
             schema: schema.clone(),
             scope: None,
             item: late_item.clone(),

@@ -87,8 +87,8 @@ async fn object_exchange_saves() {
     }
     let completion = writer.join().await.unwrap();
     assert_eq!(completion.batches, 1);
-    assert_eq!(Some(harmos_protocol::storage::StorageCursor::from(storage.cursor_saved())), completion.cursor);
-    let exact = storage.read_object::<Document>(&"a/b".into(), ObjectVersion::Latest).await.unwrap().unwrap();
+    assert_eq!(Some(harmos_protocol::storage::StorageCursor::from(storage.get_saved_position())), completion.cursor);
+    let exact = storage.get_object::<Document>(&"a/b".into(), ObjectVersion::Latest).await.unwrap().unwrap();
     assert_eq!(exact.value.text, "first");
     drop(exact);
     crate::support::app::shutdown(&runtime).await.unwrap();

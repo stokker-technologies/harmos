@@ -79,7 +79,7 @@ impl StorageManager {
     #[tracing::instrument(name = "storage.follow.follow", level = "debug", skip_all)]
     pub async fn follow<T: Entry>(&self, after: Option<&StorageCursor>, selection: T::Selection) -> Result<Follower<T>> {
         if let Some(after) = after {
-            self.inner.primary.history().check(&after.history)?;
+            self.inner.primary.get_history().check(&after.history)?;
         }
         let requested = after.map_or(0, |after| after.sequence);
         let after = requested.max(T::start(&selection));
@@ -129,7 +129,7 @@ impl StorageManager {
         let rows = limits.rows.min(SCAN_ROWS);
         let bytes = limits.bytes.min(self.inner.settings.scan_bytes());
 
-        let snapshot = self.snapshot(&self.cursor_saved()).await?;
+        let snapshot = self.snapshot(&self.get_saved_position()).await?;
         let (entries, _) = snapshot.scan::<T>(selection, ScanPage { after, rows, bytes }).await?;
         Ok(FollowPage { entries })
     }

@@ -29,7 +29,7 @@ use harmos_domain::{Identified, Message, schema::Described};
 use harmos_storage::query::{
     ObjectSelection, ObjectVersions, SchemaSelection,
     columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource},
-    index::{IndexDefinition, IndexRead, scan_index},
+    index::{IndexDefinition, IndexRead, list_index_entries},
     projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform},
 };
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
@@ -129,15 +129,15 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         };
         assert_eq!(storage.compare_exchange_once(&create, None, &value).await.unwrap(), outcome);
         assert!(storage.compare_exchange_once(&create, None, &Counter { id: 1, value: 99 }).await.is_err());
-        let saved = primary.open_snapshot(&initial.position).await.unwrap();
-        storage.register_index(&definition, false, work, &cancel).await.unwrap();
+        let saved = primary.create_snapshot(&initial.position).await.unwrap();
+        storage.set_index_definition(&definition, false, work, &cancel).await.unwrap();
 
         // Scope Expected Tokens To Their Object And Refuse Existing Creates.
         assert!(matches!(
             storage.compare_exchange(Some(initial.version.clone()), &Counter { id: 2, value: 2 }).await.unwrap(),
             CompareExchange::Conflict { current: None }
         ));
-        assert!(storage.read_object::<Counter>(&2, ObjectVersion::Latest).await.unwrap().is_none());
+        assert!(storage.get_object::<Counter>(&2, ObjectVersion::Latest).await.unwrap().is_none());
         let existing = MutationId {
             window: window.clone(),
             key: Identifier::new("existing").unwrap(),
@@ -156,7 +156,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         assert_eq!(results.iter().filter(|(outcome, _)| matches!(outcome, CompareExchange::Applied(_))).count(), 1);
         let (winner, winner_value) = results.iter().find(|(outcome, _)| matches!(outcome, CompareExchange::Applied(_))).unwrap();
         let CompareExchange::Applied(winner) = winner else { unreachable!() };
-        let current = storage.read_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap();
+        let current = storage.get_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap();
         assert_eq!(current.value.value, *winner_value);
         assert_eq!(current.version, winner.version);
         for (outcome, _) in &results {
@@ -168,7 +168,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         assert_eq!(storage.compare_exchange_once(&existing, None, &Counter { id: 1, value: 99 }).await.unwrap(), existing_outcome);
 
         // Observe One Latest Index Entry And No Schema Row From Either Conflict.
-        let now = primary.open_snapshot(&storage.cursor_saved()).await.unwrap();
+        let now = primary.create_snapshot(&storage.get_saved_position()).await.unwrap();
         let read = IndexRead {
             name: definition.name.clone(),
             lower: None,
@@ -180,7 +180,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             work,
         };
         assert_eq!(
-            scan_index(primary.as_ref(), &now, &read, &cancel)
+            list_index_entries(primary.as_ref(), &now, &read, &cancel)
                 .await
                 .unwrap()
                 .entries
@@ -190,7 +190,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             vec![winner.position.sequence]
         );
         assert_eq!(
-            scan_index(primary.as_ref(), &saved, &read, &cancel)
+            list_index_entries(primary.as_ref(), &saved, &read, &cancel)
                 .await
                 .unwrap()
                 .entries
@@ -200,7 +200,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             vec![initial.position.sequence]
         );
         let schemas = primary
-            .read_schemas(
+            .list_schemas(
                 &now,
                 &SchemaSelection {
                     schema: Some(definition.source.schema.clone()),
@@ -215,7 +215,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             .unwrap();
         assert_eq!(schemas.len(), 2);
         let old = primary
-            .read_objects(
+            .list_object_revisions(
                 &saved,
                 &ObjectSelection {
                     schema: Some(definition.source.schema.clone()),
@@ -231,11 +231,11 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             .await
             .unwrap();
         assert_eq!(Counter::decode(&old[0].value.payload).unwrap(), value);
-        primary.release_snapshot(&now).await.unwrap();
-        primary.release_snapshot(&saved).await.unwrap();
+        primary.delete_snapshot(&now).await.unwrap();
+        primary.delete_snapshot(&saved).await.unwrap();
 
         // Use The Public Snapshot Resources Without Escaping To A Backend.
-        let held = storage.snapshot(&storage.cursor_saved()).await.unwrap();
+        let held = storage.snapshot(&storage.get_saved_position()).await.unwrap();
         let scan = IndexRead {
             name: definition.name.clone(),
             lower: None,
@@ -246,7 +246,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             limits: work,
             work,
         };
-        assert_eq!(held.scan_index(&scan, &cancel).await.unwrap().entries.len(), 1);
+        assert_eq!(held.list_index_entries(&scan, &cancel).await.unwrap().entries.len(), 1);
         let mut scan = ArrowScan {
             source: definition.source.clone(),
             columns: vec!["payload.value".into()],
@@ -259,7 +259,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         };
         let mut values = Vec::new();
         loop {
-            let page = held.scan_arrow(&scan, &cancel).await.unwrap();
+            let page = held.list_column_rows(&scan, &cancel).await.unwrap();
             values.extend_from_slice(page.batch.column(0).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap().values());
             if page.complete {
                 break;
@@ -273,11 +273,11 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             source: definition.source.clone(),
             transform: ProjectionTransform::Select(vec!["payload.value".into()]),
         };
-        let revision = storage.register_projection(&projection, false).await.unwrap();
-        held.advance_projection(&projection.name, work, &cancel).await.unwrap();
-        assert_eq!(storage.projection_status(&projection.name, revision, held.at()).await.unwrap().unwrap().rows, 1);
+        let revision = storage.set_projection_definition(&projection, false).await.unwrap();
+        held.advance_projection(&projection.name, None, work, &cancel).await.unwrap();
+        assert_eq!(storage.get_projection_status(&projection.name, revision, Some(held.at())).await.unwrap().unwrap().rows, 1);
         let page = storage
-            .read_projection(&ProjectionRead {
+            .list_projection_rows(&ProjectionRead {
                 name: projection.name.clone(),
                 revision,
                 frontier: held.at().clone(),
@@ -288,11 +288,11 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             .await
             .unwrap();
         assert_eq!(page.batch.num_rows(), 1);
-        storage.retire_projection(&projection.name, revision, held.at()).await.unwrap();
+        storage.delete_projection_history(&projection.name, revision, held.at()).await.unwrap();
         drop(held);
 
         // A Dropped Caller Cannot Retract Work Already Admitted To The Worker.
-        if !primary.capabilities().native_arrow {
+        if !primary.get_storage_capabilities().native_arrow {
             deterministic.control.block_write.store(true, Ordering::SeqCst);
             let mutation = MutationId {
                 window,
@@ -314,7 +314,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
                 storage.compare_exchange_once(&mutation, Some(winner.version.clone()), &Counter { id: 1, value: 30 }).await.unwrap(),
                 CompareExchange::Applied(_)
             ));
-            assert_eq!(storage.read_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap().value.value, 30);
+            assert_eq!(storage.get_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap().value.value, 30);
         } else {
             retained = Some((create, existing, initial, existing_outcome, winner.clone()));
         }
@@ -323,17 +323,17 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
 
     // Abort An Index Update Inside The Real Object Transaction, Then Retry It.
     let (create, existing, initial, existing_outcome, winner) = retained.unwrap();
-    native.open().await.unwrap();
-    let before = native.cursor_saved().await.unwrap();
-    while !native.prune_objects(&before, nz(64), &catalog()).await.unwrap() {}
-    let pruned = native.open_snapshot(&before).await.unwrap();
+    native.create_storage_session().await.unwrap();
+    let before = native.get_saved_position().await.unwrap();
+    while !native.delete_expired_object_revisions(&before, nz(64), &catalog()).await.unwrap() {}
+    let pruned = native.create_snapshot(&before).await.unwrap();
     let point = ObjectPoint {
         schema: definition.source.schema.id.clone(),
         item: object_key(&1_u64, work.bytes).unwrap(),
         version: ObjectVersion::Exact(initial.version.clone()),
     };
-    assert!(matches!(native.read_object(&pruned, &point).await, Err(Error::Gap { .. })));
-    native.release_snapshot(&pruned).await.unwrap();
+    assert!(matches!(native.get_object(&pruned, &point).await, Err(Error::Gap { .. })));
+    native.delete_snapshot(&pruned).await.unwrap();
     let value = Counter { id: 1, value: 333 };
     let graph =
         harmos_domain::schema::graph::Schema::from_declaration(Counter::DEFINITION, &harmos_domain::config::SchemaSettings::default())
@@ -364,16 +364,16 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
     };
     let fault = rusqlite::Connection::open(&path).unwrap();
     fault.execute_batch("CREATE TRIGGER interrupt_object_index BEFORE INSERT ON storage_index_entries BEGIN SELECT RAISE(ABORT,'injected index interruption'); END;").unwrap();
-    assert!(native.compare_exchange(&exchange).await.is_err());
-    assert_eq!(native.cursor_saved().await.unwrap(), before);
+    assert!(native.set_object(&exchange).await.is_err());
+    assert_eq!(native.get_saved_position().await.unwrap(), before);
     fault.execute_batch("DROP TRIGGER interrupt_object_index;").unwrap();
-    let accepted = native.compare_exchange(&exchange).await.unwrap();
+    let accepted = native.set_object(&exchange).await.unwrap();
     assert!(matches!(accepted, CompareExchange::Applied(_)));
-    assert_eq!(native.compare_exchange(&exchange).await.unwrap(), accepted);
+    assert_eq!(native.set_object(&exchange).await.unwrap(), accepted);
     let mut forged = exchange.clone();
     forged.value.value.payload = Counter { id: 1, value: 444 }.encode();
-    assert!(native.compare_exchange(&forged).await.is_err());
-    native.close().await.unwrap();
+    assert!(native.set_object(&forged).await.is_err());
+    native.delete_storage_session().await.unwrap();
     drop(native);
     drop(fault);
 
@@ -395,9 +395,9 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         CompareExchange::Applied(initial.clone())
     );
     assert_eq!(storage.compare_exchange_once(&existing, None, &Counter { id: 1, value: 99 }).await.unwrap(), existing_outcome);
-    assert_eq!(storage.read_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap().value.value, 333);
-    storage.retire_object_receipts(&initial.position).await.unwrap();
+    assert_eq!(storage.get_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap().value.value, 333);
+    storage.delete_object_receipts(&initial.position).await.unwrap();
     assert!(matches!(storage.compare_exchange_once(&create, None, &Counter { id: 1, value: 1 }).await, Err(Error::Gap { .. })));
-    assert_eq!(storage.read_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap().value.value, 333);
+    assert_eq!(storage.get_object::<Counter>(&1, ObjectVersion::Latest).await.unwrap().unwrap().value.value, 333);
     storage.close().await.unwrap();
 }

@@ -122,9 +122,9 @@ impl StorageManager {
     ) -> Result<CompareExchange> {
         self.admit_exchange(Some(mutation), expected, value).await
     }
-    pub async fn retire_object_receipts(&self, through: &crate::StorageCursor) -> Result<()> {
+    pub async fn delete_object_receipts(&self, through: &crate::StorageCursor) -> Result<()> {
         self.flush_until(through).await?;
-        self.inner.bounded("primary.retire_object_receipts", self.inner.primary.retire_object_receipts(through)).await
+        self.inner.bounded("primary.delete_object_receipts", self.inner.primary.delete_object_receipts(through)).await
     }
 
     async fn admit_exchange<T: StoredObject>(
@@ -150,7 +150,7 @@ impl StorageManager {
         &self, mutation: Option<&crate::MutationId>, expected: Option<ObjectVersionToken>, value: ObjectValue,
         graph: crate::schema::graph::Schema,
     ) -> Result<CompareExchange> {
-        if !self.inner.primary.capabilities().conditional_objects {
+        if !self.inner.primary.get_storage_capabilities().conditional_objects {
             return Err(crate::Error::backend(
                 "conditional objects",
                 crate::BackendFailure::Unsupported,
@@ -160,7 +160,7 @@ impl StorageManager {
         let _writer = self.inner.object_writes.lock().await;
         let graph = Arc::new(graph);
         if let Some(expected) = &expected {
-            self.inner.primary.history().check(expected.history())?;
+            self.inner.primary.get_history().check(expected.history())?;
         }
         let fingerprint = if mutation.is_some() {
             let mut writer = Fingerprint(Sha256::new());
@@ -207,7 +207,7 @@ impl StorageManager {
                 },
             })
         };
-        self.inner.bounded("primary.compare_exchange", self.inner.primary.compare_exchange(&request)).await
+        self.inner.bounded("primary.set_object", self.inner.primary.set_object(&request)).await
     }
 }
 
@@ -269,8 +269,8 @@ impl StorageManager {
 }
 
 impl StorageManager {
-    #[tracing::instrument(name = "storage.manager.read_object", level = "debug", skip_all)]
-    pub async fn read_object<T: StoredObject>(
+    #[tracing::instrument(name = "storage.manager.get_object", level = "debug", skip_all)]
+    pub async fn get_object<T: StoredObject>(
         &self, key: &T::Key, version: ObjectVersion,
     ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>> {
         self.inner.catalog.handle::<T>()?;
@@ -281,7 +281,7 @@ impl StorageManager {
             item: object_key(key, budget)?,
             version,
         };
-        let saved = self.cursor_saved();
+        let saved = self.get_saved_position();
         if let ObjectVersion::Exact(version) = &point.version {
             version.history().check(&saved.history)?;
             if version.revision().get() > saved.sequence {
@@ -290,7 +290,7 @@ impl StorageManager {
         }
 
         let snapshot = self.snapshot(&saved).await?;
-        let Some(object) = snapshot.read_object(&point).await? else {
+        let Some(object) = snapshot.get_object(&point).await? else {
             return Ok(None);
         };
         if matches!(&point.version, ObjectVersion::Exact(version) if version != &object.version) {

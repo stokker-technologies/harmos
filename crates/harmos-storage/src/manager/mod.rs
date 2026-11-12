@@ -273,8 +273,8 @@ impl StorageManager {
         catalog.validate()?;
         settings.validate()?;
         let StorageBackends { primary, state: state_backend } = backends;
-        primary.history().check(state_backend.history())?;
-        let history = primary.history().clone();
+        primary.get_history().check(state_backend.get_history())?;
+        let history = primary.get_history().clone();
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
         let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution.clone())?;

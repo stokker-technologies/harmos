@@ -287,7 +287,7 @@ async fn private_files_hidden() {
         id: Identifier::new("private").unwrap(),
     };
     assert!(f.storage.follow_production(&identity, 0).await.is_err());
-    assert!(f.storage.file_progress(&identity).await.is_err());
+    assert!(f.storage.get_file_production(&identity).await.is_err());
     private.abort().await.unwrap();
     f.finish().await;
 }

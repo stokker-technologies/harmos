@@ -69,7 +69,7 @@ async fn delete_removes_file() {
     let mut query = f
         .storage
         .query(harmos_runtime::storage::Query {
-            at: f.storage.cursor_saved(),
+            at: f.storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
                 scope: None,
                 item: None,
@@ -84,7 +84,7 @@ async fn delete_removes_file() {
     drop(query);
     assert!(f.data.files.lock().unwrap().is_empty());
     assert!(f.data.blobs.lock().unwrap().is_empty());
-    assert!(f.data.create_file(&metadata("terminal")).await.is_err());
+    assert!(f.data.create_file_staging(&metadata("terminal")).await.is_err());
     let other = StagedFile {
         id: Identifier::new("other").unwrap(),
         ..request.file.clone()
@@ -107,7 +107,7 @@ async fn delete_abandoned_missing() {
     request.mutation.key = Identifier::new("missing").unwrap();
     request.file.id = Identifier::new("missing").unwrap();
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
-    assert!(f.data.create_file(&metadata("missing")).await.is_err());
+    assert!(f.data.create_file_staging(&metadata("missing")).await.is_err());
     f.finish().await;
 }
 
@@ -164,7 +164,7 @@ async fn deleted_checkpoint_refused() {
     producer.abort().await.unwrap();
     let request = request(&f, "checkpoint");
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
-    f.data.save_production(harmos_runtime::storage::StorageBatch::new(vec![checkpoint])).await.unwrap();
+    f.data.set_file_production_checkpoints(harmos_runtime::storage::StorageBatch::new(vec![checkpoint])).await.unwrap();
     assert!(f.data.saved_productions.lock().unwrap().is_empty());
     assert!(f.data.staged.lock().unwrap().is_empty());
     f.finish().await;

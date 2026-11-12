@@ -116,7 +116,7 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
 
 fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_runtime::storage::Query {
     harmos_runtime::storage::Query {
-        at: fixture.storage.cursor_saved(),
+        at: fixture.storage.get_saved_position(),
         source: Source::Records(RecordSelection {
             schema,
             scope: None,
@@ -159,7 +159,7 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
     for (index, value) in values.iter().enumerate() {
         let payload = value.encode();
         let item = Identifier::new(format!("value{index}")).unwrap();
-        fixture.storage.write_records(vec![super::super::record(&schema, &item, &payload)]).await.unwrap();
+        fixture.storage.append_records(vec![super::super::record(&schema, &item, &payload)]).await.unwrap();
     }
     fixture.storage.flush().await.unwrap();
 }

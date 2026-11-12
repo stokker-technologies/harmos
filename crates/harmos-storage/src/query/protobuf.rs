@@ -45,6 +45,9 @@ impl From<StorageCapabilities> for wire::StorageCapabilities {
             native_index: v.native_index,
             durable_projections: v.durable_projections,
             conditional_objects: v.conditional_objects,
+            file_sessions: v.file_sessions,
+            file_deletion: v.file_deletion,
+            mutation_receipts: v.mutation_receipts,
         }
     }
 }

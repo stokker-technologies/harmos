@@ -28,6 +28,8 @@ use crate::{Identifier, Message, RecordInput, Result, SchemaKey, StorageCursor, 
 
 /* === Constants === */
 
+pub const P95_BOUND_MS: f64 = 250.0;
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -117,7 +119,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
             while !remaining.is_empty() {
                 let length = storage.stream_batch_len(remaining)?;
                 let admitted = Instant::now();
-                let position = storage.write_stream(remaining[..length].to_vec()).await?;
+                let position = storage.append_samples(remaining[..length].to_vec()).await?;
                 admission_wait += admitted.elapsed();
                 accepted.send((position, Instant::now())).expect("live lag observer");
                 remaining = &remaining[length..];
@@ -143,7 +145,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
         let mut lags = Vec::with_capacity(batches);
         let mut finished = false;
         loop {
-            let saved = observer_storage.cursor_saved();
+            let saved = observer_storage.get_saved_position();
             observe(&mut pending, &mut lags, saved.sequence);
             if finished && pending.is_empty() {
                 break;

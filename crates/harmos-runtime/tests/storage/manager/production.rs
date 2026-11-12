@@ -68,7 +68,7 @@ async fn integrity_failure_abandons() {
         history: producer.session.history.clone(),
         id: producer.session.id.clone(),
     };
-    assert_eq!(f.storage.file_progress(&identity).await.unwrap().phase, FilePhase::Abandoned);
+    assert_eq!(f.storage.get_file_production(&identity).await.unwrap().phase, FilePhase::Abandoned);
     assert_eq!(f.data.staged.lock().unwrap()["integrity"].1, b"bad");
     f.finish().await;
 }
@@ -92,7 +92,7 @@ async fn receipt_awaits_flush() {
 async fn unsaved_file_survives() {
     let f = fixture().await;
     let first = f.storage.write_file(metadata("first-finished"), (b"first").to_vec()).await.unwrap();
-    assert_eq!(f.storage.cursor_saved().sequence, 0);
+    assert_eq!(f.storage.get_saved_position().sequence, 0);
     let recovered = super::recovery::restart(&f).await;
     let second = recovered.storage.write_file(metadata("second-finished"), (b"second").to_vec()).await.unwrap();
     assert_eq!(first.position, second.position);

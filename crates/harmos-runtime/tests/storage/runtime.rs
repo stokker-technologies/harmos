@@ -73,7 +73,7 @@ async fn runtime_owns_storage() {
         Err(Error::InvalidInput { field: "service definition", .. })
     ));
     write(handle.storage().unwrap(), "final").await;
-    f.storage.write_recovery(vec![b"logical-state".to_vec()]).await.unwrap();
+    f.storage.append_recovery_entries(vec![b"logical-state".to_vec()]).await.unwrap();
     let settled = crate::support::app::shutdown(&f.runtime).await.unwrap();
     assert_eq!(crate::support::app::shutdown(&f.runtime).await.unwrap(), settled);
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);

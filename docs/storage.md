@@ -34,11 +34,11 @@ incompatible data. Application owners choose backup and migration policy.
 ## Saved Reads and Capabilities
 
 ```rust,ignore
-let capabilities = storage.capabilities();
+let capabilities = storage.get_storage_capabilities();
 let snapshot = storage.snapshot(&saved_cursor).await?;
 let saved = snapshot.at();
-let page = snapshot.scan_arrow(&read, &cancel).await?;
-let ordered = snapshot.scan_index(&index_read, &cancel).await?;
+let page = snapshot.list_column_rows(&read, &cancel).await?;
+let ordered = snapshot.list_index_entries(&index_read, &cancel).await?;
 ```
 
 A manager snapshot captures a saved admission cut, not pending writes. It retains
@@ -48,13 +48,14 @@ that token unusable. Later writes do not alter the retained answer. Readers must
 release snapshots before expecting retention to reclaim their rows.
 
 `StorageCapabilities` advertises `native_arrow`, `native_index`,
-`durable_projections` and `conditional_objects`. `scan_arrow` and `scan_index`
+`durable_projections`, `conditional_objects`, `file_sessions`, `file_deletion` and
+`mutation_receipts`. `list_column_rows` and `list_index_entries`
 choose native execution or the common bounded executor. A backend without native
 Arrow scans supplies typed row reads; it still receives the same predicates and
 saved-cut semantics. A backend without a native index stores its declarations and
 uses bounded source scanning. It refuses insufficient work rather than returning
 an incomplete globally sorted answer. Durable projections require an atomic
-publication primitive and immutable `projection_definition_at(name, revision)` lookup
+publication primitive and immutable `get_projection_definition(name, Some(revision))` lookup
 for source authorization of retained revisions; conditional objects require an atomic compare/exchange
 primitive. Defaults for unavailable primitives return `Unsupported`, never pretend
 an empty result or successful write. Independent read-then-write calls cannot
@@ -78,7 +79,7 @@ column loading. `ArrowPage` reports source rows scanned, encoded column bytes re
 columns fetched and payload rows reconstructed for measurement. These counters
 are evidence, not admission policy or timing assertions.
 
-For a record query containing only projections, `StorageBackend::seek_records`
+For a record query containing only projections, `StorageBackend::get_record_position`
 may locate the exclusive position after the requested number of selected records.
 It binds the same snapshot and selection; an exhausted selection returns the saved
 cut, and `None` keeps sequential execution. The query executor then decodes only
@@ -92,7 +93,7 @@ return `Some(Vec<RecordView>)` instead of copying owned record payloads per read
 Construct each `RecordView` once with `RecordView::new(record)?`; clones share the
 immutable row, and `encoded_bytes()` retains its exact checked serialized size.
 The snapshot reader still validates history, position order, cut, selection and
-row/byte ceilings. Returning `None` keeps the existing `read_records` path.
+row/byte ceilings. Returning `None` keeps the existing `list_records` path.
 Payload validation and decoding still run on selected rows. No backend-provided
 unchecked byte count can bypass the page bound.
 
@@ -104,7 +105,7 @@ without cancelling the caller's shared token.
 ## Ordered Indexes
 
 ```rust,ignore
-storage.register_index(&definition, rebuild, work, &cancel).await?;
+storage.set_index_definition(&definition, rebuild, work, &cancel).await?;
 ```
 
 An `IndexDefinition` owns a name, nonzero semantic version, source and ordered
@@ -127,10 +128,10 @@ invalidates old index continuations; changed plans and foreign cuts refuse.
 ## Durable Projections
 
 ```rust,ignore
-let revision = storage.register_projection(&definition, rebuild).await?;
-snapshot.advance_projection(&definition.name, work, &cancel).await?;
-let frontier = storage.projection_frontier(&definition.name, revision).await?;
-let status = storage.projection_status(&definition.name, revision, snapshot.at()).await?;
+let revision = storage.set_projection_definition(&definition, rebuild).await?;
+snapshot.advance_projection(&definition.name, None, work, &cancel).await?;
+let frontier = storage.get_projection_status(&definition.name, revision, None).await?.map(|status| status.frontier);
+let status = storage.get_projection_status(&definition.name, revision, Some(snapshot.at())).await?;
 let page = storage.read_projection(&read).await?;
 ```
 
@@ -299,15 +300,15 @@ no concrete database or host engine is required. For JSON, consume its `STORAGE_
 and `STORAGE_COUNTER`/`STORAGE_WORK` lines; the repository producer's `storage_bench.measurements(lines,
 revision, system, backend="reference")` emits the release schema for another backend.
 
-`StorageBackend::work()` optionally returns cumulative `StorageWork` counters.
+`StorageBackend::get_work()` optionally returns cumulative `StorageWork` counters.
 Differences around an isolated call report decoded source rows/bytes/chunks,
 bucket members and buckets recomputed, index entries visited, SQLite VM steps
 and prepared index statements. Counters belong to an owner and include repeated
 physical decoding; encoded bytes are not unique device I/O. Unsupported counters
-remain zero. `advance_projection_native` is an optional backend hook; returning
+remain zero. `advance_projection` is an optional backend hook; returning
 `None` selects the shared bounded executor without changing existing implementers.
-Revision-checked `Snapshot::advance_projection_at` uses the optional
-`advance_projection_native_at` hook. A native implementation must check the expected
+`Snapshot::advance_projection` accepts an optional expected revision and forwards it
+to that same hook. A native implementation must check the expected
 active revision atomically with publication; SQLite holds its state lock across both.
 Returning `None` retains the shared executor's revision and publication checks.
 
@@ -382,3 +383,19 @@ size threshold. Typed provider writes split at entry boundaries around
 successful piece publishes its saved frontier independently, and retry skips its
 already durable prefix. Splitting changes no stored encoding, durability setting or
 atomic conditional-object replacement.
+
+## Native Provider Hooks
+
+`StorageBackend` has 52 hooks and `StateBackend` has eight. Implement the names in
+`crates/harmos-storage/src/backend.rs` and `src/state/mod.rs`; there are no old-name
+aliases. Storage and recovery sessions have distinct Create/Delete hooks. Appends
+retain their assigned-position replay and durable-receipt contracts. Private flush
+remains an explicit recovery barrier.
+
+`get_storage_capabilities()` owns `file_sessions`, `file_deletion` and
+`mutation_receipts` alongside query capabilities. Unsupported capabilities refuse
+explicitly. `get_projection_definition(name, revision)` returns a definition and
+revision, selecting current when revision is absent. `get_projection_status` accepts
+an optional exact frontier; absence returns the newest readable durable status for
+that revision. `advance_projection` accepts an optional expected revision, preserving
+atomic checked native publication and the checked shared fallback.

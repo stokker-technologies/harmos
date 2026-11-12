@@ -173,7 +173,7 @@ async fn capture(storage: &StorageManager, feed: &mut harmos_runtime::streams::S
     };
     storage.write_schema(key.clone(), definition.schema().clone()).await.unwrap();
     storage
-        .write_stream(vec![StreamInput {
+        .append_samples(vec![StreamInput {
             record: RecordInput {
                 schema: key.clone(),
                 scope: None,
@@ -277,7 +277,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         for (index, key) in keys.iter().enumerate() {
             let mut reader = storage
                 .query(harmos_runtime::storage::Query {
-                    at: storage.cursor_saved(),
+                    at: storage.get_saved_position(),
                     source: Source::Stream(StreamSelection {
                         schema: key.clone(),
                         scope: None,

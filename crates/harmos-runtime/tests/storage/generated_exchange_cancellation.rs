@@ -45,6 +45,6 @@ async fn cancelled_exchange_retains() {
     stream.cancel_and_settle().await.unwrap();
     f.storage.flush_until(&accepted).await.unwrap();
     assert_eq!(f.data.rows.lock().unwrap().len(), 2);
-    assert_eq!(f.storage.cursor_saved(), accepted);
+    assert_eq!(f.storage.get_saved_position(), accepted);
     f.finish().await;
 }

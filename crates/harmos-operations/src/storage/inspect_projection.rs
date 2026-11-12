@@ -53,10 +53,10 @@ impl ProtobufOperation for InspectProjection {
                     field: "projection",
                     reason: "invalid name",
                 })?;
-                let definition = storage.projection_definition_at(&name, request.revision).await?;
+                let definition = storage.get_projection_definition(&name, Some(request.revision)).await?.0;
                 super::native::source_matches(&source, &definition.source)?;
                 let frontier = required(request.frontier)?.try_into()?;
-                let status = storage.projection_status(&name, request.revision, &frontier).await?;
+                let status = storage.get_projection_status(&name, request.revision, Some(&frontier)).await?;
                 Ok(wire::ProjectionState { status: status.map(Into::into) })
             },
             cancel.clone(),

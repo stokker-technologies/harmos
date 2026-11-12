@@ -67,7 +67,7 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.state.admission.reserve_recovery", level = "debug", skip_all)]
     async fn reserve_recovery(&self, payload_bytes: usize, records: Option<ReadLimits>, snapshot: bool) -> Result<Permit> {
-        let recovery_bytes = recovery_encoded_bound(payload_bytes, self.inner.recovery.history(), self.inner.primary.history())?;
+        let recovery_bytes = recovery_encoded_bound(payload_bytes, self.inner.recovery.get_history(), self.inner.primary.get_history())?;
         let bytes = recovery_bytes;
         let batches = 1 + usize::from(records.is_some());
         if batches > self.inner.settings.request.max_pending_write_batches.get() {
@@ -173,7 +173,8 @@ impl Permit {
         context.sync(|| {
             let _stage = tracing::debug_span!("storage.state.snapshot_payload").entered();
             debug_assert!(self.snapshot);
-            let bytes = recovery_encoded_bound(payload.segment_bytes(), self.inner.recovery.history(), self.inner.primary.history())?;
+            let bytes =
+                recovery_encoded_bound(payload.segment_bytes(), self.inner.recovery.get_history(), self.inner.primary.get_history())?;
             if bytes > self.bytes {
                 return Err(Error::InvalidInput {
                     field: "state snapshot",
@@ -260,7 +261,7 @@ impl Permit {
             // Encoding runs under the original conservative scratch reservation.
             // Only the encoded buffer survives commit; release unused framing and
             // growth allowance before the group becomes queued work.
-            let bytes = recovery_encoded_bound(self.payload.len(), self.inner.recovery.history(), self.inner.primary.history())?;
+            let bytes = recovery_encoded_bound(self.payload.len(), self.inner.recovery.get_history(), self.inner.primary.get_history())?;
             if bytes > self.bytes {
                 return Err(Error::InvalidInput {
                     field: "managed recovery",

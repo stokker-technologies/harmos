@@ -48,7 +48,7 @@ impl ProtobufOperation for ScanArrow {
                 let read: harmos_storage::query::columnar::ArrowScan = required(request.read)?.try_into()?;
                 super::native::admit(&context, Self::ID, &read.source)?;
                 let mut snapshot = snapshots.read(required(request.snapshot)?)?;
-                let page = snapshot.scan_arrow(&read, &cancel).await?;
+                let page = snapshot.list_column_rows(&read, &cancel).await?;
                 super::native::admit(&context, Self::ID, &read.source)?;
                 let page: wire::ArrowPage = page.try_into()?;
                 super::native::page_bytes(page.buffer_bytes(), read.limits.bytes.get())?;

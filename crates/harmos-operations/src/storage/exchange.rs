@@ -60,7 +60,7 @@ pub(crate) async fn exchange(
     let mut pending = VecDeque::<(u64, harmos_storage::StorageCursor)>::new();
     let mut previous = None;
     let mut batches = 0u64;
-    let mut cursor = storage.cursor_saved();
+    let mut cursor = storage.get_saved_position();
     let mut closed = false;
 
     loop {

@@ -334,12 +334,12 @@ impl Receipts {
 impl StorageManager {
     #[tracing::instrument(name = "storage.receipts.recover_receipts", level = "debug", skip_all)]
     pub(super) async fn recover_receipts(&self) -> Result<()> {
-        if !self.inner.primary.supports_mutation_receipts() {
+        if !self.inner.primary.get_storage_capabilities().mutation_receipts {
             return Ok(());
         }
         let limits = self.inner.state.lock().unwrap().receipts.recovery_limits();
         let bytes = limits.bytes.get();
-        let receipts = self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits)).await?;
+        let receipts = self.inner.bounded("primary.list_mutation_receipts", self.inner.primary.list_mutation_receipts(limits)).await?;
         if receipts.len() > limits.rows.get()
             || receipts
                 .iter()
@@ -353,7 +353,7 @@ impl StorageManager {
         }
         for receipt in &receipts {
             if let MutationValue::Deleted(file) = &receipt.value {
-                self.inner.primary.history().check(&file.history)?;
+                self.inner.primary.get_history().check(&file.history)?;
             }
             if let MutationValue::Cursor(cursor) = &receipt.value {
                 let state = self.inner.state.lock().unwrap();
@@ -365,7 +365,7 @@ impl StorageManager {
                 }
             }
             if let MutationValue::Producer(producer) = &receipt.value {
-                self.inner.primary.history().check(&producer.session.history)?;
+                self.inner.primary.get_history().check(&producer.session.history)?;
                 if producer.session.generation == 0 {
                     return Err(Error::InvalidInput {
                         field: "mutation recovery",
@@ -376,7 +376,7 @@ impl StorageManager {
         }
         for receipt in &receipts {
             if let MutationValue::Reference(reference) = &receipt.value {
-                self.inner.primary.history().check(&reference.position.history)?;
+                self.inner.primary.get_history().check(&reference.position.history)?;
                 reference.check_native().map_err(|_| Error::InvalidInput {
                     field: "mutation recovery",
                     reason: "invalid completed file reference",
@@ -394,8 +394,8 @@ impl StorageManager {
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage" });
         }
-        let mutations = if self.inner.primary.supports_mutation_receipts() {
-            Some(state.receipts.window(self.inner.primary.history(), MUTATION_RETENTION)?)
+        let mutations = if self.inner.primary.get_storage_capabilities().mutation_receipts {
+            Some(state.receipts.window(self.inner.primary.get_history(), MUTATION_RETENTION)?)
         } else {
             None
         };
@@ -408,7 +408,7 @@ impl StorageManager {
     }
 
     pub fn mutation_window(&self) -> Result<MutationWindow> {
-        if !self.inner.primary.supports_mutation_receipts() {
+        if !self.inner.primary.get_storage_capabilities().mutation_receipts {
             return Err(Error::InvalidInput {
                 field: "storage mutations",
                 reason: "backend does not support mutation receipts",
@@ -418,7 +418,7 @@ impl StorageManager {
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage mutations" });
         }
-        let window = state.receipts.window(self.inner.primary.history(), MUTATION_RETENTION)?;
+        let window = state.receipts.window(self.inner.primary.get_history(), MUTATION_RETENTION)?;
         state.collect();
         Ok(window)
     }

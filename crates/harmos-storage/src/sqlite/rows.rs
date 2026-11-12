@@ -141,7 +141,7 @@ pub(super) fn put_schema(connection: &Connection, history: &StoreHistory, value:
     Ok(())
 }
 
-pub(super) fn write_schemas(state: &mut State, values: &[StorageSchema]) -> Result<StorageCursor> {
+pub(super) fn append_schemas(state: &mut State, values: &[StorageSchema]) -> Result<StorageCursor> {
     state.check()?;
     let through = values.last().ok_or_else(|| invalid("empty schema batch"))?.position.sequence;
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
@@ -153,7 +153,7 @@ pub(super) fn write_schemas(state: &mut State, values: &[StorageSchema]) -> Resu
     state.cursor()
 }
 
-pub(super) fn write_records(state: &mut State, values: &[StoredRecord]) -> Result<StorageCursor> {
+pub(super) fn append_records(state: &mut State, values: &[StoredRecord]) -> Result<StorageCursor> {
     state.check()?;
     let through = values.last().ok_or_else(|| invalid("empty record batch"))?.position.sequence;
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
@@ -203,7 +203,7 @@ pub(super) fn write_records(state: &mut State, values: &[StoredRecord]) -> Resul
     state.cursor()
 }
 
-pub(super) fn write_stream(state: &mut State, values: &[StoredRow]) -> Result<StorageCursor> {
+pub(super) fn append_samples(state: &mut State, values: &[StoredRow]) -> Result<StorageCursor> {
     state.check()?;
     let through = values.last().ok_or_else(|| invalid("empty stream batch"))?.record.position.sequence;
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
@@ -254,7 +254,7 @@ pub(super) fn write_stream(state: &mut State, values: &[StoredRow]) -> Result<St
     state.cursor()
 }
 
-pub(super) fn write_objects(state: &mut State, values: &[ObjectEntry]) -> Result<StorageCursor> {
+pub(super) fn append_object_revisions(state: &mut State, values: &[ObjectEntry]) -> Result<StorageCursor> {
     state.check()?;
     let through = values.last().ok_or_else(|| invalid("empty object batch"))?.position.sequence;
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
@@ -300,7 +300,7 @@ pub(super) fn write_objects(state: &mut State, values: &[ObjectEntry]) -> Result
     state.cursor()
 }
 
-pub(super) fn write_files(state: &mut State, values: &[FileReference]) -> Result<StorageCursor> {
+pub(super) fn append_file_references(state: &mut State, values: &[FileReference]) -> Result<StorageCursor> {
     state.check()?;
     let through = values.last().ok_or_else(|| invalid("empty file batch"))?.position.sequence;
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
@@ -333,7 +333,7 @@ pub(super) fn write_files(state: &mut State, values: &[FileReference]) -> Result
     state.cursor()
 }
 
-pub(super) fn read_schemas(
+pub(super) fn list_schemas(
     state: &State, snapshot: &BackendSnapshot, selection: &SchemaSelection, page: ScanPage,
 ) -> Result<Vec<StorageSchema>> {
     state.snapshot(snapshot)?;
@@ -347,7 +347,7 @@ pub(super) fn read_schemas(
     )
 }
 
-pub(super) fn read_objects(
+pub(super) fn list_object_revisions(
     state: &State, snapshot: &BackendSnapshot, selection: &ObjectSelection, page: ScanPage,
 ) -> Result<Vec<ObjectEntry>> {
     state.snapshot(snapshot)?;
@@ -379,7 +379,7 @@ pub(super) fn read_objects(
     )
 }
 
-pub(super) fn read_records(
+pub(super) fn list_records(
     state: &State, snapshot: &BackendSnapshot, selection: &RecordSelection, page: ScanPage,
 ) -> Result<Vec<StoredRecord>> {
     state.snapshot(snapshot)?;
@@ -399,7 +399,7 @@ pub(super) fn read_records(
     )
 }
 
-pub(super) fn read_stream(
+pub(super) fn list_samples(
     state: &State, snapshot: &BackendSnapshot, selection: &StreamSelection, page: ScanPage,
 ) -> Result<Vec<StoredRow>> {
     state.snapshot(snapshot)?;
@@ -421,7 +421,7 @@ pub(super) fn read_stream(
     )
 }
 
-pub(super) fn read_files(
+pub(super) fn list_files(
     state: &State, snapshot: &BackendSnapshot, selection: &FileSelection, page: ScanPage,
 ) -> Result<Vec<FileReference>> {
     state.snapshot(snapshot)?;
@@ -435,7 +435,7 @@ pub(super) fn read_files(
     )
 }
 
-pub(super) fn read_object(state: &State, snapshot: &BackendSnapshot, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
+pub(super) fn get_object(state: &State, snapshot: &BackendSnapshot, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
     state.snapshot(snapshot)?;
     let position = match &point.version {
         crate::ObjectVersion::Latest => None,

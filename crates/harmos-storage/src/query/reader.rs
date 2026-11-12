@@ -186,7 +186,7 @@ impl StorageManager {
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
         let result = async {
             query.validate()?;
-            self.inner.primary.history().check(&query.at.history)?;
+            self.inner.primary.get_history().check(&query.at.history)?;
 
             let active = query_slot(&self.inner).await?;
 
@@ -341,7 +341,7 @@ impl QueryReader {
         if slice.offset > 0
             && transforms.iter().all(|transform| matches!(transform, Transform::Project(_)))
             && let Source::Records(selection) = &self.query.source
-            && let Some(position) = snapshot.seek_records(selection, slice.offset).await?
+            && let Some(position) = snapshot.get_record_position(selection, slice.offset).await?
         {
             self.after = position;
             slice.offset = 0;

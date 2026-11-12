@@ -189,18 +189,18 @@ fn gate(at: StorageCursor) -> harmos_runtime::storage::Query {
 #[tokio::test]
 async fn unrelated_backlog_skipped() {
     let f = Fixture::new(config()).await;
-    let durable = f.storage.cursor_saved();
+    let durable = f.storage.get_saved_position();
 
     // Hold The Worker At A Snapshot Gate Until Both Domains Have Been Admitted.
     f.data.control.block_view.store(true, Ordering::SeqCst);
-    let mut acquiring = Box::pin(f.storage.query(gate(f.storage.cursor_saved())));
+    let mut acquiring = Box::pin(f.storage.query(gate(f.storage.get_saved_position())));
     tokio::select! {
         result = &mut acquiring => { let _ = result; panic!("view must reach its gate") },
         _ = f.data.control.view_entered.notified() => {}
     }
     write(&f.storage, "unrelated-measurement").await;
-    let first = f.storage.write_recovery(vec![b"state-one".to_vec()]).await.unwrap();
-    let second = f.storage.write_recovery(vec![b"state-two".to_vec()]).await.unwrap();
+    let first = f.storage.append_recovery_entries(vec![b"state-one".to_vec()]).await.unwrap();
+    let second = f.storage.append_recovery_entries(vec![b"state-two".to_vec()]).await.unwrap();
     let mut flushing = Box::pin(f.storage.flush_recovery());
     assert!(
         std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await
@@ -215,7 +215,7 @@ async fn unrelated_backlog_skipped() {
         result = &mut flushing => assert_eq!(result.unwrap(), second),
         _ = f.data.control.write_entered.notified() => panic!("ready journal was held behind unrelated primary data")
     }
-    assert_eq!(f.storage.cursor_saved(), durable);
+    assert_eq!(f.storage.get_saved_position(), durable);
     assert_eq!(f.recovery.control.writes.lock().unwrap().as_slice(), &[first.sequence, second.sequence]);
     {
         let entries = f.recovery.entries.lock().unwrap();
@@ -271,7 +271,7 @@ async fn journal_awaits_data() {
 
     // Keep Both Transactions In The Queue Until The Recovery Barrier Exists.
     data.control.block_view.store(true, Ordering::SeqCst);
-    let mut acquiring = Box::pin(storage.query(gate(storage.cursor_saved())));
+    let mut acquiring = Box::pin(storage.query(gate(storage.get_saved_position())));
     tokio::select! {
         result = &mut acquiring => { let _ = result; panic!("view must reach its gate") },
         _ = data.control.view_entered.notified() => {}
@@ -297,7 +297,7 @@ async fn journal_awaits_data() {
         _ = state.control.write_entered.notified() => panic!("journal preceded its required data"),
         _ = data.control.write_entered.notified() => {}
     }
-    assert_eq!(storage.cursor_saved(), before);
+    assert_eq!(storage.get_saved_position(), before);
     assert!(state.control.writes.lock().unwrap().is_empty());
     data.control.block_write.store(false, Ordering::SeqCst);
     data.control.write_release.notify_one();
@@ -305,7 +305,7 @@ async fn journal_awaits_data() {
         result = &mut flushing => panic!("journal must reach its gate: {result:?}"),
         _ = state.control.write_entered.notified() => {}
     }
-    assert!(storage.cursor_saved().covers(&first_dependency).unwrap());
+    assert!(storage.get_saved_position().covers(&first_dependency).unwrap());
     state.control.block_write.store(false, Ordering::SeqCst);
     state.control.write_release.notify_one();
     let saved = flushing.await.unwrap();
