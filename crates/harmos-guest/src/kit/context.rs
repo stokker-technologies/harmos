@@ -40,6 +40,8 @@ pub struct Context {
     pub(super) context: Option<[u8; 32]>,
     pub(super) generation_context: Option<[u8; 32]>,
     pub(super) assignments: harmos_operations::execution::operations::OperationAssignments,
+    pub(super) provides: &'static [harmos_operations::catalog::Node<harmos_operations::operations::WireDeclaration>],
+    pub(super) requires: &'static [harmos_operations::catalog::Node<harmos_operations::plugin::Requirement>],
     pub(super) call: std::sync::Arc<crate::operations::CallContext>,
 }
 
@@ -60,10 +62,8 @@ impl crate::plugin::Context for Context {
 
     fn with_generation(&self, token: [u8; 32]) -> Self {
         Self {
-            context: self.context,
             generation_context: Some(token),
-            assignments: self.assignments.clone(),
-            call: self.call.clone(),
+            ..self.clone()
         }
     }
 }

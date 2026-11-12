@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,25 +18,8 @@ use super::lifecycle::{Lifecycle, Manager, guest_catalog, serve_host};
 use super::sandbox::{CountsOperation, ReadOperation, Stage};
 use super::schematic::model::{Connection, Point, Snapshot};
 use super::{corner, route, runtime, sandbox, support};
-use harmos_runtime::Message;
 use harmos_runtime::operations::ComponentError;
 use schematic_operations::guest::schematic::{analyze, propose, validate};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -69,7 +48,13 @@ async fn inert_plan_denies() {
     });
     let mut manager = Manager::new(harmos_runtime::guest::PluginDefinitions::new(invalid, []).unwrap()).unwrap();
     assert!(manager.caller("schematic_tools").is_err());
-    assert!(matches!(runtime.operation(route(4)).await, Err(harmos_runtime::Error::NotRegistered { domain: "operation", .. })));
+    assert!(matches!(
+        runtime.operation(route(4)).await,
+        Err(harmos_runtime::Error::NotRegistered {
+            domain: "unambiguous operation request",
+            ..
+        })
+    ));
     assert!(manager.initialize(&mut lifecycle).await.is_err(), "a unit configuration refuses an object");
 
     manager.shutdown(&mut lifecycle).await.unwrap();
@@ -98,19 +83,18 @@ async fn declared_operation_roundtrip() {
 
     // A Straight Route Collapses Its Corner Onto the Start
     let operation = ["schematic_tools", "schematic", "route"].join(".");
-    let encoded = runtime
-        .operations
-        .call_encoded(
-            &operation,
-            propose::ProposeRoute {
-                from: Point { x: 0, y: 0 },
-                to: Point { x: 0, y: 4 },
-            }
-            .encode(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(propose::Route::decode(encoded.as_slice()).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }]);
+    let request = propose::ProposeRoute {
+        from: Point { x: 0, y: 0 },
+        to: Point { x: 0, y: 4 },
+    };
+    let mut payload = Vec::new();
+    harmos_operations::execution::grpc::encode(&request, &mut payload).unwrap();
+    let encoded = runtime.operations.call_encoded(&operation, payload).await.unwrap();
+    let route = harmos_operations::execution::grpc::decode::<propose::Route>(harmos_operations::execution::grpc::DecodeInput::new(
+        encoded.as_slice(),
+    ))
+    .unwrap();
+    assert_eq!(route.points, [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }]);
     assert!(matches!(
         runtime.operations.call_encoded("schematic.unknown", vec![]).await,
         Err(harmos_runtime::Error::NotRegistered { domain: "operation", .. })
@@ -183,10 +167,17 @@ async fn shutdown_retains_cleanup() {
     // Each Later Stop Resumes the Retained Cleanup Until the Guest's Own Shutdown Deadline Settles It, Without Another Attempt
     let mut settled = false;
     while let Err(pending) = runtime.plugin.stop("sandbox_guest").await {
-        let pending = format!("{pending:?}");
-        assert!(!settled, "the stop after the guest deadline completes cleanup: {pending}");
-        settled = pending.contains("OperationRefused(TimedOut)");
-        assert!(settled || pending.contains("guest plugin shutdown timeout"), "{pending}");
+        assert!(!settled, "the stop after the guest deadline completes cleanup: {pending:?}");
+        let harmos_runtime::Error::PluginLifecycle { source } = pending else { panic!("cleanup failure must retain its owner") };
+        let harmos_runtime::guest::PluginFailure::Cleanup(failures) = *source else { panic!("expected retained cleanup") };
+        let [failure] = failures.as_slice() else { panic!("one guest owns cleanup") };
+        let harmos_runtime::Error::TaskFailed { source, .. } = &failure.error else { panic!("cleanup retains its original error") };
+        let original = source.downcast_ref::<harmos_runtime::Error>().unwrap();
+        match original {
+            harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { .. }) => settled = true,
+            harmos_runtime::Error::NotReady { domain: "guest plugin shutdown timeout" } => {}
+            other => panic!("unexpected cleanup failure: {other:?}"),
+        }
     }
     assert!(settled, "the guest's own shutdown deadline settled the retained invocation");
     assert_eq!(runtime.plugin.status("sandbox_guest").unwrap().attempts, 1);
@@ -299,9 +290,9 @@ async fn grpc_original_owner() {
     let runtime = runtime().await;
     let mut lifecycle = Lifecycle::schematic(&runtime);
     let mut manager = Manager::new(lifecycle.candidate(()).await).unwrap();
-    assert!(runtime.grpc().methods().is_empty());
+    let before: Vec<_> = runtime.grpc().methods().into_iter().map(|method| (method.owner, method.generation, method.contract)).collect();
     manager.initialize(&mut lifecycle).await.unwrap();
-    assert_eq!(runtime.grpc().methods().len(), 3);
+    assert_eq!(runtime.grpc().methods().len(), before.len() + 3);
 
     let settings = harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
@@ -337,7 +328,8 @@ async fn grpc_original_owner() {
     assert_eq!(response.points, corner(3));
 
     manager.shutdown(&mut lifecycle).await.unwrap();
-    assert!(runtime.grpc().methods().is_empty());
+    let after: Vec<_> = runtime.grpc().methods().into_iter().map(|method| (method.owner, method.generation, method.contract)).collect();
+    assert_eq!(after, before);
     runtime.shutdown().await.unwrap();
 }
 

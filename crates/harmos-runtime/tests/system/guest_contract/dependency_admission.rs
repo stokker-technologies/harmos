@@ -9,10 +9,6 @@
 
 // Exercise Guest Dependency Admission Against The Original Provider.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,27 +18,9 @@
 // Local Imports
 use super::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 /* === Tests === */
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn dependencies_share_admission() {
     let _report = crate::report::system();
     let provider = std::sync::Arc::new(ProviderOwner::default());
@@ -54,10 +32,10 @@ async fn dependencies_share_admission() {
         runtime.operations.operation::<EchoOperation>(EchoOperation { say: "dependency:normal".into() }).await.unwrap().said,
         "normal"
     );
-    for (say, message) in [("refuse", "provider refusal"), ("timeout", "deadline elapsed")] {
+    for (say, refusal_code) in [("refuse", 73), ("timeout", -32_607)] {
         let error = runtime.operations.operation::<EchoOperation>(EchoOperation { say: format!("dependency:{say}") }).await.unwrap_err();
         assert!(
-            matches!(component_error(&error), harmos_runtime::operations::ComponentError::Remote(failure) if failure.code() == harmos_runtime::operations::FailureKind::Permanent && failure.cause().contains(message)),
+            matches!(component_error(&error), harmos_runtime::operations::ComponentError::Remote(failure) if failure.code() == harmos_runtime::operations::FailureKind::Permanent && failure.refusal_code() == Some(refusal_code)),
             "{error:?}"
         );
     }
@@ -74,7 +52,7 @@ async fn dependencies_share_admission() {
     runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn cancelled_dependency_admission() {
     let _report = crate::report::system();
     let provider = std::sync::Arc::new(ProviderOwner::default());
@@ -96,12 +74,14 @@ async fn cancelled_dependency_admission() {
     runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn missing_provider_refused() {
     let _report = crate::report::system();
     let provider = std::sync::Arc::new(ProviderOwner::default());
     let runtime = runtime_with_provider(provider.clone()).await;
     let mut lifecycle = DependencyHost::new(&runtime).await;
+    let mut before: Vec<_> = runtime.operations.definitions().iter().map(|operation| operation.id.to_string()).collect();
+    before.sort();
     let candidate = dependency_candidate(&mut lifecycle, "idle").await;
     let missing = candidate.definitions().filter(|definition| definition.id != "provider").cloned();
     // No Plugin Provides It, So Planning Routes It to the Host, Whose Preflight Refuses It
@@ -119,12 +99,12 @@ async fn missing_provider_refused() {
     assert!(provider.observed.lock().unwrap().is_empty());
     let mut operations: Vec<_> = runtime.operations.definitions().iter().map(|operation| operation.id.to_string()).collect();
     operations.sort();
-    assert_eq!(operations, ["host.publish"]);
+    assert_eq!(operations, before);
     drop(lifecycle);
     runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn shutdown_fences_callers() {
     let _report = crate::report::system();
     use std::sync::Arc;
@@ -148,5 +128,3 @@ async fn shutdown_fences_callers() {
     drop((manager, lifecycle, stale));
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

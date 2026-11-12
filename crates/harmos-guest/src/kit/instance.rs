@@ -77,7 +77,25 @@ impl Context {
         &self, request: &O::Request, submit: bool, retry: Option<harmos_operations::execution::operations::RetryPolicy>,
     ) -> Result<Vec<u8>, OperationRefusal> {
         let context = self.calling_context()?;
-        let target = self.assignments.resolve::<O>().map_err(OperationRefusal::of)?;
+        // Select The Authored Request Type Before Checking Its Wire Fingerprint.
+        // Distinct Requests May Have Identical Fields And Must Not Alias Each Other.
+        let mut target: Option<&harmos_operations::execution::operations::AssignedOperation> = None;
+        let mut select = |declaration: &harmos_operations::operations::WireDeclaration| {
+            if declaration.request.name != <O::Request as harmos_domain::schema::Described>::NAME {
+                return Ok(());
+            }
+            let id = declaration.operation.id;
+            let fingerprint = O::fingerprint(id).map_err(OperationRefusal::of)?;
+            let assigned = self.assignments.resolve_dependency(id, fingerprint).map_err(OperationRefusal::of)?;
+            if target.is_some_and(|original| original != assigned) {
+                return Err(OperationRefusal::of(harmos_operations::execution::operations::ServingError::Catalog));
+            }
+            target = Some(assigned);
+            Ok(())
+        };
+        harmos_operations::catalog::try_for_each(self.provides, &mut select)?;
+        harmos_operations::catalog::try_for_each(self.requires, |required| select(&required.declaration))?;
+        let target = target.ok_or_else(|| OperationRefusal::of(harmos_operations::execution::operations::ServingError::Catalog))?;
         let call = WireChildCall {
             context,
             generation_context: self.generation_context,

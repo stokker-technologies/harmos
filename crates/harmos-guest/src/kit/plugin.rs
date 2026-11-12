@@ -166,6 +166,8 @@ where
         context: token,
         generation_context: None,
         assignments,
+        provides: P::PROVIDES,
+        requires: P::REQUIRES,
         call: Arc::new(call),
     });
     let call = context.context().clone();
