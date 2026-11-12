@@ -4,12 +4,10 @@
 
 ### Requirement: Self-Sufficient Library SDK Ownership
 
-The library SHALL retain its language SDKs, protocol and conformance suite as a
-self-sufficient boundary without product vocabulary. Product SDKs SHALL keep
-building on the library SDKs, since other products will also host plugins on the
-library. Ownership is decided by the owner on 2026-11-12. Only plugin semantic
-parity across Rust, Python, C# and C++, and whether the generic managed client
-exists in all four languages or in Rust only, remain open under SDKs.
+The library SHALL retain self-sufficient language SDKs, protocol and conformance
+without product vocabulary. Product SDKs SHALL build on them. Ownership is locked
+on 2026-11-12. Plugin semantic parity and generic managed-client execution language
+scope remain open; four-language descriptor-derived naming is separately locked.
 
 #### Scenario: Additional Plugin-Hosting Product
 
@@ -41,35 +39,52 @@ request and response wrappers under design.md's grammar, including empty replies
 - **WHEN** a getter exposes a runtime-owned fact such as current time or projection status
 - **THEN** the grammar does not create a setter for that fact merely to make a name pair
 
-### Requirement: Part Names and Mixed-Resource Services
+### Requirement: Nested Resources and Single-Mode Parts
 
-A part read in exactly one mode SHALL use its noun alone, whether streamed,
-paged or whole. Only parts with multiple read or change modes SHALL use verb
-plus part; prefer a small resource service where clearer, retaining exact
-Get/Set pairs. Mixed-resource services SHALL retain method resource nouns
-without repeating their own service name and SHALL NOT be split merely to
-shorten names.
+A part read in exactly one way SHALL use its noun alone on its parent, including
+paged Steps and Parameters. A part with several read/change modes SHALL be a
+nested resource service with its own bare verbs, replacing verb-plus-part methods
+and flat compound services. Mixed-resource Storage SHALL retain names identifying
+independent storage resources, including ListRows/WatchRows and GetObject/SetObject;
+its single-mode whole parts SHALL be Info and Capabilities.
 
-#### Scenario: Resource and Single-Mode Parts
+#### Scenario: Execution Parts
 
-- **WHEN** the execution resource is described by Executions
-- **THEN** its actions are Start, Cancel and Get, its streamed progress is Progress, and its paged steps and parameters are Steps and Parameters
+- **WHEN** execution steps are read as one bounded page and progress is read or watched
+- **THEN** the names are Executions.Steps and Executions.Progress.Get/Watch, with no Executions.GetProgress or flat ExecutionProgress service
 
-#### Scenario: Multiple Modes and Mixed Resources
+#### Scenario: Writable Nested Parts
 
-- **WHEN** a part has List and Watch modes, or Get and Set modes
-- **THEN** its methods retain verb plus part or use bare verbs in its own resource service
-- **AND** Storage retains ListRows/WatchRows and GetObject/SetObject while its single-mode whole parts are Info and Capabilities
+- **WHEN** plugin settings or plot settings have matching Get and Set
+- **THEN** their names are Plugins.Settings.Get/Set and Plots.Settings.Get/Set, with no flat compound settings service
 
-### Requirement: Proto-Derived Short Client Names
+### Requirement: Nested Wire Packages and Wrappers
 
-Generated clients SHALL derive short names directly from proto without a
-handwritten naming layer.
+A nested service SHALL use package `<owner>.v1.<lowercase parent>` and the part's
+service name, with one proto file per service in a folder per parent. Request and
+response wrappers SHALL be `<Service><Method>Request/Response` within that package.
+Nested resources MAY have a different library owner from their parent.
 
-#### Scenario: Generated Client Names
+#### Scenario: Product Settings Beside Library Plugins
 
-- **WHEN** clients are generated from the execution descriptor
-- **THEN** they expose executions.start(request), executions.cancel(request), executions.get(request) and executions.progress(request) directly from proto
+- **WHEN** a product serves plugin settings beside the library's Plugins service
+- **THEN** it declares product.v1.plugins.Settings in product/v1/plugins/settings.proto and calls use product.v1.plugins.Settings/Get with SettingsGetRequest/SettingsGetResponse
+- **AND** the host exposes both owners' services directly without redeclaring Plugins
+
+### Requirement: Descriptor-Derived Hierarchical Client Roots
+
+Rust, Python, C# and C++ SDK builds SHALL generate the same resource hierarchy
+from a common descriptor-derived table, using normal language casing. Packages,
+service names, wrappers, cardinality and exposure SHALL determine the root under
+design.md. Library/product tables SHALL compose and reject leaf collisions.
+No hand-written per-operation naming/forwarding layer SHALL exist. This naming
+requirement SHALL NOT settle managed-execution coverage.
+
+#### Scenario: Composed Client Root
+
+- **WHEN** a root is generated from library Plugins and product plugins.Settings/executions.Progress descriptors
+- **THEN** calls read client.plugins.settings.get(request), client.executions.progress.watch(request) and client.executions.start(request)
+- **AND** the plugins node also exposes library plugin entry methods
 
 ### Requirement: Explicit Domain Action Meanings
 
@@ -144,3 +159,78 @@ change replay-safety admission, retention or expired-identifier refusal.
 
 - **WHEN** the client resends the same request identifier with a changed payload
 - **THEN** the call conflicts without replacing the original outcome
+
+### Requirement: Generic Machinery and Product Composition
+
+The library SHALL own generic machinery through design.md's manager/service
+inventory: plugins, access, transfers, host status, operations/invocations, time,
+storage, streams, protocol and SDKs. A product SHALL serve these services directly
+by composition, without redeclarations or wrappers, and SHALL NOT rebuild the
+runtime using only the protocol crate.
+
+#### Scenario: Product Endpoint
+
+- **WHEN** a client manages a plugin entry, listener or transfer, or reads host status on a product endpoint
+- **THEN** it calls the library-owned services on that endpoint and the library manager performs the generic work
+- **AND** Plugins covers managed/remote entry Create/Get/List/Watch/Set/Restart/Delete, verified bundles, persistence, state and failures
+
+#### Scenario: Duplicate Machinery Removal
+
+- **WHEN** a product adopts the composed runtime
+- **THEN** its duplicate connection, dispatch, stream, launch, entry, listener/pairing, upload and generic status implementations are removed with their consumers
+- **AND** the earlier duplication caused by protocol-only hosting is not retained as an adapter
+
+### Requirement: Product Definitions, Policy and Plugin Values
+
+A product SHALL own storage definitions, schemas, indexes, projections, latest
+selection, its objects and operations, and authorization policy. It SHALL retain
+settings/secrets stores, schemas, UI declarations, archives and operating-system
+credential integration. The library SHALL provide only a plugin catalog's settings
+declarations and generic host-only HostValues.Get with a registered product
+resolver. This SHALL close the per-plugin settings/secrets ownership question.
+
+#### Scenario: Plugin Requests a Value
+
+- **WHEN** a plugin calls the generic host-value operation for a declared setting or secret
+- **THEN** the product resolver applies its storage and policy while the library supplies invocation, scope and failure delivery
+- **AND** no library settings store, secret store, credential adapter or client settings service is introduced
+
+### Requirement: Manager Ownership and Thin Service Methods
+
+Managers SHALL follow design.md's single live-ownership rule and responsibility
+inventory. The product SHALL split its host/shared state into execution, prompt
+and report managers, with a capture manager only if recordings remain. Rendering
+SHALL stay pure; evidence, catalog, notes, aggregates, plots and documents SHALL
+remain operations over storage. Each service method SHALL map to one operation
+file calling a manager or storage.
+
+#### Scenario: Service Dispatch Review
+
+- **WHEN** a product service method is reviewed after the split
+- **THEN** orchestration resides in the owning manager and plain storage operations call storage through their operation file
+- **AND** the execution manager owns queueing, lifecycle, retries, Stop/Cancel and recovery; cycle ownership is chosen at the split using the simplest complete option
+
+#### Scenario: Report Preview
+
+- **WHEN** a report preview is rendered without publication
+- **THEN** pure rendering does not allocate a manager or publish content; the report manager owns explicit atomic publication only
+
+### Requirement: Library Access and Host Status Owners
+
+GrpcManager SHALL own Access/Access.Listener for listener Get/Set, pairing creation
+and certificate regeneration/key rotation. ServiceManager SHALL own Status,
+Status.Logs and Status.TraceEvents for host identity, health, availability, bounded
+logs/traces and a diagnostics archive. A narrow product-fact registration SHALL
+contribute product version/identity and component health/availability while the
+library retains aggregation and lifecycle. Product-only reads SHALL remain in
+product services.
+
+#### Scenario: Product Health Contribution
+
+- **WHEN** a product registers a component health provider and version facts
+- **THEN** the library's Status includes those contributions under the service manager's lifetime and failure handling without a second product status service
+
+#### Scenario: Access Rotation
+
+- **WHEN** authorized access operations replace listener settings or regenerate a certificate
+- **THEN** GrpcManager owns the live listener/certificate lifecycle and validation rather than a product copy

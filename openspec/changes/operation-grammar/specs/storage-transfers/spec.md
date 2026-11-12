@@ -4,16 +4,18 @@
 
 ### Requirement: Shared Resumable Unary Transfers
 
-Clients and plugins SHALL share one unary, ranged, resumable transfer mechanism.
-Uploads SHALL create a session, Append ordered immutable chunks at stated offsets,
-Get status to resume, Publish to make content visible, and Delete to abandon.
-Chunk and download range sizes SHALL be bounded by configuration. Plugin
-operations SHALL remain logically unary within their own protocol carriers.
+Clients and plugins SHALL share the library StorageManager's unary resumable
+sessions and ranged content reads through Storage. Uploads SHALL Create, Append
+ordered bytes at offsets, Get status, Publish or Delete to abandon. Configuration
+SHALL bound chunks/ranges. Products SHALL compose Storage directly and retain
+object metadata, removing duplicate upload engines. Plugin operations SHALL
+remain logically unary within their carriers.
 
 #### Scenario: Client and Plugin Upload
 
 - **WHEN** a client and an authorized plugin upload content
-- **THEN** both use the same session implementation and bounded unary chunk, receipt and integrity rules
+- **THEN** both call the library Storage session methods on the host endpoint, with the same bounded unary chunk, receipt and integrity rules
+- **AND** no second Content/Uploads service or generic transfer implementation is introduced
 
 #### Scenario: Unsupported Provider
 

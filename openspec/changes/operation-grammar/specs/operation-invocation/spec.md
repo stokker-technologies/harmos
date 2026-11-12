@@ -61,3 +61,21 @@ The product owns that rename implementation; no new library Rename RPC is requir
 
 - **WHEN** the product renames one identified resource while a sibling attempt shares its parent
 - **THEN** only the selected resource's name and revision change and the sibling retains its prior name
+
+### Requirement: Client Progress Observation and Host Production
+
+The product client set SHALL expose Executions.Progress.Get and
+Executions.Progress.Watch. Executions.Get SHALL include the same current progress.
+A plugin SHALL produce progress through the host-only Executions.Progress.Set
+operation under its invocation authority. No client-facing progress Set SHALL be
+declared or automatically projected.
+
+#### Scenario: Read and Watch Current Progress
+
+- **WHEN** a client reads an execution and opens its progress resource
+- **THEN** Executions.Get includes current progress, Progress.Get returns its current value and Progress.Watch observes subsequent progress
+
+#### Scenario: Plugin Produces Progress
+
+- **WHEN** a plugin reports progress through the scoped host operation
+- **THEN** the execution manager owns that update and clients observe it through Get/Watch without a client-writable progress method

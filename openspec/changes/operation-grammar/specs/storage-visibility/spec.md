@@ -4,11 +4,11 @@
 
 ### Requirement: One Position-Resolved Read Path
 
-Positioned data reads SHALL share one method per kind of data, accepting optional
-at and returning resolved_at. Absent at SHALL resolve once to latest durable data
-without waiting; the durable-lag requirement below applies.
-A cut SHALL retain all required positions and revisions rather than silently
-reducing a composite selection to one sequence number.
+Positioned reads SHALL share one method per data kind, with optional at and
+resolved_at. Absent at SHALL resolve once to latest durable without waiting;
+the durable-lag requirement applies. Composite cuts SHALL retain all required
+positions/revisions. Products SHALL own object-specific latest/terminal selection,
+schemas, indexes and projections; the library SHALL own shared storage mechanisms.
 
 #### Scenario: Accepted Data Ahead of Saved Data
 

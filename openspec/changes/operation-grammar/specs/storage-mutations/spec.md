@@ -34,12 +34,13 @@ Atomic object replacement SHALL retain compare/exchange semantics.
 
 Writable parts that are unreasonably large for whole replacement SHALL be split
 into separately settable sub-resources, each with its own Get, Set and revision.
-The mapping SHALL identify these sub-resources.
+The mapping SHALL identify these nested resource services and their parent
+sub-packages under the grammar; it SHALL NOT introduce flat compound services.
 
 #### Scenario: Large Writable Part
 
 - **WHEN** whole replacement of a writable part would be unreasonable
-- **THEN** its mapping identifies separately settable sub-resources with matching Get/Set pairs and their own revisions
+- **THEN** its mapping identifies nested resource services with bare Get/Set, parent sub-packages and their own revisions
 
 ### Requirement: Append Ordered Immutable Data
 

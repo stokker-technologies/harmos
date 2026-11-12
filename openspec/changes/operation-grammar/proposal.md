@@ -1,4 +1,5 @@
 Status: locked by the owner on 2026-11-12
+Boundary, managers and nested resources locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
 
 # Operation Grammar
@@ -18,7 +19,7 @@ the locked contract; implementation is not authorized by this documentation task
 
 | Decision | Status | Direction |
 | --- | --- | --- |
-| Names | Owner | Resource services with bare verbs; single-mode parts use nouns, multimode parts use verb plus part; mixed-resource services retain nouns. Service-qualified wrappers follow design.md. |
+| Names | Owner | Resource services with bare verbs; single-mode parts use nouns; multimode parts are nested resource services with bare verbs; mixed-resource Storage retains its resource nouns. Service-qualified wrappers follow design.md. |
 | Reply envelopes | Owner | Always return the response wrapper, including empty results, rather than a bare resource. |
 | Ordinary verbs | Owner | Closed set: Get, List, Watch, Set, Create, Delete, Append. Update, Read, Browse, Put, Edit, Add, Remove, Follow, Scan, Inspect and Register are not verbs in the new grammar. |
 | Immutable ordered data | Owner | Use Append in both repositories for records, samples, log lines and upload bytes. |
@@ -32,7 +33,13 @@ the locked contract; implementation is not authorized by this documentation task
 | Streaming gRPC methods | Owner | Never generate streaming twins automatically. Streams are reserved for Watch and plugin protocol carriers; use unary resource actions and Get/Watch; retain one managed stream only for an explicitly promised cooperative final result, replacing its ordinary gRPC method. |
 | Failed client calls | Owner | Resending is the client's responsibility; the same request identifier and normalized payload return the original receipt, and a changed payload under that identifier conflicts. |
 | Shared primitives | Owner | One paging, position, time, Failure, retry-policy and receipt vocabulary, as specified in design.md. |
-| SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Only four-language plugin parity and generic managed-client language scope remain open under SDKs. |
+| SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Client roots expose package-derived resource hierarchies in all four languages; plugin semantic parity and generic managed-client execution scope remain open. |
+| Library Boundary | LOCKED, 2026-11-12 | Generic plugin hosting/entry management, access, transfers, host status, operations/invocations, time, storage, streams, protocol and SDKs belong to the library, under their owning managers. A product serves these services directly by composition. |
+| Product Boundary | LOCKED, 2026-11-12 | A product defines its storage schemas, indexes, projections and latest selection, objects, object operations and authorization policy. Settings/secrets stores, schemas, UI declarations, archives and operating-system credential integration remain product-owned. |
+| Plugin Values | LOCKED, 2026-11-12 | The library owns only generic host-value delivery to plugins and the settings-declaration section of a plugin catalog; a product resolves settings/secrets. The per-plugin settings/secrets ownership question is closed. |
+| No Duplicate Machinery | LOCKED, 2026-11-12 | A product must compose the runtime rather than rebuild on the protocol crate alone: doing so previously duplicated plugin connection, dispatch, streams and process launch. |
+| Managers | LOCKED, 2026-11-12 | Apply the live-ownership rule in design.md once; split product execution, prompts, report publication and retained recordings accordingly. Plain storage operations and pure rendering need no manager. |
+| Nested Resources | LOCKED, 2026-11-12 | Use parent sub-packages and bare part-service verbs, including cross-library Plugins.Settings; generate hierarchical client roots mechanically from descriptors in all four languages. Progress has client Get/Watch, is included in Executions.Get and has a separate host-only producer operation. |
 
 **BREAKING:** rename the operations in the complete design inventory; merge the
 three row-follow operations into WatchRows; replace streaming uploads and downloads with
@@ -62,6 +69,12 @@ None; the candidate adds requirements to existing capability owners.
 - `storage-transfers`: resumable unary transfers shared by all callers.
 
 ## Impact
+
+The library gains Plugins, Access/Access.Listener, Status/Status.Logs/Status.TraceEvents
+and host-only HostValues contracts. Existing plugin-manager work is integrated,
+not reimplemented. The complete owner-qualified inventory in design.md records
+67 library and 110 product operation templates; product resources are handoff
+contracts, not implementation scope in this repository.
 
 Future implementation touches `proto/harmos/v1/`, `crates/harmos-protocol/`,
 `crates/harmos-operations/`, `crates/harmos-storage/`, runtime gRPC projection and
