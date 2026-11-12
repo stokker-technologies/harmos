@@ -172,6 +172,7 @@ without depending on `harmos-runtime`.
 
 Focused fixes, API feedback and useful examples are welcome. Read
 [Contributing](docs/CONTRIBUTING.md) for setup, validation and pull requests.
+Read [Architecture](docs/architecture.md) before proposing architecture or public API changes.
 Run targeted tasks locally; hosted CI and Nightly provide full validation.
 Tool configuration lives in `tools/config/`; see [Repository Tooling](docs/tooling.md).
 

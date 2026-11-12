@@ -1298,6 +1298,7 @@ in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 ## Documentation
 
+- [Architecture](architecture.md) — invariants, their purposes, current implementation and guarding proofs.
 - [Repository Tooling](tooling.md) — workstation builds, shared compiler cache and `tools/config/` configuration.
 - [Contributing](CONTRIBUTING.md) — development setup and validation.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
