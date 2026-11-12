@@ -74,7 +74,7 @@ pub use harmos_domain::model::storage::{
     StorageInfo, StoreHistory, StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
 pub use manager::{StorageManager, StorageMetrics, WorkerOwner, encoded_size};
-pub use objects::ObjectGroup;
+pub use objects::{CompareExchange, ObjectExchange, ObjectGroup};
 pub use opened_capture::OpenedCapture;
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
 pub use read_batch::{ReadBatch, ReadPages};

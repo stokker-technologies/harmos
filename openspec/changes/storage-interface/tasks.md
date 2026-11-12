@@ -16,7 +16,7 @@
 - [x] 2.2 Add index declarations/maintenance and ordered seek reads; prove stable ties, restart/token invalidation, snapshot cuts and explicit missing-index behaviour.
 - [x] 2.3 Add durable projection registration/reads and inspectable frontiers; prove crash replay, idempotence, advancement, lag and rebuild/invalidation semantics.
 - [x] 2.4 Add Transform::TimeBuckets and projection revision/changed-key support; prove late correction/replacement, saved-cut stability and equivalence with generic execution.
-- [ ] 2.5 Add typed compare_exchange and atomic backend implementation; prove conflicting writers, create-if-absent, receipt replay and durability outcomes.
+- [x] 2.5 Add typed compare_exchange and atomic backend implementation; prove conflicting writers, create-if-absent, receipt replay and durability outcomes.
 - [ ] 2.6 Implement all five capabilities in the durable reference and deterministic test backends; migrate existing implementers and operation/protocol consumers without product-specific APIs.
 - [ ] 2.7 Update affected README/storage guides, examples and backend obligations; verify dependency direction and preservation of existing files, recovery and mutation receipts.
 

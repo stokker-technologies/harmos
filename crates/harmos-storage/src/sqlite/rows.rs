@@ -111,37 +111,42 @@ pub(super) fn save(connection: &Connection, through: u64) -> Result<()> {
     set_meta(connection, "saved", meta(connection, "saved")?.max(through))
 }
 
+pub(super) fn put_schema(connection: &Connection, history: &StoreHistory, value: &StorageSchema) -> Result<()> {
+    let prior = connection
+        .query_row("SELECT data FROM storage_rows WHERE kind=0 AND schema_key=?1 LIMIT 1", [text(&value.key)?], |row| {
+            row.get::<_, Vec<u8>>(0)
+        })
+        .optional()
+        .map_err(db)?;
+    if let Some(prior) = prior {
+        if decode::<StorageSchema>(&prior)?.schema != value.schema {
+            return Err(conflict("schema definition changed without a new version"));
+        }
+    }
+    value.encoded_bytes()?;
+    insert(
+        connection,
+        history,
+        WriteRow {
+            position: &value.position,
+            kind: 0,
+            schema: Some(&value.key),
+            item: None,
+            scope: None,
+            stream: None,
+            time: None,
+            data: encode(value)?,
+        },
+    )?;
+    Ok(())
+}
+
 pub(super) fn write_schemas(state: &mut State, values: &[StorageSchema]) -> Result<StorageCursor> {
     state.check()?;
     let through = values.last().ok_or_else(|| invalid("empty schema batch"))?.position.sequence;
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
     for value in values {
-        let prior = tx
-            .query_row("SELECT data FROM storage_rows WHERE kind=0 AND schema_key=?1 LIMIT 1", [text(&value.key)?], |row| {
-                row.get::<_, Vec<u8>>(0)
-            })
-            .optional()
-            .map_err(db)?;
-        if let Some(prior) = prior {
-            if decode::<StorageSchema>(&prior)?.schema != value.schema {
-                return Err(conflict("schema definition changed without a new version"));
-            }
-        }
-        value.encoded_bytes()?;
-        insert(
-            &tx,
-            &state.history,
-            WriteRow {
-                position: &value.position,
-                kind: 0,
-                schema: Some(&value.key),
-                item: None,
-                scope: None,
-                stream: None,
-                time: None,
-                data: encode(value)?,
-            },
-        )?;
+        put_schema(&tx, &state.history, value)?;
     }
     save(&tx, through)?;
     tx.commit().map_err(db)?;

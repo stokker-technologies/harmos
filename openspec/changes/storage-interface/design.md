@@ -481,3 +481,15 @@ the stale candidate conflicts and can be recomputed. Binary changed-key pages us
 ordinal over output rows and changed keys, including key-only tail pages for removed buckets.
 Every supplied time-bucket input row must have finite values, including superseded versions;
 invalid input refuses advancement and preserves the last published cut.
+
+
+Conditional writes use one `ObjectExchange { expected, schema, value }` backend request. The
+schema descriptor and value own consecutive admission positions; application commits both and
+all object index effects atomically, while a conflict commits only its outcome and frontier.
+This prevents schema rows escaping from failed conditional writes. Durable receipts retain a
+canonical SHA-256 request fingerprint and outcome; an identical accepted position replays the
+original outcome after later writes/restart. `retire_object_receipts(through)` is explicit
+consumer retention: retired retries fail with a gap instead of being reapplied. Consumers retire
+only outcomes they no longer need; a retention call does not create a cross-method transaction.
+The typed manager supplies ordinary and mutation-id `compare_exchange_once` entry points and
+waits for the durable outcome; cancellation after admission cannot retract queued work.

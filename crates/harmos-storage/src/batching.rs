@@ -158,6 +158,21 @@ impl Batch {
 #[tracing::instrument(name = "storage.batching.write_data", level = "trace", skip_all, fields(through = tracing::field::Empty, saved = tracing::field::Empty))]
 pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation) -> Result<StorageCursor> {
     match operation {
+        Operation::Conditional(exchange) => {
+            let through = &exchange.value.position;
+            {
+                let mut state = inner.state.lock().unwrap();
+                state.data_attempted = state.data_attempted.max(through.sequence);
+            }
+            inner.bounded("primary.compare_exchange", inner.primary.compare_exchange(exchange)).await?;
+            let saved = inner.bounded("primary.cursor_saved", inner.primary.cursor_saved()).await?;
+            let mut state = inner.state.lock().unwrap();
+            if !saved.covers(through)? || saved.sequence > state.data_attempted {
+                return Err(invalid("conditional outcome does not cover its admitted frontier"));
+            }
+            state.status.saved = saved.clone();
+            Ok(saved)
+        }
         Operation::Schema(values) => persist(inner, values, |batch| inner.primary.write_schemas(batch)).await,
         Operation::File(values) => persist(inner, values, |batch| inner.primary.write_files(batch)).await,
         Operation::Records(values) => persist(inner, values, |batch| inner.primary.write_records(batch)).await,

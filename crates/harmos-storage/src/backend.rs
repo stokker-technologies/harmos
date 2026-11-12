@@ -71,6 +71,14 @@ pub struct ReadLimits {
 /* === Traits === */
 
 pub trait StorageBackend: Send + Sync + 'static {
+    fn compare_exchange<'a>(&'a self, _exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
+        unsupported("conditional objects")
+    }
+
+    fn retire_object_receipts<'a>(&'a self, _through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        unsupported("conditional object receipt retention")
+    }
+
     fn register_projection<'a>(
         &'a self, _definition: &'a crate::query::projection::ProjectionDefinition, _rebuild: bool,
     ) -> StorageFuture<'a, u64> {

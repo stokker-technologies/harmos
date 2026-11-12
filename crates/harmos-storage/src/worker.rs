@@ -529,6 +529,11 @@ impl Operation {
             })
         }
         match self {
+            Self::Conditional(exchange) => {
+                exchange.validate()?;
+                exchange.schema.encoded_bytes()?;
+                super::manager::encoded_size(exchange.as_ref())
+            }
             Self::Schema(values) => values.as_slice().iter().try_fold(0usize, |bytes, value| {
                 bytes.checked_add(value.encoded_bytes()?).ok_or(Error::InvalidInput {
                     field: "storage admission",
@@ -586,6 +591,7 @@ impl Operation {
 
     pub(super) fn sequence(&self) -> u64 {
         match self {
+            Self::Conditional(exchange) => exchange.value.position.sequence,
             Self::Schema(schema) => schema.as_slice().last().unwrap().position.sequence,
             Self::File(file) => file.as_slice().last().unwrap().position.sequence,
             Self::ObjectGroup { objects, .. } => objects.as_slice().last().unwrap().position.sequence,

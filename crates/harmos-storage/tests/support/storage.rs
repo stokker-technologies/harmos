@@ -167,7 +167,14 @@ pub struct Release {
     pub through: StorageCursor,
 }
 
+#[derive(Default)]
+struct Conditional {
+    floor: u64,
+    receipts: BTreeMap<u64, ([u8; 32], CompareExchange)>,
+}
+
 pub struct Data {
+    conditional: Mutex<Conditional>,
     projections: Mutex<harmos_storage::query::projection::ProjectionCatalog>,
     indexes: Mutex<harmos_storage::query::index::IndexCatalog>,
     pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
@@ -272,6 +279,7 @@ impl Data {
         Self {
             indexes: Mutex::default(),
             projections: Mutex::default(),
+            conditional: Mutex::default(),
             pruned_objects: Mutex::default(),
             object_releases: Mutex::new(Vec::new()),
             catalog,
@@ -304,9 +312,72 @@ impl Data {
 }
 
 impl StorageBackend for Data {
+    fn compare_exchange<'a>(&'a self, exchange: &'a ObjectExchange) -> StorageFuture<'a, CompareExchange> {
+        Box::pin(async move {
+            exchange.validate()?;
+            self.history.check(&exchange.value.position.history)?;
+            self.control.write([exchange.schema.position.sequence, exchange.value.position.sequence]).await?;
+            let fingerprint = exchange.fingerprint()?;
+            let mut conditional = self.conditional.lock().unwrap();
+            let position = exchange.value.position.sequence;
+            if let Some((prior, outcome)) = conditional.receipts.get(&position) {
+                if prior != &fingerprint {
+                    return Err(failure(BackendFailure::Conflict));
+                }
+                return Ok(outcome.clone());
+            }
+            if position <= conditional.floor {
+                return Err(Error::Gap {
+                    requested: position,
+                    available: conditional.floor.saturating_add(1),
+                });
+            }
+            if exchange.schema.position.sequence <= self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(failure(BackendFailure::Conflict));
+            }
+            let mut objects = self.objects.lock().unwrap();
+            let current = objects
+                .values()
+                .rev()
+                .find(|object| object.value.schema.id == exchange.value.value.schema.id && object.value.item == exchange.value.value.item)
+                .map(|object| object.version.clone());
+            let outcome = if current == exchange.expected {
+                self.catalog.validate_value(&exchange.value.value, NonZeroUsize::MAX)?;
+                let mut schemas = self.schemas.lock().unwrap();
+                if schemas.values().any(|schema| schema.key == exchange.schema.key && schema.schema != exchange.schema.schema) {
+                    return Err(failure(BackendFailure::Conflict));
+                }
+                schemas.insert(exchange.schema.position.sequence, exchange.schema.clone());
+                objects.insert(position, exchange.value.clone());
+                CompareExchange::Applied(ObjectReceipt {
+                    position: exchange.value.position.clone(),
+                    version: exchange.value.version.clone(),
+                })
+            } else {
+                CompareExchange::Conflict { current }
+            };
+            conditional.receipts.insert(position, (fingerprint, outcome.clone()));
+            self.saved.fetch_max(position as usize, Ordering::SeqCst);
+            Ok(outcome)
+        })
+    }
+    fn retire_object_receipts<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        Box::pin(async move {
+            self.history.check(&through.history)?;
+            if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(failure(BackendFailure::Conflict));
+            }
+            let mut conditional = self.conditional.lock().unwrap();
+            conditional.receipts.retain(|position, _| *position > through.sequence);
+            conditional.floor = conditional.floor.max(through.sequence);
+            Ok(())
+        })
+    }
+
     fn capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
         harmos_storage::query::columnar::StorageCapabilities {
             durable_projections: true,
+            conditional_objects: true,
             ..Default::default()
         }
     }

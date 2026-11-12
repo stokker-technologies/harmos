@@ -12,6 +12,7 @@
 mod columns;
 mod files;
 mod index;
+mod objects;
 mod projection;
 mod rows;
 
@@ -118,6 +119,7 @@ impl SqliteBackend {
             CREATE TABLE IF NOT EXISTS projection_cuts(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,rows INTEGER NOT NULL,changes INTEGER NOT NULL,schema BLOB NOT NULL,PRIMARY KEY(name,revision,frontier));
             CREATE TABLE IF NOT EXISTS projection_pages(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,first_row INTEGER NOT NULL,rows INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(name,revision,frontier,first_row));
             CREATE TABLE IF NOT EXISTS projection_changes(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,ordinal INTEGER NOT NULL,key BLOB NOT NULL,PRIMARY KEY(name,revision,frontier,ordinal));
+            CREATE TABLE IF NOT EXISTS object_receipts(position INTEGER PRIMARY KEY,fingerprint BLOB NOT NULL,outcome BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS object_releases(schema_key TEXT NOT NULL, item TEXT NOT NULL, through INTEGER NOT NULL, PRIMARY KEY(schema_key,item));").map_err(db)?;
         let encoded = text(&history)?;
         let stored: Option<String> =
@@ -126,7 +128,7 @@ impl SqliteBackend {
             return Err(incompatible());
         }
         tx.execute("INSERT OR IGNORE INTO storage_meta VALUES('history',?1)", [&encoded]).map_err(db)?;
-        tx.execute_batch("INSERT OR IGNORE INTO storage_meta VALUES('saved','0'); INSERT OR IGNORE INTO storage_meta VALUES('snapshot','0'); INSERT OR IGNORE INTO storage_meta VALUES('floor','0'); PRAGMA user_version=1;").map_err(db)?;
+        tx.execute_batch("INSERT OR IGNORE INTO storage_meta VALUES('saved','0'); INSERT OR IGNORE INTO storage_meta VALUES('snapshot','0'); INSERT OR IGNORE INTO storage_meta VALUES('floor','0'); INSERT OR IGNORE INTO storage_meta VALUES('object_receipt_floor','0'); PRAGMA user_version=1;").map_err(db)?;
         tx.commit().map_err(db)?;
         Ok(Self {
             history: history.clone(),
@@ -185,6 +187,7 @@ impl StorageBackend for SqliteBackend {
             native_arrow: true,
             native_index: true,
             durable_projections: true,
+            conditional_objects: true,
             ..StorageCapabilities::default()
         }
     }
@@ -371,6 +374,14 @@ impl StorageBackend for SqliteBackend {
     fn retire_projection<'a>(&'a self, name: &'a crate::Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
         let (name, through) = (name.clone(), through.clone());
         Box::pin(self.call(move |state| projection::retire(state, &name, revision, &through)))
+    }
+    fn compare_exchange<'a>(&'a self, exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
+        let exchange = exchange.clone();
+        Box::pin(self.call(move |state| objects::exchange(state, &exchange)))
+    }
+    fn retire_object_receipts<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        let through = through.clone();
+        Box::pin(self.call(move |state| objects::retire(state, &through)))
     }
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         let metadata = metadata.clone();
