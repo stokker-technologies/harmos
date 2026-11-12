@@ -104,7 +104,7 @@ The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers
 editing, plugin validation, undo/redo and save/reopen. Its
 [storage adapter](examples/schematic/storage/) shows application-owned persistence.
 Its native plugin serves unary advice over gRPC; analysis and transfer streams run
-in the host. The guest retains transfer endpoints under its `benchmark` feature
+in the host. The guest uses SDK builders with `harmos/wasm` and exposes unary transfer endpoints under its `benchmark` feature
 for the [performance suites](docs/product-guide.md#performance).
 
 ### C++

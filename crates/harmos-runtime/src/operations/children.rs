@@ -24,8 +24,8 @@ use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use crate::Error;
 use crate::operations::{EncodedInvocation, WireChildAction, WireChildCall, WireChildControl};
-use harmos_domain::Message;
 use harmos_operations::Refusal;
+use prost::Message as _;
 
 /* === Constants === */
 
@@ -50,7 +50,7 @@ pub(crate) struct ChildRequest {
     pub(crate) fingerprint: [u8; 32],
     pub(crate) generation: u64,
     pub(crate) payload: Vec<u8>,
-    pub(crate) retry: Option<super::RetryPolicy>,
+    pub(crate) policy: Option<super::OperationPolicy>,
     pub(crate) values: Vec<super::CallValue>,
     pub(crate) submitted: tokio::time::Instant,
     pub(crate) answer: oneshot::Sender<Result<EncodedInvocation, Error>>,
@@ -82,7 +82,7 @@ impl Children {
             fingerprint: call.fingerprint,
             generation: call.generation,
             payload: call.payload,
-            retry: call.retry,
+            policy: call.policy,
             values: call.values,
             submitted,
             answer,
@@ -103,7 +103,7 @@ impl Children {
         if call.submit {
             let id = invocation.invocation.as_ref().expect("owned child").id();
             self.submitted.lock().expect("submitted child lock is healthy").insert(id.value(), invocation);
-            return Ok(id.value().encode());
+            return Ok(harmos_protocol::v1::GuestSubmitted { instance: id.value() }.encode_to_vec());
         }
         drained(invocation, cancelled)
             .await
@@ -122,8 +122,14 @@ impl Children {
                 if control.action == WireChildAction::Cancel {
                     invocation.request_cancel();
                 }
-                let state = harmos_guest::lifecycle::InstanceState::from(invocation.control.status().portable());
-                Ok(state.encode())
+                let status = invocation.control.status().portable();
+                let state = harmos_protocol::host::InstanceState {
+                    phase: status.phase.as_str().into(),
+                    outcome: status.outcome.map(|outcome| outcome.as_str()).unwrap_or_default().into(),
+                    cancellation_requested: status.cancellation_requested,
+                    attempt: status.attempt,
+                };
+                Ok(state.encode_to_vec())
             }
             WireChildAction::Release => {
                 drop(take()?);

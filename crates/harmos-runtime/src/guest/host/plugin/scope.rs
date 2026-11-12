@@ -214,6 +214,9 @@ impl PluginScope {
     pub(crate) fn allows_operation(
         &self, owner: &str, contract: Option<&crate::operations::Contract>, id: &crate::Identifier, host: bool,
     ) -> bool {
+        if owner == self.owner() && contract.is_some_and(|actual| self.wire_contracts.get(id).is_some_and(|expected| expected == actual)) {
+            return true;
+        }
         match self.required_contracts() {
             None => self.allows(owner),
             Some(required) => {
@@ -221,10 +224,7 @@ impl PluginScope {
                     Some(selected) => selected == owner,
                     None => host,
                 };
-                provider
-                    && contract.is_some_and(|actual| {
-                        required.iter().any(|expected| crate::guest::host::native_payloads::matches(&expected.contract, actual))
-                    })
+                provider && contract.is_some_and(|actual| required.iter().any(|expected| actual.compatible(&expected.contract)))
             }
         }
     }

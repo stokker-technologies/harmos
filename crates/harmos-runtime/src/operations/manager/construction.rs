@@ -148,7 +148,7 @@ impl Manager {
         self.instances.status(id)
     }
 
-    pub(in crate::operations) fn claim_preparation(&self, bytes: std::num::NonZeroUsize) -> Result<OwnedSemaphorePermit> {
+    pub(crate) fn claim_preparation(&self, bytes: std::num::NonZeroUsize) -> Result<OwnedSemaphorePermit> {
         let count = u32::try_from(bytes.get()).map_err(|_| Error::ResourceExhausted { resource: "operation preparation bytes" })?;
         self.preparation
             .as_ref()

@@ -1143,12 +1143,16 @@ dependencies = [
  "schematic-protocol",
  "semver",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "thiserror",
  "tokio",
  "tonic",
  "tonic-prost",
  "tracing",
+ "wasmtime",
+ "wit-bindgen 0.61.1",
+ "wit-component",
 ]
 
 [[package]]
@@ -1186,41 +1190,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harmos-guest"
-version = "0.1.14"
-dependencies = [
- "harmos-domain",
- "harmos-guest-macros",
- "harmos-operations",
- "harmos-protocol",
- "postcard",
- "prost",
- "schematic-operations",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-perfetto-file",
- "tracing-subscriber",
- "wasmtime",
- "wit-bindgen 0.61.1",
- "wit-component",
-]
-
-[[package]]
-name = "harmos-guest-macros"
-version = "0.1.14"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
 name = "harmos-operations"
 version = "0.1.14"
 dependencies = [
@@ -1229,7 +1198,6 @@ dependencies = [
  "harmos-protocol",
  "harmos-sdk-derive",
  "harmos-storage",
- "memchr",
  "postcard",
  "prost",
  "prost-reflect",
@@ -1302,7 +1270,6 @@ dependencies = [
  "getrandom 0.4.3",
  "harmos",
  "harmos-domain",
- "harmos-guest",
  "harmos-operations",
  "harmos-packaging",
  "harmos-protocol",
@@ -1312,7 +1279,6 @@ dependencies = [
  "http-body",
  "http-body-util",
  "hyper-util",
- "postcard",
  "prost",
  "prost-build",
  "prost-reflect",
@@ -2505,7 +2471,6 @@ dependencies = [
 name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
- "harmos-guest",
  "harmos-operations",
  "schematic-domain",
  "schematic-protocol",

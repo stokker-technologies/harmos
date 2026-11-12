@@ -21,6 +21,7 @@
 use crate::app::{Runtime, SchematicEditor};
 use harmos_runtime::config::PluginSettings;
 use harmos_runtime::guest::{Host, Loaded};
+use std::sync::Arc;
 
 /* === Constants === */
 
@@ -47,15 +48,28 @@ pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos
             reason: "the inspected component has a different owner",
         });
     }
+    // Keep Operation Streaming in the Host
+    let resources = runtime.operations.context().resource::<schematic_operations::schematic::upload::AnalysisResources>()?;
+    let streams = runtime.streams.clone();
+    resources.progress.get_or_init(|| Arc::new(move |row| streams.publish(row)));
+    let registration = harmos_runtime::operations::Registration::new(harmos_runtime::operations::Lane::default())
+        .protobuf::<schematic_operations::AnalyzeSchematic>()?
+        .protobuf::<schematic_operations::AnalyzeUpload>()?
+        .protobuf::<schematic_operations::AnalyzeExchange>()?
+        .protobuf::<schematic_operations::transfer::Upload>()?
+        .protobuf::<schematic_operations::transfer::Download>()?
+        .protobuf::<schematic_operations::transfer::Put>()?
+        .protobuf::<schematic_operations::transfer::Take>()?;
+    runtime.register_batch(registration).await?;
+
     runtime
         .plugin
         .register_guest(
-            harmos_runtime::operations::ComponentCatalog::new()
-                .operation(schematic_operations::guest::VALIDATE_SCHEMATIC_OPERATION)?
-                .operation(schematic_operations::guest::PROPOSE_ROUTE_OPERATION)?
-                .operation(schematic_operations::guest::ANALYZE_SCHEMATIC_OPERATION)?,
             loaded,
-            PluginSettings::default(),
+            PluginSettings {
+                configuration: b"null".to_vec(),
+                ..PluginSettings::default()
+            },
             harmos_runtime::operations::Lane::default(),
         )
         .await?;

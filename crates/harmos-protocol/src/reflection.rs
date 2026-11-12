@@ -145,6 +145,66 @@ impl ReflectMessage for crate::v1::Time {
         pool().get_message_by_name("harmos.v1.Time").expect("generated message")
     }
 }
+impl ReflectMessage for crate::v1::GuestRegistration {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestRegistration").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestRequirement {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestRequirement").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestCommand {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestCommand").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestPrepare {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestPrepare").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestInvocation {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestInvocation").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestValue {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestValue").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestInitialize {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestInitialize").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestShutdown {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestShutdown").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestChild {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestChild").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestChildRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestChildRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestChildControl {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestChildControl").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::GuestSubmitted {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.GuestSubmitted").expect("generated message")
+    }
+}
 impl ReflectMessage for crate::host::AssignedOperation {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.host.v1.AssignedOperation").expect("generated message")

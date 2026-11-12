@@ -55,7 +55,6 @@ serde_json = { workspace = true }
 # Filesystem
 
 # Parsing
-memchr = { workspace = true, default-features = true }
 
 # Concurrency
 

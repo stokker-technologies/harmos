@@ -98,6 +98,7 @@ pub struct PluginSettings {
     pub configuration: Vec<u8>,
     pub requires: Vec<harmos_operations::Requirement>,
     pub host_operations: Vec<crate::Identifier>,
+    pub grants: Vec<harmos_operations::plugin::Grant>,
     pub initialization_timeout: Duration,
     pub shutdown_timeout: Duration,
     pub encoding_memory_bytes: NonZeroUsize,
@@ -116,6 +117,7 @@ pub struct PluginRestartSettings {
 #[cfg(feature = "plugin-guest")]
 #[derive(Clone, Copy, Debug)]
 pub struct PluginGuestSettings {
+    pub stream_window: Option<NonZeroUsize>,
     pub component_bytes: NonZeroUsize,
     pub memory_bytes: NonZeroUsize,
     pub fuel: NonZeroU64,
@@ -165,6 +167,7 @@ impl Default for PluginSettings {
             configuration: b"null".to_vec(),
             requires: Vec::new(),
             host_operations: Vec::new(),
+            grants: Vec::new(),
             initialization_timeout: Duration::from_secs(5),
             shutdown_timeout: Duration::from_secs(30),
             encoding_memory_bytes: NonZeroUsize::new(4096).unwrap(),
@@ -200,6 +203,7 @@ impl PluginSettings {
 impl Default for PluginGuestSettings {
     fn default() -> Self {
         Self {
+            stream_window: None,
             component_bytes: NonZeroUsize::new(64 * 1024 * 1024).unwrap(),
             memory_bytes: NonZeroUsize::new(64 * 1024 * 1024).unwrap(),
             fuel: NonZeroU64::new(10_000_000).unwrap(),

@@ -22,7 +22,6 @@ runtime = ["harmos-operations/lifecycle", "dep:thiserror", "dep:tokio"]
 
 [dependencies]
 # Local
-harmos-guest = { workspace = true }
 harmos-operations = { workspace = true, default-features = false, features = ["grpc", "streaming"] }
 schematic-protocol = { path = "../protocol" }
 schematic-domain = { path = "../domain" }

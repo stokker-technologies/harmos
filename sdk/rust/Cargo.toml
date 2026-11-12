@@ -10,7 +10,7 @@
 
 [package]
 name = "harmos"
-description = "Rust plugin authoring and generated-contract clients over the Harmos gRPC protocol."
+description = "Rust plugin authoring and generated-contract clients for Harmos."
 autotests = false
 autobins = false
 exclude = ["src/bin/**"]
@@ -24,6 +24,9 @@ publish.workspace = true
 # === Package Targets === #
 
 # === Features === #
+
+[features]
+wasm = ["dep:wit-bindgen"]
 
 # === Dependencies === #
 
@@ -50,10 +53,12 @@ prost-types = { workspace = true, features = ["std"] }
 # Async
 futures-core = { workspace = true }
 futures-util = { workspace = true }
-tokio = { workspace = true, features = ["macros", "net", "rt", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
 
 # Networking
-tonic = { workspace = true, features = ["codegen", "router", "transport"] }
+tonic = { workspace = true, features = ["codegen"] }
+
+wit-bindgen = { workspace = true, default-features = true, features = ["async-spawn", "inter-task-wakeup"], optional = true }
 
 # === Build Dependencies === #
 
@@ -68,6 +73,11 @@ schematic-protocol = { path = "../../examples/schematic/protocol" }
 tonic-prost = { workspace = true }
 serde_json = { workspace = true, features = ["std"] }
 
+# Utilities
+sha2 = { workspace = true, default-features = true }
+wasmtime = { workspace = true }
+wit-component = { workspace = true, default-features = true }
+
 # Filesystem
 tempfile = { workspace = true }
 
@@ -76,7 +86,21 @@ tokio = { workspace = true, features = ["process", "io-util"] }
 
 # === Target Dependencies === #
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Async
+tokio = { workspace = true, features = ["net"] }
+
+# Networking
+tonic = { workspace = true, features = ["router", "transport"] }
+
+
 # === Test Targets === #
+
+[[test]]
+name = "system"
+path = "tests/wasm/main.rs"
+required-features = ["wasm"]
+
 
 [[test]]
 name = "integration"

@@ -158,16 +158,6 @@ mod tests {
             obsolete["operation"]["visibility"] = serde_json::json!(visibility);
             assert!(serde_json::from_value::<Contract>(obsolete).is_err());
         }
-
-        use crate::catalog::Node;
-        use crate::inventory::contracts::{encode_fragments, encoded_fragments_len};
-        const OPERATIONS: &[Node<WireDeclaration>] = &[Node::Leaf(PUBLISHED_OPERATION.wire())];
-        const LIFECYCLE: &[OperationPolicy; 2] = &[PUBLISHED_OPERATION.entry().policy; 2];
-        const SIZE: usize = encoded_fragments_len("sidecar", "fixture", OPERATIONS, &[], LIFECYCLE);
-        const METADATA: [u8; SIZE] = encode_fragments("sidecar", "fixture", OPERATIONS, &[], LIFECYCLE);
-        let metadata = harmos_operations::artifacts::fragments::<serde_json::Value>(&METADATA, &["contracts"]).unwrap();
-        let provided = metadata.iter().find(|fragment| fragment["entry"]["direction"] == "provides").unwrap();
-        assert_eq!(provided["entry"]["contract"]["operation"]["visibility"], "public");
     }
 
     #[test]

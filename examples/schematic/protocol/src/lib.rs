@@ -24,12 +24,6 @@ fn pool() -> &'static prost_reflect::DescriptorPool {
 }
 
 #[cfg(feature = "sdk")]
-fn descriptors() -> &'static prost_types::FileDescriptorSet {
-    static TYPES: std::sync::OnceLock<prost_types::FileDescriptorSet> = std::sync::OnceLock::new();
-    TYPES.get_or_init(|| prost::Message::decode(include_bytes!("descriptors.bin").as_slice()).expect("generated schematic graph"))
-}
-
-#[cfg(feature = "sdk")]
 impl harmos::OperationRequest for ValidateSchematic {
     type Response = Validation;
     const ID: &'static str = "schematic.validate";

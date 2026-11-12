@@ -61,7 +61,7 @@ mise run build -- --package harmos-packaging --example fixture-driver --features
 
 Focused guest builds accept `--target wasm32-unknown-unknown` and `--messages <path>`
 to capture Cargo artifacts. Build each guest through that selection, then use
-`prepare:tests:fixtures --focused-messages <native-library-capture> --libraries harmos_guest
+`prepare:tests:fixtures --focused-messages <native-library-capture> --libraries harmos
 --inspection-messages <guest-captures> --inspections <guest-names>
 --componentizer target/debug/examples/fixture-driver.exe` to componentize and stamp
 those exact artifacts. On Unix, omit `.exe`. Set `HARMOS_FOCUSED_FIXTURES` to the
@@ -293,7 +293,7 @@ the configured per-test hang guards from `[conventions.testing.deadlines]` in
 
 ```sh
 mise run test -- --language rust --layer integration --filter 'package(=harmos-runtime) & test(=plugin_grpc::child_calls::child_calls_reach_host_and_public_peer_without_start_order)' --stress-count 50
-mise run test -- --language rust --layer system --filter 'binary_id(=harmos-guest::system) | (binary_id(=harmos-runtime::system) & test(guest))'
+mise run test -- --language rust --layer system --filter 'binary_id(=harmos::system) | (binary_id(=harmos-runtime::system) & test(guest))'
 ```
 
 System also accepts `--filter` and preserves its serial scheduling and hang guards.

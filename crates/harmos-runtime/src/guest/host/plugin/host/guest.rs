@@ -28,7 +28,7 @@ use super::{Execution, Factory, LifecycleFuture, PluginHost};
 use crate::config::PluginSettings;
 use crate::guest::host::plugin::{PluginDefinition, PluginLifecycleAuthority, Router};
 use crate::guest::{Loaded, Serving};
-use crate::operations::{ComponentCatalog, EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
+use crate::operations::{EncodedInvocation, Lane, Manager, PluginRegistration, PluginSdkRegistration};
 use crate::{Application, Error, Result};
 
 /* === Constants === */
@@ -54,7 +54,6 @@ struct Guest<A: Application> {
     shutdown_timeout: Duration,
     encoding_memory_bytes: NonZeroUsize,
     lane: Lane,
-    catalog: ComponentCatalog,
 }
 
 /* === Enums === */
@@ -64,27 +63,36 @@ struct Guest<A: Application> {
 /* === Implementations === */
 
 impl<A: Application> PluginHost<A> {
-    pub async fn register_guest(&self, catalog: ComponentCatalog, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()> {
-        self.guest(catalog, loaded, settings, lane, false).await
+    pub async fn register_guest(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()> {
+        self.guest(loaded, settings, lane, false).await
     }
 
-    pub async fn reload_guest(&self, catalog: ComponentCatalog, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()> {
-        self.guest(catalog, loaded, settings, lane, true).await
+    pub async fn reload_guest(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane) -> Result<()> {
+        self.guest(loaded, settings, lane, true).await
     }
 
-    async fn guest(&self, catalog: ComponentCatalog, loaded: Loaded<A>, settings: PluginSettings, lane: Lane, replace: bool) -> Result<()> {
+    async fn guest(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane, replace: bool) -> Result<()> {
         settings.validate()?;
         loaded.validate_publications().map_err(|source| failed(&loaded.declaration().id, source))?;
         let mut definition = PluginDefinition::guest(&loaded, settings.configuration.clone())
             .map_err(|source| failed(loaded.declaration().id.as_str(), source))?;
         definition.requires = settings.requires.clone();
-        let declarations = catalog.definitions();
-        harmos_operations::inventory::operations::validate_match(&declarations, &definition.contributions.operations).map_err(|_| {
-            Error::InvalidInput {
-                field: "guest operation catalog",
-                reason: "catalog must match the inspected component",
+        for grant in &settings.grants {
+            let required = definition
+                .contributions
+                .required_contracts
+                .as_mut()
+                .and_then(|requirements| {
+                    requirements.iter_mut().find(|required| required.contract.operation().id.as_str() == grant.operation())
+                })
+                .ok_or(Error::InvalidInput {
+                    field: "guest grants",
+                    reason: "grant must name a declared external requirement",
+                })?;
+            if !required.grants.contains(grant) {
+                required.grants.push(grant.clone());
             }
-        })?;
+        }
         let grants = settings.host_operations.iter().cloned().collect();
         let operations = self.shared.operations.clone();
         let initialization_timeout = settings.initialization_timeout;
@@ -107,7 +115,6 @@ impl<A: Application> PluginHost<A> {
                 shutdown_timeout,
                 encoding_memory_bytes,
                 lane,
-                catalog: catalog.clone(),
             }))
         });
         self.register(definition, factory, grants, settings.restart, replace).await
@@ -123,9 +130,6 @@ impl<A: Application> Execution for Guest<A> {
             let starting = async {
                 let loaded = self.loaded.take().expect("one inspected guest per attempt");
                 let registered = loaded.register().await.map_err(|source| failed(&definition.id, source))?;
-                let mut collected = definition.clone();
-                collected.contributions.registrations = registered.registrations().to_vec();
-                collected.validate().map_err(|source| failed(&definition.id, source))?;
                 let registered = registered.routed(router).map_err(|source| failed(&definition.id, source))?;
                 self.serving = Some(registered.serve_sdk().await.map_err(|source| failed(&definition.id, source))?);
                 let serving = self.serving.as_ref().unwrap();
@@ -133,9 +137,8 @@ impl<A: Application> Execution for Guest<A> {
                 let owner = definition.id.clone();
                 self.exited = Some(Box::pin(async move { exited.await.map_err(|source| failed(&owner, source)) }));
                 let component = Arc::new(serving.operations().map_err(|source| failed(&definition.id, source))?);
-                self.registration = Some(self.operations.stage_plugin(serving.scope().unwrap(), |bindings| {
-                    bindings.register_component_catalog(&self.catalog, self.lane, component.clone())
-                })?);
+                self.registration =
+                    Some(self.operations.stage_plugin(serving.scope().unwrap(), |bindings| component.register(bindings, self.lane))?);
                 self.sdk = Some(component.stage_sdk(&self.operations, self.lane)?);
                 self.initializing =
                     Some(self.sdk.as_ref().unwrap().submit_initialize(authority, &definition.configuration, self.encoding_memory_bytes)?);

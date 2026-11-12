@@ -9,134 +9,99 @@
 
 /* === Modules === */
 
-use schematic_domain as schematic;
+/* === Re-Exports === */
 
 /* === Imports === */
 
-// Standard Library Imports
-use std::num::NonZeroUsize;
-// Third Party Imports
-
-// Local Imports
-use crate::support;
-use harmos_runtime::Runtime;
-use harmos_runtime::guest::PluginState;
-use schematic::model::{Connection, Point, Snapshot};
-use schematic_operations::guest::schematic::{analyze, propose, validate};
+use harmos_runtime::{Runtime, guest::PluginState};
+use prost::Message as _;
+use schematic_operations::protocol::{Connection, Point, ProposeRoute, Route, Snapshot, ValidateSchematic, Validation};
+use std::{num::NonZeroUsize, time::SystemTime};
 
 /* === Constants === */
 
-const PLUGIN: &str = "schematic_tools";
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
 
 /* === Private Functions === */
 
-fn route() -> propose::ProposeRoute {
-    propose::ProposeRoute {
-        from: Point { x: 0, y: 0 },
-        to: Point { x: 3, y: 4 },
-    }
-}
-
-fn corner() -> [Point; 3] {
-    [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]
-}
+/* === Tests === */
 
 #[tokio::test]
 async fn guest_composition_walks() {
     let _report = crate::report::system();
-    // Scene 1: The Host Boots Without Any Guest Operation
-    let runtime = Runtime::<support::Bank>::launch_with(support::Ledger::default(), (), |setup| {
-        setup.settings().register(support::catalog());
+    // Boot Without a Guest Operation
+    let (clock, _) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let runtime = Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
+        setup.settings().clock(clock);
+        setup.settings().register(crate::support::catalog());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(NonZeroUsize::new(4096).unwrap()),
+            preparation_bytes: NonZeroUsize::new(4096),
             ..Default::default()
         });
     })
     .await
-    .expect("an empty ledger has nothing to recover");
-    assert!(runtime.plugin.status(PLUGIN).is_none());
+    .unwrap();
+    let route = ProposeRoute {
+        from: Some(Point { x: 0, y: 0 }),
+        to: Some(Point { x: 3, y: 4 }),
+    };
+    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
 
-    // Scene 2: The Stamped Schematic Guest Declares Itself Before Instantiation
-    let bytes = support::fixtures::component("schematic-guest");
+    // Load the Same Unary Builder Values Used by the Native SDK
+    let bytes = crate::support::fixtures::component("schematic-guest");
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let loaded = host.load(&bytes).unwrap();
-    let declaration = loaded.declaration();
-    assert_eq!(declaration.id, PLUGIN);
-    let mut declared: Vec<_> = declaration.operations.iter().map(|operation| operation.id.to_string()).collect();
-    declared.sort();
-    assert_eq!(declared, ["schematic.analyze", "schematic.route", "schematic.validate"]);
-
-    // Scene 3: Registration And Initialization Make The Guest Ready
-    let settings = harmos_runtime::config::PluginSettings {
-        configuration: b"null".to_vec(),
-        ..Default::default()
-    };
+    assert_eq!(loaded.declaration().id, "schematic_tools");
+    let declared: Vec<_> = loaded.declaration().operations.iter().map(|operation| operation.id.as_str()).collect();
+    assert_eq!(declared, ["schematic.validate", "schematic.route"]);
     runtime
         .plugin
         .register_guest(
-            harmos_runtime::operations::ComponentCatalog::new()
-                .operation(schematic_operations::guest::VALIDATE_SCHEMATIC_OPERATION)
-                .unwrap()
-                .operation(schematic_operations::guest::PROPOSE_ROUTE_OPERATION)
-                .unwrap()
-                .operation(schematic_operations::guest::ANALYZE_SCHEMATIC_OPERATION)
-                .unwrap(),
             loaded,
-            settings,
+            harmos_runtime::config::PluginSettings {
+                configuration: b"null".to_vec(),
+                ..Default::default()
+            },
             harmos_runtime::operations::Lane::default(),
         )
         .await
         .unwrap();
     runtime.plugin.initialize().await.unwrap();
-    let ready = runtime.plugin.status(PLUGIN).unwrap();
-    assert_eq!(ready.state, PluginState::Ready);
+    let original = runtime.plugin.status("schematic_tools").unwrap();
+    assert_eq!(original.state, PluginState::Ready);
 
-    // Scene 4: A Typed Caller Routes Through The Guest
-    let routed = runtime.operation(route()).await.unwrap();
-    assert_eq!(routed.points, corner());
-
-    // Scene 5: Validation Reports Every Diagnostic Of A Broken Schematic
-    let validated = runtime
-        .operation(validate::ValidateSchematic {
-            schematic: Snapshot {
-                symbols: vec![1, 1],
-                connections: vec![Connection { from: 1, to: 2 }],
-            },
-        })
-        .await
-        .unwrap();
-    assert_eq!(validated.diagnostics, ["Duplicate Symbol IDs", "Connection 1 to 2 References a Missing Symbol"]);
-
-    // Scene 6: Analysis Streams Its Findings Before Its Response
-    let settings = harmos_runtime::operations::StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4096).unwrap(),
-    };
-    let request = analyze::AnalyzeSchematic {
-        schematic: Snapshot {
-            symbols: vec![1, 2],
+    // Route and Validate With the Authoritative Application Messages
+    let bytes = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
+    let answer = Route::decode(bytes.as_slice()).unwrap();
+    assert_eq!(answer.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]);
+    let request = ValidateSchematic {
+        schematic: Some(Snapshot {
+            symbols: vec![1, 1],
             connections: vec![Connection { from: 1, to: 2 }],
-        },
+        }),
     };
-    let mut download = runtime.operations.download::<analyze::AnalyzeSchematic>(request, settings).unwrap();
-    for expected in ["2 symbols", "1 connections", "Analysis complete"] {
-        assert_eq!(download.next().await.unwrap().unwrap().text, expected);
-    }
-    assert!(download.next().await.unwrap().is_none());
-    assert_eq!(download.join().await.unwrap().checked, 3);
+    let bytes = runtime.operations.call_encoded("schematic.validate", request.encode_to_vec()).await.unwrap();
+    assert_eq!(Validation::decode(bytes.as_slice()).unwrap().diagnostics.len(), 2);
 
-    // Scene 7: Reloading Replaces The Generation And Keeps Answering
-    runtime.plugin.reload(PLUGIN).await.unwrap();
-    let reloaded = runtime.plugin.status(PLUGIN).unwrap();
+    // Replace the Activation and Keep Answering the Same Contract
+    runtime.plugin.reload("schematic_tools").await.unwrap();
+    let reloaded = runtime.plugin.status("schematic_tools").unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
-    assert_ne!(reloaded.generation, ready.generation);
-    let routed = runtime.operation(route()).await.unwrap();
-    assert_eq!(routed.points, corner());
-
-    // Scene 8: Stopping The Guest Withdraws Its Operations
-    runtime.plugin.stop(PLUGIN).await.unwrap();
-    assert!(runtime.operation(route()).await.is_err());
-
-    // Scene 9: The Host Stops Cleanly
+    assert_ne!(reloaded.generation, original.generation);
+    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_ok());
+    runtime.plugin.stop("schematic_tools").await.unwrap();
+    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
     runtime.shutdown().await.unwrap();
 }

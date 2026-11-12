@@ -243,13 +243,6 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn validate_timestamp(at: prost_types::Timestamp) -> std::result::Result<(), Status> {
-    if at.nanos < 0 || at.nanos >= 1_000_000_000 || !(-62_135_596_800..=253_402_300_799).contains(&at.seconds) {
-        return Err(Status::invalid_argument("Invalid Timestamp"));
-    }
-    Ok(())
-}
-
 /* === Private Functions === */
 
 fn output_stream<T: Send + 'static>(receiver: mpsc::Receiver<std::result::Result<T, Status>>) -> Output<T> {
@@ -372,7 +365,7 @@ async fn publish(
             frame = input.message(), if next_tick.is_none() => {
                 let Some(frame) = frame? else { return Ok(()); };
                 let Some(publish_frame::Frame::Tick(tick)) = frame.frame else { return Err(Status::invalid_argument("Expected Tick")); };
-                let at = tick.at.ok_or_else(|| Status::invalid_argument("Tick Time Required"))?; validate_timestamp(at)?;
+                let at = tick.at.ok_or_else(|| Status::invalid_argument("Tick Time Required"))?; crate::stream::validate_timestamp(at)?;
                 if observer.is_none() { return Err(Status::invalid_argument("Device Streams Do Not Accept Ticks")); }
                 next_tick = Some(at);
             }

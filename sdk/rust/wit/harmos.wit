@@ -1,0 +1,14 @@
+package harmos:guest@1.0.0;
+
+interface operation-context {
+    /// Requests and responses are harmos.v1 protobuf messages.
+    child: async func(request: list<u8>) -> result<list<u8>, list<u8>>;
+}
+
+world plugin {
+    import operation-context;
+    /// Inert harmos.v1.GuestRegistration; never runs lifecycle callbacks.
+    export register: func() -> result<list<u8>, string>;
+    /// harmos.v1.GuestCommand to harmos.v1.Response.
+    export operate: async func(owner: string, command: list<u8>) -> list<u8>;
+}

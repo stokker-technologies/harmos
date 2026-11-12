@@ -14,8 +14,6 @@ mod authored;
 pub mod authorization;
 mod binding;
 mod caller;
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-mod catalog;
 mod clock;
 pub(crate) mod context;
 mod surface;
@@ -25,8 +23,6 @@ pub(crate) mod children;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod component;
-#[cfg(feature = "plugin-guest")]
-mod encoded;
 mod execution;
 mod finalization;
 #[cfg(feature = "grpc")]
@@ -44,8 +40,6 @@ mod session;
 mod streaming;
 
 mod registration;
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-mod remote;
 
 #[cfg(feature = "grpc")]
 mod protobuf;
@@ -56,15 +50,12 @@ mod wire;
 /* === Re-Exports === */
 
 #[cfg(feature = "plugin-guest")]
-#[doc(hidden)]
-pub use crate::guest::host::envelope::{
+pub(crate) use crate::guest::host::envelope::{
     WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand,
 };
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(feature = "plugin-guest")]
 pub use caller::Caller;
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub use catalog::ComponentCatalog;
 pub use context::ContextMut;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcBinding;
@@ -85,16 +76,12 @@ pub use harmos_operations::execution::operations::{
     ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
 };
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};
 pub use scope::Scope;
 pub use surface::{InvocationExt, RuntimeOperationHost};
 
 pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub use component::{Component, ComponentError, ComponentOperation};
-#[cfg(feature = "plugin-guest")]
-pub use encoded::EncodedBinding;
+pub use component::{Component, ComponentError};
 pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
 pub use harmos_operations::execution::operations::StreamError;
 pub use harmos_operations::execution::operations::{EndpointSet, InputEndpoint, OutputEndpoint};

@@ -52,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("harmos.storage.v1.rs", "storage.rs"),
         ("reflection.rs", "reflection.rs"),
         ("descriptors.bin", "descriptors.bin"),
+        ("guest-descriptors.bin", "guest-descriptors.bin"),
     ] {
         std::fs::copy(output.path().join(source), destination.join(target))?;
     }

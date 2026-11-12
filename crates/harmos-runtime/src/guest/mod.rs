@@ -9,26 +9,18 @@
 
 /* === Modules === */
 
-mod collection;
+mod declaration;
 
-// Native Guest Hosting; Portable Authoring Lives In harmos-guest.
+// Native Guest Hosting; Portable Authoring Lives In the SDK Wasm Adapter.
 pub(crate) mod host;
 
 /* === Re-Exports === */
 
 pub use host::plugin::*;
 
-pub use harmos_guest::{guest as plugin, kit, operations};
+pub use declaration::Declaration;
 
-pub use harmos_guest::operations::{OperationPolicy, RequestShape, RestartPolicy, RetryPolicy};
-
-pub use harmos_guest::{ConfigError, Plugin, Registrar, Registration, RegistrationError, StreamSpec, inventory, reserved};
-
-pub use harmos_guest::{Context, OperationRefusal, PublishError, Publisher, UNKNOWN, UNREADABLE, WIT, export_plugin};
-
-pub use collection::{registrations, validate};
-
-pub use host::{Error, Host, Loaded, Registered, Serving};
+pub use host::{Error, Host, Loaded, Registered, Serving, inspect};
 
 /* === Imports === */
 

@@ -41,17 +41,17 @@ pub struct Plugin {
     pub(crate) operations: Vec<Operation>,
     pub(crate) streams: Vec<StreamDefinition>,
     pub(crate) observers: Vec<Observer>,
-    requirements: Vec<Required>,
+    pub(crate) requirements: Vec<Required>,
     sections: Vec<(v1::Section, prost_types::FileDescriptorSet)>,
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
 }
 
-struct Required {
-    id: String,
-    request: String,
-    response: String,
-    types: prost_types::FileDescriptorSet,
+pub(crate) struct Required {
+    pub(crate) id: String,
+    pub(crate) request: String,
+    pub(crate) response: String,
+    pub(crate) types: prost_types::FileDescriptorSet,
 }
 
 /* === Enums === */
@@ -211,12 +211,6 @@ impl Plugin {
         catalog.types = Some(types);
         catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
         Ok(catalog)
-    }
-
-    pub fn serve(self) -> Result<()> {
-        let catalog = self.catalog()?;
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-        runtime.block_on(tokio::task::LocalSet::new().run_until(crate::server::serve(self, catalog)))
     }
 
     pub(crate) fn requirements(catalog: &v1::Catalog) -> Arc<HashMap<String, Vec<u8>>> {

@@ -120,8 +120,7 @@ real `WorkerOwner` owns the canonical worker and settlement. Runtime storage
 stories cover host composition, managed journal projection and operation dispatch.
 Inject file journal faults at the public `FileBackend` boundary, retaining its
 parsing, rollback and leasing. The specialized integration entrypoints are
-`harmos-domain/tests/message/main.rs` and `harmos-guest/tests/kit/main.rs`, both
-under `crates/`.
+`crates/harmos-domain/tests/message/main.rs` and `sdk/rust/tests/wasm/main.rs`.
 
 Runtime system tests compose the host baseline with the Schematic guest and
 sidecar artifacts from the example workspace. The sandbox guest covers guest

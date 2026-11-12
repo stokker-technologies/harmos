@@ -42,7 +42,7 @@ pub(crate) struct HarmosPath(Path);
 
 impl HarmosPath {
     pub(crate) fn catalog() -> Self {
-        for package in ["harmos-runtime", "harmos-guest", "harmos-operations", "harmos-domain", "harmos"] {
+        for package in ["harmos-runtime", "harmos-operations", "harmos-domain", "harmos"] {
             let Ok(found) = proc_macro_crate::crate_name(package) else {
                 continue;
             };

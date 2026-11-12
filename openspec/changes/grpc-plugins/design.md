@@ -35,10 +35,9 @@ public package/library `harmos`, with native plugin builders and its Message der
 The SDK client binds generated application messages to protocol contracts; managed calls
 retain cancellation settlement and bounded outgoing queues without host dependencies. The former `crates/harmos-sdk` engine lives in
 `crates/harmos-operations/src/execution/`; the old SDK root and `crates/harmos` facade are deleted.
-Guest-private dispatch and lifecycle extraction have landed in `harmos-guest` and the runtime
-guest host. Host protobuf adoption, macro replacement and derive consolidation have landed.
-Domain reduction moves native operation behavior to operations and portable policy values
-to protocol; guest protocol/SDK migration remains deferred. Target contracts below do not claim those migrations or final proof passed.
+Host protobuf adoption, macro replacement, derive consolidation and domain reduction
+have landed. Task 7.1 replaces the guest packages with optional SDK WebAssembly support
+and protobuf guest messages. Source and proof remain separate until their tasks close.
 
 ## Crate Structure
 
@@ -128,8 +127,8 @@ derive; replace the old `message` attribute without conflating native stored enc
 encoding. Migrate re-exports, dependencies, consumers and derive coverage, then delete the old
 macro package. Keep the SDK free of host dependencies throughout.
 
-After domain reduction, fold `harmos-guest` into optional WebAssembly support in `harmos` and
-delete `harmos-guest-macros`, together with deferred task 7.1 and its guest lifecycle design.
+After domain reduction, task 7.1 folds `harmos-guest` into optional WebAssembly support
+in `harmos` and deletes both guest packages under the lifecycle design below.
 The guest `plugin` macro, re-exported as `harmos_guest::guest`, becomes builder values and one
 author-supplied registration function behind an SDK adapter. Generated component bindings stay
 inside that adapter: one registration function does not mean one canonical ABI export.
@@ -137,6 +136,87 @@ Preserve WIT resources, async lifting, registration/operation glue and lifecycle
 (submit, status, join and release) until their replacements are designed and migrated. Move the
 sandbox fixture and guest tests with the adapter. Runtime retains guest loading, fuel/memory
 limits and sandbox authority; neither these nor host dispatch enter the SDK.
+
+### Guest Lifecycle and Child Control
+
+Task 7.1 replaces the guest transport and authoring surface as one delivery. The SDK's
+only product dependency remains `harmos-protocol`; runtime owns loading, Wasmtime stores,
+fuel, memory, admission, generation capabilities and physical settlement.
+
+```rust
+use harmos::{Context, Operation, Plugin, Result};
+use harmos::wasm::Registration;
+
+#[unsafe(no_mangle)]
+pub fn harmos_register() -> Registration {
+    Registration::new(Plugin::new("example", "1.0.0")
+        .operation(Operation::new("example.echo", echo)))
+        .capacity(2)
+        .on_initialize(initialize)
+        .on_shutdown(shutdown)
+}
+
+async fn echo(context: &Context, request: Echo) -> Result<Echo> { Ok(request) }
+async fn initialize(context: &Context, configuration: Vec<u8>) -> Result<()> { Ok(()) }
+async fn shutdown(context: &Context) -> Result<()> { Ok(()) }
+
+// Requirements, protobuf messages, handlers and invocation resources use the native SDK.
+// A submitted child remains owned by the original host attempt.
+async fn children(context: &Context, request: EchoChild) -> Result<()> {
+    let child = context.submit(request).await?;
+    let state = child.status().await?;
+    child.request_cancel().await?;
+    let result = child.join().await;
+    Ok(())
+}
+```
+
+The component SDK supplies canonical ABI exports, generated WIT bindings, async lifting,
+resource destructors and `register`/`operate` glue. The author supplies only the ordinary
+`harmos_register` function; no declaration or export macro is required. Registration
+constructs builder values and describes protobuf contracts, never enters an initialization,
+operation or cleanup callback. Runtime freezes and validates that catalog before activation;
+there are no compiled catalog markers or parallel authored inventories. Componentization executes
+`register` without authority and stamps its protobuf registration in one component custom section.
+Bundle reading and `Host::load` read that bounded metadata without running a guest; activation
+executes `register` on the retained store and rejects any difference from the stamped metadata.
+This keeps loading synchronous and bundle reading independent of the optional sandbox engine.
+
+| Mechanism | Replacement and Reason |
+| --- | --- |
+| Guest plugin attribute, declaration traits and static custom-section markers | Remove; the author-supplied function composes the native SDK's `Plugin` and `Operation` values, avoiding duplicate authoring contracts. |
+| WIT register and operate exports, child import and async resources | Keep inside the optional SDK Wasm adapter; these are component ABI requirements rather than author declarations. |
+| Guest registration records and JSON inventory | Replace with protobuf guest registration carrying the authoritative `harmos.v1.Catalog`, identity, version and lifecycle policy; one source describes every handler. |
+| Prepare | Keep as a host-issued phase: validate unary payload, operation fingerprint and original generation, then reserve one slot before running author code. |
+| Initialize invocation | Keep as the binding phase of the original prepared invocation: attach its unforgeable finite attempt token and context values without running the handler. |
+| Attempt | Keep as the execution phase: run the selected unary handler once per host attempt, with host cancellation observable through `Context::cancelled`. |
+| Finalize and Cancel | Keep: Finalize releases the original slot after its work settles; Cancel signals that slot without discarding the handler's cooperative final response. |
+| Plugin initialization and shutdown operations | Replace payloads with protobuf lifecycle requests; run explicit initialize/shutdown callbacks using runtime-issued lifecycle authority, retaining cleanup after partial failure. |
+| Lifecycle grants and retained initialization context | Keep solely as runtime authority: only the initialization callback receives a retainable generation context, which can make declared calls/publications while its activation is live and cannot submit attempt-owned children. Ordinary invocation contexts never carry that fallback authority. |
+| Resource-scoped child grants | Replace authored guest grants with `PluginSettings::grants: Vec<harmos_operations::plugin::Grant>` supplied by the runtime consumer; only declared requirements can receive a scope, keeping authorization out of SDK metadata. |
+| Child call and submit | Replace with protobuf child requests containing the attempt/generation capability, requirement identity, fingerprint, context values and optional policy override; runtime checks declaration, original activation, visibility and admission. |
+| Child status, cancel, join, release and detach | Replace with protobuf child controls; all require the exact submitting attempt capability and an instance owned by that attempt. Status/cancel return protobuf instance state; Join consumes the handle and awaits settlement; Release cancels and relinquishes the handle while the parent retains settlement; Detach leaves work owned by the parent until its settlement. |
+| Child handle drop | Keep as asynchronous Release, matching native ownership: a dropped handle cannot orphan accepted work. |
+| Guest-private Postcard envelope, lifecycle and child status codecs | Delete; command, answer, assignment, lifecycle, child and failure messages use protobuf `harmos.v1` shapes, with no compatibility decoding. |
+| Guest-only host built-in payload mirrors | Delete; use the authoritative host/storage protobuf requests and runtime-native handlers. |
+| Streaming guest operations and their transfer endpoints | Remove from guest registration and transport; plugins expose unary operations and publish declared streams independently. Native host streaming remains. |
+| Guest observers and listener macro projections | Remove unsupported observer glue and superseded declaration projections; retain publication/recovery behavior through the authoritative stream declarations. |
+| Guest dispatch table and host execution dependencies in the guest kit | Replace with the SDK's unary handlers and a small adapter-owned prepared-slot table; sandbox and host dispatch never enter the SDK. |
+| Sandbox fixture and guest stories | Move with the adapter, consolidate into one journey per file and retain authority, lifecycle, cancellation, recovery and sandbox assertions; do not increase the source test count. |
+
+An attempt token grants only the current finite invocation's child and control operations.
+A generation token grants only declared calls/publications during that activation. Neither a
+numeric child id, an operation name nor another plugin's token grants authority. Retirement
+revokes generation calls and new publication before shutdown; accepted children still settle.
+Fuel, deadlines and memory limits are unchanged. Registration caches its descriptor work and
+initialization avoids reconstructing the catalog. Development optimization remains a consumer
+profile choice only where a retained host operation dependency still needs it.
+
+Source inventory: `sdk/rust/{src,tests,wit,Cargo.toml}`, both old guest packages (deleted),
+runtime guest loading/envelopes and their operation consumers, guest-only operation declarations,
+protocol guest messages and generation inputs, Schematic guest and shared consumers, guest
+fixture/build/package/conformance selectors, workspace manifests/locks, README and guest guides.
+Storage-interface files, backends, query modules and storage benches remain separately owned.
 
 ### Tool Packages
 
@@ -374,32 +454,30 @@ message layouts and vector growth through the existing decoding-memory owner. Au
 message descriptors supply reflection, dynamic validation and canonical protobuf fingerprints;
 the host adds only its operation service and streaming/control envelopes. All built-in
 and example native operations now use generated declarations. Their replaced payload DTOs
-and unused storage Postcard codecs are removed. Legacy declaration projections remain for
-the deferred guest/authoring machinery; native built-in and example handlers do not use them.
+and superseded guest declarations are removed. Native stored values keep their
+portable schema and encoding contracts.
 
 Assignment catalogs use `harmos.host.v1.OperationAssignments` from
 `proto/harmos/v1/host.proto`, including when passed inside guest initialization. Operation
 contracts advertise only `harmos.protobuf.v1`; storage codecs and schema revisions are unchanged.
 
-The task 6.5 boundary leaves the deferred task 7.1 guest transport private: `harmos-guest`
-continues to own Postcard command/answer envelopes, lifecycle requests, typed guest request/result
-and stream payloads, child requests/results and child-control replies. Runtime's private
-`src/guest/host/envelope/`, `operations/{component,remote,sdk,children}.rs` and guest-origin native
-dispatch retain that matching codec. Guest artifact inventories remain private JSON metadata;
-the assignment blob inside initialization is now protobuf, using generated entries directly.
-The guest's private `HashFile` and `Publish` declarations live in
-`crates/harmos-guest/src/builtins/`. Runtime's `src/guest/host/native_payloads.rs` recognizes
-only the complete frozen guest/native contract pairs, converts their payloads with admitted
-workspace, and preserves the guest fingerprint alongside the actual provider generation.
-No arbitrary schema compatibility or fingerprint substitution is accepted.
+Guest command/answer and child envelopes use `harmos.v1`
+messages. Lifecycle payloads and assignments use generated protobuf messages.
+Guest catalog construction uses SDK builders; componentization stamps one generated
+`harmos.v1.GuestRegistration` custom section after inert registration. Activation
+compares that metadata with registration on the original retained store.
+Host encoded calls select a unique guest operation by the same `OperationRequest::ID` as native SDK plugins; an owner-qualified ID still selects a specific provider. This keeps consumers transport-independent.
 
-`harmos-domain::Message` and its Postcard reader remain for persisted data and the deferred
-declaration projections. `model/storage/codec.rs` retains only the adapters needed by guest
-hashing, together with its file source/range/hash codecs. Bounded file identity, storage cursor
-and object version codecs preserve their stored formats. Example private guest declarations
-are isolated under `examples/schematic/operations/src/guest/`; native application messages
-are generated into `examples/schematic/protocol/` from `proto/schematic/v1/operations.proto`.
-No native plugin, external gRPC payload or public host encoded call uses that message encoding.
+Guest descriptor graphs are projected at protocol generation time, eliminating
+source-location decoding and unrelated descriptor work during fuel-bounded registration. Development guest workspaces optimize `harmos` and `harmos-protocol` at level 2; unoptimized descriptor validation still exceeds the original fuel budget. Release builds need no package profile override. The host example retains its `harmos-operations` development optimization; the standalone sandbox has no operations dependency and optimizes only its SDK/protocol dependencies.
+
+`storage.hash_file` and `host.publish` use their authoritative protobuf contracts.
+Runtime converts protobuf publication rows through the same row decoder as native
+gRPC publication before native storage, preserving fingerprints and provider authority.
+No private guest payload mirrors or compatibility envelope decoders remain.
+`harmos-domain::Message` and stored file identity/range/hash codecs retain native
+storage formats. Application messages are generated into `examples/schematic/protocol/`;
+guest handlers use those messages directly under `examples/schematic/guest/`.
 
 ## Calls Between Plugins
 
@@ -419,9 +497,10 @@ ctx.operation(SetTemperature) ─► ChildRequest{id, payload}
   it in `Catalog.types`. Message types are limited to what protobuf expresses.
 - The caller lists the operation in `Catalog.requires` with the fingerprint it was built
   against. A mismatch with the provider is reported when both are connected, naming both plugins.
-- Connected plugins trust each other. Grants and provider authorization between plugins are
-  removed; visibility and the fingerprint comparison remain, and so does authorization of
-  external clients.
+- Connected native gRPC plugins trust each other. Grants and provider authorization between
+  those plugins are removed; visibility, fingerprint comparison and external-client authorization
+  remain. Sandboxed guests retain runtime-owned authority as specified in Guest Lifecycle and
+  Child Control; they cannot grant themselves resource access.
 - An operation identifier is unique among connected plugins and host operations. A plugin that
   declares an identifier already in use is refused at connect, so provider selection is removed.
 - A call to an operation whose provider is not connected is refused at call time, naming the
@@ -680,7 +759,7 @@ virtual time.
 | Frame model | `crates/harmos-sidecar/src/wire.rs` (frames and sizing) |
 | Binary carriers, control pipe | `crates/harmos-sidecar/src/kit/{connection,carrier}.rs`, `attach/{control,windows}.rs` |
 | Handshake and frame exchange | `crates/harmos-runtime/src/services/sidecar/{handshake,carrier,frames,exchange}.rs` |
-| Postcard operation envelopes | Guest-private `crates/harmos-guest/src/envelope/` and runtime `src/guest/host/envelope/`, replaced with 7.1; host payload migration is 6.5 |
+| Guest operation envelopes | `harmos.v1` messages with SDK dispatch and runtime authority; Postcard envelope codecs are deleted by 7.1 |
 | Publication leases, admission, cadence reports | With the stream path they serve |
 | Plugin graph, start and stop ordering, reload plans | `crates/harmos-runtime/src/plugin/{mod,reload}.rs` and their use in `manager.rs` |
 | Grants between plugins, provider selection | Plugin paths of `crates/harmos-runtime/src/operations/manager/grants.rs`, `OperationProvider` |
@@ -717,7 +796,7 @@ access; products may use it to require an authenticated client.
 
 ## Open Points
 
-Guest migration (7.1) is deferred: lifecycle phases and child submit, status, join and release controls have no equivalent in `harmos.v1`; guest-private dispatch, envelopes and authoring support preserve those behaviours independently of native plugin removal.
+Guest migration (7.1) follows Guest Lifecycle and Child Control above. Windows guest, conformance and example proof is recorded in task 7.1; native Linux validation remains open under 8.1.
 
 ### Awaiting Owner Confirmation
 

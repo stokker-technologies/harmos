@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+pub(crate) mod protobuf;
+
 mod definition;
 mod demand;
 mod ingest;

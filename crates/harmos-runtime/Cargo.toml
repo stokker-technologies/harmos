@@ -26,7 +26,7 @@ bench = false
 # Core Runtime and Authoring Are Always Available
 [features]
 default = ["grpc"]
-plugin-guest = ["dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime", "dep:postcard"]
+plugin-guest = ["dep:wasmtime"]
 grpc = [
   "dep:heck",
   "harmos-operations/grpc",
@@ -44,7 +44,6 @@ simulation = []
 [dependencies]
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
-harmos-guest = { workspace = true, optional = true }
 harmos-sdk-derive = { workspace = true, default-features = true }
 harmos-operations = { workspace = true, features = ["lifecycle", "streaming", "grpc"] }
 harmos-protocol = { workspace = true }
@@ -67,7 +66,6 @@ semver = { workspace = true, default-features = true, features = ["serde"] }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
-postcard = { workspace = true, optional = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true, features = ["serde"] }
 prost-types = { workspace = true }
@@ -113,7 +111,7 @@ tower = { workspace = true }
 prost-build = { workspace = true }
 protoc-bin-vendored = { workspace = true }
 # Local
-harmos = { workspace = true }
+harmos = { workspace = true, features = ["wasm"] }
 harmos-packaging = { path = "../../tools/packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
