@@ -47,6 +47,15 @@ pub fn storage_catalog() -> crate::execution::operations::Catalog {
 pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
     let mut batch = crate::execution::__private::Catalog::new();
     batch.operations.extend([
+        crate::execution::operations::OperationFactory::protobuf::<super::context::ListProjectionRows>()
+            .expect("ListProjectionRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ListProjectionRows>().expect("ListProjectionRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetProjectionStatus>()
+            .expect("GetProjectionStatus declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetProjectionStatus>().expect("GetProjectionStatus declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AdvanceProjection>()
+            .expect("AdvanceProjection declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AdvanceProjection>().expect("AdvanceProjection declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::context::ListIndexEntries>()
             .expect("ListIndexEntries declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::ListIndexEntries>().expect("ListIndexEntries declaration"),
@@ -96,9 +105,6 @@ pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
         crate::execution::operations::OperationFactory::protobuf::<super::context::DeleteFileProduction>()
             .expect("DeleteFileProduction declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::context::GetFileBytes>().expect("GetFileBytes declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::AdvanceProjection>().expect("AdvanceProjection declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::ReadProjection>().expect("ReadProjection declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::InspectProjection>().expect("InspectProjection declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::CompareExchangeObject>()
             .expect("CompareExchangeObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),

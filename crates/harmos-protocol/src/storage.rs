@@ -1208,38 +1208,6 @@ pub struct DefinitionRevision {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct AdvanceProjection {
-    #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<SavedSnapshot>,
-    #[prost(string, tag = "2")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "3")]
-    pub work: ::core::option::Option<ReadLimits>,
-    #[prost(message, optional, tag = "4")]
-    pub source: ::core::option::Option<ColumnSource>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ReadProjection {
-    #[prost(message, optional, tag = "1")]
-    pub read: ::core::option::Option<ProjectionRead>,
-    #[prost(message, optional, tag = "2")]
-    pub source: ::core::option::Option<ColumnSource>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InspectProjection {
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(uint64, tag = "2")]
-    pub revision: u64,
-    #[prost(message, optional, tag = "3")]
-    pub frontier: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "4")]
-    pub source: ::core::option::Option<ColumnSource>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ProjectionState {
     #[prost(message, optional, tag = "1")]
     pub status: ::core::option::Option<ProjectionStatus>,

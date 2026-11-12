@@ -35,11 +35,9 @@ struct Registry {
     order: VecDeque<Vec<u8>>,
 }
 
-pub(crate) struct SnapshotRead<'a> {
-    owner: &'a SavedSnapshots,
+pub(crate) struct SnapshotRead {
     handle: wire::SavedSnapshot,
     snapshot: Arc<HeldSnapshot>,
-    retained: bool,
 }
 
 struct HeldSnapshot {
@@ -51,23 +49,13 @@ struct HeldSnapshot {
 
 /* === Implementations === */
 
-impl Drop for SnapshotRead<'_> {
-    fn drop(&mut self) {
-        if !self.retained {
-            let _ = self.owner.release(&self.handle);
-        }
-    }
-}
-impl std::ops::Deref for SnapshotRead<'_> {
+impl std::ops::Deref for SnapshotRead {
     type Target = Snapshot;
     fn deref(&self) -> &Self::Target {
         &self.snapshot.snapshot
     }
 }
-impl SnapshotRead<'_> {
-    pub(crate) fn retain(&mut self) {
-        self.retained = true;
-    }
+impl SnapshotRead {
     pub(crate) fn cut(&self) -> &v1::ReadCut {
         &self.snapshot.cut
     }
@@ -131,14 +119,9 @@ impl SavedSnapshots {
         }
         Ok(snapshot.clone())
     }
-    pub(crate) fn read(&self, handle: wire::SavedSnapshot) -> harmos_storage::Result<SnapshotRead<'_>> {
+    pub(crate) fn read(&self, handle: wire::SavedSnapshot) -> harmos_storage::Result<SnapshotRead> {
         let snapshot = self.get(&handle)?;
-        Ok(SnapshotRead {
-            owner: self,
-            handle,
-            snapshot,
-            retained: true,
-        })
+        Ok(SnapshotRead { handle, snapshot })
     }
     pub(crate) fn release(&self, handle: &wire::SavedSnapshot) -> harmos_storage::Result<()> {
         let at: StorageCursor = harmos_storage::query::protobuf::required(handle.at.clone())?.try_into()?;
@@ -168,7 +151,7 @@ impl SavedSnapshots {
         }
     }
     /// Resolve Only A Cut Previously Returned By This Owner, Or Select Its Current Durable Cut.
-    pub(crate) async fn resolve(&self, storage: &StorageManager, at: Option<v1::ReadCut>) -> crate::Result<SnapshotRead<'_>> {
+    pub(crate) async fn resolve(&self, storage: &StorageManager, at: Option<v1::ReadCut>) -> crate::Result<SnapshotRead> {
         let _issuance = self.issuance.lock().await;
         let explicit = at.is_some();
         let cut = at.unwrap_or_else(|| super::transfers::cut(storage.get_saved_position()));
@@ -192,24 +175,24 @@ impl SavedSnapshots {
             let snapshot = Arc::new(storage.snapshot(&position).await?);
             self.insert_cut(snapshot, cut, false, permit)?
         };
-        let mut read = self.read(handle)?;
-        read.retain();
+        let read = self.read(handle)?;
         Ok(read)
     }
-    /// Attach A Provider Revision To An Already Resolved Image, Without Reinterpreting It Later.
+    /// Retain A Cut Selected By The Storage/Provider Owner, Never An Unvalidated Caller Cut.
     pub(crate) async fn composite(&self, storage: &StorageManager, cut: v1::ReadCut) -> crate::Result<v1::ReadCut> {
-        let mut base = cut.clone();
-        base.revisions.clear();
-        let read = self.resolve(storage, Some(base)).await?;
         let _issuance = self.issuance.lock().await;
-        if self.registry.lock().unwrap().entries.values().any(|held| held.cut == cut) {
+        if self.registry.lock().unwrap().entries.values().any(|held| held.cut == cut && held.snapshot.is_available()) {
             return Ok(cut);
         }
+        let mut base = cut.clone();
+        base.revisions.clear();
+        let position = super::transfers::at(Some(base))?.expect("one storage history");
         let permit = self.reserve()?;
-        self.insert_cut(read.snapshot(), cut.clone(), false, permit)?;
+        let snapshot = Arc::new(storage.snapshot(&position).await?);
+        self.insert_cut(snapshot, cut.clone(), false, permit)?;
         Ok(cut)
     }
-    pub(crate) fn token(&self, read: &SnapshotRead<'_>, plan: &[u8], offset: u64) -> crate::Result<String> {
+    pub(crate) fn token(&self, read: &SnapshotRead, plan: &[u8], offset: u64) -> crate::Result<String> {
         let mut signing = self.signing.lock().unwrap();
         if signing.is_none() {
             let mut secret = [0; 32];
@@ -222,7 +205,7 @@ impl SavedSnapshots {
         bytes.extend_from_slice(hmac::sign(signing.as_ref().unwrap(), &bytes).as_ref());
         Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
     }
-    pub(crate) fn page(&self, token: &str, plan: &[u8], at: Option<&v1::ReadCut>) -> crate::Result<(SnapshotRead<'_>, u64)> {
+    pub(crate) fn page(&self, token: &str, plan: &[u8], at: Option<&v1::ReadCut>) -> crate::Result<(SnapshotRead, u64)> {
         let bytes = if token.len() == 208 {
             token
                 .as_bytes()
@@ -249,8 +232,7 @@ impl SavedSnapshots {
                 at: Some(held.snapshot.at().clone().into()),
             }
         };
-        let mut read = self.read(handle)?;
-        read.retain();
+        let read = self.read(handle)?;
         Ok((read, u64::from_be_bytes(bytes[32..40].try_into().unwrap())))
     }
 }

@@ -406,11 +406,14 @@ impl ProtobufOperation for GetIndexDefinition {
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, resolved_at) = super::definitions::get_index(&context, Self::ID, request.name, request.source).await?;
-        Ok(Self::Response {
-            definition: Some(definition),
-            revision,
-            resolved_at: Some(resolved_at),
-        })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                definition: Some(definition),
+                revision,
+                resolved_at: Some(resolved_at),
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -443,7 +446,7 @@ impl ProtobufOperation for SetIndexDefinition {
             request.work,
         )
         .await?;
-        Ok(Self::Response { definition: Some(definition), revision })
+        super::native::read_response(&context, Self::Response { definition: Some(definition), revision })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -469,11 +472,14 @@ impl ProtobufOperation for GetProjectionDefinition {
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, resolved_at) =
             super::definitions::get_projection(&context, Self::ID, request.name, request.source).await?;
-        Ok(Self::Response {
-            definition: Some(definition),
-            revision,
-            resolved_at: Some(resolved_at),
-        })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                definition: Some(definition),
+                revision,
+                resolved_at: Some(resolved_at),
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -505,7 +511,7 @@ impl ProtobufOperation for SetProjectionDefinition {
             request.rebuild,
         )
         .await?;
-        Ok(Self::Response { definition: Some(definition), revision })
+        super::native::read_response(&context, Self::Response { definition: Some(definition), revision })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -531,11 +537,14 @@ impl ProtobufOperation for ListRows {
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let page = super::pages::list(&context, Self::ID, request.source, request.at, request.transforms, request.page).await?;
-        Ok(Self::Response {
-            rows: page.rows,
-            resolved_at: Some(page.resolved_at),
-            next_page_token: page.next_page_token,
-        })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                rows: page.rows,
+                resolved_at: Some(page.resolved_at),
+                next_page_token: page.next_page_token,
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -558,7 +567,7 @@ impl ProtobufOperation for Capabilities {
 
     async fn run(context: ExecutionContext, _: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let capabilities = super::views::capabilities(&context).await?;
-        Ok(Self::Response { capabilities: Some(capabilities) })
+        super::native::read_response(&context, Self::Response { capabilities: Some(capabilities) })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -581,10 +590,13 @@ impl ProtobufOperation for CreateSnapshot {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (snapshot, resolved_at) = super::views::create(&context, request.at).await?;
-        Ok(Self::Response {
-            snapshot: Some(snapshot),
-            resolved_at: Some(resolved_at),
-        })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                snapshot: Some(snapshot),
+                resolved_at: Some(resolved_at),
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -607,7 +619,7 @@ impl ProtobufOperation for DeleteSnapshot {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         super::views::delete(&context, request.snapshot).await?;
-        Ok(Self::Response {})
+        super::native::read_response(&context, Self::Response {})
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -632,10 +644,13 @@ impl ProtobufOperation for ListColumnRows {
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (page, resolved_at) = super::views::columns(&context, Self::ID, request.snapshot, request.read).await?;
-        Ok(Self::Response {
-            page: Some(page),
-            resolved_at: Some(resolved_at),
-        })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                page: Some(page),
+                resolved_at: Some(resolved_at),
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
@@ -660,10 +675,96 @@ impl ProtobufOperation for ListIndexEntries {
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (page, resolved_at) = super::views::indexes(&context, Self::ID, request.snapshot, request.read, request.source).await?;
-        Ok(Self::Response {
-            page: Some(page),
-            resolved_at: Some(resolved_at),
-        })
+        super::native::read_response(
+            &context,
+            Self::Response {
+                page: Some(page),
+                resolved_at: Some(resolved_at),
+            },
+        )
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct AdvanceProjection;
+impl ProtobufOperation for AdvanceProjection {
+    type Request = wire::StorageAdvanceProjectionRequest;
+    type Response = wire::StorageAdvanceProjectionResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.advance_projection";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "AdvanceProjection"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (revision, resolved_at) =
+            super::views::advance_projection(&context, Self::ID, request.snapshot, request.name, request.work, request.source).await?;
+        super::native::read_response(&context, Self::Response { revision, resolved_at: Some(resolved_at) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct GetProjectionStatus;
+impl ProtobufOperation for GetProjectionStatus {
+    type Request = wire::StorageGetProjectionStatusRequest;
+    type Response = wire::StorageGetProjectionStatusResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.get_projection_status";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "GetProjectionStatus"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (status, resolved_at) =
+            super::views::projection_status(&context, Self::ID, request.name, request.revision, request.frontier, request.source).await?;
+        super::native::read_response(&context, Self::Response { status, resolved_at: Some(resolved_at) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct ListProjectionRows;
+impl ProtobufOperation for ListProjectionRows {
+    type Request = wire::StorageListProjectionRowsRequest;
+    type Response = wire::StorageListProjectionRowsResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.list_projection_rows";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "ListProjectionRows"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (page, resolved_at) = super::views::projection_rows(&context, Self::ID, request.read, request.source).await?;
+        super::native::read_response(
+            &context,
+            Self::Response {
+                page: Some(page),
+                resolved_at: Some(resolved_at),
+            },
+        )
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)

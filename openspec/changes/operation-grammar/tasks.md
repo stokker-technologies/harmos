@@ -154,3 +154,11 @@ and the complete built-in mapping.
   Coupling: one native-only operations dependency on the already locked ring version
   provides HMAC; the lockfile gains only that dependency edge. Retired Rust SDK
   request bindings are deleted with their operation owners.
+
+- Projection read migration: independent AdvanceProjection/GetProjectionStatus/
+  ListProjectionRows declarations share revision/source/cut validation. Omitted
+  frontiers select the newest readable materialization; explicit frontiers require
+  an issued composite, without flush or latest substitution. Retired declarations,
+  request types and SDK bindings are removed. Focused proof:
+  `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
+  (one passed). Complete unary reply envelopes enforce the storage response ceiling.

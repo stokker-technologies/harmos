@@ -67,15 +67,9 @@ mod write_schema;
 mod write_streams;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod advance_projection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod compare_exchange;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod inspect_projection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod native;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod read_projection;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod snapshot;
 
@@ -85,19 +79,13 @@ pub(crate) use contracts::contract;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use client::{
-    AppendFileBytes, Capabilities, CreateFileProduction, CreateFileWriter, CreateSnapshot, DeleteFileProduction, DeleteSnapshot,
-    GetFileBytes, GetFileProduction, GetIndexDefinition, GetProjectionDefinition, ListColumnRows, ListIndexEntries, ListRows,
-    PublishFileProduction, SetIndexDefinition, SetProjectionDefinition,
+    AdvanceProjection, AppendFileBytes, Capabilities, CreateFileProduction, CreateFileWriter, CreateSnapshot, DeleteFileProduction,
+    DeleteSnapshot, GetFileBytes, GetFileProduction, GetIndexDefinition, GetProjectionDefinition, GetProjectionStatus, ListColumnRows,
+    ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction, SetIndexDefinition, SetProjectionDefinition,
 };
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use advance_projection::AdvanceProjection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use compare_exchange::CompareExchangeObject;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use inspect_projection::InspectProjection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use read_projection::ReadProjection;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use snapshot::SavedSnapshots;
 

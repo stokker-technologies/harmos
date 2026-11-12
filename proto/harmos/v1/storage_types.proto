@@ -169,9 +169,6 @@ message ProjectionStatus { StorageCursor frontier = 1; uint64 revision = 2; uint
 // A saved snapshot is explicitly released. Its handle is opaque and instance scoped.
 message SavedSnapshot { bytes token = 1; StorageCursor at = 2; }
 message DefinitionRevision { uint64 revision = 1; }
-message AdvanceProjection { SavedSnapshot snapshot = 1; string name = 2; ReadLimits work = 3; ColumnSource source = 4; }
-message ReadProjection { ProjectionRead read = 1; ColumnSource source = 2; }
-message InspectProjection { string name = 1; uint64 revision = 2; StorageCursor frontier = 3; ColumnSource source = 4; }
 message ProjectionState { ProjectionStatus status = 1; }
 message CompareExchangeObject { MutationId mutation = 1; ObjectVersionToken expected = 2; SchemaInput schema = 3; ObjectValue value = 4; }
 message ObjectReceipt { StorageCursor position = 1; ObjectVersionToken version = 2; }

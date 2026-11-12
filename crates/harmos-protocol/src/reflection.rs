@@ -1580,21 +1580,6 @@ impl ReflectMessage for crate::storage::DefinitionRevision {
         pool().get_message_by_name("harmos.storage.v1.DefinitionRevision").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::AdvanceProjection {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.AdvanceProjection").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::ReadProjection {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ReadProjection").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::InspectProjection {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.InspectProjection").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::ProjectionState {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.ProjectionState").expect("generated message")

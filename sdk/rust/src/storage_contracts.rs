@@ -19,19 +19,6 @@ use std::sync::OnceLock;
 
 /* === Implementations === */
 
-impl Message for storage::AdvanceProjection {
-    fn name() -> String {
-        "harmos.storage.v1.AdvanceProjection".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
 impl Message for storage::ArrowPage {
     fn name() -> String {
         "harmos.storage.v1.ArrowPage".into()
@@ -110,19 +97,6 @@ impl Message for storage::IndexPage {
             .clone()
     }
 }
-impl Message for storage::InspectProjection {
-    fn name() -> String {
-        "harmos.storage.v1.InspectProjection".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
 impl Message for storage::ProjectionPage {
     fn name() -> String {
         "harmos.storage.v1.ProjectionPage".into()
@@ -139,19 +113,6 @@ impl Message for storage::ProjectionPage {
 impl Message for storage::ProjectionState {
     fn name() -> String {
         "harmos.storage.v1.ProjectionState".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
-impl Message for storage::ReadProjection {
-    fn name() -> String {
-        "harmos.storage.v1.ReadProjection".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
@@ -187,18 +148,6 @@ impl Message for storage::StorageCapabilities {
             })
             .clone()
     }
-}
-impl OperationRequest for storage::AdvanceProjection {
-    type Response = storage::DefinitionRevision;
-    const ID: &'static str = "storage.advance_projection";
-}
-impl OperationRequest for storage::ReadProjection {
-    type Response = storage::ProjectionPage;
-    const ID: &'static str = "storage.read_projection";
-}
-impl OperationRequest for storage::InspectProjection {
-    type Response = storage::ProjectionState;
-    const ID: &'static str = "storage.inspect_projection";
 }
 impl OperationRequest for storage::CompareExchangeObject {
     type Response = storage::CompareExchangeOutcome;

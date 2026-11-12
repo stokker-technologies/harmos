@@ -237,16 +237,16 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .await
         .unwrap();
     assert_eq!(current.revision, revision_bytes);
-    let inspect = wire::InspectProjection {
+    let inspect = harmos_protocol::v1::StorageGetProjectionStatusRequest {
         name: "sample.buckets".into(),
         revision,
         frontier: saved.at.clone(),
         source: Some(source.clone()),
     };
-    assert!(runtime.operations.call_protobuf::<operations::InspectProjection>(inspect.clone()).await.unwrap().status.is_none());
+    assert!(runtime.operations.call_protobuf::<operations::GetProjectionStatus>(inspect.clone()).await.unwrap().status.is_none());
     runtime
         .operations
-        .call_protobuf::<operations::AdvanceProjection>(wire::AdvanceProjection {
+        .call_protobuf::<operations::AdvanceProjection>(harmos_protocol::v1::StorageAdvanceProjectionRequest {
             snapshot: Some(saved.clone()),
             name: "sample.buckets".into(),
             work: Some(limits),
@@ -254,8 +254,8 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         })
         .await
         .unwrap();
-    assert_eq!(runtime.operations.call_protobuf::<operations::InspectProjection>(inspect).await.unwrap().status.unwrap().rows, 1);
-    let read = wire::ReadProjection {
+    assert_eq!(runtime.operations.call_protobuf::<operations::GetProjectionStatus>(inspect).await.unwrap().status.unwrap().rows, 1);
+    let read = harmos_protocol::v1::StorageListProjectionRowsRequest {
         source: Some(source.clone()),
         read: Some(wire::ProjectionRead {
             name: "sample.buckets".into(),
@@ -266,7 +266,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
             work: Some(limits),
         }),
     };
-    let old = runtime.operations.call_protobuf::<operations::ReadProjection>(read.clone()).await.unwrap();
+    let old = runtime.operations.call_protobuf::<operations::ListProjectionRows>(read.clone()).await.unwrap().page.unwrap();
     assert_eq!(old.changed_keys.len(), 1);
 
     // Correct the Object and Replace the Bucket Without Changing the Saved View.
@@ -286,7 +286,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert_eq!(live.at, changed.position);
     runtime
         .operations
-        .call_protobuf::<operations::AdvanceProjection>(wire::AdvanceProjection {
+        .call_protobuf::<operations::AdvanceProjection>(harmos_protocol::v1::StorageAdvanceProjectionRequest {
             snapshot: Some(live.clone()),
             name: "sample.buckets".into(),
             work: Some(limits),
@@ -296,10 +296,10 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .unwrap();
     let mut latest = read.clone();
     latest.read.as_mut().unwrap().frontier = live.at.clone();
-    let replacement = runtime.operations.call_protobuf::<operations::ReadProjection>(latest).await.unwrap();
+    let replacement = runtime.operations.call_protobuf::<operations::ListProjectionRows>(latest).await.unwrap().page.unwrap();
     assert_eq!(replacement.changed_keys, old.changed_keys);
     assert_ne!(replacement.ipc, old.ipc);
-    assert_eq!(runtime.operations.call_protobuf::<operations::ReadProjection>(read).await.unwrap(), old);
+    assert_eq!(runtime.operations.call_protobuf::<operations::ListProjectionRows>(read).await.unwrap().page.unwrap(), old);
 
     // Rebuild With a Different Source and Keep the Old Revision's Source Authority.
     let mut alternate = scan.source.clone().unwrap();
@@ -320,7 +320,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         })
         .await
         .unwrap();
-    let old_read = wire::ReadProjection {
+    let old_read = harmos_protocol::v1::StorageListProjectionRowsRequest {
         source: scan.source.clone(),
         read: Some(wire::ProjectionRead {
             name: "sample.buckets".into(),
@@ -331,7 +331,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
             work: Some(limits),
         }),
     };
-    assert_eq!(runtime.operations.call_protobuf::<operations::ReadProjection>(old_read).await.unwrap(), old);
+    assert_eq!(runtime.operations.call_protobuf::<operations::ListProjectionRows>(old_read).await.unwrap().page.unwrap(), old);
 
     // Release Both Cuts and Refuse Reusing the Handle.
     runtime

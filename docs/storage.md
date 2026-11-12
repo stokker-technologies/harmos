@@ -252,8 +252,13 @@ and grant identity. Both faces delegate to the same storage handlers.
 | ListIndexEntries | Ordered key/position seek page |
 | GetIndexDefinition / SetIndexDefinition | Complete definition and atomic revision guard |
 | GetProjectionDefinition / SetProjectionDefinition | Complete definition and atomic revision guard |
+| AdvanceProjection | Checked materialization at a retained cut |
+| GetProjectionStatus | Selected revision and newest readable or issued exact frontier |
+| ListProjectionRows | Bounded exact-frontier page and composite cut |
 
-A missing `at` selects the current durable position immediately. Reads never flush
+A missing `at` selects the current durable position immediately. Projection status
+without a frontier selects its newest readable materialization; an explicit frontier
+must match a retained composite cut for the requested revision. Reads never flush
 or wait for accepted writes. A supplied cut must equal a retained cut this owner
 has returned; arbitrary older positions, changed composites and foreign histories
 refuse. Automatic cuts use the existing saved-read capacity and evict the oldest

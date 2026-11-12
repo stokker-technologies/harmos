@@ -1248,38 +1248,6 @@ class DefinitionRevision(_message.Message):
     revision: int
     def __init__(self, revision: _Optional[int] = ...) -> None: ...
 
-class AdvanceProjection(_message.Message):
-    __slots__ = ("snapshot", "name", "work", "source")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    WORK_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
-    name: str
-    work: ReadLimits
-    source: ColumnSource
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ..., name: _Optional[str] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
-
-class ReadProjection(_message.Message):
-    __slots__ = ("read", "source")
-    READ_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    read: ProjectionRead
-    source: ColumnSource
-    def __init__(self, read: _Optional[_Union[ProjectionRead, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
-
-class InspectProjection(_message.Message):
-    __slots__ = ("name", "revision", "frontier", "source")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    FRONTIER_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    revision: int
-    frontier: StorageCursor
-    source: ColumnSource
-    def __init__(self, name: _Optional[str] = ..., revision: _Optional[int] = ..., frontier: _Optional[_Union[StorageCursor, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
-
 class ProjectionState(_message.Message):
     __slots__ = ("status",)
     STATUS_FIELD_NUMBER: _ClassVar[int]
