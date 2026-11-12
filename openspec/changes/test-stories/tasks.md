@@ -24,7 +24,7 @@
 
 ## 5. Removal
 
-- [ ] 5.1 Remove the tests listed in `design.md`, moving any useful check into a story.
+- [x] 5.1 Remove the tests listed in `design.md`, moving any useful check into a story.
 
 ## 6. Final Validation
 

@@ -23,7 +23,6 @@ mod fixtures;
 // Third Party Imports
 
 // Local Imports
-use harmos_operations::inventory::{Declaration, Facility};
 
 /* === Constants === */
 
@@ -69,16 +68,4 @@ fn world_hash_unchanged() {
 
     assert_eq!(digest(&schematic), digest(&sandbox), "declaring other operations moved the world:\n{schematic}\n---\n{sandbox}");
     assert!(sandbox.contains("operate"), "the world both guests carry is the one with `operate` on it:\n{sandbox}");
-}
-
-#[test]
-fn inventory_owner_isolation() {
-    let bytes = fixtures::inspection("schematic-guest");
-    let declared = Declaration::inspect(&bytes, Facility::Guest).expect("the real Wasm inventory reads without instantiation");
-    assert_eq!(declared.id, "schematic_tools");
-    assert!(declared.contracts.requires.is_empty());
-    assert_eq!(
-        declared.operations.iter().map(|operation| (operation.id.as_str(), operation.policy.timeout.as_millis())).collect::<Vec<_>>(),
-        [("schematic.validate", 10000), ("schematic.route", 10000), ("schematic.analyze", 10000),]
-    );
 }

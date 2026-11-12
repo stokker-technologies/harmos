@@ -162,15 +162,3 @@ pub mod __private {
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn builtin_inventory() {
-        let definitions = crate::builtins_catalog().definitions().unwrap();
-        let ids: std::collections::BTreeSet<_> = definitions.iter().map(|definition| definition.id.as_str()).collect();
-        assert_eq!(ids.len(), definitions.len());
-        let mut dependencies = definitions.into_iter();
-        assert!(dependencies.all(|definition| definition.fingerprint.0 != [0; 32]));
-    }
-}

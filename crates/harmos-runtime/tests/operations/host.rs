@@ -150,7 +150,9 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         .register_operation(hold_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     (runtime, gate)
 }
 
@@ -259,6 +261,13 @@ async fn host_instances_settle() {
 
 #[tokio::test]
 async fn builtin_controls_instance() {
+    // Inspect The Built-In Catalog Before Using Its Controls
+    let definitions = harmos_operations::builtins_catalog().definitions().unwrap();
+    let ids: std::collections::BTreeSet<_> = definitions.iter().map(|definition| definition.id.as_str()).collect();
+    assert_eq!(ids.len(), definitions.len());
+    assert!(definitions.iter().all(|definition| definition.fingerprint.0 != [0; 32]));
+
+    // Submit And Inspect A Running Instance
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     let mut instance = operations.submit::<HoldDeclaration>(HoldDeclaration { value: 1 }).await.unwrap();

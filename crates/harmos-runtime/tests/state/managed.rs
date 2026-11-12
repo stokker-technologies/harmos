@@ -19,7 +19,7 @@
 
 // Local Imports
 use crate::state::support::{Bank, HOUSE, alice, deposit, runtime};
-use harmos_runtime::{Application, Runtime, state::Focus, state::ManagedState, state::Never, state::Position};
+use harmos_runtime::{state::Focus, state::ManagedState, state::Position};
 
 /* === Constants === */
 
@@ -28,33 +28,6 @@ use harmos_runtime::{Application, Runtime, state::Focus, state::ManagedState, st
 /* === Type Aliases === */
 
 /* === Structs === */
-
-struct State {
-    value: i64,
-}
-struct Plain;
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-impl harmos_runtime::Lifecycle for Plain {
-    type Config = ();
-    type Error = std::convert::Infallible;
-    type Context = harmos_runtime::Startup<Self>;
-
-    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
-        Ok(Self)
-    }
-}
-
-impl Application for Plain {
-    type State = State;
-    type Transaction = Never;
-    type Record = ();
-}
 
 /* === Public Functions === */
 
@@ -98,15 +71,4 @@ async fn state_survives_stop() {
     let value = state.read(|state| state.balance(HOUSE)).await.unwrap();
     assert_eq!(value.value, 7);
     assert_eq!(value.position, through);
-}
-
-#[tokio::test]
-async fn handles_share_nonclone() {
-    let runtime = Runtime::<Plain>::launch(State { value: 19 }, ()).await.unwrap();
-    let manager = runtime.state.clone();
-    let state = manager.state().clone();
-    let value = state.read(|state| state.value).await.unwrap();
-    assert_eq!(value.value, 19);
-    assert_eq!(value.position, Position::ORIGIN);
-    crate::support::app::shutdown(&runtime).await.unwrap();
 }
