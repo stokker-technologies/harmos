@@ -3,8 +3,8 @@
 ## 1. Owner Lock and Source Inventory
 
 - [ ] 1.1 Obtain the owner's lock on proposal.md's proposed choices and design.md's contract questions; verify an explicit decision record distinguishes approval from this documentation-only authoring.
-- [ ] 1.2 Decide library SDK retention versus direct protocol implementations, plugin parity, generic client scope and visibility policy; verify each language's owned source, consumers and replacement conformance peers are inventoried without assuming four-language client parity.
-- [ ] 1.3 Measure latest-durable visibility lag and synchronous commit contribution under the agreed workload, including backlog; verify measurements inform the lock without adding wall-clock pass/fail assertions or changing consumer budgets.
+- [ ] 1.2 Lock only the remaining SDK promises (plugin parity across Rust, Python, C# and C++; generic managed client in all four or Rust only) and visibility policy; inventory each retained language SDK's source, consumers and library-owned conformance peers, keeping protocol, SDKs and conformance self-sufficient without product vocabulary and product SDKs building on them.
+- [ ] 1.3 Add `integration/durable_lag` to the Nightly benchmark set using storage benches' stable case naming, with `small_high_rate`, `multi_megabyte` and `mixed` loads reusable by consumers against their own backend; report acceptance-to-durability lag p50, p95 and maximum per load, including backlog and synchronous commit contribution, and compare each p95 with the payload-size-independent bound (250 ms proposed; owner sets the final number), without wall-clock test assertions or changes to consumer budgets. If missed, first try smaller flush pieces and size-triggered flushing alongside the cadence and remeasure all three loads; name accepted-data snapshot reads as the fallback if insufficient, without building that fallback.
 - [ ] 1.4 Lock issued-cut provenance, retention/restart, composite selection, file deletion/retained readers, watch semantics and explicit managed methods; verify every open contract affecting implementation has an owner decision before coding.
 - [ ] 1.5 Lock the 45-operation and 66-provider-hook mapping, namespaces, wrappers, upload bindings, reachable message inventory and coupled consumer migration; verify counts against descriptors and record exact owned paths in this checklist before editing implementation.
 
@@ -21,6 +21,7 @@
 - [ ] 3.3 Replace the three row-follow wire paths with one WatchRows selector and durable boundary/change/progress union; verify focused records/samples/object-revision opening-race, filter-progress and gap tests, preserving distinct file/directory watches and their documentation.
 - [ ] 3.4 Implement field-mask Set and expected-revision validation in the owning mutation/backend paths, preserving atomic SetObject and immutable schema revision rules; verify selected/full replacement, conflicts and no partial mutation with focused tests and update mutation examples.
 - [ ] 3.5 Replace immutable batch exchange entry points with bounded Append operations and accepted/durable receipts, preserving replay windows and admitted-completion ownership; verify lost replies, changed-payload replay, expired keys and immutable prefixes with focused tests and update SDK/storage examples.
+- [ ] 3.6 Bound each flush in bytes and split large input so no single commit exceeds the configured size; prove the mechanism with deterministic controlled-backend tests recording committed byte counts, never wall-clock assertions, and document the mechanism alongside the benchmark-based lag requirement.
 
 ## 4. Shared Unary Upload Sessions
 
@@ -30,7 +31,7 @@
 
 ## 5. Plugin Hosts, SDKs and Independent Defects
 
-- [ ] 5.1 Migrate retained library SDKs or their owner-approved replacements and host plugin carriers to the new names, wrappers, fingerprints and policies in one compiling slice; verify focused cross-language catalog/child-call/failure/scope/clock tests and update language guides.
+- [ ] 5.1 Migrate the retained library SDKs and host plugin carriers to the new names, wrappers, fingerprints and policies in one compiling slice; preserve self-sufficient protocol/SDK/conformance ownership without product vocabulary and product SDKs building on them, verify focused cross-language catalog/child-call/failure/scope/clock tests, and update language guides.
 - [ ] 5.2 Correct Python's Public default according to the locked visibility policy, provide C# invocation-local resources and cancellation reasons, and remove the stale draft proto header; verify focused behavioral SDK tests and contract review, with matching guide changes.
 - [ ] 5.3 Preserve interval and device publication, activation fencing, connection-loss isolation, cooperative final settlement and product refusal propagation; verify focused conformance/runtime tests, including queued Cancel refusal and single-resource rename at the product-owned boundary, and update the behavior contract.
 - [ ] 5.4 Migrate `tools/conformance/`, SDK fixtures, native/guest examples and affected tests from retired operation names and envelopes; verify each changed example and fixture with focused project tasks before proceeding.

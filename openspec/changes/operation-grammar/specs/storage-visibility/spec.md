@@ -6,7 +6,7 @@
 
 Positioned data reads SHALL share one method per kind of data, accepting optional
 at and returning resolved_at. Absent at SHALL resolve once to latest durable data
-without waiting for accepted pending writes or building an accepted-data snapshot.
+without waiting, conditional on the measured durable-lag bound below.
 A cut SHALL retain all required positions and revisions rather than silently
 reducing a composite selection to one sequence number.
 
@@ -25,6 +25,58 @@ reducing a composite selection to one sequence number.
 
 - **WHEN** a selection depends on several histories or resource revisions
 - **THEN** the response identifies all components needed to repeat that selection atomically
+
+### Requirement: Payload-Size-Independent Durable Lag
+
+The newest durable position SHALL trail the newest accepted data by no more than
+a stated bound at the 95th percentile, independent of payload size. The proposed
+bound is 250 ms; the owner SHALL set the final number. If the bound is missed,
+smaller flush pieces and size-triggered flushing SHALL be tried first; accepted-
+data snapshot reads SHALL be the named fallback if insufficient, not built here.
+
+#### Scenario: Lag Bound Review
+
+- **WHEN** evidence for the conditional latest-durable decision is reviewed
+- **THEN** the 100 ms cadence alone is insufficient proof: flush duration adds to it and grows with written data, with synchronous batches targeting 1 MB and capped at 16 MB
+- **AND** because nothing measures durable lag today, the three-load benchmark must demonstrate each load's p95 meets the owner's bound
+
+#### Scenario: Bound Missed
+
+- **WHEN** any load's measured p95 exceeds the owner's stated bound
+- **THEN** review requires smaller flush pieces and flushing as soon as a size threshold is reached, alongside the cadence, to be tried first and all three loads remeasured
+- **AND** if those are insufficient, reads resolving against a snapshot of accepted data remain the named fallback, without claiming it is built or the conditional latest-durable decision is proven
+
+### Requirement: Reusable Durable-Lag Benchmark
+
+The Nightly benchmark set SHALL include `integration/durable_lag` using storage
+benches' stable case naming, with `small_high_rate`, `multi_megabyte` and `mixed`
+loads. It SHALL report acceptance-to-durability lag p50, p95 and maximum per load,
+including backlog and synchronous commit contribution. Consumers SHALL be able to
+reuse the case against their own backend. Measurements SHALL NOT become
+wall-clock assertions in tests.
+
+#### Scenario: Nightly Lag Evidence
+
+- **WHEN** the Nightly benchmark set runs `integration/durable_lag` against a backend
+- **THEN** its stable load cases cover small samples at a high rate, multi-megabyte batches and a mix, reporting p50, p95 and maximum durable lag for each
+- **AND** review compares each load's p95 with the owner's stated bound independently of payload size, rather than accepting a pooled percentile
+
+#### Scenario: Consumer Backend Measurement
+
+- **WHEN** a consumer supplies its own backend to the reusable durable-lag case
+- **THEN** the same three loads and lag statistics are available without product vocabulary or wall-clock test assertions
+
+### Requirement: Byte-Bounded Flush Mechanism
+
+Flushes SHALL be bounded in bytes, and large input SHALL be split so no single
+commit exceeds the configured size. Deterministic tests SHALL prove this
+mechanism using committed byte counts rather than wall-clock assertions.
+
+#### Scenario: Large Input Splitting
+
+- **WHEN** a deterministic controlled backend records commits for input larger than the configured flush size
+- **THEN** the input is split across byte-bounded flushes and no single commit exceeds that size
+- **AND** the test checks committed byte counts rather than elapsed time
 
 ### Requirement: Issued Positions Only
 

@@ -24,13 +24,13 @@ awaiting the owner's lock. Requirement deltas describe the candidate contract.
 | Set | Proposed | Optional field mask; absence means the whole writable value. Expected revision guards revisioned resources. |
 | Domain actions | Proposed | Use the explicitly defined domain verbs only where a standard verb would hide a side effect; retain Sleep for the clock wait. |
 | Position-resolved reads | Owner | One read path per kind of data, optional `at`, absent means latest, reply reports `resolved_at`; paging and watches share the rule. Accept only previously returned positions for continuation or the product's terminal read selection, not arbitrary earlier positions. |
-| Latest selection | Proposed | Resolve latest durable data without a persistence barrier or an accepted-data snapshot. A caller requiring its own write passes its receipt's durable position. Measure visibility lag before locking. |
+| Latest selection | Owner, conditional on the measured bound | Resolve latest durable data without waiting. Durable lag must stay within a stated p95 bound independent of payload size; 250 ms is proposed, with the final number set by the owner. A caller requiring its own write passes its receipt's durable position. Benchmark small, large and mixed loads; try smaller flush pieces and size-triggered flushing first if the bound is missed. Accepted-data snapshots are the named fallback, not built. |
 | Cancellation | Owner | Cancel interrupts running work; queued work is refused with an error naming the action. Stop finishes at a safe boundary and remains distinct. Product scheduling policy belongs to the product. |
 | Rename | Owner | Renaming changes the identified resource only, never sibling attempts of its parent. This is a product behavior; no library rename RPC is invented. |
 | Uploads | Proposed; recommendation accepted by owner | Use one resumable unary upload-session mechanism for clients and plugins; plugin operations remain unary. |
 | Streaming routes | Proposed | Never generate streaming twins automatically. Prefer unary resource actions and Get/Watch; retain one managed stream only for an explicitly promised cooperative final result, replacing its ordinary route. |
 | Shared primitives | Proposed | One paging, position, time, Failure, retry-policy and receipt vocabulary, as specified in design.md. |
-| SDK ownership | Open | Whether this library keeps language SDKs or product SDKs implement the plugin protocol directly is not decided. |
+| SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Only four-language plugin parity and generic managed-client language scope remain open under SDKs. |
 
 **BREAKING:** rename the operations in the complete design inventory; merge the
 three row-follow operations into WatchRows; replace streaming file upload with
@@ -70,7 +70,7 @@ must unwrap responses, retain `resolved_at`, continue with bound page tokens,
 consume accepted/durable receipts, replace old follows and streaming uploads,
 and select only explicitly declared managed routes.
 
-SDK retention is a lock prerequisite, not an implicit commitment to four new
+SDK retention is decided, without an implicit commitment to four generic managed
 client implementations. Correct the five independently actionable defects in
 design.md regardless of the larger grammar decision. Implementation must update
 affected README and topic-guide claims with the behavior they describe; this

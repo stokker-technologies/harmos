@@ -2,6 +2,26 @@
 
 ## ADDED Requirements
 
+### Requirement: Self-Sufficient Library SDK Ownership
+
+The library SHALL retain its language SDKs, protocol and conformance suite as a
+self-sufficient boundary without product vocabulary. Product SDKs SHALL keep
+building on the library SDKs, since other products will also host plugins on the
+library. Ownership is decided by the owner on 2026-11-12. Only plugin semantic
+parity across Rust, Python, C# and C++, and whether the generic managed client
+exists in all four languages or in Rust only, remain open under SDKs.
+
+#### Scenario: Additional Plugin-Hosting Product
+
+- **WHEN** another product hosts plugins using the library
+- **THEN** its product SDKs build on the retained library language SDKs rather than reimplementing the plugin protocol in every language
+
+#### Scenario: Independent Conformance Review
+
+- **WHEN** the library protocol, SDKs and conformance suite are reviewed together
+- **THEN** the library can be proven end to end by itself without product vocabulary or a product-owned protocol implementation
+- **AND** SDK retention does not imply a settled four-language plugin-parity promise or generic managed-client scope
+
 ### Requirement: Predictable Public Method Grammar
 
 Public library methods SHALL use VerbResource names and method-specific
