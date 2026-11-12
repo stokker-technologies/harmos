@@ -2,13 +2,25 @@
 
 ## ADDED Requirements
 
+### Requirement: Face-Local Read Contracts
+
+The mapped storage contracts SHALL apply independently to `harmos.context.v1.Storage` child
+calls and `harmos.v1.Storage` client methods where design.md maps the capability
+to both faces. Each face SHALL own its request/response and authorization; shared
+handlers SHALL preserve the same storage guarantees. Native-only hooks SHALL stay native.
+
+#### Scenario: Storage Call by Audience
+
+- **WHEN** a client or an authorized plugin uses a capability mapped to both Storage faces
+- **THEN** the client calls harmos.v1.Storage and the plugin uses harmos.context.v1.Storage through its context child calls, with separate wrappers and authorization and the same storage guarantees
+
 ### Requirement: One Position-Resolved Read Path
 
-Positioned data reads SHALL share one method per kind of data, accepting optional
-at and returning resolved_at. Absent at SHALL resolve once to latest durable data
-without waiting; the durable-lag requirement below applies.
-A cut SHALL retain all required positions and revisions rather than silently
-reducing a composite selection to one sequence number.
+Positioned reads SHALL share one method per data kind, with optional at and
+resolved_at. Absent at SHALL resolve once to latest durable without waiting;
+the durable-lag requirement applies. Composite cuts SHALL retain all required
+positions/revisions. Products SHALL own object-specific latest/terminal selection,
+schemas, indexes and projections; the library SHALL own shared storage mechanisms.
 
 #### Scenario: Accepted Data Ahead of Saved Data
 
@@ -35,7 +47,7 @@ data snapshot reads SHALL be the named fallback if insufficient, not built here.
 
 #### Scenario: Lag Bound Review
 
-- **WHEN** evidence for the latest-durable decision is reviewed
+- **WHEN** verification for the latest-durable decision is reviewed
 - **THEN** the 100 ms cadence alone is insufficient proof: flush duration adds to it and grows with written data, with synchronous batches targeting 1 MB and capped at 16 MB
 - **AND** because nothing measures durable lag today, the three-load benchmark must demonstrate each load's p95 meets the owner's bound
 
@@ -54,7 +66,7 @@ including backlog and synchronous commit contribution. Consumers SHALL be able t
 reuse the case against their own backend. Measurements SHALL NOT become
 wall-clock assertions in tests.
 
-#### Scenario: Nightly Lag Evidence
+#### Scenario: Nightly Lag Verification
 
 - **WHEN** the Nightly benchmark set runs `integration/durable_lag` against a backend
 - **THEN** its stable load cases cover small samples at a high rate, multi-megabyte batches and a mix, reporting p50, p95 and maximum durable lag for each
