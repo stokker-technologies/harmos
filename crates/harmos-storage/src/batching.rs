@@ -210,7 +210,7 @@ fn merge<T>(state: &mut State, indices: &[u64], select: fn(&mut Operation) -> &m
 }
 
 async fn persist<'a, T: Entry>(
-    inner: &'a Arc<Inner>, values: &StorageBatch<T>, write: impl FnOnce(StorageBatch<T>) -> super::StorageFuture<'a, StorageCursor>,
+    inner: &'a Arc<Inner>, values: &StorageBatch<T>, mut write: impl FnMut(StorageBatch<T>) -> super::StorageFuture<'a, StorageCursor>,
 ) -> Result<StorageCursor> {
     let first = values.as_slice().first().ok_or_else(|| invalid("typed batch is empty"))?.position();
     let through = values.as_slice().last().expect("nonempty batch").position();
@@ -225,7 +225,7 @@ async fn persist<'a, T: Entry>(
         previous = value.position().sequence;
     }
     let start = {
-        let mut state = inner.state.lock().unwrap();
+        let state = inner.state.lock().unwrap();
         let saved = &state.status.saved;
         if saved.covers(through)? {
             return Ok(saved.clone());
@@ -234,17 +234,43 @@ async fn persist<'a, T: Entry>(
         if values.as_slice()[start].position().sequence != saved.sequence.checked_add(1).ok_or_else(|| invalid("position overflow"))? {
             return Err(invalid("typed write would skip the durable frontier"));
         }
-        state.data_attempted = state.data_attempted.max(through.sequence);
         start
     };
-    let saved = inner.bounded("primary.write", write(values.slice(start..values.len()))).await?;
-    tracing::Span::current().record("saved", saved.sequence);
-    let mut state = inner.state.lock().unwrap();
-    if !saved.covers(through)? || saved.sequence > state.data_attempted {
-        return Err(invalid("receipt does not cover the typed write within its attempted frontier"));
+    let mut offset = start;
+    let mut saved = inner.state.lock().unwrap().status.saved.clone();
+    while offset < values.len() {
+        // Split At Entry Boundaries; An Indivisible Entry Keeps The Admission Ceiling.
+        let mut end = offset;
+        let mut bytes = 0usize;
+        for value in &values.as_slice()[offset..] {
+            let size = super::manager::encoded_size(value)?;
+            if size > inner.settings.max_batch_bytes().get() {
+                return Err(invalid("entry exceeds the configured commit byte ceiling"));
+            }
+            if end > offset && size > inner.settings.flush_batch_bytes().saturating_sub(bytes) {
+                break;
+            }
+            bytes += size;
+            end += 1;
+        }
+        let through = values.as_slice()[end - 1].position();
+        {
+            let mut state = inner.state.lock().unwrap();
+            state.data_attempted = state.data_attempted.max(through.sequence);
+        }
+        saved = inner.bounded("primary.write", write(values.slice(offset..end))).await?;
+        tracing::Span::current().record("saved", saved.sequence);
+        {
+            let mut state = inner.state.lock().unwrap();
+            if !saved.covers(through)? || saved.sequence > state.data_attempted {
+                return Err(invalid("receipt does not cover the typed write within its attempted frontier"));
+            }
+            // Keep Each Durable Prefix If A Later Piece Fails.
+            state.status.saved = saved.clone();
+        }
+        inner.notify();
+        offset = end;
     }
-    // Each Typed Call Is Durable Independently; Retain Its Prefix If A Later Type Fails.
-    state.status.saved = saved.clone();
     Ok(saved)
 }
 

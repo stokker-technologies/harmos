@@ -154,6 +154,7 @@ pub struct Control {
     pub closes: AtomicUsize,
     pub writes: Mutex<Vec<u64>>,
     pub write_sizes: Mutex<Vec<usize>>,
+    pub committed_bytes: Mutex<Vec<usize>>,
     pub flushes: Mutex<Vec<u64>>,
 }
 
@@ -567,10 +568,22 @@ impl StorageBackend for Data {
         )
     }
     fn write_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor> {
-        self.persist(batch, &self.records, |value| &value.position, |_| Ok(()))
+        let bytes = batch.as_slice().iter().map(|value| harmos_storage::encoded_size(value).unwrap()).sum();
+        let committing = self.persist(batch, &self.records, |value| &value.position, |_| Ok(()));
+        Box::pin(async move {
+            let saved = committing.await?;
+            self.control.committed_bytes.lock().unwrap().push(bytes);
+            Ok(saved)
+        })
     }
     fn write_stream(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
-        self.persist(batch, &self.rows, |value| &value.record.position, |_| Ok(()))
+        let bytes = batch.as_slice().iter().map(|value| harmos_storage::encoded_size(value).unwrap()).sum();
+        let committing = self.persist(batch, &self.rows, |value| &value.record.position, |_| Ok(()));
+        Box::pin(async move {
+            let saved = committing.await?;
+            self.control.committed_bytes.lock().unwrap().push(bytes);
+            Ok(saved)
+        })
     }
     fn write_files(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor> {
         self.persist(

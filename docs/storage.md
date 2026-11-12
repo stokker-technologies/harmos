@@ -360,3 +360,25 @@ runs it on Linux and Windows and adds platform/backend-qualified suites to the p
 ordinary benchmark lanes. Ordinary tests retain one 16,385-row journey crossing the
 physical chunk boundary on both native and fallback backends. Consumer reports should
 record their own backend/durability mode while retaining these names, units and inputs.
+
+## Durable-Lag Benchmark
+
+Run `mise run bench -- --storage --filter durable_lag` for the Nightly
+`integration/durable_lag/{small_high_rate,multi_megabyte,mixed}` cases. Each reports
+acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admission wait,
+and synchronous SQLite commit count/time. Compare each p95 independently with 250 ms;
+a successful benchmark process does not assert that latency bound. Windows measurements
+are recorded in the operation-grammar design; native Linux and hosted evidence remain pending.
+
+Consumers enable `testing`, persist `bench_support::durable_lag::Payload`'s schema,
+and call `bench_support::durable_lag::run(&manager, &schema, load)` on their started
+manager. Supply the ordinary backend, worker owner, settings and durability mode.
+The observer only subscribes to saved progress; it never requests a flush.
+
+The worker starts flushing on its cadence or when queued bytes reach the existing
+size threshold. Typed provider writes split at entry boundaries around
+`StorageSettings::flush_batch_bytes()`. A single indivisible entry may use the larger
+`max_batch_bytes()` ceiling; admission refuses entries beyond that ceiling. Each
+successful piece publishes its saved frontier independently, and retry skips its
+already durable prefix. Splitting changes no stored encoding, durability setting or
+atomic conditional-object replacement.

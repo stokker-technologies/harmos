@@ -13,6 +13,8 @@
 /* === Modules === */
 
 mod allocations;
+pub mod durable_lag;
+pub mod file_transfer;
 pub mod workload;
 
 /* === Re-Exports === */

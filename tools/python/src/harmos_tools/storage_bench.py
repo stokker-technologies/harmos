@@ -42,11 +42,12 @@ from .test import archive
 def run(directory: Path, selected: str | None) -> int:
     output = directory / "target/benchmarks/storage"
     output.mkdir(parents=True, exist_ok=True)
-    messages = output / "compiler.json"
+    target = "integration-durable-lag" if selected == "durable_lag" else "integration-multi-day"
+    messages = output / ("durable-lag-compiler.json" if selected == "durable_lag" else "compiler.json")
     status = cargo.focused(
         directory,
         "build",
-        ["--locked", "--profile", "bench", "-p", "harmos-storage", "--features", "testing,sqlite", "--bench", "integration-multi-day"],
+        ["--locked", "--profile", "bench", "-p", "harmos-storage", "--features", "testing,sqlite", "--bench", target],
         messages=messages,
     )
     if status:
@@ -58,7 +59,7 @@ def run(directory: Path, selected: str | None) -> int:
     executables = [
         event["executable"]
         for line in messages.read_text(encoding="utf-8").splitlines()
-        if (event := json.loads(line)).get("executable") and event.get("target", {}).get("name") == "integration-multi-day"
+        if (event := json.loads(line)).get("executable") and event.get("target", {}).get("name") == target
     ]
     environment = dict(os.environ, CRITERION_HOME=str(output / "criterion"))
     environment.pop("STKR_TEST_REPORT_DIR", None)
@@ -69,12 +70,14 @@ def run(directory: Path, selected: str | None) -> int:
     command = [executables[-1], "--bench", "--sample-size", "10", "--warm-up-time", "1", "--measurement-time", "1"]
     if selected:
         command.append(selected)
-    destination = directory / "target/benchmarks" / f"benchmarks-storage-{platform.system().lower()}.json"
-    if selected == "native":
+    suite = "storage-durable-lag" if selected == "durable_lag" else "storage"
+    destination = directory / "target/benchmarks" / f"benchmarks-{suite}-{platform.system().lower()}.json"
+    if selected in {"native", "durable_lag"}:
         policy.write_json(destination, {"benchmarks": []})
     lines = []
     peak = 0
-    with (output / "baseline.txt" if selected == "baseline" else output / "candidate.txt").open("w", encoding="utf-8") as log:
+    log_name = "durable-lag.txt" if selected == "durable_lag" else "baseline.txt" if selected == "baseline" else "candidate.txt"
+    with (output / log_name).open("w", encoding="utf-8") as log:
         with subprocess.Popen(
             command,
             cwd=directory,
@@ -93,7 +96,7 @@ def run(directory: Path, selected: str | None) -> int:
                 lines.append(line)
                 peak = max(peak, _peak_memory(child))
             status = child.wait()
-    if selected != "native":
+    if selected not in {"native", "durable_lag"}:
         return status
     revision = os.environ.get("GITHUB_SHA") or archive.revision(directory) or "unknown"
     document = measurements(lines, revision, platform.system().lower())
@@ -115,7 +118,10 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
     cases: dict[str, list[dict]] = {}
     counters = []
     work = []
+    lag = []
     for line in lines:
+        if line.startswith("STORAGE_DURABLE_LAG "):
+            lag.append(json.loads(line.removeprefix("STORAGE_DURABLE_LAG ")))
         if line.startswith("STORAGE_MEASUREMENT "):
             value = json.loads(line.removeprefix("STORAGE_MEASUREMENT "))
             cases.setdefault(value["name"], []).append(value)
@@ -161,6 +167,20 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
             ("index_prepares", "count"),
         ):
             rows.append(_row(counter["name"] + ".work." + field.replace("_", "."), counter[field], unit, revision, system, backend))
+    for case in lag:
+        for field, unit in (
+            ("p50_ms", "ms"),
+            ("p95_ms", "ms"),
+            ("maximum_ms", "ms"),
+            ("maximum_backlog_bytes", "bytes"),
+            ("maximum_backlog_positions", "count"),
+            ("admission_wait_ms", "ms"),
+            ("batches", "count"),
+            ("bytes", "bytes"),
+        ):
+            rows.append(_row(case["case"] + "/" + field, case["measurement"][field], unit, revision, system, backend))
+        for field, unit in (("synchronous_commits", "count"), ("synchronous_commit_ms", "ms")):
+            rows.append(_row(case["case"] + "/" + field, case[field], unit, revision, system, backend))
     return {"benchmarks": rows}
 
 

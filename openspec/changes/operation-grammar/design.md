@@ -756,3 +756,39 @@ together with removal of superseded hosts. Rollback uses a matched prior host/SD
 revision; it is not an adapter layer or an implicit storage reset. Storage format
 changes require a separate data-migration decision. Final validation is separate
 from source closure and follows focused proof on both required native platforms.
+
+## Storage Implementation Ownership
+
+`feat/gp-grammar-storage` owns `proto/harmos/v1/storage.proto`, `crates/harmos-storage/**`,
+`crates/harmos-operations/src/storage/**`, storage handlers/tests/benches in runtime,
+storage benchmark tooling and Nightly wiring, `docs/storage.md`, and the storage tasks/design
+in this change. Shared protocol primitives and SDK bindings belong to the parallel core worker.
+Streaming transfers remain until task 6.1; no accepted-data snapshot is implemented.
+
+### Windows Durable-Lag Measurements
+
+Measured on 2026-11-12 in the bench profile, SQLite WAL with `synchronous=FULL`.
+Each load opens an empty store and a native worker. Small load offers 1,000 single
+32-byte samples separated by 1 ms; large load offers 128 logical 4 MiB batches
+(64 samples of 64 KiB); mixed load offers 1,000 batches with every sixteenth batch
+large. Existing admission bounds split a logical batch when needed, without changing
+its bytes. An independent observer measures admission-return to passive saved-frontier
+notification; scheduler observation delay is included. Admission backpressure is separate.
+These are local measurements, not assertions or native Linux/hosted proof.
+
+The before run uses whole admitted provider batches; the after run splits at entry
+boundaries around the existing 1 MiB target, retaining the existing 16 MiB admission
+ceiling and size-triggered flushing. An indivisible row retains that ceiling. Durability
+mode, cadence, workload, pending-write budget and deadlines are unchanged.
+
+| Load | Before p50 / p95 / Maximum (ms) | After p50 / p95 / Maximum (ms) | Before / After Maximum Backlog (Bytes) | Before / After Commit Count | Before / After Synchronous Commit Total (ms) |
+| --- | --- | --- | --- | --- | --- |
+| `small_high_rate` | 53.96 / 99.11 / 104.45 | 53.10 / 98.69 / 103.67 | 18,032 / 18,032 | 24 / 23 | 19.00 / 17.70 |
+| `multi_megabyte` | 141.18 / 149.83 / 157.95 | 175.54 / 229.27 / 258.32 | 12,602,304 / 12,602,304 | 128 / 1664 | 9459.83 / 11553.25 |
+| `mixed` | 257.81 / 301.59 / 331.38 | 174.14 / 198.77 / 233.64 | 12,614,064 / 12,614,064 | 82 / 833 | 4778.64 / 5261.50 |
+
+Mixed p95 missed 250 ms before splitting. All three after-run p95 values meet it;
+the large-load maximum exceeds 250 ms, which is not a maximum-latency promise.
+The increased commit count and total commit contribution remain visible. Accepted-data
+snapshots were not built. The benchmark emits backlog positions and admission wait as
+well as this table; Nightly retains the raw observations and platform-qualified metrics.

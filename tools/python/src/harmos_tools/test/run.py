@@ -492,8 +492,8 @@ def _bench_rust(
         target = message.get("target", {})
         name = target.get("name", "")
         artifact = message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable")
-        # The Multi-Day Storage Workload Has A Dedicated Native Nightly Job.
-        if name == "integration-multi-day":
+        # Storage Workloads Have A Dedicated Native Nightly Job.
+        if name in {"integration-multi-day", "integration-durable-lag"}:
             continue
         if not artifact or not (name == category or name.startswith(category + "-")):
             continue

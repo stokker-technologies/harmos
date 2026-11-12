@@ -194,7 +194,12 @@ pub(super) fn write_records(state: &mut State, values: &[StoredRecord]) -> Resul
         }
     }
     save(&tx, through)?;
+    let commit_started = std::time::Instant::now();
     tx.commit().map_err(db)?;
+    let mut work = state.work.get();
+    work.synchronous_commits += 1;
+    work.synchronous_commit_ns += u64::try_from(commit_started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+    state.work.set(work);
     state.cursor()
 }
 
@@ -240,7 +245,12 @@ pub(super) fn write_stream(state: &mut State, values: &[StoredRow]) -> Result<St
         }
     }
     save(&tx, through)?;
+    let commit_started = std::time::Instant::now();
     tx.commit().map_err(db)?;
+    let mut work = state.work.get();
+    work.synchronous_commits += 1;
+    work.synchronous_commit_ns += u64::try_from(commit_started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+    state.work.set(work);
     state.cursor()
 }
 

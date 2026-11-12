@@ -135,7 +135,9 @@ impl StorageSettings {
         self.request.max_pending_write_bytes.min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
     }
 
-    pub(super) fn target_batch_bytes(&self) -> usize {
+    /// Target encoded bytes per provider write. An indivisible entry may use the
+    /// larger admission ceiling returned by `max_batch_bytes`.
+    pub fn flush_batch_bytes(&self) -> usize {
         TARGET_BATCH_BYTES.min(self.max_batch_bytes().get())
     }
 

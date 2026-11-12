@@ -128,7 +128,7 @@ impl Worker {
                 state.expire_files();
                 state.request_deletions();
                 state.collect();
-                if state.queue.bytes() >= inner.settings.target_batch_bytes() {
+                if state.queue.bytes() >= inner.settings.flush_batch_bytes() {
                     state.request_flush();
                 }
                 let retry = failures.iter().find_map(|(&id, failure)| {

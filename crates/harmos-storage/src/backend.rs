@@ -69,6 +69,8 @@ pub struct ReadLimits {
 /// Cumulative physical work on one backend owner; differences describe an isolated operation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct StorageWork {
+    pub synchronous_commits: u64,
+    pub synchronous_commit_ns: u64,
     pub source_rows: u64,
     pub source_bytes: u64,
     pub decoded_chunks: u64,
