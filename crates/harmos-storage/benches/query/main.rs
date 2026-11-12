@@ -19,7 +19,9 @@ mod backend;
 mod fixture;
 #[path = "../../tests/support/mapping.rs"]
 mod mapping_fixture;
+mod opened_files;
 mod projection;
+mod spill;
 
 /* === Re-Exports === */
 
@@ -108,6 +110,8 @@ fn main() {
     }
     group.finish();
     let runtime = tokio::runtime::Runtime::new().unwrap();
+    spill::benchmarks(&mut criterion);
+    opened_files::benchmarks(&mut criterion, &runtime);
     let mut group = criterion.benchmark_group("integration/storage_projection");
     for rows in [40_000, 1_000_000] {
         let mapped = runtime.block_on(projection::prepare(rows));

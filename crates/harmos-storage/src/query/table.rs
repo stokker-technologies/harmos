@@ -132,7 +132,7 @@ mod tests {
     fn derived_table_reduces_exactly_across_pages_and_survives_owner_drop() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Float64, false), Field::new("y", DataType::Float64, false)]));
         let mut writer = TableWriter::new(schema.clone()).unwrap();
-        let x: Vec<f64> = (0..10_080).map(f64::from).collect();
+        let x: Vec<f64> = (0..121).map(f64::from).collect();
         let y: Vec<f64> = x.iter().map(|x| (x * 0.13).sin()).collect();
         for (x, y) in x.chunks(120).zip(y.chunks(120)) {
             let page = RecordBatch::try_new(

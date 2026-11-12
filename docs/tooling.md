@@ -46,6 +46,22 @@ mise run test -- --package harmos-sdk-derive --target lib --exact stored_message
 
 Focused builds select one package; focused tests select exactly one library or
 named integration target and use Cargo's default test profile, without an archive.
+
+```sh
+mise run test -- --package harmos-storage --target integration --story manager::files::opened_clones_keep_independent_read_offsets
+mise run test -- --package harmos-protocol
+mise run test -- --paths crates/harmos-storage/tests/integration/manager/files.rs
+```
+
+`--story` selects a Rust module prefix; `--exact` selects one complete test name.
+Omit `--target` to run a package's test targets. `--paths` conservatively selects
+root-workspace test binaries, including shared modules; product changes also select
+local dependents and prepared-fixture consumers. These selections use nextest with the
+existing hang guards and serial System scheduling. Add `--no-run --timings` to
+measure just their compilation with Cargo's HTML timing report. Focused nextest
+JUnit reports stay in `target/tests/focused/<package>/<local|system>/project/`.
+Compiler-contract and guest stories still need their explicitly prepared fixtures.
+
 Both accept `--manifest-path examples/schematic/Cargo.toml` to select the separate
 example workspace while keeping compilation behind the same task interface.
 Focused Cargo subprocesses set `CARGO_TARGET_DIR` to the repository's `target/`,

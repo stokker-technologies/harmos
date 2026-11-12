@@ -8,7 +8,7 @@
  */
 
 use harmos_operations::execution as harmos;
-const POLICY: harmos::OperationPolicy = harmos::model::operations::lifecycle::POLICY;
+const POLICY: harmos::OperationPolicy = harmos_operations::model::operations::lifecycle::POLICY;
 #[derive(harmos::Message, Debug, Default)]
 #[harmos_path(harmos)]
 #[derive(harmos::Request, Clone)]

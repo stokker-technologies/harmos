@@ -5,7 +5,39 @@ Status: inventory locked against the current combined tree on 2026-11-12. `R` is
 The combined `grpc-plugins` marker authorizes implementation. Removed facilities are excluded.
 The current worker owns this checkout, including tooling and packaging paths. The owner has
 authorized binding consolidation (3.4) here; there is no concurrent writer in this worktree.
-No README claims or public usage change.
+The developer selections are documented in `docs/tooling.md`; product README claims remain unchanged.
+
+## Developer Feedback Scope
+
+The speed-tests worktree owns test selection in `tools/python/src/harmos_tools/ci/tasks.py`,
+new focused-test tooling and its tests, retained Rust test/benchmark stories and their
+mechanical support, `docs/tooling.md` and this change's task/design records. The runtime
+manifest's benchmark fixture selector and mise's matching benchmark/lint feature selections
+also belong here: ordinary integration builds must not build the benchmark server. Other build producer
+and Cargo configuration changes remain with the separate build worker. No product source
+test seam is planned. Guest lifecycle/adapter suites under grpc-plugins 7.1 are measured
+but retain their current implementation and System serialization.
+
+Focused selection builds only selected Cargo targets and their dependency closure. A story
+uses its module prefix; an exact case uses its full test name. Changed-path selection must
+include dependent packages for product changes and every target that shares changed test
+support. Unknown paths fail with an actionable diagnostic rather than imply successful proof.
+Existing native hang guards apply to focused runs too. The Tests archive remains the hosted
+producer and is never a prerequisite of a local story.
+
+The conformance manifest disables empty executable harnesses, retaining all fixture binaries
+and their behavior stories. No test function or conformance case is removed by that selection.
+
+The retained storage inventory additionally includes only the inline test modules in
+`crates/harmos-storage/src/query/{execute,accumulate,spill,table}.rs`, the opened-offset
+story in `tests/integration/manager/files.rs`, and new spill/opened-file workloads in
+`benches/query/`. No production function, page limit or memory budget changes. The merge
+story retains three real output pages while supplying three source pages, rather than
+creating hundreds of tiny temporary runs. Quantile tests retain exact integer clone
+branches, signed/duplicate float ranks and fractional interpolation with forced spill;
+the week-sized floats move to benchmarks. Spill ownership still crosses the actual page
+limit and verifies cleanup. Table ownership still crosses producer pages and survives
+its owner; long histories live in benchmarks.
 
 ## Shape of a Story
 
