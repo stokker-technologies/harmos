@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -79,16 +80,22 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
         str(path),
         *extra,
     ]
-    with summary.phase("Compilation And Archive"), path.with_name(reader.MESSAGES).open("w", encoding="utf-8") as output:
-        result = subprocess.run(
-            command,
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-            creationflags=spawn_flags(),
-            cwd=directory,
-            stdout=output,
-            check=False,
-        )
+    descriptor, name = tempfile.mkstemp(prefix="compiler-", suffix=".json", dir=path.parent)
+    captured = Path(name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output, summary.phase("Compilation And Archive"):
+            result = subprocess.run(
+                command,
+                stdin=sys.stdin,
+                stderr=sys.stderr,
+                creationflags=spawn_flags(),
+                cwd=directory,
+                stdout=output,
+                check=False,
+            )
+        captured.replace(path.with_name(reader.MESSAGES))
+    finally:
+        captured.unlink(missing_ok=True)
     if result.returncode:
         path.unlink(missing_ok=True)
         for line in path.with_name(reader.MESSAGES).read_text(encoding="utf-8").splitlines():

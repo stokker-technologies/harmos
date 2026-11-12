@@ -26,6 +26,7 @@ from unittest.mock import patch
 from harmos_tools.build import cargo
 from harmos_tools.ci import artifacts, tasks
 from harmos_tools.release import review
+from harmos_tools.test import archive as archives
 
 # Type Checking Imports
 
@@ -39,6 +40,36 @@ from harmos_tools.release import review
 
 
 class FocusedCargoTests(unittest.TestCase):
+    def test_archive_publishes_complete_compiler_messages(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            archive = archives.location(directory, "dev")
+            archive.parent.mkdir(parents=True)
+            messages = archive.with_name(archives.MESSAGES)
+            previous = {"reason": "build-finished", "success": False}
+            messages.write_text(json.dumps(previous) + "\n", encoding="utf-8")
+            complete = {"reason": "build-finished", "success": True}
+            encoded = json.dumps(complete) + "\n"
+
+            def compile_archive(command, **options):
+                output = options["stdout"]
+                middle = len(encoded) // 2
+                output.write(encoded[:middle])
+                output.flush()
+                self.assertEqual(json.loads(messages.read_text(encoding="utf-8")), previous)
+                output.write(encoded[middle:])
+                archive.write_bytes(b"archive")
+                return SimpleNamespace(returncode=0)
+
+            with (
+                patch.object(cargo.subprocess, "run", side_effect=compile_archive),
+                patch.object(cargo.summary, "phase", return_value=contextlib.nullcontext()),
+            ):
+                result = cargo.archive(directory, "dev")
+            self.assertEqual(result, archive)
+            self.assertEqual(json.loads(messages.read_text(encoding="utf-8")), complete)
+            self.assertEqual(set(archive.parent.iterdir()), {archive, messages})
+
     def test_dispatches_only_requested_operation(self):
         directory = Path.cwd()
         operations = ("build", "check", "test", "clippy", "run")
