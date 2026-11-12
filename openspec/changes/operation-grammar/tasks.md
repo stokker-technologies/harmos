@@ -13,6 +13,17 @@ Core owns shared protocol primitives, generators, SDKs and non-storage runtime.
 The task numbers below supersede the earlier inventory: durable lag is 1.5
 (formerly 1.2), file transfer is 1.6 (formerly 1.3), storage declarations are 1.4.
 
+The locked source inventory covers library proto/protocol/operations/storage,
+runtime managers and projection, all four SDKs and their build generators,
+conformance, examples, tests and maintained guides. Before later implementation, record
+exact owned paths within these domains. Six open questions remain at their
+owning tasks; per-plugin settings/secrets ownership is closed. Preserve data
+encodings and required behavior; no compatibility aliases or second authorities.
+Order is dependency order: establish
+face package layout and move files before primitives, descriptors or consumers
+migrate. Each source task migrates its affected producer, generated bindings and
+compile-time consumers atomically.
+
 ## 0. Visibility Guards and SDK Dispatch
 
 - [ ] 0.1 Add the deterministic story guarding **Three-Level Visibility** and **Host-Mediated Public Calls** first: plugin to host to another plugin's Public operation succeeds; Private runs only in its declaring process, is absent from the catalog and every wire, and is unreachable from the host, another plugin or a client. Existing child_calls.rs and private_refusal.rs prove the old two-level routing/refusal only, not the new Private contract. Cover both call directions, returned failures, inherited scope, requirements/fingerprints and child cancellation.
@@ -29,6 +40,7 @@ The task numbers below supersede the earlier inventory: durable lag is 1.5
 ## 1. Face Packages, Primitives, Final Descriptors and Benchmark Cases
 
 - [ ] 1.1 Establish face packages and file moves first: proto/harmos/plugin/v1/instance.proto for Instance; proto/harmos/context/v1/ for context services; proto/harmos/v1/ and parent folders for client services. Move owning payloads/imports and declaration metadata with the packages; remove the retired singular carrier service. Keep native hooks out of wire services. Integrate the existing plugin-manager entry contracts. Everything below depends on this layout.
+- [x] 1.1.1 Move the non-storage carrier and resource services into per-face, per-service files; regenerate Rust/Python and migrate native SDK/host consumers. Focused proof: generated_code_matches_proto; focused SDK/runtime builds. Storage, generic management services and runtime face admission remain with their owning tasks.
 - [ ] 1.2 Implement shared positions/cuts, bounded paging, Timestamp/Duration, Failure, retry policy and receipts; declare separate face-local service/method request and response wrappers and regenerate IDs/fingerprints in crates/harmos-protocol/. Verify focused schema checks after the file moves; do not reuse another face's wrappers.
 - [ ] 1.3 Lock design.md's inventory: protocol 1 service/4 operations/4 gRPC methods/4 request-response pairs; context 6/40/40 descriptor methods (0 standalone)/40 pairs; client 10 (3 nested)/58/58/58 pairs. Retain four native-only storage hooks/pairs separately: 17 services, 106 inventory operations, 102 descriptor methods (62 standalone), 106 requests and 106 responses overall. Verify all 38 shared capabilities have independent context/client declarations and authorization; census shared/domain/imported types separately.
 - [ ] 1.4 Replace automatic RunMethod twins with explicit face-filtered projection. Generate the 32 Storage declarations independently on context and client faces from their respective declaration owners, sharing handlers while preserving native-only/grant boundaries. Use nested parent packages, bare part verbs and one proto per service. Move/update protocol behaviour guidance with its face owner; streams remain Watch/plugin carriers or a promised final-result replacement.
@@ -62,8 +74,8 @@ The task numbers below supersede the earlier inventory: durable lag is 1.5
 
 - [ ] 4.1 Produce a common descriptor table with owner/face/version, parent/service/method, wrappers, cardinality and exposure; add face-selecting build generators for Rust, Python, C# and C++. Generate plugin SDKs with protocol serving and context calling only, clients with client API only, and hosts with all three; generate hierarchical roots only for their audience. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
 - [ ] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, admission, cross-plugin Public invocation, Protected refusal naming the action and local-only Private execution, client Public invocation, inherited scope, child cancellation, clock, failure and call-local policy behavior; deny client context/protocol calls and plugin client-only calls. Preserve explicit catalog visibility and one host registry.
-- [ ] 4.3 Settle the semantic plugin-parity promise across Rust, Python, C# and C++ and record it in design.md; four-language client-root naming is already locked.
-- [ ] 4.4 Settle generic managed-client invocation coverage (Rust-only or more languages) and record it in design.md without reopening the naming hierarchy.
+- [x] 4.3 Settle the semantic plugin-parity promise across Rust, Python, C# and C++ and record it in design.md; four-language client-root naming is already locked.
+- [x] 4.4 Settle generic managed-client invocation coverage (Rust-only or more languages) and record it in design.md without reopening the naming hierarchy.
 - [ ] 4.5 Require explicit Private, Protected or Public visibility in all four SDKs with no default and reject omitted/unspecified visibility at admission, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
 - [ ] 4.6 Migrate tools/conformance/, fixtures, native/guest examples, generated clients and affected tests in the owning compiling slices; preserve interval/device publication and update README/topic/language-guide claims with each user-facing change.
 - [ ] 4.7 Verify generated service-stub sets in all four languages: plugin = Instance server plus context callers, client = client-face callers, host = all faces. Reject cross-audience root/stub leakage while retaining imported shared payloads. Keep this generation contract separate from the open semantic parity and managed-client language questions.
@@ -108,8 +120,7 @@ and the complete built-in mapping.
 - Storage implementation commits remain local on `feat/gp-grammar-storage`; no push or specification lifecycle commands.
 - Transfer source/proof: `storage::unary_transfers::resume_fence_publish_and_range_across_faces` exercises the socket client and plugin child carrier. Remaining read-provenance, paging and Watch work stays in 3.2, 3.8 and 3.9.
 
-- Storage generation join: the core branch currently supplies shared primitives,
-  but not face-aware generation. Storage uses `crates/harmos-protocol/codegen.rs`
-  and its generate example for both storage faces and reflection. The core generator
-  must retain these inputs, `context` Rust module, shared `storage_types.proto`
+- Storage generation join: the core branch now supplies face-aware generation. Storage uses `crates/harmos-protocol/codegen.rs`
+  and its generate example for both storage faces and reflection. The merged generator
+  retains these inputs, `context` Rust module, shared `storage_types.proto`
   imports and independently owned context/client operation declarations when joined.

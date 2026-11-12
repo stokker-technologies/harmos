@@ -60,14 +60,6 @@ struct UploadFrame {
     item: Option<wire::FileBatch>,
 }
 
-#[derive(Clone, PartialEq, prost::Message)]
-struct DownloadFrame {
-    #[prost(message, optional, tag = "1")]
-    item: Option<wire::FileBatch>,
-    #[prost(message, optional, tag = "2")]
-    response: Option<wire::FileCompletion>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -268,24 +260,17 @@ impl Carrier for Transport {
             let mut client = tonic::client::Grpc::new(self.channel.clone());
             client.ready().await.map_err(|e| failure("ReadFile", e))?;
             let path = tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/ReadFile");
-            let response: tonic::Response<tonic::Streaming<DownloadFrame>> = client
-                .server_streaming(tonic::Request::new(request), path, tonic_prost::ProstCodec::<wire::ReadFile, DownloadFrame>::default())
+            let response: tonic::Response<tonic::Streaming<wire::FileBatch>> = client
+                .server_streaming(tonic::Request::new(request), path, tonic_prost::ProstCodec::<wire::ReadFile, wire::FileBatch>::default())
                 .await
                 .map_err(|e| failure("ReadFile", e))?;
             let mut stream = response.into_inner();
             let mut data = Vec::with_capacity(file.length as usize);
-            let mut complete = false;
-            while let Some(frame) = stream.message().await.map_err(|e| failure("ReadFile", e))? {
-                if let Some(item) = frame.item {
-                    assert_eq!(item.offset, data.len() as u64);
-                    data.extend_from_slice(&item.bytes);
-                }
-                if let Some(response) = frame.response {
-                    assert_eq!(response.bytes, data.len() as u64);
-                    complete = true;
-                }
+            while let Some(item) = stream.message().await.map_err(|e| failure("ReadFile", e))? {
+                assert_eq!(item.offset, data.len() as u64);
+                data.extend_from_slice(&item.bytes);
             }
-            assert!(complete);
+            assert_eq!(file.length, data.len() as u64);
             Ok(data)
         })
     }

@@ -21,7 +21,7 @@
 
 // Local Imports
 use futures_core::Stream;
-use harmos_protocol::{schema, v1};
+use harmos_protocol::{plugin, schema, v1};
 use prost::Message;
 use std::{pin::Pin, sync::Arc};
 use tonic::{Request, Response, Status, Streaming};
@@ -114,7 +114,7 @@ impl TransferPlugin {
         let service = Service { catalog: Arc::new(catalog) };
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(v1::plugin_server::PluginServer::new(service))
+                .add_service(plugin::instance_server::InstanceServer::new(service))
                 .serve_with_incoming_shutdown(incoming, async {
                     let _ = stopped.await;
                 })
@@ -131,12 +131,12 @@ impl TransferPlugin {
 }
 
 #[tonic::async_trait]
-impl v1::plugin_server::Plugin for Service {
-    type InvokeStream = Pin<Box<dyn Stream<Item = Result<v1::PluginFrame, Status>> + Send>>;
-    type PublishStream = Pin<Box<dyn Stream<Item = Result<v1::Samples, Status>> + Send>>;
+impl plugin::instance_server::Instance for Service {
+    type InvokeStream = Pin<Box<dyn Stream<Item = Result<plugin::InstanceInvokeResponse, Status>> + Send>>;
+    type SamplesStream = Pin<Box<dyn Stream<Item = Result<plugin::InstanceSamplesResponse, Status>> + Send>>;
 
-    async fn describe(&self, _: Request<v1::DescribeRequest>) -> Result<Response<v1::Description>, Status> {
-        Ok(Response::new(v1::Description {
+    async fn get(&self, _: Request<plugin::InstanceGetRequest>) -> Result<Response<plugin::InstanceGetResponse>, Status> {
+        Ok(Response::new(plugin::InstanceGetResponse {
             id: "transfer_fixture".into(),
             version: "1.0.0".into(),
             revision: 1,
@@ -147,10 +147,10 @@ impl v1::plugin_server::Plugin for Service {
         }))
     }
 
-    async fn invoke(&self, request: Request<Streaming<v1::HostFrame>>) -> Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(&self, request: Request<Streaming<plugin::InstanceInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
         let mut input = request.into_inner();
-        let Some(v1::HostFrame {
-            frame: Some(v1::host_frame::Frame::Request(request)),
+        let Some(plugin::InstanceInvokeRequest {
+            frame: Some(plugin::instance_invoke_request::Frame::Request(request)),
         }) = input.message().await?
         else {
             return Err(Status::invalid_argument("Invoke requires an opening request"));
@@ -173,8 +173,8 @@ impl v1::plugin_server::Plugin for Service {
         let (send, receive) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             if send
-                .send(Ok(v1::PluginFrame {
-                    frame: Some(v1::plugin_frame::Frame::Child(child)),
+                .send(Ok(plugin::InstanceInvokeResponse {
+                    frame: Some(plugin::instance_invoke_response::Frame::Child(child)),
                 }))
                 .await
                 .is_err()
@@ -182,14 +182,14 @@ impl v1::plugin_server::Plugin for Service {
                 return;
             }
             while let Ok(Some(frame)) = input.message().await {
-                if let Some(v1::host_frame::Frame::Child(child)) = frame.frame {
+                if let Some(plugin::instance_invoke_request::Frame::Child(child)) = frame.frame {
                     let result = child.result.map(|result| match result {
                         v1::child_response::Result::Payload(payload) => v1::response::Result::Payload(payload),
                         v1::child_response::Result::Failure(failure) => v1::response::Result::Failure(failure),
                     });
                     let _ = send
-                        .send(Ok(v1::PluginFrame {
-                            frame: Some(v1::plugin_frame::Frame::Response(v1::Response { result })),
+                        .send(Ok(plugin::InstanceInvokeResponse {
+                            frame: Some(plugin::instance_invoke_response::Frame::Response(v1::Response { result })),
                         }))
                         .await;
                     return;
@@ -200,11 +200,11 @@ impl v1::plugin_server::Plugin for Service {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn publish(&self, _: Request<Streaming<v1::PublishFrame>>) -> Result<Response<Self::PublishStream>, Status> {
+    async fn samples(&self, _: Request<Streaming<plugin::InstanceSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
         Err(Status::not_found("Samples not declared"))
     }
-    async fn stop(&self, _: Request<v1::StopRequest>) -> Result<Response<v1::StopResponse>, Status> {
-        Ok(Response::new(v1::StopResponse {}))
+    async fn stop(&self, _: Request<plugin::InstanceStopRequest>) -> Result<Response<plugin::InstanceStopResponse>, Status> {
+        Ok(Response::new(plugin::InstanceStopResponse {}))
     }
 }
 

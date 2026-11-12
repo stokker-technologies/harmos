@@ -646,6 +646,21 @@ child request/result, parent cancel/child cancel, and publication opening/ticks.
 They are frames, not additional public RPCs. Keep catalog sections, requirements,
 visibility, fingerprints, digest, descriptors and failure causes used in admission.
 
+### Non-Storage Package Layout
+
+The running-instance service is `harmos.plugin.v1.Instance` in
+`proto/harmos/plugin/v1/instance.proto`, with Instance-qualified wrappers.
+CatalogEntries, Invocations and Time have separate service files and independent
+wrappers in `harmos.context.v1` and `harmos.v1`. Samples.Append has only a context
+file. Reusable primitives, plugin catalog/control payloads and discovery values
+live in service-free `harmos/v1/types.proto`; the discovery contract is
+DiscoveredContract, distinct from the plugin catalog's OperationContract.
+Rust exposes `plugin`, `context` and `v1` modules; the superseded `host` module is
+removed. Python's authoring Context and Plugin retain their public imports from
+package roots, making room for generated child packages without name collisions.
+Storage face inventory and management services are integrated by their owners.
+Runtime face admission and generation filtering are tracked separately from file moves.
+
 ### Current Visibility Discrepancy
 
 `crates/harmos-runtime/src/operations/manager/plugin_grpc.rs` applies the Private
@@ -1148,24 +1163,24 @@ manager inventory above; application operations remain outside this repository.
 
 ## Open Questions
 
+Implementation decision (3.11): no library built-in promises a cooperative final result after cancellation: actions use unary receipts/status and watches end observation; explicit application `Grpc::managed()` declarations replace the canonical method. The Collect and Exchange fixtures promise the accepted-input aggregate, and Wait promises its typed cancellation summary; those three fixture declarations exercise the opt-in contract.
+
+Implementation decision (4.1): Rust, Python, C# and C++ promise the same native plugin semantics, proven by the common conformance suite; Wasm remains Rust-only.
+
+Implementation decision (4.2): the generic managed application client remains Rust-only; other SDKs use generated application gRPC clients.
+
 Only these questions remain open. Settle each when implementation reaches its
 owner; they do not block the other locked work. Each has a corresponding task.
 
-1. **Four-Language Plugin Parity:** settle the semantic parity promise for Rust,
-   Python, C# and C++.
-2. **Generic Managed Clients:** settle whether generic managed-client coverage is
-   Rust-only or includes the other languages.
-3. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
+1. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
    expiry, provenance and retained composite selections across restart. Arbitrary
    earlier positions remain refused; product presentation retention stays there.
-4. **Exact Watch Semantics:** settle opening snapshot/boundary, event/progress and
+2. **Exact Watch Semantics:** settle opening snapshot/boundary, event/progress and
    gap/resynchronization rules, including external file/directory and runtime
    sources. Watch shapes earlier in this document are candidate details
    for that task, not an assertion that these exact semantics are settled.
-5. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
+3. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
    supported backends before implementing deletion changes.
-6. **Cooperative Final Results:** enumerate which operations actually promise a
-   final result after cancellation; only those get a managed replacement gRPC method.
 
 ## Migration Plan
 
@@ -1329,3 +1344,11 @@ is no existing plugin-carrier streaming baseline to measure. That absence is rep
 explicitly rather than represented by zero throughput or a native-call substitute.
 Raw native output and compiler evidence remain under `target/benchmarks/storage/`;
 Nightly runs the same focused case and exports its medians.
+
+### Face Generator Integration
+
+Merged core checkpoint `8b5ed431` and regenerated independent storage face bindings.
+The transfer fixture now serves `harmos.plugin.v1.Instance`; the focused cross-face
+resume story passes. Coupling repairs update SDK Wasm host imports to shared/context
+owners, fix the runtime guest host import, remove a duplicated generator input scan,
+and retain storage package flattening. No compatibility module or carrier alias remains.

@@ -29,7 +29,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 // Local Imports
 use crate::{Error, OperationRequest, Result, message::fingerprint};
-use harmos_protocol::v1::{self, plugin_frame};
+use harmos_protocol::plugin::instance_invoke_response;
+use harmos_protocol::v1::{self};
 
 /* === Constants === */
 
@@ -53,7 +54,7 @@ pub struct Context {
     pub(crate) plugin: String,
     resources: Arc<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
     pub(crate) calls: Arc<Mutex<Calls>>,
-    pub(crate) output: Option<mpsc::Sender<std::result::Result<v1::PluginFrame, tonic::Status>>>,
+    pub(crate) output: Option<mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, tonic::Status>>>,
     pub(crate) cancellation: watch::Sender<Option<String>>,
     pub(crate) requires: Arc<HashMap<String, Vec<u8>>>,
     pub(crate) sequence: u64,
@@ -144,33 +145,33 @@ impl Context {
         }
     }
 
-    pub async fn operation<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
-        self.operation_with(request, None).await
+    pub async fn call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
+        self.call_with(request, None).await
     }
 
-    pub async fn operation_with<Q: OperationRequest>(&self, request: Q, policy: Option<v1::OperationPolicy>) -> Result<Q::Response> {
+    pub async fn call_with<Q: OperationRequest>(&self, request: Q, policy: Option<v1::OperationPolicy>) -> Result<Q::Response> {
         let fingerprint = fingerprint::<Q, Q::Response>(Q::ID)?;
         if self.requires.get(Q::ID) != Some(&fingerprint) {
             return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
         }
-        let payload = self.call(Q::ID, request.encode_to_vec(), fingerprint, policy).await?;
+        let payload = self.send_call(Q::ID, request.encode_to_vec(), fingerprint, policy).await?;
         Q::Response::decode(payload.as_slice()).map_err(|error| tonic::Status::invalid_argument(error.to_string()).into())
     }
 
     /// Every wait is a child call to the host. No SDK timer advances scenario time.
-    /// Declare `.requires::<harmos::clock::Sleep>()` when composing the plugin.
+    /// Declare `.requires::<harmos::clock::TimeSleepRequest>()` when composing the plugin.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
         let duration = prost_types::Duration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
-        let request = v1::Sleep { duration: Some(duration) };
-        let payload = self.clock_call("harmos.clock.sleep", request.encode_to_vec()).await?;
-        v1::SleepResponse::decode(payload.as_slice()).map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
+        let request = v1::TimeSleepRequest { duration: Some(duration) };
+        let payload = self.clock_call("harmos.time.sleep", request.encode_to_vec()).await?;
+        v1::TimeSleepResponse::decode(payload.as_slice()).map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
         Ok(())
     }
 
-    /// Read evidence time from the host; declare `.requires::<harmos::clock::Now>()`.
+    /// Read evidence time from the host; declare `.requires::<harmos::clock::TimeGetRequest>()`.
     pub async fn now(&self) -> Result<prost_types::Timestamp> {
-        let payload = self.clock_call("harmos.clock.now", v1::Now {}.encode_to_vec()).await?;
-        v1::Time::decode(payload.as_slice())
+        let payload = self.clock_call("harmos.time.get", v1::TimeGetRequest {}.encode_to_vec()).await?;
+        v1::TimeGetResponse::decode(payload.as_slice())
             .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?
             .now
             .ok_or_else(|| tonic::Status::invalid_argument("Host Time Missing").into())
@@ -178,10 +179,12 @@ impl Context {
 
     async fn clock_call(&self, id: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
         let fingerprint = self.requires.get(id).ok_or_else(|| Error::Invalid(format!("Undeclared Requirement: {id}")))?.clone();
-        self.call(id, payload, fingerprint, None).await
+        self.send_call(id, payload, fingerprint, None).await
     }
 
-    async fn call(&self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<v1::OperationPolicy>) -> Result<Vec<u8>> {
+    async fn send_call(
+        &self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<v1::OperationPolicy>,
+    ) -> Result<Vec<u8>> {
         if let Some(child) = &self.child {
             return child
                 .call(
@@ -217,8 +220,8 @@ impl Context {
             policy,
         };
         output
-            .send(Ok(v1::PluginFrame {
-                frame: Some(plugin_frame::Frame::Child(child)),
+            .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
+                frame: Some(instance_invoke_response::Frame::Child(child)),
             }))
             .await
             .map_err(|_| tonic::Status::unavailable("Host Closed"))?;

@@ -32,7 +32,7 @@ use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Re
 
 /* === Structs === */
 
-pub struct Now;
+pub struct Get;
 
 /* === Enums === */
 
@@ -40,19 +40,19 @@ pub struct Now;
 
 /* === Implementations === */
 
-impl ProtobufOperation for Now {
-    type Request = harmos_protocol::v1::Now;
-    type Response = harmos_protocol::v1::Time;
+impl ProtobufOperation for Get {
+    type Request = harmos_protocol::v1::TimeGetRequest;
+    type Response = harmos_protocol::v1::TimeGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.clock.now";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Clock", "Now"));
+    const ID: &'static str = "harmos.time.get";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Time", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let clock = context.resource::<ClockAccess>().map_err(|_| ServingError::Catalog)?;
         let _ = request;
-        Ok(harmos_protocol::v1::Time { now: Some(clock.0.now()) })
+        Ok(harmos_protocol::v1::TimeGetResponse { now: Some(clock.0.now()) })
     }
 }
 

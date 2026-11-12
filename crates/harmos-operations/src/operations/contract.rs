@@ -184,7 +184,9 @@ impl WireDeclaration {
                 else {
                     panic!("static gRPC declarations must borrow names");
                 };
-                Some(super::Grpc::new(package, service, method))
+                let mut copied = super::Grpc::new(package, service, method);
+                copied.managed = grpc.managed;
+                Some(copied)
             }
         };
         Self {
@@ -302,7 +304,47 @@ impl Contract {
         if let Some(contract) = crate::storage::contract(&operation, &protobuf, binding.as_ref(), settings)? {
             return Ok(contract);
         }
-        operation.validate()?;
+        if crate::reserved(operation.id.as_str()) {
+            use prost::Message;
+            use prost_reflect::ReflectMessage;
+            let (request, response, service, method, output) = match operation.id.as_str() {
+                "harmos.catalog_entries.list" => {
+                    ("CatalogEntriesListRequest", "CatalogEntriesListResponse", "CatalogEntries", "List", false)
+                }
+                "harmos.invocations.get" => ("InvocationsGetRequest", "InvocationsGetResponse", "Invocations", "Get", false),
+                "harmos.invocations.cancel" => ("InvocationsCancelRequest", "InvocationsCancelResponse", "Invocations", "Cancel", false),
+                "harmos.invocations.watch" => ("InvocationsWatchRequest", "InvocationsWatchResponse", "Invocations", "Watch", true),
+                "harmos.samples.append" => ("SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false),
+                _ => return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into()),
+            };
+            let request = format!("harmos.v1.{request}");
+            let response = format!("harmos.v1.{response}");
+            let root = harmos_protocol::v1::CatalogEntriesListRequest::default().descriptor();
+            let types = prost_types::FileDescriptorSet {
+                file: root.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+            };
+            let expected = harmos_protocol::schema::operation_types(&types, &[&request, &response])
+                .map_err(|error| ContractError::Protobuf(error.to_string()))?;
+            let expected = super::Protobuf {
+                descriptors: expected.encode_to_vec(),
+                request,
+                response: response.clone(),
+                input: None,
+                output: output.then_some(response),
+            };
+            let mapping = (service != "Samples").then(|| super::Grpc {
+                package: "harmos.v1".into(),
+                service: service.to_owned().into(),
+                method: method.to_owned().into(),
+                managed: false,
+            });
+            if protobuf != expected || binding != mapping || operation.visibility != super::Visibility::Public {
+                return Err(ContractError::Protobuf("built-in declaration differs from its authoritative protocol".into()));
+            }
+            operation.policy.validate().map_err(crate::operations::Error::from)?;
+        } else {
+            operation.validate()?;
+        }
         Self::generated(operation, protobuf, binding, settings)
     }
 
@@ -311,9 +353,9 @@ impl Contract {
         use prost::Message;
         policy.validate().map_err(crate::operations::Error::from)?;
         let (id, request, response, method) = if sleep {
-            ("harmos.clock.sleep", "harmos.v1.Sleep", "harmos.v1.SleepResponse", "Sleep")
+            ("harmos.time.sleep", "harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse", "Sleep")
         } else {
-            ("harmos.clock.now", "harmos.v1.Now", "harmos.v1.Time", "Now")
+            ("harmos.time.get", "harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse", "Get")
         };
         let operation = OperationDefinition {
             id: harmos_domain::Identifier::new(id).map_err(crate::operations::Error::from)?,
@@ -330,7 +372,7 @@ impl Contract {
             input: None,
             output: None,
         };
-        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.host.v1", "Clock", method)), settings)
+        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.v1", "Time", method)), settings)
     }
 
     pub(crate) fn generated(
@@ -369,6 +411,9 @@ impl Contract {
                 return Err(ContractError::PrivateGrpc { id: self.operation.id.to_string() });
             }
             binding.validate()?;
+            if binding.managed && self.operation.policy.cancellation_timeout.is_zero() {
+                return Err(ContractError::Protobuf("Declare positive cancellation grace for a managed final result".into()));
+            }
         }
         self.grpc = binding;
         Ok(self)
@@ -536,9 +581,9 @@ impl TryFrom<DecodedContract> for Contract {
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
         if let Some(protobuf) = decoded.protobuf {
-            let expected = if matches!(decoded.operation.id.as_str(), "harmos.clock.sleep" | "harmos.clock.now") {
+            let expected = if matches!(decoded.operation.id.as_str(), "harmos.time.sleep" | "harmos.time.get") {
                 let clock = Self::clock(
-                    decoded.operation.id.as_str() == "harmos.clock.sleep",
+                    decoded.operation.id.as_str() == "harmos.time.sleep",
                     decoded.operation.policy,
                     &SchemaSettings::default(),
                 )?;

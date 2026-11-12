@@ -70,23 +70,26 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         let catalog = first.catalog.as_ref().ok_or("Missing Catalog")?;
         assert_eq!(
             catalog.requires.iter().map(|requirement| requirement.id.as_str()).collect::<Vec<_>>(),
-            ["harmos.clock.sleep", "harmos.clock.now"]
+            ["harmos.time.sleep", "harmos.time.get"]
         );
 
         // Begin an Execution That Stores a Resource and Requests an Hour-Long Host Wait.
         let (send, mut input) = support::invoke(&mut process.client, "execution.clock").await?;
         let sleep = support::child(&mut input).await?;
-        assert_eq!(sleep.operation, "harmos.clock.sleep");
+        assert_eq!(sleep.operation, "harmos.time.sleep");
         assert_eq!(sleep.fingerprint, catalog.requires[0].fingerprint);
-        assert_eq!(v1::Sleep::decode(sleep.payload.as_slice())?.duration, Some(prost_types::Duration { seconds: 3600, nanos: 0 }));
+        assert_eq!(
+            v1::TimeSleepRequest::decode(sleep.payload.as_slice())?.duration,
+            Some(prost_types::Duration { seconds: 3600, nanos: 0 })
+        );
 
         // Complete the Wait by Protocol Event and Supply Literal Host Evidence Time.
-        support::reply(&send, sleep.call, v1::SleepResponse {}).await?;
+        support::reply(&send, sleep.call, v1::TimeSleepResponse {}).await?;
         let now = support::child(&mut input).await?;
-        assert_eq!(now.operation, "harmos.clock.now");
+        assert_eq!(now.operation, "harmos.time.get");
         assert_eq!(now.fingerprint, catalog.requires[1].fingerprint);
         let at = prost_types::Timestamp { seconds: 12345, nanos: 67890 };
-        support::reply(&send, now.call, v1::Time { now: Some(at) }).await?;
+        support::reply(&send, now.call, v1::TimeGetResponse { now: Some(at) }).await?;
         let evidence = support::terminal::<Evidence>(&mut input).await?;
         assert_eq!(evidence.resource, 42);
         assert_eq!(evidence.at, Some(at));
@@ -101,8 +104,8 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         // Demand Closure Releases an Observer's In-Progress Device Read.
         let (demand, mut samples) = support::publish(&mut process.client, "execution.reading").await?;
         demand
-            .send(v1::PublishFrame {
-                frame: Some(v1::publish_frame::Frame::Tick(v1::Tick { at: Some(at) })),
+            .send(harmos_protocol::plugin::InstanceSamplesRequest {
+                frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
             })
             .await?;
         assert_eq!(process.event().await?, "observer_reading");
@@ -115,11 +118,11 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         // Reject an Unset Frame During an Active Call Without Losing the Connection.
         let (send, mut input) = support::invoke(&mut process.client, "execution.clock").await?;
         support::child(&mut input).await?;
-        send.send(v1::HostFrame { frame: None }).await?;
+        send.send(harmos_protocol::plugin::InstanceInvokeRequest { frame: None }).await?;
         assert_eq!(input.message().await.unwrap_err().code(), tonic::Code::InvalidArgument);
 
         // Stop Completes Cleanup Before Replying and Keeps the Remote Process Available.
-        process.client.stop(v1::StopRequest { reason: "Story Finished".into() }).await?;
+        process.client.stop(harmos_protocol::plugin::InstanceStopRequest { reason: "Story Finished".into() }).await?;
         assert_eq!(std::fs::read(&cleanup)?, b"cleaned");
         let second = support::describe(&mut process.client).await?;
         assert_eq!(first, second);

@@ -263,7 +263,9 @@ fn bindings(pool: &DescriptorPool, contracts: &[Contract], module: &str) -> Resu
             .methods()
             .find(|method| method.name() == grpc.method.as_ref())
             .ok_or_else(|| Error::Unsupported("missing method descriptor".into()))?;
-        if method.is_client_streaming() != contract.input().is_some() || method.is_server_streaming() != contract.output().is_some() {
+        if method.is_client_streaming() != (grpc.managed || contract.input().is_some())
+            || method.is_server_streaming() != (grpc.managed || contract.output().is_some())
+        {
             return Err(Error::Unsupported("streaming descriptor differs from contract".into()));
         }
         let root = pool
@@ -303,18 +305,12 @@ fn bindings(pool: &DescriptorPool, contracts: &[Contract], module: &str) -> Resu
         };
         let rpc_request = message_expression(&method.input(), module, &mut imports)?;
         let rpc_response = message_expression(&method.output(), module, &mut imports)?;
-        let managed = service
-            .methods()
-            .find(|method| method.name() == format!("Run{}", grpc.method))
-            .ok_or_else(|| Error::Unsupported("missing managed method".into()))?;
-        let run_request = message_expression(&managed.input(), module, &mut imports)?;
-        let run_response = message_expression(&managed.output(), module, &mut imports)?;
         let encoded = serde_json::to_string(contract)?;
         let fingerprint = contract.fingerprint().to_string();
         let input_type = input.map_or("Message", String::as_str);
         let output_type = output.map_or("Message", String::as_str);
         writeln!(stub_body, "\n{constant}: Operation[{request}, {response}, {input_type}, {output_type}]\n").expect("String writer");
-        writeln!(body, "\n{constant}: Operation[{request}, {response}, {input_type}, {output_type}] = Operation(\n    id={},\n    generation=0,\n    mode={},\n    codec=\"protobuf\",\n    request={request},\n    response={response},\n    input={},\n    output={},\n    grpc_path={},\n    rpc_request={rpc_request},\n    rpc_response={rpc_response},\n    run_request={run_request},\n    run_response={run_response},\n    contract={},\n    fingerprint={},\n)\n", quoted(contract.operation().id.as_str())?, quoted(mode)?, input.map_or("None", String::as_str), output.map_or("None", String::as_str), quoted(&grpc.path())?, quoted(&encoded)?, quoted(&fingerprint)?).expect("String writer");
+        writeln!(body, "\n{constant}: Operation[{request}, {response}, {input_type}, {output_type}] = Operation(\n    id={},\n    generation=0,\n    mode={},\n    codec=\"protobuf\",\n    request={request},\n    response={response},\n    input={},\n    output={},\n    grpc_path={},\n    rpc_request={rpc_request},\n    rpc_response={rpc_response},\n    managed={},\n    contract={},\n    fingerprint={},\n)\n", quoted(contract.operation().id.as_str())?, quoted(mode)?, input.map_or("None", String::as_str), output.map_or("None", String::as_str), quoted(&grpc.path())?, if grpc.managed { "True" } else { "False" }, quoted(&encoded)?, quoted(&fingerprint)?).expect("String writer");
     }
     let mut result = String::from(HEADER);
     result.push_str("\"\"\"Generated Operation Bindings From The Selected Producer Catalog\"\"\"\n\n# === Imports === #\n\n# Standard Library Imports\n\n# Third Party Imports\nfrom google.protobuf.message import Message\n\n# Local Imports\nfrom .operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, OperationHandle as OperationHandle, ResponseStream as ResponseStream\n");

@@ -1,3 +1,5 @@
+using Harmos.Context.V1;
+using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Threading.Channels;
@@ -5,7 +7,6 @@ using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Harmos.V1;
-using Time = Harmos.V1.Time;
 
 namespace Harmos.Sdk;
 
@@ -13,15 +14,16 @@ namespace Harmos.Sdk;
 public sealed class Context
 {
   private readonly Dictionary<ulong, TaskCompletionSource<ByteString>> pending = [];
-  private readonly ChannelWriter<PluginFrame>? output;
+  private readonly ChannelWriter<InstanceInvokeResponse>? output;
   private readonly IReadOnlyDictionary<string, ByteString> requires;
   private readonly CancellationTokenSource cancellation;
-  private readonly TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+  private readonly TaskCompletionSource<string> cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+  private readonly Dictionary<System.Type, object> resources = [];
   private ulong nextCall;
   private string? cancelReason;
 
   internal Context(Request request, string plugin, IReadOnlyDictionary<string, ByteString> requires,
-      CancellationTokenSource cancellation, ChannelWriter<PluginFrame>? output = null)
+      CancellationTokenSource cancellation, ChannelWriter<InstanceInvokeResponse>? output = null)
   {
     Operation = request.Operation;
     Invocation = request.Invocation;
@@ -54,7 +56,19 @@ public sealed class Context
   public Timestamp? At { get; internal set; }
   public CancellationToken CancellationToken => cancellation.Token;
 
-  public Task CancelledAsync() => cancelled.Task;
+  public Task<string> CancelledAsync() => cancelled.Task;
+
+  public void Set<T>(T value) where T : notnull
+  {
+    lock (resources) resources[typeof(T)] = value;
+  }
+
+  public T Get<T>() where T : notnull
+  {
+    lock (resources)
+      return resources.TryGetValue(typeof(T), out var value) ? (T)value
+          : throw new InvalidOperationException($"Missing Invocation Resource: {typeof(T).Name}");
+  }
 
   public async Task<TResponse> CallAsync<TRequest, TResponse>(Operation<TRequest, TResponse> operation, TRequest request,
       OperationPolicy? policy = null)
@@ -76,7 +90,7 @@ public sealed class Context
       call = ++nextCall;
       completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
       pending.Add(call, completion);
-      if (!output.TryWrite(new PluginFrame
+      if (!output.TryWrite(new InstanceInvokeResponse
       {
         Child = new ChildRequest
         {
@@ -89,7 +103,7 @@ public sealed class Context
       }))
         throw new RpcException(new Status(StatusCode.Unavailable, "Host Closed"));
     }
-    var payload = await completion.Task.WaitAsync(CancellationToken);
+    var payload = await completion.Task;
     try
     {
       return Operation<TRequest, TResponse>.DecodeResponse(payload);
@@ -100,11 +114,11 @@ public sealed class Context
     }
   }
 
-  public Task<SleepResponse> SleepAsync(Duration duration) => CallAsync(Clock.Sleep, new Sleep { Duration = duration });
+  public Task<TimeSleepResponse> SleepAsync(Duration duration) => CallAsync(Clock.Sleep, new TimeSleepRequest { Duration = duration });
 
   public async Task<Timestamp> NowAsync()
   {
-    var time = await CallAsync(Clock.Now, new Now());
+    var time = await CallAsync(Clock.GetTime, new TimeGetRequest());
     return time.Now;
   }
 
@@ -125,15 +139,16 @@ public sealed class Context
   {
     lock (pending)
     {
+      if (cancelReason is not null) return;
       cancelReason = reason;
       foreach (var (call, completion) in pending)
       {
-        output?.TryWrite(new PluginFrame { ChildCancel = new ChildCancel { Call = call } });
+        output?.TryWrite(new InstanceInvokeResponse { ChildCancel = new ChildCancel { Call = call } });
         completion.TrySetException(CancelFailure(reason));
       }
       pending.Clear();
     }
-    cancelled.TrySetResult();
+    cancelled.TrySetResult(reason);
     cancellation.Cancel();
   }
 
@@ -145,7 +160,7 @@ public sealed class Context
         completion.TrySetException(new RpcException(new Status(StatusCode.Unavailable, "Host Closed")));
       pending.Clear();
     }
-    cancelled.TrySetResult();
+    cancelled.TrySetResult("Connection Closed");
     cancellation.Cancel();
   }
 
@@ -167,6 +182,6 @@ public sealed class Context
 /// <summary>Declare these typed requirements before using Context.SleepAsync or Context.NowAsync.</summary>
 public static class Clock
 {
-  public static Operation<Sleep, SleepResponse> Sleep { get; } = new("harmos.clock.sleep", Visibility.Public);
-  public static Operation<Now, Time> Now { get; } = new("harmos.clock.now", Visibility.Public);
+  public static Operation<TimeSleepRequest, TimeSleepResponse> Sleep { get; } = new("harmos.time.sleep", Visibility.Public);
+  public static Operation<TimeGetRequest, TimeGetResponse> GetTime { get; } = new("harmos.time.get", Visibility.Public);
 }

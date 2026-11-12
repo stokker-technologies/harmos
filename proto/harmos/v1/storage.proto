@@ -2,7 +2,7 @@
 syntax = "proto3";
 package harmos.v1;
 
-import "harmos/v1/plugin.proto";
+import "harmos/v1/types.proto";
 import "harmos/v1/storage_types.proto";
 
 message StorageCreateFileProductionRequest { .harmos.storage.v1.FileMetadata metadata = 1; .harmos.storage.v1.MutationId mutation = 2; }

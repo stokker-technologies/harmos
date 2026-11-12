@@ -89,7 +89,8 @@ static COMPUTE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wir
                 },
             },
         },
-    );
+    )
+    .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
 
 const COMPUTE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ComputeContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ComputeContractDeclaration>::new(&COMPUTE_CONTRACT_DECLARATION_DESCRIPTION);

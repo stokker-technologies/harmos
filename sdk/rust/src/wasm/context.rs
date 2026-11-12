@@ -21,10 +21,7 @@ mod release_native;
 /* === Imports === */
 
 use crate::{Context, Error, Message, OperationRequest, Result, context::ChildTransport, operation::LocalFuture};
-use harmos_protocol::{
-    host,
-    v1::{self, GuestChildAction, guest_child},
-};
+use harmos_protocol::v1::{self, GuestChildAction, guest_child};
 use prost::Message as _;
 use std::{marker::PhantomData, sync::Arc};
 
@@ -48,7 +45,7 @@ pub(crate) struct Transport {
     pub import: Arc<Import>,
     pub context: Vec<u8>,
     pub generation_context: Vec<u8>,
-    pub assignments: Arc<std::sync::OnceLock<host::OperationAssignments>>,
+    pub assignments: Arc<std::sync::OnceLock<v1::OperationAssignments>>,
 }
 
 /// The original attempt owns the child until join, release or parent settlement.
@@ -162,12 +159,12 @@ impl Context {
     }
     /// Publish through the original activation's host-owned stream lease.
     pub async fn publish<T: Message>(&self, stream: &crate::Stream<T>, row: T) -> Result<()> {
-        let request = host::Publish {
+        let request = harmos_protocol::context::SamplesAppendRequest {
             stream: stream.definition.declaration.id.clone(),
             payload: row.encode_to_vec(),
             ..Default::default()
         };
-        self.operation(request).await?;
+        self.call(request).await?;
         Ok(())
     }
     async fn child_control(&self, instance: u64, action: GuestChildAction) -> Result<Vec<u8>> {
@@ -187,9 +184,9 @@ impl<R: Message> Child<R> {
     pub fn id(&self) -> u64 {
         self.instance
     }
-    pub async fn status(&self) -> Result<host::InstanceState> {
+    pub async fn status(&self) -> Result<v1::InstanceState> {
         let bytes = self.context.child_control(self.instance, GuestChildAction::Status).await?;
-        host::InstanceState::decode(bytes.as_slice()).map_err(|error| Error::Invalid(error.to_string()))
+        v1::InstanceState::decode(bytes.as_slice()).map_err(|error| Error::Invalid(error.to_string()))
     }
     pub async fn request_cancel(&self) -> Result<()> {
         self.context.child_control(self.instance, GuestChildAction::Cancel).await?;
@@ -216,21 +213,21 @@ impl<R: Message> Child<R> {
     }
 }
 
-impl Message for host::Publish {
+impl Message for harmos_protocol::context::SamplesAppendRequest {
     fn name() -> String {
-        "harmos.host.v1.Publish".into()
+        "harmos.context.v1.SamplesAppendRequest".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         protocol_types(&Self::name())
     }
 }
-impl OperationRequest for host::Publish {
-    type Response = host::Published;
-    const ID: &'static str = "host.publish";
+impl OperationRequest for harmos_protocol::context::SamplesAppendRequest {
+    type Response = harmos_protocol::context::SamplesAppendResponse;
+    const ID: &'static str = "harmos.samples.append";
 }
-impl Message for host::Published {
+impl Message for harmos_protocol::context::SamplesAppendResponse {
     fn name() -> String {
-        "harmos.host.v1.Published".into()
+        "harmos.context.v1.SamplesAppendResponse".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         protocol_types(&Self::name())

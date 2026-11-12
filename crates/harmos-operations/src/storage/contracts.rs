@@ -61,6 +61,7 @@ pub(crate) fn contract(
     let expected_binding = (package == "harmos.v1").then(|| Grpc {
         package: package.to_owned().into(),
         service: "Storage".into(),
+        managed: false,
         method: method.name().to_owned().into(),
     });
     let fingerprint =

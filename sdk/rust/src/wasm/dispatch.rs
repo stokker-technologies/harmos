@@ -20,10 +20,7 @@ use super::{
     context::{Import, Transport},
 };
 use crate::{Context, Error, Result, operation::LocalFuture};
-use harmos_protocol::{
-    host,
-    v1::{self, guest_command, response},
-};
+use harmos_protocol::v1::{self, guest_command, response};
 use prost::Message as _;
 use std::{
     cell::{Cell, RefCell},
@@ -60,7 +57,7 @@ struct Session {
     owner: RefCell<Option<String>>,
     generations: RefCell<BTreeMap<String, u64>>,
     generation_context: RefCell<Vec<u8>>,
-    assignments: Arc<OnceLock<host::OperationAssignments>>,
+    assignments: Arc<OnceLock<v1::OperationAssignments>>,
     slots: RefCell<BTreeMap<u64, Rc<Slot>>>,
     initialized: Cell<bool>,
     closed: Cell<bool>,
@@ -340,7 +337,7 @@ impl Drop for Loan {
 fn invalid(message: impl Into<String>) -> Error {
     Error::Invalid(message.into())
 }
-fn validate_assignments(assignments: &host::OperationAssignments) -> Result<()> {
+fn validate_assignments(assignments: &v1::OperationAssignments) -> Result<()> {
     let mut locals = std::collections::BTreeSet::new();
     for entry in &assignments.operations {
         let local =

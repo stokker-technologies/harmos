@@ -70,11 +70,11 @@ impl Manager {
         use harmos_operations::execution::operations::OperationFactory;
         let factories = [
             OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
-            OperationFactory::protobuf::<harmos_operations::clock::Now>(),
+            OperationFactory::protobuf::<harmos_operations::clock::Get>(),
         ];
         for factory in factories {
             let factory = factory.map_err(|source| Error::OperationFailed {
-                operation: "harmos.clock".into(),
+                operation: "harmos.time".into(),
                 source: Arc::new(source),
             })?;
             let contract = factory.contract().map_err(|source| Error::OperationFailed {

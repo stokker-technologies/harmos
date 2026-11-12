@@ -53,13 +53,14 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
     for (method, contract) in methods {
         let Some(protobuf) = contract.protobuf() else { continue };
         let method = projected.methods().find(|candidate| candidate.name() == *method).expect("projected method");
-        let request = payload(method.input(), "request", contract.input().is_some());
-        let response = payload(method.output(), "response", contract.output().is_some());
+        let managed = contract.grpc().is_some_and(|grpc| grpc.managed);
+        let request = payload(method.input(), "request", managed || contract.input().is_some());
+        let response = (managed || contract.output().is_none()).then(|| payload(method.output(), "response", managed));
         let input = contract.input().map(|_| payload(method.input(), "item", true));
-        let output = contract.output().map(|_| payload(method.output(), "item", true));
+        let output = contract.output().map(|_| payload(method.output(), "item", managed));
         for (old, new) in [
             (Some(request), Some(&protobuf.request)),
-            (Some(response), Some(&protobuf.response)),
+            (response, Some(&protobuf.response)),
             (input, protobuf.input.as_ref()),
             (output, protobuf.output.as_ref()),
         ] {

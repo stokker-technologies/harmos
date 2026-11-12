@@ -29,11 +29,11 @@ use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
 use crate::{Context, Error, Plugin, Result, operation::Handler};
-use harmos_protocol::v1::{
-    self as v1, host_frame, plugin_frame,
-    plugin_server::{Plugin as Service, PluginServer},
-    publish_frame, response,
+use harmos_protocol::plugin::{
+    instance_invoke_request, instance_invoke_response, instance_samples_request,
+    instance_server::{Instance as Service, InstanceServer},
 };
+use harmos_protocol::v1::{self as v1, response};
 
 /* === Constants === */
 
@@ -53,7 +53,7 @@ struct Completion {
 struct Settled(Option<oneshot::Sender<()>>);
 
 struct Server {
-    description: v1::Description,
+    description: harmos_protocol::plugin::InstanceGetResponse,
     operations: HashMap<String, Arc<dyn Handler>>,
     streams: HashMap<String, Publication>,
     requires: Arc<HashMap<String, Vec<u8>>>,
@@ -106,18 +106,22 @@ impl Drop for Settled {
 
 #[tonic::async_trait]
 impl Service for Server {
-    async fn describe(&self, request: Request<v1::DescribeRequest>) -> std::result::Result<Response<v1::Description>, Status> {
+    async fn get(
+        &self, request: Request<harmos_protocol::plugin::InstanceGetRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         if request.into_inner().revision == 0 {
             return Err(Status::invalid_argument("Revision Must Be at Least One"));
         }
         Ok(Response::new(self.description.clone()))
     }
 
-    type InvokeStream = Output<v1::PluginFrame>;
+    type InvokeStream = Output<harmos_protocol::plugin::InstanceInvokeResponse>;
 
-    async fn invoke(&self, request: Request<Streaming<v1::HostFrame>>) -> std::result::Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>,
+    ) -> std::result::Result<Response<Self::InvokeStream>, Status> {
         let mut input = request.into_inner();
-        let Some(host_frame::Frame::Request(request)) = input.message().await?.and_then(|frame| frame.frame) else {
+        let Some(instance_invoke_request::Frame::Request(request)) = input.message().await?.and_then(|frame| frame.frame) else {
             return Err(Status::invalid_argument("Request Must Be First"));
         };
         if request.invocation.is_empty() || request.attempt == 0 {
@@ -139,11 +143,13 @@ impl Service for Server {
         Ok(Response::new(output_stream(receiver)))
     }
 
-    type PublishStream = Output<v1::Samples>;
+    type SamplesStream = Output<harmos_protocol::plugin::InstanceSamplesResponse>;
 
-    async fn publish(&self, request: Request<Streaming<v1::PublishFrame>>) -> std::result::Result<Response<Self::PublishStream>, Status> {
+    async fn samples(
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
+    ) -> std::result::Result<Response<Self::SamplesStream>, Status> {
         let mut input = request.into_inner();
-        let Some(publish_frame::Frame::Open(open)) = input.message().await?.and_then(|frame| frame.frame) else {
+        let Some(instance_samples_request::Frame::Open(open)) = input.message().await?.and_then(|frame| frame.frame) else {
             return Err(Status::invalid_argument("Open Must Be First"));
         };
         let publication = self.streams.get(&open.stream).ok_or_else(|| Status::not_found("Unknown Stream"))?;
@@ -161,7 +167,7 @@ impl Service for Server {
         let (output, receiver) = mpsc::channel(1);
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
-            let result = publish(jobs, observer, producer, context, &mut input, &output).await;
+            let result = samples(jobs, observer, producer, context, &mut input, &output).await;
             if let Err(error) = result {
                 let _ = output.send(Err(error)).await;
             }
@@ -169,7 +175,9 @@ impl Service for Server {
         Ok(Response::new(output_stream(receiver)))
     }
 
-    async fn stop(&self, _: Request<v1::StopRequest>) -> std::result::Result<Response<v1::StopResponse>, Status> {
+    async fn stop(
+        &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         for cleanup in &self.cleanup {
             cleanup().map_err(|error| Status::internal(error.to_string()))?;
         }
@@ -177,7 +185,7 @@ impl Service for Server {
         if let Some(shutdown) = self.shutdown.lock().await.take() {
             let _ = shutdown.send(());
         }
-        Ok(Response::new(v1::StopResponse {}))
+        Ok(Response::new(harmos_protocol::plugin::InstanceStopResponse {}))
     }
 }
 
@@ -201,7 +209,7 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
         })
         .collect();
     let server = Server {
-        description: v1::Description {
+        description: harmos_protocol::plugin::InstanceGetResponse {
             id: plugin.id,
             version: plugin.version,
             started_at: Some(prost_types::Timestamp {
@@ -229,7 +237,7 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
     std::io::stdout().flush()?;
     tracing::info!(%address, "Plugin Listening");
     let result = tonic::transport::Server::builder()
-        .add_service(PluginServer::new(server))
+        .add_service(InstanceServer::new(server))
         .serve_with_incoming_shutdown(incoming, async move {
             if plugin.remote {
                 std::future::pending::<()>().await;
@@ -304,8 +312,9 @@ async fn dispatch(
 }
 
 async fn invoke(
-    jobs: mpsc::Sender<Job>, handler: Arc<dyn Handler>, context: Context, payload: Vec<u8>, input: &mut Streaming<v1::HostFrame>,
-    output: &mpsc::Sender<std::result::Result<v1::PluginFrame, Status>>,
+    jobs: mpsc::Sender<Job>, handler: Arc<dyn Handler>, context: Context, payload: Vec<u8>,
+    input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeRequest>,
+    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, Status>>,
 ) -> std::result::Result<(), Status> {
     let mut complete = dispatch(&jobs, handler, context.clone(), payload).await?;
     let mut eof = false;
@@ -315,8 +324,8 @@ async fn invoke(
             _ = output.closed() => return Ok(()),
             result = &mut complete => break result.map_err(|_| Status::internal("Handler Panicked"))?,
             frame = input.message(), if !eof => match frame? {
-                Some(v1::HostFrame { frame: Some(host_frame::Frame::Child(child)) }) => context.reply(child)?,
-                Some(v1::HostFrame { frame: Some(host_frame::Frame::Cancel(cancel)) }) => context.cancel(cancel.reason).await.map_err(|error| Status::unavailable(error.to_string()))?,
+                Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child)?,
+                Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Cancel(cancel)) }) => context.cancel(cancel.reason).await.map_err(|error| Status::unavailable(error.to_string()))?,
                 None => { eof = true; if !context.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
                 _ => return Err(Status::invalid_argument("Repeated Request")),
             }
@@ -327,17 +336,18 @@ async fn invoke(
         Err(error) => error.response(&context.operation, &context.plugin)?,
     };
     output
-        .send(Ok(v1::PluginFrame {
-            frame: Some(plugin_frame::Frame::Response(v1::Response { result: Some(result) })),
+        .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
+            frame: Some(instance_invoke_response::Frame::Response(v1::Response { result: Some(result) })),
         }))
         .await
         .map_err(|_| Status::cancelled("Host Closed"))?;
     Ok(())
 }
 
-async fn publish(
+async fn samples(
     jobs: mpsc::Sender<Job>, observer: Option<Arc<dyn Handler>>, producer: Option<Arc<dyn Handler>>, mut context: Context,
-    input: &mut Streaming<v1::PublishFrame>, output: &mpsc::Sender<std::result::Result<v1::Samples, Status>>,
+    input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesRequest>,
+    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceSamplesResponse, Status>>,
 ) -> std::result::Result<(), Status> {
     let (samples, mut rows) = mpsc::channel(1);
     context.samples = Some(samples);
@@ -364,7 +374,7 @@ async fn publish(
             _ = output.closed() => return Ok(()),
             frame = input.message(), if next_tick.is_none() => {
                 let Some(frame) = frame? else { return Ok(()); };
-                let Some(publish_frame::Frame::Tick(tick)) = frame.frame else { return Err(Status::invalid_argument("Expected Tick")); };
+                let Some(instance_samples_request::Frame::Tick(tick)) = frame.frame else { return Err(Status::invalid_argument("Expected Tick")); };
                 let at = tick.at.ok_or_else(|| Status::invalid_argument("Tick Time Required"))?; crate::stream::validate_timestamp(at)?;
                 if observer.is_none() { return Err(Status::invalid_argument("Device Streams Do Not Accept Ticks")); }
                 next_tick = Some(at);
@@ -373,7 +383,7 @@ async fn publish(
                 let permit = permit.map_err(|_| Status::cancelled("Demand Closed"))?;
                 sequence += 1;
                 let (row, at) = sample.take().expect("Sample Ready");
-                permit.send(Ok(v1::Samples { samples: vec![v1::Sample { at, row, sequence }] }));
+                permit.send(Ok(harmos_protocol::plugin::InstanceSamplesResponse { samples: vec![v1::Sample { at, row, sequence }] }));
             }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
                 let (at, _) = observing.take().expect("Observer Active");

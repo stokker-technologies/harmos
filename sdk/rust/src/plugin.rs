@@ -282,10 +282,10 @@ mod tests {
     #[test]
     fn observer_must_own_one_declared_stream() {
         let stream = Stream::<()>::new("test.samples");
-        let observer = Observer::new(&stream, observe).every_ms(1000);
+        let observer = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         assert!(Plugin::new("test", "1.0.0").observer(observer).catalog().is_err());
-        let first = Observer::new(&stream, observe).every_ms(1000);
-        let second = Observer::new(&stream, observe).every_ms(1000);
+        let first = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
+        let second = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         assert!(Plugin::new("test", "1.0.0").stream(stream).observer(first).observer(second).catalog().is_err());
     }
 }

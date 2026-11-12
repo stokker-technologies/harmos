@@ -59,6 +59,11 @@ pub struct Client {
     settings: ClientSettings,
 }
 
+/// An Ordinary Watch. Dropping It Ends Observation Without A Final-Result Promise.
+pub struct Watching<O> {
+    incoming: Streaming<Output<O, NoItems>>,
+}
+
 /// The Independently Owned Input Direction Of One Managed Invocation.
 /// Finish It Explicitly To Tell The Server That No More Items Will Arrive.
 #[must_use = "finish the input direction after sending its items"]
@@ -111,9 +116,9 @@ impl Client {
 
     /// Read One Consumer-Bounded Discovery Page Through The Shared Host Protocol.
     pub async fn catalog(
-        &self, request: Request<harmos_protocol::host::Catalog>,
-    ) -> Result<tonic::Response<harmos_protocol::host::CatalogPage>, Status> {
-        self.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"), request, host_page()).await
+        &self, request: Request<harmos_protocol::v1::CatalogEntriesListRequest>,
+    ) -> Result<tonic::Response<harmos_protocol::v1::CatalogEntriesListResponse>, Status> {
+        self.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), request, host_page()).await
     }
 
     /// Call The Ordinary Unary Method With Generated Messages And Caller Metadata.
@@ -123,6 +128,9 @@ impl Client {
         R: Message + Default + Send + 'static,
     {
         method.validate()?;
+        if method.contract.grpc.as_ref().is_some_and(|grpc| grpc.managed) {
+            return Err(Status::invalid_argument("call requires an ordinary unary method; use start for a cooperative final result"));
+        }
         self.unary(method.path.clone(), request, descriptors(method)?.0).await
     }
 
@@ -156,6 +164,9 @@ impl Client {
         O: Message + Default + Send + 'static,
     {
         method.validate()?;
+        if !method.contract.grpc.as_ref().is_some_and(|grpc| grpc.managed) {
+            return Err(Status::invalid_argument("start requires a declared cooperative final result"));
+        }
         let (response, output) = descriptors(method)?;
         let (metadata, extensions, value) = request.into_parts();
         let budget = Arc::new(Semaphore::new(self.settings.input_bytes.get()));
@@ -167,11 +178,7 @@ impl Client {
         let mut client = self.transport();
         client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
         let response = client
-            .streaming(
-                Request::from_parts(metadata, extensions, stream),
-                method.run_path.clone(),
-                self.codec::<R, O>(true, response, output),
-            )
+            .streaming(Request::from_parts(metadata, extensions, stream), method.path.clone(), self.codec::<R, O>(true, response, output))
             .await?;
         Ok(Running {
             outgoing,
@@ -188,6 +195,33 @@ impl Client {
         })
     }
 
+    /// Observe An Ordinary Server Stream Without A Cooperative Final-Result Promise.
+    pub async fn watch<Q, R, O>(&self, method: &Method<Q, R, NoItems, O>, request: Request<Q>) -> Result<Watching<O>, Status>
+    where
+        Q: Message + Default + Send + 'static,
+        R: Message + Default + Send + 'static,
+        O: Message + Default + Send + 'static,
+    {
+        method.validate()?;
+        if !method.output || method.contract.grpc.as_ref().is_some_and(|grpc| grpc.managed) {
+            return Err(Status::invalid_argument("watch requires an ordinary server-streaming method"));
+        }
+        let (_, output) = descriptors(method)?;
+        let (metadata, extensions, value) = request.into_parts();
+        let budget = Arc::new(Semaphore::new(self.settings.input_bytes.get()));
+        let opening = frame(&budget, self.settings, None, &value).await?;
+        let mut client = self.transport();
+        client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
+        let response = client
+            .server_streaming(
+                Request::from_parts(metadata, extensions, opening),
+                method.path.clone(),
+                self.codec::<O, NoItems>(false, output.expect("validated output"), None),
+            )
+            .await?;
+        Ok(Watching { incoming: response.into_inner() })
+    }
+
     fn transport(&self) -> tonic::client::Grpc<Channel> {
         tonic::client::Grpc::new(self.channel.clone())
             .max_encoding_message_size(self.settings.message_bytes.get())
@@ -202,6 +236,16 @@ impl Client {
             envelope,
             limit: self.settings.message_bytes.get(),
             marker: PhantomData,
+        }
+    }
+}
+
+impl<O: Message + Default> Watching<O> {
+    pub async fn next(&mut self) -> Result<Option<O>, Status> {
+        match self.incoming.message().await? {
+            Some(Output::Response(value, _permit)) => Ok(Some(value)),
+            Some(Output::Item(..)) => Err(Status::data_loss("Watch returned a control envelope")),
+            None => Ok(None),
         }
     }
 }
@@ -309,7 +353,7 @@ impl<R: Message + Default, I: Message + Default, O: Message + Default> Running<R
 /* === Private Functions === */
 
 fn host_page() -> MessageDescriptor {
-    harmos_protocol::host::CatalogPage::default().descriptor()
+    harmos_protocol::v1::CatalogEntriesListResponse::default().descriptor()
 }
 
 fn descriptors<Q, R, I, O>(method: &Method<Q, R, I, O>) -> Result<(MessageDescriptor, Option<MessageDescriptor>), Status> {

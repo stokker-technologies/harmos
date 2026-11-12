@@ -33,7 +33,7 @@ async fn attempt_deadline_cancels_a_plugin_sleep_before_its_timer_is_due() {
     assert_eq!(clock.date(), std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(2));
 
     // A Deadline Leaves The Connection Available
-    assert!(attached.activation().unwrap().describe().await.is_ok());
+    assert!(attached.activation().unwrap().get().await.is_ok());
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }

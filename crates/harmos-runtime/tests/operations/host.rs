@@ -124,6 +124,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     });
     let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Gate>(gate.clone());
+        setup.settings().lanes(harmos_runtime::operations::LaneSet::new([crate::support::SERIAL]).unwrap());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
             ..Default::default()
@@ -133,7 +134,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
     .unwrap();
     runtime
         .operations
-        .register_operation(hold_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .register_operation(hold_declaration_operation().expect("representable operation"), crate::support::SERIAL)
         .await
         .unwrap();
     crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default())
@@ -234,9 +235,8 @@ async fn host_instances_settle() {
         let instance = runtime.operation(HoldDeclaration { value: 1 }).start().await.unwrap();
         gate.started.notified().await;
         let id = Instance::detach(instance);
-        let status =
-            runtime.operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
-        assert_eq!(status.unwrap().phase, Phase::Running.as_str());
+        let status = runtime.operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await;
+        assert_eq!(status.unwrap().invocation.unwrap().phase, Phase::Running.as_str());
         let cleaned = gate.cleanup.notified();
         gate.release.add_permits(1);
         cleaned.await;
@@ -259,23 +259,43 @@ async fn builtin_controls_instance() {
     let mut instance = operations.submit::<HoldDeclaration>(HoldDeclaration { value: 1 }).await.unwrap();
     gate.started.notified().await;
     let id = instance.id();
-    let status =
-        operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
-    assert_eq!(status.phase, Phase::Running.as_str());
-    assert_eq!(status.outcome, "");
-    assert!(!status.cancellation_requested);
+    let status = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await.unwrap();
+    assert_eq!(status.invocation.as_ref().unwrap().phase, Phase::Running.as_str());
+    assert_eq!(status.invocation.as_ref().unwrap().outcome, "");
+    assert!(!status.invocation.as_ref().unwrap().cancellation_requested);
+    // Queued Work Refuses Cancel Without Changing Its State
+    let queued = operations.submit::<HoldDeclaration>(HoldDeclaration { value: 2 }).await.unwrap();
+    let queued_id = queued.id();
+    let refusal = operations
+        .call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(queued_id))
+        .await
+        .unwrap_err();
+    assert!(matches!(refusal, Error::OperationFailed { source, .. }
+        if matches!(source.downcast_ref::<harmos_operations::Error>(),
+            Some(harmos_operations::Error::InvalidInput { field: "Cancel", .. }))));
+    let waiting = operations
+        .call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(queued_id))
+        .await
+        .unwrap()
+        .invocation
+        .unwrap();
+    assert_eq!(waiting.phase, Phase::Queued.as_str());
+    assert!(!waiting.cancellation_requested);
     let cancelled =
         operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(id)).await.unwrap();
-    assert!(cancelled.cancellation_requested);
+    assert!(cancelled.invocation.as_ref().unwrap().cancellation_requested);
     assert!(matches!((&mut instance).await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     instance.settle().await.unwrap();
+    gate.started.notified().await;
+    operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(queued_id)).await.unwrap();
+    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     // Settled Instances Leave The Index; Unknown Ids Stay Hidden
-    let settled = operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
+    let settled = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await;
     assert!(hidden(settled.err()));
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
     let refused = operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(unknown)).await;
     assert!(hidden(refused.err()));
-    assert_ne!(cancelled.outcome, Outcome::Succeeded.as_str());
+    assert_ne!(cancelled.invocation.as_ref().unwrap().outcome, Outcome::Succeeded.as_str());
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
@@ -309,9 +329,8 @@ async fn resident_leases_watched() {
     let id = first.id();
     let key = operations.resident_key(id).unwrap();
     assert_eq!(operations.resident(&key).unwrap().leases, 2);
-    let status =
-        operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
-    assert_eq!(status.phase, Phase::Running.as_str());
+    let status = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await.unwrap();
+    assert_eq!(status.invocation.as_ref().unwrap().phase, Phase::Running.as_str());
 
     // A Watch Streams Every Change Until the Instance Stops
     let settings = harmos_runtime::operations::StreamSettings {
@@ -323,28 +342,29 @@ async fn resident_leases_watched() {
         .submit_protobuf::<harmos_operations::lifecycle::Watch>(harmos_operations::lifecycle::Watch::of(id), Some(limits))
         .unwrap();
     let stream = stream.unwrap();
-    let current =
-        <harmos_protocol::host::InstanceState as prost::Message>::decode(stream.receive_current().await.unwrap().unwrap().as_slice())
-            .unwrap();
-    assert_eq!(current.phase, Phase::Running.as_str());
+    let current = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(
+        stream.receive_current().await.unwrap().unwrap().as_slice(),
+    )
+    .unwrap();
+    assert_eq!(current.invocation.unwrap().phase, Phase::Running.as_str());
     drop(first);
     assert_eq!(operations.resident(&key).unwrap().leases, 1);
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 0);
     second.request_cancel();
     let mut phases = Vec::new();
     while let Some(bytes) = stream.receive_current().await.unwrap() {
-        let state = <harmos_protocol::host::InstanceState as prost::Message>::decode(bytes.as_slice()).unwrap();
-        phases.push(state.phase.clone());
+        let state = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(bytes.as_slice()).unwrap();
+        phases.push(state.invocation.unwrap().phase);
     }
-    let last = <harmos_protocol::host::InstanceState as prost::Message>::decode(watch.await.unwrap().as_slice()).unwrap();
-    assert_eq!(last.phase, Phase::Stopped.as_str());
+    let last = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(watch.await.unwrap().as_slice()).unwrap();
+    assert_eq!(last.invocation.unwrap().phase, Phase::Stopped.as_str());
     assert_eq!(phases.last().map(String::as_str), Some(Phase::Stopped.as_str()));
     assert!(phases.iter().any(|phase| phase == Phase::Stopping.as_str()));
     second.settle().await.unwrap();
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
 
     // A Stopped Resident Leaves the Index Like a Settled Request
-    let stopped = operations.call_protobuf::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
+    let stopped = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await;
     assert!(hidden(stopped.err()));
     crate::support::app::shutdown(&runtime).await.unwrap();
 }

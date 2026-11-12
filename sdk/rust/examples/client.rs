@@ -20,7 +20,7 @@ use std::num::NonZeroUsize;
 
 // Third Party Imports
 use harmos::prelude::*;
-use harmos_protocol::host;
+use harmos_protocol::v1 as host;
 use schematic_protocol::{ValidateSchematic, Validation};
 use tonic::{Request, transport::Endpoint};
 
@@ -57,13 +57,15 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let client = Client::new(channel, settings)?;
 
     // Find The Application's Generated Contract In Bounded Discovery Pages.
-    let mut after = None;
+    let mut page_token = String::new();
     let contract = loop {
-        let request = host::Catalog {
+        let request = host::CatalogEntriesListRequest {
             kind: host::CatalogKind::Operations as i32,
-            after,
-            rows: Some(64),
-            bytes: Some(1024 * 1024),
+            page: Some(harmos_protocol::v1::PageRequest {
+                page_size: 64,
+                max_bytes: 1024 * 1024,
+                page_token,
+            }),
             ..Default::default()
         };
         let page = client.catalog(Request::new(request)).await?.into_inner();
@@ -72,7 +74,10 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         {
             break contract;
         }
-        after = Some(page.next.ok_or("the host does not expose schematic.validate")?);
+        if page.next_page_token.is_empty() {
+            return Err("the host does not expose schematic.validate".into());
+        }
+        page_token = page.next_page_token;
     };
 
     // Bind Generated Application Messages And Observe The Operation's Status.

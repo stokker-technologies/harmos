@@ -23,7 +23,8 @@ use std::{
 
 // Third Party Imports
 use futures_util::{StreamExt, stream};
-use harmos_protocol::v1::{self, host_frame, plugin_frame};
+use harmos_protocol::plugin::{instance_invoke_request, instance_invoke_response};
+use harmos_protocol::v1::{self};
 use tokio::sync::mpsc;
 
 // Local Imports
@@ -157,13 +158,13 @@ async fn invoke(
             scope: host.borrow().context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
         };
         output
-            .send(v1::HostFrame {
-                frame: Some(host_frame::Frame::Request(request)),
+            .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Request(request)),
             })
             .await
             .unwrap();
         let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
-        let mut client = v1::plugin_client::PluginClient::new(connection.channel.clone());
+        let mut client = harmos_protocol::plugin::instance_client::InstanceClient::new(connection.channel.clone());
         let mut input = client.invoke(input).await.map_err(CallError::Transport)?.into_inner();
         let mut children = futures_util::stream::FuturesUnordered::<
             futures_util::future::BoxFuture<'static, (u64, String, crate::Result<Vec<u8>>)>,
@@ -175,7 +176,7 @@ async fn invoke(
         enum Event {
             Cancel,
             Child(u64, String, crate::Result<Vec<u8>>),
-            Frame(Result<Option<v1::PluginFrame>, tonic::Status>),
+            Frame(Result<Option<harmos_protocol::plugin::InstanceInvokeResponse>, tonic::Status>),
         }
         loop {
             let has_children = !children.is_empty();
@@ -195,8 +196,8 @@ async fn invoke(
                         reason: format!("Operation {} Cancelled", binding.contract.id),
                     };
                     let _ = output
-                        .send(v1::HostFrame {
-                            frame: Some(host_frame::Frame::Cancel(cancel)),
+                        .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                            frame: Some(instance_invoke_request::Frame::Cancel(cancel)),
                         })
                         .await;
                 }
@@ -211,13 +212,13 @@ async fn invoke(
                     };
                     let child = v1::ChildResponse { call, result: Some(result) };
                     let _ = output
-                        .send(v1::HostFrame {
-                            frame: Some(host_frame::Frame::Child(child)),
+                        .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                            frame: Some(instance_invoke_request::Frame::Child(child)),
                         })
                         .await;
                 }
                 Event::Frame(frame) => match frame.map_err(CallError::Transport)?.and_then(|frame| frame.frame) {
-                    Some(plugin_frame::Frame::Response(response)) => {
+                    Some(instance_invoke_response::Frame::Response(response)) => {
                         if input.message().await.map_err(CallError::Transport)?.is_some() {
                             return Err(CallError::Protocol("Frame After Terminal Response".into()));
                         }
@@ -227,7 +228,7 @@ async fn invoke(
                             None => Err(CallError::Protocol("Missing Response Result".into())),
                         };
                     }
-                    Some(plugin_frame::Frame::Child(child)) => {
+                    Some(instance_invoke_response::Frame::Child(child)) => {
                         if !seen.insert(child.call) {
                             return Err(CallError::Protocol(format!("Duplicate Child ID {}", child.call)));
                         }
@@ -245,7 +246,7 @@ async fn invoke(
                             (call, operation, result)
                         }));
                     }
-                    Some(plugin_frame::Frame::ChildCancel(child)) => {
+                    Some(instance_invoke_response::Frame::ChildCancel(child)) => {
                         if let Some(control) = controls.get(&child.call) {
                             cancelled_children.insert(child.call);
                             control.request_cancel();

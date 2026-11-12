@@ -33,11 +33,11 @@ use crate::{
     Result, fixture,
     schema_fixture::{Graph, Nested},
 };
-use harmos_protocol::v1::{
-    self as v1, child_response, host_frame, plugin_frame,
-    plugin_server::{Plugin, PluginServer},
-    publish_frame, response,
+use harmos_protocol::plugin::{
+    instance_invoke_request, instance_invoke_response, instance_samples_request,
+    instance_server::{Instance, InstanceServer},
 };
+use harmos_protocol::v1::{self as v1, child_response, response};
 
 /* === Constants === */
 
@@ -61,9 +61,11 @@ struct Reference {
 /* === Implementations === */
 
 #[tonic::async_trait]
-impl Plugin for Reference {
-    async fn describe(&self, _: Request<v1::DescribeRequest>) -> std::result::Result<Response<v1::Description>, Status> {
-        Ok(Response::new(v1::Description {
+impl Instance for Reference {
+    async fn get(
+        &self, _: Request<harmos_protocol::plugin::InstanceGetRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
+        Ok(Response::new(harmos_protocol::plugin::InstanceGetResponse {
             id: "conformance".into(),
             version: "1.0.0".into(),
             started_at: Some(self.started_at),
@@ -74,12 +76,14 @@ impl Plugin for Reference {
         }))
     }
 
-    type InvokeStream = Output<v1::PluginFrame>;
+    type InvokeStream = Output<harmos_protocol::plugin::InstanceInvokeResponse>;
 
-    async fn invoke(&self, request: Request<Streaming<v1::HostFrame>>) -> std::result::Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>,
+    ) -> std::result::Result<Response<Self::InvokeStream>, Status> {
         let mut input = request.into_inner();
         let first = input.message().await?.and_then(|frame| frame.frame);
-        let Some(host_frame::Frame::Request(request)) = first else {
+        let Some(instance_invoke_request::Frame::Request(request)) = first else {
             return Err(Status::invalid_argument("Request Must Be First"));
         };
         if request.invocation.is_empty() || request.attempt == 0 {
@@ -109,12 +113,14 @@ impl Plugin for Reference {
         ))))
     }
 
-    type PublishStream = Output<v1::Samples>;
+    type SamplesStream = Output<harmos_protocol::plugin::InstanceSamplesResponse>;
 
-    async fn publish(&self, request: Request<Streaming<v1::PublishFrame>>) -> std::result::Result<Response<Self::PublishStream>, Status> {
+    async fn samples(
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
+    ) -> std::result::Result<Response<Self::SamplesStream>, Status> {
         let mut input = request.into_inner();
         let first = input.message().await?.and_then(|frame| frame.frame);
-        let Some(publish_frame::Frame::Open(open)) = first else {
+        let Some(instance_samples_request::Frame::Open(open)) = first else {
             return Err(Status::invalid_argument("Open Must Be First"));
         };
         if !["conformance.ticks", "conformance.device", "conformance.settings"].contains(&open.stream.as_str()) {
@@ -122,7 +128,7 @@ impl Plugin for Reference {
         }
         let (output, receiver) = mpsc::channel(8);
         tokio::spawn(async move {
-            let result = publish(open, &mut input, &output).await;
+            let result = samples(open, &mut input, &output).await;
             if let Err(error) = result {
                 let _ = output.send(Err(error)).await;
             }
@@ -133,11 +139,13 @@ impl Plugin for Reference {
         ))))
     }
 
-    async fn stop(&self, _: Request<v1::StopRequest>) -> std::result::Result<Response<v1::StopResponse>, Status> {
+    async fn stop(
+        &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
+    ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
         if let Some(shutdown) = self.shutdown.lock().await.take() {
             let _ = shutdown.send(());
         }
-        Ok(Response::new(v1::StopResponse {}))
+        Ok(Response::new(harmos_protocol::plugin::InstanceStopResponse {}))
     }
 }
 
@@ -163,7 +171,7 @@ pub async fn serve(remote: bool) -> Result<()> {
     println!("harmos listening {address}");
     std::io::stdout().flush()?;
     tonic::transport::Server::builder()
-        .add_service(PluginServer::new(reference))
+        .add_service(InstanceServer::new(reference))
         .serve_with_incoming_shutdown(incoming, async move {
             if remote {
                 std::future::pending::<()>().await;
@@ -177,25 +185,26 @@ pub async fn serve(remote: bool) -> Result<()> {
 /* === Private Functions === */
 
 async fn invoke(
-    request: v1::Request, input: &mut Streaming<v1::HostFrame>, output: &mpsc::Sender<std::result::Result<v1::PluginFrame, Status>>,
+    request: v1::Request, input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeRequest>,
+    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, Status>>,
 ) -> std::result::Result<(), Status> {
     let result = match request.operation.as_str() {
         "conformance.clock" => {
             let mut readings = Vec::new();
             for (call, operation, payload) in [
-                (1, "harmos.clock.now", vec![]),
+                (1, "harmos.time.get", vec![]),
                 (
                     2,
-                    "harmos.clock.sleep",
-                    v1::Sleep {
+                    "harmos.time.sleep",
+                    v1::TimeSleepRequest {
                         duration: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
                     }
                     .encode_to_vec(),
                 ),
-                (3, "harmos.clock.now", vec![]),
+                (3, "harmos.time.get", vec![]),
             ] {
                 send_child(output, call, operation, payload).await?;
-                let Some(host_frame::Frame::Child(v1::ChildResponse {
+                let Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
                     call: received,
                     result: Some(child_response::Result::Payload(payload)),
                 })) = input.message().await?.and_then(|frame| frame.frame)
@@ -205,9 +214,9 @@ async fn invoke(
                 if received != call {
                     return Err(Status::invalid_argument("Unexpected Clock Reply"));
                 }
-                if operation == "harmos.clock.now" {
+                if operation == "harmos.time.get" {
                     readings.push(
-                        v1::Time::decode(payload.as_slice())
+                        v1::TimeGetResponse::decode(payload.as_slice())
                             .map_err(|_| Status::invalid_argument("Invalid Time"))?
                             .now
                             .ok_or_else(|| Status::invalid_argument("Missing Time"))?
@@ -231,18 +240,19 @@ async fn invoke(
                     retries: Some(harmos_protocol::v1::RetryPolicy {
                         total_attempts: 3,
                         initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                        ..Default::default()
+                        maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
+                        deterministic_jitter: true,
                     }),
                     ..Default::default()
                 }),
             };
             output
-                .send(Ok(v1::PluginFrame {
-                    frame: Some(plugin_frame::Frame::Child(child)),
+                .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
+                    frame: Some(instance_invoke_response::Frame::Child(child)),
                 }))
                 .await
                 .map_err(|_| Status::cancelled("Host Closed"))?;
-            let Some(host_frame::Frame::Child(v1::ChildResponse {
+            let Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
                 call: 1,
                 result: Some(child_response::Result::Payload(payload)),
             })) = input.message().await?.and_then(|frame| frame.frame)
@@ -250,7 +260,7 @@ async fn invoke(
                 return Err(Status::invalid_argument("Expected First Child Reply"));
             };
             send_child(output, 2, "conformance.host.echo", payload).await?;
-            let Some(host_frame::Frame::Child(v1::ChildResponse {
+            let Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
                 call: 2,
                 result: Some(child_response::Result::Payload(payload)),
             })) = input.message().await?.and_then(|frame| frame.frame)
@@ -289,6 +299,28 @@ async fn invoke(
                 response::Result::Payload(request.payload)
             }
         }
+        "conformance.private" => response::Result::Payload(request.payload),
+        "conformance.resources" | "conformance.cancel_reason" => {
+            send_child(output, 1, "conformance.host.echo", request.payload.clone()).await?;
+            let frame = input.message().await?.and_then(|frame| frame.frame);
+            if !matches!(
+                frame,
+                Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
+                    call: 1,
+                    result: Some(child_response::Result::Payload(_))
+                }))
+            ) {
+                return Err(Status::invalid_argument("Expected Resource Child Reply"));
+            }
+            if request.operation == "conformance.resources" {
+                response::Result::Payload(request.payload)
+            } else {
+                let Some(instance_invoke_request::Frame::Cancel(cancel)) = input.message().await?.and_then(|frame| frame.frame) else {
+                    return Err(Status::invalid_argument("Expected Cancel Reason"));
+                };
+                response::Result::Payload(fixture::payload(cancel.reason.as_bytes()))
+            }
+        }
         "conformance.failure" => response::Result::Failure(fixture::failure("conformance.failure")),
         "conformance.children" => {
             for call in [1, 2] {
@@ -297,7 +329,7 @@ async fn invoke(
             let mut replies = std::collections::BTreeMap::new();
             while replies.len() < 2 {
                 let frame = input.message().await?.and_then(|frame| frame.frame);
-                let Some(host_frame::Frame::Child(child)) = frame else {
+                let Some(instance_invoke_request::Frame::Child(child)) = frame else {
                     return Err(Status::invalid_argument("Expected Child Response"));
                 };
                 if ![1, 2].contains(&child.call) || replies.contains_key(&child.call) {
@@ -315,7 +347,7 @@ async fn invoke(
         "conformance.child_failure" => {
             send_child(output, 1, "conformance.host.fail", request.payload).await?;
             let frame = input.message().await?.and_then(|frame| frame.frame);
-            let Some(host_frame::Frame::Child(v1::ChildResponse {
+            let Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
                 call: 1,
                 result: Some(child_response::Result::Failure(failure)),
             })) = frame
@@ -327,12 +359,12 @@ async fn invoke(
         "conformance.cancel" => {
             send_child(output, 1, "conformance.host.pending", request.payload).await?;
             let frame = input.message().await?.and_then(|frame| frame.frame);
-            let Some(host_frame::Frame::Cancel(cancel)) = frame else {
+            let Some(instance_invoke_request::Frame::Cancel(cancel)) = frame else {
                 return Err(Status::invalid_argument("Expected Cancel"));
             };
             output
-                .send(Ok(v1::PluginFrame {
-                    frame: Some(plugin_frame::Frame::ChildCancel(v1::ChildCancel { call: 1 })),
+                .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
+                    frame: Some(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call: 1 })),
                 }))
                 .await
                 .map_err(|_| Status::cancelled("Host Closed"))?;
@@ -349,8 +381,8 @@ async fn invoke(
         _ => return Err(Status::not_found("Unknown Operation")),
     };
     output
-        .send(Ok(v1::PluginFrame {
-            frame: Some(plugin_frame::Frame::Response(v1::Response { result: Some(result) })),
+        .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
+            frame: Some(instance_invoke_response::Frame::Response(v1::Response { result: Some(result) })),
         }))
         .await
         .map_err(|_| Status::cancelled("Host Closed"))?;
@@ -358,7 +390,8 @@ async fn invoke(
 }
 
 async fn send_child(
-    output: &mpsc::Sender<std::result::Result<v1::PluginFrame, Status>>, call: u64, operation: &str, payload: Vec<u8>,
+    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, Status>>, call: u64, operation: &str,
+    payload: Vec<u8>,
 ) -> std::result::Result<(), Status> {
     let child = v1::ChildRequest {
         call,
@@ -368,18 +401,19 @@ async fn send_child(
         policy: None,
     };
     output
-        .send(Ok(v1::PluginFrame {
-            frame: Some(plugin_frame::Frame::Child(child)),
+        .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
+            frame: Some(instance_invoke_response::Frame::Child(child)),
         }))
         .await
         .map_err(|_| Status::cancelled("Host Closed"))
 }
 
-async fn publish(
-    open: v1::PublishRequest, input: &mut Streaming<v1::PublishFrame>, output: &mpsc::Sender<std::result::Result<v1::Samples, Status>>,
+async fn samples(
+    open: v1::SamplesSelection, input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesRequest>,
+    output: &mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceSamplesResponse, Status>>,
 ) -> std::result::Result<(), Status> {
     if open.stream == "conformance.device" {
-        let samples = v1::Samples {
+        let samples = harmos_protocol::plugin::InstanceSamplesResponse {
             samples: vec![v1::Sample {
                 at: None,
                 row: fixture::payload(b"device"),
@@ -397,7 +431,7 @@ async fn publish(
         let Some(frame) = frame else {
             return Ok(());
         };
-        let Some(publish_frame::Frame::Tick(tick)) = frame.frame else {
+        let Some(instance_samples_request::Frame::Tick(tick)) = frame.frame else {
             return Err(Status::invalid_argument("Expected Tick"));
         };
         let Some(at) = tick.at else {
@@ -412,7 +446,7 @@ async fn publish(
         }
         sequence += 1;
         let row = fixture::payload(&sequence.to_le_bytes());
-        let samples = v1::Samples {
+        let samples = harmos_protocol::plugin::InstanceSamplesResponse {
             samples: vec![v1::Sample { at: Some(at), row, sequence }],
         };
         output.send(Ok(samples)).await.map_err(|_| Status::cancelled("Host Closed"))?;

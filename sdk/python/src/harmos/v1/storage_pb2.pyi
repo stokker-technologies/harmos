@@ -1,4 +1,4 @@
-from harmos.v1 import plugin_pb2 as _plugin_pb2
+from harmos.v1 import types_pb2 as _types_pb2
 from harmos.v1 import storage_types_pb2 as _storage_types_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -20,8 +20,8 @@ class StorageCreateFileProductionResponse(_message.Message):
     PRODUCTION_FIELD_NUMBER: _ClassVar[int]
     RECEIPT_FIELD_NUMBER: _ClassVar[int]
     production: _storage_types_pb2.FileProducer
-    receipt: _plugin_pb2.Receipt
-    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_plugin_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StorageGetFileProductionRequest(_message.Message):
     __slots__ = ("file",)
@@ -38,10 +38,10 @@ class StorageGetFileProductionResponse(_message.Message):
     DURABLE_LENGTH_FIELD_NUMBER: _ClassVar[int]
     production: _storage_types_pb2.FileProgress
     writer_generation: int
-    resolved_at: _plugin_pb2.ReadCut
+    resolved_at: _types_pb2.ReadCut
     accepted_length: int
     durable_length: int
-    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., writer_generation: _Optional[int] = ..., resolved_at: _Optional[_Union[_plugin_pb2.ReadCut, _Mapping]] = ..., accepted_length: _Optional[int] = ..., durable_length: _Optional[int] = ...) -> None: ...
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., writer_generation: _Optional[int] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., accepted_length: _Optional[int] = ..., durable_length: _Optional[int] = ...) -> None: ...
 
 class StorageAppendFileBytesRequest(_message.Message):
     __slots__ = ("session", "offset", "data", "mutation")
@@ -60,8 +60,8 @@ class StorageAppendFileBytesResponse(_message.Message):
     PRODUCTION_FIELD_NUMBER: _ClassVar[int]
     RECEIPT_FIELD_NUMBER: _ClassVar[int]
     production: _storage_types_pb2.FileProducer
-    receipt: _plugin_pb2.Receipt
-    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_plugin_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StorageCreateFileWriterRequest(_message.Message):
     __slots__ = ("session", "mutation")
@@ -76,8 +76,8 @@ class StorageCreateFileWriterResponse(_message.Message):
     PRODUCTION_FIELD_NUMBER: _ClassVar[int]
     RECEIPT_FIELD_NUMBER: _ClassVar[int]
     production: _storage_types_pb2.FileProducer
-    receipt: _plugin_pb2.Receipt
-    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_plugin_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StoragePublishFileProductionRequest(_message.Message):
     __slots__ = ("session", "length", "sha256", "mutation")
@@ -96,8 +96,8 @@ class StoragePublishFileProductionResponse(_message.Message):
     FILE_FIELD_NUMBER: _ClassVar[int]
     RECEIPT_FIELD_NUMBER: _ClassVar[int]
     file: _storage_types_pb2.FileReference
-    receipt: _plugin_pb2.Receipt
-    def __init__(self, file: _Optional[_Union[_storage_types_pb2.FileReference, _Mapping]] = ..., receipt: _Optional[_Union[_plugin_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    receipt: _types_pb2.Receipt
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.FileReference, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StorageDeleteFileProductionRequest(_message.Message):
     __slots__ = ("session", "mutation")
@@ -112,8 +112,8 @@ class StorageDeleteFileProductionResponse(_message.Message):
     PRODUCTION_FIELD_NUMBER: _ClassVar[int]
     RECEIPT_FIELD_NUMBER: _ClassVar[int]
     production: _storage_types_pb2.FileProgress
-    receipt: _plugin_pb2.Receipt
-    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., receipt: _Optional[_Union[_plugin_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StorageGetFileBytesRequest(_message.Message):
     __slots__ = ("file", "offset", "max_bytes", "at")
@@ -124,8 +124,8 @@ class StorageGetFileBytesRequest(_message.Message):
     file: _storage_types_pb2.FileReference
     offset: int
     max_bytes: int
-    at: _plugin_pb2.ReadCut
-    def __init__(self, file: _Optional[_Union[_storage_types_pb2.FileReference, _Mapping]] = ..., offset: _Optional[int] = ..., max_bytes: _Optional[int] = ..., at: _Optional[_Union[_plugin_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+    at: _types_pb2.ReadCut
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.FileReference, _Mapping]] = ..., offset: _Optional[int] = ..., max_bytes: _Optional[int] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageGetFileBytesResponse(_message.Message):
     __slots__ = ("data", "total_length", "sha256", "resolved_at")
@@ -136,5 +136,5 @@ class StorageGetFileBytesResponse(_message.Message):
     data: bytes
     total_length: int
     sha256: bytes
-    resolved_at: _plugin_pb2.ReadCut
-    def __init__(self, data: _Optional[bytes] = ..., total_length: _Optional[int] = ..., sha256: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_plugin_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, data: _Optional[bytes] = ..., total_length: _Optional[int] = ..., sha256: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...

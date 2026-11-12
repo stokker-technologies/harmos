@@ -347,7 +347,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "host.catalog" | "grpc.descendant" => (),
+            "harmos.catalog_entries.list" | "grpc.descendant" => (),
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
@@ -701,7 +701,7 @@ async fn external_call(
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_protocol::host::{Catalog, CatalogKind, CatalogPage};
+    use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse, CatalogKind};
     let (decode, encode) = limits();
     let mut client = tonic::client::Grpc::new(channel)
         .max_decoding_message_size(decode.message_bytes.get())
@@ -711,27 +711,29 @@ async fn external_catalog(
     // Bounded Pages Fit The Client's Decode Ceiling; The Catalog Ends With An Empty Cursor.
     loop {
         client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-        let page = Catalog {
+        let page = CatalogEntriesListRequest {
             kind: CatalogKind::Operations as i32,
             schema: None,
-            after: after.take(),
-            rows: None,
-            bytes: Some(2048),
+            page: Some(harmos_protocol::v1::PageRequest {
+                page_size: 64,
+                max_bytes: 2048,
+                page_token: after.take().unwrap_or_default(),
+            }),
         };
         let mut request = tonic::Request::new(page);
         if let Some(token) = token {
             request.metadata_mut().insert("authorization", token.parse().unwrap());
         }
-        let response: tonic::Response<CatalogPage> = client
-            .unary(request, http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"), tonic_prost::ProstCodec::default())
+        let response: tonic::Response<CatalogEntriesListResponse> = client
+            .unary(request, http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
             .await?;
         let page = response.into_inner();
         assert!(prost::Message::encoded_len(&page) <= 2048);
         entries.extend(page.operations);
-        match page.next.clone() {
-            Some(next) => after = Some(next),
-            None => return Ok(entries),
+        if page.next_page_token.is_empty() {
+            return Ok(entries);
         }
+        after = Some(page.next_page_token);
     }
 }
 

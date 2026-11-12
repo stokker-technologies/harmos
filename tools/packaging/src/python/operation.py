@@ -51,15 +51,9 @@ class Operation[Request: Message, Response: Message, Input: Message, Output: Mes
     grpc_path: str
     rpc_request: type[Message]
     rpc_response: type[Message]
-    run_request: type[Message]
-    run_response: type[Message]
+    managed: bool
     contract: str
     fingerprint: str
-
-    @property
-    def run_grpc_path(self) -> str:
-        service, method = self.grpc_path.rsplit("/", 1)
-        return f"{service}/Run{method}"
 
     def __post_init__(self) -> None:
         if re.fullmatch(r"[0-9a-f]{64}", self.fingerprint) is None:

@@ -1,81 +1,32 @@
-// Authoritative plugin contract. See ../../README.md for the rules.
+// SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
-
 package harmos.v1;
-
 import "google/protobuf/descriptor.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
-// Shared read and mutation primitives. Histories include store identity and epoch;
-// positions from different histories must never be compared.
 message History { string store = 1; string epoch = 2; }
+
 message Position { History history = 1; uint64 sequence = 2; }
+
 message ResourceRevision { string name = 1; bytes revision = 2; }
+
 message ReadCut {
   repeated Position positions = 1;
   repeated ResourceRevision revisions = 2;
 }
+
 message PageRequest {
   uint32 page_size = 1;
   uint64 max_bytes = 2;
   string page_token = 3;
 }
+
 message Receipt {
   string request_id = 1;
   Position accepted_at = 2;
   Position durable_at = 3;
   bool completed = 4;
-}
-
-// Served by every plugin. The host is always the client.
-service Plugin {
-  // Identity, start time and catalog. Called once per connection, first.
-  rpc Describe(DescribeRequest) returns (Description);
-
-  // One invocation of one operation. The host opens the call with a Request.
-  // While it runs, the plugin may send ChildRequest frames and the host
-  // answers each with a ChildResponse. The plugin ends the call with a
-  // Response. The host may send Cancel at any time.
-  rpc Invoke(stream HostFrame) returns (stream PluginFrame);
-
-  // One declared stream. The host opens the call with a PublishRequest;
-  // opening it is the demand for the stream and closing it ends the demand.
-  // For a stream with an interval the host then sends one Tick per interval
-  // and the plugin answers each with one sample.
-  rpc Publish(stream PublishFrame) returns (stream Samples);
-
-  // Sent before the host shuts down or removes the plugin. The plugin runs
-  // its stop and cleanup hooks and then replies. A managed plugin exits
-  // afterwards; a remote plugin keeps running.
-  rpc Stop(StopRequest) returns (StopResponse);
-}
-
-// ---------------------------------------------------------------- Describe
-
-message DescribeRequest {
-  // Highest revision of harmos.v1 the host implements. Starts at 1 and grows
-  // with each additive release.
-  uint32 revision = 1;
-  // Name and version of the host application, for logs.
-  string host = 2;
-  string host_version = 3;
-}
-
-message Description {
-  // Stable plugin identifier, lowercase with dots or underscores.
-  string id = 1;
-  // Semantic version of the plugin.
-  string version = 2;
-  // Captured once when the process started. A changed value on reconnect
-  // means the process restarted.
-  google.protobuf.Timestamp started_at = 3;
-  Catalog catalog = 4;
-  // Highest revision of harmos.v1 the plugin implements.
-  uint32 revision = 5;
-  // Name and version of the SDK that built the plugin, for logs.
-  string sdk = 6;
-  string sdk_version = 7;
 }
 
 message Catalog {
@@ -161,30 +112,6 @@ message Section {
   bytes payload = 2;
 }
 
-message StopRequest {
-  string reason = 1;
-}
-
-message StopResponse {}
-
-// ------------------------------------------------------------------ Invoke
-
-message HostFrame {
-  oneof frame {
-    Request request = 1;
-    ChildResponse child = 2;
-    Cancel cancel = 3;
-  }
-}
-
-message PluginFrame {
-  oneof frame {
-    ChildRequest child = 1;
-    ChildCancel child_cancel = 2;
-    Response response = 3;
-  }
-}
-
 message Request {
   string operation = 1;
   // Serialized request message of the operation.
@@ -232,7 +159,6 @@ message ChildResponse {
   }
 }
 
-// An operation failure. Transport faults use gRPC status instead.
 message Failure {
   Classification classification = 1;
   // Stable machine-readable code, for example "provider_absent".
@@ -264,32 +190,15 @@ enum Classification {
   CLASSIFICATION_REFUSED = 5;
 }
 
-// ----------------------------------------------------------------- Publish
-
-message PublishFrame {
-  oneof frame {
-    // First frame.
-    PublishRequest open = 1;
-    Tick tick = 2;
-  }
-}
-
-// Asks for one sample of an interval stream.
 message Tick {
   // Host time of the tick. The answering sample carries it.
   google.protobuf.Timestamp at = 1;
 }
 
-message PublishRequest {
+message SamplesSelection {
   string stream = 1;
   // Opaque to Harmos. The product names what the stream belongs to.
   string scope = 2;
-}
-
-// One message on the stream. An SDK sends one sample per message; the
-// repeated field lets a later SDK group samples without a protocol change.
-message Samples {
-  repeated Sample samples = 1;
 }
 
 message Sample {
@@ -303,21 +212,65 @@ message Sample {
   uint64 sequence = 3;
 }
 
-// ------------------------------------------------------------------- Clock
-//
-// Built-in Public operations served by the host. An SDK offers no waits of
-// its own: every wait goes through these, so the host owns the only clock.
-//   harmos.clock.sleep   Sleep -> SleepResponse
-//   harmos.clock.now     Now   -> Time
-
-message Sleep {
-  google.protobuf.Duration duration = 1;
+message AssignedOperation {
+  string operation = 1;
+  bytes fingerprint = 2;
+  uint64 generation = 3;
 }
 
-message SleepResponse {}
+message OperationAssignments {
+  repeated AssignedOperation operations = 1;
+}
 
-message Now {}
+message InstanceState {
+  string phase = 1;
+  string outcome = 2;
+  bool cancellation_requested = 3;
+  uint32 attempt = 4;
+}
 
-message Time {
-  google.protobuf.Timestamp now = 1;
+enum CatalogKind {
+  CATALOG_KIND_OPERATIONS = 0;
+  CATALOG_KIND_SCHEMAS = 1;
+  CATALOG_KIND_STREAMS = 2;
+  CATALOG_KIND_OBJECTS = 3;
+}
+
+message Protobuf {
+  bytes descriptors = 1;
+  string request = 2;
+  string response = 3;
+  optional string input = 4;
+  optional string output = 5;
+}
+
+message Grpc { string package = 1; string service = 2; string method = 3; bool managed = 4; }
+
+message Grant { string operation = 1; optional string scope = 2; }
+
+message DiscoveredContract {
+  string id = 1;
+  string description = 2;
+  Visibility visibility = 3;
+  OperationPolicy policy = 4;
+  // True only for an explicitly replay-safe declaration.
+  bool replay_safe = 5;
+  bytes fingerprint = 6;
+  // Absent for native-only declarations with no public protobuf binding.
+  Protobuf protobuf = 7;
+  Grpc grpc = 8;
+}
+
+message DiscoveredOperation {
+  string owner = 1;
+  uint64 generation = 2;
+  DiscoveredContract contract = 3;
+  repeated Grant grants = 4;
+  bool conditional_access = 5;
+  bool grpc_available = 6;
+}
+
+message FollowingRow {
+  bytes payload = 1;
+  google.protobuf.Duration published_delta = 2;
 }

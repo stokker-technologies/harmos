@@ -10,9 +10,9 @@ or credentials. The host is always the client.
 
 Operations served by a plugin over `harmos.v1` are unary (one request and one response per `Invoke`); request and result streaming remains supported for operations implemented natively in the host process.
 
-1. **Describe and Catalog.** Describe MUST be the first RPC on each connection.
+1. **Get and Catalog.** Plugin.Get MUST be the first RPC on each connection.
    Peers advertise their highest revision (at least 1); their minimum applies.
-   Description MUST identify the plugin, semantic version, SDK and SDK version
+   PluginGetResponse MUST identify the plugin, semantic version, SDK and SDK version
    and supply its complete catalog. Catalog message names MUST resolve in types;
    operation IDs MUST be unique. Private operations are callable by their owner
    and host; Public operations by all connected callers. The host MUST refuse
@@ -25,7 +25,7 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
    is present, its fingerprint MUST match. Disconnected or replaced activations
    MUST remove their operations from the registry before replacement admission.
 2. **Activation and Started At.** Every connection creates a new host activation
-   after Describe and catalog admission. started_at MUST be a valid protobuf
+   after Plugin.Get and catalog admission. started_at MUST be a valid protobuf
    Timestamp captured once at process startup, unchanged across connections to
    that process. A restarted process captures a new start time. The host exposes
    both activation start times; an old call or handle MUST NOT follow a replacement
@@ -33,7 +33,7 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
    the catalog; restart detection and host activation bookkeeping belong to host
    validation, not the fixture plugin.
 3. **Invoke Result and EOF.** Each Invoke serves exactly one operation attempt.
-   Its first HostFrame MUST be Request with a nonempty invocation and attempt >= 1;
+   Its first PluginInvokeRequest MUST be Request with a nonempty invocation and attempt >= 1;
    scope is opaque. Payloads MUST be protobuf for the declared type. A successful
    handler MUST send exactly one terminal Response with its payload result set,
    including for an empty encoded message, then close its output. Input half-close
@@ -80,10 +80,10 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
    protobuf or attempt zero MUST return INVALID_ARGUMENT. No terminal application
    result follows a transport error. Retry policy remains owned by the operation;
    the conformance host does not retry a failed case.
-10. **Ticks and Samples.** Publish MUST open with PublishRequest for one stream.
+10. **Ticks and Samples.** Plugin.Samples MUST open with SamplesSelection for one stream.
     For an interval stream the host resolves the interval, sends ticks, and the
     plugin MUST answer each tick once, in order, with exactly one sample per
-    Samples message at revision 1. Sample.at MUST equal Tick.at exactly; sequence
+    PluginSamplesResponse message at revision 1. Sample.at MUST equal Tick.at exactly; sequence
     MUST count from 1 per call. The conformance.ticks row is Value containing the
     sequence encoded as eight little-endian bytes. A large tick-time jump MUST NOT
     cause synthesized catch-up samples. No wall-clock scheduling is permitted.
@@ -96,12 +96,12 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
     a supplied device timestamp is source time and MUST NOT replace host evidence
     time. conformance.device emits one Value containing UTF-8 device, sequence 1,
     with at absent immediately after open, then awaits demand closure.
-13. **Demand and Reopen.** Opening Publish is demand; closing/cancelling it ends
+13. **Demand and Reopen.** Opening Plugin.Samples is demand; closing/cancelling it ends
     demand and releases its work. The fixture MUST also close output after input
     EOF. Reopening is a fresh call with sequence 1, independent of previous calls.
     Closing one demand MUST leave the connection usable. Disconnected samples
     are lost; no replay or publication lease is implied.
-14. **Publish Frame Validation.** Empty input, unset first frame, Tick before
+14. **Samples Frame Validation.** Empty input, unset first frame, Tick before
     open, repeated open, or a tick without a valid Timestamp MUST return
     INVALID_ARGUMENT. An unknown stream MUST return NOT_FOUND. The case checks
     missing tick time; applications MUST also reject invalid timestamp ranges.
@@ -114,7 +114,7 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
     complete stop/cleanup hooks before replying. A managed plugin MUST exit
     successfully after the reply; a remote plugin MUST keep serving. The case
     checks the reply; managed mode also checks successful process exit. Remote
-    mode calls Describe again after Stop. No active demand remains at this stage.
+    mode calls Plugin.Get again after Stop. No active demand remains at this stage.
 
 17. **Schema Fingerprints.** The additional schema fixture below MUST use the
     general Schema Fingerprints rule. The case verifies both advertised hashes
@@ -125,8 +125,8 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
     preserving each tick's timestamp and per-call sequence, and close on input EOF.
     Resolution and invalid-setting admission remain host-runtime responsibilities.
     Cases 17, 18 and 19 run before case 16 so managed Stop remains the last RPC.
-19. **Built-In Clock Fingerprints.** Every fixture MUST require `harmos.clock.sleep`
-    and `harmos.clock.now` with the canonical fingerprints below. The case checks
+19. **Built-In Clock Fingerprints.** Every fixture MUST require `harmos.time.sleep`
+    and `harmos.time.get` with the canonical fingerprints below. The case checks
     advertised requirements, projects their descriptors and compares the host's
     shared clock definitions. `conformance.clock` MUST call now, sleep for 3600
     seconds, then now, using child IDs 1, 2 and 3, with no policy overrides. Return
@@ -136,8 +136,23 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
 
     | Operation | SHA-256 (Hex) |
     | --- | --- |
-    | `harmos.clock.sleep` | `e184a4f9506abaa5a9d9a5dc89d37e42efac5dfed21e1d136037fdf71b079cab` |
-    | `harmos.clock.now` | `cd0dbe186ee5a060fac74d88f8ef333444a7899b57da53ecb1fd14d3c92abc81` |
+    | `harmos.time.sleep` | `f4c27b24dfff53c0ed72dfa11aedfaea05b57a7f76f9028c99b92676a68f9cd0` |
+    | `harmos.time.get` | `cf76627d61f48347f5c4e99cb8e3c236cf732bb334ac9121ebcbcbccaf24b43a` |
+
+20. **Descriptor-Only Registration.** Payload-only messages MUST be registered
+    without an operation, stream or section declaration and remain decodable.
+21. **Explicit Visibility and Replay Safety.** All SDKs MUST default operation
+    visibility to Private and require explicit Public intent. The fixture adds
+    private `conformance.private` and public replay-safe `conformance.resources`.
+    Retries MUST be refused at host admission unless replay safety is declared.
+22. **Invocation Resource Isolation.** `conformance.resources` MUST store its
+    request in its invocation-local typed resource store, await one host echo child,
+    then return its stored request. Interleaving two invocations and completing
+    them in reverse order MUST preserve each one's own value.
+23. **Cooperative Cancellation Reason.** `conformance.cancel_reason` MUST await
+    one host echo child, then await cancellation and return the supplied reason
+    as UTF-8 Value bytes. A completed child reply MUST stay completed when its
+    parent's cancellation arrives. Cancellation cannot affect another invocation.
 
 ## Host Stream Settings and Evidence
 
@@ -273,7 +288,7 @@ enum Status { STATUS_UNSPECIFIED = 0; STATUS_READY = 1; }
 Append Public operations with empty descriptions and absent policies, in order:
 
 - conformance.policy: Value to Value. Call conformance.host.echo with the input
-  and policy attempts=3, await its reply, then call it again with that reply and
+  and policy retries={total_attempts=3, initial=1s, maximum=4s, deterministic_jitter=true}, await its reply, then call it again with that reply and
   no policy override. Return the second reply. Child IDs are 1 and 2.
 - conformance.schema: Graph to Graph.Nested. Return count equal to items length
   (including explicit zero presence) and next equal to the request.
@@ -281,8 +296,8 @@ Append Public operations with empty descriptions and absent policies, in order:
 - conformance.projected: Graph to Value. Return tail.value, or an empty Value.
 
 Append `conformance.clock` (Value to Value, Public, absent policy and empty
-description) after these operations. Append requirements `harmos.clock.sleep`
-then `harmos.clock.now` after `conformance.host.schema`. Include their reachable
+description) after these operations. Append requirements `harmos.time.sleep`
+then `harmos.time.get` after `conformance.host.schema`. Include their reachable
 clock types from `harmos/v1/plugin.proto`, Duration and Timestamp in Catalog.types.
 
 Append conformance.settings after the original streams, with row Value, default
@@ -300,6 +315,32 @@ clock-driven policy enforcement, activation replacement and connection-loss
 isolation. A fixture plugin cannot observe those host internals. Their proof lives
 in host-runtime validation; the reference-host cases check the plugin-visible
 frames, catalog and per-call policy preservation without reimplementing that runtime.
+
+The fixture appends `conformance.private`, `conformance.resources` and
+`conformance.cancel_reason`, in that order, after `conformance.clock`. Each maps
+Value to Value; only resources declares replay safety. Their descriptions and
+policies are empty. Cases 20 through 23 run before Stop, like the other additive cases.
+
+## Shared Operation Grammar
+
+Services name resources; methods on one resource use bare verbs. A single-mode
+part uses its noun, such as `Plugin.Samples`. Mixed-resource Storage keeps nouns
+in its method names. Every method uses `<Service><Method>Request` and
+`<Service><Method>Response`, including empty results. The host resource services
+are CatalogEntries (List), Invocations (Get, Cancel, Watch), Time (Get, Sleep), and
+native-only Samples (Append). Ordinary calls have one canonical gRPC method;
+managed control streams exist only for explicit cooperative final-result promises
+and replace that method. No automatic twins or automatic client resending exist.
+
+Host and plugin policies share Duration budgets, `RetryPolicy.total_attempts`
+(including the first), `initial`, optional `maximum` selecting exponential backoff,
+and `deterministic_jitter`. Absent retries or one total attempt means no retry.
+Call-local overrides do not alter callee defaults. Shared positions contain
+history (store and epoch) and sequence; cuts retain every position/revision.
+Paging uses `page_size`, `max_bytes`, `page_token`, `next_page_token`, and
+`resolved_at`. Receipts separate accepted and durable positions and completion.
+A failed client call is resent only by the client with its original semantic
+request identity; correlation identities do not deduplicate.
 
 ## Running the Reference Host
 

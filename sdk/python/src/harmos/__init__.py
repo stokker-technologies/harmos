@@ -15,7 +15,7 @@
 # Third Party Imports
 
 # Local Imports
-from .context import NOW, SLEEP, Context, Failure, Publisher
+from .context import GET_TIME, SLEEP, Context, Failure, Publisher
 from .contracts import Operation, observer, on_stop, operation, publisher
 from .plugin import Endpoint, Plugin
 
@@ -24,7 +24,7 @@ from .plugin import Endpoint, Plugin
 # === Public Exports === #
 
 __all__ = [
-    "NOW",
+    "GET_TIME",
     "SLEEP",
     "Context",
     "Endpoint",

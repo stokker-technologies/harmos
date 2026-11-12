@@ -119,10 +119,10 @@ impl ProtobufOperation for Provider {
     }
 }
 impl ProtobufOperation for Publisher {
-    type Request = harmos_protocol::host::Publish;
-    type Response = harmos_protocol::host::Published;
+    type Request = harmos_protocol::context::SamplesAppendRequest;
+    type Response = harmos_protocol::context::SamplesAppendResponse;
     type Endpoints = ();
-    const ID: &'static str = "host.publish";
+    const ID: &'static str = "harmos.samples.append";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_runtime::operations::HostContext>()];
@@ -135,11 +135,7 @@ impl ProtobufOperation for Publisher {
                 reason: "requires the original generation scope",
             }))
         })?;
-        if request.sequence.is_some()
-            || request.published_unix_micros.is_some()
-            || request.context.is_some()
-            || !request.following.is_empty()
-        {
+        if request.sequence.is_some() || request.published_at.is_some() || request.context.is_some() || !request.following.is_empty() {
             return Err(ServingError::Native(Arc::new(harmos_runtime::Error::<std::convert::Infallible>::InvalidInput {
                 field: "guest publication",
                 reason: "sequence, batch and publication metadata are host-derived",
@@ -156,7 +152,7 @@ impl ProtobufOperation for Publisher {
                 0,
             )
             .map_err(|error| ServingError::Native(Arc::new(error)))?;
-        Ok(harmos_protocol::host::Published {})
+        Ok(harmos_protocol::context::SamplesAppendResponse {})
     }
 }
 impl harmos_runtime::Message for Stage {
@@ -233,7 +229,10 @@ pub fn host(runtime: &Runtime<crate::support::Bank>) -> harmos_runtime::guest::H
 pub fn settings(configuration: &str) -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["host.publish", "provider.echo"].into_iter().map(|id| harmos_runtime::Identifier::new(id).unwrap()).collect(),
+        host_operations: ["harmos.samples.append", "provider.echo"]
+            .into_iter()
+            .map(|id| harmos_runtime::Identifier::new(id).unwrap())
+            .collect(),
         ..Default::default()
     }
 }

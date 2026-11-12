@@ -24,7 +24,7 @@ use prost_reflect::ReflectMessage;
 use tonic::{Status, codegen::http::uri::PathAndQuery};
 
 // Local Imports
-use harmos_protocol::{host, schema};
+use harmos_protocol::{schema, v1 as host};
 
 /* === Constants === */
 
@@ -38,9 +38,8 @@ type Signature<Q, R, I, O> = fn(Q, I) -> (R, O);
 
 /// One Generated Application Contract, With Typed Request, Result And Stream Items.
 pub struct Method<Q, R, I = NoItems, O = NoItems> {
-    pub(super) contract: Arc<host::OperationContract>,
+    pub(super) contract: Arc<host::DiscoveredContract>,
     pub(super) path: PathAndQuery,
-    pub(super) run_path: PathAndQuery,
     pub(super) input: bool,
     pub(super) output: bool,
     marker: PhantomData<Signature<Q, R, I, O>>,
@@ -61,7 +60,6 @@ impl<Q, R, I, O> Clone for Method<Q, R, I, O> {
         Self {
             contract: self.contract.clone(),
             path: self.path.clone(),
-            run_path: self.run_path.clone(),
             input: self.input,
             output: self.output,
             marker: PhantomData,
@@ -71,7 +69,7 @@ impl<Q, R, I, O> Clone for Method<Q, R, I, O> {
 
 impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
     /// Bind Generated Types To An Authoritative Discovered Or Application Contract.
-    pub fn new(contract: host::OperationContract) -> Result<Self, Status> {
+    pub fn new(contract: host::DiscoveredContract) -> Result<Self, Status> {
         if contract.visibility != host::Visibility::Public as i32 {
             return Err(Status::permission_denied("operation is private"));
         }
@@ -87,11 +85,9 @@ impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
             return Err(Status::invalid_argument("invalid gRPC mapping"));
         }
         let path = format!("/{}.{}/{}", grpc.package, grpc.service, grpc.method).parse().map_err(invalid)?;
-        let run_path = format!("/{}.{}/Run{}", grpc.package, grpc.service, grpc.method).parse().map_err(invalid)?;
         Ok(Self {
             contract: Arc::new(contract),
             path,
-            run_path,
             input: false,
             output: false,
             marker: PhantomData,
@@ -100,7 +96,7 @@ impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
 }
 
 impl<Q, R, I, O> Method<Q, R, I, O> {
-    pub fn contract(&self) -> &host::OperationContract {
+    pub fn contract(&self) -> &host::DiscoveredContract {
         &self.contract
     }
 
@@ -111,7 +107,6 @@ impl<Q, R, I, O> Method<Q, R, I, O> {
         Ok(Method {
             contract: self.contract,
             path: self.path,
-            run_path: self.run_path,
             input: true,
             output: self.output,
             marker: PhantomData,
@@ -125,7 +120,6 @@ impl<Q, R, I, O> Method<Q, R, I, O> {
         Ok(Method {
             contract: self.contract,
             path: self.path,
-            run_path: self.run_path,
             input: self.input,
             output: true,
             marker: PhantomData,

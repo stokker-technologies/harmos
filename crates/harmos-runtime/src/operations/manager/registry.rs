@@ -94,7 +94,6 @@ impl State {
         #[cfg(feature = "grpc")]
         if let Some(binding) = removed.as_ref().and_then(|entry| entry.contract.as_ref()).and_then(|contract| contract.grpc()) {
             self.grpc.remove(&binding.path());
-            self.grpc.remove(&binding.run_path());
         }
         if providers.is_empty() {
             self.entries.remove(id);

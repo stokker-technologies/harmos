@@ -17,6 +17,7 @@
 
 // Local Imports
 #include "harmos/harmos.hpp"
+#include "harmos/context/v1/time.pb.h"
 #include "harmos/conformance/v1/fixture.pb.h"
 
 /* === Macros === */
@@ -53,8 +54,8 @@ void observer_preserves_its_stream_contract() {
     auto catalog = plugin.catalog();
     if (catalog.streams(0).row() != Value::descriptor()->full_name()) throw std::logic_error("Observer Replaced the Stream Row Type");
 
-    harmos::Stream<harmos::wire::Now> different_row("example.samples");
-    harmos::Observer<harmos::wire::Now> incompatible(different_row, [](harmos::Context&) { return harmos::wire::Now{}; });
+    harmos::Stream<harmos::context::v1::TimeGetRequest> different_row("example.samples");
+    harmos::Observer<harmos::context::v1::TimeGetRequest> incompatible(different_row, [](harmos::Context&) { return harmos::context::v1::TimeGetRequest{}; });
     incompatible.every(interval);
     harmos::Plugin invalid("example", "1.0.0");
     invalid.stream(stream);
@@ -64,13 +65,13 @@ void observer_preserves_its_stream_contract() {
 }
 
 void catalog_preserves_typed_sections_and_dependencies() {
-    harmos::wire::Sleep setting;
+    harmos::context::v1::TimeSleepRequest setting;
     setting.mutable_duration()->set_seconds(37);
     harmos::Plugin plugin("example", "1.0.0");
-    plugin.requires_operation(harmos::NOW).requires_operation(harmos::SLEEP).section(setting);
+    plugin.requires_operation(harmos::GET_TIME).requires_operation(harmos::SLEEP).section(setting);
     setting.mutable_duration()->set_seconds(99);
     const auto catalog = plugin.catalog();
-    const auto decoded = harmos::decode<harmos::wire::Sleep>(catalog.sections(0).payload());
+    const auto decoded = harmos::decode<harmos::context::v1::TimeSleepRequest>(catalog.sections(0).payload());
     if (decoded.duration().seconds() != 37) throw std::logic_error("Section Did Not Retain Its Typed Value");
 
     google::protobuf::SimpleDescriptorDatabase database;
@@ -78,7 +79,7 @@ void catalog_preserves_typed_sections_and_dependencies() {
         if (!database.Add(file)) throw std::logic_error("Conflicting Catalog Descriptor");
     }
     google::protobuf::DescriptorPool pool(&database);
-    for (const auto* name : {"harmos.v1.Sleep", "harmos.v1.SleepResponse", "harmos.v1.Now", "harmos.v1.Time"}) {
+    for (const auto* name : {"harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse", "harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse"}) {
         if (!pool.FindMessageTypeByName(name)) throw std::logic_error("Required Message Does Not Resolve");
     }
     if (!pool.FindMessageTypeByName(catalog.sections(0).type())) throw std::logic_error("Section Type Does Not Resolve");

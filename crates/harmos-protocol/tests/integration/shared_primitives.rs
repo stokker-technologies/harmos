@@ -87,7 +87,7 @@ fn a_consumer_retains_composite_reads_receipts_failures_and_retry_policy() {
     let failure = v1::Failure {
         classification: v1::Classification::Transient as i32,
         code: "unavailable".into(),
-        action: "InvokeOperation again".into(),
+        action: "Call again".into(),
         cause: Some(Box::new(v1::Failure {
             code: "child_unavailable".into(),
             ..Default::default()

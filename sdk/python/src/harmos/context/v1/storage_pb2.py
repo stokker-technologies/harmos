@@ -22,45 +22,45 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import plugin_pb2 as harmos_dot_v1_dot_plugin__pb2
+from harmos.v1 import types_pb2 as harmos_dot_v1_dot_types__pb2
 from harmos.v1 import storage_types_pb2 as harmos_dot_v1_dot_storage__types__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/context/v1/storage.proto\x12\x11harmos.context.v1\x1a\x16harmos/v1/plugin.proto\x1a\x1dharmos/v1/storage_types.proto\"\x88\x01\n\"StorageCreateFileProductionRequest\x12\x31\n\x08metadata\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileMetadata\x12/\n\x08mutation\x18\x02 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"\x7f\n#StorageCreateFileProductionResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProducer\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"N\n\x1fStorageGetFileProductionRequest\x12+\n\x04\x66ile\x18\x01 \x01(\x0b\x32\x1d.harmos.storage.v1.StagedFile\"\xcc\x01\n StorageGetFileProductionResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProgress\x12\x19\n\x11writer_generation\x18\x02 \x01(\x04\x12\'\n\x0bresolved_at\x18\x03 \x01(\x0b\x32\x12.harmos.v1.ReadCut\x12\x17\n\x0f\x61\x63\x63\x65pted_length\x18\x04 \x01(\x04\x12\x16\n\x0e\x64urable_length\x18\x05 \x01(\x04\"\x9f\x01\n\x1dStorageAppendFileBytesRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12\x0e\n\x06offset\x18\x02 \x01(\x04\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\x12/\n\x08mutation\x18\x04 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"z\n\x1eStorageAppendFileBytesResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProducer\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\x82\x01\n\x1eStorageCreateFileWriterRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12/\n\x08mutation\x18\x02 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"{\n\x1fStorageCreateFileWriterResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProducer\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\xa7\x01\n#StoragePublishFileProductionRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12\x0e\n\x06length\x18\x02 \x01(\x04\x12\x0e\n\x06sha256\x18\x03 \x01(\x0c\x12/\n\x08mutation\x18\x04 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"{\n$StoragePublishFileProductionResponse\x12.\n\x04\x66ile\x18\x01 \x01(\x0b\x32 .harmos.storage.v1.FileReference\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\x86\x01\n\"StorageDeleteFileProductionRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12/\n\x08mutation\x18\x02 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"\x7f\n#StorageDeleteFileProductionResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProgress\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\x8f\x01\n\x1aStorageGetFileBytesRequest\x12.\n\x04\x66ile\x18\x01 \x01(\x0b\x32 .harmos.storage.v1.FileReference\x12\x0e\n\x06offset\x18\x02 \x01(\x04\x12\x11\n\tmax_bytes\x18\x03 \x01(\x04\x12\x1e\n\x02\x61t\x18\x04 \x01(\x0b\x32\x12.harmos.v1.ReadCut\"z\n\x1bStorageGetFileBytesResponse\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\x14\n\x0ctotal_length\x18\x02 \x01(\x04\x12\x0e\n\x06sha256\x18\x03 \x01(\x0c\x12\'\n\x0bresolved_at\x18\x04 \x01(\x0b\x32\x12.harmos.v1.ReadCut2\x84\x07\n\x07Storage\x12\x85\x01\n\x14\x43reateFileProduction\x12\x35.harmos.context.v1.StorageCreateFileProductionRequest\x1a\x36.harmos.context.v1.StorageCreateFileProductionResponse\x12|\n\x11GetFileProduction\x12\x32.harmos.context.v1.StorageGetFileProductionRequest\x1a\x33.harmos.context.v1.StorageGetFileProductionResponse\x12v\n\x0f\x41ppendFileBytes\x12\x30.harmos.context.v1.StorageAppendFileBytesRequest\x1a\x31.harmos.context.v1.StorageAppendFileBytesResponse\x12y\n\x10\x43reateFileWriter\x12\x31.harmos.context.v1.StorageCreateFileWriterRequest\x1a\x32.harmos.context.v1.StorageCreateFileWriterResponse\x12\x88\x01\n\x15PublishFileProduction\x12\x36.harmos.context.v1.StoragePublishFileProductionRequest\x1a\x37.harmos.context.v1.StoragePublishFileProductionResponse\x12\x85\x01\n\x14\x44\x65leteFileProduction\x12\x35.harmos.context.v1.StorageDeleteFileProductionRequest\x1a\x36.harmos.context.v1.StorageDeleteFileProductionResponse\x12m\n\x0cGetFileBytes\x12-.harmos.context.v1.StorageGetFileBytesRequest\x1a..harmos.context.v1.StorageGetFileBytesResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/context/v1/storage.proto\x12\x11harmos.context.v1\x1a\x15harmos/v1/types.proto\x1a\x1dharmos/v1/storage_types.proto\"\x88\x01\n\"StorageCreateFileProductionRequest\x12\x31\n\x08metadata\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileMetadata\x12/\n\x08mutation\x18\x02 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"\x7f\n#StorageCreateFileProductionResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProducer\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"N\n\x1fStorageGetFileProductionRequest\x12+\n\x04\x66ile\x18\x01 \x01(\x0b\x32\x1d.harmos.storage.v1.StagedFile\"\xcc\x01\n StorageGetFileProductionResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProgress\x12\x19\n\x11writer_generation\x18\x02 \x01(\x04\x12\'\n\x0bresolved_at\x18\x03 \x01(\x0b\x32\x12.harmos.v1.ReadCut\x12\x17\n\x0f\x61\x63\x63\x65pted_length\x18\x04 \x01(\x04\x12\x16\n\x0e\x64urable_length\x18\x05 \x01(\x04\"\x9f\x01\n\x1dStorageAppendFileBytesRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12\x0e\n\x06offset\x18\x02 \x01(\x04\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\x12/\n\x08mutation\x18\x04 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"z\n\x1eStorageAppendFileBytesResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProducer\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\x82\x01\n\x1eStorageCreateFileWriterRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12/\n\x08mutation\x18\x02 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"{\n\x1fStorageCreateFileWriterResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProducer\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\xa7\x01\n#StoragePublishFileProductionRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12\x0e\n\x06length\x18\x02 \x01(\x04\x12\x0e\n\x06sha256\x18\x03 \x01(\x0c\x12/\n\x08mutation\x18\x04 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"{\n$StoragePublishFileProductionResponse\x12.\n\x04\x66ile\x18\x01 \x01(\x0b\x32 .harmos.storage.v1.FileReference\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\x86\x01\n\"StorageDeleteFileProductionRequest\x12/\n\x07session\x18\x01 \x01(\x0b\x32\x1e.harmos.storage.v1.FileSession\x12/\n\x08mutation\x18\x02 \x01(\x0b\x32\x1d.harmos.storage.v1.MutationId\"\x7f\n#StorageDeleteFileProductionResponse\x12\x33\n\nproduction\x18\x01 \x01(\x0b\x32\x1f.harmos.storage.v1.FileProgress\x12#\n\x07receipt\x18\x02 \x01(\x0b\x32\x12.harmos.v1.Receipt\"\x8f\x01\n\x1aStorageGetFileBytesRequest\x12.\n\x04\x66ile\x18\x01 \x01(\x0b\x32 .harmos.storage.v1.FileReference\x12\x0e\n\x06offset\x18\x02 \x01(\x04\x12\x11\n\tmax_bytes\x18\x03 \x01(\x04\x12\x1e\n\x02\x61t\x18\x04 \x01(\x0b\x32\x12.harmos.v1.ReadCut\"z\n\x1bStorageGetFileBytesResponse\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\x0c\x12\x14\n\x0ctotal_length\x18\x02 \x01(\x04\x12\x0e\n\x06sha256\x18\x03 \x01(\x0c\x12\'\n\x0bresolved_at\x18\x04 \x01(\x0b\x32\x12.harmos.v1.ReadCut2\x84\x07\n\x07Storage\x12\x85\x01\n\x14\x43reateFileProduction\x12\x35.harmos.context.v1.StorageCreateFileProductionRequest\x1a\x36.harmos.context.v1.StorageCreateFileProductionResponse\x12|\n\x11GetFileProduction\x12\x32.harmos.context.v1.StorageGetFileProductionRequest\x1a\x33.harmos.context.v1.StorageGetFileProductionResponse\x12v\n\x0f\x41ppendFileBytes\x12\x30.harmos.context.v1.StorageAppendFileBytesRequest\x1a\x31.harmos.context.v1.StorageAppendFileBytesResponse\x12y\n\x10\x43reateFileWriter\x12\x31.harmos.context.v1.StorageCreateFileWriterRequest\x1a\x32.harmos.context.v1.StorageCreateFileWriterResponse\x12\x88\x01\n\x15PublishFileProduction\x12\x36.harmos.context.v1.StoragePublishFileProductionRequest\x1a\x37.harmos.context.v1.StoragePublishFileProductionResponse\x12\x85\x01\n\x14\x44\x65leteFileProduction\x12\x35.harmos.context.v1.StorageDeleteFileProductionRequest\x1a\x36.harmos.context.v1.StorageDeleteFileProductionResponse\x12m\n\x0cGetFileBytes\x12-.harmos.context.v1.StorageGetFileBytesRequest\x1a..harmos.context.v1.StorageGetFileBytesResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.context.v1.storage_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_STORAGECREATEFILEPRODUCTIONREQUEST']._serialized_start=110
-  _globals['_STORAGECREATEFILEPRODUCTIONREQUEST']._serialized_end=246
-  _globals['_STORAGECREATEFILEPRODUCTIONRESPONSE']._serialized_start=248
-  _globals['_STORAGECREATEFILEPRODUCTIONRESPONSE']._serialized_end=375
-  _globals['_STORAGEGETFILEPRODUCTIONREQUEST']._serialized_start=377
-  _globals['_STORAGEGETFILEPRODUCTIONREQUEST']._serialized_end=455
-  _globals['_STORAGEGETFILEPRODUCTIONRESPONSE']._serialized_start=458
-  _globals['_STORAGEGETFILEPRODUCTIONRESPONSE']._serialized_end=662
-  _globals['_STORAGEAPPENDFILEBYTESREQUEST']._serialized_start=665
-  _globals['_STORAGEAPPENDFILEBYTESREQUEST']._serialized_end=824
-  _globals['_STORAGEAPPENDFILEBYTESRESPONSE']._serialized_start=826
-  _globals['_STORAGEAPPENDFILEBYTESRESPONSE']._serialized_end=948
-  _globals['_STORAGECREATEFILEWRITERREQUEST']._serialized_start=951
-  _globals['_STORAGECREATEFILEWRITERREQUEST']._serialized_end=1081
-  _globals['_STORAGECREATEFILEWRITERRESPONSE']._serialized_start=1083
-  _globals['_STORAGECREATEFILEWRITERRESPONSE']._serialized_end=1206
-  _globals['_STORAGEPUBLISHFILEPRODUCTIONREQUEST']._serialized_start=1209
-  _globals['_STORAGEPUBLISHFILEPRODUCTIONREQUEST']._serialized_end=1376
-  _globals['_STORAGEPUBLISHFILEPRODUCTIONRESPONSE']._serialized_start=1378
-  _globals['_STORAGEPUBLISHFILEPRODUCTIONRESPONSE']._serialized_end=1501
-  _globals['_STORAGEDELETEFILEPRODUCTIONREQUEST']._serialized_start=1504
-  _globals['_STORAGEDELETEFILEPRODUCTIONREQUEST']._serialized_end=1638
-  _globals['_STORAGEDELETEFILEPRODUCTIONRESPONSE']._serialized_start=1640
-  _globals['_STORAGEDELETEFILEPRODUCTIONRESPONSE']._serialized_end=1767
-  _globals['_STORAGEGETFILEBYTESREQUEST']._serialized_start=1770
-  _globals['_STORAGEGETFILEBYTESREQUEST']._serialized_end=1913
-  _globals['_STORAGEGETFILEBYTESRESPONSE']._serialized_start=1915
-  _globals['_STORAGEGETFILEBYTESRESPONSE']._serialized_end=2037
-  _globals['_STORAGE']._serialized_start=2040
-  _globals['_STORAGE']._serialized_end=2940
+  _globals['_STORAGECREATEFILEPRODUCTIONREQUEST']._serialized_start=109
+  _globals['_STORAGECREATEFILEPRODUCTIONREQUEST']._serialized_end=245
+  _globals['_STORAGECREATEFILEPRODUCTIONRESPONSE']._serialized_start=247
+  _globals['_STORAGECREATEFILEPRODUCTIONRESPONSE']._serialized_end=374
+  _globals['_STORAGEGETFILEPRODUCTIONREQUEST']._serialized_start=376
+  _globals['_STORAGEGETFILEPRODUCTIONREQUEST']._serialized_end=454
+  _globals['_STORAGEGETFILEPRODUCTIONRESPONSE']._serialized_start=457
+  _globals['_STORAGEGETFILEPRODUCTIONRESPONSE']._serialized_end=661
+  _globals['_STORAGEAPPENDFILEBYTESREQUEST']._serialized_start=664
+  _globals['_STORAGEAPPENDFILEBYTESREQUEST']._serialized_end=823
+  _globals['_STORAGEAPPENDFILEBYTESRESPONSE']._serialized_start=825
+  _globals['_STORAGEAPPENDFILEBYTESRESPONSE']._serialized_end=947
+  _globals['_STORAGECREATEFILEWRITERREQUEST']._serialized_start=950
+  _globals['_STORAGECREATEFILEWRITERREQUEST']._serialized_end=1080
+  _globals['_STORAGECREATEFILEWRITERRESPONSE']._serialized_start=1082
+  _globals['_STORAGECREATEFILEWRITERRESPONSE']._serialized_end=1205
+  _globals['_STORAGEPUBLISHFILEPRODUCTIONREQUEST']._serialized_start=1208
+  _globals['_STORAGEPUBLISHFILEPRODUCTIONREQUEST']._serialized_end=1375
+  _globals['_STORAGEPUBLISHFILEPRODUCTIONRESPONSE']._serialized_start=1377
+  _globals['_STORAGEPUBLISHFILEPRODUCTIONRESPONSE']._serialized_end=1500
+  _globals['_STORAGEDELETEFILEPRODUCTIONREQUEST']._serialized_start=1503
+  _globals['_STORAGEDELETEFILEPRODUCTIONREQUEST']._serialized_end=1637
+  _globals['_STORAGEDELETEFILEPRODUCTIONRESPONSE']._serialized_start=1639
+  _globals['_STORAGEDELETEFILEPRODUCTIONRESPONSE']._serialized_end=1766
+  _globals['_STORAGEGETFILEBYTESREQUEST']._serialized_start=1769
+  _globals['_STORAGEGETFILEBYTESREQUEST']._serialized_end=1912
+  _globals['_STORAGEGETFILEBYTESRESPONSE']._serialized_start=1914
+  _globals['_STORAGEGETFILEBYTESRESPONSE']._serialized_end=2036
+  _globals['_STORAGE']._serialized_start=2039
+  _globals['_STORAGE']._serialized_end=2939
 # @@protoc_insertion_point(module_scope)

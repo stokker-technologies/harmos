@@ -79,11 +79,11 @@ int main(int argc, char** argv) {
                 auto second = ctx.call(echo, value(std::string(1, '\2')));
                 return value(first.get().value() + second.get().value());
             }).visibility(harmos::wire::VISIBILITY_PUBLIC))
-            .operation(Operation("conformance.cancel", [pending](Context& ctx, Value request) { return ctx.operation(pending, request); })
+            .operation(Operation("conformance.cancel", [pending](Context& ctx, Value request) { return ctx.call(pending, request).get(); })
                 .visibility(harmos::wire::VISIBILITY_PUBLIC))
             .operation(Operation("conformance.failure", [](Context&, Value) -> Value { throw harmos::Failure(failure()); })
                 .visibility(harmos::wire::VISIBILITY_PUBLIC))
-            .operation(Operation("conformance.child_failure", [fail](Context& ctx, Value request) { return ctx.operation(fail, request); })
+            .operation(Operation("conformance.child_failure", [fail](Context& ctx, Value request) { return ctx.call(fail, request).get(); })
                 .visibility(harmos::wire::VISIBILITY_PUBLIC))
             .requires_operation(echo).requires_operation(pending).requires_operation(fail);
 
@@ -92,8 +92,10 @@ int main(int argc, char** argv) {
             harmos::wire::OperationPolicy policy;
             policy.mutable_retries()->set_total_attempts(3);
             policy.mutable_retries()->mutable_initial()->set_seconds(1);
-            const auto first = ctx.operation(echo, request, policy);
-            return ctx.operation(echo, first);
+            policy.mutable_retries()->mutable_maximum()->set_seconds(4);
+            policy.mutable_retries()->set_deterministic_jitter(true);
+            const auto first = ctx.call(echo, request, policy).get();
+            return ctx.call(echo, first).get();
         }).visibility(harmos::wire::VISIBILITY_PUBLIC));
         plugin.operation(harmos::Operation<Graph, Graph::Nested>("conformance.schema", [](Context&, Graph request) {
             Graph::Nested response;
@@ -109,7 +111,7 @@ int main(int argc, char** argv) {
             return request.tail().value();
         }).visibility(harmos::wire::VISIBILITY_PUBLIC));
 
-        plugin.requires_operation(harmos::SLEEP).requires_operation(harmos::NOW);
+        plugin.requires_operation(harmos::SLEEP).requires_operation(harmos::GET_TIME);
         plugin.operation(Operation("conformance.clock", [](Context& ctx, Value) {
             const auto before = ctx.now();
             google::protobuf::Duration duration;
@@ -120,6 +122,17 @@ int main(int argc, char** argv) {
             std::string bytes(8, '\0');
             for (unsigned index = 0; index < 8; ++index) bytes[index] = static_cast<char>(elapsed >> (8 * index));
             return value(bytes);
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC));
+
+        plugin.operation(Operation("conformance.private", [](Context&, Value request) { return request; }));
+        plugin.operation(Operation("conformance.resources", [echo](Context& ctx, Value request) {
+            ctx.set(request);
+            ctx.call(echo, request).get();
+            return ctx.get<Value>();
+        }).visibility(harmos::wire::VISIBILITY_PUBLIC).replay_safe());
+        plugin.operation(Operation("conformance.cancel_reason", [echo](Context& ctx, Value request) {
+            ctx.call(echo, request).get();
+            return value(ctx.cancelled());
         }).visibility(harmos::wire::VISIBILITY_PUBLIC));
 
         // Compose a Host-Ticked Observer and a Device-Driven Stream.
