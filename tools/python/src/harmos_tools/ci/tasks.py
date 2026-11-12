@@ -117,6 +117,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
     bench.add_argument("--layer", choices=("unit", "integration", "system"))
     bench.add_argument("--refresh-baseline", action="store_true")
     bench.add_argument("--extended", action="store_true")
+    bench.add_argument("--storage", action="store_true")
+    bench.add_argument("--filter")
     package = commands.add_parser("package")
     package.add_argument("--language", choices=("rust",))
     package.add_argument("--profile", choices=("dev", "release"), default="dev")
@@ -450,6 +452,12 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Benchmarks And Packaging
     if options.command == "bench":
+        if options.storage:
+            from .. import storage_bench
+
+            return storage_bench.run(root, options.filter)
+        if options.filter:
+            parser.error("--filter requires --storage")
         layers = [options.layer] if options.layer else ["unit", "integration", "system"]
         extra = ["--extended"] if options.extended else []
         if options.refresh_baseline:

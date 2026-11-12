@@ -8,7 +8,7 @@ protocol <- reduced native storage contracts <- harmos-storage
 Dokime operations -> dokime-storage -> Harmos storage interface
 ```
 
-Begin after the last `grpc-plugins` wave in Harmos and Dokime. Settle the semantics below before
+The owner permits parallel work at the landed Harmos host surfaces (see Locked Implementation Decisions). Settle the semantics below before
 implementation, implement and prove Harmos, publish a usable revision, then Dokime adopts it in
 its separate `storage-interface` change and extracts application persistence. Integration-only
 local overrides may support coupled work; final validation uses the published upstream pin.
@@ -19,9 +19,9 @@ durability, and independent backend writes from cross-method transactions. Prese
 distinctions, existing schema/object/record/stream/file capabilities, mutation receipts and
 replay-idempotent writes. Do not introduce product execution or cycle identifiers into Harmos.
 
-## Proposed Rust Interface
+## Original Interface Proposal
 
-The following are proposed signatures, not existing APIs. Supporting types are new. Their
+The following original proposed signatures are superseded by the locked shapes below. They are not existing APIs. Supporting types are new. Their
 fields, errors, lifetimes and object-safe backend equivalents are design tasks; the capability
 set is locked. Plans carry consumer-supplied page/work limits rather than Harmos budgets.
 
@@ -194,3 +194,223 @@ benchmark artifacts with reproducible commands and workload metadata. Settle num
 regression budgets before accepting measurements; do not infer performance from source size.
 Harmos proves the generic facilities before Dokime extraction; Dokime compares its own
 before/after extraction with identical multi-day inputs and records unresolved regressions.
+
+## Locked Implementation Decisions
+
+The owner authorizes parallel storage implementation at Harmos revision `a7583836`:
+protocol, operations and SDK host surfaces are landed; guest migration is the other writer's
+work. The combined `grpc-plugins` marker remains authoritative. The consumer's final gRPC
+wave remains pending; publication and consumer extraction are not claimed here.
+
+### Present-Tree Inventory
+
+| Owner | Source and Acceptance |
+| --- | --- |
+| Storage worker | `crates/harmos-storage/src/{backend.rs,objects.rs,query/}`; new `query/columnar.rs`, `query/index.rs`, `query/projection.rs`, `query/time_buckets.rs`, `sqlite/`; typed admission, bounded fallback and durable reference |
+| Storage worker | `crates/harmos-storage/tests/support/storage.rs`, focused storage stories and `benches/multi_day/`; deterministic parity, restart, invalidation, conditional writes and late replacement |
+| Storage worker | `tools/python/src/harmos_tools/storage_bench.py`, narrow bench dispatch in `ci/tasks.py`; existing task, focused compilation and native Criterion artifacts |
+| Storage worker | This change and storage sections of `docs/product-guide.md`, `docs/tooling.md`; README impact reviewed |
+| Minimal shared manifest edits | Workspace SQLite dependency/lock and the storage package's optional feature; inspect status before editing and stage only owned changes |
+| Deferred consumer adoption | `crates/harmos-domain/src/model/storage/query/{transform/,protobuf.rs}`, protocol storage protobuf/generated mappings, operations storage query/object handlers, runtime composition, SDK generated clients and examples; no new wire compatibility implied |
+| Preserved owners | `src/state/file/` recovery journal, all existing file/session/receipt contracts; these are not query backends |
+
+### 1.2 Scans, Ordering and Negotiation
+
+```rust,ignore
+struct StorageCapabilities { native_arrow: bool, native_index: bool, durable_projections: bool, conditional_objects: bool }
+struct ColumnSource { kind: ColumnKind, schema: SchemaKey }
+enum ColumnKind { Objects, Records, Stream }
+struct WorkLimits { rows: NonZeroUsize, bytes: NonZeroUsize }
+struct ArrowScan {
+    source: ColumnSource,
+    columns: Vec<String>, // Dotted leaf paths; unique and nonempty.
+    predicate: Option<ColumnPredicate>,
+    after: Option<ArrowSeek>, // Exclusive source position, not output-row offset.
+    limits: ReadLimits,
+    work: ReadLimits,
+}
+struct ColumnPredicate { column: String, lower: Option<f64>, upper: Option<f64> }
+struct ArrowSeek { snapshot: Vec<u8>, plan: [u8; 32], position: u64 }
+struct ArrowPage { batch: RecordBatch, next: Option<ArrowSeek>, complete: bool, scanned: usize, bytes_read: usize }
+fn scan_arrow(snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation) -> StorageFuture<ArrowPage>;
+struct IndexDefinition { name: Identifier, version: u32, source: ColumnSource, columns: Vec<String> }
+struct IndexRead { name: Identifier, lower: Option<Vec<u8>>, upper: Option<Vec<u8>>, prefix: Vec<u8>, descending: bool, after: Option<IndexSeek>, limits: ReadLimits, work: ReadLimits }
+struct IndexSeek { snapshot: Vec<u8>, plan: [u8; 32], revision: u64, key: Vec<u8>, position: u64 }
+struct IndexPage { entries: Vec<IndexEntry>, next: Option<IndexSeek>, complete: bool }
+```
+
+Reason: one object-safe `StorageBackend` contract with capability flags and free executor functions
+selects native methods or an equivalent explicitly bounded fallback. Arrow/index capability
+flags describe acceleration; atomic conditional writes and atomic projection publication are
+required correctness primitives of a backend claiming the corresponding facility. A generic
+executor computes projection output and delegates its atomic publication to the same backend;
+it cannot synthesize atomicity from independent legacy writes. Backends without the primitive
+refuse explicitly until migrated, rather than advertise an incorrect fallback. Fallback processes at most
+`work.rows/work.bytes` source data per call; selective scans can return an empty, incomplete page
+with an advancing source position. Missing indexes are errors; declarations are required even
+for generic search. Ordered seek compares canonical typed key bytes and unique source position;
+descending reverses both. Bounds are lower-inclusive/upper-exclusive; prefix applies to encoded
+key bytes. Predicate bounds are finite numeric lower-inclusive/upper-exclusive; null and non-finite
+values do not match. Unsupported field types are errors, never empty matches.
+
+Snapshots retain an immutable cut until explicit release. Tokens are instance-scoped and expire
+on close/reopen; reopened callers acquire a new snapshot at the retained durable cursor. A token
+is checked with its exact cut on every read. Continuations bind snapshot, plan and definition
+revision; changing direction/bounds/columns requires restarting. Old retained source cuts remain
+readable; no automatic age-based expiry. Released, foreign, rebuilt-index and restarted tokens
+fail explicitly. Source order is ascending admission position. Object sources select the latest revision per
+(schema identity, object key) at that cut; record/stream sources retain all admitted samples. Page output and decoded working
+sets have separate consumer-supplied byte limits; one oversize row/chunk refuses rather than
+skipping it. Cancellation is cooperative, checked before I/O and between bounded chunks; reads
+have no admission side effects. Backend errors distinguish unsupported, conflict, expired,
+invalid input, exhausted work/memory and corrupt/incompatible durable data.
+
+### 1.3 Projections and Frontiers
+
+```rust,ignore
+enum ProjectionTransform { Select(Vec<String>), TimeBuckets(TimeBucketPlan) }
+struct ProjectionDefinition { name: Identifier, version: u32, source: ColumnSource, transform: ProjectionTransform }
+struct ProjectionRead { name: Identifier, revision: u64, frontier: StorageCursor, after: usize, limits: ReadLimits }
+struct ProjectionPage { batch: RecordBatch, frontier: StorageCursor, revision: u64, changed_keys: Vec<i64>, next: Option<usize> }
+fn register_projection(definition: &ProjectionDefinition) -> StorageFuture<u64>;
+fn advance_projection(snapshot: &BackendSnapshot, name: &Identifier, work: ReadLimits, cancel: &Cancellation) -> StorageFuture<u64>;
+fn read_projection(read: &ProjectionRead) -> StorageFuture<ProjectionPage>;
+```
+
+Reason: explicit asynchronous catch-up avoids coupling ingestion to consumer query cost. Each
+advance atomically commits output, changed keys, definition revision and exact durable source
+frontier. Registration of identical definitions is idempotent; a changed definition requires an
+explicit rebuild flag and a new revision. Reads require an exact published frontier and revision;
+lag returns `NotReady`, never a newer or partial answer. Output is derived only from raw source
+inputs, so dependencies are acyclic by construction. Replay reuses a durable published cut or
+recomputes the bounded candidate after rollback; output is not published ahead of its checkpoint.
+Prior revisions/cuts remain retained until explicit consumer retirement; registration/rebuild
+cannot mutate them. Advance refuses when the complete selected source exceeds the supplied work
+budget; it never silently truncates a materialization. Consumers choose catch-up concurrency.
+
+### 1.4 Replaceable Time Buckets
+
+```rust,ignore
+struct TimeBucketPlan { origin_ns: i64, width_ns: NonZeroU64, time: String, value: String, identity: String }
+// Output: key, count, first, last, min, max, sum, sum_squares, mean, m2,
+// first_position, last_position, min_position, max_position, positions: Vec<u64>.
+// Projection revision and changed_keys describe replacement, not append semantics.
+enum Transform { /* Existing native transforms. */ TimeBuckets(TimeBucketPlan) }
+```
+
+Reason: buckets are a generic deterministic query transform. Bucket `k` contains
+`[origin + k*width, origin + (k+1)*width)` using Euclidean division, including negative time.
+Process corrections by logical identity: greatest source position wins at a cut, including
+moving a corrected sample between buckets; duplicate identical positions are idempotent and
+conflicting duplicates refuse. Sort contributions by `(source_time_ns, source_position)`;
+first/last follow that order and min/max ties choose the earliest contribution. Null/non-finite
+values and invalid timestamps refuse. Empty buckets are absent. All contributing source positions are retained in source-time order. Mean and m2 use ordered
+Welford accumulation; sum and sum-of-squares use ordered finite floating point accumulation
+and refuse overflow. Changed keys are the sorted
+union of changed/removed bucket keys compared with the preceding published cut in that revision;
+these keys are retained with that cut. Old cuts retain old values. The storage-native transform
+is implemented here; domain/wire conversion adoption is explicitly deferred to avoid modifying
+the other writer's consumers.
+
+### 1.5 Conditional Objects
+
+```rust,ignore
+enum CompareExchange { Applied(ObjectReceipt), Conflict { current: Option<ObjectVersionToken> } }
+fn compare_exchange(expected: Option<&ObjectVersionToken>, value: &ObjectEntry) -> StorageFuture<CompareExchange>;
+async fn compare_exchange<T: StoredObject>(
+    &self, expected: Option<ObjectVersionToken>, value: &T,
+) -> Result<CompareExchange>; // StorageManager; validates, admits, then awaits the backend outcome.
+```
+
+Reason: the backend performs the check against the current committed object, not a read
+snapshot. `None` is create-if-absent; a token is scoped to store history and to the object's
+schema identity/key by lookup. A mismatch has no write or index effect and returns the current
+token (or absent). A conflict consumes its admitted position with a durable outcome receipt but changes no object
+or derived index. An accepted position identifies the immutable request for replay; an identical
+retry returns the same receipt even after later writers/restart, while changed bytes/expectation
+at that position conflict. Admission position allocation and durability remain distinct; no
+cross-method transaction is implied. The SQLite reference atomically writes object, revision,
+receipt and derived index effects in one immediate transaction with full synchronous durability.
+Cancellation before admission prevents writes; after transaction admission a dropped waiter
+cannot retract the committed request and retry must use its original identity.
+
+### 1.6 Reference Backend
+
+```toml
+[features]
+sqlite = ["dep:rusqlite"]
+# Workspace dependency; the storage package inherits this optionally.
+[workspace.dependencies]
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
+# Existing Arrow 60.1 IPC/array/select dependencies are reused.
+```
+
+Reason: `harmos_storage::sqlite::SqliteBackend` implements the existing backend plus all five
+extensions. SQLite holds typed durable rows, metadata, receipts, index entries, projection
+outputs and separately encoded Arrow leaf-column chunks. Scans fetch only selected/predicate/
+position columns and use chunk position bounds before decoding; they never reconstruct payload
+rows on the native path. Ingestion builds column chunks once from stored schema graphs. No
+external service, concrete connection escape or product-specific key is exposed. An explicit
+format identity/version is checked before use; incompatible data is refused with instructions
+to back up and reset deliberately, never reset automatically. SQLite in-memory mode is the
+reference mechanics fixture; the existing deterministic `tests/support/storage.rs` additionally
+exercises generic fallback and controlled cancellation. The file recovery backend stays intact.
+
+### 1.7 Locked Workload and Budgets
+
+Before interface implementation: `mise run bench -- --storage --filter baseline` builds only
+`integration-multi-day` in Cargo's bench profile and preserves native Criterion artifacts under
+`target/benchmarks/storage/criterion/`. Baseline input uses 2,000,000 records over exactly three
+days, 24 interleaved plots, deterministic `value=(logical*7919)%65521`, and a late sample every
+4096 records (logical position minus 2048). Payload fields are `time_ns:i64`, `plot:u32`,
+`value:f64`; record identities and admissions are deterministic. Pages are 16,384 rows/8 MiB;
+window output is 4096 rows starting at one third of the source and the immediately following
+window. Baseline measures existing projected row scans (full/first/next); new facilities are
+measured separately, with result parity checked outside timing. Criterion: 10 samples, 1-second
+warmup, 1-second requested measurement; preserve actual extended timing when Criterion needs it.
+Raw compiler metadata and native samples are retained. Workload construction is outside timing.
+
+Acceptance budgets are locked before candidate measurements: existing path medians at most
+baseline +20%; native bounded-window and projection reads target at most 1 second per million
+source samples (2 seconds for this input); seek next-page work must not grow with prior output.
+Native full scans, ingest, catch-up, restart/replay and contention are measured, not inferred from
+these targets. Consumer finalization/report numbers and native Linux proof remain in tasks 3.x.
+No later result may loosen a budget to pass. Local concurrent-writer CPU/I/O contention must be
+disclosed with measurements; hosted Nightly remains the authoritative regression environment.
+
+
+The original repeated baseline attempt exposed whole-snapshot cloning on every test-backend
+page and was interrupted before measurements. The baseline selection therefore records one
+timed traversal per case in raw stdout (	arget/benchmarks/storage/baseline.txt); these are
+single measurements, not medians. Repeated Criterion sampling remains available without the
+baseline selector. Budgets are unchanged and remain provisional until hosted repeated proof.
+
+
+## Implementation Prerequisite
+
+Tasks 1.1–1.6 record design decisions, not landed interfaces. Task 1.7 remains open: no completed
+Windows baseline numbers are available. The first existing-path benchmark compiled, but its
+repeated measurement was interrupted after exposing whole-snapshot copying in the test backend.
+The single-traversal replacement must compile and complete before tasks 2.x begin.
+
+The concurrently edited generated `crates/harmos-protocol/src/v1.rs` currently references
+`super::host::v1::OperationAssignments` in `GuestInitialize`; `host.rs` declares
+`OperationAssignments` directly under `host`. This is Rust E0433 and blocks the storage bench
+and Tests producer. The file is dirty and owned by the guest worker, so it has not been edited
+by the storage worker. The owner must repair that reference/generator before rerunning the
+baseline. No baseline result, regression acceptance, storage implementation or source closure
+is claimed. The original one-million-sample/second target and +20% existing-path proposal are
+unchanged; measured relative budget numbers remain pending baseline completion.
+
+README impact: no user-facing storage capability has landed, so its feature claims remain
+unchanged. The focused benchmark command is documented in `docs/tooling.md`.
+
+Consumer adoption inventory for the next pass: domain transform and protobuf conversions in
+`crates/harmos-domain/src/model/storage/query/`; protocol storage messages in
+`proto/harmos/v1/storage.proto` and `crates/harmos-protocol/src/storage.rs`; operation handlers
+`crates/harmos-operations/src/storage/{query.rs,write_objects.rs,exchange.rs,registration.rs}`;
+runtime storage composition, SDK generated-contract client surfaces (`sdk/rust/src/client.rs`
+and generated application clients), and storage examples. All remain unmodified by this slice.
+The current host operation's exchange path must adopt the atomic primitive rather than preserve
+read-then-write preconditions when the interface lands. Remaining 2.6 also includes every
+existing backend implementer outside storage, so no complete migration is claimed.

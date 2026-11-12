@@ -2,13 +2,13 @@
 
 ## 1. Interface Design
 
-- [ ] 1.1 Confirm both products' last gRPC wave is complete; lock inventory for storage backend/object/query contracts, protocol mappings, operations, examples, backends, tests, benchmarks and storage guidance.
-- [ ] 1.2 Settle the proposed scan/index plan and page types, ordering, snapshot lifetime, capability negotiation, bounded fallback, cancellation and error semantics in design.md.
-- [ ] 1.3 Settle projection registration/versioning, readable frontier, source-commit coupling, crash replay, invalidation/rebuild and old-snapshot behaviour in design.md.
-- [ ] 1.4 Settle time-bucket boundaries, retained statistics/positions, corrections, late replacement, revision and changed-key retention semantics in design.md.
-- [ ] 1.5 Settle conditional-update token scope, absent-object semantics, object-safe backend primitive, conflict receipts, durability and atomic index effects in design.md.
-- [ ] 1.6 Lock the durable SQLite/Arrow reference backend module/feature, dependencies and capability obligations; retain the file recovery backend and bounded test backend as distinct owners.
-- [ ] 1.7 Before implementation, lock reproducible before/after workloads and numerical regression budgets; capture the baseline with deterministic multi-day data and millions of samples.
+- [x] 1.1 Owner authorizes parallel work: Harmos host gRPC surfaces at a7583836 are complete; consumer wave pending; lock inventory for storage backend/object/query contracts, protocol mappings, operations, examples, backends, tests, benchmarks and storage guidance.
+- [x] 1.2 Settle the proposed scan/index plan and page types, ordering, snapshot lifetime, capability negotiation, bounded fallback, cancellation and error semantics in design.md.
+- [x] 1.3 Settle projection registration/versioning, readable frontier, source-commit coupling, crash replay, invalidation/rebuild and old-snapshot behaviour in design.md.
+- [x] 1.4 Settle time-bucket boundaries, retained statistics/positions, corrections, late replacement, revision and changed-key retention semantics in design.md.
+- [x] 1.5 Settle conditional-update token scope, absent-object semantics, object-safe backend primitive, conflict receipts, durability and atomic index effects in design.md.
+- [x] 1.6 Lock the durable SQLite/Arrow reference backend module/feature, dependencies and capability obligations; retain the file recovery backend and bounded test backend as distinct owners.
+- [ ] 1.7 Before implementation, lock reproducible before/after workloads and numerical regression budgets; capture the baseline with deterministic multi-day data and millions of samples (workload and provisional budgets recorded; baseline blocked by the guest worker's dirty protocol reference, see design.md).
 
 ## 2. Implementation and Targeted Proof
 

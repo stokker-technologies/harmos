@@ -164,6 +164,11 @@ path = "tests/integration/main.rs"
 # === Bench Targets === #
 
 [[bench]]
+name = "integration-multi-day"
+path = "benches/multi_day/main.rs"
+harness = false
+
+[[bench]]
 name = "unit-payload-decode"
 path = "benches/query/source/main.rs"
 harness = false

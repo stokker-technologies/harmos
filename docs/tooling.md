@@ -452,3 +452,21 @@ build summary through `ci/build.py` and `ci/compiler.py`. Local invocations and
 focused selections do not enter that path. Workflows call the entry point directly;
 the old `ci.build` command and `BUILD_SCRIPT` adapter are retired. Current setup
 cache environment inputs retain their meanings.
+
+
+## Focused Storage Baseline
+
+```sh
+mise run bench -- --storage --filter baseline
+```
+
+This selection builds only `harmos-storage`'s `integration-multi-day` benchmark in the bench
+profile. It measures the current generic row-query path over the deterministic test backend:
+2,000,000 samples spanning three days and 24 plots, including late arrivals. Workload generation
+is outside timing; projected row count and value sum are checked against the generated inputs.
+The baseline selection records a single timed traversal for full, first-window and next-window
+reads. These measurements include snapshot and paging costs and are not Criterion medians.
+Raw output and compiler metadata remain in `target/benchmarks/storage/`. Without the baseline
+filter, the same executable additionally uses ordinary Criterion sampling, whose native files
+remain under `target/benchmarks/storage/criterion/`. The storage-interface design owns workload
+identity and proposed acceptance budgets; this command does not establish a performance claim.
