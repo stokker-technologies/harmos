@@ -82,7 +82,7 @@ public:
 class Context {
 public:
     std::string invocation;
-    std::string scope;
+    const std::string& scope() const;
     std::uint32_t attempt = 0;
     std::uint64_t sequence = 0;
 
@@ -100,6 +100,7 @@ public:
     template<class T> T& get() { return std::any_cast<T&>(resources_.at(typeid(T))); }
 
 private:
+    std::string scope_;
     std::shared_ptr<detail::Invocation> state_;
     std::unordered_map<std::type_index, std::any> resources_;
     std::shared_future<std::string> send(wire::ChildRequest request);

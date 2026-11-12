@@ -123,7 +123,7 @@ pub(crate) async fn host_handler(
 ) -> Result<harmos_runtime::Response<Reply>, std::convert::Infallible> {
     context.resource::<Signals>().expect("declared resource is registered").entered.notify_one();
     let value = if request.value == b"scope" {
-        context.call().get::<harmos_runtime::operations::ExecutionScope>().unwrap().as_str().as_bytes().to_vec()
+        context.call().get::<harmos_runtime::Scope>().unwrap().as_str().as_bytes().to_vec()
     } else {
         request.value
     };

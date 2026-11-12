@@ -30,6 +30,14 @@ its timeout and cancellation policy. Status and cancellation expose only instanc
 owned by the caller. Guest child controls keep their private status codec until
 the guest protocol migration.
 
+Bind an opaque invocation scope with `runtime.operations.with_scope("opaque-scope")`.
+The runtime's `harmos_runtime::Scope::as_str()` exposes it to native handlers and child
+calls inherit it. Plugin authors require a bound scope by calling `Context::scope()`
+in Rust, `ctx.scope()` in Python or C++, or `context.Scope()` in C#.
+An absent scope produces a refused failure with code `scope_required` and message
+"Invocation Scope Is Required: the caller must bind a scope". Harmos assigns no
+meaning to the scope and does not require it for operations that do not ask for it.
+
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission

@@ -32,9 +32,9 @@ use crate::Result;
 #[cfg(feature = "grpc")]
 pub(crate) struct Deadline(pub(crate) tokio::time::Instant);
 
-/// Opaque Execution Identity Inherited by Host and Plugin Child Calls.
+/// Opaque Scope Inherited by Host and Plugin Child Calls.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ExecutionScope(pub(crate) String);
+pub struct Scope(pub(crate) String);
 
 pub struct ContextMut<'a> {
     context: &'a mut CallContext,
@@ -46,7 +46,7 @@ pub struct ContextMut<'a> {
 
 /* === Implementations === */
 
-impl ExecutionScope {
+impl Scope {
     pub fn as_str(&self) -> &str {
         &self.0
     }

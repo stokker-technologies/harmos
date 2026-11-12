@@ -56,7 +56,7 @@ pub(crate) use crate::guest::host::envelope::{
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(feature = "plugin-guest")]
 pub use caller::Caller;
-pub use context::{ContextMut, ExecutionScope};
+pub use context::ContextMut;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]

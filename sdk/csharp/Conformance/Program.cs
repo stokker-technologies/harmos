@@ -55,7 +55,10 @@ internal sealed class ConformancePlugin
     return new Value { Value_ = ByteString.CopyFrom(bytes) };
   }
 
-  private Task<Value> Echo(Context context, Value request) => Task.FromResult(request);
+  private Task<Value> Echo(Context context, Value request) => Task.FromResult(
+      request.Value_ == ByteString.CopyFromUtf8("scope")
+          ? new Value { Value_ = ByteString.CopyFromUtf8(context.Scope()) }
+          : request);
 
   private async Task<Value> Children(Context context, Value request)
   {

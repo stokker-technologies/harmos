@@ -31,8 +31,19 @@
 namespace harmos {
 Context::Context(std::shared_ptr<detail::Invocation> state) : state_(std::move(state)) {
     invocation = state_->request.invocation();
-    scope = state_->request.scope();
+    scope_ = state_->request.scope();
     attempt = state_->request.attempt();
+}
+
+const std::string& Context::scope() const {
+    if (scope_.empty()) {
+        wire::Failure failure;
+        failure.set_classification(wire::CLASSIFICATION_REFUSED);
+        failure.set_code("scope_required");
+        failure.set_message("Invocation Scope Is Required: the caller must bind a scope");
+        throw Failure(std::move(failure));
+    }
+    return scope_;
 }
 
 std::shared_future<std::string> Context::send(wire::ChildRequest request) {

@@ -154,12 +154,7 @@ async fn invoke(
             payload,
             invocation: host.borrow().id().to_string(),
             attempt: host.borrow().attempt() as u32 + 1,
-            scope: host
-                .borrow()
-                .context()
-                .get::<crate::operations::ExecutionScope>()
-                .map(|scope| scope.as_str().to_owned())
-                .unwrap_or_default(),
+            scope: host.borrow().context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
         };
         output
             .send(v1::HostFrame {

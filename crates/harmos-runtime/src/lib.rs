@@ -57,6 +57,7 @@ pub use harmos_operations::{
     Backoff, Jitter, OperationDefinition, OperationPolicy, RequestShape, RestartPolicy, RetryPolicy, ServicePolicy,
 };
 pub use harmos_operations::{Failure, StreamSpec};
+pub use operations::context::Scope;
 pub use operations::refusal::Refusal;
 pub use operations::{Catalog, CatalogDescription, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};

@@ -55,7 +55,7 @@ class Context:
     def __init__(self, request: wire.Request, plugin: str, requires: dict[str, bytes], output: asyncio.Queue | None = None):
         self.invocation = request.invocation
         self.attempt = request.attempt
-        self.scope = request.scope
+        self._scope = request.scope
         self.sequence = 0
         self._operation = request.operation
         self._plugin = plugin
@@ -66,6 +66,18 @@ class Context:
         self._cancelled = asyncio.Event()
         self._reason = ""
         self._resources: dict[type, object] = {}
+
+    def scope(self) -> str:
+        """Require a Caller-Bound Scope for This Invocation."""
+        if not self._scope:
+            raise Failure(
+                wire.Failure(
+                    classification=wire.CLASSIFICATION_REFUSED,
+                    code="scope_required",
+                    message="Invocation Scope Is Required: the caller must bind a scope",
+                )
+            )
+        return self._scope
 
     def set[T](self, value: T) -> None:
         self._resources[type(value)] = value

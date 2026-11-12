@@ -264,6 +264,33 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 drop(send);
                 require(terminal(&mut input).await? == response::Result::Payload(payload), "Echo Changed Protobuf Payload")?;
             }
+
+            // The Author Opts Into Scope Checking; Ordinary Calls Stay Unscoped.
+            for scope in ["scope/α", "scope/β", ""] {
+                let mut frame = request("conformance.echo", fixture::payload(b"scope"));
+                let Some(host_frame::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
+                request.scope = scope.into();
+                let mut input = client.invoke(stream::iter([frame])).await?.into_inner();
+                let result = terminal(&mut input).await?;
+                if scope.is_empty() {
+                    require(
+                        matches!(result, response::Result::Failure(failure)
+                        if failure.classification == v1::Classification::Refused as i32
+                            && failure.code == "scope_required"),
+                        "Missing Scope Was Not Refused",
+                    )?;
+                } else {
+                    require(result == response::Result::Payload(fixture::payload(scope.as_bytes())), "Scope Did Not Reach Handler")?;
+                }
+            }
+            let mut frame = request("conformance.echo", fixture::payload(b"unscoped"));
+            let Some(host_frame::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
+            request.scope.clear();
+            let mut input = client.invoke(stream::iter([frame])).await?.into_inner();
+            require(
+                terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"unscoped")),
+                "Ordinary Unscoped Call Was Refused",
+            )?;
         }
         4 => {
             for frame in [

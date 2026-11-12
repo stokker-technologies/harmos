@@ -266,7 +266,22 @@ async fn invoke(
             let nested = Nested::decode(request.payload.as_slice()).map_err(|_| Status::invalid_argument("Invalid Nested"))?;
             response::Result::Payload(nested.next.unwrap_or_default().encode_to_vec())
         }
-        "conformance.echo" => response::Result::Payload(request.payload),
+        "conformance.echo" => {
+            if request.payload == fixture::payload(b"scope") {
+                if request.scope.is_empty() {
+                    response::Result::Failure(v1::Failure {
+                        classification: v1::Classification::Refused as i32,
+                        code: "scope_required".into(),
+                        message: "Invocation Scope Is Required: the caller must bind a scope".into(),
+                        ..Default::default()
+                    })
+                } else {
+                    response::Result::Payload(fixture::payload(request.scope.as_bytes()))
+                }
+            } else {
+                response::Result::Payload(request.payload)
+            }
+        }
         "conformance.failure" => response::Result::Failure(fixture::failure("conformance.failure")),
         "conformance.children" => {
             for call in [1, 2] {

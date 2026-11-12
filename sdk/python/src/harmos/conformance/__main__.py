@@ -46,6 +46,8 @@ class Fixture:
     @operation("conformance.echo", request=Value, response=Value)
     async def echo(self, ctx: Context, request: Value) -> Value:
         self.echoes += 1
+        if request.value == b"scope":
+            return Value(value=ctx.scope().encode())
         return request
 
     @operation("conformance.children", request=Value, response=Value)

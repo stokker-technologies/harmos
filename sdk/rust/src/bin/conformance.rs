@@ -183,7 +183,10 @@ async fn nested(_: &Context, request: Nested) -> Result<Graph> {
     Ok(*request.next.unwrap_or_default())
 }
 
-async fn echo(_: &Context, request: Value) -> Result<Value> {
+async fn echo(ctx: &Context, request: Value) -> Result<Value> {
+    if request.value == b"scope" {
+        return Ok(Value { value: ctx.scope()?.as_bytes().to_vec() });
+    }
     Ok(request)
 }
 

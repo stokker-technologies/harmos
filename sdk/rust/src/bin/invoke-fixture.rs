@@ -237,10 +237,7 @@ fn main() -> Result<()> {
             Ok(())
         })
     } else if mode == "scoped" {
-        Plugin::new("scoped", "1.0.0")
-            .requires::<HostInput>()
-            .requires::<PublicInput>()
-            .operation(Operation::new("fixture.lifecycle", scoped))
+        Plugin::new("scoped", "1.0.0").requires::<HostInput>().requires::<PublicInput>().operation(Operation::new("fixture.scoped", scoped))
     } else if mode == "scoped-provider" {
         Plugin::new("provider", "1.0.0").operation(Operation::new("fixture.public", scope_identity).visibility(Visibility::Public))
     } else if mode == "provider" {
@@ -301,14 +298,14 @@ async fn empty(_: &Context, _: ()) -> Result<()> {
 
 async fn scope_identity(context: &Context, _: Value) -> Result<Value> {
     Ok(Value {
-        value: context.execution_scope()?.as_bytes().to_vec(),
+        value: context.scope()?.as_bytes().to_vec(),
     })
 }
 
 async fn scoped(context: &Context, input: Value) -> Result<Value> {
-    let scope = context.execution_scope()?;
+    let scope = context.scope()?;
     if input.value != scope.as_bytes() {
-        return Err(harmos::Error::Invalid("Lifecycle Identity Differs From Execution Scope".into()));
+        return Err(harmos::Error::Invalid("Payload Differs From Invocation Scope".into()));
     }
     let host = context.operation(HostInput { value: b"scope".to_vec() }).await?;
     let plugin = context.operation(PublicInput { value: Vec::new() }).await?;

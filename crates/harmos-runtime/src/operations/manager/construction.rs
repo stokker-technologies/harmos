@@ -134,17 +134,17 @@ impl Manager {
         Ok(None)
     }
 
-    /// Bind an Opaque Execution Scope to This Handle and All Its Descendants.
-    pub fn with_execution_scope(&self, scope: impl Into<String>) -> Result<Self> {
+    /// Bind an Opaque Invocation Scope to This Handle and All Its Descendants.
+    pub fn with_scope(&self, scope: impl Into<String>) -> Result<Self> {
         let scope = scope.into();
         if scope.is_empty() {
             return Err(Error::InvalidInput {
-                field: "execution scope",
-                reason: "execution scope must be nonempty",
+                field: "invocation scope",
+                reason: "invocation scope must be nonempty",
             });
         }
         let mut context = self.call_context().clone();
-        context.insert(crate::operations::ExecutionScope(scope))?;
+        context.insert(crate::Scope(scope))?;
         Ok(self.with_context(context))
     }
 

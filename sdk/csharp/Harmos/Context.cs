@@ -26,7 +26,7 @@ public sealed class Context
     Operation = request.Operation;
     Invocation = request.Invocation;
     Attempt = request.Attempt;
-    Scope = request.Scope;
+    scope = request.Scope;
     Plugin = plugin;
     this.requires = requires;
     this.cancellation = cancellation;
@@ -36,7 +36,19 @@ public sealed class Context
   public string Operation { get; }
   public string Invocation { get; }
   public uint Attempt { get; }
-  public string Scope { get; }
+  private readonly string scope;
+
+  public string Scope()
+  {
+    if (scope.Length == 0)
+      throw new PluginFailureException(new Failure
+      {
+        Classification = Classification.Refused,
+        Code = "scope_required",
+        Message = "Invocation Scope Is Required: the caller must bind a scope"
+      });
+    return scope;
+  }
   public string Plugin { get; }
   public ulong Sequence { get; internal set; }
   public Timestamp? At { get; internal set; }

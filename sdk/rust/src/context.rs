@@ -48,7 +48,7 @@ pub(crate) type Pending = BTreeMap<u64, oneshot::Sender<ChildResult>>;
 pub struct Context {
     pub invocation: String,
     pub attempt: u32,
-    pub scope: String,
+    pub(crate) scope: String,
     pub(crate) operation: String,
     pub(crate) plugin: String,
     resources: Arc<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
@@ -99,13 +99,13 @@ impl Context {
         }
     }
 
-    /// Require an Execution-Scoped Invocation Before Entering Lifecycle Work.
-    pub fn execution_scope(&self) -> Result<&str> {
+    /// Require a Caller-Bound Scope for This Invocation.
+    pub fn scope(&self) -> Result<&str> {
         if self.scope.is_empty() {
             return Err(v1::Failure {
                 classification: v1::Classification::Refused as i32,
-                code: "execution_scope".into(),
-                message: "Execution Scope Is Required".into(),
+                code: "scope_required".into(),
+                message: "Invocation Scope Is Required: the caller must bind a scope".into(),
                 ..Default::default()
             }
             .into());

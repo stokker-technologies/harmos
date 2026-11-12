@@ -732,7 +732,7 @@ author state is captured explicitly by handlers. Authors synchronize shared stat
 across concurrent calls. Independently started background work is invisible to
 virtual time.
 
-### SDK Admission, Execution Scope and Independent Payload Types
+### SDK Admission, Invocation Scope and Independent Payload Types
 
 These additive follow-ups keep the SDK dependent only on protocol and transport support.
 Planned generated-client admission scans the bound message descriptors before Prost decoding, including
@@ -753,18 +753,22 @@ pub struct ClientSettings {
     // Existing wire and outgoing queue bounds.
 }
 // Host: a scoped handle preserves the opaque identity through inherited child contexts.
-let operations = runtime.operations.with_execution_scope("execution-id")?;
+let operations = runtime.operations.with_scope("opaque-scope")?;
 let invocation = operations.submit_encoded("plugin.operation", payload)?;
-// Plugin lifecycle handlers explicitly require a nonempty transport scope.
-let scope = context.execution_scope()?;
+// Plugin authors explicitly require a nonempty transport scope.
+let scope = context.scope()?;
 // Descriptor registration creates no operation, stream, requirement or section.
 let plugin = Plugin::new("example", "1.0.0").message::<RecordPayload>();
 ```
 
-`ExecutionScope::as_str()` exposes the inherited identity to native host handlers. The runtime
+`harmos_runtime::Scope::as_str()` exposes the inherited identity to native host handlers. The runtime
 copies it unchanged into the existing `harmos.v1.Request.scope` for managed and remote plugins;
 child payloads cannot replace this trusted local context value. Empty scope is refused by
-`Context::execution_scope()`. Ordinary unscoped operations remain valid. Scope does not grant
+`Context::scope()`, only when the author calls it; no operation-name list imposes
+scope requirements. Python and C++ use `context.scope()`, and C# uses `context.Scope()`.
+All accessors refuse an absent scope with code `scope_required` and message
+"Invocation Scope Is Required: the caller must bind a scope".
+Ordinary unscoped operations remain valid. Scope does not grant
 operation visibility or replace generation, invocation, policy, cancellation or settlement.
 
 ```python

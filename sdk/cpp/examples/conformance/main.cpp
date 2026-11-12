@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
         const Operation pending("conformance.host.pending");
         const Operation fail("conformance.host.fail");
         harmos::Plugin plugin("conformance", "1.0.0");
-        plugin.operation(Operation("conformance.echo", [](Context&, Value request) { return request; })
+        plugin.operation(Operation("conformance.echo", [](Context& ctx, Value request) { return request.value() == "scope" ? value(ctx.scope()) : request; })
                 .visibility(harmos::wire::VISIBILITY_PUBLIC))
             .operation(Operation("conformance.children", [echo](Context& ctx, Value) {
                 auto first = ctx.call(echo, value(std::string(1, '\1')));
