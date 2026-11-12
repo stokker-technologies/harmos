@@ -19,6 +19,8 @@ internal sealed class ConformancePlugin
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
 
   public Plugin Build() => new Plugin("conformance", "1.0.0")
+      .Message<Harmos.Conformance.V1.PayloadOnly>()
+      .Message<Harmos.Conformance.V1.PayloadOnly>()
       .Operation(new Operation<Value, Value>("conformance.echo", Visibility.Public), Echo)
       .Operation(new Operation<Value, Value>("conformance.children", Visibility.Public), Children)
       .Operation(new Operation<Value, Value>("conformance.cancel", Visibility.Public), Cancel)

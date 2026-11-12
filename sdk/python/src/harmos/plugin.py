@@ -45,12 +45,22 @@ STARTED_AT.GetCurrentTime()
 
 
 class Plugin:
-    def __init__(self, instance: object, *, id: str, version: str, requires: Sequence[Operation] = (), sections: Sequence[Message] = ()):
+    def __init__(
+        self,
+        instance: object,
+        *,
+        id: str,
+        version: str,
+        requires: Sequence[Operation] = (),
+        sections: Sequence[Message] = (),
+        messages: Sequence[type[Message]] = (),
+    ):
         self.instance = instance
         self.id = id
         self.version = version
         self.requires = tuple(requires)
         self.sections = tuple(sections)
+        self.messages = tuple(messages)
 
     def _registrations(self):
         # Preserve Declaration Order While Honoring Subclass Overrides.
@@ -80,6 +90,7 @@ class Plugin:
             raise ValueError("Invalid Plugin Version")
         catalog = wire.Catalog()
         files = {}
+        _merge(files, *self.messages)
         operations, streams, _ = self._registrations()
         for definition, _ in operations:
             if definition.visibility not in (wire.VISIBILITY_PRIVATE, wire.VISIBILITY_PUBLIC):

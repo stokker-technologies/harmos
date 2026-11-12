@@ -19,6 +19,7 @@ mod connection_loss;
 mod deadline;
 mod device_stream;
 mod duplicate_operation;
+mod execution_scope;
 mod external_authorization;
 mod failure;
 mod host_clock;

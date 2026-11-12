@@ -20,7 +20,7 @@ from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
 from harmos import NOW, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
-from harmos.conformance.v1.fixture_pb2 import Graph, Value
+from harmos.conformance.v1.fixture_pb2 import Graph, PayloadOnly, Value
 from harmos.v1 import plugin_pb2 as wire
 
 # Type Checking Imports
@@ -138,6 +138,7 @@ def plugin() -> Plugin:
         version="1.0.0",
         requires=[HOST_ECHO, HOST_PENDING, HOST_FAIL, HOST_SCHEMA, SLEEP, NOW],
         sections=[Graph(interval=Duration(seconds=2))],
+        messages=[PayloadOnly, PayloadOnly],
     )
 
 

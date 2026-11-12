@@ -23,6 +23,12 @@ class Value(_message.Message):
     value: bytes
     def __init__(self, value: _Optional[bytes] = ...) -> None: ...
 
+class PayloadOnly(_message.Message):
+    __slots__ = ("value",)
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    value: bytes
+    def __init__(self, value: _Optional[bytes] = ...) -> None: ...
+
 class Zebra(_message.Message):
     __slots__ = ("value",)
     VALUE_FIELD_NUMBER: _ClassVar[int]

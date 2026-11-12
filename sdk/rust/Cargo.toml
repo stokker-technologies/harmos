@@ -66,7 +66,6 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 
 [dev-dependencies]
 # Local
-harmos-conformance = { path = "../../tools/conformance" }
 schematic-protocol = { path = "../../examples/schematic/protocol" }
 
 # Serialization

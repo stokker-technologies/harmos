@@ -43,6 +43,7 @@ pub struct Plugin {
     pub(crate) observers: Vec<Observer>,
     pub(crate) requirements: Vec<Required>,
     sections: Vec<(v1::Section, prost_types::FileDescriptorSet)>,
+    messages: Vec<(String, prost_types::FileDescriptorSet)>,
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
 }
@@ -70,6 +71,7 @@ impl Plugin {
             observers: Vec::new(),
             requirements: Vec::new(),
             sections: Vec::new(),
+            messages: Vec::new(),
             cleanup: Vec::new(),
             remote: false,
         }
@@ -87,6 +89,12 @@ impl Plugin {
         self.observers.push(observer);
         self
     }
+    /// Register a Payload Descriptor Without Adding an Operation, Stream or Section.
+    pub fn message<T: Message>(mut self) -> Self {
+        self.messages.push((T::name(), T::types()));
+        self
+    }
+
     pub fn section<T: Message>(mut self, value: T) -> Self {
         self.sections.push((
             v1::Section {
@@ -131,6 +139,9 @@ impl Plugin {
         semver::Version::parse(&self.version).map_err(|error| Error::Invalid(format!("Invalid Plugin Version: {error}")))?;
         let mut catalog = v1::Catalog::default();
         let mut types = prost_types::FileDescriptorSet::default();
+        for (_, definitions) in &self.messages {
+            merge_types(&mut types, definitions.clone())?;
+        }
         let mut ids = HashSet::new();
         for operation in &self.operations {
             if operation.contract.id.is_empty() || !ids.insert(&operation.contract.id) {
@@ -202,7 +213,8 @@ impl Plugin {
             .iter()
             .flat_map(|operation| [&operation.request, &operation.response])
             .chain(catalog.streams.iter().map(|stream| &stream.row))
-            .chain(catalog.sections.iter().map(|section| &section.r#type));
+            .chain(catalog.sections.iter().map(|section| &section.r#type))
+            .chain(self.messages.iter().map(|(name, _)| name));
         for name in names {
             if pool.get_message_by_name(name).is_none() {
                 return Err(Error::Invalid(format!("Missing Protobuf Message: {name}")));

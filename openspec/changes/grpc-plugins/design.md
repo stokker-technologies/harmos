@@ -732,6 +732,61 @@ author state is captured explicitly by handlers. Authors synchronize shared stat
 across concurrent calls. Independently started background work is invisible to
 virtual time.
 
+### SDK Admission, Execution Scope and Independent Payload Types
+
+These additive follow-ups keep the SDK dependent only on protocol and transport support.
+Planned generated-client admission scans the bound message descriptors before Prost decoding, including
+repeated, map and nested allocations. Managed envelopes are scanned and merged from borrowed
+wire slices so no unclaimed payload accumulator is needed. The caller selects the byte bound;
+the returned-value claim lifetime must be settled before completing that API.
+The existing `Running::next() -> Result<Option<O>, Status>` and
+`Running::join() -> Result<R, Status>` transfer bare generated messages to the caller.
+Those generated types cannot retain an SDK semaphore permit. Preserving those exact returns
+bounds SDK-owned decoding and buffering only, releasing claims at handoff; bounding values
+retained by callers requires an owning return wrapper. This ownership decision remains open;
+the descriptor scanner is preparatory work, not a claim that client admission is delivered.
+
+```rust
+// Planned client setting; the return-ownership decision above remains open.
+pub struct ClientSettings {
+    pub retained_bytes: NonZeroUsize,
+    // Existing wire and outgoing queue bounds.
+}
+// Host: a scoped handle preserves the opaque identity through inherited child contexts.
+let operations = runtime.operations.with_execution_scope("execution-id")?;
+let invocation = operations.submit_encoded("plugin.operation", payload)?;
+// Plugin lifecycle handlers explicitly require a nonempty transport scope.
+let scope = context.execution_scope()?;
+// Descriptor registration creates no operation, stream, requirement or section.
+let plugin = Plugin::new("example", "1.0.0").message::<RecordPayload>();
+```
+
+`ExecutionScope::as_str()` exposes the inherited identity to native host handlers. The runtime
+copies it unchanged into the existing `harmos.v1.Request.scope` for managed and remote plugins;
+child payloads cannot replace this trusted local context value. Empty scope is refused by
+`Context::execution_scope()`. Ordinary unscoped operations remain valid. Scope does not grant
+operation visibility or replace generation, invocation, policy, cancellation or settlement.
+
+```python
+Plugin(author, id="example", version="1.0.0", messages=[RecordPayload])
+```
+```csharp
+new Plugin("example", "1.0.0").Message<RecordPayload>();
+```
+```cpp
+harmos::Plugin("example", "1.0.0").message<RecordPayload>();
+```
+
+All four message-registration APIs use their existing descriptor-closure merge and validation;
+repeated identical registration is idempotent. Shared conformance case 20 resolves and decodes
+an independent payload type while proving no executable declaration or section references it.
+The Rust SDK conformance journey lives with the executable runner in
+`tools/conformance/tests/integration`, retaining its fixture and shared cases without compiling
+the SDK's unrelated Wasm development dependencies for a native protocol journey.
+The SDK's unused development dependency on the runner is removed with that move.
+The public README's entry points and setup remain accurate; the additive shapes are specified
+here and in their SDK API documentation rather than changing unaffected README claims.
+
 ## Validation
 
 - Each SDK's conformance plugin builds from the `.proto` files alone, so the

@@ -12,6 +12,7 @@
 /* === Modules === */
 
 mod managed_plugin_passes_every_rule;
+mod rust_sdk_plugin_passes_every_rule;
 
 #[path = "../support/mod.rs"]
 mod support;

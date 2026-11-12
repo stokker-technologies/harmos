@@ -39,6 +39,12 @@ use schema_fixture::{Graph, Nested};
 use schema_fixture::Value;
 
 #[derive(Message)]
+#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto")]
+struct PayloadOnly {
+    value: Vec<u8>,
+}
+
+#[derive(Message)]
 #[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
 struct HostEcho {
     value: Vec<u8>,
@@ -116,6 +122,8 @@ fn main() -> Result<()> {
     let settings = Stream::<Value>::new("conformance.settings");
     let configured = Observer::new(&settings, tick).every_ms(1000).interval_setting("harmos.conformance.v1.Graph.interval");
     let plugin = Plugin::new("conformance", "1.0.0")
+        .message::<PayloadOnly>()
+        .message::<PayloadOnly>()
         .operation(Operation::new("conformance.echo", echo).visibility(Visibility::Public))
         .operation(Operation::new("conformance.children", children).visibility(Visibility::Public))
         .operation(Operation::new("conformance.cancel", cancel).visibility(Visibility::Public))

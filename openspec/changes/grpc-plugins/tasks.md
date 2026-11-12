@@ -307,6 +307,15 @@
 
 ## 8. Final Validation
 
+- [ ] 8.5 Complete the additive SDK follow-ups in this worktree; ownership is SDK client, registration and fixtures, tools/conformance, runtime plugin dispatch and its stories, and this change's design/tasks. Storage and storage-facing contracts remain with their existing owners. README impact is reviewed with the public API notes.
+  - [ ] 8.5.1 Add descriptor-backed generated-client decoded-memory admission and focused real-host refusal, round-trip and cancellation proof; settle returned-value claim ownership without silently changing the agreed call shape. The preparatory scanner passes compact repeated-message and nested/map unit proof. ClientSettings, codec integration and real-host memory proof remain open pending the return-ownership decision in design.md.
+  - [x] 8.5.2 Carry caller-owned execution scope through managed/remote plugin dispatch and inherited child calls; prove scoped lifecycle delivery and unscoped refusal. Windows focused proof passes: plugin_grpc::execution_scope::scoped_lifecycle_calls_inherit_scope_and_refuse_unscoped_calls, including two isolated scopes, native and plugin children, both placements, refusal and cleanup. The default-feature runtime package check also passes; final gates remain separate under 8.5.4.
+  - [x] 8.5.3 Add independent message registration to all four SDKs and a shared descriptor-only conformance case. All 20 shared cases pass for Rust, Python, C# and C++ on Windows; C# also proves remote placement. Rust descriptor merging now retains top-level enums when independent messages are registered first.
+  - [ ] 8.5.4 Complete the requested validation and documentation follow-ups without treating source closure as proof.
+    - [x] 8.5.4.1 Run Windows format, the complete Rust and repository checks, the test-artifact build and all four SDK conformance journeys. SDK-specific Python formatting, lint, typing and generated-binding drift also pass. Native Linux proof remains under 8.1 and 8.2.
+    - [ ] 8.5.4.2 Complete the whole Python check after the Product producer supplies generated clients; its preflight currently refuses the absent target/generated/python/src. Test artifacts are an independent producer and do not supply these Product outputs.
+    - [ ] 8.5.4.3 Have the documentation owner update the current reference-case count in docs/tooling.md from 19 to 20; that guide is outside this slice's ownership.
+
 - [ ] 8.1 Run targeted transport, lifecycle, conformance and guest tests on Linux and Windows.
 
 - [ ] 8.2 Run each pilot SDK against the extended conformance suite on native Linux and Windows; retain failures and repair affected consumers.

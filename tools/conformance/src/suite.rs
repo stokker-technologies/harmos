@@ -23,6 +23,7 @@ use std::{
 
 // Third Party Imports
 use futures_util::stream;
+use prost::Message;
 use tokio::sync::mpsc;
 use tonic::{Code, Streaming, transport::Channel};
 
@@ -52,6 +53,7 @@ pub const CASES: &[&str] = &[
     "Schema Fingerprints",
     "Interval Setting",
     "Built-In Clock Fingerprints",
+    "Descriptor-Only Registration",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -546,6 +548,24 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(&3600_i64.to_le_bytes())),
                 "Clock Result Differs",
             )?;
+        }
+        20 => {
+            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let name = "harmos.conformance.v1.PayloadOnly";
+            require(
+                !catalog.operations.iter().any(|item| item.request == name || item.response == name)
+                    && !catalog.streams.iter().any(|item| item.row == name)
+                    && !catalog.sections.iter().any(|item| item.r#type == name),
+                "Payload Has An Executable Declaration",
+            )?;
+            let types = catalog.types.ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(types).map_err(|error| Error::Invalid(error.to_string()))?;
+            let descriptor =
+                pool.get_message_by_name(name).ok_or_else(|| Error::Invalid("Missing Independent Payload Descriptor".into()))?;
+            let bytes = fixture::payload(b"record-only");
+            let value =
+                prost_reflect::DynamicMessage::decode(descriptor, bytes.as_slice()).map_err(|error| Error::Invalid(error.to_string()))?;
+            require(value.encode_to_vec() == bytes, "Independent Payload Round Trip Differs")?;
         }
         16 => {
             client.stop(v1::StopRequest { reason: "Conformance Complete".into() }).await?;

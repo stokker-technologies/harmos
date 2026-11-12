@@ -145,6 +145,7 @@ int main(int argc, char** argv) {
         configured.every(interval).interval_setting("harmos.conformance.v1.Graph.interval");
         Graph section;
         section.mutable_interval()->set_seconds(2);
+        plugin.message<harmos::conformance::v1::PayloadOnly>().message<harmos::conformance::v1::PayloadOnly>();
         plugin.stream(ticks).stream(device).stream(settings).observer(observer).observer(configured).section(section);
 
         // Serve as a Managed Executable or at an Explicit Remote Address.

@@ -101,6 +101,11 @@ pub fn merge_descriptor_types(target: &mut FileDescriptorSet, source: FileDescri
                     existing.message_type.push(message);
                 }
             }
+            for enumeration in file.enum_type.drain(..) {
+                if !existing.enum_type.contains(&enumeration) {
+                    existing.enum_type.push(enumeration);
+                }
+            }
         } else {
             target.file.push(file);
         }
