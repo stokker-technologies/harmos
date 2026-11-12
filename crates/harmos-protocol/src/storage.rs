@@ -111,50 +111,6 @@ pub struct FileProgress {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct CreateFile {
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<MutationId>,
-    #[prost(message, optional, tag = "2")]
-    pub metadata: ::core::option::Option<FileMetadata>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct AppendFile {
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<MutationId>,
-    #[prost(message, optional, tag = "2")]
-    pub session: ::core::option::Option<FileSession>,
-    #[prost(uint64, tag = "3")]
-    pub offset: u64,
-    #[prost(bytes = "vec", tag = "4")]
-    pub bytes: ::prost::alloc::vec::Vec<u8>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ResumeFile {
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<MutationId>,
-    #[prost(message, optional, tag = "2")]
-    pub session: ::core::option::Option<FileSession>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FinishFile {
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<MutationId>,
-    #[prost(message, optional, tag = "2")]
-    pub session: ::core::option::Option<FileSession>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct AbandonFile {
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<MutationId>,
-    #[prost(message, optional, tag = "2")]
-    pub session: ::core::option::Option<FileSession>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeleteFile {
     #[prost(message, optional, tag = "1")]
     pub mutation: ::core::option::Option<MutationId>,

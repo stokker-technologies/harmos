@@ -53,6 +53,7 @@ pub struct Control {
     pub date: Mutex<Option<std::time::SystemTime>>,
     pub fail_projection: AtomicBool,
     pub unsupported_conditional: AtomicBool,
+    pub unsupported_sessions: AtomicBool,
     pub block_chunk_file: Mutex<Option<String>>,
     pub permanent_chunk_file: Mutex<Option<String>>,
     pub chunk_active: Mutex<BTreeMap<String, usize>>,
@@ -390,7 +391,7 @@ impl StorageBackend for Data {
 
     fn capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
         harmos_storage::query::columnar::StorageCapabilities {
-            file_sessions: true,
+            file_sessions: !self.control.unsupported_sessions.load(Ordering::Acquire),
             file_deletion: true,
             mutation_receipts: true,
             durable_projections: true,

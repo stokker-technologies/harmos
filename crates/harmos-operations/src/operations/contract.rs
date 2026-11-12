@@ -299,6 +299,9 @@ impl Contract {
     pub fn from_protobuf(
         operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
+        if let Some(contract) = crate::storage::contract(&operation, &protobuf, binding.as_ref(), settings)? {
+            return Ok(contract);
+        }
         operation.validate()?;
         Self::generated(operation, protobuf, binding, settings)
     }
@@ -330,7 +333,7 @@ impl Contract {
         Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.host.v1", "Clock", method)), settings)
     }
 
-    fn generated(
+    pub(crate) fn generated(
         mut operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         let schema = protobuf.schema()?;

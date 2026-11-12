@@ -141,6 +141,25 @@ impl FileAction {
     }
 }
 
+impl StorageManager {
+    /// Status Is Read From the Production Owner, Without Creating a Writer.
+    pub async fn get_file_production_status(&self, file: &StagedFile) -> Result<(FileProgress, Option<u64>)> {
+        self.inner.primary.get_history().check(&file.history)?;
+        {
+            let state = self.inner.state.lock().unwrap();
+            if state.status.closing || !state.ready {
+                return Err(closed());
+            }
+            if let Some(active) = state.files.values().find(|active| active.staging == *file) {
+                let progress = active.production(file).expect("selected production")?;
+                let generation = active.session.as_ref().map(|session| session.generation);
+                return Ok((progress, generation));
+            }
+        }
+        Ok((self.get_file_production(file).await?, None))
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

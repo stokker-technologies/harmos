@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.context.v1;
+
+import "harmos/v1/plugin.proto";
+import "harmos/v1/storage_types.proto";
+
+message StorageCreateFileProductionRequest { .harmos.storage.v1.FileMetadata metadata = 1; .harmos.storage.v1.MutationId mutation = 2; }
+message StorageCreateFileProductionResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageGetFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; }
+message StorageGetFileProductionResponse { .harmos.storage.v1.FileProgress production = 1; uint64 writer_generation = 2; .harmos.v1.ReadCut resolved_at = 3; }
+message StorageAppendFileBytesRequest { .harmos.storage.v1.FileSession session = 1; uint64 offset = 2; bytes data = 3; .harmos.storage.v1.MutationId mutation = 4; }
+message StorageAppendFileBytesResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageCreateFileWriterRequest { .harmos.storage.v1.FileSession session = 1; .harmos.storage.v1.MutationId mutation = 2; }
+message StorageCreateFileWriterResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
+message StoragePublishFileProductionRequest { .harmos.storage.v1.FileSession session = 1; uint64 length = 2; bytes sha256 = 3; .harmos.storage.v1.MutationId mutation = 4; }
+message StoragePublishFileProductionResponse { .harmos.storage.v1.FileReference file = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageDeleteFileProductionRequest { .harmos.storage.v1.FileSession session = 1; .harmos.storage.v1.MutationId mutation = 2; }
+message StorageDeleteFileProductionResponse { .harmos.storage.v1.FileProgress production = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageGetFileBytesRequest { .harmos.storage.v1.FileReference file = 1; uint64 offset = 2; uint64 max_bytes = 3; .harmos.v1.ReadCut at = 4; }
+message StorageGetFileBytesResponse { bytes data = 1; uint64 total_length = 2; bytes sha256 = 3; .harmos.v1.ReadCut resolved_at = 4; }
+
+service Storage {
+  rpc CreateFileProduction(StorageCreateFileProductionRequest) returns (StorageCreateFileProductionResponse);
+  rpc GetFileProduction(StorageGetFileProductionRequest) returns (StorageGetFileProductionResponse);
+  rpc AppendFileBytes(StorageAppendFileBytesRequest) returns (StorageAppendFileBytesResponse);
+  rpc CreateFileWriter(StorageCreateFileWriterRequest) returns (StorageCreateFileWriterResponse);
+  rpc PublishFileProduction(StoragePublishFileProductionRequest) returns (StoragePublishFileProductionResponse);
+  rpc DeleteFileProduction(StorageDeleteFileProductionRequest) returns (StorageDeleteFileProductionResponse);
+  rpc GetFileBytes(StorageGetFileBytesRequest) returns (StorageGetFileBytesResponse);
+}

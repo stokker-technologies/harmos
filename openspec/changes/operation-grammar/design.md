@@ -1255,3 +1255,34 @@ migrated to `retries: None` in `examples/schematic/guest/src/lib.rs`, preserving
 budgets. The required formatter wrapped one Python conformance-fixture policy call.
 Protocol Rust, example descriptor and Python storage outputs were regenerated from
 `storage.proto` to expose the three capability flags; generated files were not edited by hand.
+
+### Unary Transfer Implementation
+
+Both face services own seven independent wrappers in `proto/harmos/{v1,context/v1}/storage.proto`.
+Shared domain payloads retain their owner in `harmos.storage.v1`, now declared in
+`storage_types.proto`; they do not import another face's wrappers. The storage operation
+owner declares client methods and context-only methods with shared handlers in
+`crates/harmos-operations/src/storage/`. Native operation identifiers mechanically use
+`<package>.storage.<snake_case_method>` because native identifiers are lowercase dotted
+names; the gRPC full method retains `<package>.Storage/<Method>`. Reserved declarations
+are checked against their authoritative face descriptors before host registration.
+
+`StorageManager::get_file_bytes` reads bounded immutable ranges at saved progress.
+`publish_file_production_once` adds explicit publication length/digest validation using
+the existing production, receipt and durability owners. Its public operation waits for
+the reference/receipt barrier. Existing native streaming publication fingerprints and
+stored encodings remain unchanged. Status excludes in-flight appends and observes the
+committed writer generation without creating a writer. Session status and completion
+carry retained prefix progress without inventing a primary-history position.
+
+Focused proof: `storage::unary_transfers::resume_fence_publish_and_range_across_faces`
+passes through a real socket client and a real plugin child carrier, including fenced
+resume, byte replay/conflict, grants, unsupported sessions, integrity, abandonment and
+exact ranges. Issued-position retention and complete paging/Watch remain their separate
+tasks. Streaming upload/download remain for the throughput comparison.
+
+Coupling edits: protobuf generation/reflection includes both storage faces and the
+shared payload file move (including import-only edits and generated consumers). Native
+host registration uses factory validation, matching the core worker's existing fix,
+and child fingerprinting reads native protobuf descriptors without requiring a client
+gRPC projection. README links the new transfer API; no other runtime subsystem changes.

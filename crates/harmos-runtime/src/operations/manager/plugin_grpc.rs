@@ -244,6 +244,19 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
             reason: "child calls are unary",
         });
     }
+    if let Some(protobuf) = contract.protobuf() {
+        use prost::Message;
+        let types = prost_types::FileDescriptorSet::decode(protobuf.descriptors.as_slice()).map_err(|source| Error::OperationFailed {
+            operation: entry.id().into(),
+            source: Arc::new(source),
+        })?;
+        return harmos_protocol::schema::fingerprint(entry.id(), &types, &protobuf.request, &protobuf.response).map_err(|source| {
+            Error::OperationFailed {
+                operation: entry.id().into(),
+                source: Arc::new(source),
+            }
+        });
+    }
     let binding = contract.grpc().ok_or(Error::InvalidInput {
         field: "host contract",
         reason: "child calls require the host operation's protobuf projection",

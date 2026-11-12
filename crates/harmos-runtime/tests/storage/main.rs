@@ -18,12 +18,12 @@ mod generated_capture;
 mod generated_directory;
 #[path = "generated_file_framing.rs"]
 mod generated_file_framing;
-#[path = "generated_file_mutations.rs"]
-mod generated_file_mutations;
 #[path = "generated_file_upload.rs"]
 mod generated_file_upload;
 #[path = "generated_status.rs"]
 mod generated_status;
+mod transfer_plugin;
+mod unary_transfers;
 
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;

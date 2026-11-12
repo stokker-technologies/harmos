@@ -112,8 +112,8 @@ impl Manager {
                 operation: factory.definition.id.to_string(),
                 source: Arc::new(source),
             })?;
-            factory.definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
             factory.validate().map_err(|source| match source {
+                harmos_operations::execution::ServingError::Declaration(source) => Error::OperationDeclaration { source },
                 harmos_operations::execution::ServingError::EndpointTypes => Error::InvalidInput {
                     field: "operation endpoint types",
                     reason: "endpoints differ from the declaration",
@@ -135,7 +135,6 @@ impl Manager {
             };
             let selected = defaults.get(factory.definition.id.as_str()).copied().or(lane).unwrap_or_else(Lane::default);
             let definition = factory.definition.clone();
-            definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
             let wire: Option<crate::operations::wire::Dispatch> =
                 if contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
                     Some(crate::operations::wire::dispatch_native)

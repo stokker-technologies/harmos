@@ -13,6 +13,8 @@
 /* === Modules === */
 
 pub mod clock;
+#[rustfmt::skip]
+pub mod context;
 pub mod guest;
 pub mod policy;
 pub mod service;

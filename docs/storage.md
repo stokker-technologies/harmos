@@ -405,3 +405,61 @@ bytes. Identical bytes succeed with a new request identifier without extending o
 rehashing the file; different bytes conflict. A batch crossing the accepted end
 or leaving a gap is refused. Reusing an existing request identifier still requires
 the identical request and returns its original receipt.
+
+## Unary File Transfers
+
+Clients call `harmos.v1.Storage`; plugins make child calls to
+`harmos.context.v1.Storage`. Each face owns its request and response wrappers;
+`harmos_operations::storage` and its `context` module declare them, sharing the
+StorageManager production owner and handlers. Every action requires its own
+operation/file grant. Providers without `file_sessions` and `mutation_receipts`
+refuse creation explicitly.
+
+```rust
+use harmos_operations::storage::{CreateFileProduction, AppendFileBytes,
+    GetFileProduction, CreateFileWriter, PublishFileProduction,
+    DeleteFileProduction, GetFileBytes};
+use harmos_protocol::{v1, storage};
+
+let production = operations.call_protobuf::<CreateFileProduction>(
+    v1::StorageCreateFileProductionRequest {
+        metadata: Some(metadata),
+        mutation: Some(mutation),
+    },
+).await?.production.unwrap();
+let appended = operations.call_protobuf::<AppendFileBytes>(
+    v1::StorageAppendFileBytesRequest {
+        session: production.session,
+        offset: 0,
+        data: bytes,
+        mutation: Some(next_mutation),
+    },
+).await?;
+```
+
+Obtain mutation identities from `StorageManager::mutation_window()`; retain the
+window and key when retrying a lost reply. An identical normalized request
+returns its original outcome; changing it conflicts, and expired windows refuse.
+Chunks are bounded by the configured response batch byte limit and pending write
+budget. Appends require contiguous offsets. Replaying an identical retained
+prefix under a new key succeeds; different bytes conflict without modifying it.
+`GetFileProduction` observes retained length, phase and current writer generation
+without acquiring a writer. Length reports completed backend appends; pending
+commands are excluded. `CreateFileWriter` advances the generation and fences the
+previous writer. Terminal productions have no live writer (generation zero).
+
+`PublishFileProduction` supplies the exact length and SHA-256. It validates both
+and awaits persistence of the immutable reference and its receipt before returning
+`file` and `receipt.durable_at`. Prefix/session completion does not invent a global
+history position: its receipt has `completed`, while its status carries the retained
+prefix length. Delete abandons unpublished production; losing an observer does
+neither. Published-file deletion retains its separate contract.
+
+`GetFileBytes` takes the immutable reference, offset, positive `max_bytes` and
+optional `at`; it returns `data`, `total_length`, SHA-256 and `resolved_at`.
+Absent `at` selects saved progress without requesting a flush. Repeat with the
+returned cut and the next offset; verify the complete reconstructed digest.
+An offset at the end returns an empty range, an offset beyond it refuses, and
+configuration bounds oversized ranges. Native embedders can call
+`StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Streaming
+transfers remain for the required throughput comparison before their removal.

@@ -19,6 +19,7 @@ use std::sync::atomic::Ordering;
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
+use sha2::Digest;
 
 /* === Private Functions === */
 
@@ -116,16 +117,21 @@ async fn finish_reconciles_lost() {
     let producer = f.storage.create_file_once(&key(&f, "create"), &metadata("lost-finish")).await.unwrap();
     f.storage.append_file_once(&key(&f, "append"), &producer.session, 0, (b"finished").to_vec()).await.unwrap();
     f.data.control.finish_failures.store(1, Ordering::SeqCst);
-    let request = harmos_protocol::storage::FinishFile {
+    let request = harmos_protocol::v1::StoragePublishFileProductionRequest {
         mutation: Some(key(&f, "finish").into()),
+        length: 8,
+        sha256: sha2::Sha256::digest(b"finished").to_vec(),
         session: Some(producer.session.into()),
     };
-    let result = f.runtime.operations.call_protobuf::<harmos_operations::storage::FinishFile>(request.clone()).await.unwrap();
-    let replay = f.runtime.operations.call_protobuf::<harmos_operations::storage::FinishFile>(request).await.unwrap();
+    let result = f.runtime.operations.call_protobuf::<harmos_operations::storage::PublishFileProduction>(request.clone()).await.unwrap();
+    let replay = f.runtime.operations.call_protobuf::<harmos_operations::storage::PublishFileProduction>(request).await.unwrap();
     assert_eq!(result, replay);
     assert_eq!(
         f.data.control.finish_positions.lock().unwrap().as_slice(),
-        &[result.position.as_ref().unwrap().sequence, result.position.as_ref().unwrap().sequence]
+        &[
+            result.file.as_ref().unwrap().position.as_ref().unwrap().sequence,
+            result.file.as_ref().unwrap().position.as_ref().unwrap().sequence
+        ]
     );
     f.finish().await;
 }
@@ -136,15 +142,16 @@ async fn retries_never_multiply() {
     crate::support::app::register(&f.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    let request = harmos_protocol::storage::CreateFile {
+    let request = harmos_protocol::v1::StorageCreateFileProductionRequest {
         mutation: Some(key(&f, "create").into()),
         metadata: Some(metadata("retry-budget").into()),
     };
     f.data.control.create_failures.store(5, Ordering::SeqCst);
-    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFile>(request.clone()).await.is_err());
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileProduction>(request.clone()).await.is_err());
     assert_eq!(f.data.control.create_failures.load(Ordering::SeqCst), 1);
     f.data.control.create_failures.store(0, Ordering::SeqCst);
-    let producer = f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFile>(request).await.unwrap();
+    let producer =
+        f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileProduction>(request).await.unwrap().production.unwrap();
     f.storage.abandon_file_once(&key(&f, "abandon"), &producer.session.unwrap().try_into().unwrap()).await.unwrap();
     f.finish().await;
 }

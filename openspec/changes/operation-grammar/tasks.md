@@ -50,8 +50,8 @@ The task numbers below supersede the earlier inventory: durable lag is 1.5
 - [ ] 3.2 Implement latest-durable resolution without read-triggered flush/wait, issued-position continuation and bounded paging; verify controlled-backend visibility, exact continuation and foreign/expired-position refusal, and update docs/storage.md.
 - [ ] 3.3 Implement whole-value revision-guarded Get/Set mirrors, complete-candidate validation, atomic compare/exchange, explicit create-if-absent and conflicts naming “get again and retry”. Preserve immutable schemas; large writable parts use nested resource Get/Set and their own revisions.
 - [ ] 3.4 Migrate records, samples, log lines and upload bytes to bounded immutable Append and accepted/durable receipts; verify client-owned resending, original receipts, changed payload/expired-key refusal and immutable prefixes, including identical-byte offset replay and different-byte conflicts regardless of request identity.
-- [ ] 3.5 Reuse StorageManager's production owner for CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter, PublishFileProduction and DeleteFileProduction; verify shared client/plugin resume, fencing, integrity, grants, publication and abandonment. Unsupported providers refuse explicitly.
-- [ ] 3.6 Implement bounded unary Storage.GetFileBytes with offset, maximum bytes, total length, digest, optional at and resolved_at; preserve WatchFileBytes replacement/truncation semantics and distinct directory/production watches. Migrate affected query/transfer consumers and examples in compiling slices.
+- [x] 3.5 Reuse StorageManager's production owner for CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter, PublishFileProduction and DeleteFileProduction; verify shared client/plugin resume, fencing, integrity, grants, publication and abandonment. Unsupported providers refuse explicitly.
+- [x] 3.6 Implement bounded unary Storage.GetFileBytes with offset, maximum bytes, total length, digest, optional at and resolved_at; preserve WatchFileBytes replacement/truncation semantics and distinct directory/production watches. Migrate affected query/transfer consumers and examples in compiling slices.
 - [x] 3.7 Bound flushes in bytes and split large input; prove committed byte counts with deterministic controlled-backend tests and reuse Nightly cases for lag/throughput verification.
 - [ ] 3.8 Settle issued-position/page-token lifetime, provenance, composite retention and restart behavior at this task, record it in design.md, and implement explicit expiry/unavailability without arbitrary earlier reads.
 - [ ] 3.9 Settle exact Watch opening/events/progress/gaps/resynchronization, record it in design.md, and implement one WatchRows selector for records/samples/object revisions with deterministic opening-race/filter-progress/gap proof. Keep accepted facts distinct from durable facts.
@@ -105,5 +105,11 @@ and the complete built-in mapping.
 
 ## Workflow Follow-Up
 
-- This documentation task commits only this change locally on the current branch; no implementation, lifecycle commands, push, review, merge or publication.
-- Its strict documentation validation does not close any future implementation or final-proof checkbox.
+- Storage implementation commits remain local on `feat/gp-grammar-storage`; no push or specification lifecycle commands.
+- Transfer source/proof: `storage::unary_transfers::resume_fence_publish_and_range_across_faces` exercises the socket client and plugin child carrier. Remaining read-provenance, paging and Watch work stays in 3.2, 3.8 and 3.9.
+
+- Storage generation join: the core branch currently supplies shared primitives,
+  but not face-aware generation. Storage uses `crates/harmos-protocol/codegen.rs`
+  and its generate example for both storage faces and reflection. The core generator
+  must retain these inputs, `context` Rust module, shared `storage_types.proto`
+  imports and independently owned context/client operation declarations when joined.

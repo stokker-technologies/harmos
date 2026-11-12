@@ -50,6 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("harmos.v1.rs", "v1.rs"),
         ("harmos.host.v1.rs", "host.rs"),
         ("harmos.storage.v1.rs", "storage.rs"),
+        ("harmos.context.v1.rs", "context.rs"),
         ("reflection.rs", "reflection.rs"),
         ("descriptors.bin", "descriptors.bin"),
         ("guest-descriptors.bin", "guest-descriptors.bin"),

@@ -362,7 +362,7 @@ impl OperationFactory {
             registered_id: None,
             grant: std::sync::Arc::new(|_, grant| grant),
             request_grant: std::sync::Arc::new(|request| request.downcast_ref::<O::Request>().map_or(Ok(None), O::grant)),
-            builtin: matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now"),
+            builtin: crate::reserved(O::ID),
             resources: O::RESOURCES,
             contract: std::sync::Arc::new(contract::<O>),
             native: std::sync::Arc::new(|_definition, resources, request, endpoints| {
