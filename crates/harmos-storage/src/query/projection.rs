@@ -96,6 +96,8 @@ struct StoredOutput {
     changed_keys: Vec<Vec<u8>>,
 }
 
+struct CancelWork(Cancellation);
+
 /* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -107,6 +109,12 @@ pub enum ProjectionTransform {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Drop for CancelWork {
+    fn drop(&mut self) {
+        self.0.cancel();
+    }
+}
 
 impl ProjectionDefinition {
     pub fn validate(&self) -> Result<()> {
@@ -338,15 +346,26 @@ pub async fn advance_projection(
     let (batches, changed_keys) = match &definition.transform {
         ProjectionTransform::Select(_) => (batches, vec![]),
         ProjectionTransform::TimeBuckets(plan) => {
-            let mut accumulator = super::time_buckets::Accumulator::new(plan, batches[0].schema())?;
-            for batch in &batches {
-                accumulator.push(batch, &mut || cancel.check())?;
-                if bytes.saturating_add(retained).saturating_add(accumulator.memory_bytes()) > work.bytes.get() {
-                    return Err(columnar::exhausted());
-                }
-            }
-            drop(batches);
-            let output = accumulator.finish(&mut || cancel.check())?;
+            let worker_cancel = cancel.child();
+            let guard = CancelWork(worker_cancel.clone());
+            let plan = plan.clone();
+            let context = crate::execution::Context::current();
+            let output = tokio::task::spawn_blocking(move || {
+                context.blocking(|| {
+                    let mut accumulator = super::time_buckets::Accumulator::new(&plan, batches[0].schema())?;
+                    for batch in &batches {
+                        accumulator.push(batch, &mut || worker_cancel.check())?;
+                        if bytes.saturating_add(retained).saturating_add(accumulator.memory_bytes()) > work.bytes.get() {
+                            return Err(columnar::exhausted());
+                        }
+                    }
+                    drop(batches);
+                    accumulator.finish(&mut || worker_cancel.check())
+                })
+            })
+            .await
+            .map_err(|source| Error::backend("projection worker", crate::BackendFailure::Permanent, source))??;
+            drop(guard);
             let free = work.bytes.get().saturating_sub(bytes).saturating_sub(output.get_array_memory_size());
             let budget = free / 4;
             let current = super::time_buckets::fingerprints(&output, budget)?;
@@ -466,14 +485,15 @@ pub(crate) fn page(
 }
 
 pub(crate) fn check_retired(retired: Option<u64>, requested: u64) -> Result<()> {
-    if let Some(through) = retired {
-        if requested <= through {
-            return Err(Error::Gap {
-                requested,
-                available: through.saturating_add(1),
-            });
-        }
+    if let Some(through) = retired
+        && requested <= through
+    {
+        return Err(Error::Gap {
+            requested,
+            available: through.saturating_add(1),
+        });
     }
+
     Ok(())
 }
 fn bucket_columns(plan: &super::time_buckets::TimeBucketPlan) -> Vec<String> {

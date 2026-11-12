@@ -9,13 +9,6 @@
 
 /* === Modules === */
 
-#[path = "../support/storage.rs"]
-#[allow(dead_code)]
-mod backend;
-#[path = "../support/fixture.rs"]
-#[allow(dead_code)]
-mod fixture;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -30,12 +23,14 @@ use std::{
 // Third Party Imports
 
 // Local Imports
+use crate::manager::{backend, fixture};
 use harmos_domain::model::storage::{catalog::object_schema, object_key};
 use harmos_domain::{Identified, Message, schema::Described};
 use harmos_storage::query::{
     ObjectSelection, ObjectVersions, SchemaSelection,
-    columnar::{Cancellation, ColumnKind, ColumnSource},
+    columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource},
     index::{IndexDefinition, IndexRead, scan_index},
+    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform},
 };
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
@@ -135,7 +130,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         assert_eq!(storage.compare_exchange_once(&create, None, &value).await.unwrap(), outcome);
         assert!(storage.compare_exchange_once(&create, None, &Counter { id: 1, value: 99 }).await.is_err());
         let saved = primary.open_snapshot(&initial.position).await.unwrap();
-        primary.register_index(&definition, false, work, &cancel).await.unwrap();
+        storage.register_index(&definition, false, work, &cancel).await.unwrap();
 
         // Scope Expected Tokens To Their Object And Refuse Existing Creates.
         assert!(matches!(
@@ -239,6 +234,63 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         primary.release_snapshot(&now).await.unwrap();
         primary.release_snapshot(&saved).await.unwrap();
 
+        // Use The Public Snapshot Resources Without Escaping To A Backend.
+        let held = storage.snapshot(&storage.cursor_saved()).await.unwrap();
+        let scan = IndexRead {
+            name: definition.name.clone(),
+            lower: None,
+            upper: None,
+            prefix: vec![],
+            descending: false,
+            after: None,
+            limits: work,
+            work,
+        };
+        assert_eq!(held.scan_index(&scan, &cancel).await.unwrap().entries.len(), 1);
+        let mut scan = ArrowScan {
+            source: definition.source.clone(),
+            columns: vec!["payload.value".into()],
+            predicate: None,
+            time: None,
+            start: 0,
+            after: None,
+            limits: work,
+            work,
+        };
+        let mut values = Vec::new();
+        loop {
+            let page = held.scan_arrow(&scan, &cancel).await.unwrap();
+            values.extend_from_slice(page.batch.column(0).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap().values());
+            if page.complete {
+                break;
+            }
+            scan.after = page.next;
+        }
+        assert_eq!(values, vec![*winner_value]);
+        let projection = ProjectionDefinition {
+            name: Identifier::new("counter-projection").unwrap(),
+            version: 1,
+            source: definition.source.clone(),
+            transform: ProjectionTransform::Select(vec!["payload.value".into()]),
+        };
+        let revision = storage.register_projection(&projection, false).await.unwrap();
+        held.advance_projection(&projection.name, work, &cancel).await.unwrap();
+        assert_eq!(storage.projection_status(&projection.name, revision, held.at()).await.unwrap().unwrap().rows, 1);
+        let page = storage
+            .read_projection(&ProjectionRead {
+                name: projection.name.clone(),
+                revision,
+                frontier: held.at().clone(),
+                after: 0,
+                limits: work,
+                work,
+            })
+            .await
+            .unwrap();
+        assert_eq!(page.batch.num_rows(), 1);
+        storage.retire_projection(&projection.name, revision, held.at()).await.unwrap();
+        drop(held);
+
         // A Dropped Caller Cannot Retract Work Already Admitted To The Worker.
         if !primary.capabilities().native_arrow {
             deterministic.control.block_write.store(true, Ordering::SeqCst);
@@ -273,6 +325,15 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
     let (create, existing, initial, existing_outcome, winner) = retained.unwrap();
     native.open().await.unwrap();
     let before = native.cursor_saved().await.unwrap();
+    while !native.prune_objects(&before, nz(64), &catalog()).await.unwrap() {}
+    let pruned = native.open_snapshot(&before).await.unwrap();
+    let point = ObjectPoint {
+        schema: definition.source.schema.id.clone(),
+        item: object_key(&1_u64, work.bytes).unwrap(),
+        version: ObjectVersion::Exact(initial.version.clone()),
+    };
+    assert!(matches!(native.read_object(&pruned, &point).await, Err(Error::Gap { .. })));
+    native.release_snapshot(&pruned).await.unwrap();
     let value = Counter { id: 1, value: 333 };
     let graph =
         harmos_domain::schema::graph::Schema::from_declaration(Counter::DEFINITION, &harmos_domain::config::SchemaSettings::default())

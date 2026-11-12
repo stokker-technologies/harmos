@@ -19,6 +19,7 @@ mod index_seek;
 mod manager;
 mod projection_replay;
 mod query;
+mod sqlite_files;
 mod state;
 mod time_bucket_replacement;
 

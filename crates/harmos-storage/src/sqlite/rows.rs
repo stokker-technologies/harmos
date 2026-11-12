@@ -118,10 +118,10 @@ pub(super) fn put_schema(connection: &Connection, history: &StoreHistory, value:
         })
         .optional()
         .map_err(db)?;
-    if let Some(prior) = prior {
-        if decode::<StorageSchema>(&prior)?.schema != value.schema {
-            return Err(conflict("schema definition changed without a new version"));
-        }
+    if let Some(prior) = prior
+        && decode::<StorageSchema>(&prior)?.schema != value.schema
+    {
+        return Err(conflict("schema definition changed without a new version"));
     }
     value.encoded_bytes()?;
     insert(
@@ -341,6 +341,15 @@ pub(super) fn read_objects(
     state: &State, snapshot: &BackendSnapshot, selection: &ObjectSelection, page: ScanPage,
 ) -> Result<Vec<ObjectEntry>> {
     state.snapshot(snapshot)?;
+    if selection.versions == ObjectVersions::Revisions {
+        let missing:Option<i64>=state.connection.query_row("SELECT max(position) FROM storage_object_gaps WHERE position>?1 AND position<=?2 AND (?3 IS NULL OR schema_key=?3) AND (?4 IS NULL OR item=?4)",params![integer(page.after)?,integer(snapshot.at.sequence)?,selection.schema.as_ref().map(text).transpose()?,selection.key.as_ref().map(|key|key.as_str())],|row|row.get(0)).map_err(db)?;
+        if let Some(position) = missing {
+            return Err(Error::Gap {
+                requested: page.after.saturating_add(1),
+                available: position as u64 + 1,
+            });
+        }
+    }
     let latest = if selection.versions == ObjectVersions::Latest {
         "AND position=(SELECT max(o.position) FROM storage_rows o WHERE o.kind=1 AND o.schema_id=storage_rows.schema_id AND o.item=storage_rows.item AND o.position<=?3 AND (?4 IS NULL OR o.schema_key=?4))"
     } else {
@@ -426,6 +435,24 @@ pub(super) fn read_object(state: &State, snapshot: &BackendSnapshot, point: &Obj
         }
     };
     let bytes = state.connection.query_row("SELECT data FROM storage_rows WHERE kind=1 AND schema_id=?1 AND item=?2 AND position<=?3 AND (?4 IS NULL OR position=?4) ORDER BY position DESC LIMIT 1", params![point.schema.as_str(), point.item.as_str(), integer(snapshot.at.sequence)?, position], |row| row.get::<_, Vec<u8>>(0)).optional().map_err(db)?;
+    if bytes.is_none()
+        && let Some(position) = position
+    {
+        let lost: bool = state
+            .connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM storage_object_gaps WHERE position=?1 AND schema_id=?2 AND item=?3)",
+                params![position, point.schema.as_str(), point.item.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(db)?;
+        if lost {
+            return Err(Error::Gap {
+                requested: position as u64,
+                available: position as u64 + 1,
+            });
+        }
+    }
     bytes.as_deref().map(decode).transpose()
 }
 
@@ -476,12 +503,21 @@ pub(super) fn prune(state: &mut State, through: &StorageCursor, maximum: NonZero
                 done = false;
                 break;
             }
-            remove.push(object.position.sequence);
+            remove.push((
+                object.position.sequence,
+                text(&object.value.schema)?,
+                object.value.schema.id.to_string(),
+                object.value.item.as_str().to_owned(),
+            ));
         }
     }
-    for position in &remove {
+    for (position, schema, schema_id, item) in &remove {
+        tx.execute("INSERT OR IGNORE INTO storage_object_gaps VALUES(?1,?2,?3,?4)", params![integer(*position)?, schema, schema_id, item])
+            .map_err(db)?;
         tx.execute("DELETE FROM storage_rows WHERE position=?1", [integer(*position)?]).map_err(db)?;
     }
+    tx.execute("DELETE FROM arrow_columns WHERE chunk IN(SELECT id FROM arrow_chunks c WHERE json_extract(source,'$.kind')='Objects' AND NOT EXISTS(SELECT 1 FROM storage_rows r WHERE r.kind=1 AND r.position>=c.first AND r.position<=c.last))",[]).map_err(db)?;
+    tx.execute("DELETE FROM arrow_chunks WHERE json_extract(source,'$.kind')='Objects' AND NOT EXISTS(SELECT 1 FROM storage_rows r WHERE r.kind=1 AND r.position>=arrow_chunks.first AND r.position<=arrow_chunks.last)",[]).map_err(db)?;
     if !remove.is_empty() {
         set_meta(&tx, "floor", meta(&tx, "floor")?.max(through.sequence))?;
     }

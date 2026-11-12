@@ -282,6 +282,9 @@ pub(super) fn read(state: &State, read: &ProjectionRead) -> Result<ProjectionPag
 pub(super) fn retire(state: &mut State, name: &crate::Identifier, revision: u64, through: &StorageCursor) -> Result<()> {
     state.check()?;
     state.history.check(&through.history)?;
+    if through.sequence > state.cursor()?.sequence {
+        return Err(invalid("projection retirement is ahead of durable data"));
+    }
     let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
     let changed = tx
         .execute(

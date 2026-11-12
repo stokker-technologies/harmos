@@ -195,6 +195,7 @@ pub struct Data {
     pub blobs: Mutex<BTreeMap<String, (FileReference, Vec<u8>)>>,
     snapshots: Mutex<BTreeMap<Vec<u8>, Arc<Snapshot>>>,
     next_snapshot: AtomicUsize,
+    snapshot_scope: usize,
     pub history: StoreHistory,
     pub control: Control,
     pub records: Mutex<BTreeMap<u64, StoredRecord>>,
@@ -276,6 +277,7 @@ impl Data {
 
 impl Data {
     pub fn with_catalog(catalog: ObjectCatalog, history: StoreHistory) -> Self {
+        static NEXT_SCOPE: AtomicUsize = AtomicUsize::new(1);
         Self {
             indexes: Mutex::default(),
             projections: Mutex::default(),
@@ -298,6 +300,7 @@ impl Data {
             blobs: Mutex::default(),
             snapshots: Mutex::default(),
             next_snapshot: AtomicUsize::new(1),
+            snapshot_scope: NEXT_SCOPE.fetch_add(1, Ordering::SeqCst),
             history,
             control: Control::default(),
             records: Mutex::new(BTreeMap::new()),
@@ -422,6 +425,9 @@ impl StorageBackend for Data {
     fn retire_projection<'a>(&'a self, name: &'a Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.history.check(&through.history)?;
+            if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(failure(BackendFailure::Conflict));
+            }
             self.projections.lock().unwrap().retire(name, revision, through)
         })
     }

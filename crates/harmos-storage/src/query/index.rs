@@ -131,11 +131,12 @@ impl IndexRead {
         if self.lower.as_ref().zip(self.upper.as_ref()).is_some_and(|(lower, upper)| lower >= upper) {
             return Err(columnar::invalid("index bounds must increase"));
         }
-        if let Some(after) = &self.after {
-            if after.snapshot != snapshot.token || after.revision != revision || after.plan != self.identity(definition)? {
-                return Err(conflict("index continuation snapshot, revision or plan changed"));
-            }
+        if let Some(after) = &self.after
+            && (after.snapshot != snapshot.token || after.revision != revision || after.plan != self.identity(definition)?)
+        {
+            return Err(conflict("index continuation snapshot, revision or plan changed"));
         }
+
         Ok(())
     }
     pub(crate) fn accepts(&self, entry: &IndexEntry) -> bool {

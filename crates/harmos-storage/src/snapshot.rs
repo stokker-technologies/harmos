@@ -41,7 +41,7 @@ static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 
 /* === Structs === */
 
-pub(super) struct Snapshot {
+pub struct Snapshot {
     inner: Arc<Inner>,
     id: u64,
     backend: BackendSnapshot,
@@ -75,7 +75,7 @@ impl Drop for SnapshotState {
 
 impl StorageManager {
     #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub(super) async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
+    pub async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
         let result = async {
             self.inner.primary.history().check(&at.history)?;
             let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
@@ -154,6 +154,42 @@ impl StorageManager {
 }
 
 impl Snapshot {
+    pub fn at(&self) -> &StorageCursor {
+        &self.backend.at
+    }
+
+    pub async fn scan_arrow(
+        &self, read: &crate::query::columnar::ArrowScan, cancel: &crate::query::columnar::Cancellation,
+    ) -> Result<crate::query::columnar::ArrowPage> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let future = crate::query::columnar::scan_arrow(self.inner.primary.as_ref(), &self.backend, read, cancel);
+        let page = self.inner.bounded("primary.scan_arrow", Box::pin(future)).await?;
+        self.check()?;
+        Ok(page)
+    }
+
+    pub async fn scan_index(
+        &self, read: &crate::query::index::IndexRead, cancel: &crate::query::columnar::Cancellation,
+    ) -> Result<crate::query::index::IndexPage> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let future = crate::query::index::scan_index(self.inner.primary.as_ref(), &self.backend, read, cancel);
+        let page = self.inner.bounded("primary.scan_index", Box::pin(future)).await?;
+        self.check()?;
+        Ok(page)
+    }
+
+    pub async fn advance_projection(
+        &self, name: &crate::Identifier, work: super::ReadLimits, cancel: &crate::query::columnar::Cancellation,
+    ) -> Result<u64> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let revision = crate::query::projection::advance_projection(self.inner.primary.as_ref(), &self.backend, name, work, cancel).await?;
+        self.check()?;
+        Ok(revision)
+    }
+
     #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
     pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;

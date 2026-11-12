@@ -9,10 +9,6 @@
 
 /* === Modules === */
 
-#[path = "../support/storage.rs"]
-#[allow(dead_code)]
-mod backend;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -24,6 +20,7 @@ use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use arrow_array::{BinaryArray, Float64Array, Int64Array, ListArray, RecordBatch, UInt64Array};
 
 // Local Imports
+use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
 use harmos_storage::query::{
     TableWriter,
@@ -265,7 +262,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     }
 
     // Remove A Now-Empty Bucket And Then Page More Changed Keys Than Output Rows.
-    let moved = vec![
+    let moved = [
         record(&history, &schema, 10, "a", 12, 0, 5.0),
         record(&history, &schema, 11, "e", 12, 0, 100.0),
         record(&history, &schema, 12, "b", 13, 0, 3.0),

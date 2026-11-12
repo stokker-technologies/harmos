@@ -347,19 +347,20 @@ fn time(array: &ArrayRef, row: usize) -> Result<i64> {
     Err(columnar::invalid("time bucket time has an incompatible type"))
 }
 fn scalar_key(array: &ArrayRef, row: usize, budget: usize) -> Result<Vec<u8>> {
-    if !array.is_null(row) {
-        if let Some(text) = array.as_any().downcast_ref::<StringArray>() {
-            let value = text.value(row);
-            let length = value.len().saturating_add(value.as_bytes().iter().filter(|byte| **byte == 0).count()).saturating_add(3);
-            if length > budget {
-                return Err(columnar::exhausted());
-            }
-            let mut key = Vec::new();
-            key.try_reserve_exact(length).map_err(|_| columnar::exhausted())?;
-            index::append_text(&mut key, value);
-            return Ok(key);
+    if !array.is_null(row)
+        && let Some(text) = array.as_any().downcast_ref::<StringArray>()
+    {
+        let value = text.value(row);
+        let length = value.len().saturating_add(value.as_bytes().iter().filter(|byte| **byte == 0).count()).saturating_add(3);
+        if length > budget {
+            return Err(columnar::exhausted());
         }
+        let mut key = Vec::new();
+        key.try_reserve_exact(length).map_err(|_| columnar::exhausted())?;
+        index::append_text(&mut key, value);
+        return Ok(key);
     }
+
     let value = super::transform::scalar(array.as_ref(), row)?;
     let key = index::encode_key(&[value])?;
     if key.capacity() > budget {

@@ -119,7 +119,18 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
         .optional()
         .map_err(db)?;
     let Some((chunk, _first, last, count)) = chunk else {
-        return columnar::finish_page(snapshot, read, &empty, true, 0, Vec::new(), 0, cancel);
+        return columnar::finish_page(
+            snapshot,
+            read,
+            &empty,
+            columnar::ScanEvidence {
+                complete: true,
+                bytes: 0,
+                columns: Vec::new(),
+                payload_rows: 0,
+            },
+            cancel,
+        );
     };
     let complete = last >= snapshot.at.sequence
         || !state
@@ -151,7 +162,18 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
         pruned |= maximum.is_some_and(|maximum| maximum < time.lower_ns) || minimum.is_some_and(|minimum| minimum >= time.upper_ns);
     }
     if pruned {
-        let mut page = columnar::finish_page(snapshot, read, &empty, complete, 0, Vec::new(), 0, cancel)?;
+        let mut page = columnar::finish_page(
+            snapshot,
+            read,
+            &empty,
+            columnar::ScanEvidence {
+                complete,
+                bytes: 0,
+                columns: Vec::new(),
+                payload_rows: 0,
+            },
+            cancel,
+        )?;
         if let Some(next) = &mut page.next {
             next.position = last.min(snapshot.at.sequence);
         }
@@ -207,11 +229,22 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
         batch = columnar::take(&batch, &indices)?;
     }
     let final_position = positions(&batch)?.values().iter().copied().filter(|position| *position <= snapshot.at.sequence).max();
-    let mut page = columnar::finish_page(snapshot, read, &batch, complete, bytes_read, required, 0, cancel)?;
-    if let Some(next) = &mut page.next {
-        if final_position.is_none_or(|position| next.position >= position) {
-            next.position = last.min(snapshot.at.sequence);
-        }
+    let mut page = columnar::finish_page(
+        snapshot,
+        read,
+        &batch,
+        columnar::ScanEvidence {
+            complete,
+            bytes: bytes_read,
+            columns: required,
+            payload_rows: 0,
+        },
+        cancel,
+    )?;
+    if let Some(next) = &mut page.next
+        && final_position.is_none_or(|position| next.position >= position)
+    {
+        next.position = last.min(snapshot.at.sequence);
     }
     Ok(page)
 }

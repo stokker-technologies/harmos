@@ -53,7 +53,13 @@ pub struct StorageCapabilities {
 }
 
 #[derive(Clone, Default)]
-pub struct Cancellation(Arc<AtomicBool>);
+pub struct Cancellation(Arc<CancellationState>);
+
+#[derive(Default)]
+struct CancellationState {
+    cancelled: AtomicBool,
+    parent: Option<Cancellation>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ColumnSource {
@@ -94,6 +100,13 @@ pub struct ArrowScan {
     pub work: ReadLimits,
 }
 
+pub(crate) struct ScanEvidence {
+    pub complete: bool,
+    pub bytes: usize,
+    pub columns: Vec<String>,
+    pub payload_rows: usize,
+}
+
 pub struct ArrowPage {
     pub batch: RecordBatch,
     pub next: Option<ArrowSeek>,
@@ -118,13 +131,24 @@ pub enum ColumnKind {
 /* === Implementations === */
 
 impl Cancellation {
+    pub(crate) fn child(&self) -> Self {
+        Self(Arc::new(CancellationState {
+            cancelled: AtomicBool::new(false),
+            parent: Some(self.clone()),
+        }))
+    }
+
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
+        self.0.cancelled.store(true, Ordering::Release);
     }
 
     pub fn check(&self) -> Result<()> {
-        if self.0.load(Ordering::Acquire) {
-            return Err(Error::Closing { domain: "cancelled storage query" });
+        let mut current = Some(self);
+        while let Some(cancel) = current {
+            if cancel.0.cancelled.load(Ordering::Acquire) {
+                return Err(Error::Closing { domain: "cancelled storage query" });
+            }
+            current = cancel.0.parent.as_ref();
         }
         Ok(())
     }
@@ -268,7 +292,18 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
     if flat.get_array_memory_size() > read.work.bytes.get() {
         return Err(exhausted());
     }
-    finish_page(snapshot, read, &flat, count < page.rows.get(), bytes, read.required_columns(), count, cancel)
+    finish_page(
+        snapshot,
+        read,
+        &flat,
+        ScanEvidence {
+            complete: count < page.rows.get(),
+            bytes,
+            columns: read.required_columns(),
+            payload_rows: count,
+        },
+        cancel,
+    )
 }
 
 pub(crate) fn flatten(batch: &RecordBatch) -> Result<RecordBatch> {
@@ -319,9 +354,14 @@ pub(crate) fn objects(schema: &StorageSchema, rows: &[crate::ObjectEntry]) -> Re
 }
 
 pub(crate) fn finish_page(
-    snapshot: &BackendSnapshot, read: &ArrowScan, batch: &RecordBatch, source_complete: bool, bytes_read: usize, columns_read: Vec<String>,
-    payload_rows: usize, cancel: &Cancellation,
+    snapshot: &BackendSnapshot, read: &ArrowScan, batch: &RecordBatch, evidence: ScanEvidence, cancel: &Cancellation,
 ) -> Result<ArrowPage> {
+    let ScanEvidence {
+        complete: source_complete,
+        bytes: bytes_read,
+        columns: columns_read,
+        payload_rows,
+    } = evidence;
     cancel.check()?;
     let after = read.position(snapshot)?;
     let positions = batch
@@ -411,7 +451,7 @@ pub(crate) fn finish_page(
         consumed = false;
         batch = take(&output, &indices)?;
     }
-    let complete = consumed && source_complete;
+    let complete = consumed && (source_complete || last >= snapshot.at.sequence);
     let next = (!complete).then(|| ArrowSeek {
         snapshot: snapshot.token.clone(),
         plan: read.identity().expect("validated plan"),
@@ -454,15 +494,16 @@ fn matches_row(batch: &RecordBatch, row: usize, read: &ArrowScan) -> Result<bool
         if !matches!(value, ScalarValue::Float(_) | ScalarValue::Signed(_) | ScalarValue::Unsigned(_)) {
             return Err(invalid("predicate column must be numeric"));
         }
-        if let Some(lower) = predicate.lower {
-            if value.compare(&ScalarValue::Float(lower))?.is_lt() {
-                return Ok(false);
-            }
+        if let Some(lower) = predicate.lower
+            && value.compare(&ScalarValue::Float(lower))?.is_lt()
+        {
+            return Ok(false);
         }
-        if let Some(upper) = predicate.upper {
-            if !value.compare(&ScalarValue::Float(upper))?.is_lt() {
-                return Ok(false);
-            }
+
+        if let Some(upper) = predicate.upper
+            && !value.compare(&ScalarValue::Float(upper))?.is_lt()
+        {
+            return Ok(false);
         }
     }
     Ok(true)

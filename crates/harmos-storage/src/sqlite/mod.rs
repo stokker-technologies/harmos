@@ -93,7 +93,6 @@ impl SqliteBackend {
     fn connect(mut connection: Connection, history: StoreHistory, settings: SqliteSettings, lease: Option<std::fs::File>) -> Result<Self> {
         integer(settings.chunk_rows.get() as u64)?;
         integer(settings.chunk_bytes.get() as u64)?;
-        connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;").map_err(db)?;
         let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0)).map_err(db)?;
         let tables: i64 = connection
             .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", [], |row| row.get(0))
@@ -101,6 +100,18 @@ impl SqliteBackend {
         if version != 1 && (version != 0 || tables != 0) {
             return Err(incompatible());
         }
+        if version == 1 {
+            let stored: Option<String> = connection
+                .query_row("SELECT value FROM storage_meta WHERE name='history'", [], |row| row.get(0))
+                .optional()
+                .map_err(|source| {
+                    Error::backend("open SQLite metadata; back up the original data and reset explicitly", BackendFailure::Corrupt, source)
+                })?;
+            if stored.as_deref() != Some(text(&history)?.as_str()) {
+                return Err(incompatible());
+            }
+        }
+        connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;").map_err(db)?;
         let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
         tx.execute_batch("CREATE TABLE IF NOT EXISTS storage_meta(name TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS storage_rows(position INTEGER PRIMARY KEY, kind INTEGER NOT NULL, schema_key TEXT, schema_id TEXT, item TEXT, scope TEXT, stream TEXT, time_ns INTEGER, data BLOB NOT NULL);
@@ -120,6 +131,8 @@ impl SqliteBackend {
             CREATE TABLE IF NOT EXISTS projection_pages(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,first_row INTEGER NOT NULL,rows INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(name,revision,frontier,first_row));
             CREATE TABLE IF NOT EXISTS projection_changes(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,ordinal INTEGER NOT NULL,key BLOB NOT NULL,PRIMARY KEY(name,revision,frontier,ordinal));
             CREATE TABLE IF NOT EXISTS object_receipts(position INTEGER PRIMARY KEY,fingerprint BLOB NOT NULL,outcome BLOB NOT NULL);
+            CREATE TABLE IF NOT EXISTS storage_object_gaps(position INTEGER PRIMARY KEY,schema_key TEXT NOT NULL,schema_id TEXT NOT NULL,item TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS storage_object_gap_selection ON storage_object_gaps(schema_key,item,position);
             CREATE TABLE IF NOT EXISTS object_releases(schema_key TEXT NOT NULL, item TEXT NOT NULL, through INTEGER NOT NULL, PRIMARY KEY(schema_key,item));").map_err(db)?;
         let encoded = text(&history)?;
         let stored: Option<String> =
@@ -128,7 +141,7 @@ impl SqliteBackend {
             return Err(incompatible());
         }
         tx.execute("INSERT OR IGNORE INTO storage_meta VALUES('history',?1)", [&encoded]).map_err(db)?;
-        tx.execute_batch("INSERT OR IGNORE INTO storage_meta VALUES('saved','0'); INSERT OR IGNORE INTO storage_meta VALUES('snapshot','0'); INSERT OR IGNORE INTO storage_meta VALUES('floor','0'); INSERT OR IGNORE INTO storage_meta VALUES('object_receipt_floor','0'); PRAGMA user_version=1;").map_err(db)?;
+        tx.execute_batch("INSERT OR IGNORE INTO storage_meta VALUES('saved','0'); INSERT OR IGNORE INTO storage_meta VALUES('floor','0'); INSERT OR IGNORE INTO storage_meta VALUES('object_receipt_floor','0'); PRAGMA user_version=1;").map_err(db)?;
         tx.commit().map_err(db)?;
         Ok(Self {
             history: history.clone(),
@@ -188,7 +201,6 @@ impl StorageBackend for SqliteBackend {
             native_index: true,
             durable_projections: true,
             conditional_objects: true,
-            ..StorageCapabilities::default()
         }
     }
 
@@ -240,11 +252,9 @@ impl StorageBackend for SqliteBackend {
             if at.sequence > state.cursor()?.sequence {
                 return Err(Error::NotReady { domain: "requested storage cut" });
             }
-            let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
-            let token = meta(&tx, "snapshot")?.checked_add(1).ok_or_else(|| invalid("snapshot identifier overflow"))?;
-            set_meta(&tx, "snapshot", token)?;
-            tx.commit().map_err(db)?;
-            let token = token.to_le_bytes().to_vec();
+            let mut token = vec![0; 32];
+            getrandom::fill(&mut token)
+                .map_err(|source| Error::backend("allocate storage snapshot token", BackendFailure::Permanent, source))?;
             state.snapshots.insert(token.clone(), at.clone());
             Ok(BackendSnapshot { at, token })
         }))
@@ -475,7 +485,9 @@ fn text<T: serde::Serialize>(value: &T) -> Result<String> {
     serde_json::to_string(value).map_err(|source| Error::backend("encode SQLite key", BackendFailure::Permanent, source))
 }
 fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T> {
-    serde_json::from_slice(bytes).map_err(|source| Error::backend("decode SQLite value", BackendFailure::Corrupt, source))
+    serde_json::from_slice(bytes).map_err(|source| {
+        Error::backend("decode SQLite value; back up the original data and reset explicitly", BackendFailure::Corrupt, source)
+    })
 }
 fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "SQLite storage", reason }
@@ -500,7 +512,11 @@ fn db(source: rusqlite::Error) -> Error {
         Some(rusqlite::ErrorCode::ConstraintViolation) => BackendFailure::Conflict,
         _ => BackendFailure::Permanent,
     };
-    Error::backend("SQLite storage", kind, source)
+    Error::backend(
+        if kind == BackendFailure::Corrupt { "SQLite storage; back up the original data and reset explicitly" } else { "SQLite storage" },
+        kind,
+        source,
+    )
 }
 
 /* === Tests === */

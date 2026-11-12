@@ -9,10 +9,6 @@
 
 /* === Modules === */
 
-#[path = "../support/storage.rs"]
-#[allow(dead_code)]
-mod backend;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -23,6 +19,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 // Third Party Imports
 
 // Local Imports
+use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
 use harmos_storage::query::columnar::{Cancellation, ColumnKind, ColumnSource};
 use harmos_storage::query::index::{IndexDefinition, IndexRead, encode_key, scan_index};

@@ -79,6 +79,7 @@ pub use opened_capture::OpenedCapture;
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
 pub use read_batch::{ReadBatch, ReadPages};
 pub use receipts::{MutationReceipt, MutationValue};
+pub use snapshot::Snapshot;
 pub use staging::StorageFile;
 
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};

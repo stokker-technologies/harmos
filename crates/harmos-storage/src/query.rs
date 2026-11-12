@@ -15,6 +15,7 @@ mod accumulate;
 pub mod columnar;
 mod execute;
 pub mod index;
+mod manager;
 mod object_schemas;
 mod order_stats;
 mod ordering;

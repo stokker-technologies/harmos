@@ -9,10 +9,6 @@
 
 /* === Modules === */
 
-#[path = "../support/storage.rs"]
-#[allow(dead_code)]
-mod backend;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -27,6 +23,7 @@ use std::{
 use arrow_array::{Float64Array, UInt64Array};
 
 // Local Imports
+use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
 use harmos_storage::query::columnar::{ArrowScan, Cancellation, ColumnKind, ColumnPredicate, ColumnSource, TimeBounds, scan_arrow};
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};

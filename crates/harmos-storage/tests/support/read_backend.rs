@@ -61,7 +61,9 @@ impl Data {
                 records: self.records.lock().unwrap().clone(),
                 rows: self.rows.lock().unwrap().clone(),
             };
-            let token = self.next_snapshot.fetch_add(1, Ordering::SeqCst).to_le_bytes().to_vec();
+            let token =
+                format!("{}:{}:{}", std::any::type_name::<Self>(), self.snapshot_scope, self.next_snapshot.fetch_add(1, Ordering::SeqCst))
+                    .into_bytes();
             self.snapshots.lock().unwrap().insert(token.clone(), Arc::new(snapshot));
             Ok(BackendSnapshot { at: at.clone(), token })
         })

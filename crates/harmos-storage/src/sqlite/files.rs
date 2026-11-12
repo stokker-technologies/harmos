@@ -174,6 +174,17 @@ pub(super) fn read(state: &State, snapshot: &BackendSnapshot, file: &FileReferen
     if file.position.sequence > snapshot.at.sequence {
         return Err(invalid("file is beyond the snapshot"));
     }
+    let published: bool = state
+        .connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM storage_rows WHERE kind=4 AND position=?1 AND data=?2)",
+            params![integer(file.position.sequence)?, encode(file)?],
+            |row| row.get(0),
+        )
+        .map_err(db)?;
+    if !published {
+        return Err(conflict("file reference is not published"));
+    }
     let finished: Vec<u8> = state
         .connection
         .query_row("SELECT finished FROM storage_files WHERE id=?1", [file.metadata.id.as_str()], |row| row.get(0))
