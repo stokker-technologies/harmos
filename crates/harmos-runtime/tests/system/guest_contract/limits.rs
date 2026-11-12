@@ -97,7 +97,7 @@ async fn fuel_retains_cause() {
     runtime.shutdown().await.unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn manager_bounds_wait() {
     let _report = crate::report::system();
     let runtime = runtime().await;

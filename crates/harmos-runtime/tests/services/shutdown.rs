@@ -20,7 +20,7 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
-use super::{Ledger};
+use super::Ledger;
 use super::{
     assembly, service_status,
     support::{Bank, Noted},
@@ -522,7 +522,7 @@ async fn domains_outlives_clones() {
             let events = Arc::clone(&service_events);
             async move {
                 context.ready();
-                assert!(context.rest(Duration::from_secs(60)).await);
+                context.stopping().await;
                 events.lock().expect("event lock is healthy").push("service");
                 Ok::<(), std::io::Error>(())
             }
@@ -575,7 +575,11 @@ async fn domains_outlives_clones() {
         matches!(retained.records.publish(Noted("after".to_owned())).await, Err(harmos_runtime::Error::Unavailable)),
         "a sealed journal refuses a late write rather than leaving it hanging"
     );
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position::ORIGIN, "a repeat stop reports the frontier the first one observed");
+    assert_eq!(
+        crate::support::app::shutdown(&runtime).await.unwrap(),
+        Position::ORIGIN,
+        "a repeat stop reports the frontier the first one observed"
+    );
 }
 
 /* === Tests === */

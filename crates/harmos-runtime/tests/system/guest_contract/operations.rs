@@ -156,7 +156,7 @@ async fn wrong_catalog_refused() {
 }
 
 // A Pending Guest Stop Retains Cleanup After Its Deadline
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn shutdown_retains_cleanup() {
     let _report = crate::report::system();
     let runtime = runtime().await;

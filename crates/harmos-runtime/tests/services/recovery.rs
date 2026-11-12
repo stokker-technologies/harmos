@@ -106,7 +106,7 @@ async fn stop_cleanup(
             lease.settle().await
         }
         CleanupRequest::Definition => runtime.operations.unregister_resident("retained-cleanup").await,
-        CleanupRequest::Runtime => crate::support::app::shutdown(&runtime).await.map(|_| ()),
+        CleanupRequest::Runtime => crate::support::app::shutdown(runtime).await.map(|_| ()),
     }
 }
 
@@ -249,7 +249,12 @@ async fn timeout_retains_cleanup() {
     for (panic_first, request) in [false, true].into_iter().flat_map(|panic_first| {
         [CleanupRequest::Instance, CleanupRequest::Definition, CleanupRequest::Runtime].map(|request| (panic_first, request))
     }) {
-        let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+        let clock = crate::support::clock::Controlled::new();
+        let runtime = crate::support::app::launch::<App>((), (), |setup| {
+            setup.settings().clock(clock.source());
+        })
+        .await
+        .unwrap();
         let (release, gate) = tokio::sync::oneshot::channel();
         let gate = Arc::new(Mutex::new(Some(gate)));
         let factories = Arc::new(AtomicUsize::new(0));
@@ -284,7 +289,13 @@ async fn timeout_retains_cleanup() {
             .unwrap();
         let lease = runtime.operations.submit_resident("retained-cleanup").await.unwrap();
         lease.ready().await.unwrap();
-        assert!(stop_cleanup(&runtime, request, &lease).await.is_err());
+        {
+            let stopping = stop_cleanup(&runtime, request, &lease);
+            tokio::pin!(stopping);
+            assert!(crate::support::events::until(stopping.as_mut(), clock.scheduled(Duration::from_millis(10))).await.is_ok());
+            clock.advance(Duration::from_millis(10));
+            assert!(stopping.await.is_err());
+        }
         assert_eq!(lease.status().phase(), OperationPhase::Finalizing);
         assert_eq!(lease.status().outcome(), Some(OperationOutcome::TimedOut));
         assert!(lease.status().cleanup_pending());

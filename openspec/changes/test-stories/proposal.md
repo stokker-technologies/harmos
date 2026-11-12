@@ -1,8 +1,8 @@
 # Test Stories
 
-Status: agreed with the owner on 2026-11-10; implementation has not started and waits for the
-owner's go. Independent of `grpc-plugins`, which rewrites the sidecar hosting and transport tests
-under the same convention.
+Status: agreed with the owner on 2026-11-10 and implementing under the combined `grpc-plugins`
+marker. Source and focused proof are tracked separately in `tasks.md`; tooling ownership covers
+the relocated binding-consumer task.
 
 ## Why
 

@@ -16,19 +16,17 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 // Third Party Imports
 use tokio::sync::Notify;
-use tokio::time::Instant;
 
 // Local Imports
 use super::backend::{Control, Data, Recovery, history};
 use super::fixture::{Fixture, config, start};
-use harmos_storage::execution::{Execution, Sleep};
 use harmos_storage::{FileMetadata, FileSession, Identifier, MutationId, MutationValue, StagedFile, StorageBackends, StorageManager};
 
 /* === Constants === */
@@ -36,6 +34,7 @@ use harmos_storage::{FileMetadata, FileSession, Identifier, MutationId, Mutation
 /* === Macros === */
 
 thread_local! {
+    static CLOCK: RefCell<super::clock::Controlled> = RefCell::new(super::clock::Controlled::new());
     static ELAPSED: Cell<Duration> = const { Cell::new(Duration::ZERO) };
 }
 
@@ -90,14 +89,6 @@ impl Work {
 
 /* === Private Functions === */
 
-fn now() -> Instant {
-    Instant::now() + ELAPSED.with(Cell::get)
-}
-
-fn sleep(duration: Duration) -> Sleep {
-    Box::pin(tokio::time::sleep(duration))
-}
-
 async fn fixture() -> Fixture {
     set_elapsed(0);
     let store_history = history();
@@ -114,7 +105,7 @@ async fn fixture() -> Fixture {
             state: recovery.clone(),
         },
         settings,
-        Execution::at(std::time::SystemTime::UNIX_EPOCH, now, sleep),
+        CLOCK.with(|clock| clock.borrow().source()),
     )
     .unwrap();
     start(&storage).await;
@@ -123,7 +114,16 @@ async fn fixture() -> Fixture {
 
 fn set_elapsed(seconds: u64) {
     let elapsed = Duration::from_secs(seconds);
-    ELAPSED.with(|clock| clock.set(elapsed));
+    ELAPSED.with(|previous| {
+        CLOCK.with(|clock| {
+            if elapsed.is_zero() {
+                *clock.borrow_mut() = super::clock::Controlled::new();
+            } else {
+                clock.borrow().advance(elapsed - previous.get());
+            }
+        });
+        previous.set(elapsed);
+    });
 }
 
 fn metadata(id: &str) -> FileMetadata {
@@ -156,7 +156,7 @@ async fn admitted_create_completes() {
     {
         let original = f.storage.create_file_once(&mutation, &metadata);
         tokio::pin!(original);
-        assert!(super::fixture::events::until(original.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
+        assert!(super::events::until(original.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
         let staged = f.data.staged.lock().unwrap().len();
         assert_eq!(staged, 1, "the backend staged the file before the clock crosses expiry");
         set_elapsed(301);
@@ -196,9 +196,13 @@ async fn attached_mutations_complete() {
         let (blocked, entered, release) = work.gate(&f.data.control);
         blocked.store(true, Ordering::SeqCst);
         let mut original = Box::pin(work.call(&f.storage, &mutation, &session, &file));
-        assert!(super::fixture::events::until(original.as_mut(), entered.notified()).await.is_ok());
+        assert!(super::events::until(original.as_mut(), entered.notified()).await.is_ok());
         let mut attached = Box::pin(work.call(&f.storage, &mutation, &session, &file));
-        assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(attached.as_mut(), context).is_pending())).await, "{work:?}");
+        assert!(
+            std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(attached.as_mut(), context).is_pending()))
+                .await,
+            "{work:?}"
+        );
         drop(original);
 
         set_elapsed(301);
@@ -233,7 +237,7 @@ async fn completed_owner_retains() {
     let first_metadata = metadata("first");
     f.data.control.block_create.store(true, Ordering::SeqCst);
     let mut waiting = Box::pin(f.storage.create_file_once(&first, &first_metadata));
-    assert!(super::fixture::events::until(waiting.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
+    assert!(super::events::until(waiting.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
 
     f.data.control.block_create.store(false, Ordering::SeqCst);
     f.data.control.create_release.notify_one();
@@ -262,7 +266,7 @@ async fn cancelled_owner_reclaims() {
     let original_metadata = metadata("cancelled");
     f.data.control.block_create.store(true, Ordering::SeqCst);
     let mut original = Box::pin(f.storage.create_file_once(&mutation, &original_metadata));
-    assert!(super::fixture::events::until(original.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
+    assert!(super::events::until(original.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
     drop(original);
 
     set_elapsed(301);
@@ -288,7 +292,7 @@ async fn admitted_failure_visible() {
     f.data.control.block_create.store(true, Ordering::SeqCst);
     f.data.control.fail_create.store(true, Ordering::SeqCst);
     let mut original = Box::pin(f.storage.create_file_once(&mutation, &metadata));
-    assert!(super::fixture::events::until(original.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
+    assert!(super::events::until(original.as_mut(), f.data.control.create_entered.notified()).await.is_ok());
 
     set_elapsed(301);
     f.storage.mutation_window().unwrap();

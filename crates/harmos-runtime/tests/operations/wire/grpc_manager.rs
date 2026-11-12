@@ -36,11 +36,11 @@ use tonic::{
 
 // Local Imports
 use super::app::App;
+use harmos_runtime::Error;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::grpc::{Codec, DecodeSettings, EncodeSettings};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamSettings};
-use harmos_runtime::{Error};
 
 /* === Constants === */
 
@@ -98,7 +98,7 @@ struct ExternalAccess {
     mode: Arc<std::sync::atomic::AtomicUsize>,
 }
 struct Sessions;
-struct PendingAuthentication;
+struct PendingAuthentication(Arc<tokio::sync::Notify>);
 struct DiscoveryAccess;
 #[derive(harmos_runtime::Message, Debug, Default)]
 #[harmos_path(harmos_runtime)]
@@ -301,7 +301,10 @@ impl Middleware for DiscoveryAccess {
 impl Authenticator for PendingAuthentication {
     type Principal = Principal;
     fn authenticate<'a>(&'a self, _: &'a Invocation) -> Authentication<'a, Principal> {
-        Box::pin(std::future::pending())
+        Box::pin(async move {
+            self.0.notify_one();
+            std::future::pending().await
+        })
     }
 }
 impl Middleware for Trace {

@@ -48,6 +48,7 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 
 #[derive(Default)]
 pub struct Control {
+    pub date: Mutex<Option<std::time::SystemTime>>,
     pub block_chunk_file: Mutex<Option<String>>,
     pub permanent_chunk_file: Mutex<Option<String>>,
     pub chunk_active: Mutex<BTreeMap<String, usize>>,

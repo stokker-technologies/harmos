@@ -64,7 +64,7 @@ impl Data {
     pub(super) fn fixture_save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
-            let now = std::time::SystemTime::now();
+            let now = self.control.date.lock().unwrap().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
             saved.retain(|_, receipt| receipt.expires_at > now);
             for receipt in receipts {
                 if receipt.expires_at <= now {
@@ -85,7 +85,7 @@ impl Data {
     pub(super) fn fixture_recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
-            saved.retain(|_, receipt| receipt.expires_at > std::time::SystemTime::now());
+            saved.retain(|_, receipt| receipt.expires_at > self.control.date.lock().unwrap().unwrap_or(std::time::SystemTime::UNIX_EPOCH));
             let mut newest: Vec<_> = saved.values().collect();
             newest.sort_by_key(|receipt| std::cmp::Reverse(receipt.expires_at));
             let mut bytes = std::mem::size_of::<Vec<MutationReceipt>>();

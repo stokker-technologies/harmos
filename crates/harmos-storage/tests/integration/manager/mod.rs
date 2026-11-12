@@ -16,7 +16,12 @@
 pub(crate) mod backend;
 mod batching;
 mod cancellation;
+#[path = "../../support/clock.rs"]
+#[allow(dead_code, reason = "shared with runtime deadline stories")]
+mod clock;
 mod cursors;
+#[path = "../../support/events.rs"]
+pub(crate) mod events;
 mod exhaustion;
 mod file_ranges;
 mod files;

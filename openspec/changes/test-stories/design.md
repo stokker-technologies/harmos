@@ -45,20 +45,20 @@ async fn undo_and_redo_follow_commits() -> Result<(), TestError> {
 
 | Scenario | Tests Today | Location |
 | --- | --- | --- |
-| Transient retries run three attempts | 3 | `R/tests/operations/execution.rs:72`, `policy.rs` transient success, `outcomes.rs:265`; retain distinct policy and child settlement facets in the story |
-| Authored request completes, cancels, panics | 3 | `R/tests/operations/wire/authored.rs:137,148,160`; keep distinct listed-declaration cases |
-| Commit, undo, redo and availability | 4 | `R/tests/state/undo.rs`: undo/redo append, availability, read-only queries and forward-commit invalidation; preserve conflict and principal scenarios |
-| Stored waveform is resumed, summarized and downsampled | 5 | `S/tests/integration/manager/nominal.rs:194,223,237,263,295`; retain file and native read stories separately |
-| Mutation receipts prevent duplicate effects | 3 | `R/tests/storage/manager/production.rs:61,121,165`; replay, lost response and cancelled append; retain exclusive writes and integrity cases |
+| Transient retries run three attempts | 3 | `R/tests/operations/retries.rs`; identity, fixed backoff, parent/child attempt settlement share one story |
+| Authored request completes, cancels, panics | 3 | `R/tests/operations/wire/authored.rs`; distinct declaration facets remain in `authored_listed.rs` |
+| Commit, undo, redo and availability | 4 | `R/tests/state/undo_redo.rs`; conflict, barrier and principal scenarios remain in `undo.rs` |
+| Stored waveform is resumed, summarized and downsampled | 5 | `S/tests/integration/manager/nominal.rs`; `file_ranges.rs` and `native_stream_reads.rs` are separate journeys; shared mechanics in `tests/support/nominal.rs` |
+| Mutation receipts prevent duplicate effects | 3 | `R/tests/storage/manager/receipts.rs`; exclusive writes and integrity cases remain in `production.rs` |
 | Generated binding consumers | 8, generating two packages each | `P/tests/acceptance/bindings.rs:450..511`; moved to tooling owner, generate once |
 
 ## Workloads That Move to Benchmarks
 
 | Test | Workload | Keeps as a Test |
 | --- | --- | --- |
-| `S/tests/integration/manager/mapping.rs:237` | 40,000 and 1,000,000 rows with timing | The 4,099-row case at line 231, without timing |
-| `S/tests/integration/state/seven_day_recovery_seeks_and_compacts_without_rescanning_prefixes.rs:67` | 10,080 journal entries | A history just large enough to cross a page and a compaction boundary |
-| `S/tests/integration/exact_quantile_spill.rs:46` | 4,101 values by 101 percentiles | One small forced-spill case |
+| `S/tests/integration/manager/mapping.rs` and `S/benches/query/projection.rs` | 40,000 and 1,000,000 rows with timing | The 4,099-row correctness story, without timing |
+| `S/tests/integration/state/recovery_seeks_and_compacts_across_page_boundaries.rs` | 10,080 journal entries | 32 entries crossing a 31-entry page; a 10-entry tail survives compaction and crash restoration |
+| `S/tests/integration/exact_quantile_spill.rs:46` | 4,101 values by 101 percentiles | Small signed/extreme-value parity; 1,025 inputs cross the cancellation-check boundary |
 
 ## Real Time
 
@@ -67,13 +67,13 @@ Replaced by a controlled clock or an awaited event:
 | Location | Dependency |
 | --- | --- |
 | `R/tests/operations/wire/grpc_network.rs:821,894` | Real 1 s and 50 ms listener deadlines |
-| `R/tests/operations/wire/dynamic.rs` (renamed runtime-defined declarations) | 1 ms retry backoff and real expiry |
+| `R/tests/operations/wire/dynamic.rs` (renamed runtime-defined declarations) | The old retry/expiry story is gone; current dynamic tests exercise codecs synchronously |
 | Removed sidecar tests; current `R/tests/plugin_grpc/deadline.rs` and clock stories use host clock | Operations reach real policy deadlines |
-| `R/tests/services/recovery.rs:248` | 10 ms stop timeout |
-| `R/tests/services/shutdown.rs:508` | A 60 s rest raced against shutdown |
-| `S/tests/support/file_backend.rs:67,88` | Receipt expiry from the system clock |
-| `S/tests/integration/manager/mapping.rs:215` | Elapsed time in a correctness helper |
-| `R/tests/system/guest_contract/limits.rs:101`, `operations.rs:153` | Real guest deadline expiry |
+| `R/tests/services/recovery.rs::timeout_retains_cleanup` | Controlled clock waits for timer registration before advancing the unchanged 10 ms stop budget |
+| `R/tests/services/shutdown.rs::domains_outlives_clones` | Awaits `context.stopping()` |
+| `S/tests/support/file_backend.rs` | Fixture-owned date; restart story checks retention before expiry and removal at expiry |
+| `S/tests/integration/manager/mapping.rs` | Timing is removed; large projections live under benches |
+| `R/tests/system/guest_contract/limits.rs::manager_bounds_wait`, `operations.rs::shutdown_retains_cleanup` | Paused Tokio clock; native proof requires rebuilt guest fixtures |
 
 Kept as guards only: the notification, directory, batching, observer-demand and process bounds
 that stop a hung test (`R/src/guest/host/plugin/scope.rs`, `S/tests/integration/directory.rs:53,172`,
@@ -86,15 +86,14 @@ that stop a hung test (`R/src/guest/host/plugin/scope.rs`, `S/tests/integration/
 | --- | --- |
 | `R/tests/operations/lanes.rs`: lane name/capacity readback tests | Repeat declared names and capacities; admission is tested at lines 130 and 136 |
 | `R/tests/state/managed.rs:111` | Reads back the value it set through a clone without mutating either handle |
-| `crates/harmos-operations/src/lib.rs`: fixed catalog-size assertion | Pins the catalog to 30 entries; uniqueness moves into a story |
+| `crates/harmos-operations/src/lib.rs` unit inventory test | Fixed count was already gone; uniqueness and nonzero fingerprints now belong to `R/tests/operations/host.rs::builtin_controls_instance` |
 | `crates/harmos-guest/tests/kit/main.rs:75` | Pins fixture names and literal timeouts; useful checks move into a guest story |
 
 ## Deferred Scope
 
 Relaxing System test serialization and splitting the largest crates are deferred until the
 removals have landed and can be measured. Keep current serial System execution while rewriting
-stories. The host-clock measurement fixture now uses the captured host clock; the other listed
-real-time dependencies still need individual inspection. JSON-backend-only workloads are removed
+stories. The host-clock measurement fixture now uses the captured host clock; the remaining guest proof is tracked separately from native story proof. JSON-backend-only workloads are removed
 by `facility-trim`, not recreated as benchmarks or counted as completed story consolidation.
 
 ## Current Crate Inventory
@@ -120,7 +119,18 @@ are visible in stories. Backend stages use `events::until` with fixture notifica
 scheduler-turn loops and duplicated pending helpers are removed. Immediate pending observations
 at in-process admission boundaries remain visible checks while the fixture holds the exact
 resource being contested; they do not infer progress from time or scheduler yields.
+Mutation-window expiry uses this same source, with no live monotonic-time offset.
 The manual test clock is a test-only `Clock` implementation using watch notifications. It can
 advance deadlines while a deliberately stalled handler remains active, whereas the production
 virtual clock correctly refuses to advance during active external work. Clock accounting itself
 continues to use the existing virtual-clock stories.
+
+No product test seam was added. The operations library edit removes an inline test only; runtime and storage clocks/events are test-support code.
+
+## Remaining Native Guest Proof
+
+Rebuilt sandbox initialization consumes the existing fuel budget in
+`harmos-operations/src/inventory/publications.rs::validate_match_with_settings` while decoding
+stream metadata. Both guest deadline stories stop before their deadline assertions; task 4.2
+remains open. Repair initialization with its runtime/operations owner, then rerun both exact
+System stories. Raising fuel or time budgets and skipping the stories are outside this change.

@@ -39,25 +39,42 @@
 
 Counts are Rust `#[test]` / `#[tokio::test]` declarations, not executed lane counts.
 Lines include test trees (fixtures/support included) and inline test modules; benches excluded.
-SDK derive is counted separately from SDK. Native Linux proof remains open.
+SDK derive is counted separately from SDK. Shared source is counted once in its owning crate.
+Native Linux proof and full lane counts remain open.
 
 | Crate | Tests Before | Test Lines Before | Tests After | Test Lines After |
 | --- | ---: | ---: | ---: | ---: |
-| harmos-domain | 86 | 4053 | pending | pending |
-| harmos-guest | 20 | 3514 | pending | pending |
-| harmos-operations | 41 | 1291 | pending | pending |
-| harmos-protocol | 3 | 422 | pending | pending |
-| harmos-runtime | 594 | 47868 | pending | pending |
-| harmos-storage | 171 | 10335 | pending | pending |
-| harmos | 10 | 801 | pending | pending |
-| harmos-sdk-derive | 7 | 1856 | pending | pending |
-| schematic-app | 1 | 307 | pending | pending |
-| schematic-storage | 6 | 1745 | pending | pending |
-
-## Locked Inventory
-
-- [ ] 6.2 Record focused Windows proof and final requested command results; preserve 6.1 for Linux/Windows lane proof.
+| harmos-domain | 86 | 4053 | 86 | 4053 |
+| harmos-guest | 20 | 3514 | 19 | 3501 |
+| harmos-operations | 41 | 1291 | 40 | 1280 |
+| harmos-protocol | 3 | 422 | 3 | 422 |
+| harmos-runtime | 594 | 47868 | 584 | 47819 |
+| harmos-storage | 171 | 10335 | 166 | 10532 |
+| harmos | 10 | 801 | 10 | 801 |
+| harmos-sdk-derive | 7 | 1856 | 7 | 1856 |
+| schematic-app | 1 | 307 | 1 | 307 |
+| schematic-storage | 6 | 1745 | 6 | 1745 |
 
 ## Ownership Follow-Up
 
-Task 3.4 now targets `tools/packaging/tests/acceptance/bindings.rs`, owned by the concurrent tooling worker. Its source and proof require that owner’s handoff.
+Task 3.4 targets `tools/packaging/tests/acceptance/bindings.rs::export`, owned by the concurrent tooling worker. Each consumer still regenerates both packages; source and proof require that owner’s handoff.
+
+Task 4.2 has controlled-clock/event source in place. Its two guest System stories fail during
+`harmos.initialize`, before the deadline assertions, with `wasm trap: all fuel consumed by WebAssembly`.
+The failure persists after rebuilding Tests and joining fixtures. The stack reaches
+`crates/harmos-operations/src/inventory/publications.rs::validate_match_with_settings` while decoding
+`StreamField` metadata. This is a production initialization repair, outside the authorized
+product test-seam edits. Existing fuel, deadline and System serialization settings are retained.
+Repair and successful native guest proof remain required before 4.2 can close.
+
+## Windows Focused Measurements for 6.1
+
+| Scope | Current Tests Passed | Current Tests Failed |
+| --- | ---: | ---: |
+| Runtime Integration | 11 | 0 |
+| Storage Integration | 15 | 0 |
+| Guest ABI Integration | 1 | 0 |
+| Runtime Guest System | 0 | 2 |
+
+Every rewritten story was selected by its exact name. These are unique focused selections,
+not full lane counts. No Linux or full test lane was run. The guest failures remain repair obligations.

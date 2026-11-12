@@ -144,7 +144,9 @@ async fn builtin_grpc_roundtrip() {
         .register_operation(parked_contract_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let paths = runtime
         .operations
         .grpc_methods()
@@ -1051,77 +1053,83 @@ async fn configured_tls_serves() {
 
 #[tokio::test]
 async fn observes_cancel_deadline() {
-    use harmos_runtime::grpc::OutputEnvelope;
-    #[derive(harmos_runtime::Message, Debug, Default)]
-    #[harmos_path(harmos_runtime)]
-    #[derive(harmos_runtime::Request)]
-    #[request(response = Reply, output = Reply)]
-    #[derive(Clone)]
-    struct NativeHold {}
+    tokio::time::timeout(Duration::from_secs(10), async {
+        use harmos_runtime::grpc::OutputEnvelope;
+        #[derive(harmos_runtime::Message, Debug, Default)]
+        #[harmos_path(harmos_runtime)]
+        #[derive(harmos_runtime::Request)]
+        #[request(response = Reply, output = Reply)]
+        #[derive(Clone)]
+        struct NativeHold {}
 
-    static NATIVE_HOLD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
-        harmos_runtime::operations::WireDeclaration::request::<NativeHold>("grpc.hold", WHO_POLICY)
-            .visibility(harmos_runtime::operations::Visibility::Public)
-            .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Hold"));
+        static NATIVE_HOLD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+            harmos_runtime::operations::WireDeclaration::request::<NativeHold>("grpc.hold", WHO_POLICY)
+                .visibility(harmos_runtime::operations::Visibility::Public)
+                .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Hold"));
 
-    const NATIVE_HOLD_OPERATION: harmos_runtime::operations::OperationSpec<NativeHold> =
-        harmos_runtime::operations::OperationSpec::<NativeHold>::new(&NATIVE_HOLD_DESCRIPTION);
-    async fn native_hold_handler(
-        _request: NativeHold, ctx: harmos_runtime::operations::FunctionContext<NativeHold>,
-    ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
-        behavior.check(false)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
-        let context = host.borrow();
-        let output = ctx.streams();
-        let _guard = HoldingGuard(behavior);
-        let result: ::core::result::Result<Reply, Error> = async move {
-            let actor = context.context().require::<Principal>()?.0.clone();
-            output.send_with(128, || Ok(Reply { actor })).await?;
-            std::future::pending().await
+        const NATIVE_HOLD_OPERATION: harmos_runtime::operations::OperationSpec<NativeHold> =
+            harmos_runtime::operations::OperationSpec::<NativeHold>::new(&NATIVE_HOLD_DESCRIPTION);
+        async fn native_hold_handler(
+            _request: NativeHold, ctx: harmos_runtime::operations::FunctionContext<NativeHold>,
+        ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+            let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+            behavior.check(false)?;
+            let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+            let context = host.borrow();
+            let output = ctx.streams();
+            let _guard = HoldingGuard(behavior);
+            let result: ::core::result::Result<Reply, Error> = async move {
+                let actor = context.context().require::<Principal>()?.0.clone();
+                output.send_with(128, || Ok(Reply { actor })).await?;
+                std::future::pending().await
+            }
+            .await;
+            result.map(::core::convert::Into::into)
         }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
 
-    fn native_hold_operation()
-    -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
-        harmos_runtime::operations::OperationFactory::function(
-            NATIVE_HOLD_OPERATION,
-            const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
-            native_hold_handler,
-            |_| harmos_runtime::operations::FailureKind::Permanent,
-        )
-    }
+        fn native_hold_operation()
+        -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+            harmos_runtime::operations::OperationFactory::function(
+                NATIVE_HOLD_OPERATION,
+                const {
+                    &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()]
+                },
+                native_hold_handler,
+                |_| harmos_runtime::operations::FailureKind::Permanent,
+            )
+        }
 
-    for expired in [false, true] {
-        let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-        let runtime = crate::support::app::launch::<App>((), (), |setup| {
-            setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
-        })
-        .await
-        .unwrap();
-        runtime
-            .operations
-            .register_operation(native_hold_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        for expired in [false, true] {
+            let clock = crate::support::clock::Controlled::new();
+            let stopped = Arc::new(tokio::sync::Semaphore::new(0));
+            let runtime = crate::support::app::launch::<App>((), (), |setup| {
+                setup.settings().clock(clock.source());
+                setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
+            })
             .await
             .unwrap();
-        let trace = Arc::new(Mutex::new(Vec::new()));
-        runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
-        runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
-        let mut settings = settings();
-        if expired {
-            settings.request_timeout = Duration::from_secs(1);
-        }
-        let attached = runtime.grpc().attach(settings).await.unwrap();
-        let address = attached.local_addr();
-        let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
-        let mut client = tonic::client::Grpc::new(channel);
-        client.ready().await.unwrap();
-        let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Ask {}));
-        request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
-        let (decode, encode) = limits();
-        let response = client
+            runtime
+                .operations
+                .register_operation(native_hold_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+                .await
+                .unwrap();
+            let trace = Arc::new(Mutex::new(Vec::new()));
+            runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
+            runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
+            let mut settings = settings();
+            if expired {
+                settings.request_timeout = Duration::from_secs(1);
+            }
+
+            let attached = runtime.grpc().attach(settings).await.unwrap();
+            let address = attached.local_addr();
+            let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
+            let mut client = tonic::client::Grpc::new(channel);
+            client.ready().await.unwrap();
+            let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Ask {}));
+            request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
+            let (decode, encode) = limits();
+            let response = client
             .server_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
@@ -1132,27 +1140,43 @@ async fn observes_cancel_deadline() {
             )
             .await
             .unwrap();
-        let mut stream = response.into_inner();
-        assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
-        assert!(trace.lock().unwrap().is_empty());
-        if expired {
-            let status = stream.message().await.err().expect("stream deadline must fail");
-            assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
-            assert!(status.message().contains("grpc.hold"), "{status}");
+            let mut stream = response.into_inner();
+
+            assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
+            assert!(trace.lock().unwrap().is_empty());
+
+            if expired {
+                // Streaming Uses Its Operation Idle Budget After Authentication.
+                clock.advance(WHO_POLICY.timeout);
+                let status = stream.message().await.err().expect("stream deadline must fail");
+                assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+                assert!(status.message().contains("grpc.hold"), "{status}");
+            }
+
+            drop(stream);
+
+            (stopped.acquire()).await.unwrap().forget();
+            assert_eq!(*trace.lock().unwrap(), [if expired { tonic::Code::DeadlineExceeded } else { tonic::Code::Cancelled }]);
+
+            crate::support::app::shutdown(&runtime).await.unwrap();
         }
-        drop(stream);
-        (stopped.acquire()).await.unwrap().forget();
-        assert_eq!(*trace.lock().unwrap(), [if expired { tonic::Code::DeadlineExceeded } else { tonic::Code::Cancelled }]);
-        crate::support::app::shutdown(&runtime).await.unwrap();
-    }
+    })
+    .await
+    .expect("listener story hang guard");
 }
 
 #[tokio::test]
 async fn authentication_bounded_operation() {
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let clock = crate::support::clock::Controlled::new();
+    let authenticating = Arc::new(tokio::sync::Notify::new());
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        setup.settings().clock(clock.source());
+    })
+    .await
+    .unwrap();
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
-    runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(PendingAuthentication)))).unwrap();
+    runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(PendingAuthentication(authenticating.clone()))))).unwrap();
     // No Handler Is Registered: Authentication Must Terminate Before Dispatch.
     runtime
         .grpc()
@@ -1165,7 +1189,11 @@ async fn authentication_bounded_operation() {
     let attached = runtime.grpc().attach(settings).await.unwrap();
     let address = attached.local_addr();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
-    let result = (call(channel, Some("Bearer alice"))).await;
+    let calling = call(channel, Some("Bearer alice"));
+    tokio::pin!(calling);
+    assert!(crate::support::events::until(calling.as_mut(), authenticating.notified()).await.is_ok());
+    clock.advance(Duration::from_millis(50));
+    let result = calling.await;
     assert_eq!(result.unwrap_err().code(), tonic::Code::DeadlineExceeded);
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::DeadlineExceeded]);
     crate::support::app::shutdown(&runtime).await.unwrap();
