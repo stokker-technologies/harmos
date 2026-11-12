@@ -11,13 +11,13 @@
 
 // Standard Library Imports
 use std::borrow::Cow;
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 
 // Third Party Imports
 
 // Local Imports
 use super::{Fixture, config};
-use harmos_operations::storage::Query;
+use harmos_operations::storage::ListRows;
 use harmos_runtime::Identifier;
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
@@ -120,20 +120,23 @@ async fn schema_registry_roundtrip() {
         transforms: vec![],
         slice: RowSlice { offset: 0, limit: None },
     };
-    let mut response = f
+    let query: harmos_protocol::storage::Query = query.try_into().unwrap();
+    let response = f
         .runtime
         .operations
-        .download_protobuf::<Query>(
-            query.try_into().unwrap(),
-            harmos_runtime::operations::StreamSettings {
-                items: NonZeroUsize::MIN,
-                bytes: NonZeroUsize::new(64 * 1024).unwrap(),
-            },
-        )
+        .call_protobuf::<ListRows>(harmos_protocol::v1::StorageListRowsRequest {
+            source: query.source,
+            at: None,
+            transforms: query.transforms,
+            page: None,
+        })
+        .await
         .unwrap();
+    assert_eq!(response.resolved_at.as_ref().unwrap().positions[0].sequence, at.sequence);
+    assert!(response.next_page_token.is_empty());
     let mut announced = false;
     let mut rows = 0;
-    while let Some(output) = response.next().await.unwrap() {
+    for output in response.rows {
         match &QueryArrow::try_from(output).unwrap() {
             QueryArrow::Schema(_) => {
                 assert!(!announced);
@@ -145,9 +148,6 @@ async fn schema_registry_roundtrip() {
             }
         }
     }
-    let completed = response.join().await.unwrap();
-    assert_eq!(completed.at, Some(at.into()));
-    assert_eq!(completed.rows, 1);
     assert_eq!(rows, 1);
     let persisted = f.data.schemas.lock().unwrap().values().next().unwrap().clone();
     let expected: Schema = request.schema.unwrap().graph.unwrap().try_into().unwrap();

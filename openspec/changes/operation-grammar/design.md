@@ -1366,3 +1366,31 @@ while each declaration and grant retains its own identity. Retired RegisterIndex
 RegisterProjection operations, request types and SDK bindings are removed. Native
 bench/provider consumers now supply expected revisions. Object/schema mirrors and
 issued-cut retention remain separate open work.
+
+### Issued Storage Cut Lifetime
+
+Storage read cuts retain existing durable provider snapshots through the existing
+`SavedSnapshots` owner. Omitted `at` immediately selects the current saved position,
+without requesting persistence. A supplied complete cut must match a retained tuple
+that this owner returned. The existing consumer-supplied saved-read capacity bounds
+issuance: oldest idle automatic cuts may expire; explicit CreateSnapshot leases stay
+pinned until DeleteSnapshot or storage retirement. Active readers retain their image.
+Failure/cancellation of one page does not discard an explicit lease. Capacity refusal
+is explicit when pinned or active readers occupy every slot.
+
+ListRows tokens are HMAC-authenticated with an owner-local key and bind the retained
+image, normalized source/transforms/order and output offset. Page size may change
+within consumer bounds. Replays rerun the immutable selection against that same
+image. Positions and definition revisions are retained as one exact composite;
+callers cannot synthesize another combination. There is no arbitrary historical
+fallback. A provider unable to retain the exact requested revision refuses rather
+than selecting a newer definition or frontier. A selection involving a different
+storage history is unavailable on this owner.
+
+Issuance and signing keys are not recovered across manager retirement/restart.
+Expired/foreign/changed leases or tokens require restarting the read with no `at`.
+A still-readable durable position can later be issued again as the same value;
+this does not revive its old opaque page token. Provider/recovery internals retain
+their explicit durable-cut APIs; public client/context continuations use this issuer.
+There is no snapshot of accepted data. The file-range handler now reuses the same
+retained durable snapshot for all ranges instead of opening/copying it per call.

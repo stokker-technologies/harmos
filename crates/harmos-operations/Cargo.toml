@@ -130,3 +130,4 @@ workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 harmos-storage = { workspace = true }
+ring = "0.17.14"

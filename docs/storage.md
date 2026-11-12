@@ -239,30 +239,46 @@ also available at `harmos::storage::storage_client::StorageClient`. Python uses
 `Harmos.Storage.V1.Storage.StorageClient`; C++ generates `harmos::storage::v1::Storage`.
 The SDKs depend only on protocol and transport support.
 
-| RPC / Operation | Result |
-| --- | --- |
-| `Capabilities` / `storage.capabilities` | Native acceleration and correctness capabilities |
-| `OpenSnapshot` / `storage.open_snapshot` | Opaque retained saved cut |
-| `ReleaseSnapshot` / `storage.release_snapshot` | Idempotent release |
-| `ScanArrow` / `storage.scan_arrow` | Arrow IPC batch and source-position continuation |
-| `RegisterIndex` / `storage.register_index` | Durable definition revision |
-| `ScanIndex` / `storage.scan_index` | Ordered key/position seek page |
-| `RegisterProjection` / `storage.register_projection` | Idempotent definition or explicit rebuild |
-| `AdvanceProjection` / `storage.advance_projection` | Atomic durable frontier advancement |
-| `InspectProjection` / `storage.inspect_projection` | Exact-cut status, absent while unpublished |
-| `ReadProjection` / `storage.read_projection` | Exact revision/frontier, IPC and changed keys |
-| `CompareExchangeObject` / `storage.compare_exchange_object` | Durable applied receipt or conflict |
+Client storage uses `harmos.v1.Storage`; invocation context uses
+`harmos.context.v1.Storage`. Each face owns its service-qualified method wrappers
+and grant identity. Both faces delegate to the same storage handlers.
 
-`OpenSnapshot.at` must be a saved cursor, including store history. Return the whole
-`SavedSnapshot` unchanged with each scan or advancement. Return continuation bytes unchanged;
-changing the plan requires starting again. An empty incomplete Arrow page advances source
-work, not output-row offset. Release a saved handle explicitly when the query journey ends;
-cancellation or failure after a saved-page read acquires its cut releases that handle. Successful reads retain it so
-several plans can share one cut. Released, foreign and restarted handles refuse explicitly.
-Concurrent reads already holding a snapshot settle before its backend resource is reclaimed.
+| gRPC Method | Result |
+| --- | --- |
+| Capabilities | Native acceleration and correctness capabilities |
+| CreateSnapshot / DeleteSnapshot | Explicit retained durable lease and release |
+| ListRows | Bounded unary query page, issued cut and continuation token |
+| ListColumnRows | Arrow IPC and source-position continuation |
+| ListIndexEntries | Ordered key/position seek page |
+| GetIndexDefinition / SetIndexDefinition | Complete definition and atomic revision guard |
+| GetProjectionDefinition / SetProjectionDefinition | Complete definition and atomic revision guard |
+
+A missing `at` selects the current durable position immediately. Reads never flush
+or wait for accepted writes. A supplied cut must equal a retained cut this owner
+has returned; arbitrary older positions, changed composites and foreign histories
+refuse. Automatic cuts use the existing saved-read capacity and evict the oldest
+idle cut when needed. `CreateSnapshot` pins its lease until `DeleteSnapshot` or
+storage retirement. Active reads retain their image through completion. A failed
+or cancelled page does not release an explicit lease.
+
+Return the whole `SavedSnapshot` unchanged for column/index reads or advancement.
+Arrow/index seek bytes bind that retained image and their plan. ListRows tokens
+bind the retained image, selector, transforms, ordering and output offset with an
+owner-local HMAC; page size may change within consumer bounds. Replaying a token
+repeats the same immutable page. Row-window skipping and stopping belong to the
+caller across bounded pages. Responses include their complete encoded envelope in
+the byte bound. An indivisible row or metadata that cannot fit refuses explicitly.
+
+Issuance and page-token keys are not persisted. Released, evicted, foreign and
+restarted leases/tokens refuse explicitly; restart the read with no `at`. A durable
+position may be returned again as a newly issued cut if it is still the current
+readable image, but that does not restore an old page token. Composite cuts retain
+the exact returned storage position and provider revisions; callers cannot invent
+or combine a different tuple. These leases pin existing durable backend snapshots;
+no accepted-data snapshot is constructed.
 
 Both output `limits` and source `work` are required, nonzero row/byte bounds.
-Wire page bounds include IPC schema metadata, changed-key buffers and continuation metadata. Scan and index
+Wire page bounds include IPC schema metadata, changed-key buffers and continuation metadata. Column and index
 requests name a schema source; named index/projection requests also carry that source so the
 host can check it against the registered definition. Grants use `objects:schema:<id>`,
 `records:schema:<id>` or `streams:schema:<id>` with the corresponding operation ID. Reading

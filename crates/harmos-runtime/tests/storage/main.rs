@@ -22,6 +22,8 @@ mod generated_file_framing;
 mod generated_file_upload;
 #[path = "generated_status.rs"]
 mod generated_status;
+mod issued_cut_lifetime;
+mod issued_pages;
 mod transfer_plugin;
 mod unary_transfers;
 

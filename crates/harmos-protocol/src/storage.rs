@@ -1201,39 +1201,6 @@ pub struct SavedSnapshot {
     pub at: ::core::option::Option<StorageCursor>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct OpenSnapshot {
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<StorageCursor>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ReleaseSnapshot {
-    #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<SavedSnapshot>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Capabilities {}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ScanArrow {
-    #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<SavedSnapshot>,
-    #[prost(message, optional, tag = "2")]
-    pub read: ::core::option::Option<ArrowScan>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ScanIndex {
-    #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<SavedSnapshot>,
-    #[prost(message, optional, tag = "2")]
-    pub read: ::core::option::Option<IndexRead>,
-    #[prost(message, optional, tag = "3")]
-    pub source: ::core::option::Option<ColumnSource>,
-}
-#[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DefinitionRevision {
     #[prost(uint64, tag = "1")]

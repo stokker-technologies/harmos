@@ -45,19 +45,6 @@ impl Message for storage::ArrowPage {
             .clone()
     }
 }
-impl Message for storage::Capabilities {
-    fn name() -> String {
-        "harmos.storage.v1.Capabilities".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
 impl Message for storage::CompareExchangeObject {
     fn name() -> String {
         "harmos.storage.v1.CompareExchangeObject".into()
@@ -136,19 +123,6 @@ impl Message for storage::InspectProjection {
             .clone()
     }
 }
-impl Message for storage::OpenSnapshot {
-    fn name() -> String {
-        "harmos.storage.v1.OpenSnapshot".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
 impl Message for storage::ProjectionPage {
     fn name() -> String {
         "harmos.storage.v1.ProjectionPage".into()
@@ -188,48 +162,9 @@ impl Message for storage::ReadProjection {
             .clone()
     }
 }
-impl Message for storage::ReleaseSnapshot {
-    fn name() -> String {
-        "harmos.storage.v1.ReleaseSnapshot".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
 impl Message for storage::SavedSnapshot {
     fn name() -> String {
         "harmos.storage.v1.SavedSnapshot".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
-impl Message for storage::ScanArrow {
-    fn name() -> String {
-        "harmos.storage.v1.ScanArrow".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
-        TYPES
-            .get_or_init(|| {
-                harmos_protocol::schema::message_types(harmos_protocol::storage_types(), &Self::name()).expect("generated storage message")
-            })
-            .clone()
-    }
-}
-impl Message for storage::ScanIndex {
-    fn name() -> String {
-        "harmos.storage.v1.ScanIndex".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         static TYPES: OnceLock<prost_types::FileDescriptorSet> = OnceLock::new();
@@ -252,26 +187,6 @@ impl Message for storage::StorageCapabilities {
             })
             .clone()
     }
-}
-impl OperationRequest for storage::Capabilities {
-    type Response = storage::StorageCapabilities;
-    const ID: &'static str = "storage.capabilities";
-}
-impl OperationRequest for storage::OpenSnapshot {
-    type Response = storage::SavedSnapshot;
-    const ID: &'static str = "storage.open_snapshot";
-}
-impl OperationRequest for storage::ReleaseSnapshot {
-    type Response = storage::Empty;
-    const ID: &'static str = "storage.release_snapshot";
-}
-impl OperationRequest for storage::ScanArrow {
-    type Response = storage::ArrowPage;
-    const ID: &'static str = "storage.scan_arrow";
-}
-impl OperationRequest for storage::ScanIndex {
-    type Response = storage::IndexPage;
-    const ID: &'static str = "storage.scan_index";
 }
 impl OperationRequest for storage::AdvanceProjection {
     type Response = storage::DefinitionRevision;

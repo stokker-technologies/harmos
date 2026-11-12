@@ -138,3 +138,19 @@ and the complete built-in mapping.
   `projection_replay::projection_frontiers_survive_interrupted_publication_rebuild_and_restart`,
   and `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
   (one passed each). Object/schema mirrors and issued composite cuts remain open.
+
+- Tasks 3.2/3.8 partial: issued saved cuts, HMAC-bound ListRows pages and retained
+  ranged-file reads share the existing saved-snapshot owner on both faces.
+  Capabilities/CreateSnapshot/DeleteSnapshot/ListColumnRows/ListIndexEntries replace
+  their retired declarations; the streaming Query operation and consumers are removed.
+  Focused proofs (one passed each):
+  `storage::issued_pages::issued_pages_keep_their_cut_while_newer_writes_are_blocked`,
+  `storage::issued_cut_lifetime::cached_cuts_expire_while_explicit_leases_pin_their_image`,
+  `storage::operations::queries::batches::query_operation_batches`,
+  `storage::operations::plugins::query_grants_enforced`,
+  `storage::operations::schemas::schema_registry_roundtrip`,
+  plus the existing unary-transfer and native-journey stories. Projection/status,
+  object/directory reads and Watch joins still need their migrated cut semantics.
+  Coupling: one native-only operations dependency on the already locked ring version
+  provides HMAC; the lockfile gains only that dependency edge. Retired Rust SDK
+  request bindings are deleted with their operation owners.

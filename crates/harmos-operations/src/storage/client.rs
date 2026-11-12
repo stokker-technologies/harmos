@@ -106,7 +106,8 @@ impl ProtobufOperation for GetFileProduction {
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
         transfers::grant(Self::ID, request.file.as_ref().map(|value| value.id.as_str()))
@@ -114,6 +115,7 @@ impl ProtobufOperation for GetFileProduction {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+        let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<Self::Response> = async {
             Self::grant(&request).map_err(|_| crate::Error::InvalidInput {
                 field: "GetFileProduction",
@@ -121,10 +123,11 @@ impl ProtobufOperation for GetFileProduction {
             })?;
             transfers::admit(&context, Self::ID, request.file.as_ref().map(|value| value.id.as_str()).expect("validated file identity"))?;
             let status = transfers::status(&storage, transfers::required(request.file)?).await?;
+            let read = snapshots.resolve(&storage, None).await?;
             Ok(Self::Response {
                 production: Some(status.progress.into()),
                 writer_generation: status.writer_generation.unwrap_or(0),
-                resolved_at: Some(transfers::cut(storage.get_saved_position())),
+                resolved_at: Some(read.cut().clone()),
                 accepted_length: status.accepted_length,
                 durable_length: status.durable_length,
             })
@@ -328,7 +331,8 @@ impl ProtobufOperation for GetFileBytes {
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
         transfers::grant(Self::ID, request.file.as_ref().and_then(|value| value.metadata.as_ref()).map(|value| value.id.as_str()))
@@ -336,6 +340,7 @@ impl ProtobufOperation for GetFileBytes {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+        let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<Self::Response> = async {
             Self::grant(&request).map_err(|_| crate::Error::InvalidInput {
                 field: "GetFileBytes",
@@ -351,12 +356,14 @@ impl ProtobufOperation for GetFileBytes {
                     .map(|value| value.id.as_str())
                     .expect("validated file identity"),
             )?;
-            let range = transfers::get(&storage, transfers::required(request.file)?, request.offset, request.max_bytes, request.at).await?;
+            let (range, resolved_at) =
+                transfers::get(&storage, &snapshots, transfers::required(request.file)?, request.offset, request.max_bytes, request.at)
+                    .await?;
             let mut response = Self::Response {
                 data: range.data,
                 total_length: range.total_length,
                 sha256: range.sha256.to_vec(),
-                resolved_at: Some(transfers::cut(range.resolved_at)),
+                resolved_at: Some(resolved_at),
             };
             let length = transfers::range_bytes(
                 prost::Message::encoded_len(&response),
@@ -392,7 +399,8 @@ impl ProtobufOperation for GetIndexDefinition {
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
     fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
         super::native::grant(Self::ID, request.source.clone())
     }
@@ -453,7 +461,8 @@ impl ProtobufOperation for GetProjectionDefinition {
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
     fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
         super::native::grant(Self::ID, request.source.clone())
     }
@@ -497,6 +506,164 @@ impl ProtobufOperation for SetProjectionDefinition {
         )
         .await?;
         Ok(Self::Response { definition: Some(definition), revision })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct ListRows;
+
+impl ProtobufOperation for ListRows {
+    type Request = wire::StorageListRowsRequest;
+    type Response = wire::StorageListRowsResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.list_rows";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "ListRows"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::pages::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let page = super::pages::list(&context, Self::ID, request.source, request.at, request.transforms, request.page).await?;
+        Ok(Self::Response {
+            rows: page.rows,
+            resolved_at: Some(page.resolved_at),
+            next_page_token: page.next_page_token,
+        })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct Capabilities;
+impl ProtobufOperation for Capabilities {
+    type Request = wire::StorageCapabilitiesRequest;
+    type Response = wire::StorageCapabilitiesResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.capabilities";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "Capabilities"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+
+    async fn run(context: ExecutionContext, _: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let capabilities = super::views::capabilities(&context).await?;
+        Ok(Self::Response { capabilities: Some(capabilities) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct CreateSnapshot;
+impl ProtobufOperation for CreateSnapshot {
+    type Request = wire::StorageCreateSnapshotRequest;
+    type Response = wire::StorageCreateSnapshotResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.create_snapshot";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "CreateSnapshot"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (snapshot, resolved_at) = super::views::create(&context, request.at).await?;
+        Ok(Self::Response {
+            snapshot: Some(snapshot),
+            resolved_at: Some(resolved_at),
+        })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct DeleteSnapshot;
+impl ProtobufOperation for DeleteSnapshot {
+    type Request = wire::StorageDeleteSnapshotRequest;
+    type Response = wire::StorageDeleteSnapshotResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.delete_snapshot";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "DeleteSnapshot"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        super::views::delete(&context, request.snapshot).await?;
+        Ok(Self::Response {})
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct ListColumnRows;
+impl ProtobufOperation for ListColumnRows {
+    type Request = wire::StorageListColumnRowsRequest;
+    type Response = wire::StorageListColumnRowsResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.list_column_rows";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "ListColumnRows"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.read.as_ref().and_then(|read| read.source.clone()))
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (page, resolved_at) = super::views::columns(&context, Self::ID, request.snapshot, request.read).await?;
+        Ok(Self::Response {
+            page: Some(page),
+            resolved_at: Some(resolved_at),
+        })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct ListIndexEntries;
+impl ProtobufOperation for ListIndexEntries {
+    type Request = wire::StorageListIndexEntriesRequest;
+    type Response = wire::StorageListIndexEntriesResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.list_index_entries";
+    const GRPC: Option<crate::execution::operations::Grpc> =
+        Some(crate::execution::operations::Grpc::new("harmos.v1", "Storage", "ListIndexEntries"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (page, resolved_at) = super::views::indexes(&context, Self::ID, request.snapshot, request.read, request.source).await?;
+        Ok(Self::Response {
+            page: Some(page),
+            resolved_at: Some(resolved_at),
+        })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)

@@ -68,7 +68,13 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     crate::support::app::register(&runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
-    let capabilities = runtime.operations.call_protobuf::<operations::Capabilities>(wire::Capabilities {}).await.unwrap();
+    let capabilities = runtime
+        .operations
+        .call_protobuf::<operations::Capabilities>(harmos_protocol::v1::StorageCapabilitiesRequest {})
+        .await
+        .unwrap()
+        .capabilities
+        .unwrap();
     assert!(capabilities.conditional_objects && capabilities.durable_projections);
 
     // Create an Object Atomically and Retry Its Mutation.
@@ -105,8 +111,13 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert!(matches!(refused.outcome, Some(wire::compare_exchange_outcome::Outcome::Conflict(_))));
 
     // Retain the Saved Cut and Read Its Arrow Page.
-    let saved =
-        runtime.operations.call_protobuf::<operations::OpenSnapshot>(wire::OpenSnapshot { at: receipt.position.clone() }).await.unwrap();
+    let saved = runtime
+        .operations
+        .call_protobuf::<operations::CreateSnapshot>(harmos_protocol::v1::StorageCreateSnapshotRequest { at: None })
+        .await
+        .unwrap()
+        .snapshot
+        .unwrap();
     let limits = wire::ReadLimits { rows: 16, bytes: 65536 };
     let scan = wire::ArrowScan {
         source: Some(source.clone()),
@@ -117,11 +128,13 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     };
     let page = runtime
         .operations
-        .call_protobuf::<operations::ScanArrow>(wire::ScanArrow {
+        .call_protobuf::<operations::ListColumnRows>(harmos_protocol::v1::StorageListColumnRowsRequest {
             snapshot: Some(saved.clone()),
             read: Some(scan.clone()),
         })
         .await
+        .unwrap()
+        .page
         .unwrap();
     assert!(page.buffer_bytes() <= limits.bytes as usize);
     let batch = harmos_storage::query::protobuf::decode_batch(page.ipc, limits.try_into().unwrap()).unwrap();
@@ -170,7 +183,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     absent.expected_revision.clear();
     absent.create_if_absent = true;
     assert!(runtime.operations.call_protobuf::<operations::SetIndexDefinition>(absent).await.is_err());
-    let index = wire::ScanIndex {
+    let index = harmos_protocol::v1::StorageListIndexEntriesRequest {
         snapshot: Some(saved.clone()),
         source: Some(source.clone()),
         read: Some(wire::IndexRead {
@@ -180,11 +193,11 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
             ..Default::default()
         }),
     };
-    let indexed = runtime.operations.call_protobuf::<operations::ScanIndex>(index.clone()).await.unwrap();
+    let indexed = runtime.operations.call_protobuf::<operations::ListIndexEntries>(index.clone()).await.unwrap().page.unwrap();
     assert_eq!(indexed.entries.len(), 1);
     let mut missing = index;
     missing.read.as_mut().unwrap().name = "missing".into();
-    assert!(runtime.operations.call_protobuf::<operations::ScanIndex>(missing).await.is_err());
+    assert!(runtime.operations.call_protobuf::<operations::ListIndexEntries>(missing).await.is_err());
 
     // Materialize Buckets at an Exact Durable Frontier.
     let plan = wire::TimeBucketPlan {
@@ -263,7 +276,14 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     correction.value = Some(catalog.encode(&Sample { value: 9.0, ..first }, NonZeroUsize::new(4096).unwrap()).unwrap().into());
     let changed = runtime.operations.call_protobuf::<operations::CompareExchangeObject>(correction).await.unwrap();
     let wire::compare_exchange_outcome::Outcome::Applied(changed) = changed.outcome.unwrap() else { panic!("correction applied") };
-    let live = runtime.operations.call_protobuf::<operations::OpenSnapshot>(wire::OpenSnapshot { at: changed.position }).await.unwrap();
+    let live = runtime
+        .operations
+        .call_protobuf::<operations::CreateSnapshot>(harmos_protocol::v1::StorageCreateSnapshotRequest { at: None })
+        .await
+        .unwrap()
+        .snapshot
+        .unwrap();
+    assert_eq!(live.at, changed.position);
     runtime
         .operations
         .call_protobuf::<operations::AdvanceProjection>(wire::AdvanceProjection {
@@ -314,14 +334,25 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert_eq!(runtime.operations.call_protobuf::<operations::ReadProjection>(old_read).await.unwrap(), old);
 
     // Release Both Cuts and Refuse Reusing the Handle.
-    runtime.operations.call_protobuf::<operations::ReleaseSnapshot>(wire::ReleaseSnapshot { snapshot: Some(saved.clone()) }).await.unwrap();
+    runtime
+        .operations
+        .call_protobuf::<operations::DeleteSnapshot>(harmos_protocol::v1::StorageDeleteSnapshotRequest { snapshot: Some(saved.clone()) })
+        .await
+        .unwrap();
     assert!(
         runtime
             .operations
-            .call_protobuf::<operations::ScanArrow>(wire::ScanArrow { snapshot: Some(saved), read: Some(scan) })
+            .call_protobuf::<operations::ListColumnRows>(harmos_protocol::v1::StorageListColumnRowsRequest {
+                snapshot: Some(saved),
+                read: Some(scan)
+            })
             .await
             .is_err()
     );
-    runtime.operations.call_protobuf::<operations::ReleaseSnapshot>(wire::ReleaseSnapshot { snapshot: Some(live) }).await.unwrap();
+    runtime
+        .operations
+        .call_protobuf::<operations::DeleteSnapshot>(harmos_protocol::v1::StorageDeleteSnapshotRequest { snapshot: Some(live) })
+        .await
+        .unwrap();
     crate::support::app::shutdown(&runtime).await.unwrap();
 }

@@ -42,7 +42,7 @@ static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 /* === Structs === */
 
 pub struct Snapshot {
-    inner: Arc<Inner>,
+    pub(super) inner: Arc<Inner>,
     id: u64,
     backend: BackendSnapshot,
 }
@@ -154,6 +154,10 @@ impl StorageManager {
 }
 
 impl Snapshot {
+    pub fn is_available(&self) -> bool {
+        self.check().is_ok()
+    }
+
     pub fn at(&self) -> &StorageCursor {
         &self.backend.at
     }
@@ -259,7 +263,7 @@ impl Snapshot {
     }
 
     #[tracing::instrument(name = "storage.snapshot.get_object", level = "trace", skip_all)]
-    pub(super) async fn get_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
+    pub async fn get_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
         let object = self.inner.bounded("primary.get_object", self.inner.primary.get_object(&self.backend, point)).await?;

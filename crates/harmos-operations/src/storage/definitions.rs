@@ -51,21 +51,23 @@ pub(super) async fn get_index(
     context: &ExecutionContext, id: &'static str, name: String, source: Option<wire::ColumnSource>,
 ) -> Result<(wire::IndexDefinition, Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+    let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
     super::native::run(
         context,
         async {
             let source: ColumnSource = required(source)?.try_into()?;
             super::native::admit(context, id, &source)?;
+            let read = snapshots.resolve(&storage, None).await?;
             let name = harmos_storage::Identifier::new(name).map_err(harmos_domain::Error::from)?;
             let (definition, current) = storage.get_index_definition(&name).await?;
             super::native::source_matches(&source, &definition.source)?;
-            let mut cut = super::transfers::cut(storage.get_saved_position());
+            let mut cut = read.cut().clone();
             cut.revisions.push(v1::ResourceRevision {
                 name: format!("storage.index.{}", definition.name),
                 revision: revision(current),
             });
-            Ok((definition.into(), revision(current), cut))
+            Ok((definition.into(), revision(current), snapshots.composite(&storage, cut).await?))
         },
         cancel.clone(),
     )
@@ -97,21 +99,23 @@ pub(super) async fn get_projection(
     context: &ExecutionContext, id: &'static str, name: String, source: Option<wire::ColumnSource>,
 ) -> Result<(wire::ProjectionDefinition, Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+    let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
     super::native::run(
         context,
         async {
             let source: ColumnSource = required(source)?.try_into()?;
             super::native::admit(context, id, &source)?;
+            let read = snapshots.resolve(&storage, None).await?;
             let name = harmos_storage::Identifier::new(name).map_err(harmos_domain::Error::from)?;
             let (definition, current) = storage.get_projection_definition(&name, None).await?;
             super::native::source_matches(&source, &definition.source)?;
-            let mut cut = super::transfers::cut(storage.get_saved_position());
+            let mut cut = read.cut().clone();
             cut.revisions.push(v1::ResourceRevision {
                 name: format!("storage.projection.{}", definition.name),
                 revision: revision(current),
             });
-            Ok((definition.try_into()?, revision(current), cut))
+            Ok((definition.try_into()?, revision(current), snapshots.composite(&storage, cut).await?))
         },
         cancel.clone(),
     )

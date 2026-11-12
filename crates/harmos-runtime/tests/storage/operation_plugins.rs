@@ -23,9 +23,10 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{Fixture, config};
+use harmos_operations::execution::operations::ProtobufHost;
 use harmos_operations::inventory::contracts::Required;
 use harmos_operations::plugin::Grant;
-use harmos_operations::storage::{Query, WriteRecords};
+use harmos_operations::storage::{WriteRecords, context::ListRows};
 use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
@@ -246,19 +247,27 @@ async fn query_grants_enforced() {
         version: NonZeroU32::MIN,
         ..schema.clone()
     };
-    let survey = |schema: &SchemaKey| Grant::of(Query::ID, query(&fixture, schema.clone()).source.grant_scope());
+    let survey = |schema: &SchemaKey| Grant::of(ListRows::ID, query(&fixture, schema.clone()).source.grant_scope());
     let definitions =
-        PluginDefinitions::new([plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]), plugin("bystander", Vec::new())], [])
+        PluginDefinitions::new([plugin("reducer", vec![required::<ListRows>(vec![survey(&schema)])]), plugin("bystander", Vec::new())], [])
             .unwrap();
     let mut manager = PluginManager::new(definitions).unwrap();
     manager.initialize(&mut host).await.unwrap();
     let reducer = fixture.runtime.operations.caller(&host.callers["reducer"]).unwrap();
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
-    let mut collected =
-        reducer.download_protobuf::<Query>(query(&fixture, schema.clone()).try_into().unwrap(), super::writes::settings()).unwrap();
+    let request: harmos_protocol::storage::Query = query(&fixture, schema.clone()).try_into().unwrap();
+    let response = reducer
+        .call_protobuf::<ListRows>(harmos_protocol::context::StorageListRowsRequest {
+            source: request.source,
+            transforms: request.transforms,
+            at: None,
+            page: None,
+        })
+        .await
+        .unwrap();
     let mut count = None;
-    while let Some(output) = collected.next().await.unwrap() {
+    for output in response.rows {
         if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output).unwrap() {
             let values =
                 batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
@@ -266,7 +275,7 @@ async fn query_grants_enforced() {
         }
     }
     assert_eq!(count, Some(2));
-    assert_eq!(collected.join().await.unwrap().rows, 1);
+    assert!(response.next_page_token.is_empty());
     let mut cross_kind = query(&fixture, schema.clone());
     cross_kind.source = Source::Stream(harmos_runtime::storage::query::StreamSelection {
         schema: schema.clone(),
@@ -278,16 +287,46 @@ async fn query_grants_enforced() {
         after: 0,
     });
     assert!(matches!(
-        reducer.download_protobuf::<Query>(cross_kind.try_into().unwrap(), super::writes::settings()),
+        reducer
+            .call_protobuf::<ListRows>({
+                let request: harmos_protocol::storage::Query = cross_kind.try_into().unwrap();
+                harmos_protocol::context::StorageListRowsRequest {
+                    source: request.source,
+                    transforms: request.transforms,
+                    at: None,
+                    page: None,
+                }
+            })
+            .await,
         Err(Error::OperationUnauthorized { .. })
     ));
 
     assert!(matches!(
-        reducer.download_protobuf::<Query>(query(&fixture, other).try_into().unwrap(), super::writes::settings()),
+        reducer
+            .call_protobuf::<ListRows>({
+                let request: harmos_protocol::storage::Query = query(&fixture, other).try_into().unwrap();
+                harmos_protocol::context::StorageListRowsRequest {
+                    source: request.source,
+                    transforms: request.transforms,
+                    at: None,
+                    page: None,
+                }
+            })
+            .await,
         Err(Error::OperationUnauthorized { .. })
     ));
     assert!(matches!(
-        bystander.download_protobuf::<Query>(query(&fixture, schema).try_into().unwrap(), super::writes::settings()),
+        bystander
+            .call_protobuf::<ListRows>({
+                let request: harmos_protocol::storage::Query = query(&fixture, schema).try_into().unwrap();
+                harmos_protocol::context::StorageListRowsRequest {
+                    source: request.source,
+                    transforms: request.transforms,
+                    at: None,
+                    page: None,
+                }
+            })
+            .await,
         Err(Error::OperationUnauthorized { .. })
     ));
     manager.shutdown(&mut host).await.unwrap();

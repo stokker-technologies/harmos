@@ -61,7 +61,7 @@ pub struct QueryReader {
     context: crate::execution::Context,
     inner: Arc<Inner>,
     query: Query,
-    snapshot: Option<Snapshot>,
+    snapshot: Option<Arc<Snapshot>>,
     active: Option<OwnedSemaphorePermit>,
     schema: Option<StorageSchema>,
     objects: Option<NormalizedObjects>,
@@ -185,13 +185,25 @@ impl StorageManager {
     #[tracing::instrument(name = "storage.manager.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
         let result = async {
+            let snapshot = Arc::new(self.snapshot(&query.at).await?);
+            self.query_snapshot(query, snapshot).await
+        }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
+    }
+
+    /// Query An Already Retained Image Owned By This Manager.
+    pub async fn query_snapshot(&self, query: Query, snapshot: Arc<Snapshot>) -> Result<QueryReader> {
+        let result = async {
             query.validate()?;
-            self.inner.primary.get_history().check(&query.at.history)?;
-
+            if !Arc::ptr_eq(&self.inner, &snapshot.inner) || snapshot.at() != &query.at {
+                return Err(Error::InvalidInput {
+                    field: "storage snapshot",
+                    reason: "query must use its retained owner's exact cut",
+                });
+            }
             let active = query_slot(&self.inner).await?;
-
-            // Pin The Requested Image For The Whole Invocation.
-            let snapshot = self.snapshot(&query.at).await?;
             let after = match &query.source {
                 Source::Stream(selection) => selection.after,
                 _ => 0,

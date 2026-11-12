@@ -43,7 +43,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
-- **gRPC Plugin Placement**: Invoke managed or remote `harmos.v1` plugins, capture their streams and drive plugin waits and observers from the host clock.
+- **gRPC Plugin Placement**: Invoke managed or remote gRPC plugins, capture their streams and drive plugin waits and observers from the host clock.
 - **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
@@ -93,7 +93,7 @@ describes their repeated key/value entry representation.
 
 `harmos-storage/sqlite` adds an optional durable reference backend with bounded Arrow scans,
 ordered indexes, exact-frontier projections, grouped time buckets and atomic object updates.
-See [Storage Interfaces](docs/storage.md) for native and generated SDK APIs, backend obligations and saved-cut query examples.
+See [Storage Interfaces](docs/storage.md) for native and generated SDK APIs, backend obligations, bounded unary pages and retained-cut query examples.
 Clients and plugins share resumable unary file productions and bounded content ranges.
 
 Structured operation and storage tracing supports performance investigation;

@@ -1575,31 +1575,6 @@ impl ReflectMessage for crate::storage::SavedSnapshot {
         pool().get_message_by_name("harmos.storage.v1.SavedSnapshot").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::OpenSnapshot {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.OpenSnapshot").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::ReleaseSnapshot {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ReleaseSnapshot").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::Capabilities {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.Capabilities").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::ScanArrow {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ScanArrow").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::ScanIndex {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ScanIndex").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::DefinitionRevision {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.DefinitionRevision").expect("generated message")

@@ -170,14 +170,16 @@ pub(super) async fn status(storage: &StorageManager, file: wire::StagedFile) -> 
 }
 
 pub(super) async fn get(
-    storage: &StorageManager, file: wire::FileReference, offset: u64, max_bytes: u64, at: Option<v1::ReadCut>,
-) -> crate::Result<harmos_storage::FileBytesRange> {
+    storage: &StorageManager, snapshots: &super::snapshot::SavedSnapshots, file: wire::FileReference, offset: u64, max_bytes: u64,
+    at: Option<v1::ReadCut>,
+) -> crate::Result<(harmos_storage::FileBytesRange, v1::ReadCut)> {
     let maximum = usize::try_from(max_bytes).ok().and_then(std::num::NonZeroUsize::new).ok_or(crate::Error::InvalidInput {
         field: "GetFileBytes",
         reason: "max_bytes must be positive and representable",
     })?;
-    let at = self::at(at)?;
-    Ok(storage.get_file_bytes(&file.try_into()?, offset, maximum, at.as_ref()).await?)
+    let read = snapshots.resolve(storage, at).await?;
+    let range = read.get_file_bytes(&file.try_into()?, offset, maximum).await?;
+    Ok((range, read.cut().clone()))
 }
 
 /* === Private Functions === */

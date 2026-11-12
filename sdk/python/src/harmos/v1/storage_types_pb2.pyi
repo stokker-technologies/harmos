@@ -1242,40 +1242,6 @@ class SavedSnapshot(_message.Message):
     at: StorageCursor
     def __init__(self, token: _Optional[bytes] = ..., at: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
 
-class OpenSnapshot(_message.Message):
-    __slots__ = ("at",)
-    AT_FIELD_NUMBER: _ClassVar[int]
-    at: StorageCursor
-    def __init__(self, at: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class ReleaseSnapshot(_message.Message):
-    __slots__ = ("snapshot",)
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ...) -> None: ...
-
-class Capabilities(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class ScanArrow(_message.Message):
-    __slots__ = ("snapshot", "read")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    READ_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
-    read: ArrowScan
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[ArrowScan, _Mapping]] = ...) -> None: ...
-
-class ScanIndex(_message.Message):
-    __slots__ = ("snapshot", "read", "source")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    READ_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
-    read: IndexRead
-    source: ColumnSource
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[IndexRead, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
-
 class DefinitionRevision(_message.Message):
     __slots__ = ("revision",)
     REVISION_FIELD_NUMBER: _ClassVar[int]

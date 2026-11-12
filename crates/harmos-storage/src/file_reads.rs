@@ -90,56 +90,7 @@ impl StorageManager {
         &self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize, at: Option<&crate::StorageCursor>,
     ) -> Result<FileBytesRange> {
         let saved = self.get_saved_position();
-        let resolved_at = at.unwrap_or(&saved);
-        if !resolved_at.covers(&file.position)? || !saved.covers(resolved_at)? {
-            return Err(Error::InvalidInput {
-                field: "GetFileBytes",
-                reason: "content is unavailable at the selected durable position",
-            });
-        }
-        if offset > file.length {
-            return Err(Error::InvalidInput {
-                field: "GetFileBytes",
-                reason: "offset exceeds content length",
-            });
-        }
-        let snapshot = self.snapshot(resolved_at).await?;
-        let selection = FileSelection {
-            scope: file.metadata.scope.clone(),
-            item: Some(file.metadata.id.clone()),
-        };
-        let page = ScanPage {
-            after: file.position.sequence.saturating_sub(1),
-            rows: NonZeroUsize::MIN,
-            bytes: NonZeroUsize::new(encoded_size(file)?.max(1)).unwrap(),
-        };
-        let (stored, _) = snapshot.scan::<FileReference>(&selection, page).await?;
-        if stored.first() != Some(file) {
-            return Err(Error::InvalidInput {
-                field: "GetFileBytes",
-                reason: "immutable content reference does not match stored metadata",
-            });
-        }
-        let maximum = max_bytes.min(self.inner.settings.response.batch_bytes);
-        let expected = (file.length - offset).min(maximum.get() as u64) as usize;
-        let mut data = Vec::with_capacity(expected);
-        while data.len() < expected {
-            let remaining = NonZeroUsize::new(expected - data.len()).unwrap();
-            let bytes = snapshot.read_file(file, offset + data.len() as u64, remaining).await?;
-            if bytes.is_empty() || bytes.len() > remaining.get() || bytes.capacity() > remaining.get() {
-                return Err(corrupt("GetFileBytes returned an empty or oversized range"));
-            }
-            data.extend_from_slice(&bytes);
-        }
-        if offset == 0 && data.len() as u64 == file.length && <[u8; 32]>::from(Sha256::digest(&data)) != file.sha256 {
-            return Err(corrupt("GetFileBytes content digest mismatch"));
-        }
-        Ok(FileBytesRange {
-            data,
-            total_length: file.length,
-            sha256: file.sha256,
-            resolved_at: resolved_at.clone(),
-        })
+        self.snapshot(at.unwrap_or(&saved)).await?.get_file_bytes(file, offset, max_bytes).await
     }
 
     #[tracing::instrument(name = "storage.file_reads.read_file", level = "debug", skip_all)]
@@ -368,3 +319,58 @@ fn corrupt(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
+impl Snapshot {
+    /// Read One Bounded Range From Immutable, Durable Content.
+    pub async fn get_file_bytes(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<FileBytesRange> {
+        let resolved_at = self.at();
+        if !resolved_at.covers(&file.position)? {
+            return Err(Error::InvalidInput {
+                field: "GetFileBytes",
+                reason: "content is unavailable at the selected durable position",
+            });
+        }
+        if offset > file.length {
+            return Err(Error::InvalidInput {
+                field: "GetFileBytes",
+                reason: "offset exceeds content length",
+            });
+        }
+        let selection = FileSelection {
+            scope: file.metadata.scope.clone(),
+            item: Some(file.metadata.id.clone()),
+        };
+        let page = ScanPage {
+            after: file.position.sequence.saturating_sub(1),
+            rows: NonZeroUsize::MIN,
+            bytes: NonZeroUsize::new(encoded_size(file)?.max(1)).unwrap(),
+        };
+        let (stored, _) = self.scan::<FileReference>(&selection, page).await?;
+        if stored.first() != Some(file) {
+            return Err(Error::InvalidInput {
+                field: "GetFileBytes",
+                reason: "immutable content reference does not match stored metadata",
+            });
+        }
+        let maximum = max_bytes.min(self.inner.settings.response.batch_bytes);
+        let expected = (file.length - offset).min(maximum.get() as u64) as usize;
+        let mut data = Vec::with_capacity(expected);
+        while data.len() < expected {
+            let remaining = NonZeroUsize::new(expected - data.len()).unwrap();
+            let bytes = self.read_file(file, offset + data.len() as u64, remaining).await?;
+            if bytes.is_empty() || bytes.len() > remaining.get() || bytes.capacity() > remaining.get() {
+                return Err(corrupt("GetFileBytes returned an empty or oversized range"));
+            }
+            data.extend_from_slice(&bytes);
+        }
+        if offset == 0 && data.len() as u64 == file.length && <[u8; 32]>::from(Sha256::digest(&data)) != file.sha256 {
+            return Err(corrupt("GetFileBytes content digest mismatch"));
+        }
+        Ok(FileBytesRange {
+            data,
+            total_length: file.length,
+            sha256: file.sha256,
+            resolved_at: resolved_at.clone(),
+        })
+    }
+}
