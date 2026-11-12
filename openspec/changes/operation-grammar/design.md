@@ -1147,8 +1147,8 @@ manager inventory above; application operations remain outside this repository.
 Owner decision, 2026-11-12: move generic plugin management into the library.
 `harmos.v1.Plugins` is the client-facing resource service;
 `harmos.plugin.v1.Instance` is the distinct service implemented by a plugin
-executable. This adds seven logical operations
-and fourteen method messages to the inventory above.
+executable. This section specifies the seven client operations and fourteen
+method wrappers counted in the locked inventory above.
 
 ```proto
 service Plugins {
