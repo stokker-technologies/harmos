@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include "harmos/v1/catalog_entries.grpc.pb.h"
 #include "harmos/v1/invocations.grpc.pb.h"
+#include "harmos/v1/plugins.grpc.pb.h"
 #include "harmos/v1/storage.grpc.pb.h"
 #include "harmos/v1/time.grpc.pb.h"
 namespace harmos {
@@ -52,6 +53,57 @@ struct InvocationsResource {
     auto context = std::make_unique<grpc::ClientContext>();
     auto reader = ::harmos::v1::Invocations::NewStub(channel)->Watch(context.get(), request);
     return {std::move(context), std::move(reader)};
+  }
+};
+struct PluginsResource {
+  std::shared_ptr<grpc::Channel> channel;
+  explicit PluginsResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
+  ::harmos::v1::PluginsGetResponse get(const ::harmos::v1::PluginsGetRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::PluginsGetResponse response;
+    const auto status = ::harmos::v1::Plugins::NewStub(channel)->Get(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Get: ") + status.error_message());
+    return response;
+  }
+  ::harmos::v1::PluginsListResponse list(const ::harmos::v1::PluginsListRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::PluginsListResponse response;
+    const auto status = ::harmos::v1::Plugins::NewStub(channel)->List(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("List: ") + status.error_message());
+    return response;
+  }
+  ClientWatch<::harmos::v1::PluginsWatchResponse> watch(const ::harmos::v1::PluginsWatchRequest& request) {
+    auto context = std::make_unique<grpc::ClientContext>();
+    auto reader = ::harmos::v1::Plugins::NewStub(channel)->Watch(context.get(), request);
+    return {std::move(context), std::move(reader)};
+  }
+  ::harmos::v1::PluginsCreateResponse create(const ::harmos::v1::PluginsCreateRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::PluginsCreateResponse response;
+    const auto status = ::harmos::v1::Plugins::NewStub(channel)->Create(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Create: ") + status.error_message());
+    return response;
+  }
+  ::harmos::v1::PluginsSetResponse set(const ::harmos::v1::PluginsSetRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::PluginsSetResponse response;
+    const auto status = ::harmos::v1::Plugins::NewStub(channel)->Set(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Set: ") + status.error_message());
+    return response;
+  }
+  ::harmos::v1::PluginsDeleteResponse delete(const ::harmos::v1::PluginsDeleteRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::PluginsDeleteResponse response;
+    const auto status = ::harmos::v1::Plugins::NewStub(channel)->Delete(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Delete: ") + status.error_message());
+    return response;
+  }
+  ::harmos::v1::PluginsRestartResponse restart(const ::harmos::v1::PluginsRestartRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::PluginsRestartResponse response;
+    const auto status = ::harmos::v1::Plugins::NewStub(channel)->Restart(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Restart: ") + status.error_message());
+    return response;
   }
 };
 struct StorageResource {
@@ -156,8 +208,9 @@ struct TimeResource {
 struct Client {
   CatalogEntriesResource catalog_entries;
   InvocationsResource invocations;
+  PluginsResource plugins;
   StorageResource storage;
   TimeResource time;
-  explicit Client(std::shared_ptr<grpc::Channel> channel) : catalog_entries(channel), invocations(channel), storage(channel), time(channel) {}
+  explicit Client(std::shared_ptr<grpc::Channel> channel) : catalog_entries(channel), invocations(channel), plugins(channel), storage(channel), time(channel) {}
 };
 }

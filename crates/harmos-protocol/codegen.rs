@@ -94,13 +94,17 @@ pub fn generate(
                 "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"host\"))]",
             )
         };
+        let package_output = output.join(package);
+        std::fs::create_dir_all(&package_output)?;
         tonic_prost_build::configure()
             .client_mod_attribute(package, client_attributes)
             .server_mod_attribute(package, server_attributes)
             .build_client(true)
             .build_server(true)
-            .out_dir(output)
+            .out_dir(&package_output)
             .compile_with_config(config, files, &[proto.clone(), includes.into()])?;
+        let filename = format!("{package}.rs");
+        std::fs::copy(package_output.join(&filename), output.join(filename))?;
     }
     // Parent Modules Include Their Generated Nested Resource Packages.
     for package in packages.keys() {

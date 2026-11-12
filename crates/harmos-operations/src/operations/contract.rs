@@ -341,6 +341,13 @@ impl Contract {
                 "harmos.v1.Invocations/Cancel" => ("InvocationsCancelRequest", "InvocationsCancelResponse", "Invocations", "Cancel", false),
                 "harmos.v1.Invocations/Watch" => ("InvocationsWatchRequest", "InvocationsWatchResponse", "Invocations", "Watch", true),
                 "harmos.context.v1.Samples/Append" => ("SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false),
+                "harmos.v1.Plugins/Get" => ("PluginsGetRequest", "PluginsGetResponse", "Plugins", "Get", false),
+                "harmos.v1.Plugins/List" => ("PluginsListRequest", "PluginsListResponse", "Plugins", "List", false),
+                "harmos.v1.Plugins/Watch" => ("PluginsWatchRequest", "PluginsWatchResponse", "Plugins", "Watch", true),
+                "harmos.v1.Plugins/Create" => ("PluginsCreateRequest", "PluginsCreateResponse", "Plugins", "Create", false),
+                "harmos.v1.Plugins/Set" => ("PluginsSetRequest", "PluginsSetResponse", "Plugins", "Set", false),
+                "harmos.v1.Plugins/Delete" => ("PluginsDeleteRequest", "PluginsDeleteResponse", "Plugins", "Delete", false),
+                "harmos.v1.Plugins/Restart" => ("PluginsRestartRequest", "PluginsRestartResponse", "Plugins", "Restart", false),
                 _ => return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into()),
             };
             let package = if service == "Samples" { "harmos.context.v1" } else { "harmos.v1" };

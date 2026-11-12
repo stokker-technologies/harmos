@@ -74,6 +74,7 @@ mod native;
 mod operation;
 #[cfg(feature = "plugin")]
 mod plugin;
+mod plugins_contracts;
 pub mod prelude;
 #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
 mod server;

@@ -129,3 +129,28 @@ combined source closure and hosted validation are not claimed here.
 - [ ] 6.2 Under later delivery authorization, prove the combined library through configured hosted CI/Nightly on native Windows and Linux, including SDK/conformance, restart, cancellation, paging, unary transfers and both benchmarks; report exact revisions/results/pending verification.
 - [ ] 6.3 Reconcile library services (including nested), operations, gRPC methods, method wrappers and full descriptor payload counts with the locked inventory; verify owner acceptance and leave unperformed proof pending.
 
+## 8. Plugin Manager
+
+- [x] 8.1 Record the owner-authorized manager contract, public shapes, ownership, decisions and requirement scenarios before implementation.
+- [x] 8.2 Add `Plugins` proto, generated bindings, seven operation files and Rust client request bindings; join shared primitives from the core branch without duplicating them.
+- [x] 8.3 Implement the bounded persistent manager registry with conditional objects, whole-value revision guards, replay-safe Create, issued read cuts, paging and explicit Watch resynchronization.
+- [ ] 8.4 Reuse verified bundle reading and shared published-content uploads; install only verified native executables under the manager root, with no process started on invalid content. Join unary upload sessions from the storage worker.
+- [x] 8.5 Compose existing attachments, reconnect and process supervision; expose process identity, hidden Windows startup, unavailable failures, enable/disable, activation replacement, deletion and host restoration.
+- [x] 8.6 Add one journey per file: `client_manages_remote_plugins`, `client_manages_bundled_plugins`, `host_restores_plugin_entries`, and `client_refuses_invalid_plugin_bundles`; use the controlled clock, awaited events and existing reference plugins.
+- [x] 8.7 Document host adoption, product-owned policy and removal of duplicated management/hosting code; update affected README and guide links.
+- [ ] 8.8 Run format, Rust/Python/repository checks, all four stories twice, existing plugin-hosting tests, four-SDK conformance and Tests build; repair findings and record only actual proof.
+- [x] 8.9 Commit building owned changes locally with Conventional Commits; do not push or run specification lifecycle commands.
+
+## Workflow Follow-Up
+
+- Published content uses the shared file-session owner; the storage worker's unary service/client join remains in task 8.4. At the native storage join, migrate the registry's `read_object` call to `get_object` in `plugin/manager/persistence.rs` with the owning hook rename, and move story uploads to the unary client operations. The manager continues to consume the same published-content source.
+
+- The manager implementation and local commits are authorized. Push, review creation, publication and specification lifecycle commands remain outside this task's authorization.
+- Keep final validation unchecked until the combined implementation proof is actually performed; documentation validation alone does not close it.
+
+## Integration Candidate
+
+- [ ] I.1 Merge the committed core, plugin-manager, access/status and storage branches in order; retain core audience generation, visibility and mechanical roots, regenerate every affected output and prove touched packages.
+- [ ] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
+- [ ] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
+- [ ] I.4 Commit the candidate locally, verify clean status and locked offline metadata; document consumer adoption and pending proof without pushing.

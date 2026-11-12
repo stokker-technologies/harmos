@@ -62,7 +62,7 @@ because inspected callers do not use them.
 
 ### New Capabilities
 
-None; the candidate adds requirements to existing capability owners.
+- `plugin-management`: owner extension on 2026-11-12; persistent managed and remote entries, verified bundle installation and the client-facing `Plugins` resource service.
 
 ### Modified Capabilities
 

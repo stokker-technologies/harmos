@@ -292,6 +292,132 @@
     "face": "client",
     "version": "v1",
     "parents": [],
+    "service": "Plugins",
+    "method": "Get",
+    "package": "harmos.v1",
+    "path": [
+      "plugins",
+      "get"
+    ],
+    "request": "harmos.v1.PluginsGetRequest",
+    "response": "harmos.v1.PluginsGetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Plugins",
+    "method": "List",
+    "package": "harmos.v1",
+    "path": [
+      "plugins",
+      "list"
+    ],
+    "request": "harmos.v1.PluginsListRequest",
+    "response": "harmos.v1.PluginsListResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Plugins",
+    "method": "Watch",
+    "package": "harmos.v1",
+    "path": [
+      "plugins",
+      "watch"
+    ],
+    "request": "harmos.v1.PluginsWatchRequest",
+    "response": "harmos.v1.PluginsWatchResponse",
+    "client_streaming": false,
+    "server_streaming": true,
+    "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Plugins",
+    "method": "Create",
+    "package": "harmos.v1",
+    "path": [
+      "plugins",
+      "create"
+    ],
+    "request": "harmos.v1.PluginsCreateRequest",
+    "response": "harmos.v1.PluginsCreateResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Plugins",
+    "method": "Set",
+    "package": "harmos.v1",
+    "path": [
+      "plugins",
+      "set"
+    ],
+    "request": "harmos.v1.PluginsSetRequest",
+    "response": "harmos.v1.PluginsSetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Plugins",
+    "method": "Delete",
+    "package": "harmos.v1",
+    "path": [
+      "plugins",
+      "delete"
+    ],
+    "request": "harmos.v1.PluginsDeleteRequest",
+    "response": "harmos.v1.PluginsDeleteResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Plugins",
+    "method": "Restart",
+    "package": "harmos.v1",
+    "path": [
+      "plugins",
+      "restart"
+    ],
+    "request": "harmos.v1.PluginsRestartRequest",
+    "response": "harmos.v1.PluginsRestartResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
     "service": "Time",
     "method": "Get",
     "package": "harmos.v1",

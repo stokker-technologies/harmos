@@ -38,6 +38,7 @@ mod managed_lifecycle;
 mod peer_journey;
 mod protected_builtin;
 mod protected_peer_refusal;
+mod manager;
 mod python_clock;
 mod remote_reconnect;
 mod remote_stop;

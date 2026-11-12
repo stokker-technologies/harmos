@@ -45,6 +45,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **gRPC Plugin Placement**: Invoke managed or remote `harmos.plugin.v1.Instance` plugins, capture their streams and drive plugin waits and observers from the host clock.
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
+- **[Plugin Management](docs/plugin-manager.md)**: Persist, install, enable, restart and remove managed or remote plugin entries.
 - **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 

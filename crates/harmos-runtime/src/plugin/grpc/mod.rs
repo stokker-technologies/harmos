@@ -55,6 +55,7 @@ pub struct Activation {
     pub description: harmos_protocol::plugin::InstanceGetResponse,
     pub previous_started_at: Option<prost_types::Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
+    pub process_id: Option<u32>,
     connection: Arc<Connection>,
     clock: Clock,
     admission: Option<Arc<crate::operations::GrpcAdmission>>,
@@ -177,6 +178,7 @@ impl Attached {
                 Placement::Remote(address) => (None, address.clone()),
             };
             let mut activation = connect(&clock, &address, 1, None, process.as_ref().map(|process| process.digest)).await?;
+            activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
             })?;
@@ -291,6 +293,7 @@ async fn connect(
         description,
         previous_started_at,
         executable_digest,
+        process_id: None,
         connection,
         admission: None,
         clock: clock.clone(),
@@ -380,13 +383,21 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         }
         publications.close().await;
         activation.admission.as_ref().unwrap().remove();
+        if let Some(process) = &mut process {
+            let failure = match process.child.try_wait() {
+                Ok(Some(exit)) => Error::Exit(exit),
+                Ok(None) => {
+                    process.child.kill().await.map_err(|error| Arc::new(Error::Io(error)))?;
+                    Error::Disconnected
+                }
+                Err(error) => Error::Io(error),
+            };
+            return Err(Arc::new(failure));
+        }
         status.send_replace(Status {
             activation: None,
             failure: Some(Arc::new(Error::Disconnected)),
         });
-        if process.is_some() {
-            return Err(Arc::new(Error::Disconnected));
-        }
         let previous = activation.description.started_at;
         let number = activation.number + 1;
         loop {

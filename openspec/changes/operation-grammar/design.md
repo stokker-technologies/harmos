@@ -1142,6 +1142,176 @@ stored schema/identity catalogs remain JSON bytes and need a typed replacement.
 Generic plugin, access, transfer and status gaps are library work under the
 manager inventory above; application operations remain outside this repository.
 
+## Plugin Manager
+
+Owner decision, 2026-11-12: move generic plugin management into the library.
+`harmos.v1.Plugins` is the client-facing resource service;
+`harmos.plugin.v1.Instance` is the distinct service implemented by a plugin
+executable. This section specifies the seven client operations and fourteen
+method wrappers counted in the locked inventory above.
+
+```proto
+service Plugins {
+  rpc Get(PluginsGetRequest) returns (PluginsGetResponse);
+  rpc List(PluginsListRequest) returns (PluginsListResponse);
+  rpc Watch(PluginsWatchRequest) returns (stream PluginsWatchResponse);
+  rpc Create(PluginsCreateRequest) returns (PluginsCreateResponse);
+  rpc Set(PluginsSetRequest) returns (PluginsSetResponse);
+  rpc Delete(PluginsDeleteRequest) returns (PluginsDeleteResponse);
+  rpc Restart(PluginsRestartRequest) returns (PluginsRestartResponse);
+}
+message PluginValue { bool enabled = 1; }
+message PluginDescription {
+  string id = 1;
+  string version = 2;
+  google.protobuf.Timestamp started_at = 3;
+  harmos.v1.Catalog catalog = 4;
+  uint32 revision = 5;
+  string sdk = 6;
+  string sdk_version = 7;
+}
+message PluginRemote { string url = 1; }
+message PluginManaged {
+  harmos.storage.v1.FileReference content = 1;
+  bytes sha256 = 2;
+}
+message PluginPlacement {
+  oneof kind { PluginManaged managed = 1; PluginRemote remote = 2; }
+}
+enum PluginState {
+  PLUGIN_STATE_UNSPECIFIED = 0;
+  PLUGIN_STATE_CONNECTING = 1;
+  PLUGIN_STATE_READY = 2;
+  PLUGIN_STATE_UNAVAILABLE = 3;
+  PLUGIN_STATE_STOPPED = 4;
+  PLUGIN_STATE_STOPPING = 5;
+}
+message PluginProcess {
+  uint32 id = 1;
+  bytes executable_digest = 2;
+  google.protobuf.Timestamp started_at = 3;
+}
+message PluginEntry {
+  string name = 1;
+  PluginPlacement placement = 2;
+  PluginValue value = 3;
+  bytes revision = 4;
+  PluginState state = 5;
+  harmos.v1.Failure failure = 6;
+  PluginDescription description = 7;
+  bytes catalog_digest = 8;
+  PluginProcess process = 9;
+  uint64 activation = 10;
+}
+message PluginsGetRequest { string name = 1; harmos.v1.ReadCut at = 2; }
+message PluginsGetResponse { PluginEntry entry = 1; harmos.v1.ReadCut resolved_at = 2; }
+message PluginsListRequest { harmos.v1.ReadCut at = 1; harmos.v1.PageRequest page = 2; }
+message PluginsListResponse {
+  repeated PluginEntry entries = 1;
+  harmos.v1.ReadCut resolved_at = 2;
+  string next_page_token = 3;
+}
+message PluginsWatchRequest { string name = 1; harmos.v1.ReadCut at = 2; }
+message PluginSnapshot { repeated PluginEntry entries = 1; }
+message PluginChange { oneof kind { PluginEntry entry = 1; string deleted = 2; } }
+message PluginsWatchResponse {
+  harmos.v1.ReadCut resolved_at = 1;
+  oneof event {
+    PluginSnapshot snapshot = 2;
+    PluginChange change = 3;
+    string resync_required = 4;
+  }
+}
+message PluginsCreateRequest {
+  string request_id = 1;
+  string name = 2;
+  PluginPlacement placement = 3;
+  PluginValue value = 4;
+}
+message PluginsCreateResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
+message PluginsSetRequest { string name = 1; PluginValue value = 2; bytes expected_revision = 3; }
+message PluginsSetResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
+message PluginsDeleteRequest { string name = 1; bytes expected_revision = 2; }
+message PluginsDeleteResponse { harmos.v1.Receipt receipt = 1; }
+message PluginsRestartRequest { string name = 1; bytes expected_revision = 2; }
+message PluginsRestartResponse { PluginEntry entry = 1; }
+```
+
+```rust
+use harmos_runtime::plugin::manager::{Manager, PluginManagerSettings};
+use std::sync::Arc;
+// The host supplies storage, its installation root, all capacities and policy.
+let manager = Manager::new(storage, content, settings)?;
+setup.settings().plugins(manager.clone());
+let runtime = Arc::new(/* launch the configured host */);
+manager.start(&runtime).await?;
+// Management calls use registered operations and normal authorization.
+// Plugin invocation uses the existing scope-preserving operation handle.
+let operations = runtime.operations.with_scope("opaque-scope")?;
+let reply = operations.call_encoded("example.echo", payload).await?;
+```
+
+`Manager` implements `Management`, whose typed `get`, `list`, `watch`, `create`,
+`set`, `delete` and `restart` methods take the generated requests above and return
+`Pending<'_, Response>`; `watch` returns a bounded receiver of generated responses.
+`Manager::new` takes the runtime `StorageManager`, `Arc<dyn ContentSource>` and
+`PluginManagerSettings`. The latter owns the namespace, directory, target,
+existing placement and bundle policies, and all registry/read/queue capacities.
+`ContentSource` has the following boundary; `ContentRead<'a>` fixes the future's
+result to `Result<Vec<u8>, Error>`. `PublishedContent(StorageManager)` is the
+shared-storage implementation.
+
+```rust
+pub trait ContentSource: Send + Sync + 'static {
+    fn read<'a>(&'a self, content: &'a PluginManaged, max_bytes: usize) -> ContentRead<'a>;
+}
+```
+
+The runtime builder's `plugins(Manager)` registers the resource and catalog;
+`start(&Arc<Runtime<A>>)` starts restoration and host-owned supervision once.
+
+| Decision | Reason |
+| --- | --- |
+| Client-only `harmos.v1.Plugins` and its own description payload | Instance method wrappers remain on the plugin face; the client receives observed identity/catalog data without importing a carrier service. |
+| Immutable placement and one writable `enabled` value | Set cannot turn an installed executable into an unrelated remote endpoint; replacement uses Delete/Create. |
+| Unchanged Set is a no-op | Re-establishing the same writable value preserves its revision and activation rather than restarting a healthy plugin. |
+| Stopping precedes Stopped when disabling | Watch reports durable disabled intent while cleanup runs; Set completes after process settlement and the final stopped state is saved. |
+| Caller-chosen opaque entry name and replay-safe Create request identifier | Identity survives reconnect and host restart independently of catalog identity; normalized replay returns the original response, and changed input conflicts. |
+| Durable registry object using conditional storage replacement | One bounded registry atomically owns entries and Create receipts without a private database or cross-object transaction. Consumer capacities bound entries, receipts and encoded registry bytes; exhausted receipt retention refuses new creates instead of silently expiring identities. |
+| Verify uploaded content and existing bundle format before admitting an entry | Digest, manifest, native target and executable checks precede extraction and process startup. The manager owns the installed directory; clients never supply executable paths. |
+| Content-source trait until the upload-session worker joins | The manager consumes only published immutable content; it never creates a second upload protocol. The storage implementation reads retained published file content. |
+| Reuse attachment connection, admission, invocation, streams and supervision | The manager owns the set and lifecycle, while `attach_grpc` remains the single hosting implementation. |
+| Retain unavailable entries and the last connected description | A failed process or endpoint must remain manageable and diagnostically visible. Restart replaces the activation; disabled entries remain stopped. |
+| Reconnect remote entries and start enabled managed entries on startup | Persisted intent survives a host restart; observed process state is reconstructed, never trusted from disk. |
+| Bounded issued cuts, pages and Watch events | Reads resolve one durable manager snapshot; identifier ordering and opaque bound tokens keep pagination consistent. Watch opens with a snapshot, then ordered changes; overflow reports explicit resynchronization instead of skipping evidence. |
+| Manager-instance cut epoch | Issued cuts and tokens expire across host restart; stale or foreign positions fail explicitly. Durable entry identities and revisions survive. |
+| Product policy through existing visibility, grants and external authorizer | Opaque invocation scope is inherited unchanged and never parsed as authority; no product role model enters the manager. |
+| No automatic process restart loop | Remote reconnect remains attachment policy; failed managed processes stay unavailable until Restart or host restart, avoiding a second restart scheduler. |
+| Hidden Windows process startup and explicit loopback endpoint environment | Managed executables have no console window and receive `HARMOS_ADDRESS=127.0.0.1:0`; existing readiness announcement supplies the bound endpoint without reserving a racy port. |
+| Explicit startup against `Arc<Runtime<A>>` | The manager retains a weak host reference, avoiding a runtime/resource cycle; normal runtime shutdown owns and awaits its participant. |
+
+Owned source inventory: `proto/harmos/v1/plugins.proto`,
+`crates/harmos-runtime/src/plugin/manager/**`,
+`crates/harmos-operations/src/plugins/**`, manager stories under
+`crates/harmos-runtime/tests/plugin_grpc/manager/**`,
+`sdk/rust/src/plugins_contracts.rs`, and `docs/plugin-manager.md`.
+Existing hosting extensions are confined to `plugin/grpc/mod.rs` (shared
+attachment supervision, process identity and awaited reaping after disconnect), `plugin/grpc/managed.rs` (explicit
+endpoint and platform launch), and `plugin/grpc/managed/{windows,unix}.rs`
+(platform command construction). Other source edits are registrations and
+generated protocol output, plus seven built-in contract registrations in
+`crates/harmos-operations/src/operations/contract.rs`. The shared registry validates
+the exact protocol, binding and public visibility without a manager-specific
+reserved-namespace exception. Shared primitives and carrier renames join from
+`feat/gp-grammar-core`; unary uploads and ranged content join from the storage
+worker. Neither parallel owner's semantics are reimplemented here.
+
+The settings/secrets ownership question was initially open. The owner's locked
+boundary decision resolves it: product-owned stores, schemas, UI and credentials;
+library-owned settings declarations and context host-value delivery under their
+existing owners. The manager adds neither a second resolver nor a settings store.
+The catalog's meaning and which plugins a unit of work uses remain with the product.
+
 ## Risks and Trade-offs
 
 - Receipt/position renames change fingerprints and admission: migrate descriptors,

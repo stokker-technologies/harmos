@@ -1669,6 +1669,1031 @@ pub mod invocations_server {
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginValue {
+    #[prost(bool, tag = "1")]
+    pub enabled: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginDescription {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub version: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub started_at: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(message, optional, tag = "4")]
+    pub catalog: ::core::option::Option<Catalog>,
+    #[prost(uint32, tag = "5")]
+    pub revision: u32,
+    #[prost(string, tag = "6")]
+    pub sdk: ::prost::alloc::string::String,
+    #[prost(string, tag = "7")]
+    pub sdk_version: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginRemote {
+    #[prost(string, tag = "1")]
+    pub url: ::prost::alloc::string::String,
+}
+/// Content names refer exclusively to published library upload content.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginManaged {
+    #[prost(message, optional, tag = "1")]
+    pub content: ::core::option::Option<crate::storage::FileReference>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub sha256: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginPlacement {
+    #[prost(oneof = "plugin_placement::Kind", tags = "1, 2")]
+    pub kind: ::core::option::Option<plugin_placement::Kind>,
+}
+/// Nested message and enum types in `PluginPlacement`.
+pub mod plugin_placement {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Kind {
+        #[prost(message, tag = "1")]
+        Managed(super::PluginManaged),
+        #[prost(message, tag = "2")]
+        Remote(super::PluginRemote),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginProcess {
+    #[prost(uint32, tag = "1")]
+    pub id: u32,
+    #[prost(bytes = "vec", tag = "2")]
+    pub executable_digest: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub started_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginEntry {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub placement: ::core::option::Option<PluginPlacement>,
+    #[prost(message, optional, tag = "3")]
+    pub value: ::core::option::Option<PluginValue>,
+    #[prost(bytes = "vec", tag = "4")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(enumeration = "PluginState", tag = "5")]
+    pub state: i32,
+    #[prost(message, optional, tag = "6")]
+    pub failure: ::core::option::Option<Failure>,
+    #[prost(message, optional, tag = "7")]
+    pub description: ::core::option::Option<PluginDescription>,
+    #[prost(bytes = "vec", tag = "8")]
+    pub catalog_digest: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "9")]
+    pub process: ::core::option::Option<PluginProcess>,
+    #[prost(uint64, tag = "10")]
+    pub activation: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsGetRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<ReadCut>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsGetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+    #[prost(message, optional, tag = "2")]
+    pub resolved_at: ::core::option::Option<ReadCut>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsListRequest {
+    #[prost(message, optional, tag = "1")]
+    pub at: ::core::option::Option<ReadCut>,
+    #[prost(message, optional, tag = "2")]
+    pub page: ::core::option::Option<PageRequest>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsListResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub entries: ::prost::alloc::vec::Vec<PluginEntry>,
+    #[prost(message, optional, tag = "2")]
+    pub resolved_at: ::core::option::Option<ReadCut>,
+    #[prost(string, tag = "3")]
+    pub next_page_token: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsWatchRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<ReadCut>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginSnapshot {
+    #[prost(message, repeated, tag = "1")]
+    pub entries: ::prost::alloc::vec::Vec<PluginEntry>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginChange {
+    #[prost(oneof = "plugin_change::Kind", tags = "1, 2")]
+    pub kind: ::core::option::Option<plugin_change::Kind>,
+}
+/// Nested message and enum types in `PluginChange`.
+pub mod plugin_change {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Kind {
+        #[prost(message, tag = "1")]
+        Entry(super::PluginEntry),
+        #[prost(string, tag = "2")]
+        Deleted(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsWatchResponse {
+    #[prost(message, optional, tag = "1")]
+    pub resolved_at: ::core::option::Option<ReadCut>,
+    #[prost(oneof = "plugins_watch_response::Event", tags = "2, 3, 4")]
+    pub event: ::core::option::Option<plugins_watch_response::Event>,
+}
+/// Nested message and enum types in `PluginsWatchResponse`.
+pub mod plugins_watch_response {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Event {
+        #[prost(message, tag = "2")]
+        Snapshot(super::PluginSnapshot),
+        #[prost(message, tag = "3")]
+        Change(super::PluginChange),
+        #[prost(string, tag = "4")]
+        ResyncRequired(::prost::alloc::string::String),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsCreateRequest {
+    #[prost(string, tag = "1")]
+    pub request_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub placement: ::core::option::Option<PluginPlacement>,
+    #[prost(message, optional, tag = "4")]
+    pub value: ::core::option::Option<PluginValue>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsCreateResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+    #[prost(message, optional, tag = "2")]
+    pub receipt: ::core::option::Option<Receipt>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsSetRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<PluginValue>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsSetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+    #[prost(message, optional, tag = "2")]
+    pub receipt: ::core::option::Option<Receipt>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsDeleteRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsDeleteResponse {
+    #[prost(message, optional, tag = "1")]
+    pub receipt: ::core::option::Option<Receipt>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsRestartRequest {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsRestartResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PluginState {
+    Unspecified = 0,
+    Connecting = 1,
+    Ready = 2,
+    Unavailable = 3,
+    Stopped = 4,
+    Stopping = 5,
+}
+impl PluginState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PLUGIN_STATE_UNSPECIFIED",
+            Self::Connecting => "PLUGIN_STATE_CONNECTING",
+            Self::Ready => "PLUGIN_STATE_READY",
+            Self::Unavailable => "PLUGIN_STATE_UNAVAILABLE",
+            Self::Stopped => "PLUGIN_STATE_STOPPED",
+            Self::Stopping => "PLUGIN_STATE_STOPPING",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PLUGIN_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "PLUGIN_STATE_CONNECTING" => Some(Self::Connecting),
+            "PLUGIN_STATE_READY" => Some(Self::Ready),
+            "PLUGIN_STATE_UNAVAILABLE" => Some(Self::Unavailable),
+            "PLUGIN_STATE_STOPPED" => Some(Self::Stopped),
+            "PLUGIN_STATE_STOPPING" => Some(Self::Stopping),
+            _ => None,
+        }
+    }
+}
+/// Generated client implementations.
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+pub mod plugins_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// Client-facing management of hosted entries, distinct from Instance.
+    #[derive(Debug, Clone)]
+    pub struct PluginsClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl PluginsClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> PluginsClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::Body>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> PluginsClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            PluginsClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        pub async fn get(
+            &mut self,
+            request: impl tonic::IntoRequest<super::PluginsGetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsGetResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Get");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Get"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn list(
+            &mut self,
+            request: impl tonic::IntoRequest<super::PluginsListRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsListResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/List");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "List"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn watch(
+            &mut self,
+            request: impl tonic::IntoRequest<super::PluginsWatchRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::PluginsWatchResponse>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Watch");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Watch"));
+            self.inner.server_streaming(req, path, codec).await
+        }
+        pub async fn create(
+            &mut self,
+            request: impl tonic::IntoRequest<super::PluginsCreateRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsCreateResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Create");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Create"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn set(
+            &mut self,
+            request: impl tonic::IntoRequest<super::PluginsSetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsSetResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Set");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Set"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn delete(
+            &mut self,
+            request: impl tonic::IntoRequest<super::PluginsDeleteRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsDeleteResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Delete");
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Delete"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn restart(
+            &mut self,
+            request: impl tonic::IntoRequest<super::PluginsRestartRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsRestartResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/harmos.v1.Plugins/Restart",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Restart"));
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+pub mod plugins_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with PluginsServer.
+    #[async_trait]
+    pub trait Plugins: std::marker::Send + std::marker::Sync + 'static {
+        async fn get(
+            &self,
+            request: tonic::Request<super::PluginsGetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsGetResponse>,
+            tonic::Status,
+        >;
+        async fn list(
+            &self,
+            request: tonic::Request<super::PluginsListRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsListResponse>,
+            tonic::Status,
+        >;
+        /// Server streaming response type for the Watch method.
+        type WatchStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<super::PluginsWatchResponse, tonic::Status>,
+            >
+            + std::marker::Send
+            + 'static;
+        async fn watch(
+            &self,
+            request: tonic::Request<super::PluginsWatchRequest>,
+        ) -> std::result::Result<tonic::Response<Self::WatchStream>, tonic::Status>;
+        async fn create(
+            &self,
+            request: tonic::Request<super::PluginsCreateRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsCreateResponse>,
+            tonic::Status,
+        >;
+        async fn set(
+            &self,
+            request: tonic::Request<super::PluginsSetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsSetResponse>,
+            tonic::Status,
+        >;
+        async fn delete(
+            &self,
+            request: tonic::Request<super::PluginsDeleteRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsDeleteResponse>,
+            tonic::Status,
+        >;
+        async fn restart(
+            &self,
+            request: tonic::Request<super::PluginsRestartRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginsRestartResponse>,
+            tonic::Status,
+        >;
+    }
+    /// Client-facing management of hosted entries, distinct from Instance.
+    #[derive(Debug)]
+    pub struct PluginsServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> PluginsServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for PluginsServer<T>
+    where
+        T: Plugins,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::Body>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/harmos.v1.Plugins/Get" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetSvc<T: Plugins>(pub Arc<T>);
+                    impl<
+                        T: Plugins,
+                    > tonic::server::UnaryService<super::PluginsGetRequest>
+                    for GetSvc<T> {
+                        type Response = super::PluginsGetResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::PluginsGetRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Plugins>::get(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/harmos.v1.Plugins/List" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListSvc<T: Plugins>(pub Arc<T>);
+                    impl<
+                        T: Plugins,
+                    > tonic::server::UnaryService<super::PluginsListRequest>
+                    for ListSvc<T> {
+                        type Response = super::PluginsListResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::PluginsListRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Plugins>::list(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/harmos.v1.Plugins/Watch" => {
+                    #[allow(non_camel_case_types)]
+                    struct WatchSvc<T: Plugins>(pub Arc<T>);
+                    impl<
+                        T: Plugins,
+                    > tonic::server::ServerStreamingService<super::PluginsWatchRequest>
+                    for WatchSvc<T> {
+                        type Response = super::PluginsWatchResponse;
+                        type ResponseStream = T::WatchStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::PluginsWatchRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Plugins>::watch(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = WatchSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.server_streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/harmos.v1.Plugins/Create" => {
+                    #[allow(non_camel_case_types)]
+                    struct CreateSvc<T: Plugins>(pub Arc<T>);
+                    impl<
+                        T: Plugins,
+                    > tonic::server::UnaryService<super::PluginsCreateRequest>
+                    for CreateSvc<T> {
+                        type Response = super::PluginsCreateResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::PluginsCreateRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Plugins>::create(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CreateSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/harmos.v1.Plugins/Set" => {
+                    #[allow(non_camel_case_types)]
+                    struct SetSvc<T: Plugins>(pub Arc<T>);
+                    impl<
+                        T: Plugins,
+                    > tonic::server::UnaryService<super::PluginsSetRequest>
+                    for SetSvc<T> {
+                        type Response = super::PluginsSetResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::PluginsSetRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Plugins>::set(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SetSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/harmos.v1.Plugins/Delete" => {
+                    #[allow(non_camel_case_types)]
+                    struct DeleteSvc<T: Plugins>(pub Arc<T>);
+                    impl<
+                        T: Plugins,
+                    > tonic::server::UnaryService<super::PluginsDeleteRequest>
+                    for DeleteSvc<T> {
+                        type Response = super::PluginsDeleteResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::PluginsDeleteRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Plugins>::delete(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = DeleteSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/harmos.v1.Plugins/Restart" => {
+                    #[allow(non_camel_case_types)]
+                    struct RestartSvc<T: Plugins>(pub Arc<T>);
+                    impl<
+                        T: Plugins,
+                    > tonic::server::UnaryService<super::PluginsRestartRequest>
+                    for RestartSvc<T> {
+                        type Response = super::PluginsRestartResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::PluginsRestartRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Plugins>::restart(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RestartSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for PluginsServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "harmos.v1.Plugins";
+    impl<T> tonic::server::NamedService for PluginsServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TimeSleepRequest {
     #[prost(message, optional, tag = "1")]
     pub duration: ::core::option::Option<::prost_types::Duration>,

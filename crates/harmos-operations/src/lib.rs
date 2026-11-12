@@ -27,6 +27,8 @@ pub mod model;
 pub mod observers;
 pub mod operations;
 pub mod plugin;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod plugins;
 mod refusal;
 mod registration;
 pub mod storage;
