@@ -12,6 +12,7 @@
 mod columns;
 mod files;
 mod index;
+mod projection;
 mod rows;
 
 /* === Re-Exports === */
@@ -55,6 +56,7 @@ pub struct SqliteBackend {
 
 struct State {
     connection: Connection,
+    _lease: Option<std::fs::File>,
     history: StoreHistory,
     settings: SqliteSettings,
     snapshots: BTreeMap<Vec<u8>, StorageCursor>,
@@ -69,14 +71,25 @@ struct State {
 
 impl SqliteBackend {
     pub fn new(path: impl AsRef<Path>, history: StoreHistory, settings: SqliteSettings) -> Result<Self> {
-        Self::connect(Connection::open(path).map_err(db)?, history, settings)
+        let path = path.as_ref();
+        let mut lock_path = path.as_os_str().to_os_string();
+        lock_path.push(".lock");
+        let lease = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(lock_path)
+            .map_err(|source| Error::backend("open SQLite lease", BackendFailure::Permanent, source))?;
+        lease.try_lock().map_err(|source| Error::backend("lock SQLite storage", BackendFailure::Conflict, source))?;
+        Self::connect(Connection::open(path).map_err(db)?, history, settings, Some(lease))
     }
 
     pub fn in_memory(history: StoreHistory, settings: SqliteSettings) -> Result<Self> {
-        Self::connect(Connection::open_in_memory().map_err(db)?, history, settings)
+        Self::connect(Connection::open_in_memory().map_err(db)?, history, settings, None)
     }
 
-    fn connect(mut connection: Connection, history: StoreHistory, settings: SqliteSettings) -> Result<Self> {
+    fn connect(mut connection: Connection, history: StoreHistory, settings: SqliteSettings, lease: Option<std::fs::File>) -> Result<Self> {
         integer(settings.chunk_rows.get() as u64)?;
         integer(settings.chunk_bytes.get() as u64)?;
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;").map_err(db)?;
@@ -100,6 +113,11 @@ impl SqliteBackend {
             CREATE TABLE IF NOT EXISTS storage_mutations(id TEXT PRIMARY KEY, data BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS storage_indexes(name TEXT PRIMARY KEY,revision INTEGER NOT NULL,source TEXT NOT NULL,definition BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS storage_index_entries(name TEXT NOT NULL,revision INTEGER NOT NULL,key BLOB NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(name,revision,key,position));
+            CREATE TABLE IF NOT EXISTS projection_definitions(name TEXT NOT NULL,revision INTEGER NOT NULL,definition BLOB NOT NULL,retired INTEGER,PRIMARY KEY(name,revision));
+            CREATE TABLE IF NOT EXISTS projection_active(name TEXT PRIMARY KEY,revision INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS projection_cuts(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,rows INTEGER NOT NULL,changes INTEGER NOT NULL,schema BLOB NOT NULL,PRIMARY KEY(name,revision,frontier));
+            CREATE TABLE IF NOT EXISTS projection_pages(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,first_row INTEGER NOT NULL,rows INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(name,revision,frontier,first_row));
+            CREATE TABLE IF NOT EXISTS projection_changes(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,ordinal INTEGER NOT NULL,key INTEGER NOT NULL,PRIMARY KEY(name,revision,frontier,ordinal));
             CREATE TABLE IF NOT EXISTS object_releases(schema_key TEXT NOT NULL, item TEXT NOT NULL, through INTEGER NOT NULL, PRIMARY KEY(schema_key,item));").map_err(db)?;
         let encoded = text(&history)?;
         let stored: Option<String> =
@@ -114,6 +132,7 @@ impl SqliteBackend {
             history: history.clone(),
             state: Arc::new(Mutex::new(State {
                 connection,
+                _lease: lease,
                 history,
                 settings,
                 snapshots: BTreeMap::new(),
@@ -165,6 +184,7 @@ impl StorageBackend for SqliteBackend {
         StorageCapabilities {
             native_arrow: true,
             native_index: true,
+            durable_projections: true,
             ..StorageCapabilities::default()
         }
     }
@@ -313,6 +333,44 @@ impl StorageBackend for SqliteBackend {
     ) -> StorageFuture<'a, crate::query::index::IndexPage> {
         let (snapshot, read, cancel) = (snapshot.clone(), read.clone(), cancel.clone());
         Box::pin(self.call(move |state| index::scan(state, &snapshot, &read, &cancel)))
+    }
+    fn register_projection<'a>(
+        &'a self, definition: &'a crate::query::projection::ProjectionDefinition, rebuild: bool,
+    ) -> StorageFuture<'a, u64> {
+        let definition = definition.clone();
+        Box::pin(self.call(move |state| projection::register(state, &definition, rebuild)))
+    }
+    fn projection_definition<'a>(
+        &'a self, name: &'a crate::Identifier,
+    ) -> StorageFuture<'a, (crate::query::projection::ProjectionDefinition, u64)> {
+        let name = name.clone();
+        Box::pin(self.call(move |state| {
+            state.check()?;
+            projection::definition(&state.connection, &name)
+        }))
+    }
+    fn projection_status<'a>(
+        &'a self, name: &'a crate::Identifier, revision: u64, frontier: &'a StorageCursor,
+    ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {
+        let (name, frontier) = (name.clone(), frontier.clone());
+        Box::pin(self.call(move |state| projection::status(state, &name, revision, &frontier)))
+    }
+    fn projection_frontier<'a>(&'a self, name: &'a crate::Identifier, revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
+        let name = name.clone();
+        Box::pin(self.call(move |state| projection::frontier(state, &name, revision)))
+    }
+    fn publish_projection(&self, publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+        Box::pin(self.call(move |state| projection::publish(state, &publication)))
+    }
+    fn read_projection<'a>(
+        &'a self, read: &'a crate::query::projection::ProjectionRead,
+    ) -> StorageFuture<'a, crate::query::projection::ProjectionPage> {
+        let read = read.clone();
+        Box::pin(self.call(move |state| projection::read(state, &read)))
+    }
+    fn retire_projection<'a>(&'a self, name: &'a crate::Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        let (name, through) = (name.clone(), through.clone());
+        Box::pin(self.call(move |state| projection::retire(state, &name, revision, &through)))
     }
     fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         let metadata = metadata.clone();

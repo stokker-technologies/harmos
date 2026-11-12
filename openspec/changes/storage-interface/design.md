@@ -451,3 +451,12 @@ Within a declared field type its natural order is preserved; floating signed zer
 Text escapes NUL before its terminator. Missing declarations return `Error::IndexNotFound`.
 The bounded fallback scans at most the supplied source work and retains only one output page
 plus its lookahead; it refuses rather than return an incomplete globally ordered answer.
+
+
+Projection reads carry both `limits: ReadLimits` for returned arrays/changed-key buffers and
+`work: ReadLimits` for decoding one durable chunk. Frontiers advance monotonically per revision;
+an already published cut is idempotent, but a missing older cut cannot be published behind a
+newer frontier. Old published cuts and revisions remain readable until explicit retirement.
+The reference database has one backend owner enforced by a native file lease for the instance
+lifetime; concurrent callers share that owner. This makes snapshot retention authoritative
+across pruning and prevents independent backend instances from expiring each other's cuts.

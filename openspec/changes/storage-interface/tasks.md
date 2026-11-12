@@ -14,7 +14,7 @@
 
 - [x] 2.1 Add native Arrow scan interfaces and bounded executor fallback; prove column/predicate/time pruning, snapshot/page parity and cancellation without row reconstruction on the native path.
 - [x] 2.2 Add index declarations/maintenance and ordered seek reads; prove stable ties, restart/token invalidation, snapshot cuts and explicit missing-index behaviour.
-- [ ] 2.3 Add durable projection registration/reads and inspectable frontiers; prove crash replay, idempotence, advancement, lag and rebuild/invalidation semantics.
+- [x] 2.3 Add durable projection registration/reads and inspectable frontiers; prove crash replay, idempotence, advancement, lag and rebuild/invalidation semantics.
 - [ ] 2.4 Add Transform::TimeBuckets and projection revision/changed-key support; prove late correction/replacement, saved-cut stability and equivalence with generic execution.
 - [ ] 2.5 Add typed compare_exchange and atomic backend implementation; prove conflicting writers, create-if-absent, receipt replay and durability outcomes.
 - [ ] 2.6 Implement all five capabilities in the durable reference and deterministic test backends; migrate existing implementers and operation/protocol consumers without product-specific APIs.

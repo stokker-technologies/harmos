@@ -43,6 +43,7 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 #[derive(Default)]
 pub struct Control {
     pub date: Mutex<Option<std::time::SystemTime>>,
+    pub fail_projection: AtomicBool,
     pub block_chunk_file: Mutex<Option<String>>,
     pub permanent_chunk_file: Mutex<Option<String>>,
     pub chunk_active: Mutex<BTreeMap<String, usize>>,
@@ -167,6 +168,7 @@ pub struct Release {
 }
 
 pub struct Data {
+    projections: Mutex<harmos_storage::query::projection::ProjectionCatalog>,
     indexes: Mutex<harmos_storage::query::index::IndexCatalog>,
     pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
     pub object_releases: Mutex<Vec<Release>>,
@@ -269,6 +271,7 @@ impl Data {
     pub fn with_catalog(catalog: ObjectCatalog, history: StoreHistory) -> Self {
         Self {
             indexes: Mutex::default(),
+            projections: Mutex::default(),
             pruned_objects: Mutex::default(),
             object_releases: Mutex::new(Vec::new()),
             catalog,
@@ -301,6 +304,57 @@ impl Data {
 }
 
 impl StorageBackend for Data {
+    fn capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
+        harmos_storage::query::columnar::StorageCapabilities {
+            durable_projections: true,
+            ..Default::default()
+        }
+    }
+    fn register_projection<'a>(
+        &'a self, definition: &'a harmos_storage::query::projection::ProjectionDefinition, rebuild: bool,
+    ) -> StorageFuture<'a, u64> {
+        Box::pin(async move { self.projections.lock().unwrap().register(definition, rebuild) })
+    }
+    fn projection_definition<'a>(
+        &'a self, name: &'a Identifier,
+    ) -> StorageFuture<'a, (harmos_storage::query::projection::ProjectionDefinition, u64)> {
+        Box::pin(async move { self.projections.lock().unwrap().definition(name) })
+    }
+    fn projection_status<'a>(
+        &'a self, name: &'a Identifier, revision: u64, frontier: &'a StorageCursor,
+    ) -> StorageFuture<'a, Option<harmos_storage::query::projection::ProjectionStatus>> {
+        Box::pin(async move {
+            self.history.check(&frontier.history)?;
+            self.projections.lock().unwrap().status(name, revision, frontier)
+        })
+    }
+    fn projection_frontier<'a>(&'a self, name: &'a Identifier, revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
+        Box::pin(async move { self.projections.lock().unwrap().frontier(name, revision) })
+    }
+    fn publish_projection(&self, publication: harmos_storage::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+        Box::pin(async move {
+            self.image(publication.snapshot())?;
+            if self.control.fail_projection.load(Ordering::SeqCst) {
+                return Err(failure(BackendFailure::Transient));
+            }
+            self.projections.lock().unwrap().publish(&publication)
+        })
+    }
+    fn read_projection<'a>(
+        &'a self, read: &'a harmos_storage::query::projection::ProjectionRead,
+    ) -> StorageFuture<'a, harmos_storage::query::projection::ProjectionPage> {
+        Box::pin(async move {
+            self.history.check(&read.frontier.history)?;
+            self.projections.lock().unwrap().read(read)
+        })
+    }
+    fn retire_projection<'a>(&'a self, name: &'a Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        Box::pin(async move {
+            self.history.check(&through.history)?;
+            self.projections.lock().unwrap().retire(name, revision, through)
+        })
+    }
+
     fn register_index<'a>(
         &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, rebuild: bool, _work: ReadLimits,
         cancel: &'a harmos_storage::query::columnar::Cancellation,

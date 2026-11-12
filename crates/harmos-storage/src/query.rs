@@ -18,6 +18,7 @@ pub mod index;
 mod object_schemas;
 mod order_stats;
 mod ordering;
+pub mod projection;
 pub mod quantiles;
 mod reader;
 mod reduction;

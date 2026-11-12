@@ -71,6 +71,42 @@ pub struct ReadLimits {
 /* === Traits === */
 
 pub trait StorageBackend: Send + Sync + 'static {
+    fn register_projection<'a>(
+        &'a self, _definition: &'a crate::query::projection::ProjectionDefinition, _rebuild: bool,
+    ) -> StorageFuture<'a, u64> {
+        unsupported("projection registration")
+    }
+
+    fn projection_definition<'a>(
+        &'a self, _name: &'a crate::Identifier,
+    ) -> StorageFuture<'a, (crate::query::projection::ProjectionDefinition, u64)> {
+        unsupported("projection definition")
+    }
+
+    fn projection_status<'a>(
+        &'a self, _name: &'a crate::Identifier, _revision: u64, _frontier: &'a StorageCursor,
+    ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {
+        unsupported("projection status")
+    }
+
+    fn projection_frontier<'a>(&'a self, _name: &'a crate::Identifier, _revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
+        unsupported("projection frontier")
+    }
+
+    fn publish_projection(&self, _publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+        unsupported("projection publication")
+    }
+
+    fn read_projection<'a>(
+        &'a self, _read: &'a crate::query::projection::ProjectionRead,
+    ) -> StorageFuture<'a, crate::query::projection::ProjectionPage> {
+        unsupported("projection read")
+    }
+
+    fn retire_projection<'a>(&'a self, _name: &'a crate::Identifier, _revision: u64, _through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+        unsupported("projection retention")
+    }
+
     fn register_index<'a>(
         &'a self, _definition: &'a crate::query::index::IndexDefinition, _rebuild: bool, _work: ReadLimits,
         _cancel: &'a crate::query::columnar::Cancellation,

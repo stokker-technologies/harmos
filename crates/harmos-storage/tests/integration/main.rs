@@ -16,6 +16,7 @@ mod exact_quantile_spill;
 mod file_sessions;
 mod index_seek;
 mod manager;
+mod projection_replay;
 mod query;
 mod state;
 
