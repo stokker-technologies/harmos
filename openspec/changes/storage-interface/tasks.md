@@ -8,7 +8,7 @@
 - [x] 1.4 Settle time-bucket boundaries, retained statistics/positions, corrections, late replacement, revision and changed-key retention semantics in design.md.
 - [x] 1.5 Settle conditional-update token scope, absent-object semantics, object-safe backend primitive, conflict receipts, durability and atomic index effects in design.md.
 - [x] 1.6 Lock the durable SQLite/Arrow reference backend module/feature, dependencies and capability obligations; retain the file recovery backend and bounded test backend as distinct owners.
-- [ ] 1.7 Before implementation, lock reproducible before/after workloads and numerical regression budgets; capture the baseline with deterministic multi-day data and millions of samples (workload and provisional budgets recorded; baseline blocked by the guest worker's dirty protocol reference, see design.md).
+- [x] 1.7 Before implementation, lock reproducible before/after workloads and numerical regression budgets; capture the baseline with deterministic multi-day data and millions of samples (Windows single-traversal baseline and proposed ceilings recorded in design.md; repeated/native Linux proof remains in 3.x).
 
 ## 2. Implementation and Targeted Proof
 

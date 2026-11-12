@@ -386,21 +386,40 @@ single measurements, not medians. Repeated Criterion sampling remains available 
 baseline selector. Budgets are unchanged and remain provisional until hosted repeated proof.
 
 
-## Implementation Prerequisite
+## Windows Baseline Measurement
 
-Tasks 1.1–1.6 record design decisions, not landed interfaces. Task 1.7 remains open: no completed
-Windows baseline numbers are available. The first existing-path benchmark compiled, but its
-repeated measurement was interrupted after exposing whole-snapshot copying in the test backend.
-The single-traversal replacement must compile and complete before tasks 2.x begin.
+Captured before interface implementation on Windows x86_64, AMD Ryzen 9 5950X (32 logical
+processors), 85,817,380,864 bytes physical RAM, Rust 1.99.1. Storage source is unchanged from
+`a7583836`; benchmark and task source are the local `bb0e4b29` checkpoint, with the concurrent
+guest worker's generated protocol reference correction needed for compilation. Other work in
+the checkout ran concurrently, so these are local single traversals, not authoritative medians.
 
-The concurrently edited generated `crates/harmos-protocol/src/v1.rs` currently references
-`super::host::v1::OperationAssignments` in `GuestInitialize`; `host.rs` declares
-`OperationAssignments` directly under `host`. This is Rust E0433 and blocks the storage bench
-and Tests producer. The file is dirty and owned by the guest worker, so it has not been edited
-by the storage worker. The owner must repair that reference/generator before rerunning the
-baseline. No baseline result, regression acceptance, storage implementation or source closure
-is claimed. The original one-million-sample/second target and +20% existing-path proposal are
-unchanged; measured relative budget numbers remain pending baseline completion.
+| Existing Generic Row Query | Rows Returned | Measured Seconds | Proposed +20% Ceiling (Seconds) |
+| --- | ---: | ---: | ---: |
+| Full Projection | 2,000,000 | 215.787614 | 258.945137 |
+| First Window | 4,096 | 79.456927 | 95.348312 |
+| Next Window | 4,096 | 82.026233 | 98.431480 |
+
+Command: `mise run bench -- --storage --filter baseline` (successful). Raw output:
+`target/benchmarks/storage/baseline.txt`; compiler metadata: its sibling `compiler.json`.
+All three row counts and sums agree with the deterministic generator outside timing. These
+measurements include retained-snapshot copying in the existing test backend and are not a
+previous durable-backend benchmark. The proposed native bounded-window/projection ceiling is
+2 seconds for this 2-million-sample workload. It is independent of the slow existing-path
+ceilings and will not be loosened to accept a candidate. These budgets are proposals from this
+baseline; cross-platform repeated and consumer-specific measurements remain tasks 3.x.
+
+Native plans additionally carry an initial exclusive source position (`start: u64`) and an
+optional exact integer/timestamp window, separate from seek continuation:
+
+```rust,ignore
+struct TimeBounds { column: String, lower_ns: i64, upper_ns: i64 }
+// ArrowScan: start: u64, time: Option<TimeBounds>, after: Option<ArrowSeek>.
+// start and the time window participate in the plan identity; bounds are half-open.
+```
+
+Reason: initial position seeks avoid scanning a known prefix, while integer time bounds avoid
+rounding nanoseconds through floating point predicates. The fallback applies identical bounds.
 
 README impact: no user-facing storage capability has landed, so its feature claims remain
 unchanged. The focused benchmark command is documented in `docs/tooling.md`.
