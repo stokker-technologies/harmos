@@ -24,11 +24,15 @@ pub(crate) mod fixture;
 mod mapping;
 mod mutations;
 mod nominal;
+mod file_ranges;
+mod native_stream_reads;
+#[path = "../../support/nominal.rs"]
+mod nominal_fixture;
 mod objects;
 mod retention;
 mod typed_reads;
 #[path = "../../support/waveforms.rs"]
-mod waveforms;
+pub(crate) mod waveforms;
 
 /* === Re-Exports === */
 

@@ -13,7 +13,7 @@
 
 - [x] 3.1 Rewrite the operations groups (retries, authored request lifecycle) as one story each.
 - [x] 3.2 Rewrite the state undo group and the mutation receipts group as one story each.
-- [ ] 3.3 Rewrite the stored waveform query group as one story.
+- [x] 3.3 Rewrite the stored waveform query group as one story.
 - [ ] 3.4 Generate the binding packages once and check every consumer facet against them.
 
 ## 4. Workloads and Time
