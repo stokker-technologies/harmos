@@ -1152,6 +1152,106 @@ manager inventory above; application operations remain outside this repository.
 
 ## Risks and Trade-offs
 
+### Access Client Services
+
+The owner's access/status implementation instruction supersedes the earlier inventory's
+compound Access actions and split Status reads. Namespace parents have no empty service.
+
+```proto
+package harmos.v1.access;
+service Listener {
+  rpc Get(ListenerGetRequest) returns (ListenerGetResponse);
+  rpc Set(ListenerSetRequest) returns (ListenerSetResponse);
+}
+service Pairings {
+  rpc Create(PairingsCreateRequest) returns (PairingsCreateResponse);
+  rpc List(PairingsListRequest) returns (PairingsListResponse);
+  rpc Delete(PairingsDeleteRequest) returns (PairingsDeleteResponse);
+}
+service Certificates {
+  rpc Create(CertificatesCreateRequest) returns (CertificatesCreateResponse);
+}
+// ListenerValue: enabled, endpoint, security (TLS names).
+// Get/Set: complete value, opaque revision; Set requires expected_revision.
+// Pairing: id, label, endpoint, pinned_certificate_pem, credential (Create only).
+```
+
+```rust
+grpc.configure_access(settings, credential_store).await?;
+grpc.access()?; // The gRPC manager retains the access control and listener lease.
+trait CredentialStore: Send + Sync {
+    fn load(&self) -> Pending<'_, Option<Credentials>>;
+    fn commit(&self, expected_revision: u64, value: Credentials) -> Pending<'_, ()>;
+}
+```
+
+Decisions: pairings are durable independent credentials, so List and Delete are necessary
+for discovery and revocation; List never returns a secret. One atomic store transaction
+replaces listener settings, certificate/key and pairing hashes together, so an unavailable
+store cannot partly rotate or configure access. The host supplies this store, including
+its settings layout and compare/exchange semantics. Certificate replacement validates
+before persistence and reuses ServerCertificate's live resolver; rotation revokes all
+pairings while existing TLS connections remain alive and must use a new credential.
+Only the dedicated access listener requires bearer credentials; an application may retain
+a separately authorized management listener to bootstrap and recover disabled access.
+Listener changes stage a replacement before commit, then retire the old attachment;
+same-endpoint security-name changes require Certificates.Create rather than a restart.
+Errors name Listener.Get/Set, Pairings.Create/List/Delete or Certificates.Create.
+
+### Status Client Services
+
+```proto
+package harmos.v1;
+service Status {
+  rpc Get(StatusGetRequest) returns (StatusGetResponse);
+  rpc Watch(StatusWatchRequest) returns (stream StatusWatchResponse);
+}
+// Response: host/application/library identity, process start, availability,
+// named health components (state/reason), resolved_at.
+// package harmos.v1.status; one file per service:
+// Logs.List/Watch, TraceEvents.List/Watch, Diagnostics.Get.
+// List: optional at, PageRequest; reply: events, resolved_at, next_page_token.
+// Watch: optional at; reply: opening boundary, changes or explicit resync failure.
+// Diagnostics.Get: archive id, offset, max_bytes; data, total_length, sha256.
+```
+
+```rust
+services.configure_status(settings, identity)?;
+let registration = services.status()?.contribute(provider)?;
+trait Contribution: Send + Sync {
+    fn health(&self) -> Result<Vec<Component>>;
+    fn diagnostics(&self) -> Result<Vec<Entry>>;
+}
+// A retained registration owns contribution lifetime; update notifies watchers.
+// Status's log/trace recording interface and tracing Layer redact before retention.
+```
+
+Decisions: Status.Watch is required to observe contributed health changes without polling.
+Host identity includes the host-supplied stable identifier; runtime captures its own clock
+start and library version. Contributions have host-owned registration lifetime and explicit
+change notification; provider failure appears as unavailable health and fails diagnostics
+with the action named. Histories are bounded by consumer item/byte budgets. List pins
+an issued process-history position; tokens bind kind, boundary and exclusive offset.
+Watch opens atomically at a boundary and follows later events, with explicit expiry/gap
+failure instead of silently skipping. Process histories expire at restart and retention
+eviction; zero is an issued empty boundary, never an arbitrary historical selection.
+Logs/traces are volatile diagnostics, not claims of storage durability.
+Diagnostics freezes a bounded tar archive under an opaque content id; subsequent ranges
+read the same bytes and digest. A narrow content-source boundary joins the shared storage
+range mechanism when that worker lands; no streaming twin or upload engine is added.
+Text-only contributed entries permit redaction before archiving; reject unsafe/duplicate
+archive paths and refuse over-budget archives instead of truncating valid content.
+Registered secret values and sensitive field names redact before log/trace retention,
+status reasons and diagnostics serialization; credentials and keys never enter archives.
+
+Ownership: grpc/access/**; services/status/**; operations/access/** and status/**;
+proto/harmos/v1/access/**, status.proto and status/**; five access/status stories;
+docs/access-status.md. Coupling extensions: GrpcManager retains access and closes its
+attachment; ServiceManager retains status in its shared host resources; operation-manager
+resource provision supplies narrow access/status ports; protocol generation includes new
+client files/reflection; Rust generated roots consume their descriptors. Existing listener,
+resolver, authorization, operation policy and bounded output mechanisms remain authoritative.
+
 - Receipt/position renames change fingerprints and admission: migrate descriptors,
   requirements and callers as one revision; never add silent compatibility aliases.
 - Latest durable deliberately omits newer accepted data, and synchronous flush

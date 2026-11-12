@@ -118,7 +118,7 @@ and the complete built-in mapping.
 
 ## Access and Status Implementation
 
-- [ ] AS.1 Record access/status proto and Rust shapes, decisions, scenarios and exact ownership before implementation.
+- [x] AS.1 Record access/status proto and Rust shapes, decisions, scenarios and exact ownership before implementation.
 - [ ] AS.2 Add client contracts and one operation per file; regenerate protocol and prove focused builds.
 - [ ] AS.3 Implement gRPC-owned listener Get/Set, durable pairings, credential-store atomicity and live certificate rotation.
 - [ ] AS.4 Implement service-owned identity/health, bounded redacted event histories/watches and ranged diagnostics with contributions.
