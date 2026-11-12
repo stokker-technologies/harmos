@@ -504,7 +504,7 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         policy: O::POLICY,
         visibility: O::VISIBILITY,
         replay: O::REPLAY,
-        fingerprint: crate::execution::Fingerprint([0; 32]),
+        fingerprint: protobuf.fingerprint(O::ID)?,
     };
     if matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now") {
         let clock = Contract::clock(O::ID == "harmos.clock.sleep", O::POLICY, settings)?;

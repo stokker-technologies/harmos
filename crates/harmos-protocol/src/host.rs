@@ -471,6 +471,7 @@ pub enum PluginState {
     Ready = 2,
     Unavailable = 3,
     Stopped = 4,
+    Stopping = 5,
 }
 impl PluginState {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -484,6 +485,7 @@ impl PluginState {
             Self::Ready => "PLUGIN_STATE_READY",
             Self::Unavailable => "PLUGIN_STATE_UNAVAILABLE",
             Self::Stopped => "PLUGIN_STATE_STOPPED",
+            Self::Stopping => "PLUGIN_STATE_STOPPING",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -494,11 +496,13 @@ impl PluginState {
             "PLUGIN_STATE_READY" => Some(Self::Ready),
             "PLUGIN_STATE_UNAVAILABLE" => Some(Self::Unavailable),
             "PLUGIN_STATE_STOPPED" => Some(Self::Stopped),
+            "PLUGIN_STATE_STOPPING" => Some(Self::Stopping),
             _ => None,
         }
     }
 }
 /// Generated client implementations.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugins_client {
     #![allow(
         unused_variables,
@@ -761,6 +765,7 @@ pub mod plugins_client {
     }
 }
 /// Generated server implementations.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugins_server {
     #![allow(
         unused_variables,

@@ -30,6 +30,7 @@ mod invoke_support;
 mod malformed_payload;
 mod managed_environment;
 mod managed_lifecycle;
+mod manager;
 mod private_refusal;
 mod python_clock;
 mod remote_reconnect;

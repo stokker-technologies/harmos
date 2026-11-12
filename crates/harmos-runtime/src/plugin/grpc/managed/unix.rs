@@ -39,6 +39,8 @@ use tokio::process::Command;
 
 /* === Private Functions === */
 
-pub(super) fn command(executable: &Path) -> Command { Command::new(executable) }
+pub(super) fn command(executable: &Path) -> Command {
+    Command::new(executable)
+}
 
 /* === Tests === */

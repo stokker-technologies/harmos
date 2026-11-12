@@ -52,6 +52,7 @@ pub(super) struct SavedEntry {
     pub entry: Vec<u8>,
     pub executable: Option<String>,
     pub executable_digest: Option<[u8; 32]>,
+    pub generation: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -79,49 +80,77 @@ impl harmos_domain::Identified for RegistryObject {
 impl StoredObject for RegistryObject {
     type Key = str;
     const RETENTION: ObjectRetention = ObjectRetention::Latest;
-    fn key(&self) -> &str { &self.id }
+    fn key(&self) -> &str {
+        &self.id
+    }
 }
 
 impl Registry {
     pub fn empty() -> Self {
-        Self { next_revision: 1, entries: BTreeMap::new(), creates: BTreeMap::new() }
+        Self {
+            next_revision: 1,
+            entries: BTreeMap::new(),
+            creates: BTreeMap::new(),
+        }
     }
     pub fn revision(&mut self) -> Result<Vec<u8>, Error> {
         let revision = self.next_revision;
-        self.next_revision = revision.checked_add(1).ok_or_else(|| Error::new("exhausted", "Set Plugin Revision", "create a new manager namespace"))?;
+        self.next_revision =
+            revision.checked_add(1).ok_or_else(|| Error::new("exhausted", "Set Plugin Revision", "create a new manager namespace"))?;
         Ok(revision.to_be_bytes().to_vec())
     }
     pub fn values(&self) -> Result<BTreeMap<String, wire::PluginEntry>, Error> {
-        self.entries.iter().map(|(name, saved)| {
-            let entry = wire::PluginEntry::decode(saved.entry.as_slice()).map_err(|error| problem("Restore Plugin Entry", error))?;
-            Ok((name.clone(), entry))
-        }).collect()
+        self.entries
+            .iter()
+            .map(|(name, saved)| {
+                let entry = wire::PluginEntry::decode(saved.entry.as_slice()).map_err(|error| problem("Restore Plugin Entry", error))?;
+                Ok((name.clone(), entry))
+            })
+            .collect()
     }
 }
 
 impl Store {
     pub async fn open(storage: StorageManager, settings: &PluginManagerSettings) -> Result<(Self, Registry), Error> {
-        let saved = storage.read_object::<RegistryObject>(&settings.namespace, ObjectVersion::Latest).await.map_err(|error| problem("Restore Plugin Registry", error))?;
+        let saved = storage
+            .read_object::<RegistryObject>(&settings.namespace, ObjectVersion::Latest)
+            .await
+            .map_err(|error| problem("Restore Plugin Registry", error))?;
         let (version, registry) = match saved {
             Some(saved) => {
                 let registry = serde_json::from_slice(&saved.value.payload).map_err(|error| problem("Decode Plugin Registry", error))?;
                 (Some(saved.version.clone()), registry)
-            },
+            }
             None => (None, Registry::empty()),
         };
-        let store = Self { storage, namespace: settings.namespace.clone(), version, max_bytes: settings.registry_bytes.get() };
+        let store = Self {
+            storage,
+            namespace: settings.namespace.clone(),
+            version,
+            max_bytes: settings.registry_bytes.get(),
+        };
         Ok((store, registry))
     }
     pub async fn save(&mut self, registry: &Registry) -> Result<(), Error> {
         let payload = serde_json::to_vec(registry).map_err(|error| problem("Encode Plugin Registry", error))?;
         if payload.len() > self.max_bytes {
-            return Err(Error::new("registry_capacity", "Save Plugin Registry", "reduce the entry set or configure a larger registry capacity"));
+            return Err(Error::new(
+                "registry_capacity",
+                "Save Plugin Registry",
+                "reduce the entry set or configure a larger registry capacity",
+            ));
         }
         let object = RegistryObject { id: self.namespace.clone(), payload };
-        let result = self.storage.compare_exchange(self.version.clone(), &object).await.map_err(|error| problem("Save Plugin Registry", error))?;
+        let result =
+            self.storage.compare_exchange(self.version.clone(), &object).await.map_err(|error| problem("Save Plugin Registry", error))?;
         match result {
-            CompareExchange::Applied(receipt) => { self.version = Some(receipt.version); Ok(()) },
-            CompareExchange::Conflict { .. } => Err(Error::new("conflict", "Save Plugin Registry", "stop the competing manager and reopen this namespace")),
+            CompareExchange::Applied(receipt) => {
+                self.version = Some(receipt.version);
+                Ok(())
+            }
+            CompareExchange::Conflict { .. } => {
+                Err(Error::new("conflict", "Save Plugin Registry", "stop the competing manager and reopen this namespace"))
+            }
         }
     }
 }

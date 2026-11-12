@@ -109,7 +109,7 @@ impl<'de> Deserialize<'de> for OperationDefinition {
 
 impl OperationDefinition {
     pub fn validate(&self) -> crate::operations::Result<()> {
-        if crate::reserved(self.id.as_str()) {
+        if crate::reserved(self.id.as_str()) && harmos_protocol::plugins::fingerprint(self.id.as_str()) != Some(self.fingerprint.0) {
             return Err(crate::operations::Error::ReservedOperation { id: self.id.as_str().to_owned() });
         }
         if !harmos_domain::identity::dotted(self.id.as_str()) {

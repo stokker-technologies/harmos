@@ -383,13 +383,21 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         }
         publications.close().await;
         activation.admission.as_ref().unwrap().remove();
+        if let Some(process) = &mut process {
+            let failure = match process.child.try_wait() {
+                Ok(Some(exit)) => Error::Exit(exit),
+                Ok(None) => {
+                    process.child.kill().await.map_err(|error| Arc::new(Error::Io(error)))?;
+                    Error::Disconnected
+                }
+                Err(error) => Error::Io(error),
+            };
+            return Err(Arc::new(failure));
+        }
         status.send_replace(Status {
             activation: None,
             failure: Some(Arc::new(Error::Disconnected)),
         });
-        if process.is_some() {
-            return Err(Arc::new(Error::Disconnected));
-        }
         let previous = activation.description.started_at;
         let number = activation.number + 1;
         loop {

@@ -11,17 +11,12 @@
 
 /* === Modules === */
 
-#[cfg(target_os = "windows")]
-mod windows;
 #[cfg(unix)]
 mod unix;
+#[cfg(target_os = "windows")]
+mod windows;
 
 /* === Re-Exports === */
-
-#[cfg(target_os = "windows")]
-use windows::command;
-#[cfg(unix)]
-use unix::command;
 
 /* === Imports === */
 
@@ -44,6 +39,10 @@ use tokio::{
 
 // Local Imports
 use super::Error;
+#[cfg(unix)]
+use unix::command;
+#[cfg(target_os = "windows")]
+use windows::command;
 
 /* === Constants === */
 
@@ -78,8 +77,8 @@ impl Process {
         let bytes = tokio::fs::read(&placement.executable).await?;
         let digest = Sha256::digest(bytes).into();
         let mut command = command(&placement.executable);
-        command.args(&placement.arguments)
-            .env("HARMOS_ADDRESS", "127.0.0.1:0")
+        command
+            .args(&placement.arguments)
             .envs(&placement.environment)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -97,9 +96,12 @@ impl Process {
             }
             break address.to_owned();
         };
-        let override_address = placement.environment.get(&OsString::from("HARMOS_ADDRESS")).cloned();
+        let override_address =
+            placement.environment.get(&OsString::from("HARMOS_ADDRESS")).cloned().or_else(|| std::env::var_os("HARMOS_ADDRESS"));
         let address = match override_address {
-            Some(address) if address != "127.0.0.1:0" => address.into_string().map_err(|_| Error::Invalid("HARMOS_ADDRESS Is Not UTF-8".into()))?,
+            Some(address) if address != "127.0.0.1:0" => {
+                address.into_string().map_err(|_| Error::Invalid("HARMOS_ADDRESS Is Not UTF-8".into()))?
+            }
             Some(_) => announced,
             None => announced,
         };

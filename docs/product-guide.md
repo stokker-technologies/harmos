@@ -1129,6 +1129,9 @@ this owner for both plugin backends.
 
 ### gRPC Plugin Placement
 
+Use the [Plugin Manager](plugin-manager.md) for persistent entries, verified
+bundle installation and client management; the attachment API below owns each activation.
+
 From `harmos-runtime`, attach a `harmos.v1` endpoint with
 `runtime.attach_grpc(placement, settings).await`. The types live in
 `harmos_runtime::plugin::grpc`. `Placement::Managed(Managed { executable, arguments,
@@ -1141,7 +1144,7 @@ Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_w
 with positive durations and a nonzero retained-row budget per stream. Startup, reconnect and shutdown budgets use the host's clock.
 `Attached::status()` watches connection state and failures; `activation()` captures
 the current connection. An activation exposes its `description`, monotonic `number`,
-`previous_started_at` and optional `executable_digest`. Compare the current and
+`previous_started_at`, optional `executable_digest` and managed `process_id`. Compare the current and
 previous `started_at` timestamps to distinguish a reconnect from a process restart.
 Retained activations fail after disconnect and never follow the next connection.
 
@@ -1297,6 +1300,8 @@ against the compatible `dev` baseline and reports missing baselines or regressio
 in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
 ## Documentation
+
+- [Plugin Management](plugin-manager.md) — persistent managed and remote entries, verified bundles, client operations and host adoption.
 
 - [Repository Tooling](tooling.md) — workstation builds, shared compiler cache and `tools/config/` configuration.
 - [Contributing](CONTRIBUTING.md) — development setup and validation.

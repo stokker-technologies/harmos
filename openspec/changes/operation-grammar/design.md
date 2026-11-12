@@ -763,21 +763,81 @@ service Plugins {
   rpc Delete(PluginsDeleteRequest) returns (PluginsDeleteResponse);
   rpc Restart(PluginsRestartRequest) returns (PluginsRestartResponse);
 }
-// Full field definitions live in proto/harmos/v1/plugins.proto.
-// Get/List/Watch: optional ReadCut at; responses: ReadCut resolved_at.
-// Create: request_id, name, placement, complete writable value.
-// Set: name, complete PluginValue, expected_revision from Get.
-// Entry: name, placement, value, revision, state, failure, description,
-//        catalog_digest, managed process identity, activation identity.
 message PluginValue { bool enabled = 1; }
+message PluginRemote { string url = 1; }
+message PluginManaged {
+  harmos.storage.v1.FileReference content = 1;
+  bytes sha256 = 2;
+}
+message PluginPlacement {
+  oneof kind { PluginManaged managed = 1; PluginRemote remote = 2; }
+}
+enum PluginState {
+  PLUGIN_STATE_UNSPECIFIED = 0;
+  PLUGIN_STATE_CONNECTING = 1;
+  PLUGIN_STATE_READY = 2;
+  PLUGIN_STATE_UNAVAILABLE = 3;
+  PLUGIN_STATE_STOPPED = 4;
+  PLUGIN_STATE_STOPPING = 5;
+}
+message PluginProcess {
+  uint32 id = 1;
+  bytes executable_digest = 2;
+  google.protobuf.Timestamp started_at = 3;
+}
+message PluginEntry {
+  string name = 1;
+  PluginPlacement placement = 2;
+  PluginValue value = 3;
+  bytes revision = 4;
+  PluginState state = 5;
+  harmos.v1.Failure failure = 6;
+  harmos.v1.Description description = 7;
+  bytes catalog_digest = 8;
+  PluginProcess process = 9;
+  uint64 activation = 10;
+}
+message PluginsGetRequest { string name = 1; harmos.v1.ReadCut at = 2; }
+message PluginsGetResponse { PluginEntry entry = 1; harmos.v1.ReadCut resolved_at = 2; }
+message PluginsListRequest { harmos.v1.ReadCut at = 1; harmos.v1.PageRequest page = 2; }
+message PluginsListResponse {
+  repeated PluginEntry entries = 1;
+  harmos.v1.ReadCut resolved_at = 2;
+  string next_page_token = 3;
+}
+message PluginsWatchRequest { string name = 1; harmos.v1.ReadCut at = 2; }
+message PluginSnapshot { repeated PluginEntry entries = 1; }
+message PluginChange { oneof kind { PluginEntry entry = 1; string deleted = 2; } }
+message PluginsWatchResponse {
+  harmos.v1.ReadCut resolved_at = 1;
+  oneof event {
+    PluginSnapshot snapshot = 2;
+    PluginChange change = 3;
+    string resync_required = 4;
+  }
+}
+message PluginsCreateRequest {
+  string request_id = 1;
+  string name = 2;
+  PluginPlacement placement = 3;
+  PluginValue value = 4;
+}
+message PluginsCreateResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
+message PluginsSetRequest { string name = 1; PluginValue value = 2; bytes expected_revision = 3; }
+message PluginsSetResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
+message PluginsDeleteRequest { string name = 1; bytes expected_revision = 2; }
+message PluginsDeleteResponse { harmos.v1.Receipt receipt = 1; }
+message PluginsRestartRequest { string name = 1; bytes expected_revision = 2; }
+message PluginsRestartResponse { PluginEntry entry = 1; }
 ```
 
 ```rust
 use harmos_runtime::plugin::manager::{Manager, PluginManagerSettings};
+use std::sync::Arc;
 // The host supplies storage, its installation root, all capacities and policy.
 let manager = Manager::new(storage, content, settings)?;
 setup.settings().plugins(manager.clone());
-let runtime = /* launch the configured host */;
+let runtime = Arc::new(/* launch the configured host */);
 manager.start(&runtime).await?;
 // Management calls use registered operations and normal authorization.
 // Plugin invocation uses the existing scope-preserving operation handle.
@@ -785,9 +845,30 @@ let operations = runtime.operations.with_scope("opaque-scope")?;
 let reply = operations.call_encoded("example.echo", payload).await?;
 ```
 
+`Manager` implements `Management`, whose typed `get`, `list`, `watch`, `create`,
+`set`, `delete` and `restart` methods take the generated requests above and return
+`Pending<'_, Response>`; `watch` returns a bounded receiver of generated responses.
+`Manager::new` takes the runtime `StorageManager`, `Arc<dyn ContentSource>` and
+`PluginManagerSettings`. The latter owns the namespace, directory, target,
+existing placement and bundle policies, and all registry/read/queue capacities.
+`ContentSource` has the following boundary; `ContentRead<'a>` fixes the future's
+result to `Result<Vec<u8>, Error>`. `PublishedContent(StorageManager)` is the
+shared-storage implementation.
+
+```rust
+pub trait ContentSource: Send + Sync + 'static {
+    fn read<'a>(&'a self, content: &'a PluginManaged, max_bytes: usize) -> ContentRead<'a>;
+}
+```
+
+The runtime builder's `plugins(Manager)` registers the resource and catalog;
+`start(&Arc<Runtime<A>>)` starts restoration and host-owned supervision once.
+
 | Decision | Reason |
 | --- | --- |
 | Immutable placement and one writable `enabled` value | Set cannot turn an installed executable into an unrelated remote endpoint; replacement uses Delete/Create. |
+| Unchanged Set is a no-op | Re-establishing the same writable value preserves its revision and activation rather than restarting a healthy plugin. |
+| Stopping precedes Stopped when disabling | Watch reports durable disabled intent while cleanup runs; Set completes after process settlement and the final stopped state is saved. |
 | Caller-chosen opaque entry name and replay-safe Create request identifier | Identity survives reconnect and host restart independently of catalog identity; normalized replay returns the original response, and changed input conflicts. |
 | Durable registry object using conditional storage replacement | One bounded registry atomically owns entries and Create receipts without a private database or cross-object transaction. Consumer capacities bound entries, receipts and encoded registry bytes; exhausted receipt retention refuses new creates instead of silently expiring identities. |
 | Verify uploaded content and existing bundle format before admitting an entry | Digest, manifest, native target and executable checks precede extraction and process startup. The manager owns the installed directory; clients never supply executable paths. |
@@ -800,6 +881,7 @@ let reply = operations.call_encoded("example.echo", payload).await?;
 | Product policy through existing visibility, grants and external authorizer | Opaque invocation scope is inherited unchanged and never parsed as authority; no product role model enters the manager. |
 | No automatic process restart loop | Remote reconnect remains attachment policy; failed managed processes stay unavailable until Restart or host restart, avoiding a second restart scheduler. |
 | Hidden Windows process startup and explicit loopback endpoint environment | Managed executables have no console window and receive `HARMOS_ADDRESS=127.0.0.1:0`; existing readiness announcement supplies the bound endpoint without reserving a racy port. |
+| Explicit startup against `Arc<Runtime<A>>` | The manager retains a weak host reference, avoiding a runtime/resource cycle; normal runtime shutdown owns and awaits its participant. |
 
 Owned source inventory: `proto/harmos/v1/plugins.proto`,
 `crates/harmos-runtime/src/plugin/manager/**`,
@@ -807,10 +889,11 @@ Owned source inventory: `proto/harmos/v1/plugins.proto`,
 `crates/harmos-runtime/tests/plugin_grpc/manager/**`,
 `sdk/rust/src/plugins_contracts.rs`, and `docs/plugin-manager.md`.
 Existing hosting extensions are confined to `plugin/grpc/mod.rs` (shared
-attachment factory and process identity), `plugin/grpc/managed.rs` (explicit
+attachment supervision, process identity and awaited reaping after disconnect), `plugin/grpc/managed.rs` (explicit
 endpoint and platform launch), and `plugin/grpc/managed/{mod,windows,unix}.rs`
 if platform factoring is needed. Other source edits are registrations and
-generated protocol output. Shared primitives and carrier renames join from
+generated protocol output, plus `crates/harmos-protocol/src/plugins.rs` for exact
+management fingerprints registered in the reserved operation namespace. Shared primitives and carrier renames join from
 `feat/gp-grammar-core`; unary uploads and ranged content join from the storage
 worker. Neither parallel owner's semantics are reimplemented here.
 

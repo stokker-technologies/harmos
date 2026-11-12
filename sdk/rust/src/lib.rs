@@ -66,11 +66,11 @@ pub mod clock;
 mod context;
 mod error;
 mod message;
-mod plugins_contracts;
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 mod operation;
 mod plugin;
+mod plugins_contracts;
 pub mod prelude;
 #[cfg(not(target_arch = "wasm32"))]
 mod server;

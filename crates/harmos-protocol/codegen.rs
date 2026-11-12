@@ -48,6 +48,8 @@ pub fn generate(
     tonic_prost_build::configure()
         .client_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
         .server_mod_attribute("harmos.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
+        .client_mod_attribute("harmos.host.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
+        .server_mod_attribute("harmos.host.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
         .client_mod_attribute("harmos.storage.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
         .server_mod_attribute("harmos.storage.v1", "#[cfg(not(target_arch = \"wasm32\"))]")
         .build_client(true)

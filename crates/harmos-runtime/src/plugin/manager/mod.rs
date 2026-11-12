@@ -30,10 +30,10 @@ use std::sync::{Arc, OnceLock};
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot};
 // Local Imports
+use crate::storage::StorageManager;
 use crate::{Application, Runtime};
 use harmos_operations::plugins::{Access, Pending};
 use harmos_protocol::host as wire;
-use harmos_storage::StorageManager;
 
 /* === Constants === */
 
@@ -64,27 +64,53 @@ struct Inner {
 impl Manager {
     pub fn new(storage: StorageManager, content: Arc<dyn ContentSource>, settings: PluginManagerSettings) -> Result<Self, Error> {
         settings.validate()?;
-        Ok(Self { inner: Arc::new(Inner { storage, content, settings, commands: OnceLock::new() }) })
+        Ok(Self {
+            inner: Arc::new(Inner {
+                storage,
+                content,
+                settings,
+                commands: OnceLock::new(),
+            }),
+        })
     }
     pub async fn start<A: Application>(&self, runtime: &Arc<Runtime<A>>) -> Result<(), Error> {
+        let clock = runtime.operations.clock().clone();
+        let startup = clock.activity("plugin manager restoration");
         let (sender, receiver) = mpsc::channel(self.inner.settings.command_capacity.get());
-        self.inner.commands.set(sender.clone()).map_err(|_| Error::new("already_started", "Start Plugin Manager", "start this manager only once"))?;
+        self.inner
+            .commands
+            .set(sender.clone())
+            .map_err(|_| Error::new("already_started", "Start Plugin Manager", "start this manager only once"))?;
         let host = Arc::downgrade(runtime);
         let settings = self.inner.settings.placement.clone();
         let attach: actor::Attach = Arc::new(move |placement| {
+            let activity = clock.activity("plugin manager activation");
             let host = host.clone();
             let settings = settings.clone();
             Box::pin(async move {
+                let _activity = activity;
                 let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
                 runtime.attach_grpc(placement, settings).await
             })
         });
-        let actor = actor::Actor::open(self.inner.storage.clone(), self.inner.content.clone(), self.inner.settings.clone(), attach, sender, runtime.stop_participant()).await?;
-        tokio::spawn(actor.run(receiver));
+        let actor = actor::Actor::open(
+            self.inner.storage.engine(),
+            self.inner.content.clone(),
+            self.inner.settings.clone(),
+            attach,
+            sender,
+            runtime.stop_participant(),
+        )
+        .await?;
+        tokio::spawn(actor.run(receiver, startup));
         Ok(())
     }
     async fn call<T>(&self, command: impl FnOnce(oneshot::Sender<Result<T, Error>>) -> actor::Command) -> Result<T, Error> {
-        let sender = self.inner.commands.get().ok_or_else(|| Error::new("not_started", "Manage Plugins", "start the plugin manager with the host"))?;
+        let sender = self
+            .inner
+            .commands
+            .get()
+            .ok_or_else(|| Error::new("not_started", "Manage Plugins", "start the plugin manager with the host"))?;
         let (reply, receiver) = oneshot::channel();
         sender.send(command(reply)).await.map_err(|_| closed())?;
         receiver.await.map_err(|_| closed())?
@@ -127,6 +153,8 @@ impl Management for Manager {
 
 /* === Private Functions === */
 
-fn closed() -> Error { Error::new("manager_stopped", "Manage Plugins", "start a host with an active plugin manager") }
+fn closed() -> Error {
+    Error::new("manager_stopped", "Manage Plugins", "start a host with an active plugin manager")
+}
 
 /* === Tests === */

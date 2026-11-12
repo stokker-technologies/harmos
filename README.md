@@ -43,7 +43,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
-- **gRPC Plugin Placement**: Invoke managed or remote `harmos.v1` plugins, capture their streams and drive plugin waits and observers from the host clock.
+- **[Plugin Management](docs/plugin-manager.md)**: Persist, install, enable, restart and remove managed or remote `harmos.v1` plugins; invoke their operations, capture streams and drive waits from the host clock.
 - **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 

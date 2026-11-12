@@ -7,40 +7,38 @@
  * ***
  */
 
-
 // Plugin Resource Management
 
 /* === Modules === */
 
+mod create;
+mod delete;
 mod get;
 mod list;
-mod create;
-mod set;
-mod delete;
 mod restart;
+mod set;
 mod watch;
 
 /* === Re-Exports === */
 
+pub use create::Create;
+pub use delete::Delete;
 pub use get::Get;
 pub use list::List;
-pub use create::Create;
-pub use set::Set;
-pub use delete::Delete;
 pub use restart::Restart;
+pub use set::Set;
 pub use watch::Watch;
 
 /* === Imports === */
 
 // Standard Library Imports
+use std::{future::Future, pin::Pin, sync::Arc};
 
 // Third Party Imports
 
 // Local Imports
-use std::{future::Future, pin::Pin, sync::Arc};
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::{host as wire, v1};
-
 
 /* === Constants === */
 
@@ -89,7 +87,13 @@ pub trait Management: Send + Sync + 'static {
 
 impl Error {
     pub fn new(code: &str, message: impl Into<String>, action: &str) -> Self {
-        Self(Box::new(v1::Failure { classification: v1::Classification::Permanent as i32, code: code.into(), message: message.into(), action: action.into(), ..Default::default() }))
+        Self(Box::new(v1::Failure {
+            classification: v1::Classification::Permanent as i32,
+            code: code.into(),
+            message: message.into(),
+            action: action.into(),
+            ..Default::default()
+        }))
     }
 }
 
@@ -112,10 +116,15 @@ pub fn catalog() -> crate::execution::operations::Catalog {
 
 fn admit(context: &ExecutionContext, id: &'static str) -> Result<(), ServingError> {
     let grants = context.resource::<crate::execution::operations::access::GrantAccess>().map_err(|_| ServingError::Catalog)?;
-    grants.0.admit(&crate::plugin::Grant::of(id, "plugins")).map_err(|error| ServingError::Handler(crate::Failure::new(crate::operations::FailureKind::Permanent, error.to_string())))
+    grants
+        .0
+        .admit(&crate::plugin::Grant::of(id, "plugins"))
+        .map_err(|error| ServingError::Handler(crate::Failure::new(crate::operations::FailureKind::Permanent, error.to_string())))
 }
 
-fn failure(error: Error) -> ServingError { ServingError::Handler(crate::Failure::from(*error.0)) }
+fn failure(error: Error) -> ServingError {
+    ServingError::Handler(crate::Failure::from(*error.0))
+}
 
 /* === Public Functions === */
 

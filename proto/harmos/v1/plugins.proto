@@ -33,6 +33,7 @@ enum PluginState {
   PLUGIN_STATE_READY = 2;
   PLUGIN_STATE_UNAVAILABLE = 3;
   PLUGIN_STATE_STOPPED = 4;
+  PLUGIN_STATE_STOPPING = 5;
 }
 message PluginProcess {
   uint32 id = 1;

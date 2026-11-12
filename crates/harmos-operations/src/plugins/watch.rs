@@ -7,16 +7,11 @@
  * ***
  */
 
-
 // Plugin Resource Management
 
 /* === Modules === */
 
-
-
 /* === Re-Exports === */
-
-
 
 /* === Imports === */
 
@@ -29,16 +24,11 @@ use super::{Access, admit};
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 use harmos_protocol::host as wire;
 
-
 /* === Constants === */
-
-
 
 /* === Macros === */
 
 /* === Type Aliases === */
-
-
 
 /* === Structs === */
 
@@ -47,8 +37,6 @@ pub struct Watch;
 /* === Enums === */
 
 /* === Traits === */
-
-
 
 /* === Implementations === */
 
