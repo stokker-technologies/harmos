@@ -1009,7 +1009,10 @@ let response = running.cancel().await?;
 For streams, bind every declared direction with `with_input::<Item>()` and
 `with_output::<Item>()` before starting. Managed calls expose `send`, `finish_input`,
 `next`, `request_cancel`, `cancel` and `join`; they retain the final generated result
-separately from output items. Cancellation observes the final response or gRPC status,
+separately from output items. `take_input()` transfers the sole input writer to an
+independent task so uploads and downloads can progress concurrently; call its `finish()`
+after the last item. The receiving handle retains cancellation and final settlement.
+Cancellation observes the final response or gRPC status,
 including binary status details. Caller request metadata, extensions and timeout overrides
 travel with the opening request. The server continues to own operation deadlines and retries.
 Dropping a call abandons its result. No reconnect, replay or automatic retry is added.

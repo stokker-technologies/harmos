@@ -53,6 +53,16 @@ pub struct Client {
     settings: ClientSettings,
 }
 
+/// The Independently Owned Input Direction Of One Managed Invocation.
+/// Finish It Explicitly To Tell The Server That No More Items Will Arrive.
+#[must_use = "finish the input direction after sending its items"]
+pub struct Input<I> {
+    outgoing: mpsc::Sender<Frame>,
+    budget: Arc<Semaphore>,
+    settings: ClientSettings,
+    marker: PhantomData<fn(I)>,
+}
+
 /// One Managed Invocation. Dropping It Abandons The Response And Aborts The RPC.
 #[must_use = "join or cancel the call to observe its final response"]
 pub struct Running<R, I, O> {
@@ -172,7 +182,33 @@ impl Client {
     }
 }
 
+impl<I: Message> Input<I> {
+    pub async fn send(&mut self, item: I) -> Result<(), Status> {
+        let frame = frame(&self.budget, self.settings, Some(2), &item).await?;
+        self.outgoing.send(frame).await.map_err(|_| Status::cancelled("operation input closed"))
+    }
+
+    pub async fn finish(self) -> Result<(), Status> {
+        let frame = frame(&self.budget, self.settings, Some(4), &()).await?;
+        self.outgoing.send(frame).await.map_err(|_| Status::cancelled("operation input closed"))
+    }
+}
+
 impl<R: Message + Default, I: Message + Default, O: Message + Default> Running<R, I, O> {
+    /// Move Input To A Separate Task While This Handle Receives Output And Settlement.
+    pub fn take_input(&mut self) -> Result<Input<I>, Status> {
+        if !self.input || self.input_finished || self.ended {
+            return Err(Status::failed_precondition("operation input is closed"));
+        }
+        self.input_finished = true;
+        Ok(Input {
+            outgoing: self.outgoing.clone(),
+            budget: self.budget.clone(),
+            settings: self.settings,
+            marker: PhantomData,
+        })
+    }
+
     pub async fn send(&mut self, item: I) -> Result<(), Status> {
         if !self.input || self.input_finished || self.ended {
             return Err(Status::failed_precondition("operation input is closed"));

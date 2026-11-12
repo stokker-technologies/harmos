@@ -258,23 +258,34 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert_eq!(response.offset, 12);
     assert_eq!(response.samples, [1, 2, 3]);
 
-    // Exchange Items With A Single-Item Queue And Join After Input Completes.
+    // Upload And Receive Concurrently With One Independently Owned Input Direction.
     let mut handle = client.start(&exchange, RpcRequest::new(Request { offset: 7, ..Default::default() })).await.unwrap();
-    handle
-        .send(Request {
-            offset: -2,
-            samples: vec![4],
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-    let item = handle.next().await.unwrap().unwrap();
-    assert_eq!(item.offset, -4);
-    assert_eq!(item.samples, [4]);
-    handle.send(Request { offset: 3, ..Default::default() }).await.unwrap();
-    assert_eq!(handle.next().await.unwrap().unwrap().offset, 6);
-    handle.finish_input().await.unwrap();
-    assert_eq!(handle.join().await.unwrap().offset, 8);
+    let mut input = handle.take_input().unwrap();
+    assert!(handle.take_input().is_err());
+    assert!(handle.send(Request::default()).await.is_err());
+    let (seen, observed) = tokio::sync::oneshot::channel();
+    let uploading = async {
+        input
+            .send(Request {
+                offset: -2,
+                samples: vec![4],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        observed.await.unwrap();
+        input.send(Request { offset: 3, ..Default::default() }).await.unwrap();
+        input.finish().await.unwrap();
+    };
+    let receiving = async {
+        let item = handle.next().await.unwrap().unwrap();
+        assert_eq!(item.offset, -4);
+        assert_eq!(item.samples, [4]);
+        seen.send(()).unwrap();
+        assert_eq!(handle.next().await.unwrap().unwrap().offset, 6);
+        assert_eq!(handle.join().await.unwrap().offset, 8);
+    };
+    tokio::join!(uploading, receiving);
 
     // Request Cancellation While Retaining The Server's Final Typed Response.
     let mut handle = client

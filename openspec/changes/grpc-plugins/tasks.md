@@ -258,6 +258,8 @@
   - [x] 4.7.1 Add typed generated-contract binding, bounded managed unary/upload/download/exchange calls and cancellation settlement in `sdk/rust/src/client*`.
   - [x] 4.7.2 Prove real host interoperability, malformed completion/status handling and the normal/build dependency closure; compile the SDK client example and update README/product guidance.
 
+  - [x] 4.7.3 Expose one independently owned input writer and prove concurrent upload/download progress in the real-host exchange story.
+
 ## 5. Pilot SDKs
 
 - [x] 5.1 Python: `sdk/python` over `harmos.v1`, passing the conformance suite.
