@@ -2,7 +2,7 @@
 
 ## 1. Contract
 
-- [ ] 1.1 Recheck the locations in `design.md` against the current tree and lock the inventory per crate.
+- [x] 1.1 Recheck the locations in `design.md` against the current tree and lock the inventory per crate.
 
 ## 2. Shared Modules
 
@@ -34,3 +34,30 @@
 
 - Tests of the sidecar hosting and transport areas are rewritten under this convention in `grpc-plugins`.
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.
+
+## Measurements for 6.1
+
+Counts are Rust `#[test]` / `#[tokio::test]` declarations, not executed lane counts.
+Lines include test trees (fixtures/support included) and inline test modules; benches excluded.
+SDK derive is counted separately from SDK. Native Linux proof remains open.
+
+| Crate | Tests Before | Test Lines Before | Tests After | Test Lines After |
+| --- | ---: | ---: | ---: | ---: |
+| harmos-domain | 86 | 4053 | pending | pending |
+| harmos-guest | 20 | 3514 | pending | pending |
+| harmos-operations | 41 | 1291 | pending | pending |
+| harmos-protocol | 3 | 422 | pending | pending |
+| harmos-runtime | 594 | 47868 | pending | pending |
+| harmos-storage | 171 | 10335 | pending | pending |
+| harmos | 10 | 801 | pending | pending |
+| harmos-sdk-derive | 7 | 1856 | pending | pending |
+| schematic-app | 1 | 307 | pending | pending |
+| schematic-storage | 6 | 1745 | pending | pending |
+
+## Locked Inventory
+
+- [ ] 6.2 Record focused Windows proof and final requested command results; preserve 6.1 for Linux/Windows lane proof.
+
+## Ownership Follow-Up
+
+Task 3.4 now targets `tools/packaging/tests/acceptance/bindings.rs`, owned by the concurrent tooling worker. Its source and proof require that owner’s handoff.
