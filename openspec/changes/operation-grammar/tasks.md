@@ -6,6 +6,14 @@ their owning tasks; they do not block independent locked work. Before source
 edits, record exact owned paths within the listed domains and migrate all coupled
 consumers without compatibility aliases or stored-data changes.
 
+Protocol/runtime/SDK ownership for this implementation: plugin and host protobufs
+and shared primitives, `crates/harmos-protocol/**`, runtime except storage handlers,
+operations except `src/storage/**`, `sdk/**`, `tools/**`, `examples/**`, non-storage
+guides and these non-storage task/design sections. The storage worker owns storage
+protobuf, storage crate/operations/handlers/tests/benches and `docs/storage.md`;
+only necessary coupling edits cross that boundary and are reported at handoff.
+The existing `grpc-plugins` implementing marker covers this combined delivery.
+
 ## 1. Shared Primitives and Nightly Benchmark Cases
 
 - [ ] 1.1 Implement shared positions `(history, sequence)`, composite cuts, one bounded paging shape, protobuf Timestamp/Duration, response wrappers, Failure, retry policy and accepted/durable receipts in `proto/harmos/v1/` and `crates/harmos-protocol/`; verify focused schema, encoding and fingerprint checks.
@@ -14,7 +22,7 @@ consumers without compatibility aliases or stored-data changes.
 
 ## 2. Complete Proto Inventory Without Automatic Twins
 
-- [ ] 2.1 Enumerate the complete proto inventory from the mapping: 47 logical operations, 36 storage declarations, 42 exposed gRPC methods in 3 services and 94 method request/response messages (84 exposed, 10 native-only); enumerate shared/domain/nested/imported payloads separately and verify every declaration and consumer is accounted for before handlers. Include GetIndexDefinition, GetProjectionDefinition, GetObject and native GetSchema as exact writable-value/revision mirrors of Set, plus GetFileProduction status.
+- [ ] 2.1 Enumerate the complete proto inventory from the mapping: 47 logical operations, 36 storage declarations, 42 exposed gRPC methods in 5 services (6 logical services, including native-only Samples) and 94 method messages: 47 requests and 47 responses (84 exposed, 10 native-only); enumerate shared/domain/nested/imported payloads separately and verify every declaration and consumer is accounted for before handlers. Apply bare verbs, noun-only single-mode parts, multimode verb-plus-part names and service-qualified wrappers throughout; regroup Host into CatalogEntries, Invocations, Time and Samples while retaining mixed-resource Storage. Include Storage.GetIndexDefinition, GetProjectionDefinition, GetObject and native GetSchema as exact writable-value/revision mirrors of Set, plus GetFileProduction status.
 - [ ] 2.2 Replace unconditional twins in runtime gRPC projection and packaging/client generators with explicit canonical gRPC methods; Get/List are unary, streams serve Watch and plugin carriers, and a managed final-result gRPC method replaces its ordinary gRPC method only where promised. Verify focused descriptor and generation checks, with no unreachable automatic envelopes in the final inventory.
 - [ ] 2.3 Generate the 32 exposed Storage methods and SDK bindings from one authoritative declaration owner, with matching request/response wrappers; preserve grants and the five native-only operations in design.md. Update `proto/harmos/v1/behaviour.md` with the locked grammar and policy.
 
@@ -23,7 +31,7 @@ consumers without compatibility aliases or stored-data changes.
 - [ ] 3.1 Migrate `crates/harmos-storage/src/backend.rs`, state recovery hooks and provider/manager consumers to the 66-present/60-target native-hook mapping while preserving encodings, atomic publication and recovery; verify focused backend/restart tests and update contract guidance.
 - [ ] 3.2 Implement durable latest resolution and issued-position continuation in snapshots/query and handlers; verify deterministic no-read-triggered-flush, exact continuation, foreign/expired-position refusal and bounded paging tests, and update `docs/storage.md`.
 - [ ] 3.3 Implement matching Get/Set pairs: Get returns the whole writable value and revision; Set atomically replaces it using that expected revision. Verify complete-candidate validation, stale conflicts naming “get again and retry”, create-if-absent and no partial mutation. Preserve immutable schema rules; map oversized writable parts to separately settable sub-resources, each with its own Get/Set and revision.
-- [ ] 3.4 Migrate records, samples, log lines and upload bytes to bounded immutable Append and accepted/durable receipts; verify lost replies, changed replay payloads, expired keys and immutable prefixes, including successful identical-byte replay at accepted offsets and conflicting different bytes at the same offset regardless of request identity.
+- [ ] 3.4 Migrate records, samples, log lines and upload bytes to bounded immutable Append and accepted/durable receipts; verify client-owned resending after failed calls, original receipts under the same request identifier, changed replay payloads, expired keys and immutable prefixes, including successful identical-byte replay at accepted offsets and conflicting different bytes at the same offset regardless of request identity.
 - [ ] 3.5 Bind the existing production owner to CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter, PublishFileProduction and DeleteFileProduction; implement one client/plugin upload mechanism with ordered offsets, status/resume, fencing, integrity and grants. Verify deterministic reconnect, stale-writer, publication and abandonment cases and document capability refusal.
 - [ ] 3.6 Implement shared unary GetFileBytes downloads with offset, configured maximum bytes, total length, digest, optional at and resolved_at; migrate bounded query/list delivery to unary paging. Verify exact-range, continuation, resume and content-integrity behavior and update transfer examples.
 - [x] 3.7 Bound flushes in bytes and split large input; prove committed byte counts with deterministic controlled-backend tests and document the mechanism. Reuse the benchmark cases to assess the locked durable-lag bound.
@@ -36,13 +44,13 @@ consumers without compatibility aliases or stored-data changes.
 
 - [ ] 4.1 Settle four-language plugin semantic parity when SDK migration reaches it; record the promise in design.md and inventory Rust, Python, C# and C++ peers without moving library ownership.
 - [ ] 4.2 Settle generic managed-client language coverage at its SDK task; record whether coverage is Rust-only or includes other languages, without treating current scope as a parity promise.
-- [ ] 4.3 Migrate retained SDKs and host plugin carriers to names, wrappers, fingerprints and one policy vocabulary; preserve independent protocol/SDK/conformance ownership without product vocabulary, with product SDKs building on them. Verify focused catalog, child-call, failure, scope, clock and call-local policy tests and update language guides.
+- [ ] 4.3 Migrate retained SDKs and host plugin carriers to proto-derived short method names without a handwritten layer, service-qualified wrappers, fingerprints and one policy vocabulary; preserve independent protocol/SDK/conformance ownership without product vocabulary, with product SDKs building on them. Verify focused catalog, child-call, failure, scope, clock and call-local policy tests and update language guides.
 - [ ] 4.4 Align Python's default to Private with explicit Public intent, add C# invocation-local resources and reason-bearing cancellation, and correct the stale draft proto header; verify focused behavioral checks and update affected guides.
 - [ ] 4.5 Preserve interval/device publication, activation fencing, disconnect isolation and cooperative settlement; migrate `tools/conformance/`, SDK fixtures, native/guest examples and affected tests, verifying each with focused project tasks.
 
 ## 5. Product Handoff, Command-Line Tool and Desktop
 
-- [ ] 5.1 Prepare the exact library candidate for later authorized publication/pinning; hand off the product-owned host gaps and SDK migration without implementing product resources here. Product GetExecution/SetExecution replaces rename/archive setters with the whole small writable part and expected revision; rename affects one identified resource. Large writable resources split into named Get/Set sub-resources.
+- [ ] 5.1 Prepare the exact library candidate for later authorized publication/pinning; hand off the product-owned host gaps and SDK migration without implementing product resources here. Product Executions.Get/Executions.Set replaces rename/archive setters with the whole small writable part and expected revision; rename affects one identified resource. Large writable resources split into named Get/Set sub-resources.
 - [ ] 5.2 After product SDK migration, migrate the product command-line tool to the pinned grammar, unary transfers, receipts and issued-position paging; verify focused command behavior in the product repository.
 - [ ] 5.3 After the command-line migration, migrate the product desktop host and regenerate its client against the same library revision; verify focused product interactions without adding product vocabulary to this library.
 - [ ] 5.4 Review README, `docs/product-guide.md`, `docs/storage.md`, language guides, generator examples and capability contracts; update affected claims and links with each owning change, leaving unrelated migrations alone.

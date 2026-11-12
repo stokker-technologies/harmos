@@ -71,7 +71,7 @@ internal sealed class ConformancePlugin
 
   private async Task<Value> Policy(Context context, Value request)
   {
-    var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Attempts = 3 });
+    var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 } } });
     return await context.CallAsync(hostEcho, first);
   }
 

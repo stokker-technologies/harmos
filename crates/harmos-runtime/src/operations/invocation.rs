@@ -463,7 +463,7 @@ mod tests {
         "test.uncertain",
         crate::OperationPolicy {
             retries: crate::RetryPolicy::OnTransient {
-                max_retries: 1,
+                total_attempts: 2,
                 backoff: crate::Backoff::Fixed {
                     delay: std::time::Duration::from_millis(1),
                     jitter: crate::Jitter::None,
@@ -522,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn handler_retry_preserves_defaults_metadata_and_attempt_evidence() {
         let retry = crate::RetryPolicy::OnTransient {
-            max_retries: 1,
+            total_attempts: 2,
             backoff: crate::Backoff::Fixed {
                 delay: std::time::Duration::from_millis(1),
                 jitter: crate::Jitter::None,
@@ -612,7 +612,7 @@ mod tests {
             .await
             .unwrap();
         let retry = crate::RetryPolicy::OnTransient {
-            max_retries: 1,
+            total_attempts: 2,
             backoff: crate::Backoff::Fixed {
                 delay: std::time::Duration::from_millis(1),
                 jitter: crate::Jitter::None,
@@ -743,7 +743,7 @@ mod tests {
             .unwrap();
         let policy = if retry {
             crate::RetryPolicy::OnTransient {
-                max_retries: 1,
+                total_attempts: 2,
                 backoff: crate::Backoff::Fixed {
                     delay: Duration::from_millis(1),
                     jitter: crate::Jitter::None,

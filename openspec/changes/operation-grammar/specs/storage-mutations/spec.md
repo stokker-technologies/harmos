@@ -22,8 +22,8 @@ Atomic object replacement SHALL retain compare/exchange semantics.
 
 #### Scenario: Combined Small Writable Part
 
-- **WHEN** product rename and archive setters are merged into SetExecution
-- **THEN** GetExecution returns the whole small writable part and revision and SetExecution replaces that part for only the identified execution
+- **WHEN** product rename and archive setters are merged into Executions.Set
+- **THEN** Executions.Get returns the whole small writable part and revision and Executions.Set replaces that part for only the identified execution
 
 #### Scenario: Create If Absent
 

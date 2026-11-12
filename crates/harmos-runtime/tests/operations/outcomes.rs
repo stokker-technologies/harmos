@@ -82,7 +82,7 @@ static COMPUTE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wir
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
-                max_retries: 2,
+                total_attempts: 3,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(10),
                     jitter: Jitter::None,

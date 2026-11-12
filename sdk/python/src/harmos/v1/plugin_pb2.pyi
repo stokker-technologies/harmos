@@ -36,6 +36,60 @@ CLASSIFICATION_CANCELLED: Classification
 CLASSIFICATION_TIMED_OUT: Classification
 CLASSIFICATION_REFUSED: Classification
 
+class History(_message.Message):
+    __slots__ = ("store", "epoch")
+    STORE_FIELD_NUMBER: _ClassVar[int]
+    EPOCH_FIELD_NUMBER: _ClassVar[int]
+    store: str
+    epoch: str
+    def __init__(self, store: _Optional[str] = ..., epoch: _Optional[str] = ...) -> None: ...
+
+class Position(_message.Message):
+    __slots__ = ("history", "sequence")
+    HISTORY_FIELD_NUMBER: _ClassVar[int]
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    history: History
+    sequence: int
+    def __init__(self, history: _Optional[_Union[History, _Mapping]] = ..., sequence: _Optional[int] = ...) -> None: ...
+
+class ResourceRevision(_message.Message):
+    __slots__ = ("name", "revision")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    revision: bytes
+    def __init__(self, name: _Optional[str] = ..., revision: _Optional[bytes] = ...) -> None: ...
+
+class ReadCut(_message.Message):
+    __slots__ = ("positions", "revisions")
+    POSITIONS_FIELD_NUMBER: _ClassVar[int]
+    REVISIONS_FIELD_NUMBER: _ClassVar[int]
+    positions: _containers.RepeatedCompositeFieldContainer[Position]
+    revisions: _containers.RepeatedCompositeFieldContainer[ResourceRevision]
+    def __init__(self, positions: _Optional[_Iterable[_Union[Position, _Mapping]]] = ..., revisions: _Optional[_Iterable[_Union[ResourceRevision, _Mapping]]] = ...) -> None: ...
+
+class PageRequest(_message.Message):
+    __slots__ = ("page_size", "max_bytes", "page_token")
+    PAGE_SIZE_FIELD_NUMBER: _ClassVar[int]
+    MAX_BYTES_FIELD_NUMBER: _ClassVar[int]
+    PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
+    page_size: int
+    max_bytes: int
+    page_token: str
+    def __init__(self, page_size: _Optional[int] = ..., max_bytes: _Optional[int] = ..., page_token: _Optional[str] = ...) -> None: ...
+
+class Receipt(_message.Message):
+    __slots__ = ("request_id", "accepted_at", "durable_at", "completed")
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    ACCEPTED_AT_FIELD_NUMBER: _ClassVar[int]
+    DURABLE_AT_FIELD_NUMBER: _ClassVar[int]
+    COMPLETED_FIELD_NUMBER: _ClassVar[int]
+    request_id: str
+    accepted_at: Position
+    durable_at: Position
+    completed: bool
+    def __init__(self, request_id: _Optional[str] = ..., accepted_at: _Optional[_Union[Position, _Mapping]] = ..., durable_at: _Optional[_Union[Position, _Mapping]] = ..., completed: _Optional[bool] = ...) -> None: ...
+
 class DescribeRequest(_message.Message):
     __slots__ = ("revision", "host", "host_version")
     REVISION_FIELD_NUMBER: _ClassVar[int]
@@ -81,7 +135,7 @@ class Catalog(_message.Message):
     def __init__(self, operations: _Optional[_Iterable[_Union[OperationContract, _Mapping]]] = ..., requires: _Optional[_Iterable[_Union[Requirement, _Mapping]]] = ..., streams: _Optional[_Iterable[_Union[StreamDeclaration, _Mapping]]] = ..., sections: _Optional[_Iterable[_Union[Section, _Mapping]]] = ..., digest: _Optional[bytes] = ..., types: _Optional[_Union[_descriptor_pb2.FileDescriptorSet, _Mapping]] = ...) -> None: ...
 
 class OperationContract(_message.Message):
-    __slots__ = ("id", "request", "response", "visibility", "policy", "fingerprint", "description")
+    __slots__ = ("id", "request", "response", "visibility", "policy", "fingerprint", "description", "replay_safe")
     ID_FIELD_NUMBER: _ClassVar[int]
     REQUEST_FIELD_NUMBER: _ClassVar[int]
     RESPONSE_FIELD_NUMBER: _ClassVar[int]
@@ -89,6 +143,7 @@ class OperationContract(_message.Message):
     POLICY_FIELD_NUMBER: _ClassVar[int]
     FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    REPLAY_SAFE_FIELD_NUMBER: _ClassVar[int]
     id: str
     request: str
     response: str
@@ -96,21 +151,32 @@ class OperationContract(_message.Message):
     policy: OperationPolicy
     fingerprint: bytes
     description: str
-    def __init__(self, id: _Optional[str] = ..., request: _Optional[str] = ..., response: _Optional[str] = ..., visibility: _Optional[_Union[Visibility, str]] = ..., policy: _Optional[_Union[OperationPolicy, _Mapping]] = ..., fingerprint: _Optional[bytes] = ..., description: _Optional[str] = ...) -> None: ...
+    replay_safe: bool
+    def __init__(self, id: _Optional[str] = ..., request: _Optional[str] = ..., response: _Optional[str] = ..., visibility: _Optional[_Union[Visibility, str]] = ..., policy: _Optional[_Union[OperationPolicy, _Mapping]] = ..., fingerprint: _Optional[bytes] = ..., description: _Optional[str] = ..., replay_safe: _Optional[bool] = ...) -> None: ...
 
 class OperationPolicy(_message.Message):
-    __slots__ = ("timeout", "attempt_timeout", "cancellation_timeout", "attempts", "backoff")
+    __slots__ = ("timeout", "attempt_timeout", "cancellation_timeout", "retries")
     TIMEOUT_FIELD_NUMBER: _ClassVar[int]
     ATTEMPT_TIMEOUT_FIELD_NUMBER: _ClassVar[int]
     CANCELLATION_TIMEOUT_FIELD_NUMBER: _ClassVar[int]
-    ATTEMPTS_FIELD_NUMBER: _ClassVar[int]
-    BACKOFF_FIELD_NUMBER: _ClassVar[int]
+    RETRIES_FIELD_NUMBER: _ClassVar[int]
     timeout: _duration_pb2.Duration
     attempt_timeout: _duration_pb2.Duration
     cancellation_timeout: _duration_pb2.Duration
-    attempts: int
-    backoff: _duration_pb2.Duration
-    def __init__(self, timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., attempt_timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., cancellation_timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., attempts: _Optional[int] = ..., backoff: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ...) -> None: ...
+    retries: RetryPolicy
+    def __init__(self, timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., attempt_timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., cancellation_timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., retries: _Optional[_Union[RetryPolicy, _Mapping]] = ...) -> None: ...
+
+class RetryPolicy(_message.Message):
+    __slots__ = ("total_attempts", "initial", "maximum", "deterministic_jitter")
+    TOTAL_ATTEMPTS_FIELD_NUMBER: _ClassVar[int]
+    INITIAL_FIELD_NUMBER: _ClassVar[int]
+    MAXIMUM_FIELD_NUMBER: _ClassVar[int]
+    DETERMINISTIC_JITTER_FIELD_NUMBER: _ClassVar[int]
+    total_attempts: int
+    initial: _duration_pb2.Duration
+    maximum: _duration_pb2.Duration
+    deterministic_jitter: bool
+    def __init__(self, total_attempts: _Optional[int] = ..., initial: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., maximum: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., deterministic_jitter: _Optional[bool] = ...) -> None: ...
 
 class Requirement(_message.Message):
     __slots__ = ("id", "fingerprint")

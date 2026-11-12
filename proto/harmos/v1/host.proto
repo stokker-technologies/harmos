@@ -2,7 +2,7 @@
 syntax = "proto3";
 package harmos.host.v1;
 
-import "google/protobuf/duration.proto";
+import "harmos/v1/plugin.proto";
 
 // Assignments are frozen for the lifetime of a private guest activation.
 message AssignedOperation {
@@ -59,20 +59,6 @@ message Protobuf {
 }
 message Grpc { string package = 1; string service = 2; string method = 3; }
 message Grant { string operation = 1; optional string scope = 2; }
-message OperationPolicy {
-  google.protobuf.Duration timeout = 1;
-  google.protobuf.Duration attempt_timeout = 2;
-  google.protobuf.Duration cancellation_timeout = 3;
-  // No retry message means never retry. Retries apply only to transient failures.
-  RetryPolicy retries = 4;
-}
-message RetryPolicy {
-  uint64 max_retries = 1;
-  google.protobuf.Duration initial = 2;
-  // A present maximum selects exponential backoff; otherwise initial is fixed.
-  google.protobuf.Duration maximum = 3;
-  bool deterministic_jitter = 4;
-}
 enum Visibility {
   VISIBILITY_UNSPECIFIED = 0;
   VISIBILITY_PRIVATE = 1;
@@ -82,7 +68,7 @@ message OperationContract {
   string id = 1;
   string description = 2;
   Visibility visibility = 3;
-  OperationPolicy policy = 4;
+  harmos.v1.OperationPolicy policy = 4;
   // True only for an explicitly idempotent declaration.
   bool replay_safe = 5;
   bytes fingerprint = 6;

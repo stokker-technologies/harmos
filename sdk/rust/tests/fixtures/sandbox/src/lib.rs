@@ -100,6 +100,7 @@ pub fn harmos_register() -> Registration {
                 read(&read_owner, context, request).await
             })
             .visibility(Visibility::Public)
+            .replay_safe()
             .policy(retried),
         )
         .operation(
@@ -209,10 +210,13 @@ fn policy(attempts: u32, delay_millis: i32) -> OperationPolicy {
     OperationPolicy {
         timeout: deadline,
         attempt_timeout: deadline,
-        attempts,
-        backoff: (delay_millis > 0).then_some(harmos::encoding::Duration {
-            seconds: 0,
-            nanos: delay_millis * 1_000_000,
+        retries: Some(harmos_protocol::v1::RetryPolicy {
+            total_attempts: u64::from(attempts.max(1)),
+            initial: (delay_millis > 0).then_some(harmos::encoding::Duration {
+                seconds: 0,
+                nanos: delay_millis * 1_000_000,
+            }),
+            ..Default::default()
         }),
         ..Default::default()
     }

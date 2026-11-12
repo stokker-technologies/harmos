@@ -90,7 +90,8 @@ int main(int argc, char** argv) {
         plugin.requires_operation(harmos::Operation<Graph, Value>("conformance.host.schema"));
         plugin.operation(Operation("conformance.policy", [echo](Context& ctx, Value request) {
             harmos::wire::OperationPolicy policy;
-            policy.set_attempts(3);
+            policy.mutable_retries()->set_total_attempts(3);
+            policy.mutable_retries()->mutable_initial()->set_seconds(1);
             const auto first = ctx.operation(echo, request, policy);
             return ctx.operation(echo, first);
         }).visibility(harmos::wire::VISIBILITY_PUBLIC));

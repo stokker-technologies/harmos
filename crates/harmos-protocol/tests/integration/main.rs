@@ -13,6 +13,7 @@
 
 mod generated_code_matches_proto;
 mod schema_fingerprints;
+mod shared_primitives;
 mod support;
 
 /* === Re-Exports === */

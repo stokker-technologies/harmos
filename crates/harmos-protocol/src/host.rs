@@ -110,32 +110,6 @@ pub struct Grant {
     pub scope: ::core::option::Option<::prost::alloc::string::String>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct OperationPolicy {
-    #[prost(message, optional, tag = "1")]
-    pub timeout: ::core::option::Option<::prost_types::Duration>,
-    #[prost(message, optional, tag = "2")]
-    pub attempt_timeout: ::core::option::Option<::prost_types::Duration>,
-    #[prost(message, optional, tag = "3")]
-    pub cancellation_timeout: ::core::option::Option<::prost_types::Duration>,
-    /// No retry message means never retry. Retries apply only to transient failures.
-    #[prost(message, optional, tag = "4")]
-    pub retries: ::core::option::Option<RetryPolicy>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct RetryPolicy {
-    #[prost(uint64, tag = "1")]
-    pub max_retries: u64,
-    #[prost(message, optional, tag = "2")]
-    pub initial: ::core::option::Option<::prost_types::Duration>,
-    /// A present maximum selects exponential backoff; otherwise initial is fixed.
-    #[prost(message, optional, tag = "3")]
-    pub maximum: ::core::option::Option<::prost_types::Duration>,
-    #[prost(bool, tag = "4")]
-    pub deterministic_jitter: bool,
-}
-#[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct OperationContract {
     #[prost(string, tag = "1")]
@@ -145,7 +119,7 @@ pub struct OperationContract {
     #[prost(enumeration = "Visibility", tag = "3")]
     pub visibility: i32,
     #[prost(message, optional, tag = "4")]
-    pub policy: ::core::option::Option<OperationPolicy>,
+    pub policy: ::core::option::Option<crate::v1::OperationPolicy>,
     /// True only for an explicitly idempotent declaration.
     #[prost(bool, tag = "5")]
     pub replay_safe: bool,
