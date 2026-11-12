@@ -110,9 +110,13 @@ fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = criterion.benchmark_group("integration/storage_projection");
     for rows in [40_000, 1_000_000] {
-        group.bench_with_input(BenchmarkId::from_parameter(rows), &rows, |b, &rows| {
-            b.iter(|| runtime.block_on(projection::run(black_box(rows))));
-        });
+        let mapped = runtime.block_on(projection::prepare(rows));
+        for (name, offset, limit) in [("full", 0, rows), ("window", rows / 3, rows.min(4096))] {
+            group.bench_function(BenchmarkId::new(name, rows), |b| {
+                b.iter(|| runtime.block_on(projection::scan(&mapped, black_box(offset), black_box(limit))));
+            });
+        }
+        runtime.block_on(mapped.finish());
     }
     group.finish();
 

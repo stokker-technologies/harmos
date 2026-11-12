@@ -11,6 +11,8 @@
 
 #[path = "../../tests/support/allocation.rs"]
 pub mod allocation;
+#[path = "../../tests/support/mod.rs"]
+mod support;
 
 /* === Re-Exports === */
 

@@ -11,18 +11,13 @@
 
 /* === Modules === */
 
-#[path = "events.rs"]
-pub(crate) mod events;
-
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
-pub(crate) use std::num::{NonZeroU32, NonZeroUsize};
+pub(crate) use std::num::NonZeroU32;
 pub(crate) use std::sync::Arc;
-pub(crate) use std::sync::atomic::Ordering;
-pub(crate) use std::time::Duration;
 
 // Third Party Imports
 use tokio::sync::Mutex;
