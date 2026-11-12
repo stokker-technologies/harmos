@@ -27,6 +27,7 @@ use std::{
 };
 
 // Third Party Imports
+use arrow_array::builder::Float64Builder;
 use arrow_array::{ArrayRef, BinaryArray, RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt32Array, UInt64Array};
 use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 
@@ -58,8 +59,8 @@ pub(super) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
 }
 
-pub(super) fn records(schema: &StorageSchema, rows: &[StoredRecord]) -> Result<RecordBatch> {
-    let refs = rows.iter().collect::<Vec<_>>();
+pub(super) fn records<'a>(schema: &StorageSchema, rows: impl ExactSizeIterator<Item = &'a StoredRecord>) -> Result<RecordBatch> {
+    let refs = rows.collect::<Vec<_>>();
     record_batch(schema, &refs, None)
 }
 
@@ -73,6 +74,96 @@ pub(super) fn projected<'a>(
 ) -> Result<RecordBatch> {
     let settings = harmos_domain::config::SchemaSettings::default();
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
+    // Compile A Single Required Float Projection Without Per-Value Builder Dispatch.
+    let primitive = project
+        .fields
+        .first()
+        .filter(|_| project.fields.len() == 1 && output.field(0).data_type() == &DataType::Float64)
+        .filter(|field| field.field.fields.len() == 2 && field.field.fields[0] == "payload")
+        .and_then(|selected| {
+            schema.schema.definitions[schema.schema.root].iter().find(|field| {
+                field.name == selected.field.fields[1] && field.cardinality == Cardinality::Required && field.kind == graph::Kind::F64
+            })
+        });
+    if let Some(field) = primitive {
+        let count = rows.len();
+        let mut values = Float64Builder::with_capacity(count);
+        let fields = &schema.schema.definitions[schema.schema.root];
+        let numeric = fields.iter().all(|field| {
+            field.cardinality == Cardinality::Required
+                && matches!(
+                    field.kind,
+                    graph::Kind::Bool
+                        | graph::Kind::U32
+                        | graph::Kind::U64
+                        | graph::Kind::I32
+                        | graph::Kind::I64
+                        | graph::Kind::F32
+                        | graph::Kind::F64
+                )
+        });
+        for row in rows {
+            if row.schema != schema.key {
+                return Err(invalid("record batch has incompatible schemas"));
+            }
+            if numeric {
+                let mut input = harmos_domain::message::postcard::Reader::new(&row.payload);
+                input
+                    .nested(|input| {
+                        for current in fields {
+                            if current.tag == field.tag {
+                                values.append_value(input.value::<f64>()?);
+                                continue;
+                            }
+                            match current.kind {
+                                graph::Kind::Bool => {
+                                    let _: bool = input.value()?;
+                                }
+                                graph::Kind::U32 => {
+                                    let _: u32 = input.value()?;
+                                }
+                                graph::Kind::U64 => {
+                                    let _: u64 = input.value()?;
+                                }
+                                graph::Kind::I32 => {
+                                    let _: i32 = input.value()?;
+                                }
+                                graph::Kind::I64 => {
+                                    let _: i64 = input.value()?;
+                                }
+                                graph::Kind::F32 => {
+                                    let _: f32 = input.value()?;
+                                }
+                                graph::Kind::F64 => {
+                                    let _: f64 = input.value()?;
+                                }
+                                _ => unreachable!("validated numeric projection"),
+                            }
+                        }
+                        Ok(())
+                    })
+                    .map_err(|_| invalid("payload decoding failed"))?;
+                input.finish().map_err(|_| invalid("payload decoding failed"))?;
+                continue;
+            }
+            validator
+                .visit(&row.payload, |path, event| {
+                    if path.len() == 1
+                        && matches!(path[0], PathElement::Field { tag, .. } if tag == field.tag)
+                        && let Event::Scalar(Scalar::F64(value)) = event
+                    {
+                        values.append_value(value);
+                    }
+                    Ok::<_, Error>(())
+                })
+                .map_err(|_| invalid("payload decoding failed"))?;
+        }
+        let values = values.finish();
+        if values.len() != count {
+            return Err(invalid("projected payload row count differs"));
+        }
+        return RecordBatch::try_new(output, vec![Arc::new(values)]).map_err(|_| invalid("projected payload batch mismatch"));
+    }
     let mut columns = output.fields().iter().map(|field| columns::Column::new(field.data_type(), rows.len())).collect::<Vec<_>>();
 
     for (row_index, row) in rows.enumerate() {
@@ -495,5 +586,41 @@ mod tests {
         };
         let output = Arc::new(project.output_schema(&input.schema()).unwrap());
         assert!(projected(schema, records.iter(), &project, output).is_err());
+    }
+
+    #[test]
+    fn numeric_projection_still_validates_unselected_fields() {
+        use crate::query::transform::{
+            FieldPath, ProjectExecution,
+            project::{Project, Projection},
+        };
+        let decoder = PayloadDecoder::new::<Sample>();
+        let schema = &decoder.0;
+        let mut rows = [Sample { x: 1.0, y: 2.0 }, Sample { x: 3.0, y: 4.0 }]
+            .into_iter()
+            .map(|value| StoredRecord {
+                position: schema.position.clone(),
+                schema: schema.key.clone(),
+                scope: None,
+                item: Identifier::new("row").unwrap(),
+                source: None,
+                source_time: None,
+                payload: value.encode(),
+            })
+            .collect::<Vec<_>>();
+        let project = Project {
+            fields: vec![Projection {
+                field: FieldPath::from("payload.x"),
+                name: "value".into(),
+            }],
+        };
+        let input = records(schema, rows.iter()).unwrap();
+        let expected = project.apply(&input, &mut || Ok(())).unwrap();
+        assert_eq!(projected(schema, rows.iter(), &project, expected.schema()).unwrap(), expected);
+        rows[0].payload.pop();
+        assert!(projected(schema, rows.iter(), &project, expected.schema()).is_err());
+        rows[0].payload = Sample { x: 1.0, y: 2.0 }.encode();
+        rows[0].payload.push(0);
+        assert!(projected(schema, rows.iter(), &project, expected.schema()).is_err());
     }
 }

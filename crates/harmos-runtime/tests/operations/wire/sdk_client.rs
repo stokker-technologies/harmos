@@ -155,11 +155,12 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         .unwrap();
     let channel = Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
+        retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
         message_bytes: NonZeroUsize::new(128 * 1024).unwrap(),
         input_items: NonZeroUsize::new(1).unwrap(),
         input_bytes: NonZeroUsize::new(128 * 1024).unwrap(),
     };
-    let client = Client::new(channel, settings).unwrap();
+    let client = Client::new(channel.clone(), settings).unwrap();
 
     // Discover And Bind The Exact Generated Application Types.
     let page = client
@@ -287,6 +288,57 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let response = handle.cancel().await.unwrap();
     assert_eq!(response.text, "settled");
     assert_eq!(response.offset, 19);
+
+    // A Compact Wire Reply Must Fit The Decoded Bound Before Prost Allocates Its List.
+    let bounded = Client::new(
+        channel,
+        ClientSettings {
+            retained_bytes: NonZeroUsize::new(384).unwrap(),
+            ..settings
+        },
+    )
+    .unwrap();
+    let compact = Request {
+        samples: vec![0; 256],
+        ..Default::default()
+    };
+    assert!(prost::Message::encoded_len(&compact) < 384);
+    let error = bounded.call(&echo, RpcRequest::new(compact.clone())).await.unwrap_err();
+    assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+    assert!(error.message().contains("retained_bytes"));
+    let running = bounded.start(&echo, RpcRequest::new(compact.clone())).await.unwrap();
+    assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+    let mut running = bounded.start(&watch, RpcRequest::new(compact)).await.unwrap();
+    assert_eq!(running.next().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+
+    // Discovery Uses The Same Admission; Smaller Pages Fit The Caller-Owned Bound.
+    let error = bounded
+        .catalog(RpcRequest::new(host::Catalog {
+            kind: host::CatalogKind::Operations as i32,
+            rows: Some(64),
+            ..Default::default()
+        }))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+
+    // Retained Caller Values Do Not Consume SDK Claims In Later Calls Or Cancellation.
+    let first = bounded.call(&echo, RpcRequest::new(Request::default())).await.unwrap().into_inner();
+    let second = bounded.call(&echo, RpcRequest::new(Request::default())).await.unwrap().into_inner();
+    assert_eq!(first, second);
+    let mut running = bounded.start(&wait, RpcRequest::new(Request { offset: 23, ..Default::default() })).await.unwrap();
+    // An Unpolled Stream Keeps Wire Backpressure Without Reserving Decoded Values.
+    assert!(bounded.call(&echo, RpcRequest::new(Request::default())).await.is_ok());
+    let item = running.next().await.unwrap().unwrap();
+    assert!(bounded.call(&echo, RpcRequest::new(Request::default())).await.is_ok());
+    running.request_cancel().await.unwrap();
+    assert!(running.next().await.unwrap().is_none());
+
+    // The Queued Final Response Keeps Its Claim Until Join Hands It To The Caller.
+    assert_eq!(bounded.clone().call(&echo, RpcRequest::new(Request::default())).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+    assert_eq!(running.join().await.unwrap().offset, 23);
+    assert_eq!(item.offset, 0);
+    assert!(bounded.call(&echo, RpcRequest::new(Request::default())).await.is_ok());
 
     // Refuse An Oversized Request Before It Enters The Outgoing Queue.
     let oversized = Request {

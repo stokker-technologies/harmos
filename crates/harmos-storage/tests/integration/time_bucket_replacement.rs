@@ -26,7 +26,7 @@ use harmos_storage::query::{
     TableWriter,
     columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource, scan_arrow},
     index::encode_key,
-    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform, advance_projection},
+    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform, advance_projection, advance_projection_at},
     scalar::ScalarValue,
     time_buckets::TimeBucketPlan,
     transform::Transform,
@@ -242,7 +242,15 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.write_records(StorageBatch::new(additions.clone())).await.unwrap();
         let snapshot = backend.open_snapshot(&next).await.unwrap();
+        let before = backend.work().await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, work, &cancel).await.unwrap();
+        let after = backend.work().await.unwrap();
+        if backend.capabilities().native_arrow {
+            assert_eq!(after.source_rows - before.source_rows, additions.len() as u64);
+            assert_eq!(after.buckets - before.buckets, 2);
+            assert!(after.bucket_rows - before.bucket_rows < records.len() as u64);
+            assert!(after.bucket_steps - before.bucket_steps < (after.bucket_rows - before.bucket_rows) * 40 + 60);
+        }
         backend.release_snapshot(&snapshot).await.unwrap();
         assert_eq!(read_all(backend, read.clone()).await.0, initial);
         let (current, changed) = read_all(backend, ProjectionRead { frontier: next.clone(), ..read.clone() }).await;
@@ -367,6 +375,21 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         backend.release_snapshot(&snapshot).await.unwrap();
     }
     native.release_snapshot(&snapshot).await.unwrap();
+    // Refuse A Rebuilt Projection Before Native Or Fallback Advancement.
+    let mut rebuilt = definition.clone();
+    rebuilt.version += 1;
+    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+        let revision = backend.register_projection(&rebuilt, true).await.unwrap();
+        let snapshot = backend.open_snapshot(&final_cut).await.unwrap();
+        assert!(matches!(
+            advance_projection_at(backend, &snapshot, &definition.name, 1, work, &cancel).await,
+            Err(Error::Backend { kind: BackendFailure::Conflict, .. })
+        ));
+        assert_eq!(backend.projection_frontier(&definition.name, revision).await.unwrap(), None);
+        advance_projection_at(backend, &snapshot, &definition.name, revision, work, &cancel).await.unwrap();
+        assert_eq!(backend.projection_frontier(&definition.name, revision).await.unwrap(), Some(final_cut.clone()));
+        backend.release_snapshot(&snapshot).await.unwrap();
+    }
     native.release_snapshot(&saved[0]).await.unwrap();
     native.close().await.unwrap();
     fallback.release_snapshot(&saved[1]).await.unwrap();

@@ -50,6 +50,11 @@ impl Data {
                     available: lost_objects_through,
                 });
             }
+            let records = self.records.lock().unwrap();
+            let retained = records.clone();
+            let copied = if records.shares(&retained) { 0 } else { records.len() };
+            self.control.snapshot_rows_copied.fetch_add(copied, Ordering::Relaxed);
+            drop(records);
             let snapshot = Snapshot {
                 at: at.clone(),
                 pruned_objects: self.pruned_objects.lock().unwrap().clone(),
@@ -58,7 +63,7 @@ impl Data {
                 objects: self.objects.lock().unwrap().clone(),
                 files: self.files.lock().unwrap().clone(),
                 schemas: self.schemas.lock().unwrap().clone(),
-                records: self.records.lock().unwrap().clone(),
+                records: retained,
                 rows: self.rows.lock().unwrap().clone(),
             };
             let token =
@@ -159,16 +164,22 @@ impl Data {
         Box::pin(async move {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
-            let mut entries = scan(
-                image.records.values(),
-                snapshot,
-                page,
-                |row| &row.position,
-                |row| {
-                    record_matches(row, &selection.schema, &selection.scope, &selection.item)
-                        && window(selection.source_start, selection.source_end, row.source_time)
-                },
-            )?;
+            let mut entries = Vec::new();
+            let mut bytes = 0usize;
+            for (row, size) in image.records.selected(&selection.schema, page.after, snapshot.at.sequence) {
+                self.control.record_rows_examined.fetch_add(1, Ordering::Relaxed);
+                if !record_matches(row, &selection.schema, &selection.scope, &selection.item)
+                    || !window(selection.source_start, selection.source_end, row.source_time)
+                {
+                    continue;
+                }
+                if entries.len() == page.rows.get() || (!entries.is_empty() && bytes + size > page.bytes.get()) {
+                    break;
+                }
+                bytes += size;
+                self.control.record_rows_copied.fetch_add(1, Ordering::Relaxed);
+                entries.push(row.clone());
+            }
             if self.control.invalid_page.load(Ordering::SeqCst) && !entries.is_empty() {
                 entries[0].item = Identifier::new("wrong-item").unwrap();
             }

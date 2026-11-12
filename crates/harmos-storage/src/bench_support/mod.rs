@@ -33,7 +33,7 @@ use serde::Serialize;
 
 // Local Imports
 use crate::query::{
-    columnar::{ArrowScan, Cancellation, scan_arrow},
+    columnar::{ArrowScan, Cancellation, ColumnPredicate, TimeBounds, scan_arrow},
     index::{encode_key, scan_index},
     projection::{ProjectionRead, advance_projection},
     scalar::ScalarValue,
@@ -131,6 +131,47 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
         verify_scan(workload, offset, limit, &result);
     }
 
+    // Filter By Time Across The Whole History, Then Add A Numeric Predicate.
+    for (name, numeric) in [("storage.window.time.2m", false), ("storage.window.numeric.2m", true)] {
+        let mut read = workload.scan(0);
+        let lower_ns = sample(workload.rows / 3).time_ns;
+        let upper_ns = sample(workload.rows / 3 + WINDOW_ROWS).time_ns;
+        read.time = Some(TimeBounds {
+            column: "payload.time_ns".into(),
+            lower_ns,
+            upper_ns,
+        });
+        if numeric {
+            read.predicate = Some(ColumnPredicate {
+                column: "payload.value".into(),
+                lower: Some(10000.0),
+                upper: Some(20000.0),
+            });
+        }
+        let expected = (0..workload.rows)
+            .map(sample)
+            .filter(|value| {
+                value.time_ns >= lower_ns && value.time_ns < upper_ns && (!numeric || (10000.0..20000.0).contains(&value.value))
+            })
+            .collect::<Vec<_>>();
+        let before = runtime.block_on(backend.work()).unwrap();
+        let result = measure(&format!("{name}.first"), 1, || scan(runtime, backend, &snapshot, &read, workload.rows));
+        let after = runtime.block_on(backend.work()).unwrap();
+        assert_eq!(result.rows, expected.len());
+        assert_eq!(result.sum, expected.iter().map(|value| value.value).sum::<f64>());
+        println!(
+            "STORAGE_COUNTER {}",
+            serde_json::json!({
+                "name": name, "bytes_read": result.bytes_read, "rows": result.rows,
+                "payload_rows": result.payload_rows, "source_rows": after.source_rows - before.source_rows,
+            })
+        );
+        report_work(name, before, after);
+        let result = measure(name, SAMPLES, || scan(runtime, backend, &snapshot, &read, workload.rows));
+        assert_eq!(result.rows, expected.len());
+        assert_eq!(result.sum, expected.iter().map(|value| value.value).sum::<f64>());
+    }
+
     // Publish And Replay An Exact Projection Frontier.
     let definition = workload.projection();
     let revision = runtime.block_on(backend.register_projection(&definition, false)).unwrap();
@@ -157,17 +198,25 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
 
     // Compare First, Next And Deep Index Seeks.
     let index = workload.index();
+    let before = runtime.block_on(backend.work()).unwrap();
     measure("storage.index.build.2m", 1, || runtime.block_on(backend.register_index(&index, false, workload.work(), &cancel)).unwrap());
+    report_work("storage.index.build.2m", before, runtime.block_on(backend.work()).unwrap());
     let mut expected = (0..workload.rows).map(|index| (sample(index).value as u64, index as u64 + 2)).collect::<Vec<_>>();
     expected.sort_unstable();
     let read = workload.index_read();
     let page = measure("storage.index.read.2m", SAMPLES, || runtime.block_on(scan_index(backend, &snapshot, &read, &cancel)).unwrap());
+    let before = runtime.block_on(backend.work()).unwrap();
+    runtime.block_on(scan_index(backend, &snapshot, &read, &cancel)).unwrap();
+    report_work("storage.index.read.2m", before, runtime.block_on(backend.work()).unwrap());
     assert_eq!(
         page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(),
         expected[..WINDOW_ROWS].iter().map(|entry| entry.1).collect::<Vec<_>>()
     );
     let next = crate::query::index::IndexRead { after: page.next, ..read.clone() };
     let page = measure("storage.index.next.2m", SAMPLES, || runtime.block_on(scan_index(backend, &snapshot, &next, &cancel)).unwrap());
+    let before = runtime.block_on(backend.work()).unwrap();
+    runtime.block_on(scan_index(backend, &snapshot, &next, &cancel)).unwrap();
+    report_work("storage.index.next.2m", before, runtime.block_on(backend.work()).unwrap());
     assert_eq!(
         page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(),
         expected[WINDOW_ROWS..2 * WINDOW_ROWS].iter().map(|entry| entry.1).collect::<Vec<_>>()
@@ -181,6 +230,9 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
     };
     let deep = crate::query::index::IndexRead { after: Some(seek), ..read };
     let page = measure("storage.index.deep.2m", SAMPLES, || runtime.block_on(scan_index(backend, &snapshot, &deep, &cancel)).unwrap());
+    let before = runtime.block_on(backend.work()).unwrap();
+    runtime.block_on(scan_index(backend, &snapshot, &deep, &cancel)).unwrap();
+    report_work("storage.index.deep.2m", before, runtime.block_on(backend.work()).unwrap());
     assert_eq!(
         page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(),
         expected[workload.rows / 2..workload.rows / 2 + WINDOW_ROWS].iter().map(|entry| entry.1).collect::<Vec<_>>()
@@ -205,9 +257,11 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
     runtime.block_on(backend.write_records(StorageBatch::new(replacements))).unwrap();
     let late_cut = workload.position(cut.sequence + WINDOW_ROWS as u64);
     let late = runtime.block_on(backend.open_snapshot(&late_cut)).unwrap();
+    let before = runtime.block_on(backend.work()).unwrap();
     measure("storage.bucket.replace.2m", 1, || {
         runtime.block_on(advance_projection(backend, &late, &definition.name, workload.work(), &cancel)).unwrap()
     });
+    report_work("storage.bucket.replace.2m", before, runtime.block_on(backend.work()).unwrap());
     verify_buckets(runtime, backend, workload, &late_cut, true);
     verify_buckets(runtime, backend, workload, &cut, false);
     assert_eq!(runtime.block_on(backend.projection_frontier(&definition.name, revision)).unwrap(), Some(late_cut.clone()));
@@ -352,6 +406,24 @@ pub fn scan(
 }
 
 /* === Private Functions === */
+
+fn report_work(name: &str, before: StorageWork, after: StorageWork) {
+    println!(
+        "STORAGE_WORK {}",
+        serde_json::json!({
+            "name": name,
+            "source_rows": after.source_rows - before.source_rows,
+            "source_bytes": after.source_bytes - before.source_bytes,
+            "decoded_chunks": after.decoded_chunks - before.decoded_chunks,
+            "bucket_rows": after.bucket_rows - before.bucket_rows,
+        "bucket_steps": after.bucket_steps - before.bucket_steps,
+            "buckets": after.buckets - before.buckets,
+            "index_entries": after.index_entries - before.index_entries,
+            "index_steps": after.index_steps - before.index_steps,
+            "index_prepares": after.index_prepares - before.index_prepares,
+        })
+    );
+}
 
 fn verify_object(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, cut: &StorageCursor, expected: &ObjectEntry) {
     let snapshot = runtime.block_on(backend.open_snapshot(cut)).unwrap();

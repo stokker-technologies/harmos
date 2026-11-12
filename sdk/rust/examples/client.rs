@@ -47,7 +47,9 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Connect To The Application's gRPC Listener.
     let address = std::env::args().nth(1).ok_or("pass the application's gRPC URL")?;
     let channel = Endpoint::from_shared(address)?.connect().await?;
+    let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<NonZeroUsize>()?;
     let settings = ClientSettings {
+        retained_bytes,
         message_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
         input_items: NonZeroUsize::new(4).unwrap(),
         input_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),

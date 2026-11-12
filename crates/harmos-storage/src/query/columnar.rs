@@ -261,7 +261,7 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
             };
             let rows = backend.read_records(snapshot, &selection, page).await?;
             let bytes = rows.iter().try_fold(0usize, |total, row| Ok::<_, Error>(total.saturating_add(crate::encoded_size(row)?)))?;
-            (super::source::records(schema, &rows)?, bytes, rows.len())
+            (super::source::records(schema, rows.iter())?, bytes, rows.len())
         }
         ColumnKind::Stream => {
             let selection = StreamSelection {
@@ -340,7 +340,7 @@ fn leaves(field: &arrow_schema::Field, parent: String, paths: &mut Vec<String>) 
 pub(crate) fn empty(schema: &StorageSchema, kind: ColumnKind) -> Result<RecordBatch> {
     let batch = match kind {
         ColumnKind::Objects => super::source::objects(schema, &[])?,
-        ColumnKind::Records => super::source::records(schema, &[])?,
+        ColumnKind::Records => super::source::records(schema, std::iter::empty())?,
         ColumnKind::Stream => super::source::stream(schema, &[])?,
     };
     flatten(&batch)
@@ -348,7 +348,7 @@ pub(crate) fn empty(schema: &StorageSchema, kind: ColumnKind) -> Result<RecordBa
 
 #[cfg(feature = "sqlite")]
 pub(crate) fn records(schema: &StorageSchema, rows: &[crate::StoredRecord]) -> Result<RecordBatch> {
-    flatten(&super::source::records(schema, rows)?)
+    flatten(&super::source::records(schema, rows.iter())?)
 }
 #[cfg(feature = "sqlite")]
 pub(crate) fn streams(schema: &StorageSchema, rows: &[crate::StoredRow]) -> Result<RecordBatch> {

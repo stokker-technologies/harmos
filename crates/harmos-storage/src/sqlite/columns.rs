@@ -209,6 +209,11 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
         arrays.push(batch.column(0).clone());
     }
     let mut batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).map_err(|_| incompatible())?;
+    let mut counters = state.work.get();
+    counters.source_rows += count as u64;
+    counters.source_bytes += bytes_read as u64;
+    counters.decoded_chunks += 1;
+    state.work.set(counters);
     if bytes_read.saturating_add(batch.get_array_memory_size().saturating_mul(3)) > read.work.bytes.get() {
         return Err(columnar::exhausted());
     }

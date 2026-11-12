@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+mod buckets;
 mod columns;
 mod files;
 mod index;
@@ -21,7 +22,7 @@ mod rows;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{collections::BTreeMap, num::NonZeroUsize, path::Path, sync::Arc};
+use std::{cell::Cell, collections::BTreeMap, num::NonZeroUsize, path::Path, sync::Arc};
 
 // Third Party Imports
 use rusqlite::{Connection, OptionalExtension, params};
@@ -62,6 +63,7 @@ struct State {
     settings: SqliteSettings,
     snapshots: BTreeMap<Vec<u8>, StorageCursor>,
     closed: bool,
+    work: Cell<crate::StorageWork>,
 }
 
 /* === Enums === */
@@ -124,12 +126,16 @@ impl SqliteBackend {
             CREATE TABLE IF NOT EXISTS storage_file_chunks(id TEXT NOT NULL REFERENCES storage_files(id), offset INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY(id,offset));
             CREATE TABLE IF NOT EXISTS storage_mutations(id TEXT PRIMARY KEY, data BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS storage_indexes(name TEXT PRIMARY KEY,revision INTEGER NOT NULL,source TEXT NOT NULL,definition BLOB NOT NULL);
-            CREATE TABLE IF NOT EXISTS storage_index_entries(name TEXT NOT NULL,revision INTEGER NOT NULL,key BLOB NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(name,revision,key,position));
+            CREATE TABLE IF NOT EXISTS storage_index_entries(name TEXT NOT NULL,revision INTEGER NOT NULL,key BLOB NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(name,revision,key,position)) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS projection_definitions(name TEXT NOT NULL,revision INTEGER NOT NULL,definition BLOB NOT NULL,retired INTEGER,PRIMARY KEY(name,revision));
             CREATE TABLE IF NOT EXISTS projection_active(name TEXT PRIMARY KEY,revision INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS projection_cuts(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,rows INTEGER NOT NULL,changes INTEGER NOT NULL,schema BLOB NOT NULL,PRIMARY KEY(name,revision,frontier));
             CREATE TABLE IF NOT EXISTS projection_pages(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,first_row INTEGER NOT NULL,rows INTEGER NOT NULL,data BLOB NOT NULL,PRIMARY KEY(name,revision,frontier,first_row));
             CREATE TABLE IF NOT EXISTS projection_changes(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,ordinal INTEGER NOT NULL,key BLOB NOT NULL,PRIMARY KEY(name,revision,frontier,ordinal));
+            CREATE TABLE IF NOT EXISTS projection_bucket_state(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,source_rows INTEGER NOT NULL,output_rows INTEGER NOT NULL,PRIMARY KEY(name,revision)) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS projection_bucket_members(name TEXT NOT NULL,revision INTEGER NOT NULL,identity BLOB NOT NULL,bucket_key BLOB NOT NULL,data BLOB NOT NULL,PRIMARY KEY(name,revision,bucket_key,identity),UNIQUE(name,revision,identity)) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS projection_bucket_outputs(name TEXT NOT NULL,revision INTEGER NOT NULL,key BLOB NOT NULL,frontier INTEGER NOT NULL,data BLOB,PRIMARY KEY(name,revision,key,frontier)) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS projection_bucket_cuts(name TEXT NOT NULL,revision INTEGER NOT NULL,frontier INTEGER NOT NULL,PRIMARY KEY(name,revision,frontier)) WITHOUT ROWID;
             CREATE TABLE IF NOT EXISTS object_receipts(position INTEGER PRIMARY KEY,fingerprint BLOB NOT NULL,outcome BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS storage_object_gaps(position INTEGER PRIMARY KEY,schema_key TEXT NOT NULL,schema_id TEXT NOT NULL,item TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS storage_object_gap_selection ON storage_object_gaps(schema_key,item,position);
@@ -152,6 +158,7 @@ impl SqliteBackend {
                 settings,
                 snapshots: BTreeMap::new(),
                 closed: false,
+                work: Cell::default(),
             })),
         })
     }
@@ -191,6 +198,24 @@ impl State {
 }
 
 impl StorageBackend for SqliteBackend {
+    fn advance_projection_native<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, name: &'a crate::Identifier, work: ReadLimits, cancel: &'a Cancellation,
+    ) -> StorageFuture<'a, Option<u64>> {
+        let (snapshot, name, cancel) = (snapshot.clone(), name.clone(), cancel.clone());
+        Box::pin(self.call(move |state| buckets::advance(state, &snapshot, &name, None, work, &cancel)))
+    }
+
+    fn advance_projection_native_at<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, name: &'a crate::Identifier, revision: u64, work: ReadLimits, cancel: &'a Cancellation,
+    ) -> StorageFuture<'a, Option<u64>> {
+        let (snapshot, name, cancel) = (snapshot.clone(), name.clone(), cancel.clone());
+        Box::pin(self.call(move |state| buckets::advance(state, &snapshot, &name, Some(revision), work, &cancel)))
+    }
+
+    fn work(&self) -> StorageFuture<'_, crate::StorageWork> {
+        Box::pin(self.call(|state| Ok(state.work.get())))
+    }
+
     fn history(&self) -> &StoreHistory {
         &self.history
     }

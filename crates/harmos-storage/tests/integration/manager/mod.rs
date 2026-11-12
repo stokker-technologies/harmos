@@ -29,7 +29,7 @@ mod files;
 pub(crate) mod fixture;
 mod mapping;
 #[path = "../../support/mapping.rs"]
-mod mapping_fixture;
+pub(crate) mod mapping_fixture;
 mod mutations;
 mod native_stream_reads;
 mod nominal;

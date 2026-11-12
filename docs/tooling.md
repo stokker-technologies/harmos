@@ -281,6 +281,11 @@ installed globally. The task enables Git long paths only in its child environmen
 for nested Windows worktrees. `protoc` and `grpc_cpp_plugin` are built from that
 graph and generate the protocol and fixture C++ sources during the build.
 
+On Windows, configure C++ from a short checkout path or a temporary `subst` drive
+alias. Git long paths do not remove MSVC's source/include path limit for deeply
+nested gRPC files. Keep the same path for subsequent builds and tests because
+CMake caches absolute paths; an existing cache must be reconfigured when it changes.
+
 Outputs and dependency sources stay under `target/cpp/<profile>/`, with retained
 `configure.log` and `build.log`. `--profile release` selects Release; the default
 is Debug. Check configures and validates the CMake dependency/target graph without
@@ -343,7 +348,7 @@ mise run check -- --language csharp
 ```
 
 The test consumes both build outputs without rebuilding. Its one managed-plugin story
-runs all 19 reference-host cases in managed and remote modes, including successful
+runs all 20 reference-host cases in managed and remote modes, including successful
 managed process exit and continued remote availability after Stop. A focused unit
 test also checks clock requirement descriptors and the Rust-compatible sleep fingerprint.
 `--profile release` selects matching Release C# and release Rust outputs. Formatting

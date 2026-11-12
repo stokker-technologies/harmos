@@ -202,6 +202,46 @@ impl Snapshot {
         Ok(result)
     }
 
+    pub(super) async fn seek_records(&self, selection: &super::query::RecordSelection, offset: u64) -> Result<Option<u64>> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let position =
+            self.inner.bounded("primary.seek_records", self.inner.primary.seek_records(&self.backend, selection, offset)).await?;
+        self.check()?;
+        if position.is_some_and(|position| position > self.backend.at.sequence) {
+            return Err(invalid("backend seek is outside the saved cut"));
+        }
+        Ok(position)
+    }
+
+    pub(super) async fn record_views(
+        &self, selection: &super::query::RecordSelection, page: ScanPage,
+    ) -> Result<Option<Vec<crate::RecordView>>> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let views =
+            self.inner.bounded("primary.read_record_views", self.inner.primary.read_record_views(&self.backend, selection, page)).await?;
+        self.check()?;
+        let Some(views) = views else {
+            return Ok(None);
+        };
+        let mut previous = page.after;
+        let mut bytes = 0usize;
+        for view in &views {
+            let record = view.record();
+            self.backend.at.history.check(&record.position.history)?;
+            if record.position.sequence <= previous || record.position.sequence > self.backend.at.sequence || !record.matches(selection) {
+                return Err(invalid("backend returned an entry outside the ordered selection"));
+            }
+            previous = record.position.sequence;
+            bytes = bytes.saturating_add(view.encoded_bytes());
+        }
+        if views.len() > page.rows.get() || (views.len() > 1 && bytes > page.bytes.get()) {
+            return Err(invalid("backend page exceeds its row or byte bound"));
+        }
+        Ok(Some(views))
+    }
+
     #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
     pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;

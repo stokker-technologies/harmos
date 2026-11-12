@@ -76,7 +76,7 @@ pub(super) fn register(
         }
         revision = current.checked_add(1).ok_or_else(|| invalid("index revision overflow"))?;
     }
-    tx.execute("INSERT INTO storage_indexes VALUES(?1,?2,?3,?4) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,source=excluded.source,definition=excluded.definition", params![definition.name.as_str(),integer(revision)?,text(&definition.source)?,encode(definition)?]).map_err(db)?;
+    tx.execute("INSERT INTO storage_indexes VALUES(?1,?2,?3,?4) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision,source=excluded.source,definition=excluded.definition",params![definition.name.as_str(),integer(revision)?,text(&definition.source)?,encode(definition)?]).map_err(db)?;
     tx.execute("DELETE FROM storage_index_entries WHERE name=?1", [definition.name.as_str()]).map_err(db)?;
     let at = state.cursor()?;
     let token = [b"index-build:".as_slice(), definition.name.as_str().as_bytes()].concat();
@@ -98,44 +98,71 @@ pub(super) fn register(
         }
         let mut rows = 0usize;
         let mut bytes = 0usize;
+        let mut key_bytes = 0usize;
+        let mut entries = Vec::<IndexEntry>::new();
         loop {
             cancel.check()?;
-            if rows >= work.rows.get() || bytes >= work.bytes.get() {
+            let retained = entries.capacity().saturating_mul(std::mem::size_of::<IndexEntry>()).saturating_add(key_bytes);
+            if rows >= work.rows.get() || bytes.saturating_add(retained) >= work.bytes.get() {
                 return Err(crate::query::columnar::exhausted());
             }
             read.work = ReadLimits {
                 rows: NonZeroUsize::new(work.rows.get() - rows).unwrap(),
-                bytes: NonZeroUsize::new(work.bytes.get() - bytes).unwrap(),
+                bytes: NonZeroUsize::new(work.bytes.get() - bytes - retained).unwrap(),
             };
             read.limits = read.work;
             let page = columns::scan(state, &snapshot, &read, cancel, true)?;
             rows += page.scanned;
             bytes = bytes.saturating_add(page.bytes_read);
+            let capacity = entries.len().saturating_add(page.batch.num_rows());
+            if bytes.saturating_add(key_bytes).saturating_add(capacity.saturating_mul(std::mem::size_of::<IndexEntry>())) > work.bytes.get()
+            {
+                return Err(crate::query::columnar::exhausted());
+            }
+            if capacity > entries.capacity() {
+                let available = work.bytes.get().saturating_sub(bytes).saturating_sub(key_bytes) / std::mem::size_of::<IndexEntry>();
+                let target = capacity.max(entries.capacity().saturating_mul(2)).min(available);
+                entries.try_reserve_exact(target - entries.len()).map_err(|_| crate::query::columnar::exhausted())?;
+            }
             for row in 0..page.batch.num_rows() {
                 if row % 256 == 0 {
                     cancel.check()?;
                 }
                 let entry = execution::entry(&page.batch, definition, row)?;
-                if bytes.saturating_add(entry.key.capacity() + std::mem::size_of::<IndexEntry>()) > work.bytes.get() {
+                key_bytes = key_bytes.saturating_add(entry.key.capacity());
+                if bytes.saturating_add(key_bytes).saturating_add(entries.capacity().saturating_mul(std::mem::size_of::<IndexEntry>()))
+                    > work.bytes.get()
+                {
                     return Err(crate::query::columnar::exhausted());
                 }
-                tx.execute(
-                    "INSERT INTO storage_index_entries VALUES(?1,?2,?3,?4)",
-                    params![definition.name.as_str(), integer(revision)?, entry.key, integer(entry.position)?],
-                )
-                .map_err(db)?;
+                entries.push(entry);
             }
             if page.complete {
                 break;
             }
             read.after = page.next;
         }
-        cancel.check()?;
-        Ok(revision)
+        Ok(entries)
     })();
     state.snapshots.remove(&token);
-    let revision = result?;
+    let mut entries = result?;
+    cancel.check()?;
+    entries.sort_unstable();
+    cancel.check()?;
+    let mut insert = tx.prepare("INSERT INTO storage_index_entries VALUES(?1,?2,?3,?4)").map_err(db)?;
+    for (ordinal, entry) in entries.iter().enumerate() {
+        if ordinal % 256 == 0 {
+            cancel.check()?;
+        }
+        insert.execute(params![definition.name.as_str(), integer(revision)?, &entry.key, integer(entry.position)?]).map_err(db)?;
+    }
+    drop(insert);
+    cancel.check()?;
     tx.commit().map_err(db)?;
+    let mut counters = state.work.get();
+    counters.index_prepares += 1;
+    counters.index_entries += entries.len() as u64;
+    state.work.set(counters);
     Ok(revision)
 }
 
@@ -145,14 +172,10 @@ pub(super) fn maintain(connection: &Connection, source: &ColumnSource, batch: &R
     while let Some(row) = definitions.next().map_err(db)? {
         let definition: IndexDefinition = decode(&row.get::<_, Vec<u8>>(0).map_err(db)?)?;
         let revision = unsigned(row, 1).map_err(db)?;
+        let mut insert = connection.prepare("INSERT INTO storage_index_entries VALUES(?1,?2,?3,?4)").map_err(db)?;
         for row in 0..batch.num_rows() {
             let entry = execution::entry(batch, &definition, row)?;
-            connection
-                .execute(
-                    "INSERT INTO storage_index_entries VALUES(?1,?2,?3,?4)",
-                    params![definition.name.as_str(), integer(revision)?, entry.key, integer(entry.position)?],
-                )
-                .map_err(db)?;
+            insert.execute(params![definition.name.as_str(), integer(revision)?, entry.key, integer(entry.position)?]).map_err(db)?;
         }
     }
     Ok(())
@@ -164,45 +187,47 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &IndexRead, 
     let tx = state.connection.unchecked_transaction().map_err(db)?;
     let (definition, revision) = definition(&tx, &read.name)?;
     read.validate(snapshot, &definition, revision)?;
-    let comparison = if read.descending { "<" } else { ">" };
     let direction = if read.descending { "DESC" } else { "ASC" };
-    let seek = if read.after.is_some() {
-        let upper = if read.descending { "AND i.key<=?8" } else { "" };
-        format!("{upper} AND (i.key,i.position){comparison}(?8,?9)")
-    } else {
-        "AND ?8 IS NULL AND ?9 IS NULL".into()
-    };
-    // Give SQLite One Lower Bound So The Seek Starts At The Continuation.
-    let mut lower = read.lower.as_deref().unwrap_or_default().max(read.prefix.as_slice());
+    let base = read.lower.as_deref().unwrap_or_default().max(read.prefix.as_slice());
+    let mut lower = (base, 0u64);
+    let mut exclusive = false;
     if !read.descending
         && let Some(after) = &read.after
+        && (after.key.as_slice(), after.position) >= lower
     {
-        lower = lower.max(after.key.as_slice());
+        lower = (after.key.as_slice(), after.position);
+        exclusive = true;
     }
+    let end = prefix_end(&read.prefix);
+    let mut upper = read.upper.as_deref().into_iter().chain(end.as_deref()).map(|key| (key, 0u64)).min();
+    if read.descending
+        && let Some(after) = &read.after
+    {
+        let seek = (after.key.as_slice(), after.position);
+        upper = Some(upper.map_or(seek, |bound| bound.min(seek)));
+    }
+    let lower_comparison = if exclusive { ">" } else { ">=" };
+    let upper_bound = if upper.is_some() { "AND (i.key,i.position)<(?6,?7)" } else { "AND ?6 IS NULL AND ?7 IS NULL" };
+    let join = if definition.source.kind == ColumnKind::Objects { "JOIN storage_rows s ON s.position=i.position" } else { "" };
     let latest = if definition.source.kind == ColumnKind::Objects {
         "AND s.position=(SELECT max(o.position) FROM storage_rows o WHERE o.kind=1 AND o.schema_key=s.schema_key AND o.item=s.item AND o.position<=?3)"
     } else {
         ""
     };
     let sql = format!(
-        "SELECT i.key,i.position FROM storage_index_entries i JOIN storage_rows s ON s.position=i.position WHERE i.name=?1 AND i.revision=?2 AND i.position<=?3 AND (?4 IS NULL OR i.key>=?4) AND (?5 IS NULL OR i.key<?5) AND i.key>=?6 AND (?7 IS NULL OR i.key<?7) {seek} {latest} ORDER BY i.key {direction},i.position {direction} LIMIT {}",
+        "SELECT i.key,i.position FROM storage_index_entries i {join} WHERE i.name=?1 AND i.revision=?2 AND i.position<=?3 AND (i.key,i.position){lower_comparison}(?4,?5) {upper_bound} {latest} ORDER BY i.key {direction},i.position {direction} LIMIT {}",
         read.limits.rows.get().saturating_add(1)
     );
-    let prefix_end = prefix_end(&read.prefix);
-    let seek_key = read.after.as_ref().map(|after| after.key.as_slice());
-    let seek_position = read.after.as_ref().map(|after| integer(after.position)).transpose()?;
     let mut query = tx.prepare(&sql).map_err(db)?;
     let mut rows = query
         .query(params![
             read.name.as_str(),
             integer(revision)?,
             integer(snapshot.at.sequence)?,
-            read.lower.as_deref(),
-            read.upper.as_deref(),
-            lower,
-            prefix_end,
-            seek_key,
-            seek_position
+            lower.0,
+            integer(lower.1)?,
+            upper.map(|bound| bound.0),
+            upper.map(|bound| integer(bound.1)).transpose()?,
         ])
         .map_err(db)?;
     let mut candidates = Vec::new();
@@ -219,6 +244,12 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &IndexRead, 
             position: unsigned(row, 1).map_err(db)?,
         });
     }
+    drop(rows);
+    let mut counters = state.work.get();
+    counters.index_entries += candidates.len() as u64;
+    counters.index_steps += query.get_status(rusqlite::StatementStatus::VmStep) as u64;
+    counters.index_prepares += 1;
+    state.work.set(counters);
     execution::finish(snapshot, read, &definition, revision, candidates)
 }
 

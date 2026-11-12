@@ -33,6 +33,13 @@
 
 ## 3. Benchmark Proof
 
+- [x] 3.4 Profile and repair late bucket replacement in `crates/harmos-storage/**`; persist incremental identity/bucket state, preserve exact saved cuts and replay, and prove affected-bucket work deterministically.
+- [x] 3.5 Profile and repair two-million-entry index construction; preserve atomic publication and cancellation, and prove bounded decoding/preparation work.
+- [x] 3.6 Profile and repair first/next/deep index pages; preserve ordering ties, reverse seeks and snapshot cuts, and prove seek plus bounded sequential work.
+- [x] 3.7 Profile and repair the generic row full/first/next scan; eliminate history rescans/copies and prove bounded page work.
+- [x] 3.8 Add true time-window and numeric-predicate cases to the shared storage workload and `tools/python/**` Nightly adapter, reporting source rows and bytes examined; record unchanged-workload before/after measurements in design.md and update `docs/storage.md`.
+- [x] 3.9 Run focused storage correctness stories and benchmark producer proof, then the required format, Rust, Python, repository checks and test-artifact build; commit only owned paths locally without pushing.
+
 - [x] 3.1 Measure native columnar, indexed seek, projection advancement/replay, late buckets and conditional-update contention against the baseline on Windows; verify results outside timed sections. Resolve deep-seek prefix scanning without changing budgets; native Linux remains in 3.2.
 - [ ] 3.2 Record throughput, page latency, allocations/peak memory, bytes read, durability and cancellation/stop costs on Windows and Linux; preserve raw artifacts and resolve regressions.
   - [x] Windows: record measured times, throughput, Rust allocations/incremental heap, process peak memory, encoded column bytes, WAL/FULL commit costs, replay, cancellation refusal and owner stop/restart; preserve raw samples and unchanged budgets.

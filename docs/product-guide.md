@@ -992,7 +992,20 @@ revisions are unchanged.
 ### Generated Rust Clients
 
 `harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
-The caller sets the wire-message limit, outgoing item count and outgoing byte budget.
+The caller sets the wire-message limit, outgoing item count, outgoing byte budget and required
+`retained_bytes: NonZeroUsize` from application configuration. For example:
+
+```rust
+let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<std::num::NonZeroUsize>()?;
+let settings = harmos::ClientSettings { retained_bytes, message_bytes, input_items, input_bytes };
+let client = harmos::Client::new(channel, settings)?;
+```
+
+`retained_bytes` bounds descriptor-checked decoded allocations and SDK-owned queued values
+across client clones and calls. Repeated, map and nested values are accounted before Prost
+decoding. A claim ends when its bare value reaches the caller; the caller owns its memory
+thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
+budget or request smaller pages.
 `catalog` reads one bounded discovery page; continue with its opaque `next` cursor.
 Bind the selected `harmos_protocol::host::OperationContract` to generated application messages:
 
@@ -1021,7 +1034,8 @@ Dropping a call abandons its result. No reconnect, replay or automatic retry is 
 The [runnable Schematic client](../sdk/rust/examples/client.rs) discovers and calls a
 generated application contract without linking domain, storage, operations or runtime.
 Build it with `mise run build -- --package harmos --example client`; pass a running
-Schematic application's gRPC URL when launching `target/debug/examples/client`.
+Schematic application's gRPC URL when launching `target/debug/examples/client`, with
+`HARMOS_CLIENT_RETAINED_BYTES` set to the application's decoded-memory budget in bytes.
 The dependency proof at `sdk/rust/tests/dependency_closure.py` traverses normal/build
 workspace dependencies and the client example's root development dependencies.
 
