@@ -223,7 +223,7 @@ impl<O: RequestShape> tonic::server::StreamingService<StreamItem<ControlEnvelope
 
 pub(super) fn is_managed(authority: &server::Authority, path: &str) -> bool {
     match authority {
-        server::Authority::Binding(binding) => binding.contract().grpc().is_some_and(|grpc| path == grpc.run_path()),
+        server::Authority::Binding(binding) => binding.contract().grpc().is_some_and(|grpc| grpc.managed && path == grpc.path()),
         _ => false,
     }
 }

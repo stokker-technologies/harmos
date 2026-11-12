@@ -90,7 +90,7 @@ class Receipt(_message.Message):
     completed: bool
     def __init__(self, request_id: _Optional[str] = ..., accepted_at: _Optional[_Union[Position, _Mapping]] = ..., durable_at: _Optional[_Union[Position, _Mapping]] = ..., completed: _Optional[bool] = ...) -> None: ...
 
-class DescribeRequest(_message.Message):
+class PluginGetRequest(_message.Message):
     __slots__ = ("revision", "host", "host_version")
     REVISION_FIELD_NUMBER: _ClassVar[int]
     HOST_FIELD_NUMBER: _ClassVar[int]
@@ -100,7 +100,7 @@ class DescribeRequest(_message.Message):
     host_version: str
     def __init__(self, revision: _Optional[int] = ..., host: _Optional[str] = ..., host_version: _Optional[str] = ...) -> None: ...
 
-class Description(_message.Message):
+class PluginGetResponse(_message.Message):
     __slots__ = ("id", "version", "started_at", "catalog", "revision", "sdk", "sdk_version")
     ID_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -208,17 +208,17 @@ class Section(_message.Message):
     payload: bytes
     def __init__(self, type: _Optional[str] = ..., payload: _Optional[bytes] = ...) -> None: ...
 
-class StopRequest(_message.Message):
+class PluginStopRequest(_message.Message):
     __slots__ = ("reason",)
     REASON_FIELD_NUMBER: _ClassVar[int]
     reason: str
     def __init__(self, reason: _Optional[str] = ...) -> None: ...
 
-class StopResponse(_message.Message):
+class PluginStopResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class HostFrame(_message.Message):
+class PluginInvokeRequest(_message.Message):
     __slots__ = ("request", "child", "cancel")
     REQUEST_FIELD_NUMBER: _ClassVar[int]
     CHILD_FIELD_NUMBER: _ClassVar[int]
@@ -228,7 +228,7 @@ class HostFrame(_message.Message):
     cancel: Cancel
     def __init__(self, request: _Optional[_Union[Request, _Mapping]] = ..., child: _Optional[_Union[ChildResponse, _Mapping]] = ..., cancel: _Optional[_Union[Cancel, _Mapping]] = ...) -> None: ...
 
-class PluginFrame(_message.Message):
+class PluginInvokeResponse(_message.Message):
     __slots__ = ("child", "child_cancel", "response")
     CHILD_FIELD_NUMBER: _ClassVar[int]
     CHILD_CANCEL_FIELD_NUMBER: _ClassVar[int]
@@ -325,13 +325,13 @@ class Failure(_message.Message):
     diagnostics: str
     def __init__(self, classification: _Optional[_Union[Classification, str]] = ..., code: _Optional[str] = ..., message: _Optional[str] = ..., action: _Optional[str] = ..., operation: _Optional[str] = ..., plugin: _Optional[str] = ..., cause: _Optional[_Union[Failure, _Mapping]] = ..., details: _Optional[_Mapping[str, str]] = ..., diagnostics: _Optional[str] = ...) -> None: ...
 
-class PublishFrame(_message.Message):
+class PluginSamplesRequest(_message.Message):
     __slots__ = ("open", "tick")
     OPEN_FIELD_NUMBER: _ClassVar[int]
     TICK_FIELD_NUMBER: _ClassVar[int]
-    open: PublishRequest
+    open: SamplesSelection
     tick: Tick
-    def __init__(self, open: _Optional[_Union[PublishRequest, _Mapping]] = ..., tick: _Optional[_Union[Tick, _Mapping]] = ...) -> None: ...
+    def __init__(self, open: _Optional[_Union[SamplesSelection, _Mapping]] = ..., tick: _Optional[_Union[Tick, _Mapping]] = ...) -> None: ...
 
 class Tick(_message.Message):
     __slots__ = ("at",)
@@ -339,7 +339,7 @@ class Tick(_message.Message):
     at: _timestamp_pb2.Timestamp
     def __init__(self, at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
-class PublishRequest(_message.Message):
+class SamplesSelection(_message.Message):
     __slots__ = ("stream", "scope")
     STREAM_FIELD_NUMBER: _ClassVar[int]
     SCOPE_FIELD_NUMBER: _ClassVar[int]
@@ -347,7 +347,7 @@ class PublishRequest(_message.Message):
     scope: str
     def __init__(self, stream: _Optional[str] = ..., scope: _Optional[str] = ...) -> None: ...
 
-class Samples(_message.Message):
+class PluginSamplesResponse(_message.Message):
     __slots__ = ("samples",)
     SAMPLES_FIELD_NUMBER: _ClassVar[int]
     samples: _containers.RepeatedCompositeFieldContainer[Sample]
@@ -363,21 +363,21 @@ class Sample(_message.Message):
     sequence: int
     def __init__(self, at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., row: _Optional[bytes] = ..., sequence: _Optional[int] = ...) -> None: ...
 
-class Sleep(_message.Message):
+class TimeSleepRequest(_message.Message):
     __slots__ = ("duration",)
     DURATION_FIELD_NUMBER: _ClassVar[int]
     duration: _duration_pb2.Duration
     def __init__(self, duration: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ...) -> None: ...
 
-class SleepResponse(_message.Message):
+class TimeSleepResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class Now(_message.Message):
+class TimeGetRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class Time(_message.Message):
+class TimeGetResponse(_message.Message):
     __slots__ = ("now",)
     NOW_FIELD_NUMBER: _ClassVar[int]
     now: _timestamp_pb2.Timestamp

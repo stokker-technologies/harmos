@@ -67,7 +67,7 @@ impl Bundle {
             if let Some(executable) = &file.executable {
                 if executable.facility == Facility::Sidecar {
                     if !executable.registrations.is_empty() {
-                        return Err(invalid("native catalogs are obtained through Describe"));
+                        return Err(invalid("native catalogs are obtained through Plugin.Get"));
                     }
                     if !owners.insert((executable.facility, manifest.identity.name.clone(), &executable.target)) {
                         return Err(invalid("duplicate executable facility, owner, and target"));

@@ -191,7 +191,9 @@ fn main() -> Result<()> {
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "interval" {
         let stream = harmos::Stream::<Value>::new("fixture.ticks");
-        let observer = harmos::Observer::new(&stream, observe).every_ms(60_000).interval_setting("harmos.plugin.v1.Settings.interval");
+        let observer = harmos::Observer::new(&stream, observe)
+            .every(prost_types::Duration { seconds: 60, nanos: 0 })
+            .interval_setting("harmos.plugin.v1.Settings.interval");
         Plugin::new("observer", "1.0.0")
             .section(Settings {
                 interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
@@ -209,18 +211,19 @@ fn main() -> Result<()> {
             ..Default::default()
         }))
     } else if mode == "deadline" {
-        Plugin::new("deadline", "1.0.0").requires::<harmos::clock::Now>().requires::<harmos::clock::Sleep>().operation(
-            Operation::new("fixture.clock", clock).policy(v1::OperationPolicy {
+        Plugin::new("deadline", "1.0.0")
+            .requires::<harmos::clock::TimeGetRequest>()
+            .requires::<harmos::clock::TimeSleepRequest>()
+            .operation(Operation::new("fixture.clock", clock).policy(v1::OperationPolicy {
                 timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
                 attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
                 ..Default::default()
-            }),
-        )
+            }))
     } else if mode == "twins" {
         let left = harmos::Stream::<Value>::new("fixture.left");
         let right = harmos::Stream::<Value>::new("fixture.right");
-        let left_observer = harmos::Observer::new(&left, observe).every_ms(1000);
-        let right_observer = harmos::Observer::new(&right, observe).every_ms(2000);
+        let left_observer = harmos::Observer::new(&left, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
+        let right_observer = harmos::Observer::new(&right, observe).every(prost_types::Duration { seconds: 2, nanos: 0 });
         Plugin::new("twins", "1.0.0")
             .stream(left)
             .stream(right)
@@ -254,8 +257,8 @@ fn main() -> Result<()> {
     } else {
         Plugin::new("caller", "1.0.0")
             .requires::<HostInput>()
-            .requires::<harmos::clock::Sleep>()
-            .requires::<harmos::clock::Now>()
+            .requires::<harmos::clock::TimeSleepRequest>()
+            .requires::<harmos::clock::TimeGetRequest>()
             .requires::<PublicInput>()
             .requires::<PrivateInput>()
             .requires::<MissingInput>()
@@ -310,8 +313,8 @@ async fn scoped(context: &Context, input: Value) -> Result<Value> {
     if input.value != scope.as_bytes() {
         return Err(harmos::Error::Invalid("Payload Differs From Invocation Scope".into()));
     }
-    let host = context.operation(HostInput { value: b"scope".to_vec() }).await?;
-    let plugin = context.operation(PublicInput { value: Vec::new() }).await?;
+    let host = context.call(HostInput { value: b"scope".to_vec() }).await?;
+    let plugin = context.call(PublicInput { value: Vec::new() }).await?;
     let mut value = scope.as_bytes().to_vec();
     value.push(0);
     value.extend_from_slice(&host.value);
@@ -353,16 +356,16 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
 async fn forward(context: &Context, input: Value) -> Result<Value> {
     match input.value.first() {
         Some(b'h') => Ok(Value {
-            value: context.operation(HostInput { value: input.value }).await?.value,
+            value: context.call(HostInput { value: input.value }).await?.value,
         }),
-        Some(b'p') => context.operation(PublicInput { value: input.value }).await,
-        Some(b's') => context.operation(PrivateInput { value: input.value }).await,
-        _ => context.operation(MissingInput { value: input.value }).await,
+        Some(b'p') => context.call(PublicInput { value: input.value }).await,
+        Some(b's') => context.call(PrivateInput { value: input.value }).await,
+        _ => context.call(MissingInput { value: input.value }).await,
     }
 }
 
 async fn wait(context: &Context, input: Value) -> Result<Value> {
-    context.operation(HostInput { value: input.value.clone() }).await?;
+    context.call(HostInput { value: input.value.clone() }).await?;
     context.cancelled().await;
     Ok(input)
 }

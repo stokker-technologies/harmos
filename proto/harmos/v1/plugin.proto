@@ -31,29 +31,29 @@ message Receipt {
 // Served by every plugin. The host is always the client.
 service Plugin {
   // Identity, start time and catalog. Called once per connection, first.
-  rpc Describe(DescribeRequest) returns (Description);
+  rpc Get(PluginGetRequest) returns (PluginGetResponse);
 
   // One invocation of one operation. The host opens the call with a Request.
   // While it runs, the plugin may send ChildRequest frames and the host
   // answers each with a ChildResponse. The plugin ends the call with a
   // Response. The host may send Cancel at any time.
-  rpc Invoke(stream HostFrame) returns (stream PluginFrame);
+  rpc Invoke(stream PluginInvokeRequest) returns (stream PluginInvokeResponse);
 
-  // One declared stream. The host opens the call with a PublishRequest;
+  // One declared stream. The host opens the call with a SamplesSelection;
   // opening it is the demand for the stream and closing it ends the demand.
   // For a stream with an interval the host then sends one Tick per interval
   // and the plugin answers each with one sample.
-  rpc Publish(stream PublishFrame) returns (stream Samples);
+  rpc Samples(stream PluginSamplesRequest) returns (stream PluginSamplesResponse);
 
   // Sent before the host shuts down or removes the plugin. The plugin runs
   // its stop and cleanup hooks and then replies. A managed plugin exits
   // afterwards; a remote plugin keeps running.
-  rpc Stop(StopRequest) returns (StopResponse);
+  rpc Stop(PluginStopRequest) returns (PluginStopResponse);
 }
 
-// ---------------------------------------------------------------- Describe
+// ---------------------------------------------------------------- Get
 
-message DescribeRequest {
+message PluginGetRequest {
   // Highest revision of harmos.v1 the host implements. Starts at 1 and grows
   // with each additive release.
   uint32 revision = 1;
@@ -62,7 +62,7 @@ message DescribeRequest {
   string host_version = 3;
 }
 
-message Description {
+message PluginGetResponse {
   // Stable plugin identifier, lowercase with dots or underscores.
   string id = 1;
   // Semantic version of the plugin.
@@ -161,15 +161,15 @@ message Section {
   bytes payload = 2;
 }
 
-message StopRequest {
+message PluginStopRequest {
   string reason = 1;
 }
 
-message StopResponse {}
+message PluginStopResponse {}
 
 // ------------------------------------------------------------------ Invoke
 
-message HostFrame {
+message PluginInvokeRequest {
   oneof frame {
     Request request = 1;
     ChildResponse child = 2;
@@ -177,7 +177,7 @@ message HostFrame {
   }
 }
 
-message PluginFrame {
+message PluginInvokeResponse {
   oneof frame {
     ChildRequest child = 1;
     ChildCancel child_cancel = 2;
@@ -266,10 +266,10 @@ enum Classification {
 
 // ----------------------------------------------------------------- Publish
 
-message PublishFrame {
+message PluginSamplesRequest {
   oneof frame {
     // First frame.
-    PublishRequest open = 1;
+    SamplesSelection open = 1;
     Tick tick = 2;
   }
 }
@@ -280,7 +280,7 @@ message Tick {
   google.protobuf.Timestamp at = 1;
 }
 
-message PublishRequest {
+message SamplesSelection {
   string stream = 1;
   // Opaque to Harmos. The product names what the stream belongs to.
   string scope = 2;
@@ -288,7 +288,7 @@ message PublishRequest {
 
 // One message on the stream. An SDK sends one sample per message; the
 // repeated field lets a later SDK group samples without a protocol change.
-message Samples {
+message PluginSamplesResponse {
   repeated Sample samples = 1;
 }
 
@@ -307,17 +307,17 @@ message Sample {
 //
 // Built-in Public operations served by the host. An SDK offers no waits of
 // its own: every wait goes through these, so the host owns the only clock.
-//   harmos.clock.sleep   Sleep -> SleepResponse
-//   harmos.clock.now     Now   -> Time
+//   harmos.time.sleep   TimeSleepRequest -> TimeSleepResponse
+//   harmos.time.get     TimeGetRequest   -> TimeGetResponse
 
-message Sleep {
+message TimeSleepRequest {
   google.protobuf.Duration duration = 1;
 }
 
-message SleepResponse {}
+message TimeSleepResponse {}
 
-message Now {}
+message TimeGetRequest {}
 
-message Time {
+message TimeGetResponse {
   google.protobuf.Timestamp now = 1;
 }

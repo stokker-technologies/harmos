@@ -89,10 +89,6 @@ public:
     explicit Context(std::shared_ptr<detail::Invocation> state);
     template<class Q, class R> Call<R> call(const Operation<Q, R>& operation, const Q& request,
                                            std::optional<wire::OperationPolicy> policy = {});
-    template<class Q, class R> R operation(const Operation<Q, R>& operation, const Q& request,
-                                          std::optional<wire::OperationPolicy> policy = {}) {
-        return call(operation, request, std::move(policy)).get();
-    }
     void sleep(const google::protobuf::Duration& duration);
     google::protobuf::Timestamp now();
     std::string cancelled();
@@ -188,6 +184,7 @@ public:
         };
     }
     Operation& visibility(wire::Visibility value) { definition.contract.set_visibility(value); return *this; }
+    Operation& replay_safe() { definition.contract.set_replay_safe(true); return *this; }
     Operation& policy(wire::OperationPolicy value) { *definition.contract.mutable_policy() = std::move(value); return *this; }
     Operation& description(std::string value) { definition.contract.set_description(std::move(value)); return *this; }
 };
@@ -261,6 +258,6 @@ template<class R> Plugin& Plugin::observer(const Observer<R>& observer) {
 
 /* === Public Declarations === */
 
-inline const Operation<wire::Sleep, wire::SleepResponse> SLEEP("harmos.clock.sleep");
-inline const Operation<wire::Now, wire::Time> NOW("harmos.clock.now");
+inline const Operation<wire::TimeSleepRequest, wire::TimeSleepResponse> SLEEP("harmos.time.sleep");
+inline const Operation<wire::TimeGetRequest, wire::TimeGetResponse> GET_TIME("harmos.time.get");
 }

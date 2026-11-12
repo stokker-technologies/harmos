@@ -34,8 +34,7 @@ const POLICY: OperationPolicy = OperationPolicy {
     timeout: Some(harmos::encoding::Duration { seconds: 10, nanos: 0 }),
     attempt_timeout: Some(harmos::encoding::Duration { seconds: 10, nanos: 0 }),
     cancellation_timeout: None,
-    attempts: 1,
-    backoff: None,
+    retries: None,
 };
 
 /* === Macros === */

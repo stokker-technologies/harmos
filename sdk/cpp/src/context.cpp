@@ -60,7 +60,7 @@ std::shared_future<std::string> Context::send(wire::ChildRequest request) {
         auto& promise = state_->pending[request.call()];
         result = promise.get_future().share();
     }
-    wire::PluginFrame frame;
+    wire::PluginInvokeResponse frame;
     *frame.mutable_child() = std::move(request);
     state_->emit(std::move(frame));
     state_->start_reading();
@@ -75,12 +75,12 @@ std::string Context::cancelled() {
 }
 
 void Context::sleep(const google::protobuf::Duration& duration) {
-    wire::Sleep request;
+    wire::TimeSleepRequest request;
     *request.mutable_duration() = duration;
-    operation(SLEEP, request);
+    call(SLEEP, request).get();
 }
 
-google::protobuf::Timestamp Context::now() { return operation(NOW, wire::Now{}).now(); }
+google::protobuf::Timestamp Context::now() { return call(GET_TIME, wire::TimeGetRequest{}).get().now(); }
 }
 
 /* === Private Functions === */

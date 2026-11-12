@@ -58,6 +58,8 @@ struct Pending {
     forward: Option<Forward>,
     response: Option<Vec<u8>>,
     output: bool,
+    streaming: bool,
+    managed: bool,
     settled: bool,
 }
 
@@ -125,8 +127,9 @@ impl Pending {
         loop {
             if !self.output
                 && let Some(bytes) = self.response.take()
+                && (!self.streaming || self.managed)
             {
-                return Ok(Some(Output { bytes, tag: Some(2) }));
+                return Ok(Some(Output { bytes, tag: self.managed.then_some(2) }));
             }
             if self.settled && !self.output {
                 return Ok(None);
@@ -150,7 +153,7 @@ impl Pending {
                 }
                 result = async { self.streams.as_ref().expect("declared output").receive_current().await }, if self.output => {
                     match result.map_err(serving)? {
-                        Some(bytes) => return Ok(Some(Output { bytes, tag: Some(1) })),
+                        Some(bytes) => return Ok(Some(Output { bytes, tag: self.managed.then_some(1) })),
                         None => self.output = false,
                     }
                 }
@@ -197,6 +200,8 @@ impl Endpoint {
             invocation,
             streams,
             output,
+            streaming: output,
+            managed: binding.contract().grpc().is_some_and(|grpc| grpc.managed),
             forward: None,
             response: None,
             settled: false,

@@ -15,8 +15,8 @@ use std::time::Duration;
 // Third Party Imports
 // Local Imports
 use harmos_operations::execution::grpc::{self, DecodeInput};
+use harmos_runtime::grpc::InputEnvelope;
 use harmos_runtime::grpc::dynamic::{Event, Operation};
-use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 
 /* === Constants === */
@@ -144,25 +144,12 @@ fn dynamic_stream_interop() {
         .0,
         InputEnvelope::Item(_)
     ));
-    let item = {
-        let mut bytes = Vec::new();
-        <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<OutputEnvelope<Value, Value>>>::encode(
-            &(OutputEnvelope::<Value, Value>::Item(Value { small: 7, wide: 9, optional: None })),
-            &mut bytes,
-        )
-        .unwrap();
-        bytes
-    };
-    assert!(matches!(operation.decode(&item).unwrap(), Event::Item(_)));
-    let completion = {
-        let mut bytes = Vec::new();
-        <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<OutputEnvelope<Value, Value>>>::encode(
-            &(OutputEnvelope::<Value, Value>::Response(Value { small: 8, wide: 9, optional: None })),
-            &mut bytes,
-        )
-        .unwrap();
-        bytes
-    };
-    assert!(matches!(operation.decode(&completion).unwrap(), Event::Completion(_)));
-    assert!(operation.decode(&[]).is_err());
+    let mut bytes = Vec::new();
+    <harmos_runtime::grpc::Transcoded as harmos_runtime::grpc::Wire<Value>>::encode(
+        &Value { small: 7, wide: 9, optional: None },
+        &mut bytes,
+    )
+    .unwrap();
+    assert!(matches!(operation.decode(&bytes).unwrap(), Event::Item(_)));
+    assert!(operation.decode(&[0xff]).is_err());
 }

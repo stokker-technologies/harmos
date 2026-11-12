@@ -211,9 +211,9 @@ impl Remote {
         receiver
     }
 
-    pub async fn describe(&self) -> v1::Description {
+    pub async fn get(&self) -> v1::PluginGetResponse {
         let mut client = v1::plugin_client::PluginClient::connect(self.address.clone()).await.unwrap();
-        client.describe(v1::DescribeRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner()
+        client.get(v1::PluginGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner()
     }
 }
 
@@ -226,13 +226,13 @@ impl Drop for Remote {
 
 #[tonic::async_trait]
 impl Plugin for Fixture {
-    async fn describe(&self, _: Request<v1::DescribeRequest>) -> Result<Response<v1::Description>, Status> {
+    async fn get(&self, _: Request<v1::PluginGetRequest>) -> Result<Response<v1::PluginGetResponse>, Status> {
         let pending = self.pending_description.lock().unwrap().take();
         if let Some(pending) = pending {
             let _ = pending.send(());
             return std::future::pending().await;
         }
-        Ok(Response::new(v1::Description {
+        Ok(Response::new(v1::PluginGetResponse {
             id: "remote".into(),
             version: "1.0.0".into(),
             revision: 1,
@@ -245,22 +245,22 @@ impl Plugin for Fixture {
             catalog: Some(self.catalog.lock().unwrap().clone()),
         }))
     }
-    type InvokeStream = Output<v1::PluginFrame>;
-    async fn invoke(&self, _: Request<Streaming<v1::HostFrame>>) -> Result<Response<Self::InvokeStream>, Status> {
+    type InvokeStream = Output<v1::PluginInvokeResponse>;
+    async fn invoke(&self, _: Request<Streaming<v1::PluginInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
         Err(Status::not_found("Unknown Operation"))
     }
-    type PublishStream = Output<v1::Samples>;
-    async fn publish(&self, _: Request<Streaming<v1::PublishFrame>>) -> Result<Response<Self::PublishStream>, Status> {
+    type SamplesStream = Output<v1::PluginSamplesResponse>;
+    async fn samples(&self, _: Request<Streaming<v1::PluginSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
         Err(Status::not_found("Unknown Stream"))
     }
-    async fn stop(&self, _: Request<v1::StopRequest>) -> Result<Response<v1::StopResponse>, Status> {
+    async fn stop(&self, _: Request<v1::PluginStopRequest>) -> Result<Response<v1::PluginStopResponse>, Status> {
         self.stops.fetch_add(1, Ordering::SeqCst);
         let pending = self.pending_stop.lock().unwrap().take();
         if let Some(pending) = pending {
             let _ = pending.send(());
             return std::future::pending().await;
         }
-        Ok(Response::new(v1::StopResponse {}))
+        Ok(Response::new(v1::PluginStopResponse {}))
     }
 }
 

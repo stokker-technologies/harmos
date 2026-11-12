@@ -76,15 +76,15 @@ fn main() -> Result<()> {
         println!("observer_reading");
         std::future::pending::<Result<Isolation>>().await
     })
-    .every_ms(1000);
+    .every(prost_types::Duration { seconds: 1, nanos: 0 });
     Plugin::new("execution", "1.0.0")
         .operation(Operation::new("execution.clock", clock_and_resource))
         .operation(Operation::new("execution.isolation", isolation))
         .operation(Operation::new("execution.reading_released", reading_released))
         .stream(reading)
         .observer(observer)
-        .requires::<clock::Sleep>()
-        .requires::<clock::Now>()
+        .requires::<clock::TimeSleepRequest>()
+        .requires::<clock::TimeGetRequest>()
         .on_stop(move || {
             std::fs::write(&cleanup, b"cleaned")?;
             Ok(())

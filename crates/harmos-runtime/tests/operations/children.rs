@@ -82,7 +82,8 @@ static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
                 },
             },
         },
-    );
+    )
+    .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
 
 const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);

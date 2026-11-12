@@ -188,7 +188,7 @@ fn contract(operation: &v1::OperationContract, types: &prost_types::FileDescript
         description: operation.description.clone(),
         visibility,
         policy,
-        replay: ReplaySafety::Unknown,
+        replay: if operation.replay_safe { ReplaySafety::Idempotent } else { ReplaySafety::Unknown },
         fingerprint: harmos_domain::Fingerprint([0; 32]),
     };
     let protobuf = Protobuf {

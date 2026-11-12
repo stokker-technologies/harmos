@@ -143,6 +143,16 @@ impl<W: Wire<T>, T: Send + Sync + 'static> Encode<W> for crate::operations::Resp
     }
 }
 
+impl<W: Wire<T>, T: Send + Sync + 'static> Encode<W> for StreamItem<T> {
+    fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
+        W::encode(self, bytes)
+    }
+
+    fn write_admitted(&self, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>) -> Result<(), Status> {
+        W::encode_admitted(self, bytes, limit, admit)
+    }
+}
+
 impl<W, I, R> Encode<W> for Event<StreamItem<I>, crate::operations::Response<R>>
 where
     W: Wire<I> + Wire<R>,

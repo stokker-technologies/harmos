@@ -128,11 +128,8 @@ impl Observer {
         }
     }
 
-    pub fn every_ms(mut self, interval_ms: u64) -> Self {
-        self.interval = Some(prost_types::Duration {
-            seconds: (interval_ms / 1000) as i64,
-            nanos: ((interval_ms % 1000) * 1_000_000) as i32,
-        });
+    pub fn every(mut self, interval: prost_types::Duration) -> Self {
+        self.interval = Some(interval);
         self
     }
 

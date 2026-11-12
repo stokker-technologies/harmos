@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use super::Catalog;
+use super::List;
 
 // Standard Library Imports
 
@@ -44,7 +44,7 @@ pub fn host_catalog() -> crate::execution::operations::Catalog {
 pub fn host_catalog_batch() -> crate::execution::__private::Catalog {
     crate::execution::__private::Catalog {
         name: "",
-        operations: vec![crate::execution::operations::OperationFactory::protobuf::<Catalog>().expect("catalog declaration")],
+        operations: vec![crate::execution::operations::OperationFactory::protobuf::<List>().expect("catalog declaration")],
         services: vec![],
     }
 }

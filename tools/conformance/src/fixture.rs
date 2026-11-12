@@ -29,22 +29,7 @@ use harmos_protocol::v1::*;
 /* === Constants === */
 
 pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure", "policy"];
-pub const CLOCK_FINGERPRINTS: [(&str, [u8; 32]); 2] = [
-    (
-        "harmos.clock.sleep",
-        [
-            225, 132, 164, 249, 80, 106, 186, 165, 169, 217, 165, 220, 137, 211, 126, 66, 239, 172, 93, 254, 210, 30, 29, 19, 96, 55, 253,
-            247, 27, 7, 156, 171,
-        ],
-    ),
-    (
-        "harmos.clock.now",
-        [
-            205, 13, 190, 24, 110, 229, 160, 96, 250, 199, 77, 136, 248, 239, 51, 52, 68, 167, 137, 155, 87, 218, 83, 236, 177, 253, 20,
-            211, 201, 42, 188, 129,
-        ],
-    ),
-];
+pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.time.sleep", "harmos.time.get"];
 
 pub const ROW: &str = "harmos.conformance.v1.Value";
 
@@ -99,8 +84,14 @@ pub fn types() -> FileDescriptorSet {
 }
 
 pub fn fingerprint(id: &str) -> Vec<u8> {
-    if let Some((_, fingerprint)) = CLOCK_FINGERPRINTS.iter().find(|(operation, _)| *operation == id) {
-        return fingerprint.to_vec();
+    if CLOCK_OPERATIONS.contains(&id) {
+        let (request, response) = if id == "harmos.time.sleep" {
+            ("harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse")
+        } else {
+            ("harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse")
+        };
+        return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
+            .expect("clock contract");
     }
     harmos_protocol::schema::fingerprint(id, &types(), ROW, ROW).expect("the fixed fixture descriptor resolves Value")
 }
@@ -176,10 +167,25 @@ pub fn catalog() -> Catalog {
         fingerprint: fingerprint("conformance.clock"),
         ..Default::default()
     });
-    for (id, fingerprint) in CLOCK_FINGERPRINTS {
+    for (id, visibility, replay_safe) in [
+        ("conformance.private", Visibility::Private, false),
+        ("conformance.resources", Visibility::Public, true),
+        ("conformance.cancel_reason", Visibility::Public, false),
+    ] {
+        operations.push(OperationContract {
+            id: id.into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: visibility as i32,
+            replay_safe,
+            fingerprint: fingerprint(id),
+            ..Default::default()
+        });
+    }
+    for id in CLOCK_OPERATIONS {
         requires.push(Requirement {
             id: id.into(),
-            fingerprint: fingerprint.to_vec(),
+            fingerprint: fingerprint(id),
         });
     }
     let mut types = schema_fixture::types();

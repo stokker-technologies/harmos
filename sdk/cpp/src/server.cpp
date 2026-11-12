@@ -109,13 +109,13 @@ public:
     virtual void closed() = 0;
 };
 
-class InvocationCall final : public Duplex<wire::HostFrame, wire::PluginFrame> {
+class InvocationCall final : public Duplex<wire::PluginInvokeRequest, wire::PluginInvokeResponse> {
 public:
     InvocationCall(const std::vector<detail::OperationDefinition>& operations, const Requirements& requirements, const std::string& plugin)
         : operations_(operations), state_(std::make_shared<detail::Invocation>()) {
         state_->requirements = requirements;
         state_->plugin = plugin;
-        state_->emit = [this](wire::PluginFrame frame) { write(std::move(frame)); };
+        state_->emit = [this](wire::PluginInvokeResponse frame) { write(std::move(frame)); };
         state_->read = [this] { read_next(); };
         read_next();
     }
@@ -143,7 +143,7 @@ public:
             if (!operation) { end({grpc::StatusCode::NOT_FOUND, "Unknown Operation"}); return; }
             started_ = true;
             worker = std::thread([this, operation] {
-                wire::PluginFrame frame;
+                wire::PluginInvokeResponse frame;
                 try {
                     Context context(state_);
                     frame.mutable_response()->set_payload(operation->handler(context, state_->request.payload()));
@@ -194,13 +194,13 @@ public:
             }
             // Child Cancellation Precedes Waking the Handler's Terminal Failure.
             for (auto id : pending) {
-                wire::PluginFrame frame;
+                wire::PluginInvokeResponse frame;
                 frame.mutable_child_cancel()->set_call(id);
                 try { write(std::move(frame)); } catch (const TransportError&) { return; }
             }
             {
                 std::lock_guard lock(state_->mutex);
-                state_->cancelled = input.cancel().reason();
+                if (!state_->cancelled) state_->cancelled = input.cancel().reason();
                 state_->changed.notify_all();
             }
             state_->close(std::make_exception_ptr(Failure(std::move(failure))));
@@ -222,7 +222,7 @@ bool valid_timestamp(const google::protobuf::Timestamp& at) {
     return at.seconds() >= -62135596800LL && at.seconds() <= 253402300799LL && at.nanos() >= 0 && at.nanos() < 1000000000;
 }
 
-class PublicationCall final : public Duplex<wire::PublishFrame, wire::Samples> {
+class PublicationCall final : public Duplex<wire::PluginSamplesRequest, wire::PluginSamplesResponse> {
 public:
     explicit PublicationCall(const std::vector<detail::StreamDefinition>& streams)
         : streams_(streams), state_(std::make_shared<detail::Invocation>()) {
@@ -246,7 +246,7 @@ public:
                         Context context(state_);
                         stream_->producer(context, [this](std::string row, std::optional<google::protobuf::Timestamp> at) {
                             if (at && !valid_timestamp(*at)) throw TransportError(3, "Invalid Device Timestamp");
-                            wire::Samples samples;
+                            wire::PluginSamplesResponse samples;
                             auto* sample = samples.add_samples();
                             sample->set_row(std::move(row));
                             sample->set_sequence(++sequence_);
@@ -270,7 +270,7 @@ public:
         try {
             Context context(state_);
             context.sequence = ++sequence_;
-            wire::Samples samples;
+            wire::PluginSamplesResponse samples;
             auto* sample = samples.add_samples();
             *sample->mutable_at() = input.tick().at();
             sample->set_sequence(sequence_);
@@ -301,15 +301,15 @@ private:
 
 class Service final : public wire::Plugin::CallbackService {
 public:
-    wire::Description description;
+    wire::PluginGetResponse description;
     std::vector<detail::OperationDefinition> operations;
     std::vector<detail::StreamDefinition> streams;
     Requirements requirements;
     std::vector<std::function<void()>> cleanup;
     std::function<void()> stop;
 
-    grpc::ServerUnaryReactor* Describe(grpc::CallbackServerContext* context, const wire::DescribeRequest* request,
-                                      wire::Description* response) override {
+    grpc::ServerUnaryReactor* Get(grpc::CallbackServerContext* context, const wire::PluginGetRequest* request,
+                                      wire::PluginGetResponse* response) override {
         auto* reactor = context->DefaultReactor();
         if (request->revision() == 0) {
             reactor->Finish({grpc::StatusCode::INVALID_ARGUMENT, "Revision Must Be at Least One"});
@@ -319,13 +319,13 @@ public:
         reactor->Finish(grpc::Status::OK);
         return reactor;
     }
-    grpc::ServerBidiReactor<wire::HostFrame, wire::PluginFrame>* Invoke(grpc::CallbackServerContext*) override {
+    grpc::ServerBidiReactor<wire::PluginInvokeRequest, wire::PluginInvokeResponse>* Invoke(grpc::CallbackServerContext*) override {
         return new InvocationCall(operations, requirements, description.id());
     }
-    grpc::ServerBidiReactor<wire::PublishFrame, wire::Samples>* Publish(grpc::CallbackServerContext*) override {
+    grpc::ServerBidiReactor<wire::PluginSamplesRequest, wire::PluginSamplesResponse>* Samples(grpc::CallbackServerContext*) override {
         return new PublicationCall(streams);
     }
-    grpc::ServerUnaryReactor* Stop(grpc::CallbackServerContext* context, const wire::StopRequest*, wire::StopResponse*) override {
+    grpc::ServerUnaryReactor* Stop(grpc::CallbackServerContext* context, const wire::PluginStopRequest*, wire::PluginStopResponse*) override {
         try { for (const auto& hook : cleanup) hook(); }
         catch (const std::exception& error) {
             auto* reactor = context->DefaultReactor();

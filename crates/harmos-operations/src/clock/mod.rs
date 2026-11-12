@@ -11,12 +11,12 @@
 
 /* === Modules === */
 
-mod now;
+mod get;
 mod sleep;
 
 /* === Re-Exports === */
 
-pub use now::Now;
+pub use get::Get;
 pub use sleep::Sleep;
 
 /* === Imports === */

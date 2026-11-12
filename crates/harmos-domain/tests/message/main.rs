@@ -15,7 +15,6 @@ mod boxed;
 mod enums;
 mod filesystem;
 mod graph;
-mod host;
 mod maps;
 mod native;
 mod serde;

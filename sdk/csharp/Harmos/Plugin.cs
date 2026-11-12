@@ -117,7 +117,7 @@ public sealed class Plugin(string id, string version)
     builder.WebHost.ConfigureKestrel(options => options.Listen(endpoint.Address, endpoint.Port,
         listener => listener.Protocols = HttpProtocols.Http2));
     builder.Services.AddGrpc();
-    builder.Services.AddSingleton(provider => new PluginService(new Description
+    builder.Services.AddSingleton(provider => new PluginService(new PluginGetResponse
     {
       Id = id,
       Version = version,

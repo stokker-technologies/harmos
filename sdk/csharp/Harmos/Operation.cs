@@ -11,7 +11,7 @@ public sealed class Operation<TRequest, TResponse>
     where TRequest : IMessage<TRequest>, new()
     where TResponse : IMessage<TResponse>, new()
 {
-  public Operation(string id, Visibility visibility = Visibility.Private, OperationPolicy? policy = null, string description = "")
+  public Operation(string id, Visibility visibility = Visibility.Private, OperationPolicy? policy = null, string description = "", bool replaySafe = false)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(id);
     Contract = new OperationContract
@@ -21,6 +21,7 @@ public sealed class Operation<TRequest, TResponse>
       Response = new TResponse().Descriptor.FullName,
       Visibility = visibility,
       Policy = policy?.Clone(),
+      ReplaySafe = replaySafe,
       Description = description,
       Fingerprint = Descriptors.Fingerprint(id, new TRequest().Descriptor, new TResponse().Descriptor)
     };

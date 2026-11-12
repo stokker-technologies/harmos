@@ -10,5 +10,6 @@
     <PackageReference Include="Grpc.Tools" Version="2.76.0" PrivateAssets="All" />
     <Protobuf Include="../../../proto/harmos/v1/storage.proto" ProtoRoot="../../../proto" GrpcServices="Client" />
     <Protobuf Include="../../../proto/harmos/v1/plugin.proto" ProtoRoot="../../../proto" GrpcServices="Server" />
+    <Protobuf Include="../../../proto/harmos/v1/host.proto" ProtoRoot="../../../proto" GrpcServices="Client" />
   </ItemGroup>
 </Project>

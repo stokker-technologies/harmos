@@ -117,10 +117,12 @@ impl OperationRequest for HostFail {
 
 fn main() -> Result<()> {
     let ticks = Stream::<Value>::new("conformance.ticks");
-    let observer = Observer::new(&ticks, tick).every_ms(1000);
+    let observer = Observer::new(&ticks, tick).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let device = Stream::<Value>::new("conformance.device").publish_on(device);
     let settings = Stream::<Value>::new("conformance.settings");
-    let configured = Observer::new(&settings, tick).every_ms(1000).interval_setting("harmos.conformance.v1.Graph.interval");
+    let configured = Observer::new(&settings, tick)
+        .every(prost_types::Duration { seconds: 1, nanos: 0 })
+        .interval_setting("harmos.conformance.v1.Graph.interval");
     let plugin = Plugin::new("conformance", "1.0.0")
         .message::<PayloadOnly>()
         .message::<PayloadOnly>()
@@ -134,12 +136,15 @@ fn main() -> Result<()> {
         .operation(Operation::new("conformance.nested", nested).visibility(Visibility::Public))
         .operation(Operation::new("conformance.projected", projected).visibility(Visibility::Public))
         .operation(Operation::new("conformance.clock", clock).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.private", echo))
+        .operation(Operation::new("conformance.resources", resources).visibility(Visibility::Public).replay_safe())
+        .operation(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))
         .requires::<HostEcho>()
         .requires::<HostPending>()
         .requires::<HostFail>()
         .requires::<Graph>()
-        .requires::<harmos::clock::Sleep>()
-        .requires::<harmos::clock::Now>()
+        .requires::<harmos::clock::TimeSleepRequest>()
+        .requires::<harmos::clock::TimeGetRequest>()
         .stream(ticks)
         .stream(device)
         .stream(settings)
@@ -163,19 +168,20 @@ async fn clock(ctx: &Context, _: Value) -> Result<Value> {
 
 async fn policy(ctx: &Context, request: Value) -> Result<Value> {
     let first = ctx
-        .operation_with(
+        .call_with(
             HostEcho { value: request.value },
             Some(harmos_protocol::v1::OperationPolicy {
                 retries: Some(harmos_protocol::v1::RetryPolicy {
                     total_attempts: 3,
                     initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                    ..Default::default()
+                    maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
+                    deterministic_jitter: true,
                 }),
                 ..Default::default()
             }),
         )
         .await?;
-    ctx.operation(HostEcho { value: first.value }).await
+    ctx.call(HostEcho { value: first.value }).await
 }
 
 async fn projected(_: &Context, request: Graph) -> Result<Value> {
@@ -201,8 +207,8 @@ async fn echo(ctx: &Context, request: Value) -> Result<Value> {
 }
 
 async fn children(ctx: &Context, _: Value) -> Result<Value> {
-    let first = ctx.operation(HostEcho { value: vec![1] });
-    let second = ctx.operation(HostEcho { value: vec![2] });
+    let first = ctx.call(HostEcho { value: vec![1] });
+    let second = ctx.call(HostEcho { value: vec![2] });
     let (first, second) = futures_util::future::try_join(first, second).await?;
     Ok(Value {
         value: [first.value, second.value].concat(),
@@ -210,11 +216,11 @@ async fn children(ctx: &Context, _: Value) -> Result<Value> {
 }
 
 async fn cancel(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.operation(HostPending { value: request.value }).await
+    ctx.call(HostPending { value: request.value }).await
 }
 
 async fn child_failure(ctx: &Context, request: Value) -> Result<Value> {
-    ctx.operation(HostFail { value: request.value }).await
+    ctx.call(HostFail { value: request.value }).await
 }
 
 async fn failure(_: &Context, _: Value) -> Result<Value> {
@@ -253,3 +259,16 @@ async fn device(ctx: &Context, publisher: Publisher<Value>) -> Result<()> {
 }
 
 /* === Tests === */
+
+async fn resources(ctx: &Context, request: Value) -> Result<Value> {
+    ctx.set(request.clone());
+    ctx.call(HostEcho { value: request.value }).await?;
+    Ok((*ctx.get::<Value>()?).clone())
+}
+
+async fn cancel_reason(ctx: &Context, request: Value) -> Result<Value> {
+    ctx.call(HostEcho { value: request.value }).await?;
+    Ok(Value {
+        value: ctx.cancelled().await.into_bytes(),
+    })
+}

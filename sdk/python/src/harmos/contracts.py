@@ -39,9 +39,10 @@ class Operation[Q: Message, R: Message]:
     id: str
     request: type[Q]
     response: type[R]
-    visibility: wire.Visibility = wire.VISIBILITY_PUBLIC
+    visibility: wire.Visibility = wire.VISIBILITY_PRIVATE
     policy: wire.OperationPolicy | None = None
     description: str = ""
+    replay_safe: bool = False
 
     @property
     def fingerprint(self) -> bytes:
@@ -58,6 +59,7 @@ class Operation[Q: Message, R: Message]:
             policy=self.policy,
             fingerprint=self.fingerprint,
             description=self.description,
+            replay_safe=self.replay_safe,
         )
 
 
@@ -87,11 +89,12 @@ def operation[Q: Message, R: Message, F: Callable](
     *,
     request: type[Q],
     response: type[R],
-    visibility: wire.Visibility = wire.VISIBILITY_PUBLIC,
+    visibility: wire.Visibility = wire.VISIBILITY_PRIVATE,
     policy: wire.OperationPolicy | None = None,
     description: str = "",
+    replay_safe: bool = False,
 ) -> Callable[[F], F]:
-    definition = Operation(id, request, response, visibility, policy, description)
+    definition = Operation(id, request, response, visibility, policy, description, replay_safe)
 
     def decorate(handler: F) -> F:
         handler.__dict__["__harmos_operation__"] = definition

@@ -362,7 +362,7 @@ impl OperationFactory {
             registered_id: None,
             grant: std::sync::Arc::new(|_, grant| grant),
             request_grant: std::sync::Arc::new(|request| request.downcast_ref::<O::Request>().map_or(Ok(None), O::grant)),
-            builtin: matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now"),
+            builtin: crate::reserved(O::ID),
             resources: O::RESOURCES,
             contract: std::sync::Arc::new(contract::<O>),
             native: std::sync::Arc::new(|_definition, resources, request, endpoints| {
@@ -506,8 +506,8 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         replay: O::REPLAY,
         fingerprint: crate::execution::Fingerprint([0; 32]),
     };
-    if matches!(O::ID, "harmos.clock.sleep" | "harmos.clock.now") {
-        let clock = Contract::clock(O::ID == "harmos.clock.sleep", O::POLICY, settings)?;
+    if matches!(O::ID, "harmos.time.sleep" | "harmos.time.get") {
+        let clock = Contract::clock(O::ID == "harmos.time.sleep", O::POLICY, settings)?;
         let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
         let same_mapping = clock.grpc() == O::GRPC.as_ref();
         if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {

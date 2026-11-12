@@ -10,7 +10,7 @@
 /* === Modules === */
 
 mod cancel;
-mod status;
+mod get;
 mod watch;
 
 /* === Re-Exports === */
@@ -18,8 +18,8 @@ mod watch;
 pub use cancel::Cancel;
 pub use harmos_operations::model::operations::lifecycle::*;
 
+pub use get::Get;
 pub use harmos_protocol::host::InstanceState;
-pub use status::Status;
 pub use watch::Watch;
 
 /* === Imports === */
@@ -66,7 +66,7 @@ pub fn lifecycle_catalog_batch() -> crate::execution::__private::Catalog {
     crate::execution::__private::Catalog {
         name: "",
         operations: vec![
-            OperationFactory::protobuf::<Status>().expect("status declaration"),
+            OperationFactory::protobuf::<Get>().expect("status declaration"),
             OperationFactory::protobuf::<Cancel>().expect("cancel declaration"),
             OperationFactory::protobuf::<Watch>().expect("watch declaration"),
         ],

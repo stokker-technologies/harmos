@@ -31,7 +31,7 @@ use tokio::{
 use tonic::{Streaming, transport::Channel};
 
 // Local Imports
-use harmos_protocol::v1::{self as v1, child_response, host_frame, plugin_client::PluginClient, plugin_frame};
+use harmos_protocol::v1::{self as v1, child_response, plugin_invoke_request, plugin_client::PluginClient, plugin_invoke_response};
 
 /* === Constants === */
 
@@ -109,16 +109,16 @@ pub fn binary(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())).join("../../target/debug").join(format!("{name}{extension}")))
 }
 
-pub async fn describe(client: &mut PluginClient<Channel>) -> Result<v1::Description, tonic::Status> {
-    Ok(client.describe(v1::DescribeRequest { revision: 1, ..Default::default() }).await?.into_inner())
+pub async fn describe(client: &mut PluginClient<Channel>) -> Result<v1::PluginGetResponse, tonic::Status> {
+    Ok(client.get(v1::PluginGetRequest { revision: 1, ..Default::default() }).await?.into_inner())
 }
 
 pub async fn invoke(
     client: &mut PluginClient<Channel>, operation: &str,
-) -> Result<(mpsc::Sender<v1::HostFrame>, Streaming<v1::PluginFrame>), Box<dyn std::error::Error>> {
+) -> Result<(mpsc::Sender<v1::PluginInvokeRequest>, Streaming<v1::PluginInvokeResponse>), Box<dyn std::error::Error>> {
     let (send, receive) = mpsc::channel(1);
-    send.send(v1::HostFrame {
-        frame: Some(host_frame::Frame::Request(v1::Request {
+    send.send(v1::PluginInvokeRequest {
+        frame: Some(plugin_invoke_request::Frame::Request(v1::Request {
             operation: operation.into(),
             invocation: "execution-story".into(),
             attempt: 1,
@@ -132,16 +132,16 @@ pub async fn invoke(
     Ok((send, output))
 }
 
-pub async fn child(input: &mut Streaming<v1::PluginFrame>) -> Result<v1::ChildRequest, Box<dyn std::error::Error>> {
+pub async fn child(input: &mut Streaming<v1::PluginInvokeResponse>) -> Result<v1::ChildRequest, Box<dyn std::error::Error>> {
     match input.message().await?.and_then(|frame| frame.frame) {
-        Some(plugin_frame::Frame::Child(child)) => Ok(child),
+        Some(plugin_invoke_response::Frame::Child(child)) => Ok(child),
         _ => Err("Expected Host Child Call".into()),
     }
 }
 
-pub async fn reply<T: prost::Message>(send: &mpsc::Sender<v1::HostFrame>, call: u64, reply: T) -> Result<(), Box<dyn std::error::Error>> {
-    send.send(v1::HostFrame {
-        frame: Some(host_frame::Frame::Child(v1::ChildResponse {
+pub async fn reply<T: prost::Message>(send: &mpsc::Sender<v1::PluginInvokeRequest>, call: u64, reply: T) -> Result<(), Box<dyn std::error::Error>> {
+    send.send(v1::PluginInvokeRequest {
+        frame: Some(plugin_invoke_request::Frame::Child(v1::ChildResponse {
             call,
             result: Some(child_response::Result::Payload(reply.encode_to_vec())),
         })),
@@ -150,9 +150,9 @@ pub async fn reply<T: prost::Message>(send: &mpsc::Sender<v1::HostFrame>, call: 
     Ok(())
 }
 
-pub async fn terminal<T: prost::Message + Default>(input: &mut Streaming<v1::PluginFrame>) -> Result<T, Box<dyn std::error::Error>> {
+pub async fn terminal<T: prost::Message + Default>(input: &mut Streaming<v1::PluginInvokeResponse>) -> Result<T, Box<dyn std::error::Error>> {
     match input.message().await?.and_then(|frame| frame.frame) {
-        Some(plugin_frame::Frame::Response(v1::Response {
+        Some(plugin_invoke_response::Frame::Response(v1::Response {
             result: Some(v1::response::Result::Payload(payload)),
         })) => Ok(T::decode(payload.as_slice())?),
         _ => Err("Expected Successful Terminal Response".into()),
@@ -163,14 +163,14 @@ pub async fn terminal<T: prost::Message + Default>(input: &mut Streaming<v1::Plu
 
 pub async fn publish(
     client: &mut PluginClient<Channel>, id: &str,
-) -> Result<(mpsc::Sender<v1::PublishFrame>, Streaming<v1::Samples>), Box<dyn std::error::Error>> {
+) -> Result<(mpsc::Sender<v1::PluginSamplesRequest>, Streaming<v1::PluginSamplesResponse>), Box<dyn std::error::Error>> {
     let (send, receive) = mpsc::channel(1);
-    send.send(v1::PublishFrame {
-        frame: Some(v1::publish_frame::Frame::Open(v1::PublishRequest { stream: id.into(), scope: "scope".into() })),
+    send.send(v1::PluginSamplesRequest {
+        frame: Some(v1::plugin_samples_request::Frame::Open(v1::SamplesSelection { stream: id.into(), scope: "scope".into() })),
     })
     .await?;
     let input = stream::unfold(receive, |mut receive| async { receive.recv().await.map(|frame| (frame, receive)) });
-    let output = client.publish(input).await?.into_inner();
+    let output = client.samples(input).await?.into_inner();
     Ok((send, output))
 }
 

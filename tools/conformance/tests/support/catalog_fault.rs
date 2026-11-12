@@ -95,8 +95,8 @@ impl CatalogFault {
 
 #[tonic::async_trait]
 impl Plugin for Forward {
-    async fn describe(&self, request: Request<v1::DescribeRequest>) -> Result<Response<v1::Description>, Status> {
-        let mut response = self.client.clone().describe(request).await?;
+    async fn get(&self, request: Request<v1::PluginGetRequest>) -> Result<Response<v1::PluginGetResponse>, Status> {
+        let mut response = self.client.clone().get(request).await?;
         let description = response.get_mut();
         match self.fault {
             Fault::Identity => description.sdk.clear(),
@@ -123,23 +123,23 @@ impl Plugin for Forward {
         Ok(response)
     }
 
-    type InvokeStream = Streaming<v1::PluginFrame>;
+    type InvokeStream = Streaming<v1::PluginInvokeResponse>;
 
-    async fn invoke(&self, request: Request<Streaming<v1::HostFrame>>) -> Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(&self, request: Request<Streaming<v1::PluginInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
         client.invoke(frames).await
     }
 
-    type PublishStream = Streaming<v1::Samples>;
+    type SamplesStream = Streaming<v1::PluginSamplesResponse>;
 
-    async fn publish(&self, request: Request<Streaming<v1::PublishFrame>>) -> Result<Response<Self::PublishStream>, Status> {
+    async fn samples(&self, request: Request<Streaming<v1::PluginSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
-        client.publish(frames).await
+        client.samples(frames).await
     }
 
-    async fn stop(&self, request: Request<v1::StopRequest>) -> Result<Response<v1::StopResponse>, Status> {
+    async fn stop(&self, request: Request<v1::PluginStopRequest>) -> Result<Response<v1::PluginStopResponse>, Status> {
         self.client.clone().stop(request).await
     }
 }
