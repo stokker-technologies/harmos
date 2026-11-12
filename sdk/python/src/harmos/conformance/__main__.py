@@ -88,7 +88,7 @@ class Fixture:
 
     @operation("conformance.policy", request=Value, response=Value)
     async def policy(self, ctx: Context, request: Value) -> Value:
-        first = await ctx.operation(HOST_ECHO, request, policy=wire.OperationPolicy(attempts=3))
+        first = await ctx.operation(HOST_ECHO, request, policy=wire.OperationPolicy(retries=wire.RetryPolicy(total_attempts=3, initial=Duration(seconds=1))))
         return await ctx.operation(HOST_ECHO, first)
 
     @operation("conformance.schema", request=Graph, response=Graph.Nested)

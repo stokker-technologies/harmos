@@ -52,7 +52,7 @@ pub struct OperationPolicy {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum RetryPolicy {
     Never,
-    OnTransient { max_retries: usize, backoff: Backoff },
+    OnTransient { total_attempts: usize, backoff: Backoff },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,7 +96,7 @@ pub enum PolicyError {
     #[error("operation deadlines must be positive (overall {timeout:?}, attempt {attempt_timeout:?})")]
     Deadline { timeout: Duration, attempt_timeout: Duration },
 
-    #[error("a retry policy needs a positive retry count; use Never for zero")]
+    #[error("retry requires at least two total attempts; use Never for one attempt")]
     EmptyRetries,
 
     #[error("a restart policy needs positive credit and sustained health; use Never for zero")]
@@ -127,16 +127,16 @@ impl RetryPolicy {
     pub fn validate(self) -> Result<(), PolicyError> {
         match self {
             Self::Never => Ok(()),
-            Self::OnTransient { max_retries: 0, .. } => Err(PolicyError::EmptyRetries),
+            Self::OnTransient { total_attempts: 0 | 1, .. } => Err(PolicyError::EmptyRetries),
             Self::OnTransient { backoff, .. } => backoff.validate(),
         }
     }
 
     pub fn retry_after(self, failed_attempt: usize, failure: FailureKind, replay: ReplaySafety, entropy: u64) -> Option<Duration> {
-        let Self::OnTransient { max_retries, backoff } = self else {
+        let Self::OnTransient { total_attempts, backoff } = self else {
             return None;
         };
-        if self.validate().is_err() || failed_attempt >= max_retries {
+        if self.validate().is_err() || failed_attempt.saturating_add(1) >= total_attempts || replay == ReplaySafety::Unknown {
             return None;
         }
         if !matches!(failure, FailureKind::Transient) && !(failure == FailureKind::Ambiguous && replay != ReplaySafety::Unknown) {
@@ -199,15 +199,25 @@ impl TryFrom<Option<&crate::v1::OperationPolicy>> for OperationPolicy {
             timeout: duration(wire.timeout, UNBOUNDED)?,
             attempt_timeout: duration(wire.attempt_timeout, UNBOUNDED)?,
             cancellation_timeout: duration(wire.cancellation_timeout, Duration::ZERO)?,
-            retries: if wire.attempts <= 1 {
-                RetryPolicy::Never
-            } else {
-                RetryPolicy::OnTransient {
-                    max_retries: wire.attempts as usize - 1,
-                    backoff: Backoff::Fixed {
-                        delay: duration(wire.backoff, Duration::ZERO)?,
-                        jitter: Jitter::None,
-                    },
+            retries: match wire.retries {
+                None => RetryPolicy::Never,
+                Some(retry) if retry.total_attempts == 0 => return Err(PolicyError::EmptyRetries),
+                Some(retry) if retry.total_attempts == 1 => RetryPolicy::Never,
+                Some(retry) => {
+                    let initial = duration(retry.initial, Duration::ZERO)?;
+                    let jitter = if retry.deterministic_jitter { Jitter::Deterministic } else { Jitter::None };
+                    let backoff = match retry.maximum {
+                        Some(maximum) => Backoff::Exponential {
+                            initial,
+                            maximum: duration(Some(maximum), Duration::ZERO)?,
+                            jitter,
+                        },
+                        None => Backoff::Fixed { delay: initial, jitter },
+                    };
+                    RetryPolicy::OnTransient {
+                        total_attempts: usize::try_from(retry.total_attempts).map_err(|_| PolicyError::EmptyRetries)?,
+                        backoff,
+                    }
                 }
             },
         };

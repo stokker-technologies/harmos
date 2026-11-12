@@ -67,6 +67,9 @@ pub fn generate(
     let messages = std::fs::read_to_string(output.join("harmos.v1.rs"))?;
     let messages = messages.replace("super::host::v1::", "crate::host::");
     std::fs::write(output.join("harmos.v1.rs"), messages)?;
+    let messages = std::fs::read_to_string(output.join("harmos.host.v1.rs"))?;
+    let messages = messages.replace("super::super::v1::", "crate::v1::");
+    std::fs::write(output.join("harmos.host.v1.rs"), messages)?;
     let mut descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("descriptors.bin"))?.as_slice())?;
     // Source Locations Belong to Authoring, Not Runtime Descriptor Validation.

@@ -60,7 +60,7 @@ static EXPONENTIAL_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDecl
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
-                max_retries: 4,
+                total_attempts: 5,
                 backoff: Backoff::Exponential {
                     initial: Duration::from_millis(200),
                     maximum: Duration::from_secs(1),
@@ -86,7 +86,7 @@ static JITTERED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
         "policy.jittered",
         OperationPolicy {
             retries: RetryPolicy::OnTransient {
-                max_retries: 4,
+                total_attempts: 5,
                 backoff: Backoff::Exponential {
                     initial: Duration::from_millis(200),
                     maximum: Duration::from_secs(1),
@@ -113,7 +113,7 @@ static EMPTY_RETRIES_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
         "policy.empty",
         OperationPolicy {
             retries: RetryPolicy::OnTransient {
-                max_retries: 0,
+                total_attempts: 1,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(1),
                     jitter: Jitter::None,
@@ -139,7 +139,7 @@ static INVERTED_BACKOFF_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wir
         "policy.inverted",
         OperationPolicy {
             retries: RetryPolicy::OnTransient {
-                max_retries: 1,
+                total_attempts: 2,
                 backoff: Backoff::Exponential {
                     initial: Duration::from_millis(100),
                     maximum: Duration::from_millis(50),
@@ -406,7 +406,7 @@ const fn policy(overall: u64, attempt: u64, retries: usize, delay: u64) -> Opera
             RetryPolicy::Never
         } else {
             RetryPolicy::OnTransient {
-                max_retries: retries,
+                total_attempts: retries + 1,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(delay),
                     jitter: Jitter::None,

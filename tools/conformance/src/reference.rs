@@ -227,7 +227,14 @@ async fn invoke(
                 operation: "conformance.host.echo".into(),
                 payload: request.payload,
                 fingerprint: fixture::fingerprint("conformance.host.echo"),
-                policy: Some(v1::OperationPolicy { attempts: 3, ..Default::default() }),
+                policy: Some(v1::OperationPolicy {
+                    retries: Some(harmos_protocol::v1::RetryPolicy {
+                        total_attempts: 3,
+                        initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
             };
             output
                 .send(Ok(v1::PluginFrame {

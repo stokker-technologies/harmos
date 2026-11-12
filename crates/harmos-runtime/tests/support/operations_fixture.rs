@@ -89,7 +89,7 @@ pub(crate) static COMPUTE_DESCRIPTION: harmos_runtime::operations::WireDeclarati
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
-                max_retries: 3,
+                total_attempts: 4,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(1),
                     jitter: Jitter::None,

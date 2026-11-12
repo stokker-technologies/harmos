@@ -183,7 +183,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
     attempt_timeout: Duration::from_secs(15),
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::OnTransient {
-        max_retries: 3,
+        total_attempts: 4,
         backoff: Backoff::Exponential {
             initial: Duration::from_millis(250),
             maximum: Duration::from_secs(2),

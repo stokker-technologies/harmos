@@ -653,7 +653,7 @@ mod tests {
                 ("/operation/description", json!("forged SDK contract")),
                 ("/operation/visibility", json!("public")),
                 ("/operation/policy/attempt_timeout/secs", json!(0)),
-                ("/operation/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
+                ("/operation/policy/retries", json!(RetryPolicy::OnTransient { total_attempts: 2, backoff })),
                 ("/fingerprint", json!("00".repeat(32))),
                 ("/schema", json!({"root": 0, "definitions": [[]]})),
             ] {
@@ -682,7 +682,7 @@ mod tests {
             for (pointer, replacement) in [
                 ("/fingerprint", json!("00".repeat(32))),
                 ("/policy/attempt_timeout/secs", json!(0)),
-                ("/policy/retries", json!(RetryPolicy::OnTransient { max_retries: 1, backoff })),
+                ("/policy/retries", json!(RetryPolicy::OnTransient { total_attempts: 2, backoff })),
             ] {
                 let mut forged = encoded.clone();
                 *forged.pointer_mut(pointer).unwrap() = replacement;

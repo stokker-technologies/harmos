@@ -200,9 +200,12 @@ fn main() -> Result<()> {
             .observer(observer)
             .operation(Operation::new("fixture.echo", echo))
     } else if mode == "retry" {
-        Plugin::new("retry", "1.0.0").operation(Operation::new("fixture.retry", retry).policy(v1::OperationPolicy {
-            attempts: 3,
-            backoff: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+        Plugin::new("retry", "1.0.0").operation(Operation::new("fixture.retry", retry).replay_safe().policy(v1::OperationPolicy {
+            retries: Some(v1::RetryPolicy {
+                total_attempts: 3,
+                initial: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                ..Default::default()
+            }),
             ..Default::default()
         }))
     } else if mode == "deadline" {

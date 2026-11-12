@@ -6,6 +6,14 @@ their owning tasks; they do not block independent locked work. Before source
 edits, record exact owned paths within the listed domains and migrate all coupled
 consumers without compatibility aliases or stored-data changes.
 
+Protocol/runtime/SDK ownership for this implementation: plugin and host protobufs
+and shared primitives, `crates/harmos-protocol/**`, runtime except storage handlers,
+operations except `src/storage/**`, `sdk/**`, `tools/**`, `examples/**`, non-storage
+guides and these non-storage task/design sections. The storage worker owns storage
+protobuf, storage crate/operations/handlers/tests/benches and `docs/storage.md`;
+only necessary coupling edits cross that boundary and are reported at handoff.
+The existing `grpc-plugins` implementing marker covers this combined delivery.
+
 ## 1. Shared Primitives and Nightly Benchmark Cases
 
 - [ ] 1.1 Implement shared positions `(history, sequence)`, composite cuts, one bounded paging shape, protobuf Timestamp/Duration, response wrappers, Failure, retry policy and accepted/durable receipts in `proto/harmos/v1/` and `crates/harmos-protocol/`; verify focused schema, encoding and fingerprint checks.

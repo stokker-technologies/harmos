@@ -54,7 +54,7 @@ static READ_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::OnTransient {
-                max_retries: 1,
+                total_attempts: 2,
                 backoff: Backoff::Fixed {
                     delay: Duration::from_millis(1),
                     jitter: Jitter::None,

@@ -840,6 +840,10 @@ which plugins a unit of work uses remain entirely with the product.
 
 ## Open Questions
 
+Implementation decision (4.1): Rust, Python, C# and C++ promise the same native plugin semantics, proven by the common conformance suite; Wasm remains Rust-only.
+
+Implementation decision (4.2): the generic managed application client remains Rust-only; other SDKs use generated application gRPC clients.
+
 Only these questions remain open. Settle each when implementation reaches its
 owner; they do not block the other locked work. Each has a corresponding task.
 

@@ -163,7 +163,17 @@ async fn clock(ctx: &Context, _: Value) -> Result<Value> {
 
 async fn policy(ctx: &Context, request: Value) -> Result<Value> {
     let first = ctx
-        .operation_with(HostEcho { value: request.value }, Some(harmos_protocol::v1::OperationPolicy { attempts: 3, ..Default::default() }))
+        .operation_with(
+            HostEcho { value: request.value },
+            Some(harmos_protocol::v1::OperationPolicy {
+                retries: Some(harmos_protocol::v1::RetryPolicy {
+                    total_attempts: 3,
+                    initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        )
         .await?;
     ctx.operation(HostEcho { value: first.value }).await
 }
