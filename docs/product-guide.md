@@ -1407,3 +1407,10 @@ projections and atomic conditional object updates through generated SDK contract
 backend explicitly and retain/release saved cuts; see [Generated Storage Clients](storage.md#generated-storage-clients)
 for requests, grants, outcomes and the Schematic query-storage journey. The ordinary query,
 streamed write receipts, files and recovery interfaces remain available.
+
+## Access and Host Status
+
+The gRPC manager owns client access and the service manager owns host status.
+Supply a credential store, identity and optional health/diagnostics contributions;
+see [Access and Host Status](access-status.md) for composition, paging, redaction
+and ranged archive reads.

@@ -44,6 +44,8 @@ use crate::{Application, Error, Result};
 
 #[derive(Clone)]
 pub struct GrpcManager {
+    access: Arc<std::sync::OnceLock<AccessOwner>>,
+    access_setup: Arc<tokio::sync::Mutex<()>>,
     state: Arc<Mutex<State>>,
     host: Arc<dyn listener::Host>,
     operations: crate::operations::Manager,
@@ -54,6 +56,11 @@ pub struct Attached {
     host: Arc<dyn listener::Host>,
     generation: u64,
     address: SocketAddr,
+}
+
+struct AccessOwner {
+    control: Arc<super::access::Access>,
+    _port: Arc<dyn harmos_operations::access::Access>,
 }
 
 struct State {
@@ -72,6 +79,8 @@ struct State {
 impl GrpcManager {
     pub(crate) fn new<A: Application>(operations: &crate::operations::Manager) -> Self {
         Self {
+            access: Arc::new(std::sync::OnceLock::new()),
+            access_setup: Arc::new(tokio::sync::Mutex::new(())),
             state: Arc::new(Mutex::new(State {
                 routes: tonic::service::Routes::default(),
                 services: BTreeSet::new(),
@@ -110,7 +119,7 @@ impl GrpcManager {
     }
 
     pub async fn attach(&self, settings: Settings) -> Result<Attached> {
-        self.attach_inner(settings, None).await
+        self.attach_inner(settings, None, Vec::new()).await
     }
 
     pub async fn attach_with_certificate(
@@ -122,11 +131,12 @@ impl GrpcManager {
                 reason: "requires no fixed TLS configuration and a positive supported handshake timeout",
             });
         }
-        self.attach_inner(settings, Some((certificate, handshake_timeout))).await
+        self.attach_inner(settings, Some((certificate, handshake_timeout)), Vec::new()).await
     }
 
     async fn attach_inner(
         &self, settings: Settings, certificate: Option<(super::ServerCertificate, std::time::Duration)>,
+        extra_middleware: Vec<Arc<dyn Middleware>>,
     ) -> Result<Attached> {
         settings.validate(self.operations.clock())?;
         let router = super::routing::Router::new(self.operations.clone(), settings.operations).map_err(|_| Error::InvalidInput {
@@ -163,7 +173,9 @@ impl GrpcManager {
                 "starting gRPC listener"
             );
             let routes = routes.into_axum_router().fallback_service(router);
-            Arc::new(listener::Resources::new(settings, routes.into(), self.operations.clone(), state.middleware.clone(), certificate))
+            let mut middleware = extra_middleware;
+            middleware.extend(state.middleware.iter().cloned());
+            Arc::new(listener::Resources::new(settings, routes.into(), self.operations.clone(), middleware, certificate))
         };
         let (generation, address) = self.host.attach(resources).await?;
         Ok(Attached {
@@ -171,6 +183,52 @@ impl GrpcManager {
             generation,
             address,
         })
+    }
+
+    pub async fn configure_access(
+        &self, settings: super::access::AccessSettings, store: Arc<dyn super::access::CredentialStore>,
+    ) -> Result<Arc<super::access::Access>> {
+        let _configuration = self.access_setup.lock().await;
+        if self.access.get().is_some() {
+            return Err(Error::AlreadyRegistered {
+                domain: "host access",
+                name: "Access".into(),
+            });
+        }
+        // The Listener View Shares Transport Ownership Without Retaining Its Access Owner.
+        let manager = Self {
+            state: self.state.clone(),
+            host: self.host.clone(),
+            operations: self.operations.clone(),
+            access: Arc::new(std::sync::OnceLock::new()),
+            access_setup: Arc::new(tokio::sync::Mutex::new(())),
+        };
+        let control = super::access::Access::new(manager, settings, store).await.map_err(access_failure)?;
+        let port: Arc<dyn harmos_operations::access::Access> = Arc::new(super::access::Port(control.clone()));
+        let catalog = harmos_operations::access::catalog().map_err(access_failure)?;
+        use crate::operations::RegistrationExt;
+        control.activate().await.map_err(access_failure)?;
+        if let Err(error) = self.operations.register_native(catalog.lane(crate::operations::Lane::default())) {
+            control.shutdown().await.map_err(access_failure)?;
+            return Err(error);
+        }
+        *self.operations.registry.access.0.write().expect("access port lock is healthy") = Some(Arc::downgrade(&port));
+        self.access.set(AccessOwner { control: control.clone(), _port: port }).map_err(|_| Error::AlreadyRegistered {
+            domain: "host access",
+            name: "Access".into(),
+        })?;
+        Ok(control)
+    }
+
+    pub fn access(&self) -> Result<Arc<super::access::Access>> {
+        self.access.get().map(|owner| owner.control.clone()).ok_or(Error::NotReady { domain: "Access" })
+    }
+
+    pub(super) async fn attach_access(
+        &self, settings: Settings, certificate: super::ServerCertificate, handshake_timeout: std::time::Duration,
+        middleware: Arc<dyn Middleware>,
+    ) -> Result<Attached> {
+        self.attach_inner(settings, Some((certificate, handshake_timeout)), vec![middleware]).await
     }
 
     pub fn methods(&self) -> Vec<crate::operations::GrpcMethod> {
@@ -189,6 +247,9 @@ impl GrpcManager {
     #[tracing::instrument(target = "harmos::grpc", name = "grpc.shutdown", level = "debug", skip_all)]
     pub async fn shutdown(&self) -> Result<()> {
         self.close_admission();
+        if let Some(access) = self.access.get() {
+            access.control.shutdown().await.map_err(access_failure)?;
+        }
         self.host.shutdown().await
     }
 }
@@ -239,5 +300,12 @@ impl State {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn access_failure(source: harmos_operations::execution::operations::ServingError) -> Error {
+    Error::OperationFailed {
+        operation: "Access.Configure".into(),
+        source: Arc::new(source),
+    }
+}
 
 /* === Tests === */

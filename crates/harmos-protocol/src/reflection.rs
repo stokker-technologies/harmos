@@ -1175,6 +1175,41 @@ impl ReflectMessage for crate::v1::PluginsRestartResponse {
         pool().get_message_by_name("harmos.v1.PluginsRestartResponse").expect("generated message")
     }
 }
+impl ReflectMessage for crate::v1::HostIdentity {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.HostIdentity").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::HealthComponent {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.HealthComponent").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::HostStatus {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.HostStatus").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::StatusGetRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.StatusGetRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::StatusGetResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.StatusGetResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::StatusWatchRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.StatusWatchRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::StatusWatchResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.StatusWatchResponse").expect("generated message")
+    }
+}
 impl ReflectMessage for crate::v1::TimeSleepRequest {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.v1.TimeSleepRequest").expect("generated message")
@@ -1193,5 +1228,130 @@ impl ReflectMessage for crate::v1::TimeGetRequest {
 impl ReflectMessage for crate::v1::TimeGetResponse {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.v1.TimeGetResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::CertificatesCreateRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.CertificatesCreateRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::CertificatesCreateResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.CertificatesCreateResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::ListenerValue {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.ListenerValue").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::ListenerGetRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.ListenerGetRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::ListenerGetResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.ListenerGetResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::ListenerSetRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.ListenerSetRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::ListenerSetResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.ListenerSetResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::Pairing {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.Pairing").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::PairingsCreateRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.PairingsCreateRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::PairingsCreateResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.PairingsCreateResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::PairingsListRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.PairingsListRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::PairingsListResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.PairingsListResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::PairingsDeleteRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.PairingsDeleteRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::access::PairingsDeleteResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.access.PairingsDeleteResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::DiagnosticsGetRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.DiagnosticsGetRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::DiagnosticsGetResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.DiagnosticsGetResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::Event {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.Event").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::LogsListRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.LogsListRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::LogsListResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.LogsListResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::LogsWatchRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.LogsWatchRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::LogsWatchResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.LogsWatchResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::TraceEventsListRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.TraceEventsListRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::TraceEventsListResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.TraceEventsListResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::TraceEventsWatchRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.TraceEventsWatchRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::v1::status::TraceEventsWatchResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.v1.status.TraceEventsWatchResponse").expect("generated message")
     }
 }

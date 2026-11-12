@@ -37,6 +37,8 @@ use super::*;
 impl Manager {
     pub(crate) fn provided_resources() -> Vec<std::any::TypeId> {
         vec![
+            std::any::TypeId::of::<harmos_operations::access::AccessAccess>(),
+            std::any::TypeId::of::<harmos_operations::status::StatusAccess>(),
             std::any::TypeId::of::<harmos_operations::execution::operations::Calls>(),
             std::any::TypeId::of::<harmos_operations::execution::operations::access::DiscoveryAccess>(),
             std::any::TypeId::of::<harmos_operations::execution::operations::access::GrantAccess>(),

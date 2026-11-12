@@ -219,6 +219,132 @@
     "owner": "harmos",
     "face": "client",
     "version": "v1",
+    "parents": [
+      "access"
+    ],
+    "service": "Certificates",
+    "method": "Create",
+    "package": "harmos.v1.access",
+    "path": [
+      "access",
+      "certificates",
+      "create"
+    ],
+    "request": "harmos.v1.access.CertificatesCreateRequest",
+    "response": "harmos.v1.access.CertificatesCreateResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/access/certificates.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "access"
+    ],
+    "service": "Listener",
+    "method": "Get",
+    "package": "harmos.v1.access",
+    "path": [
+      "access",
+      "listener",
+      "get"
+    ],
+    "request": "harmos.v1.access.ListenerGetRequest",
+    "response": "harmos.v1.access.ListenerGetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/access/listener.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "access"
+    ],
+    "service": "Listener",
+    "method": "Set",
+    "package": "harmos.v1.access",
+    "path": [
+      "access",
+      "listener",
+      "set"
+    ],
+    "request": "harmos.v1.access.ListenerSetRequest",
+    "response": "harmos.v1.access.ListenerSetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/access/listener.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "access"
+    ],
+    "service": "Pairings",
+    "method": "Create",
+    "package": "harmos.v1.access",
+    "path": [
+      "access",
+      "pairings",
+      "create"
+    ],
+    "request": "harmos.v1.access.PairingsCreateRequest",
+    "response": "harmos.v1.access.PairingsCreateResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/access/pairings.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "access"
+    ],
+    "service": "Pairings",
+    "method": "List",
+    "package": "harmos.v1.access",
+    "path": [
+      "access",
+      "pairings",
+      "list"
+    ],
+    "request": "harmos.v1.access.PairingsListRequest",
+    "response": "harmos.v1.access.PairingsListResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/access/pairings.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "access"
+    ],
+    "service": "Pairings",
+    "method": "Delete",
+    "package": "harmos.v1.access",
+    "path": [
+      "access",
+      "pairings",
+      "delete"
+    ],
+    "request": "harmos.v1.access.PairingsDeleteRequest",
+    "response": "harmos.v1.access.PairingsDeleteResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/access/pairings.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
     "parents": [],
     "service": "CatalogEntries",
     "method": "List",
@@ -628,6 +754,147 @@
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/plugins.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "status"
+    ],
+    "service": "Diagnostics",
+    "method": "Get",
+    "package": "harmos.v1.status",
+    "path": [
+      "status",
+      "diagnostics",
+      "get"
+    ],
+    "request": "harmos.v1.status.DiagnosticsGetRequest",
+    "response": "harmos.v1.status.DiagnosticsGetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/status/diagnostics.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "status"
+    ],
+    "service": "Logs",
+    "method": "List",
+    "package": "harmos.v1.status",
+    "path": [
+      "status",
+      "logs",
+      "list"
+    ],
+    "request": "harmos.v1.status.LogsListRequest",
+    "response": "harmos.v1.status.LogsListResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/status/logs.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "status"
+    ],
+    "service": "Logs",
+    "method": "Watch",
+    "package": "harmos.v1.status",
+    "path": [
+      "status",
+      "logs",
+      "watch"
+    ],
+    "request": "harmos.v1.status.LogsWatchRequest",
+    "response": "harmos.v1.status.LogsWatchResponse",
+    "client_streaming": false,
+    "server_streaming": true,
+    "file": "harmos/v1/status/logs.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "status"
+    ],
+    "service": "TraceEvents",
+    "method": "List",
+    "package": "harmos.v1.status",
+    "path": [
+      "status",
+      "trace_events",
+      "list"
+    ],
+    "request": "harmos.v1.status.TraceEventsListRequest",
+    "response": "harmos.v1.status.TraceEventsListResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/status/trace_events.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [
+      "status"
+    ],
+    "service": "TraceEvents",
+    "method": "Watch",
+    "package": "harmos.v1.status",
+    "path": [
+      "status",
+      "trace_events",
+      "watch"
+    ],
+    "request": "harmos.v1.status.TraceEventsWatchRequest",
+    "response": "harmos.v1.status.TraceEventsWatchResponse",
+    "client_streaming": false,
+    "server_streaming": true,
+    "file": "harmos/v1/status/trace_events.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Status",
+    "method": "Get",
+    "package": "harmos.v1",
+    "path": [
+      "status",
+      "get"
+    ],
+    "request": "harmos.v1.StatusGetRequest",
+    "response": "harmos.v1.StatusGetResponse",
+    "client_streaming": false,
+    "server_streaming": false,
+    "file": "harmos/v1/status.proto"
+  },
+  {
+    "owner": "harmos",
+    "face": "client",
+    "version": "v1",
+    "parents": [],
+    "service": "Status",
+    "method": "Watch",
+    "package": "harmos.v1",
+    "path": [
+      "status",
+      "watch"
+    ],
+    "request": "harmos.v1.StatusWatchRequest",
+    "response": "harmos.v1.StatusWatchResponse",
+    "client_streaming": false,
+    "server_streaming": true,
+    "file": "harmos/v1/status.proto"
   },
   {
     "owner": "harmos",

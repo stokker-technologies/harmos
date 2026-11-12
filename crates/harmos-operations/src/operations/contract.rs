@@ -332,28 +332,16 @@ impl Contract {
         if crate::reserved(operation.id.as_str()) {
             use prost::Message;
             use prost_reflect::ReflectMessage;
-            let (request, response, service, method, output) = match operation.id.as_str() {
-                "harmos.v1.CatalogEntries/List" => {
-                    ("CatalogEntriesListRequest", "CatalogEntriesListResponse", "CatalogEntries", "List", false)
-                }
-                "harmos.v1.Invocations/Invoke" => ("InvocationsInvokeRequest", "InvocationsInvokeResponse", "Invocations", "Invoke", false),
-                "harmos.v1.Invocations/Get" => ("InvocationsGetRequest", "InvocationsGetResponse", "Invocations", "Get", false),
-                "harmos.v1.Invocations/Cancel" => ("InvocationsCancelRequest", "InvocationsCancelResponse", "Invocations", "Cancel", false),
-                "harmos.v1.Invocations/Watch" => ("InvocationsWatchRequest", "InvocationsWatchResponse", "Invocations", "Watch", true),
-                "harmos.context.v1.Samples/Append" => ("SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false),
-                "harmos.v1.Plugins/Get" => ("PluginsGetRequest", "PluginsGetResponse", "Plugins", "Get", false),
-                "harmos.v1.Plugins/List" => ("PluginsListRequest", "PluginsListResponse", "Plugins", "List", false),
-                "harmos.v1.Plugins/Watch" => ("PluginsWatchRequest", "PluginsWatchResponse", "Plugins", "Watch", true),
-                "harmos.v1.Plugins/Create" => ("PluginsCreateRequest", "PluginsCreateResponse", "Plugins", "Create", false),
-                "harmos.v1.Plugins/Set" => ("PluginsSetRequest", "PluginsSetResponse", "Plugins", "Set", false),
-                "harmos.v1.Plugins/Delete" => ("PluginsDeleteRequest", "PluginsDeleteResponse", "Plugins", "Delete", false),
-                "harmos.v1.Plugins/Restart" => ("PluginsRestartRequest", "PluginsRestartResponse", "Plugins", "Restart", false),
-                _ => return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into()),
-            };
-            let package = if service == "Samples" { "harmos.context.v1" } else { "harmos.v1" };
-            let request = format!("{package}.{request}");
-            let response = format!("{package}.{response}");
             let root = harmos_protocol::v1::CatalogEntriesListRequest::default().descriptor();
+            let pool = root.parent_pool();
+            let (service, method) = operation.id.as_str().split_once('/').ok_or(ContractError::Grpc)?;
+            if !service.starts_with("harmos.v1.") {
+                return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into());
+            }
+            let service = pool.get_service_by_name(service).ok_or(ContractError::Grpc)?;
+            let method = service.methods().find(|candidate| candidate.name() == method).ok_or(ContractError::Grpc)?;
+            let request = method.input().full_name().to_owned();
+            let response = method.output().full_name().to_owned();
             let types = prost_types::FileDescriptorSet {
                 file: root.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
             };
@@ -364,12 +352,12 @@ impl Contract {
                 request,
                 response: response.clone(),
                 input: None,
-                output: output.then_some(response),
+                output: method.is_server_streaming().then_some(response),
             };
-            let mapping = (service != "Samples").then(|| super::Grpc {
-                package: "harmos.v1".into(),
-                service: service.to_owned().into(),
-                method: method.to_owned().into(),
+            let mapping = Some(super::Grpc {
+                package: service.parent_file().package_name().to_owned().into(),
+                service: service.name().to_owned().into(),
+                method: method.name().to_owned().into(),
                 managed: false,
             });
             if protobuf != expected || binding != mapping || operation.visibility != super::Visibility::Public {

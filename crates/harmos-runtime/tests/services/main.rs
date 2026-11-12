@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+mod status;
+
 #[allow(clippy::duplicate_mod, reason = "the runtime and service fixtures share the minimal application")]
 #[path = "../support/app/minimal.rs"]
 mod app;

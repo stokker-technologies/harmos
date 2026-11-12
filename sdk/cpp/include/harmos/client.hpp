@@ -3,9 +3,16 @@
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <stdexcept>
+#include "harmos/v1/access/certificates.grpc.pb.h"
+#include "harmos/v1/access/listener.grpc.pb.h"
+#include "harmos/v1/access/pairings.grpc.pb.h"
 #include "harmos/v1/catalog_entries.grpc.pb.h"
 #include "harmos/v1/invocations.grpc.pb.h"
 #include "harmos/v1/plugins.grpc.pb.h"
+#include "harmos/v1/status.grpc.pb.h"
+#include "harmos/v1/status/diagnostics.grpc.pb.h"
+#include "harmos/v1/status/logs.grpc.pb.h"
+#include "harmos/v1/status/trace_events.grpc.pb.h"
 #include "harmos/v1/storage.grpc.pb.h"
 #include "harmos/v1/time.grpc.pb.h"
 namespace harmos {
@@ -13,6 +20,109 @@ template<class Response> struct ClientWatch {
   std::unique_ptr<grpc::ClientContext> context;
   std::unique_ptr<grpc::ClientReader<Response>> reader;
   ~ClientWatch() { if (context) context->TryCancel(); }
+};
+struct AccessCertificatesResource {
+  std::shared_ptr<grpc::Channel> channel;
+  explicit AccessCertificatesResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
+  ::harmos::v1::access::CertificatesCreateResponse create(const ::harmos::v1::access::CertificatesCreateRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::access::CertificatesCreateResponse response;
+    const auto status = ::harmos::v1::access::Certificates::NewStub(channel)->Create(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Create: ") + status.error_message());
+    return response;
+  }
+};
+struct AccessListenerResource {
+  std::shared_ptr<grpc::Channel> channel;
+  explicit AccessListenerResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
+  ::harmos::v1::access::ListenerGetResponse get(const ::harmos::v1::access::ListenerGetRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::access::ListenerGetResponse response;
+    const auto status = ::harmos::v1::access::Listener::NewStub(channel)->Get(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Get: ") + status.error_message());
+    return response;
+  }
+  ::harmos::v1::access::ListenerSetResponse set(const ::harmos::v1::access::ListenerSetRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::access::ListenerSetResponse response;
+    const auto status = ::harmos::v1::access::Listener::NewStub(channel)->Set(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Set: ") + status.error_message());
+    return response;
+  }
+};
+struct AccessPairingsResource {
+  std::shared_ptr<grpc::Channel> channel;
+  explicit AccessPairingsResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
+  ::harmos::v1::access::PairingsCreateResponse create(const ::harmos::v1::access::PairingsCreateRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::access::PairingsCreateResponse response;
+    const auto status = ::harmos::v1::access::Pairings::NewStub(channel)->Create(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Create: ") + status.error_message());
+    return response;
+  }
+  ::harmos::v1::access::PairingsListResponse list(const ::harmos::v1::access::PairingsListRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::access::PairingsListResponse response;
+    const auto status = ::harmos::v1::access::Pairings::NewStub(channel)->List(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("List: ") + status.error_message());
+    return response;
+  }
+  ::harmos::v1::access::PairingsDeleteResponse delete(const ::harmos::v1::access::PairingsDeleteRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::access::PairingsDeleteResponse response;
+    const auto status = ::harmos::v1::access::Pairings::NewStub(channel)->Delete(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Delete: ") + status.error_message());
+    return response;
+  }
+};
+struct StatusDiagnosticsResource {
+  std::shared_ptr<grpc::Channel> channel;
+  explicit StatusDiagnosticsResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
+  ::harmos::v1::status::DiagnosticsGetResponse get(const ::harmos::v1::status::DiagnosticsGetRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::status::DiagnosticsGetResponse response;
+    const auto status = ::harmos::v1::status::Diagnostics::NewStub(channel)->Get(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Get: ") + status.error_message());
+    return response;
+  }
+};
+struct StatusLogsResource {
+  std::shared_ptr<grpc::Channel> channel;
+  explicit StatusLogsResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
+  ::harmos::v1::status::LogsListResponse list(const ::harmos::v1::status::LogsListRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::status::LogsListResponse response;
+    const auto status = ::harmos::v1::status::Logs::NewStub(channel)->List(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("List: ") + status.error_message());
+    return response;
+  }
+  ClientWatch<::harmos::v1::status::LogsWatchResponse> watch(const ::harmos::v1::status::LogsWatchRequest& request) {
+    auto context = std::make_unique<grpc::ClientContext>();
+    auto reader = ::harmos::v1::status::Logs::NewStub(channel)->Watch(context.get(), request);
+    return {std::move(context), std::move(reader)};
+  }
+};
+struct StatusTraceEventsResource {
+  std::shared_ptr<grpc::Channel> channel;
+  explicit StatusTraceEventsResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
+  ::harmos::v1::status::TraceEventsListResponse list(const ::harmos::v1::status::TraceEventsListRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::status::TraceEventsListResponse response;
+    const auto status = ::harmos::v1::status::TraceEvents::NewStub(channel)->List(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("List: ") + status.error_message());
+    return response;
+  }
+  ClientWatch<::harmos::v1::status::TraceEventsWatchResponse> watch(const ::harmos::v1::status::TraceEventsWatchRequest& request) {
+    auto context = std::make_unique<grpc::ClientContext>();
+    auto reader = ::harmos::v1::status::TraceEvents::NewStub(channel)->Watch(context.get(), request);
+    return {std::move(context), std::move(reader)};
+  }
+};
+struct AccessResource {
+  AccessCertificatesResource certificates;
+  AccessListenerResource listener;
+  AccessPairingsResource pairings;
+  explicit AccessResource(std::shared_ptr<grpc::Channel> channel) : certificates(channel), listener(channel), pairings(channel) {}
 };
 struct CatalogEntriesResource {
   std::shared_ptr<grpc::Channel> channel;
@@ -104,6 +214,25 @@ struct PluginsResource {
     const auto status = ::harmos::v1::Plugins::NewStub(channel)->Restart(&context, request, &response);
     if (!status.ok()) throw std::runtime_error(std::string("Restart: ") + status.error_message());
     return response;
+  }
+};
+struct StatusResource {
+  std::shared_ptr<grpc::Channel> channel;
+  StatusDiagnosticsResource diagnostics;
+  StatusLogsResource logs;
+  StatusTraceEventsResource trace_events;
+  explicit StatusResource(std::shared_ptr<grpc::Channel> channel) : channel(channel), diagnostics(channel), logs(channel), trace_events(channel) {}
+  ::harmos::v1::StatusGetResponse get(const ::harmos::v1::StatusGetRequest& request) {
+    grpc::ClientContext context;
+    ::harmos::v1::StatusGetResponse response;
+    const auto status = ::harmos::v1::Status::NewStub(channel)->Get(&context, request, &response);
+    if (!status.ok()) throw std::runtime_error(std::string("Get: ") + status.error_message());
+    return response;
+  }
+  ClientWatch<::harmos::v1::StatusWatchResponse> watch(const ::harmos::v1::StatusWatchRequest& request) {
+    auto context = std::make_unique<grpc::ClientContext>();
+    auto reader = ::harmos::v1::Status::NewStub(channel)->Watch(context.get(), request);
+    return {std::move(context), std::move(reader)};
   }
 };
 struct StorageResource {
@@ -206,11 +335,13 @@ struct TimeResource {
   }
 };
 struct Client {
+  AccessResource access;
   CatalogEntriesResource catalog_entries;
   InvocationsResource invocations;
   PluginsResource plugins;
+  StatusResource status;
   StorageResource storage;
   TimeResource time;
-  explicit Client(std::shared_ptr<grpc::Channel> channel) : catalog_entries(channel), invocations(channel), plugins(channel), storage(channel), time(channel) {}
+  explicit Client(std::shared_ptr<grpc::Channel> channel) : access(channel), catalog_entries(channel), invocations(channel), plugins(channel), status(channel), storage(channel), time(channel) {}
 };
 }

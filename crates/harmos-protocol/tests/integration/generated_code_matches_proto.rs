@@ -95,6 +95,8 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
             fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?
         );
     }
+    assert_eq!(fs::read(output.path().join("harmos.v1.access.rs"))?, include_bytes!("../../src/v1/access.rs"));
+    assert_eq!(fs::read(output.path().join("harmos.v1.status.rs"))?, include_bytes!("../../src/v1/status.rs"));
     assert_eq!(fs::read(output.path().join("harmos.storage.v1.rs"))?, include_bytes!("../../src/storage.rs"));
     assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
     assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));

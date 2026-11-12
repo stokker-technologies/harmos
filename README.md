@@ -46,6 +46,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **gRPC Plugin Placement**: Invoke managed or remote `harmos.plugin.v1.Instance` plugins, capture their streams and drive plugin waits and observers from the host clock.
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
 - **[Plugin Management](docs/plugin-manager.md)**: Persist, install, enable, restart and remove managed or remote plugin entries.
+- **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
 - **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
@@ -84,7 +85,7 @@ Its protobuf messages, plugin builders and generated-contract clients compile wi
 Clients bind `client::Method` to generated application types, then use `Client::call`,
 `Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
 Host applications depend explicitly on `harmos-runtime` for state, storage,
-managed or remote `harmos.v1` placement and optional guest hosting.
+managed or remote `harmos.plugin.v1.Instance` placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
 Host operations, state catalogs and record registries are values; data shapes use
 field-reading derives. See [Native Operation Values](docs/product-guide.md#native-operation-values).
@@ -111,7 +112,7 @@ for the [performance suites](docs/product-guide.md#performance).
 
 ### C++
 
-The C++20 SDK serves `harmos.v1` with protobuf messages and builder values for
+The C++20 SDK serves `harmos.plugin.v1.Instance` with protobuf messages and builder values for
 operations, streams and observers. See the [C++ SDK guide](docs/tooling.md#c-plugin-sdk)
 for toolchain setup and managed or remote serving.
 

@@ -267,7 +267,8 @@ Status describes the host process. A narrow ServiceManager registration lets a
 product contribute its version/identity facts and component health/availability
 through typed providers with host-owned lifetime and failure reporting. It does
 not let a product replace generic collection or create a competing status service.
-Diagnostics returns an archive content reference; bytes use Storage.GetFileBytes.
+Diagnostics.Get returns bounded unary archive ranges through a narrow content-source
+boundary that joins the shared storage range mechanism.
 
 Settings and secrets are too opinionated for a generic library. A product owns
 their stores, schemas, user-interface declarations, archives and operating-system
@@ -701,8 +702,8 @@ host-driven controls becomes invisible to its host by being relabelled Private.
 | harmos.initialize, harmos.shutdown | Private | Protected: host-driven plugin lifecycle controls, no client binding. |
 
 New context/client built-ins in the generic machinery inventory are Public:
-Plugins and its nested library services, Access/access.Listener,
-Status/status.Logs/status.TraceEvents, Invocations.Invoke, Storage definition Get
+Plugins and its nested library services, access.Listener/access.Pairings/access.Certificates,
+Status/status.Logs/status.TraceEvents/status.Diagnostics, Invocations.Invoke, Storage definition Get
 mirrors (except native-only Protected GetSchema) and GetFileProduction. Context-only HostValues.Get is Public within its
 face and resolver policy, like Samples.Append. Carrier methods are protocol
 controls, not user operations with a visibility choice. A future host-only request
@@ -738,9 +739,11 @@ not a second upload state or implementation. Each row specifies one face only.
 | Package | Service | Methods | Face / Value Contract |
 | --- | --- | --- | --- |
 | harmos.v1 | Plugins | Create, Get, List, Watch, Set, Restart, Delete | Client; managed/remote entries, verified bundles, persistence, activation state and failures; revision-guarded whole-value Get/Set. |
-| harmos.v1 | Access | CreatePairing, CreateCertificate | Client; pairing and certificate regeneration/rotation under GrpcManager. |
+| harmos.v1.access | Pairings | Create, List, Delete | Client; durable independent pairings under GrpcManager. |
+| harmos.v1.access | Certificates | Create | Client; live trust regeneration under GrpcManager. |
 | harmos.v1.access | Listener | Get, Set | Client; writable listener value/revision and separate runtime facts. |
-| harmos.v1 | Status | Identity, Health, Availability, Diagnostics | Client; host facts and diagnostics archive reference, whose bytes use Storage.GetFileBytes. |
+| harmos.v1 | Status | Get, Watch | Client; identity, availability and contributed health. |
+| harmos.v1.status | Diagnostics | Get | Client; bounded immutable archive ranges. |
 | harmos.v1.status | Logs | List, Watch | Client; bounded log selector and positions. |
 | harmos.v1.status | TraceEvents | List, Watch | Client; bounded trace selector and positions. |
 | harmos.context.v1 | HostValues | Get | Context; declared-value resolution through the product-owned resolver/policy; no value store or client method. |
@@ -766,9 +769,11 @@ separate services with separate wrappers, authorization and fingerprints.
 | Client / harmos.v1 | Time | Get, Sleep | Host-clock reads/waits for client callers. |
 | Client / harmos.v1 | Storage | The 32 operations enumerated below | Authorized storage reads/mutations/transfers. |
 | Client / harmos.v1 | Plugins | Create, Get, List, Watch, Set, Restart, Delete | Entry management, distinct from a running instance. |
-| Client / harmos.v1 | Access | CreatePairing, CreateCertificate | Client access management. |
+| Client / harmos.v1.access | Pairings | Create, List, Delete | Durable independent client credentials. |
+| Client / harmos.v1.access | Certificates | Create | Live trust rotation. |
 | Client / harmos.v1.access | Listener | Get, Set | Nested access resource. |
-| Client / harmos.v1 | Status | Identity, Health, Availability, Diagnostics | Host status. |
+| Client / harmos.v1 | Status | Get, Watch | Host status. |
+| Client / harmos.v1.status | Diagnostics | Get | Bounded archive ranges. |
 | Client / harmos.v1.status | Logs | List, Watch | Nested status resource. |
 | Client / harmos.v1.status | TraceEvents | List, Watch | Nested status resource. |
 
@@ -805,10 +810,10 @@ messages are excluded from wrapper totals and require a separate descriptor cens
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Plugin protocol / harmos.plugin.v1 | 1 | 4 | 4 | 4 | 4 |
 | Context / harmos.context.v1 | 6 | 40 | 40 (0 standalone) | 40 | 40 |
-| Client / harmos.v1 and nested packages | 10 (3 nested) | 58 | 58 | 58 | 58 |
-| All wire faces | 17 (3 nested) | 102 | 102 (62 standalone) | 102 | 102 |
+| Client / harmos.v1 and nested packages | 12 (6 nested) | 59 | 59 | 59 | 59 |
+| All wire faces | 19 (6 nested) | 103 | 103 (63 standalone) | 103 | 103 |
 | Native storage hooks, no wire package or service | 0 | 4 (not method signatures) | 0 | 4 | 4 |
-| Whole library inventory | 17 (3 nested) | 106 | 102 (62 standalone) | 106 | 106 |
+| Whole library inventory | 19 (6 nested) | 107 | 103 (63 standalone) | 107 | 107 |
 
 Native Storage.Info, SetSchema, GetSchema and DeleteFile remain Protected native-only
 operations/hooks, not a fourth wire face or additional service. Their existing
@@ -817,14 +822,13 @@ as face methods. Storage has 32 declarations on each wire face plus four native
 hooks: 68 inventory entries, preserving 36 underlying capabilities. StorageBackend
 remains 58 to 52 hooks and StateBackend 8 to 8, or 66 present / 60 target hooks.
 
-Arithmetic: the previous 67-operation inventory becomes 106 by adding 38 separate
-context/client declarations and client Invocations.Invoke. The former 61 directly
-opened methods become 62 with Invoke; 40 context descriptor methods stay
-child-carried, for 102 declared gRPC methods overall. Context
-40 = 1 catalog + 3 controls + 2 clock + 32 storage + 1 publication + 1 values.
-Client 58 = 1 catalog + 4 invocations + 2 clock + 32 storage + 7 entries
-+ 4 access + 8 status. Protocol 4 + context 40 + client 58 = 102 face operations and 204
-face wrappers; native 4 adds 8 wrappers, for 212 library wrappers.
+Arithmetic: context 40 = 1 catalog + 3 controls + 2 clock + 32 storage
++ 1 publication + 1 values. Client 59 = 1 catalog + 4 invocations + 2 clock
++ 32 storage + 7 entries + 6 access + 7 status. The owner's nested access/status
+instruction adds one net method to the earlier inventory. Protocol 4 + context 40
++ client 59 = 103 face operations and 206 face wrappers; four native hooks add
+8 wrappers, for 214 overall. Context signatures remain child-carried; 63 methods
+open standalone calls. Namespace parents Access and status add no empty services.
 
 The current tree still has 45 plugin-carrier/built-in operations and 64 projected
 methods including 30 automatic twins. Migration merges three row follows into
@@ -1313,6 +1317,124 @@ existing owners. The manager adds neither a second resolver nor a settings store
 The catalog's meaning and which plugins a unit of work uses remain with the product.
 
 ## Risks and Trade-offs
+
+### Access Client Services
+
+The owner's access/status implementation instruction supersedes the earlier inventory's
+compound Access actions and split Status reads. Namespace parents have no empty service.
+
+```proto
+package harmos.v1.access;
+service Listener {
+  rpc Get(ListenerGetRequest) returns (ListenerGetResponse);
+  rpc Set(ListenerSetRequest) returns (ListenerSetResponse);
+}
+service Pairings {
+  rpc Create(PairingsCreateRequest) returns (PairingsCreateResponse);
+  rpc List(PairingsListRequest) returns (PairingsListResponse);
+  rpc Delete(PairingsDeleteRequest) returns (PairingsDeleteResponse);
+}
+service Certificates {
+  rpc Create(CertificatesCreateRequest) returns (CertificatesCreateResponse);
+}
+// ListenerValue: enabled, endpoint, security (TLS names).
+// Get/Set: complete value, opaque revision; Set requires expected_revision.
+// Pairing: id, label, endpoint, pinned_certificate_pem, credential (Create only).
+```
+
+```rust
+grpc.configure_access(settings, credential_store).await?;
+grpc.access()?; // The gRPC manager retains the access control and listener lease.
+trait CredentialStore: Send + Sync {
+    fn load(&self) -> Pending<'_, Option<Credentials>>;
+    fn commit(&self, expected_revision: u64, value: Credentials) -> Pending<'_, ()>;
+}
+```
+
+Decisions: listener revisions change only when replacing its writable value; a separate
+credential-store revision serializes all atomic transactions. Pairings are durable independent credentials, so List and Delete are necessary
+for discovery and revocation; List never returns a secret. One atomic store transaction
+replaces listener settings, certificate/key and pairing hashes together, so an unavailable
+store cannot partly rotate or configure access. The host supplies this store, including
+its settings layout and compare/exchange semantics. Certificate replacement validates
+before persistence and reuses ServerCertificate's live resolver; rotation revokes all
+pairings while existing TLS connections remain alive and must use a new credential.
+Authentication inserts `access::Principal { pairing_id }` before application middleware
+and operation authorization, so policy can use an authenticated identity without
+duplicating credential checks. Only the dedicated access listener requires bearer credentials; an application may retain
+a separately authorized management listener to bootstrap and recover disabled access.
+Listener changes stage a replacement before commit, then retire the old attachment;
+same-endpoint security-name changes require Certificates.Create rather than a restart.
+Errors name Listener.Get/Set, Pairings.Create/List/Delete or Certificates.Create.
+
+### Status Client Services
+
+```proto
+package harmos.v1;
+service Status {
+  rpc Get(StatusGetRequest) returns (StatusGetResponse);
+  rpc Watch(StatusWatchRequest) returns (stream StatusWatchResponse);
+}
+// Response: host/application/library identity, process start, availability,
+// named health components (state/reason), resolved_at.
+// package harmos.v1.status; one file per service:
+// Logs.List/Watch, TraceEvents.List/Watch, Diagnostics.Get.
+// List: optional at, PageRequest; reply: events, resolved_at, next_page_token.
+// Watch: optional at; reply: opening boundary, changes or explicit resync failure.
+// Diagnostics.Get: archive id, offset, max_bytes; data, total_length, sha256.
+```
+
+```rust
+services.configure_status(settings)?;
+let registration = services.status()?.contribute(provider)?;
+trait Contribution: Send + Sync {
+    fn health(&self) -> Result<Vec<harmos_protocol::v1::HealthComponent>,
+        Box<dyn std::error::Error + Send + Sync>>;
+    fn diagnostics(&self) -> Result<Vec<services::status::Entry>,
+        Box<dyn std::error::Error + Send + Sync>>;
+}
+// A retained registration owns contribution lifetime; update notifies watchers.
+// Status's log/trace recording interface and tracing Layer redact before retention.
+```
+
+Decisions: Status.Watch is required to observe contributed health changes without polling;
+it delivers the latest coalesced status, whereas event watches retain ordered batches.
+One frozen diagnostics archive is retained; collecting another explicitly expires the old
+content name rather than adding an unbounded content cache.
+Host identity includes the host-supplied stable identifier; runtime captures its own clock
+start and library version. Contributions have host-owned registration lifetime and explicit
+change notification; provider failure appears as unavailable health and fails diagnostics
+with the action named. Histories are bounded by consumer item/byte budgets. List pins
+an issued process-history position; tokens bind kind, boundary and exclusive offset.
+Watch opens atomically at a boundary and follows later events, with explicit expiry/gap
+failure instead of silently skipping. Process histories expire at restart and retention
+eviction; zero is an issued empty boundary, never an arbitrary historical selection.
+Logs/traces are volatile diagnostics, not claims of storage durability.
+Diagnostics freezes a bounded tar archive under an opaque content id; subsequent ranges
+read the same bytes and digest. A narrow content-source boundary joins the shared storage
+range mechanism when that worker lands; no streaming twin or upload engine is added.
+Text-only contributed entries permit redaction before archiving; reject unsafe/duplicate
+archive paths and refuse over-budget archives instead of truncating valid content.
+Registered secret values and sensitive field names redact before log/trace retention,
+status reasons and diagnostics serialization; credentials and keys never enter archives.
+
+Ownership: grpc/access/**; services/status/**; operations/access/** and status/**;
+proto/harmos/v1/access/**, status.proto and status/**; five access/status stories in tests/grpc/access and tests/services/status,
+with tests/support/access_status.rs;
+docs/access-status.md. Coupling extensions: GrpcManager retains access and closes its
+attachment; ServiceManager retains status in its shared host resources; operation-manager
+resource provision supplies narrow access/status ports; protocol generation includes new
+client files/reflection; Rust generated roots consume their descriptors. Existing listener,
+resolver, authorization, operation policy and bounded output mechanisms remain authoritative.
+
+GrpcManager extensions are `configure_access` (one serialized setup), `access`
+(the retained control), internal `attach_access` (per-listener authentication before
+application middleware), and access settlement during shutdown. ServiceManager adds
+`configure_status` and `status`; its shared operation registry retains one status owner,
+its start time and narrow ports across manager handles. Operation-manager coupling is
+limited to those provided resources, the status shutdown notification and exact
+reserved-contract admission for the new protocol-owned operations. The listener and
+ServerCertificate resolver themselves are reused unchanged.
 
 - Receipt/position renames change fingerprints and admission: migrate descriptors,
   requirements and callers as one revision; never add silent compatibility aliases.

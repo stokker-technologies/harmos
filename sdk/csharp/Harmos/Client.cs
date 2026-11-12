@@ -4,18 +4,100 @@ using Google.Protobuf;
 namespace Harmos.Sdk;
 public sealed class Client
 {
+  public AccessResource Access { get; }
   public CatalogEntriesResource CatalogEntries { get; }
   public InvocationsResource Invocations { get; }
   public PluginsResource Plugins { get; }
+  public StatusResource Status { get; }
   public StorageResource Storage { get; }
   public TimeResource Time { get; }
   public Client(CallInvoker invoker)
   {
+    Access = new AccessResource(invoker);
     CatalogEntries = new CatalogEntriesResource(invoker);
     Invocations = new InvocationsResource(invoker);
     Plugins = new PluginsResource(invoker);
+    Status = new StatusResource(invoker);
     Storage = new StorageResource(invoker);
     Time = new TimeResource(invoker);
+  }
+}
+public sealed class AccessResource
+{
+  public AccessCertificatesResource Certificates { get; }
+  public AccessListenerResource Listener { get; }
+  public AccessPairingsResource Pairings { get; }
+  public AccessResource(CallInvoker invoker)
+  {
+    Certificates = new AccessCertificatesResource(invoker);
+    Listener = new AccessListenerResource(invoker);
+    Pairings = new AccessPairingsResource(invoker);
+  }
+}
+public sealed class AccessCertificatesResource
+{
+  private readonly CallInvoker invoker;
+  public AccessCertificatesResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Access.CertificatesCreateResponse> Create(global::Harmos.V1.Access.CertificatesCreateRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Access.CertificatesCreateRequest, global::Harmos.V1.Access.CertificatesCreateResponse>(MethodType.Unary, "harmos.v1.access.Certificates", "Create",
+        Marshallers.Create<global::Harmos.V1.Access.CertificatesCreateRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.CertificatesCreateRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Access.CertificatesCreateResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.CertificatesCreateResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+}
+public sealed class AccessListenerResource
+{
+  private readonly CallInvoker invoker;
+  public AccessListenerResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Access.ListenerGetResponse> Get(global::Harmos.V1.Access.ListenerGetRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Access.ListenerGetRequest, global::Harmos.V1.Access.ListenerGetResponse>(MethodType.Unary, "harmos.v1.access.Listener", "Get",
+        Marshallers.Create<global::Harmos.V1.Access.ListenerGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.ListenerGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Access.ListenerGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.ListenerGetResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Access.ListenerSetResponse> Set(global::Harmos.V1.Access.ListenerSetRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Access.ListenerSetRequest, global::Harmos.V1.Access.ListenerSetResponse>(MethodType.Unary, "harmos.v1.access.Listener", "Set",
+        Marshallers.Create<global::Harmos.V1.Access.ListenerSetRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.ListenerSetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Access.ListenerSetResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.ListenerSetResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+}
+public sealed class AccessPairingsResource
+{
+  private readonly CallInvoker invoker;
+  public AccessPairingsResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Access.PairingsCreateResponse> Create(global::Harmos.V1.Access.PairingsCreateRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Access.PairingsCreateRequest, global::Harmos.V1.Access.PairingsCreateResponse>(MethodType.Unary, "harmos.v1.access.Pairings", "Create",
+        Marshallers.Create<global::Harmos.V1.Access.PairingsCreateRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.PairingsCreateRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Access.PairingsCreateResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.PairingsCreateResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Access.PairingsListResponse> List(global::Harmos.V1.Access.PairingsListRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Access.PairingsListRequest, global::Harmos.V1.Access.PairingsListResponse>(MethodType.Unary, "harmos.v1.access.Pairings", "List",
+        Marshallers.Create<global::Harmos.V1.Access.PairingsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.PairingsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Access.PairingsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.PairingsListResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Access.PairingsDeleteResponse> Delete(global::Harmos.V1.Access.PairingsDeleteRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Access.PairingsDeleteRequest, global::Harmos.V1.Access.PairingsDeleteResponse>(MethodType.Unary, "harmos.v1.access.Pairings", "Delete",
+        Marshallers.Create<global::Harmos.V1.Access.PairingsDeleteRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.PairingsDeleteRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Access.PairingsDeleteResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Access.PairingsDeleteResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
   }
 }
 public sealed class CatalogEntriesResource
@@ -124,6 +206,93 @@ public sealed class PluginsResource
         Marshallers.Create<global::Harmos.V1.PluginsRestartRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.PluginsRestartRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<global::Harmos.V1.PluginsRestartResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.PluginsRestartResponse.Parser.ParseFrom(bytes)));
     return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+}
+public sealed class StatusResource
+{
+  private readonly CallInvoker invoker;
+  public StatusDiagnosticsResource Diagnostics { get; }
+  public StatusLogsResource Logs { get; }
+  public StatusTraceEventsResource TraceEvents { get; }
+  public StatusResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+    Diagnostics = new StatusDiagnosticsResource(invoker);
+    Logs = new StatusLogsResource(invoker);
+    TraceEvents = new StatusTraceEventsResource(invoker);
+  }
+  public AsyncUnaryCall<global::Harmos.V1.StatusGetResponse> Get(global::Harmos.V1.StatusGetRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.StatusGetRequest, global::Harmos.V1.StatusGetResponse>(MethodType.Unary, "harmos.v1.Status", "Get",
+        Marshallers.Create<global::Harmos.V1.StatusGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.StatusGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusGetResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+  public AsyncServerStreamingCall<global::Harmos.V1.StatusWatchResponse> Watch(global::Harmos.V1.StatusWatchRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.StatusWatchRequest, global::Harmos.V1.StatusWatchResponse>(MethodType.ServerStreaming, "harmos.v1.Status", "Watch",
+        Marshallers.Create<global::Harmos.V1.StatusWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.StatusWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusWatchResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncServerStreamingCall(method, null, options, request);
+  }
+}
+public sealed class StatusDiagnosticsResource
+{
+  private readonly CallInvoker invoker;
+  public StatusDiagnosticsResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Status.DiagnosticsGetResponse> Get(global::Harmos.V1.Status.DiagnosticsGetRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Status.DiagnosticsGetRequest, global::Harmos.V1.Status.DiagnosticsGetResponse>(MethodType.Unary, "harmos.v1.status.Diagnostics", "Get",
+        Marshallers.Create<global::Harmos.V1.Status.DiagnosticsGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.DiagnosticsGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Status.DiagnosticsGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.DiagnosticsGetResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+}
+public sealed class StatusLogsResource
+{
+  private readonly CallInvoker invoker;
+  public StatusLogsResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Status.LogsListResponse> List(global::Harmos.V1.Status.LogsListRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Status.LogsListRequest, global::Harmos.V1.Status.LogsListResponse>(MethodType.Unary, "harmos.v1.status.Logs", "List",
+        Marshallers.Create<global::Harmos.V1.Status.LogsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Status.LogsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsListResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+  public AsyncServerStreamingCall<global::Harmos.V1.Status.LogsWatchResponse> Watch(global::Harmos.V1.Status.LogsWatchRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Status.LogsWatchRequest, global::Harmos.V1.Status.LogsWatchResponse>(MethodType.ServerStreaming, "harmos.v1.status.Logs", "Watch",
+        Marshallers.Create<global::Harmos.V1.Status.LogsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Status.LogsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsWatchResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncServerStreamingCall(method, null, options, request);
+  }
+}
+public sealed class StatusTraceEventsResource
+{
+  private readonly CallInvoker invoker;
+  public StatusTraceEventsResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+  }
+  public AsyncUnaryCall<global::Harmos.V1.Status.TraceEventsListResponse> List(global::Harmos.V1.Status.TraceEventsListRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Status.TraceEventsListRequest, global::Harmos.V1.Status.TraceEventsListResponse>(MethodType.Unary, "harmos.v1.status.TraceEvents", "List",
+        Marshallers.Create<global::Harmos.V1.Status.TraceEventsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Status.TraceEventsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsListResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+  public AsyncServerStreamingCall<global::Harmos.V1.Status.TraceEventsWatchResponse> Watch(global::Harmos.V1.Status.TraceEventsWatchRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Harmos.V1.Status.TraceEventsWatchRequest, global::Harmos.V1.Status.TraceEventsWatchResponse>(MethodType.ServerStreaming, "harmos.v1.status.TraceEvents", "Watch",
+        Marshallers.Create<global::Harmos.V1.Status.TraceEventsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.Status.TraceEventsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsWatchResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncServerStreamingCall(method, null, options, request);
   }
 }
 public sealed class StorageResource

@@ -79,7 +79,18 @@ pub fn generate(
         config.protoc_executable(compiler);
         config.type_attribute(".harmos.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
         for external in packages.keys().filter(|external| *external != package) {
-            config.extern_path(format!(".{external}"), format!("crate::{}", module_path(external)?));
+            let module = module_path(external)?;
+            if package.starts_with(&format!("{external}.")) {
+                // Map Ancestor Payloads Individually Without Externalizing This Package.
+                for file in descriptors.file.iter().filter(|file| file.package.as_ref() == Some(external)) {
+                    for name in file.message_type.iter().filter_map(|message| message.name.as_ref())
+                        .chain(file.enum_type.iter().filter_map(|value| value.name.as_ref())) {
+                        config.extern_path(format!(".{external}.{name}"), format!("crate::{module}::{name}"));
+                    }
+                }
+            } else {
+                config.extern_path(format!(".{external}"), format!("crate::{module}"));
+            }
         }
         let (client_attributes, server_attributes) = if package.starts_with("harmos.plugin.") {
             (

@@ -9,6 +9,10 @@
 
 /* === Modules === */
 
+#[cfg(feature = "grpc")]
+#[path = "../grpc/main.rs"]
+mod grpc;
+
 #[path = "../application/main.rs"]
 mod application;
 

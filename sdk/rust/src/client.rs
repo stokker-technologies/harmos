@@ -20,6 +20,7 @@ mod method;
 
 /* === Re-Exports === */
 
+pub use harmos_protocol::v1;
 pub use method::{Method, NoItems};
 
 /* === Imports === */

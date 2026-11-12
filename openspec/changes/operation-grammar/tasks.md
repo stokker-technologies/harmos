@@ -5,10 +5,10 @@ Boundary, managers and nested resources locked by the owner on 2026-11-12
 Separation by audience locked by the owner on 2026-11-12
 Three visibility levels locked by the owner on 2026-11-12
 
-Implementation is authorized under the combined `grpc-plugins` marker.
-This worktree owns protocol/layout, runtime outside storage/plugin management/access/status,
-operations outside storage, SDKs, conformance and examples. Other workers own
-storage, Plugins entry management, Access and Status. Commits remain local.
+The owner authorizes implementation under the combined `grpc-plugins` marker.
+This worktree owns access/status runtime trees, client protos and operations,
+stories and guides, and the required gRPC/service-manager extensions.
+Grammar-core, storage and plugin-manager changes remain with their assigned owners.
 
 The locked source inventory covers library proto/protocol/operations/storage,
 runtime managers and projection, all four SDKs and their build generators,
@@ -16,7 +16,7 @@ conformance, examples, tests and maintained guides. Before later implementation,
 exact owned paths within these domains. Three open questions remain at their
 owning tasks; per-plugin settings/secrets ownership is closed. Preserve data
 encodings and required behavior; no compatibility aliases or second authorities.
-Order is dependency order: establish
+Unchecked tasks remain work. Order is dependency order: establish
 face package layout and move files before primitives, descriptors or consumers
 migrate. Each source task migrates its affected producer, generated bindings and
 compile-time consumers atomically.
@@ -39,7 +39,7 @@ compile-time consumers atomically.
 - [ ] 1.1 Establish face packages and file moves first: proto/harmos/plugin/v1/instance.proto for Instance; proto/harmos/context/v1/ for context services; proto/harmos/v1/ and parent folders for client services. Move owning payloads/imports and declaration metadata with the packages; remove the retired singular carrier service. Keep native hooks out of wire services. Integrate the existing plugin-manager entry contracts. Everything below depends on this layout.
 - [x] 1.1.1 Move the non-storage carrier and resource services into per-face, per-service files; regenerate Rust/Python and migrate native SDK/host consumers. Focused proof: generated_code_matches_proto; focused SDK/runtime builds. Storage, generic management services and runtime face admission remain with their owning tasks.
 - [ ] 1.2 Implement shared positions/cuts, bounded paging, Timestamp/Duration, Failure, retry policy and receipts; declare separate face-local service/method request and response wrappers and regenerate IDs/fingerprints in crates/harmos-protocol/. Verify focused schema checks after the file moves; do not reuse another face's wrappers.
-- [ ] 1.3 Lock design.md's inventory: protocol 1 service/4 operations/4 gRPC methods/4 request-response pairs; context 6/40/40 descriptor methods (0 standalone)/40 pairs; client 10 (3 nested)/58/58/58 pairs. Retain four native-only storage hooks/pairs separately: 17 services, 106 inventory operations, 102 descriptor methods (62 standalone), 106 requests and 106 responses overall. Verify all 38 shared capabilities have independent context/client declarations and authorization; census shared/domain/imported types separately.
+- [ ] 1.3 Lock design.md's inventory: protocol 1 service/4 operations/4 gRPC methods/4 request-response pairs; context 6/40/40 descriptor methods (0 standalone)/40 pairs; client 12 (6 nested)/59/59/59 pairs. Retain four native-only storage hooks/pairs separately: 19 services, 107 inventory operations, 103 descriptor methods (63 standalone), 107 requests and 107 responses overall. Verify all 38 shared capabilities have independent context/client declarations and authorization; census shared/domain/imported types separately.
 - [ ] 1.4 Replace automatic RunMethod twins with explicit face-filtered projection. Generate the 32 Storage declarations independently on context and client faces from their respective declaration owners, sharing handlers while preserving native-only/grant boundaries. Use nested parent packages, bare part verbs and one proto per service. Move/update protocol behaviour guidance with its face owner; streams remain Watch/plugin carriers or a promised final-result replacement.
 - [ ] 1.5 Add reusable Nightly integration/durable_lag with small_high_rate, multi_megabyte and mixed backend loads; report acceptance-to-durability p50/p95/maximum, backlog and synchronous commit contribution per load. Compare each p95 with 250 ms independently of payload size; try smaller/earlier size-triggered flushes first if missed, then remeasure. Accepted-data snapshots remain the named fallback, not built; no timing assertions.
 - [ ] 1.6 Add Nightly integration/file_transfer for large unary client/plugin uploads and downloads; record bytes, chunk/range configuration and throughput before deleting streaming transfers, without timing assertions or new consumer budgets.
@@ -47,8 +47,8 @@ compile-time consumers atomically.
 ## 2. Library Owners and Generic Services
 
 - [ ] 2.1 Integrate already-in-progress plugin-manager work and expose Plugins Create/Get/List/Watch/Set/Restart/Delete with managed/remote entries, verified bundles, persistence, state and failures. Migrate the protocol carriers to harmos.plugin.v1.Instance Get/Invoke/Samples/Stop and preserve activation fencing, disconnect isolation and cooperative settlement; migrate affected library consumers in the same compiling slice.
-- [ ] 2.2 Implement Access and access.Listener under GrpcManager: CreatePairing, CreateCertificate regeneration/key rotation and Listener.Get/Set with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
-- [ ] 2.3 Implement Status, status.Logs and status.TraceEvents under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and diagnostics archive references. Read archive bytes through Storage.GetFileBytes, with no second transfer implementation.
+- [ ] 2.2 Implement access.Listener Get/Set, durable access.Pairings Create/List/Delete and live access.Certificates.Create under GrpcManager with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
+- [ ] 2.3 Implement Status.Get/Watch, status.Logs/TraceEvents List/Watch and status.Diagnostics.Get under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and bounded diagnostics archive ranges through the narrow ContentSource join to shared storage ranges, with no second transfer engine.
 - [ ] 2.4 Add narrow product-contribution registration under ServiceManager for product version/identity and component health/availability; define registration lifetime, aggregation and provider failure handling, and prove focused registration/removal/failure behavior without a product-specific dependency.
 - [x] 2.5 Implement generic context-only HostValues.Get and its host resolver registration under OperationManager, plus the plugin catalog's settings-declaration section. The product supplies settings/secrets stores, schemas, UI, archives, credential integration and policy. Verify scoped value delivery/failure behavior; add no library value store or client settings service.
 - [x] 2.6 Retain OperationManager for face-local CatalogEntries/Invocations and client Invocations.Invoke, StreamManager for context Samples/publication, existing host-clock/service lifetime for face-local Time, and StateManager/RecordManager for their existing responsibilities; migrate names and declarations without duplicate managers or schedulers.
@@ -154,3 +154,12 @@ combined source closure and hosted validation are not claimed here.
 - [ ] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
 - [ ] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
 - [ ] I.4 Commit the candidate locally, verify clean status and locked offline metadata; document consumer adoption and pending proof without pushing.
+
+## Access and Status Implementation
+
+- [x] AS.1 Record access/status proto and Rust shapes, decisions, scenarios and exact ownership before implementation.
+- [x] AS.2 Add client contracts and one operation per file; regenerate protocol and prove focused builds.
+- [x] AS.3 Implement gRPC-owned listener Get/Set, durable pairings, credential-store atomicity and live certificate rotation.
+- [x] AS.4 Implement service-owned identity/health, bounded redacted event histories/watches and ranged diagnostics with contributions.
+- [x] AS.5 Add five deterministic client journeys, Rust client bindings and adoption guidance.
+- [ ] AS.6 Run required format, Rust/Python/repository checks, stories twice, existing listener/certificate tests and Tests build; repair findings.

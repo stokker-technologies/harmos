@@ -3,21 +3,91 @@ use harmos::client::{ClientTransport, Watching};
 use prost_reflect::ReflectMessage;
 #[derive(Clone)]
 pub struct Root {
+    pub access: Access,
     pub catalog_entries: CatalogEntries,
     pub invocations: Invocations,
     pub plugins: Plugins,
+    pub status: Status,
     pub storage: Storage,
     pub time: Time,
 }
 impl Root {
     pub fn new(client: ClientTransport) -> Self {
         Self {
+            access: Access::new(client.clone()),
             catalog_entries: CatalogEntries::new(client.clone()),
             invocations: Invocations::new(client.clone()),
             plugins: Plugins::new(client.clone()),
+            status: Status::new(client.clone()),
             storage: Storage::new(client.clone()),
             time: Time::new(client.clone()),
         }
+    }
+}
+#[derive(Clone)]
+pub struct Access {
+    pub certificates: AccessCertificates,
+    pub listener: AccessListener,
+    pub pairings: AccessPairings,
+}
+impl Access {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            certificates: AccessCertificates::new(client.clone()),
+            listener: AccessListener::new(client.clone()),
+            pairings: AccessPairings::new(client.clone()),
+        }
+    }
+}
+#[derive(Clone)]
+pub struct AccessCertificates {
+    client: ClientTransport,
+}
+impl AccessCertificates {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            client,
+        }
+    }
+    pub async fn create(&self, request: tonic::Request<harmos_protocol::v1::access::CertificatesCreateRequest>) -> Result<tonic::Response<harmos_protocol::v1::access::CertificatesCreateResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.access.Certificates/Create"), request, harmos_protocol::v1::access::CertificatesCreateResponse::default().descriptor()).await
+    }
+}
+#[derive(Clone)]
+pub struct AccessListener {
+    client: ClientTransport,
+}
+impl AccessListener {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            client,
+        }
+    }
+    pub async fn get(&self, request: tonic::Request<harmos_protocol::v1::access::ListenerGetRequest>) -> Result<tonic::Response<harmos_protocol::v1::access::ListenerGetResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.access.Listener/Get"), request, harmos_protocol::v1::access::ListenerGetResponse::default().descriptor()).await
+    }
+    pub async fn set(&self, request: tonic::Request<harmos_protocol::v1::access::ListenerSetRequest>) -> Result<tonic::Response<harmos_protocol::v1::access::ListenerSetResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.access.Listener/Set"), request, harmos_protocol::v1::access::ListenerSetResponse::default().descriptor()).await
+    }
+}
+#[derive(Clone)]
+pub struct AccessPairings {
+    client: ClientTransport,
+}
+impl AccessPairings {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            client,
+        }
+    }
+    pub async fn create(&self, request: tonic::Request<harmos_protocol::v1::access::PairingsCreateRequest>) -> Result<tonic::Response<harmos_protocol::v1::access::PairingsCreateResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.access.Pairings/Create"), request, harmos_protocol::v1::access::PairingsCreateResponse::default().descriptor()).await
+    }
+    pub async fn list(&self, request: tonic::Request<harmos_protocol::v1::access::PairingsListRequest>) -> Result<tonic::Response<harmos_protocol::v1::access::PairingsListResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.access.Pairings/List"), request, harmos_protocol::v1::access::PairingsListResponse::default().descriptor()).await
+    }
+    pub async fn delete(&self, request: tonic::Request<harmos_protocol::v1::access::PairingsDeleteRequest>) -> Result<tonic::Response<harmos_protocol::v1::access::PairingsDeleteResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.access.Pairings/Delete"), request, harmos_protocol::v1::access::PairingsDeleteResponse::default().descriptor()).await
     }
 }
 #[derive(Clone)]
@@ -87,6 +157,77 @@ impl Plugins {
     }
     pub async fn restart(&self, request: tonic::Request<harmos_protocol::v1::PluginsRestartRequest>) -> Result<tonic::Response<harmos_protocol::v1::PluginsRestartResponse>, tonic::Status> {
         self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Restart"), request, harmos_protocol::v1::PluginsRestartResponse::default().descriptor()).await
+    }
+}
+#[derive(Clone)]
+pub struct Status {
+    client: ClientTransport,
+    pub diagnostics: StatusDiagnostics,
+    pub logs: StatusLogs,
+    pub trace_events: StatusTraceEvents,
+}
+impl Status {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            diagnostics: StatusDiagnostics::new(client.clone()),
+            logs: StatusLogs::new(client.clone()),
+            trace_events: StatusTraceEvents::new(client.clone()),
+            client,
+        }
+    }
+    pub async fn get(&self, request: tonic::Request<harmos_protocol::v1::StatusGetRequest>) -> Result<tonic::Response<harmos_protocol::v1::StatusGetResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Status/Get"), request, harmos_protocol::v1::StatusGetResponse::default().descriptor()).await
+    }
+    pub async fn watch(&self, request: tonic::Request<harmos_protocol::v1::StatusWatchRequest>) -> Result<Watching<harmos_protocol::v1::StatusWatchResponse>, tonic::Status> {
+        self.client.watch_known(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Status/Watch"), request, harmos_protocol::v1::StatusWatchResponse::default().descriptor()).await
+    }
+}
+#[derive(Clone)]
+pub struct StatusDiagnostics {
+    client: ClientTransport,
+}
+impl StatusDiagnostics {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            client,
+        }
+    }
+    pub async fn get(&self, request: tonic::Request<harmos_protocol::v1::status::DiagnosticsGetRequest>) -> Result<tonic::Response<harmos_protocol::v1::status::DiagnosticsGetResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.status.Diagnostics/Get"), request, harmos_protocol::v1::status::DiagnosticsGetResponse::default().descriptor()).await
+    }
+}
+#[derive(Clone)]
+pub struct StatusLogs {
+    client: ClientTransport,
+}
+impl StatusLogs {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            client,
+        }
+    }
+    pub async fn list(&self, request: tonic::Request<harmos_protocol::v1::status::LogsListRequest>) -> Result<tonic::Response<harmos_protocol::v1::status::LogsListResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.status.Logs/List"), request, harmos_protocol::v1::status::LogsListResponse::default().descriptor()).await
+    }
+    pub async fn watch(&self, request: tonic::Request<harmos_protocol::v1::status::LogsWatchRequest>) -> Result<Watching<harmos_protocol::v1::status::LogsWatchResponse>, tonic::Status> {
+        self.client.watch_known(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.status.Logs/Watch"), request, harmos_protocol::v1::status::LogsWatchResponse::default().descriptor()).await
+    }
+}
+#[derive(Clone)]
+pub struct StatusTraceEvents {
+    client: ClientTransport,
+}
+impl StatusTraceEvents {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            client,
+        }
+    }
+    pub async fn list(&self, request: tonic::Request<harmos_protocol::v1::status::TraceEventsListRequest>) -> Result<tonic::Response<harmos_protocol::v1::status::TraceEventsListResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.status.TraceEvents/List"), request, harmos_protocol::v1::status::TraceEventsListResponse::default().descriptor()).await
+    }
+    pub async fn watch(&self, request: tonic::Request<harmos_protocol::v1::status::TraceEventsWatchRequest>) -> Result<Watching<harmos_protocol::v1::status::TraceEventsWatchResponse>, tonic::Status> {
+        self.client.watch_known(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.status.TraceEvents/Watch"), request, harmos_protocol::v1::status::TraceEventsWatchResponse::default().descriptor()).await
     }
 }
 #[derive(Clone)]

@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod access;
 mod answer;
 pub mod catalog;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -31,6 +33,8 @@ pub mod plugin;
 pub mod plugins;
 mod refusal;
 mod registration;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod status;
 pub mod storage;
 pub mod streams;
 

@@ -39,6 +39,7 @@ impl Manager {
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
         schema_settings: Arc<crate::config::SchemaSettings>,
     ) -> Self {
+        let status_started = instances.clock.date().into();
         let manager = Self {
             schema_settings,
             resident: crate::operations::resident::Registry::new(&instances, reserved, identity),
@@ -47,6 +48,10 @@ impl Manager {
             preparation: settings.preparation_bytes.map(|bytes| Arc::new(Semaphore::new(bytes.get()))),
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
+                access: Arc::new(harmos_operations::access::AccessAccess::default()),
+                status: Arc::new(harmos_operations::status::StatusAccess::default()),
+                status_owner: std::sync::Mutex::new(None),
+                status_started,
                 service_runner: crate::services::authored_runner::<A>,
                 #[cfg(feature = "grpc")]
                 values: std::sync::RwLock::new(None),
