@@ -2,6 +2,7 @@
 
 The owner locked the contract on 2026-11-12.
 Boundary, managers and nested resources locked by the owner on 2026-11-12
+Separation by audience locked by the owner on 2026-11-12
 
 This is a future implementation inventory, not permission to implement. This
 documentation task edits only proposal.md, design.md, tasks.md and the five
@@ -14,27 +15,28 @@ conformance, examples, tests and maintained guides. Before later implementation,
 exact owned paths within these domains. Six open questions remain at their
 owning tasks; per-plugin settings/secrets ownership is closed. Preserve data
 encodings and required behavior; no compatibility aliases or second authorities.
-Every task below is unchecked future work. Order is dependency order: finalize
-service names before consumers migrate. Each source task migrates its
-affected producer, generated bindings and compile-time consumers atomically.
+Every task below is unchecked future work. Order is dependency order: establish
+face package layout and move files before primitives, descriptors or consumers
+migrate. Each source task migrates its affected producer, generated bindings and
+compile-time consumers atomically.
 
-## 1. Primitives, Final Descriptors and Benchmark Cases
+## 1. Face Packages, Primitives, Final Descriptors and Benchmark Cases
 
-- [ ] 1.1 Implement shared positions/cuts, bounded paging, Timestamp/Duration, wrappers, Failure, retry policy and accepted/durable receipts in proto/harmos/v1/ and crates/harmos-protocol/; verify focused schema/fingerprint checks.
-- [ ] 1.2 Lock the complete declaration inventory to design.md: library 67 logical operations, 13 logical services (3 nested), 61 gRPC methods in 11 exposed services, 67 requests and 67 responses; Storage has 36 declarations (32 exposed, 4 native-only). Census domain/shared/imported payloads separately; no automatic managed-envelope additions.
-- [ ] 1.3 Declare final nested packages, one proto per service in a parent folder, package-qualified wrappers and exposure metadata. Replace verb-plus-part/flat compound parts with nested resources; retain the established mixed-resource Storage contract. Integrate the plugin-manager branch's final entry contracts rather than create a second implementation.
-- [ ] 1.4 Replace automatic RunMethod twins in runtime projection and packaging/client generators with explicit methods; streams serve Watch/plugin carriers or an explicitly promised final-result replacement. Generate all 32 exposed Storage methods from one authoritative owner, preserving native-only/grant boundaries, and update proto/harmos/v1/behaviour.md.
+- [ ] 1.1 Establish face packages and file moves first: proto/harmos/plugin/v1/instance.proto for Instance; proto/harmos/context/v1/ for context services; proto/harmos/v1/ and parent folders for client services. Move owning payloads/imports and declaration metadata with the packages; remove the retired singular carrier service. Keep native hooks out of wire services. Integrate the existing plugin-manager entry contracts. Everything below depends on this layout.
+- [ ] 1.2 Implement shared positions/cuts, bounded paging, Timestamp/Duration, Failure, retry policy and receipts; declare separate face-local service/method request and response wrappers and regenerate IDs/fingerprints in crates/harmos-protocol/. Verify focused schema checks after the file moves; do not reuse another face's wrappers.
+- [ ] 1.3 Lock design.md's inventory: protocol 1 service/4 operations/4 gRPC methods/4 request-response pairs; context 6/40/40 descriptor methods (0 standalone)/40 pairs; client 10 (3 nested)/58/58/58 pairs. Retain four native-only storage hooks/pairs separately: 17 services, 106 inventory operations, 102 descriptor methods (62 standalone), 106 requests and 106 responses overall. Verify all 38 shared capabilities have independent context/client declarations and authorization; census shared/domain/imported types separately.
+- [ ] 1.4 Replace automatic RunMethod twins with explicit face-filtered projection. Generate the 32 Storage declarations independently on context and client faces from their respective declaration owners, sharing handlers while preserving native-only/grant boundaries. Use nested parent packages, bare part verbs and one proto per service. Move/update protocol behaviour guidance with its face owner; streams remain Watch/plugin carriers or a promised final-result replacement.
 - [ ] 1.5 Add reusable Nightly integration/durable_lag with small_high_rate, multi_megabyte and mixed backend loads; report acceptance-to-durability p50/p95/maximum, backlog and synchronous commit contribution per load. Compare each p95 with 250 ms independently of payload size; try smaller/earlier size-triggered flushes first if missed, then remeasure. Accepted-data snapshots remain the named fallback, not built; no timing assertions.
 - [ ] 1.6 Add Nightly integration/file_transfer for large unary client/plugin uploads and downloads; record bytes, chunk/range configuration and throughput before deleting streaming transfers, without timing assertions or new consumer budgets.
 
 ## 2. Library Owners and Generic Services
 
-- [ ] 2.1 Integrate already-in-progress plugin-manager work and expose Plugins Create/Get/List/Watch/Set/Restart/Delete with managed/remote entries, verified bundles, persistence, state and failures. Preserve Plugin protocol carriers, activation fencing, disconnect isolation and cooperative settlement; migrate affected library consumers in the same compiling slice.
+- [ ] 2.1 Integrate already-in-progress plugin-manager work and expose Plugins Create/Get/List/Watch/Set/Restart/Delete with managed/remote entries, verified bundles, persistence, state and failures. Migrate the protocol carriers to harmos.plugin.v1.Instance Get/Invoke/Samples/Stop and preserve activation fencing, disconnect isolation and cooperative settlement; migrate affected library consumers in the same compiling slice.
 - [ ] 2.2 Implement Access and access.Listener under GrpcManager: CreatePairing, CreateCertificate regeneration/key rotation and Listener.Get/Set with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
 - [ ] 2.3 Implement Status, status.Logs and status.TraceEvents under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and diagnostics archive references. Read archive bytes through Storage.GetFileBytes, with no second transfer implementation.
 - [ ] 2.4 Add narrow product-contribution registration under ServiceManager for product version/identity and component health/availability; define registration lifetime, aggregation and provider failure handling, and prove focused registration/removal/failure behavior without a product-specific dependency.
-- [ ] 2.5 Implement generic host-only HostValues.Get and its host resolver registration under OperationManager, plus the plugin catalog's settings-declaration section. The product supplies settings/secrets stores, schemas, UI, archives, credential integration and policy. Verify scoped value delivery/failure behavior; add no library value store or client settings service.
-- [ ] 2.6 Retain OperationManager for CatalogEntries/Invocations, StreamManager for Samples/publication, existing host-clock/service lifetime for Time, and StateManager/RecordManager for their existing responsibilities; migrate names and declarations without duplicate managers or schedulers.
+- [ ] 2.5 Implement generic context-only HostValues.Get and its host resolver registration under OperationManager, plus the plugin catalog's settings-declaration section. The product supplies settings/secrets stores, schemas, UI, archives, credential integration and policy. Verify scoped value delivery/failure behavior; add no library value store or client settings service.
+- [ ] 2.6 Retain OperationManager for face-local CatalogEntries/Invocations and client Invocations.Invoke, StreamManager for context Samples/publication, existing host-clock/service lifetime for face-local Time, and StateManager/RecordManager for their existing responsibilities; migrate names and declarations without duplicate managers or schedulers.
 
 ## 3. Storage Handlers, Native Providers and Transfers
 
@@ -52,12 +54,13 @@ affected producer, generated bindings and compile-time consumers atomically.
 
 ## 4. Four-Language SDK Roots and Library Consumers
 
-- [ ] 4.1 Produce a common descriptor table with owner/version, parent/service/method, wrappers, cardinality and exposure; add small build generators for Rust, Python, C# and C++ hierarchical roots. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
-- [ ] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, child-call, scope, clock, failure and call-local policy behavior.
+- [ ] 4.1 Produce a common descriptor table with owner/face/version, parent/service/method, wrappers, cardinality and exposure; add face-selecting build generators for Rust, Python, C# and C++. Generate plugin SDKs with protocol serving and context calling only, clients with client API only, and hosts with all three; generate hierarchical roots only for their audience. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
+- [ ] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, admission, cross-plugin Public invocation, Private refusal naming the action, client Public invocation, inherited scope, child cancellation, clock, failure and call-local policy behavior; deny client context/protocol calls and plugin client-only calls. Preserve explicit catalog visibility and one host registry.
 - [ ] 4.3 Settle the semantic plugin-parity promise across Rust, Python, C# and C++ and record it in design.md; four-language client-root naming is already locked.
 - [ ] 4.4 Settle generic managed-client invocation coverage (Rust-only or more languages) and record it in design.md without reopening the naming hierarchy.
-- [ ] 4.5 Align Python's default to Private with explicit Public intent, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
+- [ ] 4.5 Require explicit Private or Public visibility in all four SDKs with no default and reject omitted/unspecified visibility at admission, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
 - [ ] 4.6 Migrate tools/conformance/, fixtures, native/guest examples, generated clients and affected tests in the owning compiling slices; preserve interval/device publication and update README/topic/language-guide claims with each user-facing change.
+- [ ] 4.7 Verify generated service-stub sets in all four languages: plugin = Instance server plus context callers, client = client-face callers, host = all faces. Reject cross-audience root/stub leakage while retaining imported shared payloads. Keep this generation contract separate from the open semantic parity and managed-client language questions.
 
 ## 5. Library Handoff and Source Closure
 

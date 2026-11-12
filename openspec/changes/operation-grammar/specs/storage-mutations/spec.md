@@ -2,6 +2,18 @@
 
 ## ADDED Requirements
 
+### Requirement: Face-Local Mutation Contracts
+
+The mapped storage contracts SHALL apply independently to `harmos.context.v1.Storage` child
+calls and `harmos.v1.Storage` client methods where design.md maps the capability
+to both faces. Each face SHALL own its request/response and authorization; shared
+handlers SHALL preserve the same storage guarantees. Native-only hooks SHALL stay native.
+
+#### Scenario: Storage Call by Audience
+
+- **WHEN** a client or an authorized plugin uses a capability mapped to both Storage faces
+- **THEN** the client calls harmos.v1.Storage and the plugin uses harmos.context.v1.Storage through its context child calls, with separate wrappers and authorization and the same storage guarantees
+
 ### Requirement: Whole-Value Revision-Guarded Atomic Set
 
 Get SHALL return the whole writable value and its revision. The matching Set

@@ -1,6 +1,7 @@
 Status: locked by the owner on 2026-11-12
 Boundary, managers and nested resources locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
+Separation by audience locked by the owner on 2026-11-12
 
 # Operation Grammar
 
@@ -19,6 +20,9 @@ the locked contract; implementation is not authorized by this documentation task
 
 | Decision | Status | Direction |
 | --- | --- | --- |
+| Audience Separation | LOCKED, 2026-11-12 | Each service has one audience face and package: harmos.plugin.v1.Instance (host calls plugin), harmos.context.v1 (plugin child calls host), harmos.v1 and parent sub-packages (clients call host). Shared capabilities have separate face-local request/response contracts, even with a shared handler. Plugins remains client entry management. |
+| Visibility | Owner | Per plugin-served catalog operation: explicit Private (declaring plugin and host) or Public (everyone connected, including other plugins and clients), with no default in any SDK. The host mediates every invocation, checks requirements/fingerprints/admitted providers and visibility, inherits scope, and propagates cancellation/failures. Faces do not replace visibility. |
+| Face Generation | Owner | Plugin SDK: serve protocol and call context; client: client API only; host: all three. Product plugin operations stay catalog operations carried by Instance.Invoke in their plugin face, never client services. |
 | Names | Owner | Resource services with bare verbs; single-mode parts use nouns; multimode parts are nested resource services with bare verbs; mixed-resource Storage retains its resource nouns. Service-qualified wrappers follow design.md. |
 | Reply envelopes | Owner | Always return the response wrapper, including empty results, rather than a bare resource. |
 | Ordinary verbs | Owner | Closed set: Get, List, Watch, Set, Create, Delete, Append. Update, Read, Browse, Put, Edit, Add, Remove, Follow, Scan, Inspect and Register are not verbs in the new grammar. |
@@ -69,13 +73,24 @@ None; the candidate adds requirements to existing capability owners.
 
 ## Impact
 
-The library gains Plugins, Access/Access.Listener, Status/Status.Logs/Status.TraceEvents
-and host-only HostValues contracts. Existing plugin-manager work is integrated,
-not reimplemented. The library-only inventory in design.md records 13 logical
-services (3 nested), 67 operations, 61 gRPC methods in 11 exposed services,
-67 request messages and 67 response messages.
+The library gains client Plugins, Access/Access.Listener and
+Status/Status.Logs/Status.TraceEvents, plus context-only HostValues. Existing
+plugin-manager work is integrated, not reimplemented. The wire inventory is:
 
-Future implementation touches `proto/harmos/v1/`, `crates/harmos-protocol/`,
+| Face | Services | Operations | gRPC Methods | Requests / Responses |
+| --- | ---: | ---: | ---: | ---: |
+| harmos.plugin.v1 | 1 | 4 | 4 | 4 / 4 |
+| harmos.context.v1 | 6 | 40 | 40 (0 standalone) | 40 / 40 |
+| harmos.v1 and nested packages | 10 (3 nested) | 58 | 58 | 58 / 58 |
+
+Totals: 17 services, 102 face operations, 102 declared gRPC methods (62 standalone) and
+102 request/response pairs. Four retained native-only storage hooks add four
+request/response pairs without a wire service: 106 inventory operations and
+212 wrappers overall. The full mapping and 38 capabilities declared separately
+on context and client faces are in design.md; no client or plugin can bypass the
+host to reach another instance. These counts describe the locked candidate only.
+
+Future implementation touches `proto/harmos/plugin/v1/`, `proto/harmos/context/v1/`, `proto/harmos/v1/`, `crates/harmos-protocol/`,
 `crates/harmos-operations/`, `crates/harmos-storage/`, runtime gRPC projection and
 plugin hosting, `sdk/`, `tools/conformance/`, generators, examples and their tests.
 Every renamed ID changes its fingerprint: requirements, manifests, descriptor

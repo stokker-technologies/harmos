@@ -2,6 +2,84 @@
 
 ## ADDED Requirements
 
+### Requirement: Audience-Separated Service Packages
+
+Separation by audience is locked on 2026-11-12. Each service SHALL have exactly
+one face: harmos.plugin.v1 (plugin serves, only host calls), harmos.context.v1
+(host serves plugin invocation context child calls), or harmos.v1 and nested
+packages (host serves clients). Instance SHALL be the protocol service and
+Plugins the client management service. Faces SHALL NOT replace catalog visibility.
+
+#### Scenario: Client Cannot Call Context
+
+- **WHEN** a client attempts harmos.context.v1.HostValues.Get or a context Storage operation
+- **THEN** the host refuses the call naming the action and exposes no context service on the client endpoint
+
+#### Scenario: Client Cannot Call an Instance
+
+- **WHEN** a client attempts to call harmos.plugin.v1.Instance directly
+- **THEN** it is refused naming the action because only the host may open an instance call
+
+#### Scenario: Plugin Cannot Call a Client-Only Operation
+
+- **WHEN** a plugin attempts client-only Plugins.Restart through its context
+- **THEN** the host refuses naming Restart and does not route it to the client service
+
+#### Scenario: Host Calls an Instance
+
+- **WHEN** the host connects to a running instance
+- **THEN** it calls harmos.plugin.v1.Instance.Get for identity/catalog and opens Invoke, Samples or Stop only as required by their contracts
+- **AND** another plugin or client cannot open these calls directly
+
+### Requirement: Separate Declarations for Shared Capabilities
+
+Each capability needed on two faces SHALL have its own declaration, request,
+response, fingerprint and authorization per face, even when handlers are shared.
+Faces SHALL evolve independently. The exhaustive mapping in design.md SHALL
+preserve the existing callable capabilities without exposing context to clients.
+
+#### Scenario: Shared Time and Storage Capability
+
+- **WHEN** a plugin and a client read the host clock or append/read produced data
+- **THEN** each uses its own context or client package's declarations and wrappers from design.md's exhaustive mapping
+- **AND** handlers may be shared while authorization and future contract changes remain independent
+
+### Requirement: Product Declarations Follow Audience Packages
+
+Product declarations SHALL use `<product>.plugin.v1`, `<product>.context.v1` or
+`<product>.v1` by audience. Product plugin-served lifecycle operations SHALL be
+catalog operations carried by Instance.Invoke, never client services. This library
+SHALL declare no product resources or operations. Nested resources SHALL retain
+their parent sub-packages and bare verbs within their face.
+
+#### Scenario: Product Plugin Contract
+
+- **WHEN** a product declares an operation its plugin performs
+- **THEN** the operation uses its product plugin-face package and catalog visibility, is carried by Instance.Invoke and is not declared as a client service
+
+### Requirement: Generate Only Required Faces
+
+All four SDK build generators SHALL select faces by audience: a plugin SDK SHALL
+generate protocol serving and context calling; a client SHALL generate the client
+API; a host SHALL generate all three. Imported shared payloads SHALL NOT cause
+another face's service stubs or roots to be generated. This SHALL NOT settle the
+open semantic plugin-parity or generic managed-client language scope questions.
+
+#### Scenario: Plugin Bindings
+
+- **WHEN** Rust, Python, C# or C++ plugin bindings are generated
+- **THEN** they serve Instance and call context methods, with no client API service stubs
+
+#### Scenario: Client Bindings
+
+- **WHEN** client bindings are generated
+- **THEN** they contain only client API service stubs and roots, with no context callers or Instance server
+
+#### Scenario: Host Bindings
+
+- **WHEN** host bindings are generated
+- **THEN** they contain all three faces, with each service registered only for its declared audience
+
 ### Requirement: Self-Sufficient Library SDK Ownership
 
 The library SHALL retain self-sufficient language SDKs, protocol and conformance
@@ -23,7 +101,7 @@ scope remain open; four-language descriptor-derived naming is separately locked.
 ### Requirement: Predictable Public Method Grammar
 
 Services SHALL name their resource with its plural noun, or singular noun for
-one thing such as Plugin. Methods acting on that resource SHALL be bare verbs
+one thing such as Instance. Methods acting on that resource SHALL be bare verbs
 and SHALL NOT repeat its noun. Ordinary verbs SHALL be limited to Get, List,
 Watch, Set, Create, Delete and Append. Every method SHALL have service-qualified
 request and response wrappers under design.md's grammar, including empty replies.
@@ -60,7 +138,8 @@ its single-mode whole parts SHALL be Info and Capabilities.
 
 ### Requirement: Nested Wire Packages and Wrappers
 
-A nested service SHALL use package `<owner>.v1.<lowercase parent>` and the part's
+A nested service SHALL use package `<face package>.<lowercase parent>` (with face
+package `<owner>.plugin.v1`, `<owner>.context.v1` or `<owner>.v1`) and the part's
 service name, with one proto file per service in a folder per parent. Request and
 response wrappers SHALL be `<Service><Method>Request/Response` within that package.
 Nested resources MAY have a different library owner from their parent.
@@ -74,7 +153,7 @@ Nested resources MAY have a different library owner from their parent.
 ### Requirement: Descriptor-Derived Hierarchical Client Roots
 
 Rust, Python, C# and C++ SDK builds SHALL generate the same resource hierarchy
-from a common descriptor-derived table, using normal language casing. Packages,
+from a common descriptor-derived table, using normal language casing. Face packages,
 service names, wrappers, cardinality and exposure SHALL determine the root under
 design.md. Library/product tables SHALL compose and reject leaf collisions.
 No hand-written per-operation naming/forwarding layer SHALL exist. This naming
@@ -186,7 +265,7 @@ A product SHALL own storage definitions, schemas, indexes, projections, latest
 selection, its objects and operations, and authorization policy. It SHALL retain
 settings/secrets stores, schemas, UI declarations, archives and operating-system
 credential integration. The library SHALL provide only a plugin catalog's settings
-declarations and generic host-only HostValues.Get with a registered product
+declarations and generic context-only harmos.context.v1.HostValues.Get with a registered product
 resolver. This SHALL close the per-plugin settings/secrets ownership question.
 
 #### Scenario: Plugin Requests a Value

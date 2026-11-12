@@ -3,6 +3,7 @@
 Status: locked by the owner on 2026-11-12
 Boundary, managers and nested resources locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
+Separation by audience locked by the owner on 2026-11-12
 
 Nothing here claims implementation.
 Only the explicitly listed open questions await decisions when their work is reached.
@@ -27,8 +28,48 @@ SDKs and conformance checks self-sufficient without product vocabulary.
 The following shared text uses the supplied decisions and both reports' Shared
 Vocabulary sections. Application-specific meanings belong to their owners.
 
+- **Audience Faces (Owner, 2026-11-12):** every wire service belongs to exactly
+  one face, visible in its package. The plugin protocol is served by a running
+  plugin and called only by the host: `harmos.plugin.v1.Instance`, with Get
+  (identity and catalog), Invoke, Samples and Stop. The context is served by the
+  host to a plugin handling an invocation, through its context object as child
+  calls: `harmos.context.v1`. The client API is served by the host to applications,
+  command-line tools and scripts: `harmos.v1`. Clients cannot call context or
+  instance methods; plugins cannot call client-only methods. The host opens every
+  instance call; plugins and clients never connect directly to an instance.
+  Product declarations follow `<product>.plugin.v1`, `<product>.context.v1` and
+  `<product>.v1` for the same audiences. Product plugin lifecycle operations are
+  catalog operations carried by Instance.Invoke, never client services. No
+  product resource or operation is declared by this library change.
+- **Face-Local Contracts (Owner):** a capability needed on two faces has one
+  declaration per face, with its own request, response, full operation ID and
+  fingerprint, even when both declarations share a handler. Each face evolves
+  and is authorized independently. Shared domain payloads/primitives are allowed;
+  importing another face's method wrappers as one's own is not. Context
+  declarations are invoked as child calls, not opened as independent client RPCs.
+- **Visibility (Owner):** faces do not replace visibility. A face says who serves
+  a gRPC service and who may call it on the wire. Visibility is explicit per
+  operation a plugin serves, in its catalog, carried by Instance.Invoke: Private
+  means the declaring plugin and the host; Public means everyone connected,
+  including other plugins and the host's clients. All four SDKs require explicit
+  Private or Public, with no default; admission rejects absent/unspecified values.
+  A plugin can invoke another plugin's Public operation: plugin, host, plugin.
+  The calling plugin declares a requirement and makes a child call through its
+  context. The host resolves it in its one operation registry, checks visibility,
+  the declared fingerprint and that a provider is admitted, then invokes the
+  providing instance with the caller's unchanged inherited scope. The result or
+  structured failure returns through the host; cancellation reaches the child.
+  A client invokes a Public plugin-served operation through the generic
+  `harmos.v1.Invocations.Invoke` path, with the same host checks and routing.
+  Private operations refuse other plugins and clients with an error naming the
+  attempted action; host mediation never broadens visibility.
+- **Generation by Audience (Owner):** a plugin SDK generates the plugin protocol
+  to serve and context to call; a client generates only the client API; a host
+  generates all three. This applies to Rust, Python, C# and C++. Filter descriptor
+  inputs by face before generating bindings or resource roots. Shared types
+  required by those inputs do not import another audience's service stubs.
 - **Names (Owner):** a service names its resource with a plural noun, or a
-  singular noun for one thing, such as Plugin. Methods acting on that resource
+  singular noun for one thing, such as Instance. Methods acting on that resource
   are bare verbs. A part read in exactly one way keeps its noun on its parent:
   Jobs.Steps is a bounded page.
   A part with more than one read/change mode is a nested resource with its own
@@ -41,8 +82,8 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   application.v1.plugins. Package qualification disambiguates equal message names.
   Operation IDs derive mechanically from the complete service namespace and method.
 - **Nested Wire Layout (Owner):** a nested service lives in package
-  `<owner>.v1.<lowercase parent>`, where `<owner>` is the library or a product's
-  namespace, with the part as service name. One proto file per service, in a
+  `<face package>.<lowercase parent>`, where the face package is
+  `<owner>.plugin.v1`, `<owner>.context.v1` or `<owner>.v1`, with the part as service name. One proto file per service, in a
   folder per parent: application/v1/plugins/settings.proto declares
   application.v1.plugins.Settings; its Get method's full name is
   application.v1.plugins.Settings/Get. Deeper parents extend the package path the same
@@ -59,8 +100,8 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   ```
 
   A small generator in each SDK build consumes a common table produced from the
-  descriptor set: owner namespace, version, parent path, service, method, wrappers
-  and cardinality. Strip the owner/version prefix, append lowercase parent/service
+  descriptor set: owner namespace, face, version, parent path, service, method, wrappers
+  and cardinality. Strip the selected face package prefix, append lowercase parent/service
   segments, and bind generated transport clients at those paths. Compose descriptor
   tables for library and product services into one root, so library Plugins and
   product plugins.Settings share the plugins node. Reject actual leaf collisions;
@@ -192,12 +233,12 @@ need none. This is the single manager-selection rule for both owners.
 
 | Library Manager | Owned Service or Mechanism | Existing Runtime Type / Direction |
 | --- | --- | --- |
-| Plugin manager | Plugins: managed/remote entries; Create, Get, List, Watch, Set, Restart, Delete; verified bundles, persistence, state and failures; Plugin carrier placement | Generic plugin-manager work is already being implemented; integrate it. The current guest adapter has PluginManager in guest/host/plugin/manager.rs, not proof the complete entry service has landed. |
+| Plugin manager | Plugins: managed/remote entries; Create, Get, List, Watch, Set, Restart, Delete; verified bundles, persistence, state and failures; Instance carrier placement | Generic plugin-manager work is already being implemented; integrate it. The current guest adapter has PluginManager in guest/host/plugin/manager.rs, not proof the complete entry service has landed. |
 | gRPC manager | Access and Access.Listener: listener Get/Set, pairing creation, certificate regeneration/key rotation; listener shutdown | GrpcManager in grpc/manager.rs exists. Access service contracts are added by this decision. |
 | Storage manager | Storage, including the six production/session actions and ranged GetFileBytes shared by clients/plugins | StorageManager in storage/manager.rs exists. A product supplies storage definitions/providers, not a second upload engine. |
 | Service manager | Status, Status.Logs and Status.TraceEvents; host identity, health, availability, logs, traces and diagnostics archive | ServiceManager in services/mod.rs exists. Add the status contracts and narrow product-fact registration here. |
-| Operation manager | CatalogEntries, Invocations and host-only HostValues; operation registration, dispatch, invocation lifecycle and protocol callbacks | OperationManager in operations/manager/mod.rs exists; its inner Manager is not a second public owner. |
-| Stream manager | Samples and Plugin.Samples publication/demand coordination | StreamManager in streams/manager.rs exists. Plugin protocol serving remains library-owned. |
+| Operation manager | CatalogEntries, Invocations and context-only HostValues; operation registration, dispatch, invocation lifecycle and protocol callbacks | OperationManager in operations/manager/mod.rs exists; its inner Manager is not a second public owner. |
+| Stream manager | Samples and Instance.Samples publication/demand coordination | StreamManager in streams/manager.rs exists. Plugin protocol serving remains library-owned. |
 | Service manager / host clock | Time.Get and Time.Sleep, backed by the authoritative runtime clock | Reuse existing service lifecycle and clock ownership; no second clock manager is required. |
 | State manager | State lifecycle, replay and recovery; no new public grammar service | StateManager in state/manager.rs exists. |
 | Record manager | Record registration and lifecycle; persistence through Storage | RecordManager in records/manager.rs exists. |
@@ -215,7 +256,7 @@ Diagnostics returns an archive content reference; bytes use Storage.GetFileBytes
 Settings and secrets are too opinionated for a generic library. A product owns
 their stores, schemas, user-interface declarations, archives and operating-system
 credential-store use. The library owns only a settings-declaration section of the
-plugin catalog and host-only HostValues.Get: a plugin requests a declared value,
+plugin catalog and context-only HostValues.Get: a plugin requests a declared value,
 the host application's registered resolver supplies it under product policy.
 No library settings/secret store, UI schema or client-facing settings service is
 introduced. This closes the per-plugin settings/secrets ownership question.
@@ -311,13 +352,15 @@ without treating knowledge of a sequence as authorization.
 
 These excerpts express the locked contract, not compilable replacement files or field-number
 compatibility commitments. Domain payloads named below already have owners; the
-complete descriptor inventory is the second implementation step. Optional message
+package layout and file moves precede the complete descriptor inventory. Optional message
 fields use protobuf message presence. The four representative resources are rows, objects,
 invocations and file productions. Watch event unions illustrate candidate details
 for the still-open exact Watch semantics; the naming and read-resolution rules
 are locked.
 
 ```proto
+// Client-face primitive and time excerpt; shared types retain their owner.
+package harmos.v1;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -351,6 +394,7 @@ message TimeSleepResponse {}
 ```
 
 ```proto
+package harmos.v1;
 message StorageListRowsRequest {
   QuerySource source = 1;
   ReadCut at = 2;
@@ -387,12 +431,13 @@ Arrow/index/projection mechanisms remain
 distinct from application-level selection. Get/List return bounded unary pages
 or ranges; callers repeat reads for further data. No streaming download remains.
 
-Plugin.Samples observes publication demand; it has no historical List on the
+Instance.Samples observes publication demand; it has no historical List on the
 plugin carrier. Retained sample reads belong to host storage. Do not manufacture
 catalog watches without an actual change feed, and retain device-driven streams
 alongside host-clock interval streams.
 
 ```proto
+package harmos.v1;
 message StorageGetObjectRequest { string name = 1; ReadCut at = 2; }
 message StorageGetObjectResponse {
   ObjectValue object = 1; // Complete writable value.
@@ -417,7 +462,16 @@ message InvocationsWatchRequest { string name = 1; ReadCut at = 2; }
 message InvocationsWatchResponse { Invocation invocation = 1; ReadCut resolved_at = 2; }
 message InvocationsCancelRequest { string name = 1; string reason = 2; }
 message InvocationsCancelResponse { Invocation invocation = 1; }
+message InvocationsInvokeRequest {
+  string operation = 1;
+  bytes fingerprint = 2;
+  bytes payload = 3;
+}
+message InvocationsInvokeResponse { bytes payload = 1; }
+// Caller scope is bound invocation context, not an authority-bearing payload.
+// Failures retain the shared structured gRPC status/details mapping.
 service Invocations {
+  rpc Invoke(InvocationsInvokeRequest) returns (InvocationsInvokeResponse);
   rpc Get(InvocationsGetRequest) returns (InvocationsGetResponse);
   rpc Watch(InvocationsWatchRequest) returns (stream InvocationsWatchResponse);
   rpc Cancel(InvocationsCancelRequest) returns (InvocationsCancelResponse);
@@ -437,6 +491,7 @@ AppendObjectRevisions remains separate bulk immutable ingestion. The library's
 invocation controls expose runtime-owned status, not writable status fields.
 
 ```proto
+package harmos.v1;
 message StorageCreateFileProductionRequest {
   FileMetadata metadata = 1;
   string request_id = 2;
@@ -467,6 +522,7 @@ message StorageDeleteFileProductionResponse { FileProduction production = 1; Rec
 ```
 
 ```proto
+package harmos.v1;
 message StorageGetFileBytesRequest {
   string name = 1;
   uint64 offset = 2;
@@ -500,7 +556,9 @@ test assertion or a new hard throughput threshold.
 
 ### Complete Public Operation Mapping
 
-Every current logical operation appears once and maps to exactly one destination.
+Every current logical operation appears below; a shared capability maps to a
+separate declaration on each required face. Native-only hooks stay outside the
+wire faces. The Face and Package column qualifies every locked destination.
 The removed streaming-upload convenience maps to the shared session entry point;
 its subsequent workflow calls are not additional destinations. Present types use the current
 request and final reply; current stream item types are noted in the reason. Locked
@@ -512,57 +570,58 @@ storage tests, under `crates/harmos-operations/src/` for declarations, and under
 `crates/harmos-runtime/src/plugin/grpc/` for plugin-host callers. Named test sources
 are invocation verification, not claims that tests were run in this authoring task.
 
-| Present Operation | Present Request → Final Reply | Locked Operation | Destination Owner | Disposition and Reason / Caller Verification |
+| Present Operation | Present Request → Final Reply | Locked Operation | Face and Package | Disposition and Reason / Caller Verification |
 | --- | --- | --- | --- | --- |
-| Plugin.Describe | DescribeRequest → Description | Plugin.Get | Library | Renamed; connection.rs and SDK servers use identity/catalog admission. |
-| Plugin.Invoke | HostFrame → PluginFrame | Plugin.Invoke | Library | Kept; invoke.rs; duplex control carrier still conveys one unary operation attempt. |
-| Plugin.Publish | PublishFrame → Samples | Plugin.Samples | Library | Renamed; publish.rs; host-clock ticks and device publication remain distinct. |
-| Plugin.Stop | StopRequest → StopResponse | Plugin.Stop | Library | Kept; connection.rs shutdown invokes cleanup. |
-| host.catalog | Catalog → CatalogPage | CatalogEntries.List | Library | Renamed; sdk/rust/src/client.rs calls bounded discovery. |
-| host.operations.status | Status → InstanceState | Invocations.Get | Library | Renamed; tests/operations/host.rs invokes owned status. |
-| host.operations.cancel | Cancel → InstanceState | Invocations.Cancel | Library | Renamed; same host test; cancellation is an action. |
-| host.operations.watch | Watch → InstanceState | Invocations.Watch | Library | Renamed; same host test; retain status events. |
-| harmos.clock.now | Now → Time | Time.Get | Library | Renamed; four SDK contexts call the host clock. |
-| harmos.clock.sleep | Sleep → TimeSleepResponse | Time.Sleep | Library | Kept; four SDK contexts; locked clock action, not WaitTime. |
-| host.publish | Publish → Published | Samples.Append | Library | Renamed; streams/publish.rs and sdk/rust/src/wasm/context.rs publish immutable samples. |
-| storage.status | StorageStatus → StorageInfo | Storage.Info | Library | Renamed; generated_status.rs. |
-| storage.capabilities | Capabilities → StorageCapabilities | Storage.Capabilities | Library | Renamed; generated_native_journey.rs. |
-| storage.open_snapshot | OpenSnapshot → SavedSnapshot | Storage.CreateSnapshot | Library | Renamed; same journey; retained backend read lease, not a second read family. |
-| storage.release_snapshot | ReleaseSnapshot → Empty | Storage.DeleteSnapshot | Library | Renamed; same journey; release the lease. |
-| storage.scan_arrow | ScanArrow → ArrowPage | Storage.ListColumnRows | Library | Renamed; same journey; preserve bounded physical work. |
-| storage.scan_index | ScanIndex → IndexPage | Storage.ListIndexEntries | Library | Renamed; same journey; ordered seek semantics remain. |
-| storage.register_index | RegisterIndex → DefinitionRevision | Storage.SetIndexDefinition | Library | Renamed; same journey; whole definition and expected revision from GetIndexDefinition; rebuild preconditions remain. |
-| storage.register_projection | RegisterProjection → DefinitionRevision | Storage.SetProjectionDefinition | Library | Renamed; same journey; whole definition and expected revision from GetProjectionDefinition. |
-| storage.advance_projection | AdvanceProjection → DefinitionRevision | Storage.AdvanceProjection | Library | Kept; same journey; side effect is checked materialization. |
-| storage.read_projection | ReadProjection → ProjectionPage | Storage.ListProjectionRows | Library | Renamed; same journey; exact revision/frontier availability. |
-| storage.inspect_projection | InspectProjection → ProjectionState | Storage.GetProjectionStatus | Library | Renamed; same journey; derived status is not writable. |
-| storage.compare_exchange_object | CompareExchangeObject → CompareExchangeOutcome | Storage.SetObject | Library | Renamed; same journey; whole writable object and expected revision from GetObject; atomic conditional outcome. |
-| storage.query | Query → QueryCompletion | Storage.ListRows | Library | Renamed; generated_query_batches.rs and generated_query_projection.rs; bounded unary pages replace QueryOutput streaming. |
-| storage.follow_records | FollowRecords → StorageCursor | Storage.WatchRows, records selector | Library | Merged; generated_record_follow.rs; shared boundary/change union. |
-| storage.follow_stream | FollowStream → StorageCursor | Storage.WatchRows, samples selector | Library | Merged; generated_stream_follow.rs; add consistent initial durable boundary. |
-| storage.follow_objects | FollowObjects → StorageCursor | Storage.WatchRows, object-revision selector | Library | Merged; generated_object_follow.rs; preserve revision data. |
-| storage.write_schema | WriteSchema → StorageCursor | Storage.SetSchema | Library | Renamed; operation_schemas.rs; whole small writable schema and expected revision from GetSchema; immutable revision rules remain. |
-| storage.write_records | WriteRecords → WriteCompletion | Storage.AppendRecords | Library | Renamed; generated_record_exchange.rs; bounded unary batch replaces DataBatch/WriteReceipt exchange. |
-| storage.write_streams | WriteStreams → WriteCompletion | Storage.AppendSamples | Library | Renamed; generated_exchange_cancellation.rs; preserve admitted outcomes with receipts. |
-| storage.write_objects | WriteObjects → WriteCompletion | Storage.AppendObjectRevisions | Library | Renamed; generated_object_exchange.rs; bulk ingestion does not replace atomic SetObject. |
-| storage.write_file | WriteFile → FileReference | Storage.CreateFileProduction | Library | Removed; generated_file_upload.rs; maps to the session entry point, then Storage.AppendFileBytes and Storage.PublishFileProduction replace the streaming convenience workflow. |
-| storage.create_file | CreateFile → FileProducer | Storage.CreateFileProduction | Library | Renamed; generated_file_mutations.rs; create the upload/production session. |
-| storage.append_file | AppendFile → FileProducer | Storage.AppendFileBytes | Library | Renamed; same mutations; bounded immutable chunks. |
-| storage.resume_file | ResumeFile → FileProducer | Storage.CreateFileWriter | Library | Renamed; same mutations; fence the previous writer. |
-| storage.finish_file | FinishFile → FileReference | Storage.PublishFileProduction | Library | Renamed; same mutations; durable final reference. |
-| storage.abandon_file | AbandonFile → FileProgress | Storage.DeleteFileProduction | Library | Renamed; same mutations; Delete of the unpublished session abandons it. |
-| storage.delete_file | DeleteFile → StagedFile | Storage.DeleteFile | Library | Kept; same mutations; retained-reader decision remains open. |
-| storage.read_file | ReadFile → FileCompletion | Storage.GetFileBytes | Library | Renamed; generated_read.rs; streaming download removed in favor of bounded unary ranges with offset, maximum bytes, total length and digest. |
-| storage.hash_file | HashFile → FileHash | Storage.GetFileHash | Library | Renamed; examples/schematic/operations/src/transfer/hash.rs and guest SDK call it. |
-| storage.capture_file | CaptureFile → FileReference | Storage.CaptureFile | Library | Kept; generated_capture.rs; independent captured bytes. |
-| storage.follow_file | FollowFile → FileCompletion | Storage.WatchFileBytes | Library | Renamed; generated_capture.rs; FileEvent preserves replacement/truncation. |
-| storage.follow_production | FollowProduction → FileProgress | Storage.WatchFileProduction | Library | Renamed; generated_reconnect.rs and generated_future_offset.rs; writer fencing and retained chunks remain. |
-| storage.list_directory | ListDirectory → DirectoryCompletion | Storage.ListDirectoryEntries | Library | Renamed; generated_directory.rs; bounded DirectoryEntry selection. |
-| storage.watch_directory | WatchDirectory → DirectoryCompletion | Storage.WatchDirectoryEntries | Library | Renamed; same directory test; preserve DirectoryEvent and rescan-required semantics. |
+| carrier Describe | DescribeRequest → Description | Instance.Get | Plugin protocol: harmos.plugin.v1 | Renamed; connection.rs and SDK servers use identity/catalog admission. |
+| carrier Invoke | HostFrame → PluginFrame | Instance.Invoke | Plugin protocol: harmos.plugin.v1 | Renamed service; invoke.rs; duplex control carrier still conveys one unary operation attempt. |
+| carrier Publish | PublishFrame → Samples | Instance.Samples | Plugin protocol: harmos.plugin.v1 | Renamed; publish.rs; host-clock ticks and device publication remain distinct. |
+| carrier Stop | StopRequest → StopResponse | Instance.Stop | Plugin protocol: harmos.plugin.v1 | Renamed service; connection.rs shutdown invokes cleanup. |
+| host.catalog | Catalog → CatalogPage | CatalogEntries.List | Context: harmos.context.v1; client: harmos.v1 | Renamed; sdk/rust/src/client.rs calls bounded discovery. |
+| host.operations.status | Status → InstanceState | Invocations.Get | Context: harmos.context.v1; client: harmos.v1 | Renamed; tests/operations/host.rs invokes owned status. |
+| host.operations.cancel | Cancel → InstanceState | Invocations.Cancel | Context: harmos.context.v1; client: harmos.v1 | Renamed; same host test; cancellation is an action. |
+| host.operations.watch | Watch → InstanceState | Invocations.Watch | Context: harmos.context.v1; client: harmos.v1 | Renamed; same host test; retain status events. |
+| harmos.clock.now | Now → Time | Time.Get | Context: harmos.context.v1; client: harmos.v1 | Renamed; four SDK contexts call the host clock. |
+| harmos.clock.sleep | Sleep → TimeSleepResponse | Time.Sleep | Context: harmos.context.v1; client: harmos.v1 | Kept; four SDK contexts; locked clock action, not WaitTime. |
+| host.publish | Publish → Published | Samples.Append | Context: harmos.context.v1 | Renamed; streams/publish.rs and sdk/rust/src/wasm/context.rs publish immutable samples. |
+| storage.status | StorageStatus → StorageInfo | Storage.Info | Native only: no wire package | Renamed; generated_status.rs. |
+| storage.capabilities | Capabilities → StorageCapabilities | Storage.Capabilities | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_native_journey.rs. |
+| storage.open_snapshot | OpenSnapshot → SavedSnapshot | Storage.CreateSnapshot | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; retained backend read lease, not a second read family. |
+| storage.release_snapshot | ReleaseSnapshot → Empty | Storage.DeleteSnapshot | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; release the lease. |
+| storage.scan_arrow | ScanArrow → ArrowPage | Storage.ListColumnRows | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; preserve bounded physical work. |
+| storage.scan_index | ScanIndex → IndexPage | Storage.ListIndexEntries | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; ordered seek semantics remain. |
+| storage.register_index | RegisterIndex → DefinitionRevision | Storage.SetIndexDefinition | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; whole definition and expected revision from GetIndexDefinition; rebuild preconditions remain. |
+| storage.register_projection | RegisterProjection → DefinitionRevision | Storage.SetProjectionDefinition | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; whole definition and expected revision from GetProjectionDefinition. |
+| storage.advance_projection | AdvanceProjection → DefinitionRevision | Storage.AdvanceProjection | Context: harmos.context.v1; client: harmos.v1 | Kept; same journey; side effect is checked materialization. |
+| storage.read_projection | ReadProjection → ProjectionPage | Storage.ListProjectionRows | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; exact revision/frontier availability. |
+| storage.inspect_projection | InspectProjection → ProjectionState | Storage.GetProjectionStatus | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; derived status is not writable. |
+| storage.compare_exchange_object | CompareExchangeObject → CompareExchangeOutcome | Storage.SetObject | Context: harmos.context.v1; client: harmos.v1 | Renamed; same journey; whole writable object and expected revision from GetObject; atomic conditional outcome. |
+| storage.query | Query → QueryCompletion | Storage.ListRows | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_query_batches.rs and generated_query_projection.rs; bounded unary pages replace QueryOutput streaming. |
+| storage.follow_records | FollowRecords → StorageCursor | Storage.WatchRows, records selector | Context: harmos.context.v1; client: harmos.v1 | Merged; generated_record_follow.rs; shared boundary/change union. |
+| storage.follow_stream | FollowStream → StorageCursor | Storage.WatchRows, samples selector | Context: harmos.context.v1; client: harmos.v1 | Merged; generated_stream_follow.rs; add consistent initial durable boundary. |
+| storage.follow_objects | FollowObjects → StorageCursor | Storage.WatchRows, object-revision selector | Context: harmos.context.v1; client: harmos.v1 | Merged; generated_object_follow.rs; preserve revision data. |
+| storage.write_schema | WriteSchema → StorageCursor | Storage.SetSchema | Native only: no wire package | Renamed; operation_schemas.rs; whole small writable schema and expected revision from GetSchema; immutable revision rules remain. |
+| storage.write_records | WriteRecords → WriteCompletion | Storage.AppendRecords | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_record_exchange.rs; bounded unary batch replaces DataBatch/WriteReceipt exchange. |
+| storage.write_streams | WriteStreams → WriteCompletion | Storage.AppendSamples | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_exchange_cancellation.rs; preserve admitted outcomes with receipts. |
+| storage.write_objects | WriteObjects → WriteCompletion | Storage.AppendObjectRevisions | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_object_exchange.rs; bulk ingestion does not replace atomic SetObject. |
+| storage.write_file | WriteFile → FileReference | Storage.CreateFileProduction | Context: harmos.context.v1; client: harmos.v1 | Removed; generated_file_upload.rs; maps to the session entry point, then Storage.AppendFileBytes and Storage.PublishFileProduction replace the streaming convenience workflow. |
+| storage.create_file | CreateFile → FileProducer | Storage.CreateFileProduction | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_file_mutations.rs; create the upload/production session. |
+| storage.append_file | AppendFile → FileProducer | Storage.AppendFileBytes | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; bounded immutable chunks. |
+| storage.resume_file | ResumeFile → FileProducer | Storage.CreateFileWriter | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; fence the previous writer. |
+| storage.finish_file | FinishFile → FileReference | Storage.PublishFileProduction | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; durable final reference. |
+| storage.abandon_file | AbandonFile → FileProgress | Storage.DeleteFileProduction | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; Delete of the unpublished session abandons it. |
+| storage.delete_file | DeleteFile → StagedFile | Storage.DeleteFile | Native only: no wire package | Kept; same mutations; retained-reader decision remains open. |
+| storage.read_file | ReadFile → FileCompletion | Storage.GetFileBytes | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_read.rs; streaming download removed in favor of bounded unary ranges with offset, maximum bytes, total length and digest. |
+| storage.hash_file | HashFile → FileHash | Storage.GetFileHash | Context: harmos.context.v1; client: harmos.v1 | Renamed; guest SDK and the neutral transfer example call it. |
+| storage.capture_file | CaptureFile → FileReference | Storage.CaptureFile | Context: harmos.context.v1; client: harmos.v1 | Kept; generated_capture.rs; independent captured bytes. |
+| storage.follow_file | FollowFile → FileCompletion | Storage.WatchFileBytes | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_capture.rs; FileEvent preserves replacement/truncation. |
+| storage.follow_production | FollowProduction → FileProgress | Storage.WatchFileProduction | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_reconnect.rs and generated_future_offset.rs; writer fencing and retained chunks remain. |
+| storage.list_directory | ListDirectory → DirectoryCompletion | Storage.ListDirectoryEntries | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_directory.rs; bounded DirectoryEntry selection. |
+| storage.watch_directory | WatchDirectory → DirectoryCompletion | Storage.WatchDirectoryEntries | Context: harmos.context.v1; client: harmos.v1 | Renamed; same directory test; preserve DirectoryEvent and rescan-required semantics. |
+
 Samples.Append and Storage.AppendSamples have separate namespaces: the former
 publishes a declared stream, the latter admits persisted sample batches. They are
 not merged. Locked library namespaces include their service, for example
-`harmos.storage.append_records`; the exact namespace transition and fingerprints
+`harmos.context.v1.Storage/AppendRecords` or `harmos.v1.Storage/AppendRecords`; the exact namespace transition and fingerprints
 migrate together. Public names in the table do not rename arbitrary
 consumer-defined operation IDs behind their owners' backs.
 
@@ -575,11 +634,11 @@ visibility, fingerprints, digest, descriptors and failure causes used in admissi
 
 | Added Library Operation (Owner: Library) | Exposure | Locked Value Contract |
 | --- | --- | --- |
-| Storage.GetIndexDefinition | Storage RPC | Whole writable index definition and revision, mirrored by SetIndexDefinition. |
-| Storage.GetProjectionDefinition | Storage RPC | Whole writable projection definition and revision, mirrored by SetProjectionDefinition. |
-| Storage.GetObject | Storage RPC | Whole writable object and revision, mirrored by SetObject; explicit absence for creation. |
-| Storage.GetSchema | Native-only, matching SetSchema | Whole writable schema and revision, mirrored by SetSchema. |
-| Storage.GetFileProduction | Storage RPC | Accepted/durable upload progress, writer generation and resume status. |
+| Storage.GetIndexDefinition | Context harmos.context.v1; client harmos.v1 | Whole writable index definition and revision, mirrored by SetIndexDefinition. |
+| Storage.GetProjectionDefinition | Context harmos.context.v1; client harmos.v1 | Whole writable projection definition and revision, mirrored by SetProjectionDefinition. |
+| Storage.GetObject | Context harmos.context.v1; client harmos.v1 | Whole writable object and revision, mirrored by SetObject; explicit absence for creation. |
+| Storage.GetSchema | Native only, no wire package, matching SetSchema | Whole writable schema and revision, mirrored by SetSchema. |
+| Storage.GetFileProduction | Context harmos.context.v1; client harmos.v1 | Accepted/durable upload progress, writer generation and resume status. |
 
 These small writable parts need no subdivision. Large application writable values
 must instead map to separately settable named sub-resources,
@@ -587,82 +646,195 @@ each with its own Get/Set and revision, rather than a monolithic replacement.
 
 ### Added Generic Machinery Inventory
 
-All destinations here are Library-owned. The first six rows add 19 client methods
-to the earlier 42-method candidate; HostValues adds one host-only operation.
-The already-running plugin-manager implementation supplies Plugins; this inventory
-does not direct a second implementation. Transfers reuse Storage, adding no parallel
-Content/Uploads service or upload state.
+All destinations here are library-owned. Existing plugin-manager work supplies
+Plugins; do not create a second implementation. Transfers share StorageManager,
+not a second upload state or implementation. Each row specifies one face only.
 
-| Service | Methods | Exposure / Value Contract |
+| Package | Service | Methods | Face / Value Contract |
+| --- | --- | --- | --- |
+| harmos.v1 | Plugins | Create, Get, List, Watch, Set, Restart, Delete | Client; managed/remote entries, verified bundles, persistence, activation state and failures; revision-guarded whole-value Get/Set. |
+| harmos.v1 | Access | CreatePairing, CreateCertificate | Client; pairing and certificate regeneration/rotation under GrpcManager. |
+| harmos.v1.access | Listener | Get, Set | Client; writable listener value/revision and separate runtime facts. |
+| harmos.v1 | Status | Identity, Health, Availability, Diagnostics | Client; host facts and diagnostics archive reference, whose bytes use Storage.GetFileBytes. |
+| harmos.v1.status | Logs | List, Watch | Client; bounded log selector and positions. |
+| harmos.v1.status | TraceEvents | List, Watch | Client; bounded trace selector and positions. |
+| harmos.context.v1 | HostValues | Get | Context; declared-value resolution through the product-owned resolver/policy; no value store or client method. |
+| harmos.v1 | Invocations | Invoke | Client; generic invocation of an admitted operation, including a Public plugin-served operation; operation ID, fingerprint and encoded payload, with caller scope inherited through the host. Adds one method beside Get/Cancel/Watch. |
+
+### Complete Face Inventory and Shared Capabilities
+
+This inventory is exhaustive for the library's wire declarations. Each listed
+service has exactly one face. Equal short names in different packages are
+separate services with separate wrappers, authorization and fingerprints.
+
+| Face / Package | Service | Operations | Reason |
+| --- | --- | --- | --- |
+| Plugin protocol / harmos.plugin.v1 | Instance | Get, Invoke, Samples, Stop | One running instance, host callers only; Samples observes publication demand, not historical reads. |
+| Context / harmos.context.v1 | CatalogEntries | List | Plugin requirement discovery through its context. |
+| Context / harmos.context.v1 | Invocations | Get, Cancel, Watch | Plugin observes/controls its owned child invocations through context. |
+| Context / harmos.context.v1 | Time | Get, Sleep | Authoritative host clock during plugin work. |
+| Context / harmos.context.v1 | Samples | Append | Plugin publishes declared live samples; storage ingestion remains separate. |
+| Context / harmos.context.v1 | Storage | The 32 operations enumerated below | Preserve authorized plugin storage access and transfers as child calls. |
+| Context / harmos.context.v1 | HostValues | Get | Invocation-scoped declared values, unavailable to clients. |
+| Client / harmos.v1 | CatalogEntries | List | Client discovery. |
+| Client / harmos.v1 | Invocations | Invoke, Get, Cancel, Watch | Generic invocation and owned-call lifecycle. |
+| Client / harmos.v1 | Time | Get, Sleep | Host-clock reads/waits for client callers. |
+| Client / harmos.v1 | Storage | The 32 operations enumerated below | Authorized storage reads/mutations/transfers. |
+| Client / harmos.v1 | Plugins | Create, Get, List, Watch, Set, Restart, Delete | Entry management, distinct from a running instance. |
+| Client / harmos.v1 | Access | CreatePairing, CreateCertificate | Client access management. |
+| Client / harmos.v1.access | Listener | Get, Set | Nested access resource. |
+| Client / harmos.v1 | Status | Identity, Health, Availability, Diagnostics | Host status. |
+| Client / harmos.v1.status | Logs | List, Watch | Nested status resource. |
+| Client / harmos.v1.status | TraceEvents | List, Watch | Nested status resource. |
+
+Capabilities on both context and client faces are declared once per face, never
+one service shared by both audiences. This preserves existing plugin-callable
+capabilities rather than silently narrowing them. The complete duplicate list is:
+
+| Services on Both Faces | Operations per Face | Why Both Need Them |
 | --- | --- | --- |
-| Plugins | Create, Get, List, Watch, Set, Restart, Delete | Client gRPC; managed or remote entries, verified bundle references, persistence, activation state and structured failures. Get/Set mirror the whole writable entry and revision. |
-| Access | CreatePairing, CreateCertificate | Client gRPC; pairing admission and validated certificate regeneration/rotation under GrpcManager. |
-| Access.Listener | Get, Set | Client gRPC; whole writable listener value and expected revision, with runtime facts returned separately. |
-| Status | Identity, Health, Availability, Diagnostics | Client gRPC; noun-only single-mode host reads; diagnostics archive reference uses existing ranged content reads. |
-| Status.Logs | List, Watch | Client gRPC; one bounded log selector and position vocabulary. |
-| Status.TraceEvents | List, Watch | Client gRPC; one bounded trace-event selector and position vocabulary. |
-| HostValues | Get | Host-only operation over the plugin invocation carrier; generic declared-value resolution, product-owned policy/resolver, no client gRPC service. |
+| CatalogEntries | List (1) | Both discover contracts; plugin requirement admission still applies. |
+| Invocations | Get, Cancel, Watch (3) | Both observe/control their owned calls, independently authorized. |
+| Time | Get, Sleep (2) | Both read/wait on the host clock, never an SDK wall clock. |
+| Storage | Capabilities, CreateSnapshot, DeleteSnapshot, ListColumnRows, ListIndexEntries, SetIndexDefinition, SetProjectionDefinition, AdvanceProjection, ListProjectionRows, GetProjectionStatus, SetObject, ListRows, WatchRows, AppendRecords, AppendSamples, AppendObjectRevisions, CreateFileProduction, AppendFileBytes, CreateFileWriter, PublishFileProduction, DeleteFileProduction, GetFileBytes, GetFileHash, CaptureFile, WatchFileBytes, WatchFileProduction, ListDirectoryEntries, WatchDirectoryEntries, GetIndexDefinition, GetProjectionDefinition, GetObject, GetFileProduction (32) | Plugins append/read the data they produce and use bounded queries, native-backed selections and resumable transfers; clients consume/manage the same authorized data. Preserve the existing capability set, grants, receipts, retention and shared handlers, with separate face contracts. |
 
-### Service Regrouping
-
-Host becomes CatalogEntries, Invocations, Time and native-only Samples.
-Plugin is singular for its own Get, Invoke, Samples and Stop; Plugin.Samples is
-one streamed publication-demand part, not a manufactured List/Watch pair.
-Storage remains the mixed-resource service under its existing contract: Info and
-Capabilities are noun-only parts; its other methods distinguish separate storage
-resources. The nested-part rule does not invent a generic Storage settings store.
-
-The added services are Plugins, Access, Access.Listener, Status, Status.Logs,
-Status.TraceEvents and native-only HostValues. Nested services use their parent's
-subpackage, not a compound top-level name. A host application may declare a
-nested resource in its own package beside a library service, such as
-`<application>.v1.plugins.Settings` with Get and Set
-beside harmos.v1.Plugins; it does not redeclare the library service.
+There are 38 shared capabilities, hence 76 face-local declarations. Context
+HostValues.Get and Samples.Append have no client counterpart. Client entry,
+access/status management and Invocations.Invoke have no context counterpart.
+The context's generic child-call frame routes a declared requirement through the
+one host registry; it adds no context Invoke RPC or per-provider client service.
+Product plugin operations remain catalog declarations carried by Instance.Invoke,
+not extra library methods or client service declarations.
 
 ### Library-Only Counts
 
-Counts are templates, not resource instances. A logical service is a namespace
-with operations; a namespace-only parent is not an empty service. A gRPC service
-has at least one client/carrier method. Host/plugin-only operations do not gain
-client gRPC methods merely because their logical namespace also has client reads.
+Counts are templates, not instances. Context service descriptors declare method
+signatures and face-local wrappers, carried by child frames; they project zero
+standalone gRPC methods and are never registered on the client endpoint. The
+gRPC column counts declared descriptor methods and states standalone exposure
+where different; only client methods and instance carriers open independent calls.
+Shared primitives, domain payloads, frame alternatives and imported protobuf
+messages are excluded from wrapper totals and require a separate descriptor census.
 
-| Owner / Boundary | Services (Nested Included) | Operations | gRPC Methods | Requests | Responses |
+| Face / Package | Services | Operations / Method Signatures | gRPC Methods | Requests | Responses |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Library, present plugin carriers and built-ins | 5 logical | 45 | 64, including 30 automatic twins | No uniform wrapper rule | No uniform wrapper rule |
-| Library, locked all operations | 13 logical, 3 nested | 67 | 61 | 67 | 67 |
-| Library, exposed subset | 11 gRPC, 3 nested | 61 | 61 | 61 | 61 |
-| Library, native/host-only subset | Samples and HostValues; 4 further native Storage operations | 6 | 0 | 6 | 6 |
+| Plugin protocol / harmos.plugin.v1 | 1 | 4 | 4 | 4 | 4 |
+| Context / harmos.context.v1 | 6 | 40 | 40 (0 standalone) | 40 | 40 |
+| Client / harmos.v1 and nested packages | 10 (3 nested) | 58 | 58 | 58 | 58 |
+| All wire faces | 17 (3 nested) | 102 | 102 (62 standalone) | 102 | 102 |
+| Native storage hooks, no wire package or service | 0 | 4 (not method signatures) | 0 | 4 | 4 |
+| Whole library inventory | 17 (3 nested) | 106 | 102 (62 standalone) | 106 | 106 |
 
-The 13 logical services are Plugin (4 operations), CatalogEntries (1),
-Invocations (3), Time (2), Samples (1), Storage (36), Plugins (7), Access (2),
-Access.Listener (2), Status (4), Status.Logs (2), Status.TraceEvents (2) and
-HostValues (1). The three nested services are Access.Listener, Status.Logs and
-Status.TraceEvents. Plugin.Samples is a method, not a nested service.
+Native Storage.Info, SetSchema, GetSchema and DeleteFile remain native-only
+operations/hooks, not a fourth wire face or additional service. Their existing
+native request/result shapes follow the wrapper vocabulary but are not emitted
+as face methods. Storage has 32 declarations on each wire face plus four native
+hooks: 68 inventory entries, preserving 36 underlying capabilities. StorageBackend
+remains 58 to 52 hooks and StateBackend 8 to 8, or 66 present / 60 target hooks.
 
-Library arithmetic: 45 present operations yield 42 surviving destinations
-(6 method spellings retained, 35 renamed, 3 follow operations merged into one,
-1 streaming upload convenience removed); 5 Get companions yield 47.
-Add 7 Plugins + 4 Access + 8 Status + 1 HostValues = 67.
-Exposed methods: 42 + 7 + 4 + 8 = 61. Six native/host-only operations are
-Samples.Append, Storage.Info, Storage.SetSchema, Storage.GetSchema,
-Storage.DeleteFile and HostValues.Get. Storage remains 36 declarations,
-32 exposed and 4 native-only. StorageBackend remains 58 to 52 hooks and
-StateBackend 8 to 8, for 66 present / 60 target provider hooks.
+Arithmetic: the previous 67-operation inventory becomes 106 by adding 38 separate
+context/client declarations and client Invocations.Invoke. The former 61 directly
+opened methods become 62 with Invoke; 40 context descriptor methods stay
+child-carried, for 102 declared gRPC methods overall. Context
+40 = 1 catalog + 3 controls + 2 clock + 32 storage + 1 publication + 1 values.
+Client 58 = 1 catalog + 4 invocations + 2 clock + 32 storage + 7 entries
++ 4 access + 8 status. Protocol 4 + context 40 + client 58 = 102 face operations and 204
+face wrappers; native 4 adds 8 wrappers, for 212 library wrappers.
 
-Library messages: 134 = 67 requests + 67 responses, including 122 exposed
-and 12 native/host-only.
-Shared methods used by plugins are counted once. The count excludes application
-payloads, shared primitives, nested event/control frames and imported protobuf
-messages; the implementation descriptor inventory must census those separately.
+The current tree still has 45 plugin-carrier/built-in operations and 64 projected
+methods including 30 automatic twins. Migration merges three row follows into
+WatchRows, removes streaming-upload convenience, adds five Get mirrors and the
+generic machinery above. No automatic twins survive. A promised cooperative
+final-result replacement changes no method count. Instance.Samples is a method,
+not a nested service. Namespace-only parents never create empty services.
 
-The library's earlier exposed arithmetic remains 64 - 30 twins - 1 WriteFile
-+ 6 production/session bindings + 3 exposed Get mirrors = 42.
-All six session methods are exposed. ReadFile is replaced in place by ranged
-GetFileBytes; WatchFileBytes preserves growth/replacement/truncation observation.
+### Protocol and Context Proto Examples
 
-No automatic twins remain. Only Watch semantics (including single-mode streamed
-parts), plugin carriers and explicitly promised cooperative final-result
-replacements stream. Such a replacement changes no method count.
+These are separate illustrative files with their own face-local wrappers. The
+existing carrier frame contents remain protocol payloads, including child
+requests/results and cancellation. A wrapper is counted once per method even
+when that method streams many frames.
+
+```proto
+// proto/harmos/plugin/v1/instance.proto
+package harmos.plugin.v1;
+message InstanceGetRequest { uint32 revision = 1; }
+message InstanceGetResponse {
+  string id = 1;
+  Catalog catalog = 2;
+  // Version, start time and negotiated protocol/SDK identity remain included.
+}
+message InstanceInvokeRequest { HostFrame frame = 1; }
+message InstanceInvokeResponse { PluginFrame frame = 1; }
+message InstanceSamplesRequest { PublicationFrame frame = 1; }
+message InstanceSamplesResponse { SampleFrame frame = 1; }
+message InstanceStopRequest { string reason = 1; }
+message InstanceStopResponse {}
+service Instance {
+  rpc Get(InstanceGetRequest) returns (InstanceGetResponse);
+  rpc Invoke(stream InstanceInvokeRequest) returns (stream InstanceInvokeResponse);
+  rpc Samples(stream InstanceSamplesRequest) returns (stream InstanceSamplesResponse);
+  rpc Stop(InstanceStopRequest) returns (InstanceStopResponse);
+}
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0; // Invalid: rejected, never a default policy.
+  VISIBILITY_PRIVATE = 1; // Declaring plugin and host.
+  VISIBILITY_PUBLIC = 2; // Other plugins, host and host clients too.
+}
+message OperationContract {
+  string id = 1;
+  string request = 2;
+  string response = 3;
+  Visibility visibility = 4; // Explicit for every plugin-served operation.
+  OperationPolicy policy = 5;
+  bytes fingerprint = 6;
+}
+message Requirement { string id = 1; bytes fingerprint = 2; }
+message Catalog {
+  repeated OperationContract operations = 1;
+  repeated Requirement requires = 2;
+  // Streams, sections, digest and descriptors remain required as today.
+}
+```
+
+```proto
+// proto/harmos/context/v1/time.proto
+package harmos.context.v1;
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+message TimeGetRequest {}
+message TimeGetResponse { google.protobuf.Timestamp now = 1; }
+message TimeSleepRequest { google.protobuf.Duration duration = 1; }
+message TimeSleepResponse {}
+// Descriptor signatures for context child calls; not a client endpoint service.
+service Time {
+  rpc Get(TimeGetRequest) returns (TimeGetResponse);
+  rpc Sleep(TimeSleepRequest) returns (TimeSleepResponse);
+}
+```
+
+```proto
+// proto/harmos/context/v1/storage.proto (excerpt)
+package harmos.context.v1;
+message StorageAppendRecordsRequest {
+  string parent = 1;
+  string request_id = 2;
+  repeated harmos.v1.Record records = 3;
+}
+message StorageAppendRecordsResponse { harmos.v1.Receipt receipt = 1; }
+service Storage {
+  rpc AppendRecords(StorageAppendRecordsRequest) returns (StorageAppendRecordsResponse);
+  // Other mapped signatures have their own context wrappers as well.
+}
+```
+
+The client time/storage excerpts above use harmos.v1 wrappers, never these context
+wrappers. Context CatalogEntries, Invocations, Samples and HostValues follow the
+same per-service file and wrapper rule. Their methods route as child calls during
+Instance.Invoke, preserving inherited scope and cancellation; the host's context
+dispatch does not open an independent context gRPC channel. Requirement IDs may
+also resolve a Public plugin-provided operation in the same registry without
+introducing another service. Only the host opens the provider's Instance.Invoke.
 
 ### Nested Resource Proto Examples
 
@@ -720,8 +892,8 @@ service Logs {
 ```
 
 Status.TraceEvents follows the same per-service file,
-subpackage and wrapper rule. A host-only operation wrapper is not a client RPC:
-its descriptor/declaration records exposure separately from its logical name.
+subpackage and wrapper rule. Context-only wrappers belong to harmos.context.v1 and are carried by child calls;
+no client service or client root is generated for them.
 
 ### Complete Native Provider Mapping
 
@@ -870,7 +1042,7 @@ separately locked.
 
 | Defect | Verification | Locked Independent Correction |
 | --- | --- | --- |
-| Python defaults to Public; other SDKs default to Private | `sdk/python/src/harmos/contracts.py`, Rust operation declarations, C# Operation and C++ header. | Align Python to Private and require explicit Public intent. |
+| Python defaults to Public; other SDKs default to Private | `sdk/python/src/harmos/contracts.py`, Rust operation declarations, C# Operation and C++ header. | Require explicit Private or Public in Rust, Python, C# and C++; no SDK default. Reject omitted/unspecified visibility at admission. |
 | C# lacks invocation-local typed resources and returned cancellation reason | `sdk/csharp/Harmos/Context.cs`: internal cancelReason exists, CancelledAsync returns Task only; no public resource store. | Add per-invocation resource ownership and reason-bearing cancellation, with child settlement parity. These are not persisted settings. |
 | Static storage service exposes a subset | 11 proto RPCs versus 34 authoritative storage declarations and 11 Rust request bindings. | Generate the exposed service/client contracts from one declaration owner; preserve grants and native-only boundaries. |
 | Retry policy has two shapes | Plugin attempts/fixed backoff versus host max_retries/fixed-or-exponential/jitter; plugin declaration lacks replay safety. | One policy and replay classification, with call-local overrides. |
@@ -926,9 +1098,9 @@ owner; they do not block the other locked work. Each has a corresponding task.
 
 ## Migration Plan
 
-The tasks inventory fixes the dependency order. First shared primitives and final
-descriptor/service names; then mechanically generated wrappers and hierarchical
-roots, migrating each affected producer and consumer in one compiling slice.
+The tasks inventory fixes the dependency order. First face package layout,
+per-service file moves and import ownership; then shared primitives and final
+descriptor/service names; then mechanically generated wrappers and hierarchical roots, migrating each affected producer and consumer in one compiling slice.
 Integrate existing plugin-manager work rather than duplicate it. Add Access under
 GrpcManager, Status and product-fact registration under ServiceManager, and the
 generic host-value mechanism under OperationManager. Reuse Storage sessions and

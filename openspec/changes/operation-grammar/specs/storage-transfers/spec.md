@@ -2,10 +2,22 @@
 
 ## ADDED Requirements
 
+### Requirement: Face-Local Transfer Contracts
+
+The mapped storage contracts SHALL apply independently to `harmos.context.v1.Storage` child
+calls and `harmos.v1.Storage` client methods where design.md maps the capability
+to both faces. Each face SHALL own its request/response and authorization; shared
+handlers SHALL preserve the same storage guarantees. Native-only hooks SHALL stay native.
+
+#### Scenario: Storage Call by Audience
+
+- **WHEN** a client or an authorized plugin uses a capability mapped to both Storage faces
+- **THEN** the client calls harmos.v1.Storage and the plugin uses harmos.context.v1.Storage through its context child calls, with separate wrappers and authorization and the same storage guarantees
+
 ### Requirement: Shared Resumable Unary Transfers
 
 Clients and plugins SHALL share the library StorageManager's unary resumable
-sessions and ranged content reads through Storage. Uploads SHALL Create, Append
+sessions and ranged content reads through separate context and client Storage declarations, sharing handlers. Uploads SHALL Create, Append
 ordered bytes at offsets, Get status, Publish or Delete to abandon. Configuration
 SHALL bound chunks/ranges. Products SHALL compose Storage directly and retain
 object metadata, removing duplicate upload engines. Plugin operations SHALL
@@ -14,7 +26,7 @@ remain logically unary within their carriers.
 #### Scenario: Client and Plugin Upload
 
 - **WHEN** a client and an authorized plugin upload content
-- **THEN** both call the library Storage session methods on the host endpoint, with the same bounded unary chunk, receipt and integrity rules
+- **THEN** the client calls harmos.v1.Storage on the host endpoint and the plugin makes harmos.context.v1.Storage child calls through its context, with separate wrappers and authorization but the same bounded unary chunk, receipt and integrity rules
 - **AND** no second Content/Uploads service or generic transfer implementation is introduced
 
 #### Scenario: Unsupported Provider
@@ -69,7 +81,7 @@ publish or delete a session. Grant checks SHALL apply to every session action.
 
 GetFileBytes SHALL accept offset, maximum bytes and optional at, returning a
 bounded byte range, total content length, content digest and resolved_at. Clients
-and plugins SHALL repeat that same unary Get to continue or resume. There SHALL
+and plugins SHALL repeat their own face's unary Get to continue or resume. There SHALL
 be no streaming download operation or automatically generated twin.
 
 #### Scenario: Interrupted Download
