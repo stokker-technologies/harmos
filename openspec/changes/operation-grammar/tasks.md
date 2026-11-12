@@ -124,3 +124,9 @@ and the complete built-in mapping.
   and its generate example for both storage faces and reflection. The merged generator
   retains these inputs, `context` Rust module, shared `storage_types.proto`
   imports and independently owned context/client operation declarations when joined.
+
+- Storage descriptor inventory: both face-local Storage services now declare all 32
+  locked method pairs; the shared payload file declares no service. Rust/Python bindings
+  regenerate through the joined core generator. Focused proof:
+  `generated_code_matches_proto::generated_code_matches_proto` (1 passed). Task 1.4
+  remains open until every declaration is bound to its migrated shared handler.

@@ -186,16 +186,3 @@ message ObjectConflict { ObjectVersionToken current = 1; }
 message CompareExchangeOutcome { oneof outcome { ObjectReceipt applied = 1; ObjectConflict conflict = 2; } }
 enum StorageFailureKind { STORAGE_FAILURE_UNSPECIFIED = 0; STORAGE_FAILURE_UNSUPPORTED = 1; STORAGE_FAILURE_CONFLICT = 2; STORAGE_FAILURE_EXPIRED = 3; STORAGE_FAILURE_NOT_READY = 4; STORAGE_FAILURE_GAP = 5; STORAGE_FAILURE_EXHAUSTED = 6; STORAGE_FAILURE_INVALID = 7; STORAGE_FAILURE_MISSING_INDEX = 8; }
 message StorageFailure { StorageFailureKind kind = 1; string message = 2; }
-service Storage {
-  rpc Capabilities(.harmos.storage.v1.Capabilities) returns (StorageCapabilities);
-  rpc OpenSnapshot(.harmos.storage.v1.OpenSnapshot) returns (SavedSnapshot);
-  rpc ReleaseSnapshot(.harmos.storage.v1.ReleaseSnapshot) returns (Empty);
-  rpc ScanArrow(.harmos.storage.v1.ScanArrow) returns (ArrowPage);
-  rpc ScanIndex(.harmos.storage.v1.ScanIndex) returns (IndexPage);
-  rpc RegisterIndex(.harmos.storage.v1.RegisterIndex) returns (DefinitionRevision);
-  rpc RegisterProjection(.harmos.storage.v1.RegisterProjection) returns (DefinitionRevision);
-  rpc AdvanceProjection(.harmos.storage.v1.AdvanceProjection) returns (DefinitionRevision);
-  rpc ReadProjection(.harmos.storage.v1.ReadProjection) returns (ProjectionPage);
-  rpc InspectProjection(.harmos.storage.v1.InspectProjection) returns (ProjectionState);
-  rpc CompareExchangeObject(.harmos.storage.v1.CompareExchangeObject) returns (CompareExchangeOutcome);
-}

@@ -66,6 +66,7 @@ pub fn generate(
     for package in ["harmos.v1", "harmos.context.v1", "harmos.plugin.v1", "harmos.storage.v1"] {
         let path = output.join(format!("{package}.rs"));
         let mut messages = std::fs::read_to_string(&path)?;
+        messages = messages.replace("super::super::super::storage::v1::", "crate::storage::");
         messages = messages.replace("super::super::storage::v1::", "crate::storage::");
         messages = messages.replace("super::storage::v1::", "crate::storage::");
         messages = messages.replace("super::super::super::v1::", "crate::v1::");
