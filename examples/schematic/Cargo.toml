@@ -83,6 +83,9 @@ all = "warn"
 [profile.dev.package.harmos-domain]
 opt-level = 2
 
+[profile.dev.package.harmos-operations]
+opt-level = 2
+
 [profile.dev.package.serde_json]
 opt-level = 2
 
