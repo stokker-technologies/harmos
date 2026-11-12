@@ -2,6 +2,7 @@ Status: locked by the owner on 2026-11-12
 Boundary, managers and nested resources locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
 Separation by audience locked by the owner on 2026-11-12
+Three visibility levels locked by the owner on 2026-11-12
 
 # Operation Grammar
 
@@ -21,8 +22,8 @@ the locked contract; implementation is not authorized by this documentation task
 | Decision | Status | Direction |
 | --- | --- | --- |
 | Audience Separation | LOCKED, 2026-11-12 | Each service has one audience face and package: harmos.plugin.v1.Instance (host calls plugin), harmos.context.v1 (plugin child calls host), harmos.v1 and parent sub-packages (clients call host). Shared capabilities have separate face-local request/response contracts, even with a shared handler. Plugins remains client entry management. |
-| Visibility | Owner | Per plugin-served catalog operation: explicit Private (declaring plugin and host) or Public (everyone connected, including other plugins and clients), with no default in any SDK. The host mediates every invocation, checks requirements/fingerprints/admitted providers and visibility, inherits scope, and propagates cancellation/failures. Faces do not replace visibility. |
-| Face Generation | Owner | Plugin SDK: serve protocol and call context; client: client API only; host: all three. Product plugin operations stay catalog operations carried by Instance.Invoke in their plugin face, never client services. |
+| Visibility | LOCKED, 2026-11-12 | Explicit Private (plugin-internal, SDK-local, absent from catalog and every wire, no gRPC binding), Protected (plugin and host, catalogued, host-to-plugin carrier only, no client gRPC binding), or Public (other plugins by declared requirement and clients, through the host; client gRPC binding permitted). No SDK default. Faces do not replace visibility. Built-in mapping is decided in design.md. |
+| Face Generation | Owner | Plugin SDK: serve protocol and call context; client: client API only; host: all three. Exported Protected/Public plugin operations stay catalog operations carried by Instance.Invoke in their plugin face, never client services; Private operations remain local. |
 | Names | Owner | Resource services with bare verbs; single-mode parts use nouns; multimode parts are nested resource services with bare verbs; mixed-resource Storage retains its resource nouns. Service-qualified wrappers follow design.md. |
 | Reply envelopes | Owner | Always return the response wrapper, including empty results, rather than a bare resource. |
 | Ordinary verbs | Owner | Closed set: Get, List, Watch, Set, Create, Delete, Append. Update, Read, Browse, Put, Edit, Add, Remove, Follow, Scan, Inspect and Register are not verbs in the new grammar. |

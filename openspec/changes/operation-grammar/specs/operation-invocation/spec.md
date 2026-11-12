@@ -62,30 +62,56 @@ The product owns that rename implementation; no new library Rename RPC is requir
 - **WHEN** the product renames one identified resource while a sibling attempt shares its parent
 - **THEN** only the selected resource's name and revision change and the sibling retains its prior name
 
-### Requirement: Explicit Plugin Catalog Visibility
+### Requirement: Explicit Three-Level Operation Visibility
 
-Each plugin-served catalog operation carried by Instance.Invoke SHALL explicitly
-choose Private (declaring plugin and host) or Public (everyone connected,
-including other plugins and host clients). All four SDKs SHALL require the choice
-with no default. Admission SHALL reject absent/unspecified visibility and retain
-catalog requirements, descriptors, fingerprints and digest checks. Faces SHALL
-NOT replace visibility.
+Every SDK operation SHALL explicitly choose Private, Protected or Public with no
+default. The same levels SHALL apply to host-declared built-ins, following the
+decided mapping in design.md, which closes the earlier built-in mapping question.
+Faces SHALL NOT replace visibility. Admission SHALL reject unspecified visibility,
+Private catalog entries and Private/Protected client-facing gRPC bindings while
+retaining requirement, descriptor, fingerprint and digest validation.
 
-#### Scenario: Private Operation Refusal
+#### Scenario: Private Local Execution
 
-- **WHEN** a plugin makes the same child call to another plugin's Private operation
-- **THEN** the host refuses with an error naming the attempted action and does not invoke the provider
-- **AND** the declaring plugin and the host retain access to that Private operation
+- **WHEN** a plugin invokes its own Private operation
+- **THEN** its SDK executes the handler inside that plugin process with the ordinary operation policy, retries, deadlines and cancellation
+- **AND** the operation is absent from its catalog, invisible to the host, has no gRPC method and sends no operation declaration or invocation on any wire, including the host/plugin carrier
 
-#### Scenario: Client Cannot Invoke a Private Plugin Operation
+#### Scenario: Private Is Not Remotely Invocable
 
-- **WHEN** a client submits a plugin's Private operation through Invocations.Invoke
-- **THEN** the host refuses with an error naming the action without invoking the instance
+- **WHEN** the host, another plugin or a client attempts to invoke a plugin's Private operation
+- **THEN** no exported operation or route exists and the handler is not invoked
+
+#### Scenario: Protected Host and Owner Invocation
+
+- **WHEN** the declaring plugin or its host invokes a Protected operation
+- **THEN** invocation is permitted under policy; the catalog declares it and the host invokes it only over that plugin's carrier
+- **AND** it cannot be associated with a client-facing gRPC method
+
+#### Scenario: Protected Peer and Client Refusal
+
+- **WHEN** another plugin or a client attempts to invoke a Protected operation
+- **THEN** the host refuses with a failure naming the action before invoking its provider
+
+#### Scenario: Public Invocation
+
+- **WHEN** another plugin with a matching declared requirement or an authorized client invokes a Public operation
+- **THEN** the host checks admission and routes the invocation to the provider; a client-facing gRPC binding is permitted
+
+#### Scenario: Host-Only Plugin Requests
+
+- **WHEN** a host application declares an operation that only it may request of a plugin
+- **THEN** it declares Protected, preserving host-to-plugin carrier access while refusing other plugins and clients
 
 #### Scenario: Missing Explicit Visibility
 
-- **WHEN** a declaration in any SDK omits Private or Public, or a catalog supplies unspecified visibility
-- **THEN** SDK declaration or catalog admission refuses it instead of choosing a default
+- **WHEN** an SDK declaration omits Private, Protected or Public, or a catalog supplies unspecified visibility or Private
+- **THEN** declaration or admission refuses it instead of choosing a default or exporting a local operation
+
+#### Scenario: Built-In Mapping
+
+- **WHEN** built-in declarations migrate to the three levels
+- **THEN** they follow design.md's decided mapping, preserve request grants and owned-invocation checks, and do not export local-only Private operations
 
 ### Requirement: Host-Mediated Plugin Calls
 
@@ -125,3 +151,55 @@ SHALL connect to an instance.
 
 - **WHEN** a child call lacks a declared requirement, has a mismatching fingerprint or has no admitted provider
 - **THEN** the host refuses before Instance.Invoke with an error naming the attempted action
+
+### Requirement: Unary Plugin Attempts
+
+Each plugin-served operation attempt SHALL have one request and one final
+response. Duplex control/child frames SHALL NOT turn the operation into a request
+or result stream. Samples and Watch SHALL retain their separate purposes; native
+host operations MAY retain explicitly declared streaming contracts.
+
+#### Scenario: Unary Result over a Duplex Carrier
+
+- **WHEN** a host invokes a plugin operation while exchanging child calls or cancellation frames
+- **THEN** one attempt still consumes one operation request and settles with one final result or structured failure
+
+#### Scenario: Malformed Unary Input
+
+- **WHEN** one invocation supplies malformed payload bytes
+- **THEN** it fails without running its handler and unrelated valid invocations remain usable
+
+### Requirement: Catalog Admission Integrity
+
+Before activation, the host SHALL validate catalog digest, message descriptors,
+operation fingerprints, requirements and provider identity. Plugin operation IDs
+SHALL be unambiguous in the host registry, including collisions with host entries.
+Missing providers MAY arrive later, but a matching ID with a mismatched contract
+SHALL refuse admission or invocation, never bind by arrival order.
+
+#### Scenario: Tampered Catalog
+
+- **WHEN** a catalog advertises a wrong digest, invalid fingerprint or unresolved message schema
+- **THEN** activation refuses before publishing its operations
+
+#### Scenario: Duplicate Provider
+
+- **WHEN** another plugin or host entry attempts to claim an admitted plugin operation ID
+- **THEN** registration refuses with the conflicting identity and leaves the admitted provider intact
+
+### Requirement: Authoritative Host Time
+
+Plugin waits and interval publication SHALL use the authoritative host clock.
+Virtual time SHALL NOT advance past active unsettled plugin work. Device-driven
+samples SHALL remain independent of host ticks and preserve source time separately
+from host evidence time.
+
+#### Scenario: Active Invocation
+
+- **WHEN** a plugin invocation has active work and a virtual host timer is ready to advance
+- **THEN** advancement waits for work settlement rather than overtaking that invocation
+
+#### Scenario: Interval and Device Publication
+
+- **WHEN** interval publication and device-driven samples are consumed
+- **THEN** host ticks select interval timing while device samples require no tick, with source time separate from host timestamps

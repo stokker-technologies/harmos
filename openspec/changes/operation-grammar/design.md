@@ -4,6 +4,7 @@ Status: locked by the owner on 2026-11-12
 Boundary, managers and nested resources locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
 Separation by audience locked by the owner on 2026-11-12
+Three visibility levels locked by the owner on 2026-11-12
 
 Nothing here claims implementation.
 Only the explicitly listed open questions await decisions when their work is reached.
@@ -38,8 +39,9 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   instance methods; plugins cannot call client-only methods. The host opens every
   instance call; plugins and clients never connect directly to an instance.
   Product declarations follow `<product>.plugin.v1`, `<product>.context.v1` and
-  `<product>.v1` for the same audiences. Product plugin lifecycle operations are
-  catalog operations carried by Instance.Invoke, never client services. No
+  `<product>.v1` for the same audiences. Host-requested plugin lifecycle operations are
+  Protected catalog operations carried by Instance.Invoke, never client services;
+  Private implementation operations stay local and have no face declaration. No
   product resource or operation is declared by this library change.
 - **Face-Local Contracts (Owner):** a capability needed on two faces has one
   declaration per face, with its own request, response, full operation ID and
@@ -47,12 +49,24 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   and is authorized independently. Shared domain payloads/primitives are allowed;
   importing another face's method wrappers as one's own is not. Context
   declarations are invoked as child calls, not opened as independent client RPCs.
-- **Visibility (Owner):** faces do not replace visibility. A face says who serves
-  a gRPC service and who may call it on the wire. Visibility is explicit per
-  operation a plugin serves, in its catalog, carried by Instance.Invoke: Private
-  means the declaring plugin and the host; Public means everyone connected,
-  including other plugins and the host's clients. All four SDKs require explicit
-  Private or Public, with no default; admission rejects absent/unspecified values.
+- **Visibility (Owner, Three Levels Locked 2026-11-12):** faces do not replace
+  visibility. A face says who serves a gRPC service and who may call it on the
+  wire. Every SDK operation explicitly chooses Private, Protected or Public,
+  without a default. Private is plugin-internal: only the plugin itself invokes
+  it inside its process. It is absent from the catalog, never travels on any
+  wire (including the host-to-plugin carrier), cannot bind a gRPC method and is
+  invisible to the host. The SDK dispatches it locally with the same policy,
+  retries, deadlines and cancellation handling as any operation. Protected is
+  catalogued and callable by the plugin and its host over that carrier only;
+  other plugins and clients are refused, and no client-facing gRPC binding is
+  allowed. Public is exposed: other plugins with a declared requirement and
+  clients invoke it through the host; a client-facing gRPC binding is permitted.
+  Admission rejects unspecified visibility and any Private catalog entry or
+  Private/Protected client-facing binding. The same levels apply to built-ins;
+  their decided mapping is below. The owner's purposes are: "a private operation
+  never appears on the wire, is consumed only internally by the plugin and does
+  not allow association to a grpc endpoint"; "a plugin should be able to call
+  another operation in another plugin if exposed".
   A plugin can invoke another plugin's Public operation: plugin, host, plugin.
   The calling plugin declares a requirement and makes a child call through its
   context. The host resolves it in its one operation registry, checks visibility,
@@ -61,8 +75,10 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   structured failure returns through the host; cancellation reaches the child.
   A client invokes a Public plugin-served operation through the generic
   `harmos.v1.Invocations.Invoke` path, with the same host checks and routing.
-  Private operations refuse other plugins and clients with an error naming the
-  attempted action; host mediation never broadens visibility.
+  Protected operations refuse other plugins and clients with an error naming the
+  attempted action; Private operations have no host route at all. Host mediation
+  never broadens visibility. A host application's operations that only it may
+  request of a plugin are declared Protected, never Private or Public.
 - **Generation by Audience (Owner):** a plugin SDK generates the plugin protocol
   to serve and context to call; a client generates only the client API; a host
   generates all three. This applies to Rust, Python, C# and C++. Filter descriptor
@@ -630,6 +646,60 @@ child request/result, parent cancel/child cancel, and publication opening/ticks.
 They are frames, not additional public RPCs. Keep catalog sections, requirements,
 visibility, fingerprints, digest, descriptors and failure causes used in admission.
 
+### Current Visibility Discrepancy
+
+`crates/harmos-runtime/src/operations/manager/plugin_grpc.rs` applies the Private
+peer check only when the selected provider has a plugin Binding. A host-provided
+built-in still requires a matching declared requirement/fingerprint, but bypasses
+that visibility gate. `entry.rs` rejects external Private invocation separately.
+The existing private_refusal.rs story proves plugin-provider refusal, not
+host-built-in refusal. This is not an intentional grant or a reason to weaken
+Protected: task 0.9 must prove and enforce the locked host-built-in admission.
+
+### Decided Built-In Visibility Mapping
+
+**Owner Direction, 2026-11-12:** the following is the decided mapping, closing
+`operation-visibility` task 1.7; its old two-level text describes the earlier
+implementation, not the current direction. Today means the declarations under
+`crates/harmos-operations/src/`; omitted VISIBILITY uses the Private default in
+`execution/operations/registration/generated.rs`. The inventory includes all 41
+built-ins plus reserved lifecycle/observer controls. Private means process-local
+for the declaring host as well as for a declaring plugin; none of these existing
+host-driven controls becomes invisible to its host by being relabelled Private.
+
+| Current Built-In IDs | Today | Locked Level and Destination |
+| --- | --- | --- |
+| host.catalog | Public | Public: CatalogEntries.List on context/client faces. |
+| host.operations.status, host.operations.cancel, host.operations.watch | Public | Public: Invocations.Get/Cancel/Watch; ownership checks remain. |
+| harmos.clock.now, harmos.clock.sleep | Public | Public: Time.Get/Sleep on context/client faces. |
+| host.publish | Public | Public: context Samples.Append; face restricts callers independently. |
+| storage.capabilities, storage.open_snapshot, storage.release_snapshot, storage.scan_arrow, storage.scan_index | Public | Public: Storage.Capabilities/CreateSnapshot/DeleteSnapshot/ListColumnRows/ListIndexEntries. |
+| storage.register_index, storage.register_projection, storage.advance_projection, storage.read_projection, storage.inspect_projection, storage.compare_exchange_object | Public | Public: Storage.SetIndexDefinition/SetProjectionDefinition/AdvanceProjection/ListProjectionRows/GetProjectionStatus/SetObject. |
+| storage.query, storage.follow_records | Public | Public: Storage.ListRows/WatchRows. |
+| storage.follow_stream, storage.follow_objects | Private | Public: selectors of the already locked shared context/client Storage.WatchRows; preserve storage grants. |
+| storage.write_records, storage.write_streams, storage.write_objects | Public | Public: Storage.AppendRecords/AppendSamples/AppendObjectRevisions. |
+| storage.write_file | Public | Public: shared Storage.CreateFileProduction/AppendFileBytes/PublishFileProduction workflow. |
+| storage.create_file, storage.append_file, storage.resume_file, storage.finish_file, storage.abandon_file | Private | Public: shared Storage.CreateFileProduction/AppendFileBytes/CreateFileWriter/PublishFileProduction/DeleteFileProduction; preserve storage grants. |
+| storage.read_file, storage.hash_file, storage.capture_file, storage.follow_file, storage.follow_production, storage.list_directory, storage.watch_directory | Public | Public: Storage.GetFileBytes/GetFileHash/CaptureFile/WatchFileBytes/WatchFileProduction/ListDirectoryEntries/WatchDirectoryEntries. |
+| storage.status, storage.write_schema, storage.delete_file | Private | Protected: native-only Storage.Info/SetSchema/DeleteFile; host use only, no wire projection. |
+| harmos_observe | Private | Protected: host-driven observer control on its owning plugin's carrier, no client binding. |
+| harmos.initialize, harmos.shutdown | Private | Protected: host-driven plugin lifecycle controls, no client binding. |
+
+New context/client built-ins in the generic machinery inventory are Public:
+Plugins and its nested library services, Access/access.Listener,
+Status/status.Logs/status.TraceEvents, Invocations.Invoke, Storage definition Get
+mirrors (except native-only Protected GetSchema) and GetFileProduction. Context-only HostValues.Get is Public within its
+face and resolver policy, like Samples.Append. Carrier methods are protocol
+controls, not user operations with a visibility choice. A future host-only request
+of a plugin must be declared Protected. Private remains available for local
+implementation operations and is never exported to implement a host request.
+
+Public permits routing; it does not grant storage or application authority.
+The current Private file-session and follow helpers becoming Public replacements
+is intentional in the previously locked shared transfer/read API; preserve their
+request grants and admission checks. This mapping does not reinterpret today's
+Private as the new local-only Private. No built-in mapping question remains open.
+
 ### Added Get Mirrors
 
 | Added Library Operation (Owner: Library) | Exposure | Locked Value Contract |
@@ -725,7 +795,7 @@ messages are excluded from wrapper totals and require a separate descriptor cens
 | Native storage hooks, no wire package or service | 0 | 4 (not method signatures) | 0 | 4 | 4 |
 | Whole library inventory | 17 (3 nested) | 106 | 102 (62 standalone) | 106 | 106 |
 
-Native Storage.Info, SetSchema, GetSchema and DeleteFile remain native-only
+Native Storage.Info, SetSchema, GetSchema and DeleteFile remain Protected native-only
 operations/hooks, not a fourth wire face or additional service. Their existing
 native request/result shapes follow the wrapper vocabulary but are not emitted
 as face methods. Storage has 32 declarations on each wire face plus four native
@@ -778,14 +848,15 @@ service Instance {
 }
 enum Visibility {
   VISIBILITY_UNSPECIFIED = 0; // Invalid: rejected, never a default policy.
-  VISIBILITY_PRIVATE = 1; // Declaring plugin and host.
+  VISIBILITY_PRIVATE = 1; // Local declaration only; forbidden in a wire catalog.
   VISIBILITY_PUBLIC = 2; // Other plugins, host and host clients too.
+  VISIBILITY_PROTECTED = 3; // Declaring plugin and host; carrier only.
 }
 message OperationContract {
   string id = 1;
   string request = 2;
   string response = 3;
-  Visibility visibility = 4; // Explicit for every plugin-served operation.
+  Visibility visibility = 4; // Explicit; only Protected/Public may be catalogued.
   OperationPolicy policy = 5;
   bytes fingerprint = 6;
 }
@@ -1042,7 +1113,7 @@ separately locked.
 
 | Defect | Verification | Locked Independent Correction |
 | --- | --- | --- |
-| Python defaults to Public; other SDKs default to Private | `sdk/python/src/harmos/contracts.py`, Rust operation declarations, C# Operation and C++ header. | Require explicit Private or Public in Rust, Python, C# and C++; no SDK default. Reject omitted/unspecified visibility at admission. |
+| Python defaults to Public; other SDKs default to Private | `sdk/python/src/harmos/contracts.py`, Rust operation declarations, C# Operation and C++ header. | Require explicit Private, Protected or Public in Rust, Python, C# and C++; no SDK default. Keep Private local and out of catalogs. Reject omitted/unspecified visibility at admission. |
 | C# lacks invocation-local typed resources and returned cancellation reason | `sdk/csharp/Harmos/Context.cs`: internal cancelReason exists, CancelledAsync returns Task only; no public resource store. | Add per-invocation resource ownership and reason-bearing cancellation, with child settlement parity. These are not persisted settings. |
 | Static storage service exposes a subset | 11 proto RPCs versus 34 authoritative storage declarations and 11 Rust request bindings. | Generate the exposed service/client contracts from one declaration owner; preserve grants and native-only boundaries. |
 | Retry policy has two shapes | Plugin attempts/fixed backoff versus host max_retries/fixed-or-exponential/jitter; plugin declaration lacks replay safety. | One policy and replay classification, with call-local overrides. |

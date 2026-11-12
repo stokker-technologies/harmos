@@ -47,14 +47,20 @@ preserve the existing callable capabilities without exposing context to clients.
 ### Requirement: Product Declarations Follow Audience Packages
 
 Product declarations SHALL use `<product>.plugin.v1`, `<product>.context.v1` or
-`<product>.v1` by audience. Product plugin-served lifecycle operations SHALL be
-catalog operations carried by Instance.Invoke, never client services. This library
+`<product>.v1` by audience. Host-requested plugin lifecycle operations SHALL be Protected
+catalog operations carried by Instance.Invoke, never client services. Private
+implementation operations SHALL remain local with no face declaration. This library
 SHALL declare no product resources or operations. Nested resources SHALL retain
 their parent sub-packages and bare verbs within their face.
 
+#### Scenario: Private Implementation Operation
+
+- **WHEN** a plugin declares a Private implementation operation
+- **THEN** it is dispatched locally without a face service, wire declaration or catalog entry
+
 #### Scenario: Product Plugin Contract
 
-- **WHEN** a product declares an operation its plugin performs
+- **WHEN** a product declares an exported Protected or Public operation its plugin performs
 - **THEN** the operation uses its product plugin-face package and catalog visibility, is carried by Instance.Invoke and is not declared as a client service
 
 ### Requirement: Generate Only Required Faces
@@ -304,3 +310,89 @@ product services.
 
 - **WHEN** authorized access operations replace listener settings or regenerate a certificate
 - **THEN** GrpcManager owns the live listener/certificate lifecycle and validation rather than a product copy
+
+### Requirement: Library Dependency Direction
+
+Production dependencies SHALL remain acyclic: runtime composes operations,
+storage, domain and protocol; operations and storage depend on domain/protocol;
+domain depends on protocol; the standalone Rust SDK depends on protocol/derive.
+Protocol, domain, storage, operations and language SDKs SHALL NOT depend on the
+host runtime or consuming products. Runtime SHALL own sandbox authority.
+Build, derive and development dependencies SHALL NOT be mistaken for ownership
+of a production runtime resource.
+
+#### Scenario: Standalone Contract Consumer
+
+- **WHEN** a plugin or generated-contract client uses the standalone SDK
+- **THEN** its production dependency graph contains no host runtime or consuming product
+
+#### Scenario: Forbidden Dependency Edge
+
+- **WHEN** a lower library crate adds an upward runtime or consuming-product production dependency
+- **THEN** dependency validation rejects that edge rather than allowing a second host authority
+
+### Requirement: Policy Ownership and Honest Budgets
+
+Operation deadlines, delays and retries SHALL have one owner in operation policy
+or owning subsystem configuration; a caller override SHALL affect one invocation
+only. Consumers SHALL own storage budgets, admission, concurrency and response
+batch sizes; the library SHALL own protocol constants and correctness constraints.
+Budgets, limits, deadlines and required checks SHALL NOT be weakened to pass proof.
+
+#### Scenario: Call-Local Override
+
+- **WHEN** a caller overrides retry policy for one admitted operation
+- **THEN** later invocations retain the callee policy and replay-safety admission remains enforced
+
+#### Scenario: Backend Policy Migration
+
+- **WHEN** backend I/O, retry or session lifetimes currently use private constants
+- **THEN** implementation moves operational policy to its owning policy/configuration rather than claiming those constants are consumer configuration
+
+#### Scenario: Consumer Resource Selection
+
+- **WHEN** a consumer selects storage response sizing, concurrency or admission limits
+- **THEN** construction validates those settings without inventing product policy or overriding correctness constraints
+
+#### Scenario: Failed Budget Proof
+
+- **WHEN** behavior misses a configured deadline, budget or limit
+- **THEN** proof reports the failure and repairs the implementation without enlarging the value to obtain a pass
+
+### Requirement: Deterministic Behavioral Proof
+
+Correctness tests SHALL be deterministic, story-shaped at integration level and
+above, and based on observable behavior. Deadline/delay stories SHALL use a
+controlled clock or event; real elapsed time, machine load and sampled memory
+SHALL be benchmark measurements, never pass/fail assertions. Authored prose,
+tautologies and a single repository constant SHALL NOT be asserted in tests.
+A hang guard MAY stop stuck work without making elapsed time a behavioral claim.
+
+#### Scenario: Deadline Story
+
+- **WHEN** a story proves cancellation or deadline expiry
+- **THEN** it controls clock advancement and handler events and checks settlement independently of machine speed
+
+#### Scenario: Performance Evidence
+
+- **WHEN** a workload measures lag, throughput or memory
+- **THEN** it records benchmark evidence rather than asserting sampled resource use in a correctness test
+
+#### Scenario: Contract Review
+
+- **WHEN** a test is proposed to protect an invariant
+- **THEN** it exercises behavior and cannot pass merely by quoting maintained prose or comparing a repository constant with itself
+
+### Requirement: Consistent Generic SDK Vocabulary
+
+Library protocol, SDKs, conformance and architecture contracts SHALL use generic
+vocabulary without product objects or private identities. Rust, Python, C# and
+C++ SDKs SHALL remain library-owned and name the same concepts consistently in
+normal language casing. Product SDKs SHALL compose those library SDKs. This
+requirement SHALL NOT imply that unresolved semantic plugin parity or generic
+managed-client language coverage is already implemented or decided.
+
+#### Scenario: Independent Host
+
+- **WHEN** an independent host consumes any library SDK and generated resource roots
+- **THEN** it receives the same library concepts without requiring another product's model or runtime

@@ -3,10 +3,11 @@
 The owner locked the contract on 2026-11-12.
 Boundary, managers and nested resources locked by the owner on 2026-11-12
 Separation by audience locked by the owner on 2026-11-12
+Three visibility levels locked by the owner on 2026-11-12
 
 This is a future implementation inventory, not permission to implement. This
-documentation task edits only proposal.md, design.md, tasks.md and the five
-specs/*/spec.md deltas in this change. No source, generated files, lifecycle
+documentation task maintains this change and the linked architecture contract
+and repository documentation guidance. No source, generated files, lifecycle
 commands, push or product checkout edits are authorized by this task.
 
 The locked source inventory covers library proto/protocol/operations/storage,
@@ -19,6 +20,19 @@ Every task below is unchecked future work. Order is dependency order: establish
 face package layout and move files before primitives, descriptors or consumers
 migrate. Each source task migrates its affected producer, generated bindings and
 compile-time consumers atomically.
+
+## 0. Visibility Guards and SDK Dispatch
+
+- [ ] 0.1 Add the deterministic story guarding **Three-Level Visibility** and **Host-Mediated Public Calls** first: plugin to host to another plugin's Public operation succeeds; Private runs only in its declaring process, is absent from the catalog and every wire, and is unreachable from the host, another plugin or a client. Existing child_calls.rs and private_refusal.rs prove the old two-level routing/refusal only, not the new Private contract. Cover both call directions, returned failures, inherited scope, requirements/fingerprints and child cancellation.
+- [ ] 0.2 Add the third visibility enum value (Protected), explicit SDK selection with no default, and admission rules rejecting unspecified values, Private catalog entries, and Private/Protected client gRPC bindings. Preserve Public routing through the host.
+- [ ] 0.3 Implement SDK-local Private dispatch with ordinary policy, retry, deadline and cancellation semantics in Rust (sdk/rust/src/context.rs): today child calls use the host carrier, not a local handler registry.
+- [ ] 0.4 Implement the same SDK-local Private dispatch in Python (sdk/python/src/harmos/context.py): today operation() emits a ChildRequest through the host.
+- [ ] 0.5 Implement the same SDK-local Private dispatch in C# (sdk/csharp/Harmos/Context.cs): today CallAsync writes a ChildRequest through the host.
+- [ ] 0.6 Implement the same SDK-local Private dispatch in C++ (sdk/cpp/include/harmos/harmos.hpp): today Context::call sends a ChildRequest through the host. No four-language SDK currently supplies this local operation path.
+- [ ] 0.7 Add conformance cases in each SDK: Private absent from catalogs and callable only locally; Protected invocable by host and declaring plugin but refused to another plugin and a client; Public invocable by another plugin with a requirement and by a client through the host. Verify no Private bytes appear even on the host/plugin carrier.
+- [ ] 0.8 Apply design.md's decided built-in mapping, including reserved controls and native hooks; this records the resolution of operation-visibility task 1.7 without editing that earlier change. Keep product host-only requests of a plugin declared Protected and prove their refusal to other plugins/clients.
+
+- [ ] 0.9 Guard **Current Two-Level Admission**'s identified host-built-in gap with a deterministic migrated Protected built-in story: a plugin with a matching declared requirement is still refused, as is a client, while the declaring host retains access. Fix submit_grpc_child's plugin-binding-only visibility gate; do not lock its bypass in as compatibility.
 
 ## 1. Face Packages, Primitives, Final Descriptors and Benchmark Cases
 
@@ -55,12 +69,34 @@ compile-time consumers atomically.
 ## 4. Four-Language SDK Roots and Library Consumers
 
 - [ ] 4.1 Produce a common descriptor table with owner/face/version, parent/service/method, wrappers, cardinality and exposure; add face-selecting build generators for Rust, Python, C# and C++. Generate plugin SDKs with protocol serving and context calling only, clients with client API only, and hosts with all three; generate hierarchical roots only for their audience. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
-- [ ] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, admission, cross-plugin Public invocation, Private refusal naming the action, client Public invocation, inherited scope, child cancellation, clock, failure and call-local policy behavior; deny client context/protocol calls and plugin client-only calls. Preserve explicit catalog visibility and one host registry.
+- [ ] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, admission, cross-plugin Public invocation, Protected refusal naming the action and local-only Private execution, client Public invocation, inherited scope, child cancellation, clock, failure and call-local policy behavior; deny client context/protocol calls and plugin client-only calls. Preserve explicit catalog visibility and one host registry.
 - [ ] 4.3 Settle the semantic plugin-parity promise across Rust, Python, C# and C++ and record it in design.md; four-language client-root naming is already locked.
 - [ ] 4.4 Settle generic managed-client invocation coverage (Rust-only or more languages) and record it in design.md without reopening the naming hierarchy.
-- [ ] 4.5 Require explicit Private or Public visibility in all four SDKs with no default and reject omitted/unspecified visibility at admission, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
+- [ ] 4.5 Require explicit Private, Protected or Public visibility in all four SDKs with no default and reject omitted/unspecified visibility at admission, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
 - [ ] 4.6 Migrate tools/conformance/, fixtures, native/guest examples, generated clients and affected tests in the owning compiling slices; preserve interval/device publication and update README/topic/language-guide claims with each user-facing change.
 - [ ] 4.7 Verify generated service-stub sets in all four languages: plugin = Instance server plus context callers, client = client-face callers, host = all faces. Reject cross-audience root/stub leakage while retaining imported shared payloads. Keep this generation contract separate from the open semantic parity and managed-client language questions.
+
+## Architecture Guards
+
+These are future deterministic behavior/structure guards for the named invariants
+in docs/architecture.md, not tests of that document's wording. Partial existing
+proof does not close them; no checkbox is completed by this documentation task.
+
+- [ ] A.1 Add **Three Audience Faces** descriptor/generation and admission cases for each SDK, rejecting cross-audience calls and stubs (tasks 1.1, 4.7).
+- [ ] A.2 Add **Explicit Streaming and Cooperative Control** stories proving no generated twins, the single declared final-result replacement, running cancellation/child settlement, distinct Stop and preservation of queued action refusals (tasks 1.4, 3.11).
+- [ ] A.3 Add **Manager Ownership** lifecycle stories for entry activation/retirement, listener rotation, product-fact registration/removal and resolver failure/cleanup, showing each service uses its one manager (tasks 2.1–2.6).
+- [ ] A.4 Add **Library and Product Composition** independent-host stories composing library services/resolvers without redeclarations, duplicate hosting or product settings/secrets stores in the library (tasks 2.1–2.5).
+- [ ] A.5 Add **Resource Operation Grammar** descriptor and four-language generated-call stories for bare verbs, nested packages, service-qualified wrappers, stale whole-value Set and immutable Append (tasks 1.2–1.4, 3.3–3.4, 4.1).
+- [ ] A.6 Add **Position-Resolved Reads** controlled-backend stories for optional at, immediate latest-durable selection, resolved_at in every reply, issued-position paging and durable watch boundaries; keep lag evidence in Nightly benchmarks, not timing assertions (tasks 1.5, 3.2, 3.8–3.9).
+- [ ] A.7 Add **Stable Receipts After Lost Replies** client stories across the migrated mutation surface proving same normalized request returns its original receipt, changed payload conflicts, expiry refuses and admitted completion survives caller loss (task 3.4).
+- [ ] A.8 Add **Callee-Owned Policy and Consumer Budgets** controlled-clock/backend stories for call-local overrides and configured backend I/O, retries and session lifetimes; migrate hardcoded operational policy in crates/harmos-storage/src/config.rs to its owning policy/configuration without weakening limits. Preserve consumer admission/concurrency/response sizing and replay-safety checks.
+- [ ] A.9 Add a deterministic production dependency-graph check for **Crate Dependency Direction**, rejecting upward runtime/product dependencies from lower library crates or SDKs while permitting declared derive/build/dev roles.
+- [ ] A.10 Add **Generic Library SDKs** independent-host conformance and generated-root cases in all four languages using only shared generic concepts; do not close unresolved semantic parity/client-coverage questions by assumption (tasks 4.1, 4.3–4.4).
+- [ ] A.11 Audit **Deterministic Stories** repository-wide: replace timing/load/sampled-memory assertions with controlled-clock/event journeys, move measurements to benchmarks, and remove prose/constant/tautological assertions. Add any missing deterministic deadline/cancellation stories; never test authored wording.
+
+**Three-Level Visibility** and the combined **Host-Mediated Public Calls** guard
+are deliberately first in tasks 0.1–0.8, including all four SDK-local dispatches
+and the complete built-in mapping.
 
 ## 5. Library Handoff and Source Closure
 

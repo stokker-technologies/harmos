@@ -98,3 +98,50 @@ position-resolved reads without making all latest reads request persistence.
 
 - **WHEN** a newly submitted retry uses an expired mutation identity
 - **THEN** it fails explicitly instead of repeating the mutation, while already admitted owners retain their original eventual outcome
+
+### Requirement: Distinct Storage Guarantees
+
+Saved reads SHALL pin durable data; follows that include accepted data SHALL NOT
+label it durable. Bounded physical scans, ordered indexes and exact-revision and
+frontier projections SHALL preserve their distinct semantics. Bulk ingestion
+SHALL NOT substitute for atomic conditional object replacement. Backends SHALL
+preserve their declared durability settings and acknowledge persistence only after
+the corresponding barrier; changing batching SHALL NOT weaken that guarantee.
+
+#### Scenario: Saved Read and Live Follow
+
+- **WHEN** accepted rows arrive after a retained saved read boundary
+- **THEN** the saved read remains at its cut while a follow may report accepted progress without calling it saved
+
+#### Scenario: Index and Projection Continuation
+
+- **WHEN** a bounded scan, ordered index seek or exact-frontier projection continues across writes or restart
+- **THEN** it retains its own ordering, selection and revision/frontier guarantees rather than substituting a live bulk read
+
+#### Scenario: Conditional Update and Durable Acknowledgement
+
+- **WHEN** a conditional object replacement has a stale revision or persistence is incomplete
+- **THEN** a stale replacement conflicts atomically and incomplete persistence is not acknowledged as durable
+
+### Requirement: Safe Root Opening
+
+Incompatible host definitions or invalid recovery snapshots SHALL refuse root
+opening and preserve data. Opening SHALL NOT silently reset, migrate or discard
+history. Guidance SHALL require a backup before a deliberate reset or fresh-root
+selection under application ownership. Retained plugin-owned history SHALL keep
+its stored definitions independently of current plugin presence and shape.
+
+#### Scenario: Incompatible Host Shape
+
+- **WHEN** a stored host record or transaction definition differs from the current compatible inventory
+- **THEN** opening refuses with the affected identity and fresh-root guidance, and existing history remains intact
+
+#### Scenario: Deliberate Reset
+
+- **WHEN** an operator chooses to reset an incompatible root
+- **THEN** backup and reset are explicit application-owned actions rather than side effects of opening the library
+
+#### Scenario: Corrupt Recovery Snapshot
+
+- **WHEN** recovery detects a malformed or inconsistent snapshot
+- **THEN** startup refuses before exposing invalid state and does not clear recovery evidence
