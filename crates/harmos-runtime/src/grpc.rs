@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+pub mod access;
 pub mod authentication;
 pub mod client;
 mod codec;

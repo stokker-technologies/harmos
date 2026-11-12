@@ -37,6 +37,7 @@ grpc = [
   "dep:bytes",
   "tonic/tls-ring",
   "dep:rustls",
+  "dep:rcgen",
   "dep:tokio-rustls",
 ]
 simulation = []
@@ -58,6 +59,7 @@ thiserror = { workspace = true, default-features = true }
 
 # Logging
 tracing = { workspace = true, default-features = true }
+tracing-subscriber = { workspace = true }
 
 # Utilities
 heck = { workspace = true, optional = true }
@@ -92,6 +94,7 @@ tokio = { workspace = true, default-features = true, features = ["rt", "sync", "
 # Networking
 http-body = { workspace = true, optional = true }
 hyper-util = { workspace = true }
+rcgen = { workspace = true, features = ["pem", "ring"], optional = true }
 rustls = { workspace = true, features = ["ring", "std"], optional = true }
 tokio-rustls = { workspace = true, features = ["ring"], optional = true }
 tonic = { workspace = true, default-features = true }

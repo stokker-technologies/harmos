@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1.access;
+message ListenerValue { bool enabled = 1; string endpoint = 2; repeated string certificate_names = 3; }
+message ListenerGetRequest {}
+message ListenerGetResponse { ListenerValue value = 1; bytes revision = 2; string bound_endpoint = 3; }
+message ListenerSetRequest { ListenerValue value = 1; bytes expected_revision = 2; }
+message ListenerSetResponse { ListenerValue value = 1; bytes revision = 2; string bound_endpoint = 3; }
+service Listener {
+ rpc Get(ListenerGetRequest) returns (ListenerGetResponse);
+ rpc Set(ListenerSetRequest) returns (ListenerSetResponse);
+}

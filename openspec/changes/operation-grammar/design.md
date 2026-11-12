@@ -1226,7 +1226,10 @@ trait Contribution: Send + Sync {
 // Status's log/trace recording interface and tracing Layer redact before retention.
 ```
 
-Decisions: Status.Watch is required to observe contributed health changes without polling.
+Decisions: Status.Watch is required to observe contributed health changes without polling;
+it delivers the latest coalesced status, whereas event watches retain ordered batches.
+One frozen diagnostics archive is retained; collecting another explicitly expires the old
+content name rather than adding an unbounded content cache.
 Host identity includes the host-supplied stable identifier; runtime captures its own clock
 start and library version. Contributions have host-owned registration lifetime and explicit
 change notification; provider failure appears as unavailable health and fails diagnostics

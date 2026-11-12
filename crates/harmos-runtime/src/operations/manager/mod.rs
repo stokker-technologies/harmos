@@ -94,6 +94,10 @@ pub(crate) struct WeakOperationManager {
 }
 
 pub(crate) struct Registry {
+    pub(crate) access: Arc<harmos_operations::access::AccessAccess>,
+    pub(crate) status: Arc<harmos_operations::status::StatusAccess>,
+    pub(crate) status_owner: std::sync::Mutex<Option<Arc<crate::services::status::Status>>>,
+    pub(crate) status_started: prost_types::Timestamp,
     pub(crate) service_runner: crate::services::ServiceRunner,
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
@@ -197,6 +201,8 @@ impl Manager {
             .with_resources(self.resources().clone())
             .resources()
             .clone();
+        resources.replace(self.registry.access.clone());
+        resources.replace(self.registry.status.clone());
         resources.replace(Arc::new(harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone())))));
         resources
     }

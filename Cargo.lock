@@ -1192,6 +1192,8 @@ dependencies = [
 name = "harmos-operations"
 version = "0.1.14"
 dependencies = [
+ "futures-core",
+ "futures-util",
  "getrandom 0.4.3",
  "harmos-domain",
  "harmos-packaging",

@@ -60,6 +60,8 @@ serde_json = { workspace = true }
 # Concurrency
 
 # Async
+futures-core = { workspace = true }
+futures-util = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "time"] }
 
 # Networking
