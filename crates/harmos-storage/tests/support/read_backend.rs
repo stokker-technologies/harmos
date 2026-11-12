@@ -39,6 +39,9 @@ impl Data {
                 self.control.view_release.notified().await;
             }
             self.history.check(&at.history)?;
+            if at.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(Error::NotReady { domain: "requested storage cut" });
+            }
             let lost_objects_through = self.control.lost_objects_through.load(Ordering::SeqCst) as u64;
             // Pruned Revisions No Longer Reconstruct An Older Image.
             if at.sequence < lost_objects_through {
@@ -48,6 +51,7 @@ impl Data {
                 });
             }
             let snapshot = Snapshot {
+                at: at.clone(),
                 pruned_objects: self.pruned_objects.lock().unwrap().clone(),
                 blobs: self.blobs.lock().unwrap().clone(),
                 lost_objects_through,
@@ -58,7 +62,7 @@ impl Data {
                 rows: self.rows.lock().unwrap().clone(),
             };
             let token = self.next_snapshot.fetch_add(1, Ordering::SeqCst).to_le_bytes().to_vec();
-            self.snapshots.lock().unwrap().insert(token.clone(), snapshot);
+            self.snapshots.lock().unwrap().insert(token.clone(), Arc::new(snapshot));
             Ok(BackendSnapshot { at: at.clone(), token })
         })
     }

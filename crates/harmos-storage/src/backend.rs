@@ -60,7 +60,7 @@ pub struct ScanPage {
     pub bytes: NonZeroUsize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReadLimits {
     pub rows: NonZeroUsize,
     pub bytes: NonZeroUsize,
@@ -71,6 +71,17 @@ pub struct ReadLimits {
 /* === Traits === */
 
 pub trait StorageBackend: Send + Sync + 'static {
+    fn capabilities(&self) -> crate::query::columnar::StorageCapabilities {
+        crate::query::columnar::StorageCapabilities::default()
+    }
+
+    fn scan_arrow<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::columnar::ArrowScan,
+        _cancel: &'a crate::query::columnar::Cancellation,
+    ) -> StorageFuture<'a, crate::query::columnar::ArrowPage> {
+        unsupported("native Arrow scan")
+    }
+
     // Lifecycle
     fn history(&self) -> &StoreHistory;
     fn open(&self) -> StorageFuture<'_, StorageCursor>;
@@ -196,10 +207,11 @@ impl ReadLimits {
 
 fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
     Box::pin(async move {
-        Err(Error::InvalidInput {
+        Err(Error::backend(
             field,
-            reason: "backend does not support this capability",
-        })
+            crate::BackendFailure::Unsupported,
+            std::io::Error::new(std::io::ErrorKind::Unsupported, "backend does not support this capability"),
+        ))
     })
 }
 

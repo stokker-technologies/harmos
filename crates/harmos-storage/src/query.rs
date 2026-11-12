@@ -12,6 +12,7 @@
 /* === Modules === */
 
 mod accumulate;
+pub mod columnar;
 mod execute;
 mod object_schemas;
 mod order_stats;

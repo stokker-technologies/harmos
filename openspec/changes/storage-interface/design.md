@@ -433,3 +433,11 @@ and generated application clients), and storage examples. All remain unmodified 
 The current host operation's exchange path must adopt the atomic primitive rather than preserve
 read-then-write preconditions when the interface lands. Remaining 2.6 also includes every
 existing backend implementer outside storage, so no complete migration is claimed.
+
+
+The deterministic test backend now retains an immutable `Arc<Snapshot>` per token and checks
+its exact cut; page reads no longer clone the full saved image. This preserves snapshot contents
+and release semantics while removing fixture work that dominated the baseline. SQLite snapshots
+use a durable monotonically allocated identifier and an instance-owned live registry; reopening
+cannot accidentally accept an old token. Native column chunks carry exact integer time bounds
+and finite float bounds; pruning advances source continuation without fetching payload bytes.

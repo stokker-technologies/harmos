@@ -43,6 +43,8 @@ mod receipts;
 mod schema_encoding;
 mod selection;
 mod snapshot;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 mod staging;
 pub mod state;
 mod statistics;

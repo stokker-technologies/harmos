@@ -125,6 +125,7 @@ tonic-reflection = { version = "0.14.8", default-features = false }
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
 
 # Storage
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
 
 # UI
 

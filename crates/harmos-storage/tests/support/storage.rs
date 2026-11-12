@@ -22,8 +22,8 @@ pub use settings::storage_settings;
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 // Third Party Imports
 use tokio::sync::Notify;
@@ -147,8 +147,8 @@ pub struct Control {
     pub flushes: Mutex<Vec<u64>>,
 }
 
-#[derive(Clone)]
 struct Snapshot {
+    at: StorageCursor,
     pruned_objects: BTreeMap<u64, (SchemaKey, ObjectKey)>,
     blobs: BTreeMap<String, (FileReference, Vec<u8>)>,
     lost_objects_through: u64,
@@ -183,7 +183,7 @@ pub struct Data {
     file_io: Mutex<()>,
     pub files: Mutex<BTreeMap<u64, FileReference>>,
     pub blobs: Mutex<BTreeMap<String, (FileReference, Vec<u8>)>>,
-    snapshots: Mutex<BTreeMap<Vec<u8>, Snapshot>>,
+    snapshots: Mutex<BTreeMap<Vec<u8>, Arc<Snapshot>>>,
     next_snapshot: AtomicUsize,
     pub history: StoreHistory,
     pub control: Control,
@@ -450,7 +450,11 @@ impl StorageBackend for Data {
         })
     }
     fn close(&self) -> StorageFuture<'_, ()> {
-        Box::pin(async move { self.control.close() })
+        Box::pin(async move {
+            self.control.close()?;
+            self.snapshots.lock().unwrap().clear();
+            Ok(())
+        })
     }
     fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         self.fixture_open_snapshot(at)
@@ -608,8 +612,14 @@ impl Data {
         })
     }
 
-    fn image(&self, snapshot: &BackendSnapshot) -> Result<Snapshot> {
-        self.snapshots.lock().unwrap().get(&snapshot.token).cloned().ok_or(Error::Closing { domain: "test snapshot" })
+    fn image(&self, snapshot: &BackendSnapshot) -> Result<Arc<Snapshot>> {
+        self.snapshots
+            .lock()
+            .unwrap()
+            .get(&snapshot.token)
+            .filter(|image| image.at == snapshot.at)
+            .cloned()
+            .ok_or(Error::NotReady { domain: "expired test snapshot" })
     }
 }
 

@@ -1,0 +1,532 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::{
+    collections::BTreeMap,
+    num::NonZeroUsize,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+// Third Party Imports
+use rusqlite::{Connection, OptionalExtension, params, types::Value};
+
+// Local Imports
+use super::*;
+use crate::query::ObjectVersions;
+use crate::query::columnar::{self, ColumnKind, ColumnSource};
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+pub(super) struct WriteRow<'a> {
+    pub position: &'a StorageCursor,
+    pub kind: i64,
+    pub schema: Option<&'a SchemaKey>,
+    pub item: Option<&'a str>,
+    pub scope: Option<&'a str>,
+    pub stream: Option<&'a str>,
+    pub time: Option<SystemTime>,
+    pub data: Vec<u8>,
+}
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+pub(super) fn insert(connection: &Connection, history: &StoreHistory, value: WriteRow<'_>) -> Result<bool> {
+    history.check(&value.position.history)?;
+    if value.position.sequence == 0 {
+        return Err(invalid("write position must be nonzero"));
+    }
+    let position = integer(value.position.sequence)?;
+    let prior: Option<(i64, Vec<u8>)> = connection
+        .query_row("SELECT kind,data FROM storage_rows WHERE position=?1", [position], |row| Ok((row.get(0)?, row.get(1)?)))
+        .optional()
+        .map_err(db)?;
+    if let Some((kind, data)) = prior {
+        if kind != value.kind || data != value.data {
+            return Err(conflict("replayed position has different content"));
+        }
+        return Ok(false);
+    }
+    let last: u64 = connection.query_row("SELECT max(coalesce((SELECT max(position) FROM storage_rows),0),CAST((SELECT value FROM storage_meta WHERE name='saved') AS INTEGER))", [], |row| unsigned(row,0)).map_err(db)?;
+    if value.position.sequence <= last {
+        return Err(conflict("new writes must advance the committed source order"));
+    }
+    let key = value.schema.map(text).transpose()?;
+    connection
+        .execute(
+            "INSERT INTO storage_rows VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![
+                position,
+                value.kind,
+                key,
+                value.schema.map(|schema| schema.id.as_str()),
+                value.item,
+                value.scope,
+                value.stream,
+                value.time.map(timestamp).transpose()?,
+                value.data
+            ],
+        )
+        .map_err(db)?;
+    Ok(true)
+}
+
+pub(super) fn schema(connection: &Connection, key: &SchemaKey, at: u64) -> Result<StorageSchema> {
+    let data: Option<Vec<u8>> = connection
+        .query_row(
+            "SELECT data FROM storage_rows WHERE kind=0 AND schema_key=?1 AND position<=?2 ORDER BY position DESC LIMIT 1",
+            params![text(key)?, integer(at)?],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(db)?;
+    decode(&data.ok_or_else(|| invalid("schema is unavailable at requested cut"))?)
+}
+
+pub(super) fn save(connection: &Connection, through: u64) -> Result<()> {
+    set_meta(connection, "saved", meta(connection, "saved")?.max(through))
+}
+
+pub(super) fn write_schemas(state: &mut State, values: &[StorageSchema]) -> Result<StorageCursor> {
+    state.check()?;
+    let through = values.last().ok_or_else(|| invalid("empty schema batch"))?.position.sequence;
+    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    for value in values {
+        let prior = tx
+            .query_row("SELECT data FROM storage_rows WHERE kind=0 AND schema_key=?1 LIMIT 1", [text(&value.key)?], |row| {
+                row.get::<_, Vec<u8>>(0)
+            })
+            .optional()
+            .map_err(db)?;
+        if let Some(prior) = prior {
+            if decode::<StorageSchema>(&prior)?.schema != value.schema {
+                return Err(conflict("schema definition changed without a new version"));
+            }
+        }
+        value.encoded_bytes()?;
+        insert(
+            &tx,
+            &state.history,
+            WriteRow {
+                position: &value.position,
+                kind: 0,
+                schema: Some(&value.key),
+                item: None,
+                scope: None,
+                stream: None,
+                time: None,
+                data: encode(value)?,
+            },
+        )?;
+    }
+    save(&tx, through)?;
+    tx.commit().map_err(db)?;
+    state.cursor()
+}
+
+pub(super) fn write_records(state: &mut State, values: &[StoredRecord]) -> Result<StorageCursor> {
+    state.check()?;
+    let through = values.last().ok_or_else(|| invalid("empty record batch"))?.position.sequence;
+    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    for chunk in values.chunks(state.settings.chunk_rows.get()) {
+        let mut groups: BTreeMap<String, Vec<StoredRecord>> = BTreeMap::new();
+        for value in chunk {
+            let inserted = insert(
+                &tx,
+                &state.history,
+                WriteRow {
+                    position: &value.position,
+                    kind: 2,
+                    schema: Some(&value.schema),
+                    item: Some(value.item.as_str()),
+                    scope: value.scope.as_ref().map(|value| value.as_str()),
+                    stream: None,
+                    time: value.source_time,
+                    data: encode(value)?,
+                },
+            )?;
+            if inserted {
+                groups.entry(text(&value.schema)?).or_default().push(value.clone());
+            }
+        }
+        for values in groups.values() {
+            let first = &values[0];
+            let schema = schema(&tx, &first.schema, first.position.sequence)?;
+            let batch = columnar::records(&schema, values)?;
+            columns::store(
+                &tx,
+                &ColumnSource {
+                    kind: ColumnKind::Records,
+                    schema: first.schema.clone(),
+                },
+                &batch,
+                state.settings,
+            )?;
+        }
+    }
+    save(&tx, through)?;
+    tx.commit().map_err(db)?;
+    state.cursor()
+}
+
+pub(super) fn write_stream(state: &mut State, values: &[StoredRow]) -> Result<StorageCursor> {
+    state.check()?;
+    let through = values.last().ok_or_else(|| invalid("empty stream batch"))?.record.position.sequence;
+    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    for chunk in values.chunks(state.settings.chunk_rows.get()) {
+        let mut groups: BTreeMap<String, Vec<StoredRow>> = BTreeMap::new();
+        for value in chunk {
+            let row = &value.record;
+            let inserted = insert(
+                &tx,
+                &state.history,
+                WriteRow {
+                    position: &row.position,
+                    kind: 3,
+                    schema: Some(&row.schema),
+                    item: Some(row.item.as_str()),
+                    scope: row.scope.as_ref().map(|value| value.as_str()),
+                    stream: Some(value.stream.as_str()),
+                    time: row.source_time,
+                    data: encode(value)?,
+                },
+            )?;
+            if inserted {
+                groups.entry(text(&row.schema)?).or_default().push(value.clone());
+            }
+        }
+        for values in groups.values() {
+            let first = &values[0].record;
+            let schema = schema(&tx, &first.schema, first.position.sequence)?;
+            let batch = columnar::streams(&schema, values)?;
+            columns::store(
+                &tx,
+                &ColumnSource {
+                    kind: ColumnKind::Stream,
+                    schema: first.schema.clone(),
+                },
+                &batch,
+                state.settings,
+            )?;
+        }
+    }
+    save(&tx, through)?;
+    tx.commit().map_err(db)?;
+    state.cursor()
+}
+
+pub(super) fn write_objects(state: &mut State, values: &[ObjectEntry]) -> Result<StorageCursor> {
+    state.check()?;
+    let through = values.last().ok_or_else(|| invalid("empty object batch"))?.position.sequence;
+    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    for chunk in values.chunks(state.settings.chunk_rows.get()) {
+        let mut groups: BTreeMap<String, Vec<ObjectEntry>> = BTreeMap::new();
+        for value in chunk {
+            value.version.check_position(&value.position)?;
+            let inserted = insert(
+                &tx,
+                &state.history,
+                WriteRow {
+                    position: &value.position,
+                    kind: 1,
+                    schema: Some(&value.value.schema),
+                    item: Some(value.value.item.as_str()),
+                    scope: None,
+                    stream: None,
+                    time: None,
+                    data: encode(value)?,
+                },
+            )?;
+            if inserted {
+                groups.entry(text(&value.value.schema)?).or_default().push(value.clone());
+            }
+        }
+        for values in groups.values() {
+            let first = &values[0];
+            let schema = schema(&tx, &first.value.schema, first.position.sequence)?;
+            let batch = columnar::objects(&schema, values)?;
+            columns::store(
+                &tx,
+                &ColumnSource {
+                    kind: ColumnKind::Objects,
+                    schema: first.value.schema.clone(),
+                },
+                &batch,
+                state.settings,
+            )?;
+        }
+    }
+    save(&tx, through)?;
+    tx.commit().map_err(db)?;
+    state.cursor()
+}
+
+pub(super) fn write_files(state: &mut State, values: &[FileReference]) -> Result<StorageCursor> {
+    state.check()?;
+    let through = values.last().ok_or_else(|| invalid("empty file batch"))?.position.sequence;
+    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    for value in values {
+        let finished: Option<Vec<u8>> = tx
+            .query_row("SELECT finished FROM storage_files WHERE id=?1", [value.metadata.id.as_str()], |row| row.get(0))
+            .optional()
+            .map_err(db)?
+            .flatten();
+        if finished.as_deref() != Some(encode(value)?.as_slice()) {
+            return Err(conflict("file is not durably finished"));
+        }
+        insert(
+            &tx,
+            &state.history,
+            WriteRow {
+                position: &value.position,
+                kind: 4,
+                schema: None,
+                item: Some(value.metadata.id.as_str()),
+                scope: value.metadata.scope.as_ref().map(|value| value.as_str()),
+                stream: None,
+                time: None,
+                data: encode(value)?,
+            },
+        )?;
+    }
+    save(&tx, through)?;
+    tx.commit().map_err(db)?;
+    state.cursor()
+}
+
+pub(super) fn read_schemas(
+    state: &State, snapshot: &BackendSnapshot, selection: &SchemaSelection, page: ScanPage,
+) -> Result<Vec<StorageSchema>> {
+    state.snapshot(snapshot)?;
+    query(
+        &state.connection,
+        snapshot,
+        page,
+        0,
+        "AND (?4 IS NULL OR schema_key=?4)",
+        vec![optional(selection.schema.as_ref().map(text).transpose()?)],
+    )
+}
+
+pub(super) fn read_objects(
+    state: &State, snapshot: &BackendSnapshot, selection: &ObjectSelection, page: ScanPage,
+) -> Result<Vec<ObjectEntry>> {
+    state.snapshot(snapshot)?;
+    let latest = if selection.versions == ObjectVersions::Latest {
+        "AND position=(SELECT max(o.position) FROM storage_rows o WHERE o.kind=1 AND o.schema_id=storage_rows.schema_id AND o.item=storage_rows.item AND o.position<=?3 AND (?4 IS NULL OR o.schema_key=?4))"
+    } else {
+        ""
+    };
+    let condition = format!("AND (?4 IS NULL OR schema_key=?4) AND (?5 IS NULL OR item=?5) {latest}");
+    query(
+        &state.connection,
+        snapshot,
+        page,
+        1,
+        &condition,
+        vec![
+            optional(selection.schema.as_ref().map(text).transpose()?),
+            optional(selection.key.as_ref().map(|key| key.as_str().to_owned())),
+        ],
+    )
+}
+
+pub(super) fn read_records(
+    state: &State, snapshot: &BackendSnapshot, selection: &RecordSelection, page: ScanPage,
+) -> Result<Vec<StoredRecord>> {
+    state.snapshot(snapshot)?;
+    query(
+        &state.connection,
+        snapshot,
+        page,
+        2,
+        "AND schema_key=?4 AND (?5 IS NULL OR scope=?5) AND (?6 IS NULL OR item=?6) AND (?7 IS NULL OR time_ns>=?7) AND (?8 IS NULL OR time_ns<?8)",
+        vec![
+            Value::Text(text(&selection.schema)?),
+            optional(selection.scope.as_ref().map(ToString::to_string)),
+            optional(selection.item.as_ref().map(ToString::to_string)),
+            optional_time(selection.source_start)?,
+            optional_time(selection.source_end)?,
+        ],
+    )
+}
+
+pub(super) fn read_stream(
+    state: &State, snapshot: &BackendSnapshot, selection: &StreamSelection, page: ScanPage,
+) -> Result<Vec<StoredRow>> {
+    state.snapshot(snapshot)?;
+    query(
+        &state.connection,
+        snapshot,
+        page,
+        3,
+        "AND schema_key=?4 AND (?5 IS NULL OR scope=?5) AND (?6 IS NULL OR item=?6) AND (?7 IS NULL OR time_ns>=?7) AND (?8 IS NULL OR time_ns<?8) AND (?9 IS NULL OR stream=?9) AND json_extract(CAST(data AS TEXT),'$.sequence')>?10",
+        vec![
+            Value::Text(text(&selection.schema)?),
+            optional(selection.scope.as_ref().map(ToString::to_string)),
+            optional(selection.item.as_ref().map(ToString::to_string)),
+            optional_time(selection.source_start)?,
+            optional_time(selection.source_end)?,
+            optional(selection.stream.as_ref().map(ToString::to_string)),
+            Value::Integer(integer(selection.after)?),
+        ],
+    )
+}
+
+pub(super) fn read_files(
+    state: &State, snapshot: &BackendSnapshot, selection: &FileSelection, page: ScanPage,
+) -> Result<Vec<FileReference>> {
+    state.snapshot(snapshot)?;
+    query(
+        &state.connection,
+        snapshot,
+        page,
+        4,
+        "AND (?4 IS NULL OR scope=?4) AND (?5 IS NULL OR item=?5)",
+        vec![optional(selection.scope.as_ref().map(ToString::to_string)), optional(selection.item.as_ref().map(ToString::to_string))],
+    )
+}
+
+pub(super) fn read_object(state: &State, snapshot: &BackendSnapshot, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
+    state.snapshot(snapshot)?;
+    let position = match &point.version {
+        crate::ObjectVersion::Latest => None,
+        crate::ObjectVersion::Exact(token) => {
+            state.history.check(token.history())?;
+            Some(integer(token.revision().get())?)
+        }
+    };
+    let bytes = state.connection.query_row("SELECT data FROM storage_rows WHERE kind=1 AND schema_id=?1 AND item=?2 AND position<=?3 AND (?4 IS NULL OR position=?4) ORDER BY position DESC LIMIT 1", params![point.schema.as_str(), point.item.as_str(), integer(snapshot.at.sequence)?, position], |row| row.get::<_, Vec<u8>>(0)).optional().map_err(db)?;
+    bytes.as_deref().map(decode).transpose()
+}
+
+pub(super) fn prune(state: &mut State, through: &StorageCursor, maximum: NonZeroUsize, retention: &ObjectCatalog) -> Result<bool> {
+    state.check()?;
+    state.history.check(&through.history)?;
+    if through.sequence > state.cursor()?.sequence {
+        return Err(invalid("pruning is ahead of durable data"));
+    }
+    let protected = state.snapshots.values().map(|cursor| cursor.sequence).max().unwrap_or(0);
+    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    let mut remove = Vec::new();
+    let mut done = true;
+    {
+        let mut statement =
+            tx.prepare("SELECT data FROM storage_rows WHERE kind=1 AND position>?1 AND position<=?2 ORDER BY position").map_err(db)?;
+        let mut rows = statement.query(params![integer(protected)?, integer(through.sequence)?]).map_err(db)?;
+        while let Some(row) = rows.next().map_err(db)? {
+            let object: ObjectEntry = decode(&row.get::<_, Vec<u8>>(0).map_err(db)?)?;
+            let policy = retention.retention(&object.value.schema)?;
+            if policy == crate::ObjectRetention::All {
+                continue;
+            }
+            if policy == crate::ObjectRetention::UntilReleased {
+                let released = tx
+                    .query_row(
+                        "SELECT through FROM object_releases WHERE schema_key=?1 AND item=?2",
+                        params![text(&object.value.schema)?, object.value.item.as_str()],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .optional()
+                    .map_err(db)?;
+                if released.is_none_or(|released| released < object.position.sequence as i64) {
+                    continue;
+                }
+            }
+            let newer: i64 = tx
+                .query_row(
+                    "SELECT count(*) FROM storage_rows WHERE kind=1 AND schema_id=?1 AND item=?2 AND position>?3",
+                    params![object.value.schema.id.as_str(), object.value.item.as_str(), integer(object.position.sequence)?],
+                    |row| row.get(0),
+                )
+                .map_err(db)?;
+            if newer < policy.versions().get() as i64 {
+                continue;
+            }
+            if remove.len() == maximum.get() {
+                done = false;
+                break;
+            }
+            remove.push(object.position.sequence);
+        }
+    }
+    for position in &remove {
+        tx.execute("DELETE FROM storage_rows WHERE position=?1", [integer(*position)?]).map_err(db)?;
+    }
+    if !remove.is_empty() {
+        set_meta(&tx, "floor", meta(&tx, "floor")?.max(through.sequence))?;
+    }
+    tx.commit().map_err(db)?;
+    Ok(done)
+}
+
+/* === Private Functions === */
+
+fn query<T: serde::de::DeserializeOwned>(
+    connection: &Connection, snapshot: &BackendSnapshot, page: ScanPage, kind: i64, condition: &str, extra: Vec<Value>,
+) -> Result<Vec<T>> {
+    let sql = format!(
+        "SELECT data FROM storage_rows WHERE kind=?1 AND position>?2 AND position<=?3 {condition} ORDER BY position LIMIT {}",
+        page.rows.get().saturating_add(1)
+    );
+    let mut arguments = vec![Value::Integer(kind), Value::Integer(integer(page.after)?), Value::Integer(integer(snapshot.at.sequence)?)];
+    arguments.extend(extra);
+    let mut statement = connection.prepare(&sql).map_err(db)?;
+    let mut rows = statement.query(rusqlite::params_from_iter(arguments)).map_err(db)?;
+    let mut output = Vec::new();
+    let mut bytes = 0;
+    while let Some(row) = rows.next().map_err(db)? {
+        if output.len() == page.rows.get() {
+            break;
+        }
+        let data = row.get_ref(0).map_err(db)?.as_blob().map_err(|_| incompatible())?;
+        if bytes + data.len() > page.bytes.get() {
+            if output.is_empty() {
+                return Err(columnar::exhausted());
+            }
+            break;
+        }
+        bytes += data.len();
+        output.push(decode(data)?);
+    }
+    Ok(output)
+}
+fn optional(value: Option<String>) -> Value {
+    value.map_or(Value::Null, Value::Text)
+}
+fn optional_time(value: Option<SystemTime>) -> Result<Value> {
+    Ok(value.map(timestamp).transpose()?.map_or(Value::Null, Value::Integer))
+}
+fn timestamp(value: SystemTime) -> Result<i64> {
+    let nanos = match value.duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_nanos() as i128,
+        Err(error) => -(error.duration().as_nanos() as i128),
+    };
+    nanos.try_into().map_err(|_| invalid("timestamp exceeds nanosecond range"))
+}
+
+/* === Tests === */
