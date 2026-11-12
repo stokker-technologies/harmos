@@ -312,7 +312,7 @@
 - [ ] 8.2 Run each pilot SDK against the extended conformance suite on native Linux and Windows; retain failures and repair affected consumers.
 
 - [x] 8.3 For the generated host contract and wire cutover, run format, Rust/Python/repository checks and the test artifact build on Windows; keep native Linux proof under 8.1.
-- [ ] 8.4 Complete the requested Windows format, Rust/Python/repository checks, test-artifact build and four-SDK conformance after the domain reduction and generated Rust client; native Linux proof remains under 8.1.
+- [x] 8.4 Complete the requested Windows format, Rust/Python/repository checks, test-artifact build and four-SDK conformance after the domain reduction and generated Rust client; native Linux proof remains under 8.1.
 
 ## Workflow Follow-Up
 
