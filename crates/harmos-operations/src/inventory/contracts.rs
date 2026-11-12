@@ -409,7 +409,8 @@ pub const fn encode_identity<const N: usize>(facility: &str, id: &str, version: 
     encoded_identity::<N>(facility, id, version, description, config).bytes
 }
 
-pub(crate) const fn valid_identity(facility: &str, owner: &str) -> bool {
+#[doc(hidden)]
+pub const fn valid_identity(facility: &str, owner: &str) -> bool {
     matches!(facility.as_bytes(), b"guest" | b"sidecar") && harmos_domain::identity::segment(owner)
 }
 

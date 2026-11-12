@@ -41,7 +41,6 @@ tracing = { workspace = true, default-features = true }
 
 # Utilities
 semver = { workspace = true, default-features = true }
-sha2 = { workspace = true }
 
 # Serialization
 postcard = { workspace = true }

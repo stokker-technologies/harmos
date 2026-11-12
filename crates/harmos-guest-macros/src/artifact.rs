@@ -347,7 +347,7 @@ fn expand(attribute: TokenStream, item: &TokenStream) -> Result<TokenStream, Err
         #block
 
         const _: () = assert!(
-            #harmos::__private::owner_segment(#id),
+            #harmos::__private::PluginInventory::contracts::valid_identity("guest", #id),
             "plugin id must match [a-z][a-z0-9_]* (one owner segment)"
         );
 

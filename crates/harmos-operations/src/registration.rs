@@ -38,8 +38,6 @@ pub struct Requirement {
     pub version: semver::VersionReq,
 }
 
-
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct Registration {
     pub namespace: String,

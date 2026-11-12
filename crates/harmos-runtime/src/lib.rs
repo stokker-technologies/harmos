@@ -113,7 +113,6 @@ pub mod __private {
         MapEntry, MessageError, PostcardReader, PostcardValue, decoding_add, decoding_multiply, decoding_vector, postcard_product,
     };
     pub use harmos_domain::config::SchemaSettings;
-    pub use harmos_domain::identity::{dotted as operation_identity, segment as owner_segment, stream_subset as stream_identity};
     pub use harmos_operations::__private::CarrierContext;
     pub use harmos_operations::execution::__private::Catalog;
     pub use harmos_operations::inventory as PluginInventory;

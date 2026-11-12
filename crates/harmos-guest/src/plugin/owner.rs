@@ -154,7 +154,7 @@ impl<P: Plugin> Owner<P> {
             }
             Some(token)
         };
-        let config = harmos_operations::execution::decode_config(config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
+        let config = harmos_operations::decode_config(config_json).map_err(|error| Error::Configuration(Arc::new(error)))?;
         let mut slot = self.slot.lock().map_err(|_| Error::Poisoned)?;
         if slot.phase != Phase::Empty {
             return Err(Error::Phase);

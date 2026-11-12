@@ -73,11 +73,9 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
+use guest::StreamSpec;
+use guest::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 use harmos_guest as guest;
-#[cfg(target_arch = "wasm32")]
-use harmos_guest as harmos_domain;
-use harmos_operations::StreamSpec;
-use harmos_operations::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -170,7 +168,7 @@ pub const OPERATIONS_CATALOG: harmos_guest::operations::CatalogDescription = har
 
 impl StreamSpec for Echoed {
     type Row = Self;
-    const ENTRY: harmos_domain::StreamEntry<Self> = harmos_domain::StreamEntry::new("progress", 4);
+    const ENTRY: guest::StreamEntry<Self> = guest::StreamEntry::new("progress", 4);
 }
 
 impl guest::operations::ContextValue for Stage {

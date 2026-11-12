@@ -38,7 +38,7 @@ pub enum Error<P: Plugin> {
     Resource(Arc<harmos_operations::execution::ResourceError>),
 
     #[error("invalid plugin configuration: {0}")]
-    Configuration(#[source] Arc<harmos_operations::execution::ConfigError>),
+    Configuration(#[source] Arc<harmos_operations::ConfigError>),
 
     #[error("plugin lifecycle machinery failed: {0}")]
     Plugin(#[source] Arc<P::Error>),
