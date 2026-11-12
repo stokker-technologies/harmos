@@ -17,7 +17,7 @@ version = { workspace = true }
 [[bin]]
 name = "harmos-grpc-benchmark-fixture"
 path = "tests/fixtures/benchmark_grpc.rs"
-required-features = ["grpc"]
+required-features = ["benchmark-fixtures"]
 test = false
 bench = false
 
@@ -26,6 +26,8 @@ bench = false
 # Core Runtime and Authoring Are Always Available
 [features]
 default = ["grpc"]
+# Benchmark Servers Are Not Inputs to Product or Test Builds.
+benchmark-fixtures = ["grpc"]
 plugin-guest = ["dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime", "dep:postcard"]
 grpc = [
   "dep:heck",

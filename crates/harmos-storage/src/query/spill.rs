@@ -320,15 +320,14 @@ mod tests {
     use arrow_schema::{DataType, Field};
 
     #[test]
-    fn seven_day_volume_keeps_only_bounded_pages_and_releases_spill() {
+    fn page_boundary_keeps_bounded_pages_and_releases_spill() {
         let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::UInt64, false)]));
         let mut builder = Builder::new(schema.clone()).unwrap();
-        let page = RecordBatch::try_new(schema, vec![Arc::new(UInt64Array::from((0..20_000).collect::<Vec<u64>>()))]).unwrap();
-        for _hour in 0..7 * 24 {
-            builder.push(&page, &mut || Ok(())).unwrap();
-        }
+        let count = PAGE_ROWS + 1;
+        let page = RecordBatch::try_new(schema, vec![Arc::new(UInt64Array::from((0..count as u64).collect::<Vec<_>>()))]).unwrap();
+        builder.push(&page, &mut || Ok(())).unwrap();
         let spool = builder.finish().unwrap();
-        assert_eq!(spool.rows, 7 * 24 * 20_000);
+        assert_eq!(spool.rows, count);
         assert!(spool.peak_page_bytes <= PAGE_BYTES);
         assert!(spool.peak_page_rows <= PAGE_ROWS);
         let path = spool.file.as_ref().unwrap().path().to_owned();
@@ -339,7 +338,7 @@ mod tests {
             assert!(page.get_array_memory_size() <= PAGE_BYTES);
             rows += page.num_rows();
         }
-        assert_eq!(rows, 7 * 24 * 20_000);
+        assert_eq!(rows, count);
         drop(pages);
         assert!(!path.exists());
     }

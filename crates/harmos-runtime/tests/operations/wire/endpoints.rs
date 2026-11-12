@@ -7,6 +7,16 @@
  * ***
  */
 
+/* === Modules === */
+
+#[cfg(feature = "grpc")]
+#[path = "endpoints/input_failure_settles_attempt.rs"]
+mod input_failure_settles_attempt;
+
+#[cfg(feature = "grpc")]
+#[path = "endpoints/exchange_failure_settles_attempt.rs"]
+mod exchange_failure_settles_attempt;
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -58,6 +68,7 @@ async fn forward_declaration_handler(
     let trace = ctx.resource::<Trace>().expect("declared resource is registered");
     trace.new.fetch_add(1, Ordering::SeqCst);
     let _guard = AttemptGuard(trace.clone());
+    trace.started.notify_one();
     if !request.consume {
         return Ok(0.into());
     }
@@ -91,6 +102,7 @@ type StreamEndpoints = (StreamInput<u32>, StreamOutput<u32>);
 #[derive(Default)]
 struct Trace {
     new: AtomicUsize,
+    started: Notify,
     dropped: AtomicUsize,
     sending: AtomicUsize,
     changed: Notify,
@@ -444,37 +456,6 @@ async fn settlement_never_wait() {
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
-async fn input_failure_settles_attempt() {
-    let trace = Arc::new(Trace::default());
-    let runtime = runtime_with_resource(trace.clone()).await;
-    runtime
-        .operations
-        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
-    let (input, receiving) = channel();
-    let (sending, _output) = channel();
-    let instance =
-        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
-    // Only a constructed instance has cleanup to preserve.
-    let initialized = trace.clone();
-    let incoming = futures_util::stream::once(async move {
-        while initialized.new.load(Ordering::SeqCst) == 0 {
-            tokio::task::yield_now().await;
-        }
-        Err(tonic::Status::data_loss("broken input"))
-    });
-    let error = bounded(harmos_runtime::grpc::input(instance, input, incoming)).await.unwrap_err();
-    let harmos_runtime::grpc::InputError::Forward { source, settlement } = error else { panic!("input failure missing") };
-    assert!(matches!(*source, Error::TaskFailed { domain: "gRPC input", .. }));
-    assert!(matches!(settlement.as_deref(), Some(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-}
-
-#[cfg(feature = "grpc")]
-#[tokio::test]
 async fn input_drop_cancels() {
     let trace = Arc::new(Trace::default());
     let runtime = runtime_with_resource(trace.clone()).await;
@@ -552,43 +533,6 @@ async fn grpc_exchange_polls() {
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
-}
-
-#[cfg(feature = "grpc")]
-#[tokio::test]
-async fn exchange_failure_settles_attempt() {
-    use futures_util::StreamExt;
-    let trace = Arc::new(Trace::default());
-    let runtime = runtime_with_resource(trace.clone()).await;
-    runtime
-        .operations
-        .register_operation(forward_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
-    let (input, receiving) = channel();
-    let (sending, output) = channel();
-    let instance =
-        runtime.operations.submit_endpoints::<ForwardDeclaration, _>(ForwardDeclaration { consume: true }, (receiving, sending)).unwrap();
-    // Only a constructed instance has cleanup to retain.
-    let initialized = trace.clone();
-    let incoming = futures_util::stream::once(async move {
-        while initialized.new.load(Ordering::SeqCst) == 0 {
-            tokio::task::yield_now().await;
-        }
-        Err(tonic::Status::data_loss("broken input"))
-    });
-    let mut exchange = harmos_runtime::grpc::exchange(instance, input, incoming, output);
-    let error = match bounded(exchange.next()).await.unwrap() {
-        Err(error) => error,
-        Ok(_) => panic!("expected forwarding failure"),
-    };
-    assert!(matches!(error, harmos_runtime::grpc::InputError::Forward { settlement: Some(ref settlement), .. }
-        if matches!(settlement.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
-    assert!(bounded(exchange.next()).await.is_none());
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
-    assert_eq!(trace.new.load(Ordering::SeqCst), 1);
-    assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }
 
 #[cfg(feature = "grpc")]

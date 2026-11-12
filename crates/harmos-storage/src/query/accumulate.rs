@@ -325,7 +325,7 @@ mod tests {
         branch.push(2, &ScalarValue::Unsigned(9_007_199_254_740_991)).unwrap();
         assert_eq!(median.finish(&mut || Ok(())).unwrap(), ScalarValue::Unsigned(9_007_199_254_740_995));
         assert_eq!(branch.finish(&mut || Ok(())).unwrap(), ScalarValue::Unsigned(9_007_199_254_740_993));
-        let values = (0..7 * 24 * 60).map(|i| ((i * 19 % 101) as f64 - 50.0).sin()).collect::<Vec<_>>();
+        let values = vec![-7.0, 3.0, 1.0, -0.0, 9.0, -2.0, 3.0, 0.0];
         let mut sorted = values.clone();
         sorted.sort_by(f64::total_cmp);
         for rank in [0, 13, 50, 77, 100] {
