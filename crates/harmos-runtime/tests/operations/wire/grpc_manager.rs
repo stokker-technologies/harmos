@@ -12,8 +12,6 @@
 #[path = "grpc_network.rs"]
 mod grpc_network;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -56,10 +54,6 @@ const REJECTION_DETAILS: &[u8] = &[
     108, 101, 97, 112, 105, 115, 46, 99, 111, 109, 47, 102, 105, 120, 116, 117, 114, 101, 46, 82, 101, 106, 101, 99, 116, 105, 111, 110,
     18, 8, 10, 6, 97, 98, 115, 101, 110, 116,
 ];
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -197,8 +191,6 @@ struct Behavior {
     uploading: Option<Arc<tokio::sync::Notify>>,
     stopped: Option<Arc<tokio::sync::Semaphore>>,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -622,8 +614,6 @@ fn hold_declaration_operation()
     )
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 fn authored_rejection() -> tonic::Status {
@@ -828,5 +818,3 @@ async fn failures<F: Future<Output = ()>>(
     crate::support::app::shutdown(&runtime).await.unwrap();
     [unary, streaming, upload, exchange]
 }
-
-/* === Tests === */

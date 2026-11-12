@@ -9,10 +9,6 @@
 
 // Serve Retained Snapshot Reads.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,18 +17,6 @@
 
 // Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -249,9 +233,3 @@ impl Data {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

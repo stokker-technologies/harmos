@@ -9,10 +9,6 @@
 
 // Share The External gRPC Benchmark Contract With Its Fixture Server.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,12 +20,6 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::operations::RetryPolicy;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -76,8 +66,6 @@ fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch = batch.entry(echo_declaration_operation().expect("representable operation"));
     batch
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -151,5 +139,3 @@ pub fn settings() -> harmos_runtime::grpc::Settings {
 fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).unwrap()
 }
-
-/* === Tests === */

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,22 +17,6 @@ use support::{Bank, Change, Ledger, alice, booted, deposit};
 use super::support;
 use harmos_runtime::{Error, Runtime, state::Focus, state::Origin, state::Position};
 use support::journal::{Journal, Store};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -176,5 +156,3 @@ async fn inspector_recovers_read() {
     assert_eq!(inspector.state.applied(), Position(2));
     assert_eq!(inspector.state.stored(), Position(2));
 }
-
-/* === Tests === */

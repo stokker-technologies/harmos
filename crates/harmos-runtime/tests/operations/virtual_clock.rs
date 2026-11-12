@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,24 +17,6 @@ use std::time::{Duration, SystemTime};
 
 // Local Imports
 use harmos_runtime::clock::Clock;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

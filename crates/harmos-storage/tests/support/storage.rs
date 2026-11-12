@@ -17,8 +17,6 @@ mod read_backend;
 mod settings;
 pub use settings::storage_settings;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -35,10 +33,6 @@ use harmos_storage::query::{FileSelection, ObjectSelection, ObjectVersions, Reco
 use harmos_storage::state::*;
 use harmos_storage::*;
 use harmos_storage::{BackendFailure, Error, Identifier, MemorySize, Result};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -207,10 +201,6 @@ pub struct Recovery {
     pub snapshot: Mutex<Option<RecoverySnapshot>>,
     pending_snapshot: Mutex<Option<RecoverySnapshot>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -799,5 +789,3 @@ fn upsert_release(releases: &mut Vec<Release>, release: Release) {
         releases.push(release);
     }
 }
-
-/* === Tests === */

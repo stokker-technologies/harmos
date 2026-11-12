@@ -9,10 +9,6 @@
 
 // Shared Application Lifecycle And Aggregate Setup Validation.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -35,10 +31,6 @@ const POLICY: harmos_runtime::OperationPolicy = harmos_runtime::OperationPolicy 
     cancellation_timeout: std::time::Duration::ZERO,
     retries: harmos_runtime::RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -151,8 +143,6 @@ fn missing_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch = batch.entry(missing_operation().expect("representable operation"));
     batch
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -295,10 +285,6 @@ impl Drop for PendingGuard {
         self.0.events.lock().unwrap().push(Phase::Drain);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

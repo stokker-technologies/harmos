@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use crate::storage::support::{HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
 use harmos_runtime::storage::ReadLimits;
 use harmos_runtime::{Error, Identifier, services::ServiceContext, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -51,10 +41,6 @@ struct Gate {
     entered: Notify,
     release: Notify,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -104,8 +90,6 @@ impl Store {
         crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -484,5 +468,3 @@ async fn cancelled_boot_settles() {
     closed(&storage, cleanup.get()).await;
     assert_eq!(storage.status().recovery_saved.sequence, 1);
 }
-
-/* === Tests === */

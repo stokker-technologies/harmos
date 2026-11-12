@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,10 +27,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -117,8 +109,6 @@ fn declared_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 pub async fn doubling_declaration_handler(
@@ -194,8 +184,6 @@ fn borrow_owner_declaration_operation()
         |_| harmos_runtime::operations::FailureKind::Permanent,
     )
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

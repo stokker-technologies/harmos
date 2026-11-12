@@ -9,10 +9,6 @@
 
 // Walk the CLI Across Both Built Plugin Backends
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -28,12 +24,6 @@ use super::support::fixtures;
 
 const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 /* === Enums === */
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,14 +31,6 @@ enum Startup {
     Initializing,
     Ready,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

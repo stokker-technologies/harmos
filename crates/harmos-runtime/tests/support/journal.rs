@@ -12,10 +12,6 @@
 // synced, and whatever a crash left in a copy's batch never reaches it.
 
 #![allow(dead_code)]
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -30,10 +26,6 @@ use harmos_runtime::{
     Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope, state::Kind, state::Position, state::Prepared,
     state::Recorded, state::SystemFact, storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source,
 };
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -73,8 +65,6 @@ pub struct Snapshot<A: Application> {
     halted: bool,
     write: Sink<A>,
 }
-
-/* === Enums === */
 
 /* === Traits === */
 
@@ -531,5 +521,3 @@ fn envelope<P>(member: Member, payload: P) -> Envelope<P> {
         payload,
     }
 }
-
-/* === Tests === */

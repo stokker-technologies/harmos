@@ -9,10 +9,6 @@
 
 // Derived Data Shape Recovery Contracts
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -28,12 +24,6 @@ use harmos_runtime::storage::{ObjectCatalog, ObjectRetention, StorageManager, St
 use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{Application, Identified, Lifecycle, Runtime, Setup, Startup};
 use serde::{Deserialize, Serialize};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -200,8 +190,6 @@ fn stored_plugin_objects_catalog() -> harmos_domain::model::storage::ObjectCatal
         .entry(harmos_domain::model::storage::ObjectDefinition::of::<PluginObject>())
         .entry(harmos_domain::model::storage::ObjectDefinition::of::<NewPluginObject>())
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 

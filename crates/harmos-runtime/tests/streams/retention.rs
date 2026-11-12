@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,10 +22,6 @@ use harmos_runtime::{
     Error, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Horizon, storage::JournalConsumer,
     storage::Recovery, storage::Source,
 };
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -58,10 +50,6 @@ struct Watched {
     pruned: watch::Sender<Option<Position>>,
     batches: Arc<Mutex<Vec<Vec<Position>>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -150,8 +138,6 @@ impl Source<Bank> for Prunable {
         self.pruned.send_replace(Some(beneath));
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -258,5 +244,3 @@ async fn saved(attempts: &watch::Sender<usize>) {
 async fn pruned(watched: &Watched, beneath: Position) {
     watched.pruned.subscribe().wait_for(|pruned| *pruned == Some(beneath)).await.expect("the source keeps its prune record");
 }
-
-/* === Tests === */

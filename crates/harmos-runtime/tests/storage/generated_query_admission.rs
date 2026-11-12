@@ -9,10 +9,6 @@
 
 // Retain IPC Ownership Until Destination Admission and Consumption.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,24 +18,6 @@
 // Local Imports
 use super::*;
 use prost::Message as _;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

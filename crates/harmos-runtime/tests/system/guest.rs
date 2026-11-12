@@ -11,8 +11,6 @@
 
 use schematic_domain as schematic;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,20 +27,6 @@ use schematic_operations::guest::schematic::{analyze, propose, validate};
 /* === Constants === */
 
 const PLUGIN: &str = "schematic_tools";
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -156,5 +140,3 @@ async fn guest_composition_walks() {
     // Scene 9: The Host Stops Cleanly
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

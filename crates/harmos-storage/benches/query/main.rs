@@ -141,6 +141,9 @@ fn main() {
     let mut group = criterion.benchmark_group("integration/journal_recovery");
     group.bench_function("seven_days", |b| b.iter(journal_recovery));
     group.finish();
+    let mut group = criterion.benchmark_group("integration/mutation_receipts");
+    group.bench_function("2048_files", |b| b.iter(|| runtime.block_on(mutation_receipts())));
+    group.finish();
     criterion.final_summary();
 }
 
@@ -224,4 +227,38 @@ fn journal_recovery() {
             )
             .unwrap(),
     );
+}
+
+async fn mutation_receipts() {
+    use harmos_storage::{FileMetadata, Identifier, MutationId};
+    let f = fixture::Fixture::new(fixture::config()).await;
+    let window = f.storage.mutation_window().unwrap().id;
+    let mut last = None;
+    for index in 0..2048 {
+        let id = Identifier::new(format!("file-{index}")).unwrap();
+        let create = MutationId {
+            window: window.clone(),
+            key: Identifier::new(format!("create-{index}")).unwrap(),
+        };
+        let metadata = FileMetadata {
+            id,
+            scope: None,
+            media_type: "application/octet-stream".into(),
+            expected_length: None,
+            expected_sha256: None,
+        };
+        let producer = f.storage.create_file_once(&create, &metadata).await.unwrap();
+        let finish = MutationId {
+            window: window.clone(),
+            key: Identifier::new(format!("finish-{index}")).unwrap(),
+        };
+        let reference = f.storage.finish_file_once(&finish, &producer.session).await.unwrap();
+        assert_eq!(reference.length, 0);
+        f.storage.flush().await.unwrap();
+        last = Some((finish, producer.session, reference));
+    }
+    assert_eq!(f.storage.mutation_window().unwrap().id, window);
+    let (finish, session, reference) = last.unwrap();
+    assert_eq!(f.storage.finish_file_once(&finish, &session).await.unwrap(), reference);
+    f.finish().await;
 }

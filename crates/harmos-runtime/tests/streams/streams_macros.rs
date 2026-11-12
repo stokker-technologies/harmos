@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,12 +18,6 @@ use std::pin::Pin;
 // Local Imports
 use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{Application, Runtime, state::At, state::Position, state::Transaction, streams::Item};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -49,8 +39,6 @@ struct PresentedSample {
 /* === Enums === */
 
 enum Change {}
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -94,8 +82,6 @@ impl harmos_runtime::state::CatalogCodec for Change {
         match *self {}
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

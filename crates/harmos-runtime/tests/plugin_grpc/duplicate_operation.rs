@@ -9,10 +9,6 @@
 
 // Duplicate Operation Admission Is Refused
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,24 +18,6 @@
 // Local Imports
 use super::{invoke_support::*, support};
 use harmos_runtime::plugin::grpc::Placement;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

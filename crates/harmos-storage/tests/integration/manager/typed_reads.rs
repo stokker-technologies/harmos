@@ -9,10 +9,6 @@
 
 // Typed Historical Reads, Public Scalar Folds and Concurrent Snapshot Reads
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,22 +25,6 @@ use harmos_storage::Error;
 use harmos_storage::Query;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
 use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager, StorageSettings};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

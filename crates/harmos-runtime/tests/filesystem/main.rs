@@ -9,10 +9,6 @@
 
 // Verify Opened File Publication Identity and Replacement Refusal.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,24 +19,6 @@ use std::io::{Read, Seek, SeekFrom, Write};
 
 // Local Imports
 use harmos_runtime::filesystem::publication::install_opened;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,10 +25,6 @@ use super::{
 };
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime, state::FactSource, state::Position, state::SystemFact};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -125,8 +117,6 @@ static PARENT_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
 const PARENT_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ParentContractDeclaration>::new(&PARENT_CONTRACT_DECLARATION_DESCRIPTION);
 
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn compute_contract_declaration_handler(
@@ -186,8 +176,6 @@ fn parent_contract_declaration_operation()
         |_| harmos_runtime::operations::FailureKind::Permanent,
     )
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

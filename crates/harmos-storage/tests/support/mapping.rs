@@ -8,10 +8,6 @@
  */
 #![allow(dead_code, unused_imports)]
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,12 +22,6 @@ pub(crate) use harmos_storage::{Identifier, Message};
 
 // Local Imports
 pub(crate) use super::backend::storage_settings;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -67,8 +57,6 @@ impl Default for Event {
         Self::Reading(Default::default())
     }
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -133,8 +121,6 @@ impl Mapped {
         self.storage.close().await.unwrap();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

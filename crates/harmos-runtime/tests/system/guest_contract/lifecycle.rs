@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -28,10 +24,6 @@ use harmos_runtime::guest::{
     PluginManager, PluginScope, PluginTransition, Router,
 };
 use harmos_runtime::operations::{Context, EncodedInvocation, PluginRegistration, PluginSdkRegistration};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -187,8 +179,6 @@ pub(super) fn guest_catalog() -> harmos_runtime::operations::ComponentCatalog {
         .operation(wire::FINISH_OPERATION_OPERATION)
         .unwrap()
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -459,8 +449,6 @@ impl Lifecycle {
         PluginDefinitions::new(definitions, []).unwrap()
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

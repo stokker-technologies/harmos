@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,22 +18,6 @@ use harmos_operations::Registrar;
 use harmos_operations::inventory::{Declaration, Facility as Inspected};
 use harmos_packaging::bundle::Source;
 use harmos_runtime::bundle::{Bundle, Executable, Facility, Identity, Limits};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

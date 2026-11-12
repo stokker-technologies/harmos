@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,26 +18,12 @@ use super::support;
 use harmos_runtime::state::{Kind, Position};
 use support::journal::{Journal, Snapshot, Store, frame};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Saved {
     at: Position,
     state: Ledger,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -277,5 +259,3 @@ async fn seeded(copy: &Store) {
     }
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

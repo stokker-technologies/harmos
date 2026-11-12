@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,10 +21,6 @@ use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
 use crate::storage::{Bank, Data, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config, history};
 use harmos_runtime::storage::{ReadLimits, StorageSettings};
 use harmos_runtime::{state::Focus, state::Position, state::PrincipalId, state::RequestKey};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -133,8 +125,6 @@ fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
     })
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 impl harmos_runtime::state::Record for Seen {
@@ -206,8 +196,6 @@ impl Store {
         .unwrap()
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -690,5 +678,3 @@ async fn commits_skip_save() {
         assert_eq!(storage.status().pending_bytes, 0);
     }
 }
-
-/* === Tests === */

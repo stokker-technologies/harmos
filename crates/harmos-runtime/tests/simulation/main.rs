@@ -17,8 +17,6 @@ mod inverses;
 #[path = "../support/simulation.rs"]
 mod oracle;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -42,10 +40,6 @@ use harmos_runtime::{
 /* === Constants === */
 
 static DIVERGENCE: AtomicUsize = AtomicUsize::new(0);
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -167,8 +161,6 @@ fn sim_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch = batch.entry(timing_its_own_wait_declaration_operation().expect("representable operation"));
     batch
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -337,8 +329,6 @@ impl harmos_runtime::state::CatalogCodec for NoRecord {
         s.serialize_unit()
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

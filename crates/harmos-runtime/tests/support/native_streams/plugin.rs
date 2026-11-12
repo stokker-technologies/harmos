@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,12 +17,6 @@ use harmos::{Context, Message, Operation, Plugin, Visibility};
 use tokio::sync::Notify;
 
 // Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -53,12 +43,6 @@ struct State {
     totals: Mutex<(u64, u64)>,
     changed: Notify,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 /* === Public Functions === */
 
@@ -93,7 +77,3 @@ pub fn plugin() -> Plugin {
     .visibility(Visibility::Public);
     Plugin::new("consumption", env!("CARGO_PKG_VERSION")).operation(consume).operation(progress)
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

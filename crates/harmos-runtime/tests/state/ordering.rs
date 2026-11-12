@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,21 +23,11 @@ use support::{Change, Deposit, deposit, runtime};
 use crate::state::support;
 use harmos_runtime::{state::Entry, state::Position};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct OwnedChange {
     transaction: Change,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -50,8 +36,6 @@ impl Borrow<Change> for OwnedChange {
         &self.transaction
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -205,5 +189,3 @@ async fn amounts(runtime: &harmos_runtime::Runtime<support::Bank>) -> Vec<(Posit
         })
         .collect()
 }
-
-/* === Tests === */

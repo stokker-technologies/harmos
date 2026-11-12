@@ -9,10 +9,6 @@
 
 // Exercise Resumable Native Files And Durable Mutation Replay With The Storage Fixture.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,19 +23,9 @@ use super::manager::backend::{Data, Recovery, history};
 use harmos_domain::model::storage::files::{CaptureConsistency, FileEvent, FileSource, FollowStart};
 use harmos_storage::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Task(Mutex<Option<JoinHandle<Result<()>>>>);
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -56,8 +42,6 @@ impl WorkerOwner for Task {
         })
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

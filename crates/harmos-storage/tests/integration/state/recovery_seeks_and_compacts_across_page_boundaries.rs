@@ -9,10 +9,6 @@
 
 // State Journal Recovery And Indexing
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,20 +20,6 @@ use harmos_storage::state::file::Journal;
 use harmos_storage::state::{RecoveryEntry, RecoverySnapshot, StorageStateSettings};
 use harmos_storage::{Error, Identifier, ReadLimits, RecoveryPosition, StorageCursor, StoreHistory};
 use std::{fs::OpenOptions, num::NonZeroUsize, path::Path, sync::Arc};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 /* === Public Functions === */
 
@@ -58,8 +40,6 @@ fn open(path: &Path, history: &StoreHistory) -> Journal {
     )
     .unwrap()
 }
-
-/* === Private Functions === */
 
 /* === Tests === */
 

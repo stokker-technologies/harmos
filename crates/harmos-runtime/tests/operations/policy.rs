@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,13 +22,9 @@ use super::runtime_with;
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationPolicy, ReplaySafety, RequestShape, RetryPolicy};
 use harmos_runtime::{Error, Refusal};
 
-/* === Constants === */
-
 /* === Macros === */
 
 // Each Request Executes Its Scripted Policy With Declared Resources.
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -402,8 +394,6 @@ fn blocker_declaration_operation()
         |_| harmos_runtime::operations::FailureKind::Permanent,
     )
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -1225,5 +1215,3 @@ async fn jitter_respects_ceiling() {
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

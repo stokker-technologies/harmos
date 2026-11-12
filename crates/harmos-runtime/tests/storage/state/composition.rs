@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -20,12 +16,6 @@
 // Local Imports
 use harmos_runtime::storage::{FileMetadata, FileReference, ObjectVersionToken, StorageCursor, StoreHistory};
 use harmos_runtime::{Identifier, Message, schema::Described};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -50,12 +40,6 @@ enum Source {
     Stored { cursor: StorageCursor },
     Empty,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

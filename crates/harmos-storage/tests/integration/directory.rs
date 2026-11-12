@@ -9,10 +9,6 @@
 
 // Directory Selection, Retained Read Ownership and Native Subscription Stories
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +19,6 @@ use std::time::Duration;
 use super::manager::fixture::{Fixture, config};
 use harmos_domain::model::storage::{DirectoryEntry, DirectoryEvent, DirectoryRule, DirectorySelection};
 use harmos_storage::{DirectoryWatcher, ReadBatch};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -41,8 +41,6 @@ mod typed_reads;
 #[path = "../../support/waveforms.rs"]
 pub(crate) mod waveforms;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -51,23 +49,3 @@ pub(crate) mod waveforms;
 
 // Local Imports
 use fixture::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

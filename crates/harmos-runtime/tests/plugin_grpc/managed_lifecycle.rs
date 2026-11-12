@@ -9,10 +9,6 @@
 
 // Managed SDK Plugin Lifecycle
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,24 +18,6 @@
 // Local Imports
 use super::support;
 use harmos_runtime::plugin::grpc::{Managed, Placement};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

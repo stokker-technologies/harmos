@@ -9,10 +9,6 @@
 
 // Cached And Spilled Coordinate Selection
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -28,24 +24,6 @@ use harmos_storage::query::transform::{
     downsample::{Algorithm, Downsample},
 };
 use std::sync::Arc;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

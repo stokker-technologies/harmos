@@ -13,8 +13,6 @@ mod application;
 mod partial;
 mod shutdown;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -33,12 +31,6 @@ use harmos_runtime::Error;
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 // A flush held open until the story releases it, announcing when it is entered.
@@ -47,10 +39,6 @@ struct Held {
     entered: Arc<Notify>,
     release: Arc<Semaphore>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -84,10 +72,6 @@ impl JournalConsumer<Editor> for Held {
         let _ = self.release.acquire().await;
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

@@ -9,10 +9,6 @@
 
 // Verify Admitted Mutation Completion Across Retry Expiry
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,18 +25,12 @@ use super::backend::{Control, Data, Recovery, history};
 use super::fixture::{Fixture, config, start};
 use harmos_storage::{FileMetadata, FileSession, Identifier, MutationId, MutationValue, StagedFile, StorageBackends, StorageManager};
 
-/* === Constants === */
-
 /* === Macros === */
 
 thread_local! {
     static CLOCK: RefCell<super::clock::Controlled> = RefCell::new(super::clock::Controlled::new());
     static ELAPSED: Cell<Duration> = const { Cell::new(Duration::ZERO) };
 }
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 /* === Enums === */
 
@@ -52,8 +42,6 @@ enum Work {
     Abandon,
     Delete,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -84,8 +72,6 @@ impl Work {
         }
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

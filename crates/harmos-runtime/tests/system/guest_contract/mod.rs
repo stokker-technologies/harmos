@@ -19,8 +19,6 @@ mod operations;
 mod publications;
 use schematic_domain as schematic;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -34,22 +32,6 @@ use harmos_runtime::guest::Error;
 use schematic::model::Point;
 use schematic_operations::guest::schematic::propose;
 use support::Bank;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -121,5 +103,3 @@ async fn retire_failed_guest<L: harmos_runtime::guest::PluginLifecycle>(
     assert!(matches!(component_error(original), harmos_runtime::operations::ComponentError::Unavailable));
     manager.shutdown(lifecycle).await.unwrap();
 }
-
-/* === Tests === */

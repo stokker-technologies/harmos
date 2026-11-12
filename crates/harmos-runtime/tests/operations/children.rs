@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use tokio::sync::Notify;
 use super::app::App;
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -118,8 +108,6 @@ static CHILD_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireD
 const CHILD_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ChildContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ChildContractDeclaration>::new(&CHILD_CONTRACT_DECLARATION_DESCRIPTION);
 
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn parent_contract_declaration_handler(
@@ -186,8 +174,6 @@ impl Drop for ChildGuard {
         self.0.events.lock().unwrap().push("child-dropped");
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

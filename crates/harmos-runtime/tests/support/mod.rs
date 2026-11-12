@@ -61,8 +61,6 @@ pub static FREEZE: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transac
 pub static EXPLODE: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.explode", revision::<()>()));
 pub static NOTED: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Record, "ledger.noted", revision::<Noted>()));
 
-/* === Macros === */
-
 /* === Type Aliases === */
 
 pub type Stored = Arc<Mutex<Vec<Arc<Entry<Recorded<Bank>>>>>>;
@@ -139,8 +137,6 @@ pub enum Change {
 pub enum Fact {
     Noted(Noted),
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 

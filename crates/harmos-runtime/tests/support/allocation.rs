@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -50,17 +46,11 @@ thread_local! {
         static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
 }
 
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Probe;
 
 struct Counting;
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -335,5 +325,3 @@ mod feeds {
 
     /* === Tests === */
 }
-
-/* === Tests === */

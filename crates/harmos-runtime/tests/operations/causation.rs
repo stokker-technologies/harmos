@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -35,10 +31,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -102,8 +94,6 @@ static FAMILY_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::Wire
 
 const FAMILY_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<FamilyContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<FamilyContractDeclaration>::new(&FAMILY_CONTRACT_DECLARATION_DESCRIPTION);
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -233,8 +223,6 @@ fn family_contract_declaration_operation()
         |_| harmos_runtime::operations::FailureKind::Permanent,
     )
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

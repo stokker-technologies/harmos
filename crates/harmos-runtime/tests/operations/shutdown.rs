@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use tokio::sync::Notify;
 use super::app::App;
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -89,8 +79,6 @@ fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn wait_contract_declaration_handler(
@@ -128,8 +116,6 @@ impl Drop for AttemptGuard {
         self.0.dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -417,9 +417,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "test":
         if options.target or options.exact:
             parser.error("--target and --exact require --package")
-        if options.filter or options.stress_count:
-            if options.layer != "integration":
-                parser.error("--filter and --stress-count require integration")
+        if options.filter and options.layer not in ("integration", "system"):
+            parser.error("--filter requires integration or system")
+        if options.stress_count and options.layer != "integration":
+            parser.error("--stress-count requires integration")
         if options.extended:
             _task("build:product", "--profile", options.profile)
             _task("build:rust:compatibility", "--profile", options.profile)

@@ -12,8 +12,6 @@
 #[path = "generated_guest_hash.rs"]
 mod generated_guest_hash;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -44,10 +42,6 @@ use harmos_runtime::storage::query::transform::{
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_runtime::{Error, Identifier, Result};
 
-/* === Constants === */
-
-/* === Macros === */
-
 /* === Type Aliases === */
 
 type Backends = PluginBackend<(), Option<PluginEndpoint>>;
@@ -58,10 +52,6 @@ struct Host {
     operations: OperationManager,
     callers: BTreeMap<String, PluginCaller>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -100,8 +90,6 @@ impl PluginLifecycle for Host {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -304,5 +292,3 @@ async fn query_grants_enforced() {
     manager.shutdown(&mut host).await.unwrap();
     fixture.finish().await;
 }
-
-/* === Tests === */

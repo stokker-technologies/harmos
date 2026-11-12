@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -28,12 +24,6 @@ use super::app::App;
 use harmos_runtime::operations::{OperationOutcome, OperationPhase, OperationStatus};
 use harmos_runtime::services::ServiceDefinition;
 use harmos_runtime::{Runtime, services::Resident, services::ServiceContext};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -58,8 +48,6 @@ enum Mode {
     Complete,
     Retry,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -97,8 +85,6 @@ impl Drop for Worker {
         self.0.drops.fetch_add(1, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

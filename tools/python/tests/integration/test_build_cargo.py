@@ -206,6 +206,13 @@ class WorkflowTaskTests(unittest.TestCase):
                 task.assert_called_once_with("prepare:tests:fixtures", "--profile", profile)
                 focused.assert_not_called()
 
+    def test_focused_layers_preserve_the_requested_filter(self):
+        expression = "package(=harmos-runtime) & test(guest_contract::)"
+        for layer in ("integration", "system"):
+            with self.subTest(layer=layer), patch.object(tasks, "_task", return_value=0) as task:
+                self.assertEqual(tasks.dispatch(["test", "--language", "rust", "--layer", layer, "--filter", expression]), 0)
+                task.assert_called_once_with(f"test:rust:{layer}", "--profile", "dev", "--filter", expression)
+
     def test_prepare_syncs_sdk_without_inheriting_tooling_environment(self):
         toolchain = '[toolchain]\nchannel = "custom"\nprofile = "minimal"\ncomponents = ["rustfmt"]\ntargets = ["wasm32-wasip2"]\n'
         with (

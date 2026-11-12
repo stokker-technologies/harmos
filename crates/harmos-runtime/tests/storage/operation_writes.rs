@@ -14,8 +14,6 @@ mod cancellation;
 #[path = "generated_record_exchange.rs"]
 mod records;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -34,20 +32,6 @@ use harmos_runtime::Identifier;
 use harmos_runtime::operations::StreamSettings;
 use harmos_runtime::storage::arrow::ArrowBatch;
 use harmos_storage::writes::DataBatch;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 /* === Public Functions === */
 
@@ -98,7 +82,3 @@ pub(super) async fn seed(f: &Fixture) {
     f.storage.write_schema(super::super::schema(), graph.clone()).await.unwrap();
     f.storage.flush().await.unwrap();
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

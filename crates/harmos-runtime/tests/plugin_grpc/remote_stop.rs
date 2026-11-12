@@ -9,10 +9,6 @@
 
 // Remote Stop Grace on the Host Clock
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,24 +21,6 @@ use harmos_runtime::{
     clock::Clock,
     plugin::grpc::{Error, Placement},
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

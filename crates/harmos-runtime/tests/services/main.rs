@@ -27,8 +27,6 @@ mod shutdown;
 
 use crate::support;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -42,14 +40,6 @@ use tokio::sync::{Barrier, Notify};
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, services::ServiceContext, services::ServiceStatus};
 use support::{Bank, Ledger, catalog};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 /* === Enums === */
 
@@ -84,8 +74,6 @@ fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn ping_contract_declaration_handler(
@@ -104,8 +92,6 @@ fn ping_contract_declaration_operation()
         |_| harmos_runtime::operations::FailureKind::Permanent,
     )
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -319,5 +305,3 @@ async fn concurrent_shutdowns_join() {
     );
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

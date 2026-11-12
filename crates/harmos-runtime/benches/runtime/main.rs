@@ -9,6 +9,11 @@
 
 /* === Modules === */
 
+#[path = "../../../harmos-storage/tests/support/storage.rs"]
+#[allow(dead_code)]
+mod backend;
+mod snapshots;
+
 #[path = "../../tests/support/mod.rs"]
 mod support;
 
@@ -222,6 +227,9 @@ fn benchmarks(c: &mut criterion::Criterion) {
             });
         });
     }
+    group.finish();
+    let mut group = c.benchmark_group("integration/snapshot_recovery");
+    group.bench_function("large_state_and_journal", |b| b.iter(|| runtime.block_on(snapshots::segmented_recovery())));
     group.finish();
 }
 

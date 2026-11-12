@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,10 +27,6 @@ use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolic
 use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::streams::PluginListenerRegistration;
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -137,8 +129,6 @@ enum Failed {
     #[error(transparent)]
     Runtime(#[from] Error),
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 

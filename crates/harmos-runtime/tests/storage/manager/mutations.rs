@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,22 +18,6 @@ use std::sync::atomic::Ordering;
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{MutationId, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -157,29 +137,5 @@ async fn budgets_never_multiply() {
         f.runtime.operations.call_protobuf::<harmos_operations::storage::ResumeFile>(request).await.unwrap().session.unwrap().generation,
         2
     );
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn ledger_evicts_receipts() {
-    // Exceed The Receipt Count Bound Within One Retry Window.
-    let f = Fixture::new(config()).await;
-    let window = f.storage.mutation_window().unwrap();
-    let mut last = None;
-    for index in 0..2048 {
-        let name = format!("small-{index}");
-        let create = identity(&f.storage, &format!("create-{index}"));
-        let producer = f.storage.create_file_once(&create, &metadata(&name)).await.unwrap();
-        let finish = identity(&f.storage, &format!("finish-{index}"));
-        let reference = f.storage.finish_file_once(&finish, &producer.session).await.unwrap();
-        assert_eq!(reference.length, 0);
-        f.storage.flush().await.unwrap();
-        last = Some((finish, producer.session, reference));
-    }
-    assert_eq!(f.storage.mutation_window().unwrap().id, window.id);
-
-    // The Newest Receipt Still Answers Its Retry With The Original Outcome.
-    let (finish, session, reference) = last.unwrap();
-    assert_eq!(f.storage.finish_file_once(&finish, &session).await.unwrap(), reference);
     f.finish().await;
 }

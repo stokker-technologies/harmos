@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -20,8 +16,6 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_runtime::operations::{Backoff, OperationPolicy, ReplaySafety, RetryPolicy};
-
-/* === Constants === */
 
 /* === Macros === */
 
@@ -60,8 +54,6 @@ inert_plugin!(EmptyGuest, "empty_guest", harmos_runtime::guest::kit::Context, &[
 
 #[cfg(feature = "plugin-guest")]
 inert_plugin!(ExplicitEmptyGuest, "explicit_empty_guest", harmos_runtime::guest::kit::Context, &[]);
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -194,8 +186,6 @@ fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn selected_declaration_handler(
@@ -213,8 +203,6 @@ fn selected_declaration_operation()
         |_| harmos_runtime::operations::FailureKind::Permanent,
     )
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

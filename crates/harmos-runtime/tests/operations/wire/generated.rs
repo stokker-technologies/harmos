@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -43,10 +39,6 @@ const POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[rustfmt::skip]
@@ -73,10 +65,6 @@ mod output {
         Response(super::Reply),
     }
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -140,8 +128,6 @@ impl harmos_runtime::operations::authorization::Authorizer for Access {
         Ok(self.0.load(Ordering::SeqCst).then(|| harmos_runtime::operations::authorization::Authorization::Full(provider.contract.clone())))
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

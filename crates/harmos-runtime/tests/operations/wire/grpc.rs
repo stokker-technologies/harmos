@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,10 +25,6 @@ use super::app::App;
 use harmos_runtime::Runtime;
 use harmos_runtime::grpc::Event;
 use harmos_runtime::operations::RetryPolicy;
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -94,10 +86,6 @@ impl harmos_runtime::operations::middleware::Middleware for Observe {
     }
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn produce_declaration_handler(
@@ -144,8 +132,6 @@ impl Drop for AttemptGuard {
         self.trace.stopped.add_permits(1);
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

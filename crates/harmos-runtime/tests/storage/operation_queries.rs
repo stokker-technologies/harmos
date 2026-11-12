@@ -18,8 +18,6 @@ mod batches;
 #[path = "generated_query_projection.rs"]
 mod projection;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -47,8 +45,6 @@ use harmos_runtime::storage::{
 };
 use harmos_runtime::{Identified, Identifier, Message};
 
-/* === Constants === */
-
 /* === Macros === */
 
 macro_rules! object {
@@ -71,8 +67,6 @@ object!(First, "test.query.first");
 object!(Second, "test.query.second");
 
 object!(Third, "test.query.third");
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -108,13 +102,3 @@ fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
         .entry(harmos_domain::model::storage::ObjectDefinition::of::<Second>())
         .entry(harmos_domain::model::storage::ObjectDefinition::of::<Third>())
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

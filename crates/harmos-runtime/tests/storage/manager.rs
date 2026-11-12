@@ -18,8 +18,6 @@ mod receipts;
 #[path = "manager/recovery.rs"]
 mod recovery;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -30,22 +28,6 @@ use std::time::Duration;
 use super::{Fixture, config};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::FileMetadata;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

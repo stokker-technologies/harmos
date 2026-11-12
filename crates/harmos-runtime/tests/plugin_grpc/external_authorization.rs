@@ -9,10 +9,6 @@
 
 // External Client Authorization Remains Enforced
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -37,10 +33,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -89,8 +81,6 @@ fn local_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch = batch.entry(local_fetch_declaration_operation().expect("representable operation"));
     batch
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -144,8 +134,6 @@ fn local_fetch_declaration_operation()
         |_| harmos_runtime::operations::FailureKind::Permanent,
     )
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -228,5 +216,3 @@ async fn external_request_grants() {
     attached.detach().await.unwrap();
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

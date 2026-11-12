@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use tokio::sync::Notify;
 use super::{app::App, service_status};
 use harmos_runtime::operations::{OperationOutcome, OperationPhase};
 use harmos_runtime::{Runtime, services::Resident, services::ServiceExit, services::ServiceStatus};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -54,8 +44,6 @@ enum CleanupRequest {
     Definition,
     Runtime,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -91,8 +79,6 @@ impl Resident<App> for RetainedCleanup {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

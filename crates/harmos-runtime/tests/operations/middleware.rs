@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -33,10 +29,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -108,10 +100,6 @@ struct Policy {
     events: Arc<Mutex<Vec<String>>>,
     reject: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -221,8 +209,6 @@ impl Middleware for Policy {
         self.events.lock().unwrap().push(format!("{} observe {}", self.name, call.operation().id));
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

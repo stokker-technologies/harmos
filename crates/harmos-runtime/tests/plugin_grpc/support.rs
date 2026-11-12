@@ -9,10 +9,6 @@
 
 // Plugin Placement Story Mechanics
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -48,10 +44,6 @@ use harmos_runtime::{
     plugin::grpc::{Activation, PlacementSettings},
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
 /* === Type Aliases === */
 
 type Output<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
@@ -86,10 +78,6 @@ struct Fixture {
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pending_stop: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -360,7 +348,3 @@ pub async fn activation(status: &mut watch::Receiver<harmos_runtime::plugin::grp
         status.changed().await.unwrap();
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

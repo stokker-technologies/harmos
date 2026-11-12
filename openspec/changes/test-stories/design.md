@@ -3,9 +3,8 @@
 Status: inventory locked against the current combined tree on 2026-11-12. `R` is
 `crates/harmos-runtime`, `S` is `crates/harmos-storage`, `P` is `tools/packaging`.
 The combined `grpc-plugins` marker authorizes implementation. Removed facilities are excluded.
-Tests, fixtures and benches in crates, the Rust SDK and examples belong to this worker;
-`tools/**`, `.github/**`, `mise.toml` and remaining packaging paths belong to the concurrent worker.
-Binding consolidation (3.4) therefore requires that owner’s handoff; this worker does not edit it.
+The current worker owns this checkout, including tooling and packaging paths. The owner has
+authorized binding consolidation (3.4) here; there is no concurrent writer in this worktree.
 No README claims or public usage change.
 
 ## Shape of a Story
@@ -50,7 +49,7 @@ async fn undo_and_redo_follow_commits() -> Result<(), TestError> {
 | Commit, undo, redo and availability | 4 | `R/tests/state/undo_redo.rs`; conflict, barrier and principal scenarios remain in `undo.rs` |
 | Stored waveform is resumed, summarized and downsampled | 5 | `S/tests/integration/manager/nominal.rs`; `file_ranges.rs` and `native_stream_reads.rs` are separate journeys; shared mechanics in `tests/support/nominal.rs` |
 | Mutation receipts prevent duplicate effects | 3 | `R/tests/storage/manager/receipts.rs`; exclusive writes and integrity cases remain in `production.rs` |
-| Generated binding consumers | 8, generating two packages each | `P/tests/acceptance/bindings.rs:450..511`; moved to tooling owner, generate once |
+| Generated binding consumers | 9 consumer facets, generating two packages each | `P/tests/acceptance/bindings/`; one export shared by every consumer facet |
 
 ## Workloads That Move to Benchmarks
 
@@ -73,7 +72,7 @@ Replaced by a controlled clock or an awaited event:
 | `R/tests/services/shutdown.rs::domains_outlives_clones` | Awaits `context.stopping()` |
 | `S/tests/support/file_backend.rs` | Fixture-owned date; restart story checks retention before expiry and removal at expiry |
 | `S/tests/integration/manager/mapping.rs` | Timing is removed; large projections live under benches |
-| `R/tests/system/guest_contract/limits.rs::manager_bounds_wait`, `operations.rs::shutdown_retains_cleanup` | Paused Tokio clock; native proof requires rebuilt guest fixtures |
+| `R/tests/system/guest_contract/limits.rs::manager_bounds_wait`, `operations.rs::shutdown_retains_cleanup`, `dependency_admission.rs` | Paused Tokio clock; native proof uses rebuilt guest fixtures |
 
 Kept as guards only: the notification, directory, batching, observer-demand and process bounds
 that stop a hung test (`R/src/guest/host/plugin/scope.rs`, `S/tests/integration/directory.rs:53,172`,
@@ -84,7 +83,7 @@ that stop a hung test (`R/src/guest/host/plugin/scope.rs`, `S/tests/integration/
 
 | Test | Reason |
 | --- | --- |
-| `R/tests/operations/lanes.rs`: lane name/capacity readback tests | Repeat declared names and capacities; admission is tested at lines 130 and 136 |
+| Lane name/capacity readbacks from the former `R/tests/operations/lanes.rs` | Repeat declared values; `R/tests/operations/lane_validation_and_capacity_control_admission.rs` proves admission |
 | `R/tests/state/managed.rs:111` | Reads back the value it set through a clone without mutating either handle |
 | `crates/harmos-operations/src/lib.rs` unit inventory test | Fixed count was already gone; uniqueness and nonzero fingerprints now belong to `R/tests/operations/host.rs::builtin_controls_instance` |
 | `crates/harmos-guest/tests/kit/main.rs:75` | Pins fixture names and literal timeouts; useful checks move into a guest story |
@@ -105,11 +104,11 @@ by `facility-trim`, not recreated as benchmarks or counted as completed story co
 | Operations | Inline catalog unit test removed; uniqueness and fingerprints are checked in the runtime built-in control story |
 | Guest | `tests/kit/main.rs`: remove fixture-name/timeout readback; retain behavior in system guest stories |
 | Protocol, Domain, Rust SDK/derive, examples | Inspected for relocation effects; existing independent journeys retained; no obsolete macro or sidecar tests recreated |
-| Tools/packaging | Binding consumers under `tests/acceptance/bindings.rs`; task 3.4 belongs to concurrent tooling owner |
+| Tools/packaging | Binding consumers under `tests/acceptance/bindings/`; one export serves all consumer facets |
 
 SDK client tests live in `R/tests/operations/wire/sdk_client.rs` and `sdk/rust/tests/integration`.
 Declarations and guest machinery moved to operations; conformance lives in `tools/conformance`.
-No edits to those tool-owned paths are needed for crate story consolidation.
+The binding consumer story is maintained with the crate stories in this checkout.
 
 ## Test Mechanics Decisions
 
@@ -127,10 +126,56 @@ continues to use the existing virtual-clock stories.
 
 No product test seam was added. The operations library edit removes an inline test only; runtime and storage clocks/events are test-support code.
 
-## Remaining Native Guest Proof
+## Guest Initialization Regression
 
-Rebuilt sandbox initialization consumes the existing fuel budget in
-`harmos-operations/src/inventory/publications.rs::validate_match_with_settings` while decoding
-stream metadata. Both guest deadline stories stop before their deadline assertions; task 4.2
-remains open. Repair initialization with its runtime/operations owner, then rerun both exact
-System stories. Raising fuel or time budgets and skipping the stories are outside this change.
+The foundation reduction (`e4eb6cf3`) moved inventory decoding and validation from
+`harmos-domain` to `harmos-operations`. Both guest workspaces retained only the former
+package's development optimization override, so the moved code consumed unoptimized Wasm
+instructions within the unchanged fuel allowance. Row metadata decoding already existed at
+`8f176ef1`; the inventory move lost its compilation policy. Both manifests now optimize
+`harmos-operations` at the existing level. Native guest proof uses freshly built components;
+fuel, deadlines, memory limits and System serialization stay unchanged.
+
+## Second Reduction Pass
+
+The source inventory includes runtime lane admission, principal undo availability, clock,
+mutation receipts and snapshots; storage file readers, mapping and object codecs; their
+shared fixtures and existing runtime/storage benchmark targets. Binding consumer facets
+share one export. Lane capacities and snapshot payload boundaries are tables; principal
+availability is checked before the same undo. Identical snapshot launches reuse the existing
+fixture. The clock source-spelling scan and identical handwritten catalog readbacks are
+removed while behavioral clock/codec stories remain. Empty skeleton headings are removed
+throughout both test trees; this mechanical cleanup is recorded separately from behavioral
+consolidation. The application catalog story no longer tests its own handwritten conversions
+or decodes the same inventory twice through aliases.
+The edited lane, principal, snapshot, reader, mapping and codec stories have individual files;
+their shared modules retain mechanical fixture definitions.
+
+The 2,048-file receipt workload and 730-position large-state snapshot workload live in the
+existing benchmark targets. Correctness retains receipt admission across its eviction bound
+and a 12-position segmented snapshot with an independent journal replay, keyed receipts,
+undo, redo and a post-checkpoint commit. File round trips keep a small payload and a payload
+crossing the 31-byte batch boundary. File retry, completion, slice and projection stages
+share one file; mapped queries share one snapshot.
+
+- Recovery faults remain separate: each fault interrupts a different persistence or cleanup owner.
+- gRPC network/endpoint cases remain distinct where native and transcoded envelopes have different authority or settlement paths.
+- Opened/frozen file cases remain distinct where source mutation, cancellation, unlinking or Windows handle access change ownership.
+
+The canonical Tests producer and its Rust lint selector explicitly enable
+`harmos-runtime/plugin-guest` and `harmos-packaging/generate-python`. Moving packaging
+out of runtime removed incidental feature unification; the archived proof must retain both
+the guest host System selection and generated binding consumers. Shipping features are unchanged.
+The pending-shutdown story matches the retained typed timeout instead of a Debug substring
+that stopped matching when `TimedOut` gained structured policy fields.
+
+The System task accepts the existing nextest filter shape while retaining serial execution
+and its configured hang guards. Focused guest proof uses this selection from the shared archive.
+
+Guest System proof covers dependency admission and its retained deadline with paused Tokio
+time, including successful startup under the unchanged provider budget. Guest child routing
+selects the locally authored request declaration before validating
+the assigned wire fingerprint, so distinct request types with identical fields cannot alias
+one another. The declarations already belong to the plugin; no public caller shape changes.
+Encoded guest-host probes use the authoritative protobuf host boundary, and preflight/retirement
+checks compare the surrounding host inventory so built-in clock operations remain present.

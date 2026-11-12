@@ -9,10 +9,6 @@
 
 // Managed Plugin Environment Story
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,24 +21,6 @@ use harmos_runtime::{
     clock::Clock,
     plugin::grpc::{Managed, Placement},
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

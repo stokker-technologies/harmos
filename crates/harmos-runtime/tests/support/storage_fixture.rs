@@ -34,22 +34,12 @@ pub(crate) use harmos_runtime::storage::*;
 pub(crate) use harmos_runtime::{BackendFailure, Error, Identifier, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 pub(crate) struct Fixture {
     pub(crate) runtime: Runtime<Bank>,
     storage_fixture: shared::Fixture<StorageManager>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -124,5 +114,3 @@ pub(crate) async fn saved_records(storage: &StorageManager, schema: &SchemaKey) 
     }
     records
 }
-
-/* === Tests === */

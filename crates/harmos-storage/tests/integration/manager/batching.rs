@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -34,12 +30,6 @@ use harmos_storage::StreamInput;
 use harmos_storage::schema::Cardinality;
 use harmos_storage::schema::graph::{Field, Kind};
 use harmos_storage::state::StateBackend;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -72,8 +62,6 @@ enum FlushGate {
     Write,
     Receipt,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -133,8 +121,6 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for Capture {
         self.1.notify_one();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +19,6 @@ use tokio::sync::{Notify, mpsc};
 use super::Ledger;
 use super::{Bank, assembly, service_status, support};
 use harmos_runtime::{services::ServiceContext, services::ServiceExit, services::ServiceStatus};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -319,5 +299,3 @@ async fn context_publishes_streams() {
     assert_eq!(rows[0].value.sample, 7);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

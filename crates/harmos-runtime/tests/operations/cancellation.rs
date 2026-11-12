@@ -9,10 +9,6 @@
 
 // Cancellation Final Response Proof
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,12 +27,6 @@ use tokio::sync::Notify;
 use super::app::App;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -88,10 +78,6 @@ pub(crate) static EXCHANGE_DESCRIPTION: harmos_runtime::operations::WireDeclarat
 
 pub(crate) const EXCHANGE_OPERATION: harmos_runtime::operations::OperationSpec<Exchange> =
     harmos_runtime::operations::OperationSpec::<Exchange>::new(&EXCHANGE_DESCRIPTION);
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -148,10 +134,6 @@ impl Drop for Guard {
         self.0.dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

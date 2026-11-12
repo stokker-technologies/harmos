@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,12 +25,6 @@ use harmos_runtime::{
     Runtime, services::Resident, services::ServiceExit, services::ServiceStatus, state::FactSource, state::Position, state::SystemFact,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct MutableAdapter {
@@ -48,8 +38,6 @@ enum AdapterExit {
     Environmental,
     Application,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -71,8 +59,6 @@ impl Resident<Bank> for MutableAdapter {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -236,7 +236,10 @@ Python process validates selectors and sets the warnings policy. Native sccache
 keeps its server across invocations. Lower Cargo parallelism if allocations fail.
 
 `build --artifact tests --profile dev|release` produces the shared archive and test
-fixtures. Test-only gRPC executables belong to the unpublished conformance package;
+fixtures. The Tests producer and Rust lint selection explicitly enable guest hosting
+and Python generation so guest System stories and binding consumers stay in the archive
+after package relocation; they do not depend on incidental feature unification.
+Test-only gRPC executables belong to the unpublished conformance package;
 the Tests producer stages them under `fixtures/bin` and stamps their hashes.
 Archived tests resolve these paths in the consumer checkout and restore executable
 permissions after transfer. `build --artifact bench` produces benchmarks and their
@@ -290,8 +293,10 @@ the configured per-test hang guards from `[conventions.testing.deadlines]` in
 
 ```sh
 mise run test -- --language rust --layer integration --filter 'package(=harmos-runtime) & test(=plugin_grpc::child_calls::child_calls_reach_host_and_public_peer_without_start_order)' --stress-count 50
+mise run test -- --language rust --layer system --filter 'binary_id(=harmos-guest::system) | (binary_id(=harmos-runtime::system) & test(guest))'
 ```
 
+System also accepts `--filter` and preserves its serial scheduling and hang guards.
 Select `--profile release` to use an archive and fixtures from a Nightly build.
 The protocol drift test runs the pinned `protoc` from the transferred offline
 vendor inputs and restores its executable permission on Unix. Focused Cargo

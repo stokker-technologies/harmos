@@ -9,10 +9,6 @@
 
 // Remote Plugin Connection Replacement
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,24 +18,6 @@
 // Local Imports
 use super::support::{self, Manual, Remote};
 use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

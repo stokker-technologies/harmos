@@ -9,10 +9,6 @@
 
 // Retain Every Partial Startup Owner Through Cleanup Retry
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use crate::storage::fixture::{Data, Recovery, StorageBackends, StorageManager, c
 use harmos_runtime::runtime::{BootstrapCleanup, BootstrapStatus};
 use harmos_runtime::services::ServiceContext;
 use harmos_runtime::{Application, Lifecycle, Runtime, Setup, Startup, StartupError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -68,8 +58,6 @@ enum Failure {
     #[error("controlled stop failure")]
     Stop,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -161,10 +149,6 @@ impl Drop for State {
         self.0.state_released.notify_one();
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

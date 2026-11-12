@@ -25,8 +25,6 @@ mod listeners;
 #[path = "streams_macros.rs"]
 mod streams_macros;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -46,19 +44,9 @@ use harmos_runtime::{
     streams::Item, streams::StreamManager,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Selecting;
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -75,8 +63,6 @@ impl StreamConsumer<Bank> for Selecting {
         batch.reaches()
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -434,5 +420,3 @@ mod colliding {
 
     /* === Tests === */
 }
-
-/* === Tests === */

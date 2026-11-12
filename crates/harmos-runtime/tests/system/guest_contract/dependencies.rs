@@ -12,8 +12,6 @@
 #[path = "dependency_admission.rs"]
 mod dependency_admission;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,10 +25,6 @@ use super::sandbox::{ECHO_OPERATION_OPERATION, EchoOperation, Echoed, PROVIDER_E
 use super::{Bank, component_error, retire_failed_guest};
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::OperationHost as _;
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -101,8 +95,6 @@ fn forward_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch = batch.entry(forward_declaration_operation().expect("representable operation"));
     batch
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -274,8 +266,6 @@ impl harmos_runtime::guest::PluginLifecycle for DependencyHost {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 async fn runtime_with_provider(provider: Arc<ProviderOwner>) -> Runtime<Bank> {
@@ -318,5 +308,3 @@ async fn dependency_candidate_with_client(lifecycle: &mut DependencyHost, config
     });
     PluginDefinitions::new(definitions, []).unwrap()
 }
-
-/* === Tests === */

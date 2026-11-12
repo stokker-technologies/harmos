@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,12 +20,6 @@ use harmos_runtime::state::{CorrelationId, DecodeError, Entry, Envelope, Focus, 
 use harmos_runtime::storage::{JournalConsumer, Payload, Recovery, Source};
 use harmos_runtime::{DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(Clone)]
@@ -39,10 +29,6 @@ struct Replaying {
     recorded: Vec<Envelope<Payload<Editor>>>,
     resume: Position,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,10 +20,6 @@ use harmos_runtime::{
     state::JournalCapture, state::Position, state::PreparationError, state::PrincipalId, state::Recorded, state::Records,
     state::SystemFact, state::Transaction,
 };
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -132,8 +124,6 @@ fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
     })
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 impl harmos_runtime::state::Record for Observed {
@@ -190,8 +180,6 @@ impl JournalCapture<Model> for Panics {
         panic!("capture worker failed");
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -394,5 +382,3 @@ async fn panic_fails_capture() {
         "a panicking capture worker is a capture failure the journal keeps"
     );
 }
-
-/* === Tests === */

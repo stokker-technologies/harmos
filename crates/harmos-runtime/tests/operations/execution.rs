@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,20 +17,10 @@ use futures_util::FutureExt;
 // Local Imports
 use super::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[cfg(feature = "simulation")]
 struct InitializingBank;
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -61,10 +47,6 @@ impl harmos_runtime::Lifecycle for InitializingBank {
         Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

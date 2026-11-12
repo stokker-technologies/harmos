@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -19,12 +15,6 @@
 use serde::{Deserialize, Serialize};
 // Local Imports
 use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state::PrincipalId, state::Recorded};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -63,8 +53,6 @@ fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
     })
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 impl harmos_runtime::state::Record for Noted {
@@ -86,8 +74,6 @@ impl harmos_runtime::Application for Model {
     type Transaction = harmos_runtime::state::Never;
     type Record = Records;
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

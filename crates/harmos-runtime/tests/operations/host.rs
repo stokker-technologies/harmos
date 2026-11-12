@@ -11,10 +11,6 @@
 // through it, and the built-in status, cancel and watch operations it shares
 // with the remote bindings.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -39,10 +35,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -87,10 +79,6 @@ static TICKER_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclarati
 const TICKER_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<TickerDeclaration> =
     harmos_runtime::operations::OperationSpec::<TickerDeclaration>::new(&TICKER_DECLARATION_DESCRIPTION);
 
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn hold_declaration_handler(
@@ -122,8 +110,6 @@ impl Drop for CompletionGuard {
         self.0.cleanup.notify_one();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

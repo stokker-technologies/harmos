@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,10 +27,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -82,16 +74,6 @@ static EXCHANGE_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
 
 const EXCHANGE_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ExchangeDeclaration> =
     harmos_runtime::operations::OperationSpec::<ExchangeDeclaration>::new(&EXCHANGE_DECLARATION_DESCRIPTION);
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

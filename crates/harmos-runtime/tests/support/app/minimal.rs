@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -20,19 +16,9 @@
 // Local Imports
 use harmos_runtime::{Application, state::Never};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 pub struct App;
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -55,9 +41,3 @@ impl Application for App {
     type Transaction = Never;
     type Record = ();
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

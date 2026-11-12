@@ -30,8 +30,6 @@ mod owned_wire;
 #[cfg(feature = "grpc")]
 mod sdk_client;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -41,23 +39,3 @@ mod sdk_client;
 // Local Imports
 #[allow(unused_imports, reason = "the wire stories resolve the shared fixture through their parent")]
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

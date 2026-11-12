@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,22 +17,6 @@ use futures_core::Stream;
 use super::lifecycle::{Lifecycle, Manager};
 use super::{runtime, sandbox as wire};
 use harmos_runtime::Message;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -149,5 +129,3 @@ async fn saved_context_generation() {
     drop((manager, lifecycle));
     runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

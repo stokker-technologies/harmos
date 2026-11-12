@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,12 +22,6 @@ use harmos_runtime::operations::OperationManager;
 use harmos_runtime::services::ServiceDefinition;
 use harmos_runtime::{Error, services::ServiceContext, services::ServiceStatus};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(Default)]
@@ -41,14 +31,6 @@ struct Resources {
     stopping: Notify,
     cleanup: Notify,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -379,5 +361,3 @@ async fn factory_panic_reported() {
     ));
     assert!(matches!(crate::support::app::shutdown(&runtime).await, Err(Error::TaskFailed { .. })));
 }
-
-/* === Tests === */

@@ -9,10 +9,6 @@
 
 // Retain Native System Story Traces Through Settlement and Unwinding
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use tracing_subscriber::layer::SubscriberExt;
 
 // Local Imports
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[must_use = "keep the report alive until the story's work settles"]
@@ -46,10 +36,6 @@ struct Collector {
     guard: Arc<FlushGuard>,
     dispatch: tracing::Dispatch,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -141,5 +127,3 @@ fn initialize(directory: &Path) -> Collector {
     tracing::dispatcher::set_global_default(dispatch.clone()).expect("the system process installs one trace subscriber");
     Collector { guard: Arc::new(guard), dispatch }
 }
-
-/* === Tests === */

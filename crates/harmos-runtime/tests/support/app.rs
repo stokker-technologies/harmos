@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -20,20 +16,6 @@
 // Local Imports
 use super::{Bank, Ledger, catalog, streams};
 use harmos_runtime::{Runtime, Setup};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 /* === Public Functions === */
 
@@ -76,7 +58,3 @@ pub async fn register<A: harmos_runtime::Application>(
 pub async fn shutdown<A: harmos_runtime::Application>(runtime: &Runtime<A>) -> harmos_runtime::Result<harmos_runtime::state::Position> {
     runtime.shutdown().await
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

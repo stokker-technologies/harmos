@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -19,22 +15,6 @@ use support::{Change, Copied, Ledger, Noted, alice, booted, deposit, ledger, qui
 // Local Imports
 use crate::state::support;
 use harmos_runtime::{Error, state::Focus, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -93,5 +73,3 @@ async fn next_boot_recovers() {
     assert_eq!(ledger(&recovered).await, kept, "the next boot recovered every committed transition that preceded the panic");
     assert_eq!(recovered.state.applied(), Position(2), "and nothing was replayed for the change that panicked");
 }
-
-/* === Tests === */

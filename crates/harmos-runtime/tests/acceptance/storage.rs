@@ -9,10 +9,6 @@
 
 // Compile Exported Storage Operation Contracts
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,24 +18,6 @@
 // Local Imports
 use super::fixtures;
 use harmos_operations::storage::storage_catalog;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

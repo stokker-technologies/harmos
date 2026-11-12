@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,22 +20,6 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -67,72 +47,8 @@ fn shareable_tempfile() -> (tempfile::TempDir, std::fs::File) {
     (owner, file)
 }
 
-#[tokio::test(start_paused = true)]
-async fn file_roundtrip_recovers() {
-    let large = (0..8192).map(|n| (n % 251) as u8).collect::<Vec<_>>();
-    let cases =
-        [("large", large), ("unsaved", b"unsaved bytes".to_vec()), ("retry", b"one chunk".to_vec()), ("finish", b"finished once".to_vec())];
-    for (id, bytes) in cases {
-        let mut policy = config();
-        policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
-        let f = Fixture::new(policy).await;
-        let mut file = f.storage.create_file(metadata(id, &bytes)).await.unwrap();
-        f.data.control.chunk_failures.store(1, Ordering::SeqCst);
-        file.write_all((bytes).to_vec()).await.unwrap();
-        let offsets = f.data.control.chunk_offsets.lock().unwrap().clone();
-        assert_eq!(&offsets[..2], &[0, 0]);
-        if bytes.len() <= 31 {
-            assert_eq!(offsets, [0, 0]);
-        }
-        assert!(f.data.control.chunk_sizes.lock().unwrap().iter().all(|n| *n <= 31));
-
-        // An Uncertain Publication Reuses Its Position Without Duplicating The Blob.
-        f.data.control.finish_failures.store(1, Ordering::SeqCst);
-        let reference = file.finish().await.unwrap();
-        assert_eq!(reference.position.sequence, 1);
-        assert_eq!(reference.length, bytes.len() as u64);
-        assert!(f.data.control.finish_positions.lock().unwrap().iter().all(|position| *position == 1));
-        assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
-        assert!(f.data.files.lock().unwrap().is_empty());
-        file.abort().await.unwrap();
-        assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
-
-        // Bounded Reads Reconstruct The Exact Published Bytes.
-        let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
-        let first = reader.next().await.unwrap().unwrap();
-        assert!(first.bytes().len() <= 31);
-        assert_eq!(first.bytes(), &bytes[..first.bytes().len()]);
-        if bytes.len() <= 31 {
-            assert_eq!(first.bytes(), bytes);
-        }
-        let mut actual = first.bytes().to_vec();
-        while let Some(batch) = reader.next().await.unwrap() {
-            assert!(batch.bytes().len() <= 31);
-            actual.extend_from_slice(batch.bytes());
-        }
-        assert_eq!(actual, bytes);
-        drop(reader);
-
-        // Logical Publication Remains Separate From Durable Query Visibility.
-        assert_eq!(f.storage.status().saved.sequence, 0);
-        let mut durable = f
-            .storage
-            .query(harmos_storage::Query {
-                at: f.storage.cursor_saved(),
-                source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
-                transforms: Vec::new(),
-                slice: harmos_storage::query::RowSlice::default(),
-            })
-            .await
-            .unwrap();
-        assert!(matches!(durable.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
-        assert!(durable.next().await.unwrap().is_none());
-        f.storage.flush().await.unwrap();
-        assert_eq!(f.storage.status().saved.sequence, reference.position.sequence);
-        drop(durable);
-        f.finish().await;
-    }
-}
+#[path = "files/file_roundtrip_recovers.rs"]
+mod file_roundtrip_recovers;
 
 #[tokio::test]
 async fn cancelled_create_cleans() {
@@ -180,21 +96,6 @@ async fn integrity_failure_unpublished() {
     assert_eq!(f.storage.status().accepted.sequence, 0);
     assert!(f.data.files.lock().unwrap().is_empty());
     assert!(f.data.staged.lock().unwrap().is_empty());
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn failed_chunk_retryable() {
-    let f = Fixture::new(config()).await;
-    let bytes = b"immutable bytes";
-    let reference = f.storage.write_file(metadata("read", bytes), (bytes).to_vec()).await.unwrap();
-    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
-    f.data.control.corrupt_file.store(true, Ordering::SeqCst);
-    assert!(reader.next().await.is_err());
-    assert_eq!(reader.offset(), 0);
-    f.data.control.corrupt_file.store(false, Ordering::SeqCst);
-    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), bytes);
-    drop(reader);
     f.finish().await;
 }
 
@@ -382,27 +283,6 @@ async fn forged_reference_refused() {
         assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"abc");
         assert_eq!(f.storage.status().saved.sequence, u64::from(saved));
     }
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn reader_keeps_metadata() {
-    let f = Fixture::new(config()).await;
-    f.data.control.block_release.store(true, Ordering::SeqCst);
-    let file = f.storage.write_file(metadata("owned", b"abc"), (b"abc").to_vec()).await.unwrap();
-    let mut reader = f.storage.read_file(whole(&file)).await.unwrap();
-    f.storage.flush().await.unwrap();
-    assert_eq!(f.storage.status().pending_bytes, 0);
-    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"abc");
-    assert!(reader.next().await.unwrap().is_none());
-    // The Exhausted Reader Schedules Backend Snapshot Release.
-    f.data.control.release_entered.notified().await;
-    // Completion Remains Inspectable While That Release Is Pending.
-    assert_eq!(reader.completion().unwrap().bytes, file.length);
-    drop(reader);
-    f.data.control.block_release.store(false, Ordering::SeqCst);
-    f.data.control.release_release.notify_one();
-    f.data.snapshots_released().await;
     f.finish().await;
 }
 
@@ -606,52 +486,8 @@ async fn file_bypasses_persistence() {
     f.finish().await;
 }
 
-#[tokio::test]
-async fn file_projection_retains() {
-    let f = Fixture::new(config()).await;
-    let mut file = f.storage.create_file(metadata("projection", b"abc")).await.unwrap();
-    file.write_all(b"abc".to_vec()).await.unwrap();
-    let reference = file.finish().await.unwrap();
-    f.storage.flush().await.unwrap();
-    let session = f.storage.clone();
-    let mut reader = session.read_file(whole(&reference)).await.unwrap();
-    let batch = reader.next().await.unwrap().unwrap();
-    let pointer = batch.bytes().as_ptr();
-    let projected = batch.try_map(|batch| Ok::<_, Error>(batch.bytes)).unwrap();
-    assert_eq!(projected.as_ptr(), pointer);
-    drop(reader);
-    drop(session);
-    f.data.snapshots_released().await;
-    assert_eq!(projected.as_slice(), b"abc");
-    drop(projected);
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn file_slice_refuses() {
-    let f = Fixture::new(config()).await;
-    let mut file = f.storage.create_file(metadata("slice", b"abc")).await.unwrap();
-    file.write_all(b"abc".to_vec()).await.unwrap();
-    let reference = file.finish().await.unwrap();
-    f.storage.flush().await.unwrap();
-    let session = f.storage.clone();
-    let mut reader = session.read_file(whole(&reference)).await.unwrap();
-    let batch = reader.next().await.unwrap().unwrap();
-    let slice = batch.slice(1..3);
-    let called = std::cell::Cell::new(false);
-    let result = batch.try_map(|batch| {
-        called.set(true);
-        Ok::<_, Error>(batch.bytes)
-    });
-    assert!(result.is_err());
-    assert!(!called.get());
-    drop(reader);
-    drop(session);
-    f.data.snapshots_released().await;
-    assert_eq!(slice.bytes(), b"bc");
-    drop(slice);
-    f.finish().await;
-}
+#[path = "files/file_readers_retry_and_retain_metadata_slices_and_projections.rs"]
+mod file_readers_retry_and_retain_metadata_slices_and_projections;
 
 #[tokio::test]
 async fn opened_capture_retains_cancelled_copy() {
@@ -1346,5 +1182,3 @@ mod windows {
 
     /* === Tests === */
 }
-
-/* === Tests === */

@@ -9,10 +9,6 @@
 
 // State Journal Admission Story
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,10 +21,6 @@ use crate::storage::fixture::*;
 use crate::storage::waveforms;
 use harmos_runtime::Application;
 use harmos_runtime::state::Envelope;
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -128,8 +120,6 @@ fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
     })
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 impl harmos_runtime::state::Record for Observed {
@@ -181,8 +171,6 @@ impl RecordProjection for Projection {
         })
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

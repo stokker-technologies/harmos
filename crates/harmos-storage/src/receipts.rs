@@ -542,6 +542,38 @@ mod tests {
     }
 
     #[test]
+    fn admission_evicts_completed_receipts_without_losing_active_owners() {
+        // Fill One Receipt Window At A Fixed Clock Reading.
+        let now = Instant::now();
+        let execution = crate::execution::Execution::at(SystemTime::UNIX_EPOCH, move || now, |_| Box::pin(std::future::pending()));
+        let mut receipts = Receipts::new(MUTATION_RETENTION, execution).unwrap();
+        let ids: Vec<_> = (0..=super::super::config::MAX_MUTATIONS.get())
+            .map(|index| MutationId {
+                window: receipts.window.clone(),
+                key: Identifier::new(format!("receipt-{index}")).unwrap(),
+            })
+            .collect();
+        for id in &ids[..ids.len() - 1] {
+            receipts.insert(id, [1; 32]).unwrap();
+        }
+        let owned = receipts.completion(&ids[1]);
+        for id in &ids[1..ids.len() - 1] {
+            receipts.complete(id, MutationValue::Rejected);
+        }
+
+        // Admission Skips The Pending Receipt And The Completed Receipt Still Owned.
+        let newest = ids.last().unwrap();
+        receipts.insert(newest, [1; 32]).unwrap();
+        receipts.complete(newest, MutationValue::Rejected);
+        assert!(matches!(receipts.lookup(&ids[0], &[1; 32], None).unwrap(), ReceiptState::Pending));
+        assert!(matches!(receipts.lookup(&ids[1], &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
+        assert!(matches!(receipts.lookup(&ids[2], &[1; 32], None).unwrap(), ReceiptState::Missing));
+        assert!(matches!(receipts.lookup(newest, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
+        assert!(!receipts.snapshot(None).iter().any(|receipt| receipt.mutation == ids[2]));
+        drop(owned);
+    }
+
+    #[test]
     fn receipt_checkpoints_keep_unsaved_outcomes_until_success() {
         let mut receipts = Receipts::new(MUTATION_RETENTION, crate::execution::Execution::default()).unwrap();
         let first = MutationId {

@@ -9,10 +9,6 @@
 
 // Exact Numeric Spool Parity Across Its Memory Boundary
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,24 +17,6 @@
 
 // Local Imports
 use harmos_storage::query::quantiles::Quantiles;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

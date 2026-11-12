@@ -8,10 +8,6 @@
  */
 
 #![allow(dead_code, unused_imports)]
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,8 +25,6 @@ pub(crate) use harmos_runtime::operations::{
 };
 pub(crate) use harmos_runtime::{Error, Refusal, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
-
-/* === Constants === */
 
 /* === Macros === */
 
@@ -186,8 +180,6 @@ pub(crate) enum Failed {
     Invocation(#[from] harmos_runtime::operations::InvocationError),
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 in_process!(Compute, Slow, Parent, Response);
@@ -334,8 +326,6 @@ pub(crate) fn parent_operation()
     )
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 pub(crate) async fn runtime() -> Runtime<Bank> {
@@ -378,5 +368,3 @@ pub(crate) fn request() -> Request {
         gate: None,
     }
 }
-
-/* === Tests === */

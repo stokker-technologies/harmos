@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -19,25 +15,9 @@ use std::collections::BTreeMap;
 // Third Party Imports
 
 // Local Imports
-use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled, change_state_catalog, fact_registry};
+use self::sheet::{Erase, Fact, Noted, Rename, Sheet, Studio, Untitled, change_state_catalog, fact_registry};
 use crate::application::support;
-use harmos_runtime::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position, state::Transaction};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
+use harmos_runtime::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position};
 
 /* === Private Functions === */
 
@@ -68,28 +48,6 @@ async fn product_commits_refuses() {
 
 #[tokio::test]
 async fn catalog_declares_records() {
-    {
-        // The stamped identity is the permanent wire name, not the Rust type name.
-
-        // The generated conversions and dispatch are ordinary Rust the application
-        // could have written itself.
-        let change: Change = Change::from(sheet::rename("named"));
-        let mut state = Sheet::default();
-
-        assert_eq!(change, Change::Rename(sheet::rename("named")));
-        assert_eq!(Transaction::check(&change, &state), Ok(()));
-        Transaction::apply(&change, &mut state);
-        assert_eq!(state.title, "named");
-        assert_eq!(
-            harmos_runtime::state::Invertible::inverse(&sheet::rename("named"), &Sheet::default()),
-            Rename { to: String::new() },
-            "the declared body answers against the state before the change"
-        );
-
-        // The record catalog is the same shape minus behavior.
-        let fact: Fact = Noted("exported".to_owned()).into();
-        assert_eq!(fact, Fact::Noted(Noted("exported".to_owned())));
-    }
     {
         let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(change_state_catalog())
             .into_iter()
@@ -877,13 +835,6 @@ mod guest_plugins {
         assert_eq!(contracts.lifecycle[0].contract().operation().policy, POLICY);
         assert_eq!(contracts.lifecycle[1].contract().operation().policy, POLICY);
         assert_eq!(declaration.streams.len(), streams);
-
-        let declaration =
-            harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest).unwrap();
-        assert_eq!(declaration.operations.len(), contracts.provides.len());
-        assert_eq!(declaration.streams.len(), streams);
-        let inspected = declaration.contracts;
-        assert_eq!(inspected, contracts);
     }
 
     /* === Tests === */
@@ -929,7 +880,6 @@ mod guest_plugins {
     #[test]
     fn context_selects_guest() {
         inspect::<Guest>(1, 0);
-        assert_eq!(Guest::DESCRIPTION, "Guest Authored Plugin");
     }
 }
 

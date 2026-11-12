@@ -10,10 +10,6 @@
 // Locate the Fixtures the One Build Stamped and the Package Binaries Nextest Exposes
 #![allow(dead_code)]
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,20 +23,6 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 /* === Public Functions === */
 
@@ -228,5 +210,3 @@ fn resolve(path: &str) -> PathBuf {
     let path = PathBuf::from(path);
     if path.is_absolute() { path } else { directory().join(path) }
 }
-
-/* === Tests === */

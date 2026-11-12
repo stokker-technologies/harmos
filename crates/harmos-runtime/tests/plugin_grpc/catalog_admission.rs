@@ -9,10 +9,6 @@
 
 // Untrusted Catalog Admission Story
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,24 +19,6 @@
 use super::support::{self, Remote};
 use harmos_protocol::{schema, v1};
 use harmos_runtime::plugin::grpc::{Error, Placement};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

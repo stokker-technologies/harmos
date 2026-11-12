@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,10 +21,6 @@ use std::sync::{
 use crate::storage::{Data, Recovery, config, history, record, schema};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -145,8 +137,6 @@ fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
         Some(value)
     })
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -283,8 +273,6 @@ impl Store {
         storage.flush().await.unwrap();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -755,5 +743,3 @@ async fn registration_stores_schema() {
     drop(reader);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

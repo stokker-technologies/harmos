@@ -9,10 +9,6 @@
 
 // Generated SDK Client Journey
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -45,19 +41,11 @@ const POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Collect;
 struct Exchange;
 struct Wait;
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -132,10 +120,6 @@ impl ProtobufOperation for Wait {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

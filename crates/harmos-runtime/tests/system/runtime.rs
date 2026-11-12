@@ -9,10 +9,6 @@
 
 // The Host Alone: Boot, Serve Its Catalog, Persist Records, Shut Down
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,26 +27,12 @@ use harmos_runtime::schema::{Described, graph::Schema as Graph};
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use std::sync::Arc;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Reading {
     value: i64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

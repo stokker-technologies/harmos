@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,10 +22,6 @@ use harmos_runtime::{
     Application, Error, Runtime, state::Focus, state::Origin, state::Position, state::PrincipalId, state::Recorded, state::Records,
     state::RequestKey, state::Transaction,
 };
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -178,8 +170,6 @@ fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
             _ => None,
         })
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -339,8 +329,6 @@ impl Wire for Model {
         })
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -515,5 +503,3 @@ async fn contract_refuses_apply() {
     crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(captures.load(Ordering::SeqCst), 0);
 }
-
-/* === Tests === */

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +19,6 @@ use std::sync::atomic::Ordering;
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

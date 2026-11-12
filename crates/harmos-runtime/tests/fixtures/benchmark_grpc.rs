@@ -14,8 +14,6 @@
 #[path = "benchmark_protocol.rs"]
 mod protocol;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,22 +23,6 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 
 // Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -73,5 +55,3 @@ fn main() {
         runtime.shutdown().await.unwrap();
     });
 }
-
-/* === Tests === */

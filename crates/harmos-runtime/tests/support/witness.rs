@@ -10,10 +10,6 @@
 // Witness In-Process Plugin Events: Plugins Mark Named Events, Stories Await Them
 #![allow(dead_code)]
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -32,10 +28,6 @@ static NEXT: AtomicUsize = AtomicUsize::new(1);
 
 static LEDGERS: Mutex<BTreeMap<String, Weak<Witness>>> = Mutex::new(BTreeMap::new());
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 // One Story's Event Ledger, Reachable By Key From A Plugin's Serialized Configuration.
@@ -43,10 +35,6 @@ pub struct Witness {
     key: String,
     events: watch::Sender<BTreeMap<String, usize>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -96,9 +84,3 @@ impl Drop for Witness {
         }
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

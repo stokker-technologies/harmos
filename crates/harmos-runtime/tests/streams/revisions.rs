@@ -9,10 +9,6 @@
 
 // Automatic Plugin Stream Revisions Across Reload And Durable Restart
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -32,10 +28,6 @@ use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelecti
 use harmos_runtime::storage::{Cursor, PayloadEncoding, RecordInput, SchemaKey, StorageManager, StreamInput};
 use harmos_runtime::streams::{PublicationRow, PublishedStream, StreamManager, StreamRegistration, StreamWriter};
 use harmos_runtime::{Error, Message, Result, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -67,10 +59,6 @@ struct Host {
     fail: bool,
     before: Option<u32>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -126,8 +114,6 @@ impl PluginLifecycle for Host {
         Ok(())
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

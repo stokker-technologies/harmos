@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,10 +21,6 @@ use harmos_runtime::{
     Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Batch, storage::Cursor,
     storage::JournalConsumer, storage::Recovery, storage::Source, storage::StreamConsumer,
 };
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -55,10 +47,6 @@ struct Tape {
 struct Networked {
     inner: Copied,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -156,8 +144,6 @@ impl Source<Bank> for Networked {
         self.inner.load().await
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -273,5 +259,3 @@ async fn recording(tape: Tape) -> Runtime<Bank> {
     .await
     .expect("the catalog and attachment are honorable")
 }
-
-/* === Tests === */

@@ -34,8 +34,6 @@ mod schemas;
 #[path = "operation_writes.rs"]
 mod writes;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -46,22 +44,6 @@ use std::num::NonZeroUsize;
 // Local Imports
 use super::{Fixture, config, write};
 use harmos_operations::storage::storage_catalog;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,20 +22,6 @@ use harmos_runtime::{DefinitionId, state::Kind, state::Position, state::Recorded
 /* === Constants === */
 
 const VARIANTS: [&str; 9] = ["Deposit", "Withdraw", "Pay", "Explode", "Noted", "Paid", "Took", "Put", "Remark"];
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -357,5 +339,3 @@ mod other {
 
     /* === Tests === */
 }
-
-/* === Tests === */

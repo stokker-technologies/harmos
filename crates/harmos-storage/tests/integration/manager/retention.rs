@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 use super::backend::{Data, Recovery, history, storage_settings};
@@ -33,12 +29,6 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 // Fixture Storage Holding Two Durable Revisions Of One Object.
@@ -51,10 +41,6 @@ struct Revisions {
     durable: StorageCursor,
     schema: SchemaKey,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -103,8 +89,6 @@ impl Revisions {
         self.storage.close().await.unwrap();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

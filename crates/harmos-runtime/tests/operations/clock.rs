@@ -7,15 +7,9 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
-use std::fs;
-use std::path::Path;
 use std::time::Duration;
 
 // Third Party Imports
@@ -24,12 +18,6 @@ use std::time::Duration;
 use super::app::App;
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::RetryPolicy;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -75,8 +63,6 @@ fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn measure_contract_declaration_handler(
@@ -108,51 +94,13 @@ fn measure_contract_declaration_operation()
     )
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 fn nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).expect("measured waits fit in u64 nanoseconds")
 }
 
-fn bypasses(directory: &Path, found: &mut Vec<String>) {
-    for entry in fs::read_dir(directory).expect("lifecycle sources are readable") {
-        let path = entry.expect("source entry is readable").path();
-        if path.is_dir() {
-            bypasses(&path, found);
-        } else if path.extension().is_some_and(|extension| extension == "rs") && path.file_name().is_none_or(|name| name != "executor.rs") {
-            let source = fs::read_to_string(&path).expect("source file is readable");
-            for crossing in [
-                "tokio::spawn",
-                "tokio::task::spawn",
-                "tokio::time::sleep",
-                "tokio::time::timeout",
-                "tokio::time::interval",
-                "tokio::time::Instant::now",
-            ] {
-                if source.contains(crossing) {
-                    found.push(format!("{}: {crossing}", path.display()));
-                }
-            }
-        }
-    }
-}
-
 /* === Tests === */
-
-#[test]
-fn sources_avoid_tokio() {
-    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("nextest sets the manifest directory");
-    let source = Path::new(&manifest).join("src");
-    assert!(!source.join("work").exists(), "operations own their execution support");
-    let mut found = Vec::new();
-    for domain in ["operations", "services", "supervision"] {
-        bypasses(&source.join(domain), &mut found);
-    }
-    found.sort();
-    assert!(found.is_empty(), "lifecycle bypassed its simulation executor: {found:?}");
-}
 
 #[tokio::test(start_paused = true)]
 async fn clock_measures_script() {

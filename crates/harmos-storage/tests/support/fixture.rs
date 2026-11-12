@@ -9,10 +9,6 @@
 
 // Own the Storage Engine Worker in Tests
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use tokio::task::JoinHandle;
 pub(crate) use super::backend::{Data, Recovery, history, storage_settings};
 pub(crate) use harmos_storage::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 pub(crate) struct Fixture<M = StorageManager> {
@@ -42,10 +32,6 @@ pub(crate) struct Fixture<M = StorageManager> {
 }
 
 struct Task(Mutex<Option<JoinHandle<Result<()>>>>);
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -140,5 +126,3 @@ pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &
 pub(crate) async fn write(storage: &StorageManager, id: &str) -> StorageCursor {
     storage.write_records(vec![record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
 }
-
-/* === Tests === */

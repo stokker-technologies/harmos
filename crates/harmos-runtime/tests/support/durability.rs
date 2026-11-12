@@ -13,8 +13,6 @@
 #[path = "journal.rs"]
 pub mod journal;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -30,10 +28,6 @@ use harmos_runtime::{
     storage::Payload,
 };
 use journal::Wire;
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -249,8 +243,6 @@ pub fn fact_registry() -> harmos_runtime::state::RecordRegistry<Fact> {
         Some(value)
     })
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -528,5 +520,3 @@ fn definitions_of<A: Application>(catalog: impl Registration<A>) -> Vec<(Kind, D
         }
     }
 }
-
-/* === Tests === */

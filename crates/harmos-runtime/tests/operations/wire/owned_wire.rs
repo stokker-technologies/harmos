@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,12 +19,6 @@ use std::time::Duration;
 use super::app::App;
 use harmos_runtime::Runtime;
 use harmos_runtime::operations::{Backoff, FailureKind, Jitter, OperationInstanceId, OperationPolicy, RetryPolicy};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -76,8 +66,6 @@ static READ_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
 const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ReadContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ReadContractDeclaration>::new(&READ_CONTRACT_DECLARATION_DESCRIPTION);
 
-/* === Traits === */
-
 /* === Implementations === */
 
 async fn read_contract_declaration_handler(
@@ -113,8 +101,6 @@ impl Drop for AttemptGuard {
         self.0.events.lock().unwrap().push("drop");
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

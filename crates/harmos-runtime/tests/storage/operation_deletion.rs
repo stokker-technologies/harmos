@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +19,6 @@ use std::sync::atomic::Ordering;
 use super::{Fixture, config};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FileMetadata, MutationId, StagedFile, StorageBackend};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -219,5 +199,3 @@ async fn close_settles_deletion() {
     assert!(f.data.blobs.lock().unwrap().is_empty());
     crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
-
-/* === Tests === */

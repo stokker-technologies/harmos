@@ -16,8 +16,6 @@ mod read;
 #[path = "generated_reconnect.rs"]
 mod reconnect;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -32,22 +30,6 @@ use harmos_protocol::storage as wire;
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FileMetadata, StagedFile};
 use prost::Message;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -93,5 +75,3 @@ fn limits() -> Option<harmos_runtime::operations::WireStreamLimits> {
 async fn receive(streams: &harmos_runtime::operations::WireStreams) -> Option<wire::FileBatch> {
     streams.receive_current().await.unwrap().map(|bytes| wire::FileBatch::decode(bytes.as_slice()).unwrap())
 }
-
-/* === Tests === */

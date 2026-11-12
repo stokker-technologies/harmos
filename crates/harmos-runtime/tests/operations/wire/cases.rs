@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -121,8 +117,6 @@ macro_rules! scripted_codec {
     )*};
 }
 
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(harmos_runtime::Message, Debug, Default)]
@@ -224,10 +218,6 @@ pub(super) struct Text {
 }
 
 pub(super) struct Destination(pub &'static str);
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -434,8 +424,6 @@ pub(super) fn detached_declaration_operation()
     )
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 async fn runtime_with_owner(owner: Arc<Owner>) -> harmos_runtime::Runtime<crate::operations::support::Bank> {
@@ -636,5 +624,3 @@ fn protobuf<T: harmos_runtime::Portable>(value: &T) -> Vec<u8> {
 fn decode_protobuf<T: harmos_runtime::Portable>(bytes: &[u8]) -> T {
     harmos_operations::execution::grpc::decode(harmos_operations::execution::grpc::DecodeInput::new(bytes)).unwrap()
 }
-
-/* === Tests === */

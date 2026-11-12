@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,22 +17,6 @@ use support::{Bank, Change, Ledger, booted, deposit, ledger};
 use super::support;
 use harmos_runtime::{Error, state::Origin, state::Position, storage::Source};
 use support::journal::{Journal, Store};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -69,5 +49,3 @@ async fn pruned_copy_recovers() {
     assert!(matches!(recovered.state.state().at(Origin::initial(Ledger::default()), first.position).await, Err(Error::BeneathHorizon)));
     crate::support::app::shutdown(&recovered).await.unwrap();
 }
-
-/* === Tests === */

@@ -9,10 +9,6 @@
 
 // SDK Invoke Story Mechanics
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -33,12 +29,6 @@ use harmos_runtime::{
     Runtime,
     operations::{OperationPolicy, Registration, RetryPolicy},
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -104,10 +94,6 @@ pub struct Sdk {
     proxy: JoinHandle<()>,
     disconnect: mpsc::Sender<oneshot::Sender<()>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -331,7 +317,3 @@ pub fn call_error(error: &harmos_runtime::Error) -> &harmos_runtime::plugin::grp
         error => panic!("Expected Protocol Failure: {error:?}"),
     }
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -36,10 +32,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -112,8 +104,6 @@ static FREE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
 
 const FREE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<FreeContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<FreeContractDeclaration>::new(&FREE_CONTRACT_DECLARATION_DESCRIPTION);
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -220,8 +210,6 @@ impl Drop for FreeGuard {
         self.trace.free_dropped.store(true, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,12 +23,6 @@ use super::{
 };
 use harmos_runtime::operations::RetryPolicy;
 use harmos_runtime::{Error, Refusal, services::ServiceExit, services::ServiceStatus, state::Position};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -98,8 +88,6 @@ fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
     batch = batch.entry(ordered_contract_declaration_operation().expect("representable operation"));
     batch
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -205,8 +193,6 @@ impl Drop for Dropped {
         self.0.store(true, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -581,5 +567,3 @@ async fn domains_outlives_clones() {
         "a repeat stop reports the frontier the first one observed"
     );
 }
-
-/* === Tests === */

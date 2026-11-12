@@ -211,7 +211,7 @@ hide = true
 description = "Lint Rust over Every Product and Tests Selection"
 usage = 'flag "--extended"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --lib --bins --tests --profile test",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --lib --bins --tests --profile test --features harmos-runtime/plugin-guest,harmos-packaging/generate-python",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-cli -p schematic-sidecar",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-guest --target wasm32-unknown-unknown",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml -p harmos-sandbox-guest --target wasm32-unknown-unknown",
@@ -273,7 +273,9 @@ run = [
 hide = true
 description = "Build the Shared Test Archive and Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
-run = ["uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}}"]
+run = [
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}} --features harmos-runtime/plugin-guest,harmos-packaging/generate-python",
+]
 
 [tasks."test:python:integration"]
 hide = true
@@ -328,10 +330,13 @@ run = [
 [tasks."test:rust:system"]
 hide = true
 description = "Test System Rust"
-usage = 'flag "--profile <profile>" default="dev"'
+usage = '''
+flag "--profile <profile>" default="dev"
+flag "--filter <filter>"
+'''
 run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.preflight --category system --profile {{usage.profile}}",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.test.run test --category system --language rust --profile {{usage.profile}} -- --test-threads 1{% if usage.filter %} -E \"{{usage.filter}}\"{% endif %}",
 ]
 
 [tasks."bench:rust:unit"]

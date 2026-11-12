@@ -17,8 +17,6 @@ mod follow;
 #[path = "generated_object_pruned.rs"]
 mod pruned;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -37,12 +35,6 @@ use harmos_runtime::storage::{MutationId, ObjectRetention, ObjectValue, ObjectVe
 use harmos_runtime::{Identified, Identifier, Runtime};
 use harmos_storage::writes::DataBatch;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(harmos_runtime::Message, Debug, Default, Clone, PartialEq)]
@@ -57,8 +49,6 @@ fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
     harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<Document>())
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 impl Identified for Document {
@@ -72,8 +62,6 @@ impl StoredObject for Document {
         &self.id
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -145,5 +133,3 @@ async fn query_fixture() -> (Runtime<Bank>, StorageManager, Arc<Data>) {
         .unwrap();
     (runtime, storage, data)
 }
-
-/* === Tests === */

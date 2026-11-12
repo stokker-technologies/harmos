@@ -9,10 +9,6 @@
 
 // Serve Staged File And Mutation Persistence.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +19,12 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use super::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Chunk<'a> {
     control: &'a Control,
     id: String,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -493,9 +479,3 @@ impl Data {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,8 +27,6 @@ use tokio::sync::Notify;
 use super::app::App;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream};
 use harmos_runtime::{Error, Runtime};
-
-/* === Constants === */
 
 /* === Macros === */
 
@@ -142,10 +136,6 @@ static PARENT_DECLARATION_CALLEES: [harmos_runtime::operations::WireDeclaration;
 const PARENT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ParentDeclaration> =
     harmos_runtime::operations::OperationSpec::<ParentDeclaration>::new(&PARENT_DECLARATION_DESCRIPTION).calls(&PARENT_DECLARATION_CALLEES);
 
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
 crate::operations::in_process!(ParentDeclaration);
@@ -216,8 +206,6 @@ impl Drop for AttemptGuard {
         self.0.dropped.fetch_add(1, Ordering::SeqCst);
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

@@ -8,10 +8,6 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,10 +25,6 @@ pub(crate) static RENAME: std::sync::LazyLock<(Kind, &str, u32)> =
 
 pub(crate) static EXPORTED: std::sync::LazyLock<(Kind, &str, u32)> =
     std::sync::LazyLock::new(|| (Kind::Record, "sheet.exported", <() as harmos_runtime::Identified>::definition().1));
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -72,8 +64,6 @@ pub(crate) enum Change {
 pub(crate) enum Note {
     Exported,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -190,8 +180,6 @@ pub(crate) fn inverses(change: &Change, sheet: &Sheet) -> Option<Change> {
         Change::Seal | Change::Explode => None,
     }
 }
-
-/* === Private Functions === */
 
 /* === Tests === */
 

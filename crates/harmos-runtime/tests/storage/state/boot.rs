@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,12 +22,6 @@ use harmos_runtime::{
     runtime::Incompatible, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer,
     storage::Recovery, storage::Source,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -52,10 +42,6 @@ struct Probe {
     panic_flush: bool,
     write_drain: bool,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -121,8 +107,6 @@ impl Source<Bank> for Probe {
         Ok(Recovery::default())
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -583,5 +567,3 @@ async fn cancelled_init_settles() {
     closed(&probe.storage, cleanup.get()).await;
     assert_eq!(probe.data.control.closes.load(Ordering::SeqCst), 1);
 }
-
-/* === Tests === */

@@ -13,6 +13,11 @@
 
 /* === Modules === */
 
+mod aggregate_members_typed;
+mod export_is_deterministic;
+mod export_refuses_invalid;
+mod exported_bindings_support_every_consumer;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -52,10 +57,10 @@ const POLICY: OperationPolicy = OperationPolicy {
 };
 
 // The Generated Python Surface of a Request Carrying Aggregates
-const AGGREGATE_SNAPSHOT: &str = include_str!("fixtures/aggregate-bindings.pyi.snapshot");
+const AGGREGATE_SNAPSHOT: &str = include_str!("../fixtures/aggregate-bindings.pyi.snapshot");
 
 // A Wide Schema Shared with the Domain's Graph Stories
-const CHECKPOINT: &str = include_str!("../../../../crates/harmos-domain/tests/fixtures/checkpoint-schema.json");
+const CHECKPOINT: &str = include_str!("../../../../../crates/harmos-domain/tests/fixtures/checkpoint-schema.json");
 
 /* === Macros === */
 
@@ -296,7 +301,7 @@ fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Sch
 }
 
 fn protoc() -> PathBuf {
-    super::fixtures::protoc()
+    fixtures::protoc()
 }
 
 fn files(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
@@ -355,261 +360,3 @@ fn both(name: &str, exported: &Exported, input: &[u8]) -> Vec<Vec<u8>> {
 }
 
 /* === Tests === */
-
-#[test]
-fn export_refuses_invalid() {
-    let contracts = harmos_operations::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap();
-    let artifacts = Artifacts::new(&contracts).unwrap();
-    let target = tempfile::tempdir().unwrap();
-    let output = target.path().join("package");
-    let refused = |settings: &Settings| {
-        python::generate(
-            python::Catalog {
-                contracts: &artifacts.operation_contracts().unwrap(),
-                settings,
-                protoc: &protoc(),
-            },
-            &output,
-        )
-    };
-
-    // Selections, Module Names and Versions Python Cannot Carry
-    let mut settings = settings("bindings_alpha");
-    settings.operations = vec!["missing.operation".into()];
-    assert!(matches!(refused(&settings), Err(python::Error::Selection(_))));
-    settings.operations = vec![contracts[0].operation().id.to_string(); 2];
-    assert!(matches!(refused(&settings), Err(python::Error::Collision(_))));
-    settings.operations.clear();
-    settings.module = "class".into();
-    assert!(matches!(refused(&settings), Err(python::Error::Settings(_))));
-    settings.module = "bindings_alpha".into();
-    settings.version = "1.0.0-preview.1".parse().unwrap();
-    assert!(matches!(refused(&settings), Err(python::Error::Settings(_))));
-    settings.version = "1.0.0".parse().unwrap();
-
-    // Contracts Without gRPC Routes Or Whose Escaped Names Collide
-    let unsupported = contracts[0].clone().with_grpc(None).unwrap();
-    let unsupported = Artifacts::new([&unsupported]).unwrap();
-    assert!(matches!(
-        python::generate(
-            python::Catalog {
-                contracts: &unsupported.operation_contracts().unwrap(),
-                settings: &settings,
-                protoc: &protoc()
-            },
-            &output
-        ),
-        Err(python::Error::Unsupported(_))
-    ));
-    let mut collision = reserved();
-    collision.definitions[0].push(Field {
-        name: Cow::Borrowed("Clear_"),
-        tag: 8,
-        cardinality: Cardinality::Variant,
-        kind: Kind::Message { definition: 1 },
-    });
-    let collision = contract(&contracts[0], "fixture_collision", "Collision", collision);
-    assert!(Artifacts::new([&collision]).is_err());
-    assert!(!output.exists());
-
-    // An Existing Directory Is Never Overwritten
-    fs::create_dir(&output).unwrap();
-    fs::write(output.join("owned.txt"), "preserved").unwrap();
-    assert!(matches!(refused(&settings), Err(python::Error::Exists(_))));
-    assert_eq!(fs::read_to_string(output.join("owned.txt")).unwrap(), "preserved");
-}
-
-#[test]
-fn export_is_deterministic() {
-    let artifacts = Artifacts::new(&contracts()).unwrap();
-    let target = tempfile::tempdir().unwrap();
-    let first = target.path().join("first");
-    let repeat = target.path().join("repeat");
-    python::generate(
-        python::Catalog {
-            contracts: &artifacts.operation_contracts().unwrap(),
-            settings: &settings("bindings_alpha"),
-            protoc: &protoc(),
-        },
-        &first,
-    )
-    .unwrap();
-    python::generate(
-        python::Catalog {
-            contracts: &artifacts.operation_contracts().unwrap(),
-            settings: &settings("bindings_alpha"),
-            protoc: &protoc(),
-        },
-        &repeat,
-    )
-    .unwrap();
-
-    assert_eq!(files(&first), files(&repeat));
-}
-
-#[test]
-fn python_reads_rust() {
-    // Rust Encodes, Python Decodes and Re-Encodes, Rust Decodes the Same Value
-    let exported = export();
-    let value = Payload {
-        text: "line\n∞".into(),
-        optional: Some(u32::MAX),
-        values: vec![i64::MIN, -1, 0, i64::MAX],
-    };
-    let encoded = {
-        let mut bytes = Vec::new();
-        grpc::encode(&value, &mut bytes).unwrap();
-        bytes
-    };
-
-    for echoed in both("wire", &exported, &encoded) {
-        let decoded = grpc::decode::<Payload>(DecodeInput::new(&echoed[..])).unwrap();
-        assert_eq!(decoded.text, value.text);
-        assert_eq!(decoded.optional, value.optional);
-        assert_eq!(decoded.values, value.values);
-    }
-}
-
-#[test]
-fn descriptors_mirror_contracts() {
-    let exported = export();
-
-    both("descriptors", &exported, &[]);
-}
-
-#[test]
-fn producers_stay_isolated() {
-    let exported = export();
-    let arguments = [exported.target.path(), &exported.alpha, &exported.beta];
-
-    scene("isolation", &arguments, false, &[]);
-}
-
-#[test]
-fn stubs_type_check() {
-    let exported = export();
-    let arguments = [exported.target.path(), &exported.alpha, &exported.beta];
-
-    scene("typing", &arguments, false, &[]);
-}
-
-#[test]
-fn packages_install_offline() {
-    let exported = export();
-    let arguments = [exported.target.path(), &exported.alpha, &exported.beta];
-
-    scene("install", &arguments, false, &[]);
-}
-
-#[test]
-fn dynamic_projects_contracts() {
-    let exported = export();
-
-    both("dynamic", &exported, &[]);
-}
-
-#[test]
-fn identity_parity() {
-    // identity::dotted Defines Operation Segments; QualifiedId Requires An Owner.
-    // Rust Has No Length Ceiling; Python Retains Its Existing 256-Byte Bound.
-    let cases = [
-        ("a".to_owned(), true),
-        ("read_2".to_owned(), true),
-        ("a0.b_2".to_owned(), true),
-        ("dokime.appearance.get_appearance".to_owned(), true),
-        ("host.storage.read_file".to_owned(), true),
-        ("a".repeat(255), true),
-        ("a".repeat(256), true),
-        ("a".repeat(257), true),
-        (format!("host.{}", "a".repeat(251)), true),
-        (format!("host.{}", "a".repeat(252)), true),
-        ("".to_owned(), false),
-        (".read".to_owned(), false),
-        ("host.".to_owned(), false),
-        ("host..read".to_owned(), false),
-        ("Host.read".to_owned(), false),
-        ("host.Read".to_owned(), false),
-        ("2host.read".to_owned(), false),
-        ("host.2read".to_owned(), false),
-        ("host.read.2file".to_owned(), false),
-        ("_host.read".to_owned(), false),
-        ("host._read".to_owned(), false),
-        ("host-name.read".to_owned(), false),
-        ("host.read-file".to_owned(), false),
-        ("host/read".to_owned(), false),
-        ("host read".to_owned(), false),
-        ("host.é".to_owned(), false),
-        ("höst.read".to_owned(), false),
-        ("host.read\n".to_owned(), false),
-        ("host.read\0".to_owned(), false),
-    ];
-    let template = harmos_operations::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap()[0].operation().clone();
-    for (value, valid) in &cases {
-        let parsed = Identifier::new(value.clone()).is_ok_and(|id| {
-            let mut operation = template.clone();
-            operation.id = id;
-            operation.validate().is_ok()
-        });
-        assert_eq!(parsed, *valid, "operation {value:?}");
-        assert_eq!(QualifiedId::parse(value).is_ok(), *valid && value.contains('.'), "qualified {value:?}");
-    }
-
-    let exported = export();
-    both("identities", &exported, &serde_json::to_vec(&cases).unwrap());
-}
-
-#[test]
-fn owner_parity() {
-    let cases: Vec<(String, bool)> =
-        serde_json::from_str(include_str!("../../../../crates/harmos-domain/tests/fixtures/owner-identities.json")).unwrap();
-    for (owner, valid) in &cases {
-        assert_eq!(harmos_domain::identity::segment(owner), *valid, "{owner:?}");
-    }
-    let exported = export();
-    both("owners", &exported, &serde_json::to_vec(&cases).unwrap());
-}
-
-#[test]
-fn dynamic_refuses_graphs() {
-    let exported = export();
-    let arguments = [exported.target.path(), &exported.alpha, &exported.beta];
-
-    scene("refusals", &arguments, false, &[]);
-}
-
-#[test]
-fn aggregate_members_typed() {
-    // The Generated Surface of a Request Carrying Aggregates Is Stable
-    let template = harmos_operations::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap()[0].clone();
-    let schema = Schema::from_declaration(Summary::DEFINITION, &SchemaSettings::default()).unwrap();
-    let summary = contract(&template, "fixture_aggregate", "Aggregate", schema);
-    let artifacts = Artifacts::new([&summary]).unwrap();
-    let target = tempfile::tempdir().unwrap();
-    let package = target.path().join("package");
-    python::generate(
-        python::Catalog {
-            contracts: &artifacts.operation_contracts().unwrap(),
-            settings: &settings("bindings_aggregate"),
-            protoc: &protoc(),
-        },
-        &package,
-    )
-    .unwrap();
-    let module = package.join("src/bindings_aggregate");
-    let messages = module.join("_wire/test/v1/ShapesMessages/Aggregate/messages_pb2.pyi");
-    let generated = format!("{}\n{}", fs::read_to_string(module.join("__init__.pyi")).unwrap(), fs::read_to_string(messages).unwrap());
-    assert_eq!(generated, AGGREGATE_SNAPSHOT, "{generated}");
-
-    // Python Selects the Percentile Member and Its Rank as Typed Fields
-    let value = Summary {
-        aggregate: Aggregate::Percentile(95),
-        aggregates: vec![Aggregate::Count, Aggregate::Percentile(99)],
-    };
-    let source = package.join("src");
-    let output = scene("aggregate", &[&source], false, &{
-        let mut bytes = Vec::new();
-        grpc::encode(&value, &mut bytes).unwrap();
-        bytes
-    });
-    assert!(grpc::decode::<Summary>(DecodeInput::new(&output[..])).unwrap() == value);
-}

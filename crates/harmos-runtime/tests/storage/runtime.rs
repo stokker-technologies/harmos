@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,19 +18,9 @@ use std::sync::atomic::Ordering;
 use super::{Bank, Data, Fixture, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, write};
 use harmos_runtime::{Error, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct FinalDrain(StorageManager);
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -52,8 +38,6 @@ impl JournalConsumer<Bank> for FinalDrain {
         self.0.flush().await.unwrap();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -336,5 +320,3 @@ async fn stop_retries_uncertain() {
     assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), &[1, 1]);
     assert_eq!(f.storage.status().pending_bytes, 0);
 }
-
-/* === Tests === */

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,22 +23,6 @@ use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
 use harmos_runtime::storage::{MutationId, SchemaKey};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -177,5 +157,3 @@ async fn schema_registry_roundtrip() {
     assert_eq!(decoded, persisted);
     f.finish().await;
 }
-
-/* === Tests === */

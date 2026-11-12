@@ -32,12 +32,6 @@ use tokio::task::JoinHandle;
 use harmos_runtime::plugin::grpc::{Managed, Placement, PlacementSettings};
 use harmos_runtime::{Runtime, streams::Item};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 pub struct Model;
@@ -54,10 +48,6 @@ pub struct Payload {
     pub sequence: u64,
     pub bytes: Vec<u8>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -174,7 +164,3 @@ impl Drop for Fixture {
 pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
     vec![<Payload as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
 }
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -15,8 +15,6 @@
 #[allow(dead_code, reason = "qualification uses isolated collectors instead of the system runner environment")]
 mod capture;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -33,12 +31,6 @@ use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 
 // Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -117,10 +109,6 @@ struct Annotation {
     unsigned: Option<u64>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
 impl Write for Output {
@@ -143,10 +131,6 @@ impl Write for Unwritable {
         Err(io::Error::other("controlled trace output failure"))
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

@@ -13,8 +13,6 @@
 #[allow(dead_code, reason = "the stream bench drives the executable carrier")]
 mod native_streams;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +21,6 @@ mod native_streams;
 
 // Local Imports
 use native_streams::Fixture;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -61,5 +43,3 @@ async fn host_rows_reach_managed_plugin_in_order() {
     // Settle the Host and Its Managed Consumer
     fixture.runtime.shutdown().await.unwrap();
 }
-
-/* === Tests === */

@@ -11,10 +11,6 @@
 
 #![allow(dead_code, unused_imports)]
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -35,12 +31,6 @@ pub(crate) use harmos_storage::{FileRead, Query};
 pub(crate) use super::backend::storage_settings;
 pub(crate) use super::waveforms::{self, Sample};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 // Fixture Storage Holding Durable Three-Phase Stream Samples.
@@ -50,10 +40,6 @@ pub(crate) struct Nominal {
     pub(crate) samples: Vec<Sample>,
     pub(crate) durable: StorageCursor,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -111,8 +97,6 @@ impl Nominal {
         self.storage.close().await.unwrap();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -204,5 +188,3 @@ pub(crate) fn column<'a, T: 'static>(batch: &'a arrow_array::RecordBatch, name: 
 pub(crate) fn rms() -> f64 {
     waveforms::AMPLITUDE / 2.0_f64.sqrt()
 }
-
-/* === Tests === */
