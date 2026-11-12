@@ -56,6 +56,7 @@ impl Fixture {
         let storage = &storage_fixture.storage;
         let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.resource(std::ops::Deref::deref(storage).clone());
+            setup.resource(harmos_operations::storage::SavedSnapshots::new(storage.query_capacity()));
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
                 ..Default::default()

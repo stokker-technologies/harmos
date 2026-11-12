@@ -44,6 +44,7 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 pub struct Control {
     pub date: Mutex<Option<std::time::SystemTime>>,
     pub fail_projection: AtomicBool,
+    pub unsupported_conditional: AtomicBool,
     pub block_chunk_file: Mutex<Option<String>>,
     pub permanent_chunk_file: Mutex<Option<String>>,
     pub chunk_active: Mutex<BTreeMap<String, usize>>,
@@ -380,7 +381,7 @@ impl StorageBackend for Data {
     fn capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
         harmos_storage::query::columnar::StorageCapabilities {
             durable_projections: true,
-            conditional_objects: true,
+            conditional_objects: !self.control.unsupported_conditional.load(Ordering::Acquire),
             ..Default::default()
         }
     }
@@ -393,6 +394,11 @@ impl StorageBackend for Data {
         &'a self, name: &'a Identifier,
     ) -> StorageFuture<'a, (harmos_storage::query::projection::ProjectionDefinition, u64)> {
         Box::pin(async move { self.projections.lock().unwrap().definition(name) })
+    }
+    fn projection_definition_at<'a>(
+        &'a self, name: &'a Identifier, revision: u64,
+    ) -> StorageFuture<'a, harmos_storage::query::projection::ProjectionDefinition> {
+        Box::pin(async move { self.projections.lock().unwrap().definition_at(name, revision) })
     }
     fn projection_status<'a>(
         &'a self, name: &'a Identifier, revision: u64, frontier: &'a StorageCursor,

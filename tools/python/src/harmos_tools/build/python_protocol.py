@@ -32,6 +32,9 @@ from ..process import spawn_flags
 
 ROOT = Path(__file__).resolve().parents[5]
 GENERATED = (
+    "harmos/v1/storage_pb2.py",
+    "harmos/v1/storage_pb2.pyi",
+    "harmos/v1/storage_pb2_grpc.py",
     "harmos/v1/plugin_pb2.py",
     "harmos/v1/plugin_pb2.pyi",
     "harmos/v1/plugin_pb2_grpc.py",
@@ -60,6 +63,7 @@ def generate(output: Path) -> None:
         f"--pyi_out={output}",
         f"--grpc_python_out={output}",
         "harmos/v1/plugin.proto",
+        "harmos/v1/storage.proto",
         "harmos/conformance/v1/fixture.proto",
     ]
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())

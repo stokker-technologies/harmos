@@ -17,13 +17,17 @@
 - [x] 2.3 Add durable projection registration/reads and inspectable frontiers; prove crash replay, idempotence, advancement, lag and rebuild/invalidation semantics.
 - [x] 2.4 Add Transform::TimeBuckets and projection revision/changed-key support; prove late correction/replacement, saved-cut stability and equivalence with generic execution.
 - [x] 2.5 Add typed compare_exchange and atomic backend implementation; prove conflicting writers, create-if-absent, receipt replay and durability outcomes.
-- [ ] 2.6 Implement all five capabilities in the durable reference and deterministic test backends; migrate existing implementers and operation/protocol consumers without product-specific APIs.
+- [x] 2.6 Implement all five capabilities in the durable reference and deterministic test backends; migrate existing implementers and operation/protocol consumers without product-specific APIs.
   - [x] Storage backend portion: all five capabilities in durable/test adapters, public manager/snapshot resources, exact retention gaps and files/receipt recovery proof.
-  - [ ] Remaining: protocol, operations, runtime, SDK and example consumer adoption in the design inventory.
-- [ ] 2.7 Update affected README/storage guides, examples and backend obligations; verify dependency direction and preservation of existing files, recovery and mutation receipts.
+  - [x] Protocol and native mappings: generated_code_matches_proto and malformed_plans_refuse_before_backend_access.
+  - [x] Operations/runtime: saved_queries_and_conditional_updates_cross_the_protocol covers all five capabilities, unsupported refusal, replay, saved cuts and source-changing rebuilds.
+  - [x] Verify retained wire-page buffer limits, including IPC schema and continuation metadata, through the runtime and example journeys.
+  - [x] Rust/Python/C#/C++ SDK generated storage surfaces and existing plugin conformance; retain protocol-only SDK dependencies.
+  - [x] Example SDK adoption: saved_preview_survives_atomic_replacement composes SQLite beside JSONL and proves saved reads and atomic outcomes.
+- [x] 2.7 Update affected README/storage guides, examples and backend obligations; verify dependency direction and preservation of existing files, recovery and mutation receipts.
 
   - [x] Storage documentation portion: native API guide, README claims, tooling commands and retained recovery/file obligations.
-  - [ ] Remaining: example consumer migration and linked usage claims after that migration.
+  - [x] Example composition, generated-client usage, source grants, bounds, failures and README claims match the adopted interface.
 
   - [x] Prepare an ordered per-file consumer adoption inventory with inspected ownership and dependency blockers under Consumer Adoption; do not overwrite dirty shared protocol generation outputs.
 
@@ -39,8 +43,12 @@
 ## 4. Final Validation and Delivery
 
 - [ ] 4.1 After source closure and targeted proof, run the required native platform checks and hosted validation when delivery is authorized; report actual failures and pending proof.
+  - [x] Windows: format, Rust/Python/repository checks and Tests artifact compilation pass; no full Rust test lane was run.
+  - [ ] Native Linux and hosted validation remain pending integration.
 - [ ] 4.2 Publish an authorized usable Harmos revision for Dokime's storage-interface change and verify its pin; leave Dokime extraction and its product benchmarks in that consumer change.
 
 ## Workflow Follow-Up
 
 - Dokime's separate `storage-interface` consumes these extensions before extracting `dokime-storage`, retains product semantics and named disk-I/O exceptions, and proves before/after performance with multi-day data, restart, late replacement, finalization and report workloads.
+
+- [x] Consumer adoption follows protocol → operations → runtime → SDKs → examples → guides; retain ordinary bounded query fallback and streamed batch writes.

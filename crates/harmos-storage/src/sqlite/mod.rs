@@ -362,6 +362,15 @@ impl StorageBackend for SqliteBackend {
             projection::definition(&state.connection, &name)
         }))
     }
+    fn projection_definition_at<'a>(
+        &'a self, name: &'a crate::Identifier, revision: u64,
+    ) -> StorageFuture<'a, crate::query::projection::ProjectionDefinition> {
+        let name = name.clone();
+        Box::pin(self.call(move |state| {
+            state.check()?;
+            projection::definition_at(&state.connection, &name, revision)
+        }))
+    }
     fn projection_status<'a>(
         &'a self, name: &'a crate::Identifier, revision: u64, frontier: &'a StorageCursor,
     ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {

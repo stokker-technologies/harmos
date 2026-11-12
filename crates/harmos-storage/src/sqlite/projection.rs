@@ -47,6 +47,18 @@ pub(super) fn definition(connection: &Connection, name: &crate::Identifier) -> R
     Ok((decode(&data)?, revision))
 }
 
+pub(super) fn definition_at(connection: &Connection, name: &crate::Identifier, revision: u64) -> Result<ProjectionDefinition> {
+    let data = connection
+        .query_row(
+            "SELECT definition FROM projection_definitions WHERE name=?1 AND revision=?2",
+            params![name.as_str(), integer(revision)?],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .optional()
+        .map_err(db)?;
+    decode(&data.ok_or(Error::NotReady { domain: "projection revision" })?)
+}
+
 pub(super) fn register(state: &mut State, value: &ProjectionDefinition, rebuild: bool) -> Result<u64> {
     state.check()?;
     value.validate()?;

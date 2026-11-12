@@ -1,0 +1,70 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Imports === */
+
+use super::snapshot::SavedSnapshots;
+use crate::execution::operations::access::GrantAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_operations::operations::ReplaySafety;
+use harmos_protocol::storage as wire;
+use harmos_storage::{
+    StorageManager,
+    query::{
+        columnar::{Cancellation, ColumnSource},
+        protobuf::required,
+    },
+};
+
+/* === Structs === */
+
+pub struct AdvanceProjection;
+
+/* === Implementations === */
+
+impl ProtobufOperation for AdvanceProjection {
+    type Request = wire::AdvanceProjection;
+    type Response = wire::DefinitionRevision;
+    type Endpoints = ();
+    const ID: &'static str = "storage.advance_projection";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.storage.v1", "Storage", "AdvanceProjection"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::native::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+        let snapshots = context.resource::<SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
+        let cancel = Cancellation::default();
+        super::native::run(
+            &context,
+            async {
+                let source: ColumnSource = required(request.source)?.try_into()?;
+                super::native::admit(&context, Self::ID, &source)?;
+                let name = harmos_storage::Identifier::new(request.name).map_err(|_| crate::Error::InvalidInput {
+                    field: "projection",
+                    reason: "invalid name",
+                })?;
+                let (definition, expected_revision) = storage.projection_definition(&name).await?;
+                super::native::source_matches(&source, &definition.source)?;
+                let mut snapshot = snapshots.read(required(request.snapshot)?)?;
+                let revision =
+                    snapshot.advance_projection_at(&name, expected_revision, required(request.work)?.try_into()?, &cancel).await?;
+                snapshot.retain();
+                Ok(wire::DefinitionRevision { revision })
+            },
+            cancel.clone(),
+        )
+        .await
+    }
+}

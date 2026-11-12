@@ -12,6 +12,8 @@ file(MAKE_DIRECTORY "${HARMOS_GENERATED}")
 add_custom_command(
     OUTPUT "${HARMOS_GENERATED}/harmos/v1/plugin.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.pb.h"
         "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.h"
+        "${HARMOS_GENERATED}/harmos/v1/storage.pb.cc" "${HARMOS_GENERATED}/harmos/v1/storage.pb.h"
+        "${HARMOS_GENERATED}/harmos/v1/storage.grpc.pb.cc" "${HARMOS_GENERATED}/harmos/v1/storage.grpc.pb.h"
     COMMAND $<TARGET_FILE:protoc>
         --proto_path=${HARMOS_PROTO_ROOT}
         --proto_path=${grpc_SOURCE_DIR}/third_party/protobuf/src
@@ -19,10 +21,12 @@ add_custom_command(
         --grpc_out=allow_sync_server_api=false,allow_cq_api=false:${HARMOS_GENERATED}
         --plugin=protoc-gen-grpc=$<TARGET_FILE:grpc_cpp_plugin>
         "${HARMOS_PROTO_ROOT}/harmos/v1/plugin.proto"
-    DEPENDS protoc grpc_cpp_plugin "${HARMOS_PROTO_ROOT}/harmos/v1/plugin.proto"
+        "${HARMOS_PROTO_ROOT}/harmos/v1/storage.proto"
+    DEPENDS protoc grpc_cpp_plugin "${HARMOS_PROTO_ROOT}/harmos/v1/plugin.proto" "${HARMOS_PROTO_ROOT}/harmos/v1/storage.proto"
     VERBATIM)
 add_library(harmos_cpp_protocol STATIC
-    "${HARMOS_GENERATED}/harmos/v1/plugin.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.cc")
+    "${HARMOS_GENERATED}/harmos/v1/plugin.pb.cc" "${HARMOS_GENERATED}/harmos/v1/plugin.grpc.pb.cc"
+    "${HARMOS_GENERATED}/harmos/v1/storage.pb.cc" "${HARMOS_GENERATED}/harmos/v1/storage.grpc.pb.cc")
 target_include_directories(harmos_cpp_protocol SYSTEM PUBLIC "${HARMOS_GENERATED}")
 target_link_libraries(harmos_cpp_protocol PUBLIC grpc++ libprotobuf)
 add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp)

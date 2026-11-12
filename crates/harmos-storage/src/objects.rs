@@ -130,6 +130,26 @@ impl StorageManager {
     async fn admit_exchange<T: StoredObject>(
         &self, mutation: Option<&crate::MutationId>, expected: Option<ObjectVersionToken>, value: &T,
     ) -> Result<CompareExchange> {
+        let (value, graph) = prepare(self, value)?;
+        self.admit_exchange_value(mutation, expected, value, graph).await
+    }
+
+    pub async fn compare_exchange_value_once(
+        &self, mutation: &crate::MutationId, expected: Option<ObjectVersionToken>, value: ObjectValue, graph: crate::schema::graph::Schema,
+    ) -> Result<CompareExchange> {
+        self.inner.catalog.validate_value(&value, self.inner.settings.max_batch_bytes())?;
+        let definition = self.inner.catalog.definition(&value.schema)?;
+        let declared = definition.graph(&harmos_domain::config::SchemaSettings::default())?;
+        if graph != declared {
+            return Err(invalid("conditional object schema differs from its catalog"));
+        }
+        self.admit_exchange_value(Some(mutation), expected, value, graph).await
+    }
+
+    async fn admit_exchange_value(
+        &self, mutation: Option<&crate::MutationId>, expected: Option<ObjectVersionToken>, value: ObjectValue,
+        graph: crate::schema::graph::Schema,
+    ) -> Result<CompareExchange> {
         if !self.inner.primary.capabilities().conditional_objects {
             return Err(crate::Error::backend(
                 "conditional objects",
@@ -138,7 +158,6 @@ impl StorageManager {
             ));
         }
         let _writer = self.inner.object_writes.lock().await;
-        let (value, graph) = prepare(self, value)?;
         let graph = Arc::new(graph);
         if let Some(expected) = &expected {
             self.inner.primary.history().check(expected.history())?;

@@ -178,7 +178,9 @@ impl Manager {
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
         if let Ok(entry) = self.capture_entry(operation) {
-            if entry.binding.is::<crate::plugin::grpc::invoke::Binding>() {
+            let native_protobuf = entry.binding.is::<harmos_operations::execution::operations::OperationFactory>()
+                && entry.contract.as_ref().is_some_and(|contract| contract.protobuf().is_some());
+            if native_protobuf || entry.binding.is::<crate::plugin::grpc::invoke::Binding>() {
                 return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
             }
             #[cfg(feature = "plugin-guest")]

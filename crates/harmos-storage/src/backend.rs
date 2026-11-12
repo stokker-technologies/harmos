@@ -91,6 +91,12 @@ pub trait StorageBackend: Send + Sync + 'static {
         unsupported("projection definition")
     }
 
+    fn projection_definition_at<'a>(
+        &'a self, _name: &'a crate::Identifier, _revision: u64,
+    ) -> StorageFuture<'a, crate::query::projection::ProjectionDefinition> {
+        unsupported("projection revision definition")
+    }
+
     fn projection_status<'a>(
         &'a self, _name: &'a crate::Identifier, _revision: u64, _frontier: &'a StorageCursor,
     ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {

@@ -1,0 +1,162 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+// Saved Preview Reads Survive Atomic Replacement.
+
+/* === Imports === */
+
+use harmos::storage as wire;
+use harmos_runtime::{
+    Identified, Message,
+    storage::{
+        ObjectCatalog, ObjectDefinition, ObjectRetention, StoreHistory, StoredObject,
+        config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings},
+    },
+};
+use schematic_app::{
+    app::Runtime,
+    config::{LaunchConfig, Settings},
+    document::Document,
+    services,
+};
+use std::{num::NonZeroUsize, time::Duration};
+
+/* === Structs === */
+
+#[derive(Message, Clone, Debug, Default)]
+struct Preview {
+    id: String,
+    symbols: u64,
+}
+
+/* === Implementations === */
+
+impl Identified for Preview {
+    const ID: &'static str = "schematic.preview";
+}
+impl StoredObject for Preview {
+    type Key = String;
+    const RETENTION: ObjectRetention = ObjectRetention::All;
+    fn key(&self) -> &String {
+        &self.id
+    }
+}
+
+/* === Tests === */
+
+#[tokio::test]
+async fn saved_preview_survives_atomic_replacement() {
+    // Compose the Query Backend Beside the Document Adapter.
+    let directory = tempfile::tempdir().unwrap();
+    let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<Preview>());
+    let history = StoreHistory {
+        store: harmos_runtime::Identifier::new("schematic-example").unwrap(),
+        epoch: harmos_runtime::Identifier::new("first").unwrap(),
+    };
+    let settings = StorageSettings {
+        request: StorageRequestSettings {
+            max_pending_queries: NonZeroUsize::new(4).unwrap(),
+            max_active_queries: NonZeroUsize::new(2).unwrap(),
+            max_pending_write_batches: NonZeroUsize::new(4).unwrap(),
+            max_active_file_operations: NonZeroUsize::new(2).unwrap(),
+            max_pending_write_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+        },
+        response: StorageResponseSettings {
+            batch_rows: NonZeroUsize::new(64).unwrap(),
+            batch_bytes: NonZeroUsize::new(65536).unwrap(),
+        },
+        filesystem: StorageFilesystemSettings {
+            poll_interval: Duration::from_secs(1),
+            max_entries: NonZeroUsize::new(64).unwrap(),
+            event_capacity: NonZeroUsize::new(64).unwrap(),
+        },
+    };
+    let recovery = harmos_runtime::storage::state::StorageStateSettings {
+        max_entry_bytes: NonZeroUsize::new(65536).unwrap(),
+        max_checkpoint_bytes: NonZeroUsize::new(65536).unwrap(),
+    };
+    let mut manager = None;
+    let document = Document::new(directory.path().join("document.json"));
+    let launch = LaunchConfig {
+        document: document.clone(),
+        settings: Settings::new(directory.path().join("recordings")),
+    };
+    let runtime = Runtime::launch_with(document.into_origin(), Some(launch), |setup| {
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+            ..Default::default()
+        });
+        manager = Some(
+            services::queries::attach(setup, &directory.path().join("queries"), history, catalog.clone(), settings, recovery).unwrap(),
+        );
+    })
+    .await
+    .unwrap();
+    let storage = manager.unwrap();
+
+    // Retain a Saved Preview Through the SDK Contract.
+    let first = storage.write_object(&Preview { id: "board".into(), symbols: 2 }).await.unwrap();
+    storage.flush().await.unwrap();
+    let saved = services::call(&runtime, wire::OpenSnapshot { at: Some(first.position.clone().into()) }).await.unwrap();
+    let schema = harmos_runtime::schema::graph::Schema::from_declaration(
+        <Preview as harmos_runtime::schema::Described>::DEFINITION,
+        &Default::default(),
+    )
+    .unwrap();
+    let encoded = catalog.encode(&Preview { id: "board".into(), symbols: 3 }, NonZeroUsize::new(4096).unwrap()).unwrap();
+    let source = wire::ColumnSource {
+        kind: wire::ColumnKind::Objects as i32,
+        schema: Some(encoded.schema.clone().into()),
+    };
+    let mutation = storage.mutation_window().unwrap();
+    let request = wire::CompareExchangeObject {
+        mutation: Some(wire::MutationId {
+            window: mutation.id.to_string(),
+            key: "preview-update".into(),
+        }),
+        expected: Some(first.version.clone().into()),
+        schema: Some(wire::SchemaInput {
+            key: Some(encoded.schema.clone().into()),
+            graph: Some(schema.into()),
+        }),
+        value: Some(encoded.into()),
+    };
+
+    // Replace the Live Preview and Refuse a Stale Writer.
+    assert!(matches!(
+        services::call(&runtime, request.clone()).await.unwrap().outcome,
+        Some(wire::compare_exchange_outcome::Outcome::Applied(_))
+    ));
+    let mut stale = request;
+    stale.mutation.as_mut().unwrap().key = "stale-update".into();
+    assert!(matches!(services::call(&runtime, stale).await.unwrap().outcome, Some(wire::compare_exchange_outcome::Outcome::Conflict(_))));
+
+    // Read the Saved Value and Release Its Cut.
+    let limits = wire::ReadLimits { rows: 8, bytes: 65536 };
+    let page = services::call(
+        &runtime,
+        wire::ScanArrow {
+            snapshot: Some(saved.clone()),
+            read: Some(wire::ArrowScan {
+                source: Some(source),
+                columns: vec!["payload.symbols".into()],
+                limits: Some(limits),
+                work: Some(limits),
+                ..Default::default()
+            }),
+        },
+    )
+    .await
+    .unwrap();
+    let batch = harmos_storage::query::protobuf::decode_batch(page.ipc, limits.try_into().unwrap()).unwrap();
+    let value = batch.as_record_batch().column(0).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
+    assert_eq!(value.values().as_ref(), &[2]);
+    services::call(&runtime, wire::ReleaseSnapshot { snapshot: Some(saved) }).await.unwrap();
+    runtime.shutdown().await.unwrap();
+}

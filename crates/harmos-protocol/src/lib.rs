@@ -31,6 +31,8 @@ pub mod v1;
 
 /* === Re-Exports === */
 
+pub use storage_helpers::storage_types;
+
 /* === Imports === */
 
 // Standard Library Imports

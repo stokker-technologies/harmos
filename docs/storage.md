@@ -54,7 +54,8 @@ Arrow scans supplies typed row reads; it still receives the same predicates and
 saved-cut semantics. A backend without a native index stores its declarations and
 uses bounded source scanning. It refuses insufficient work rather than returning
 an incomplete globally sorted answer. Durable projections require an atomic
-publication primitive; conditional objects require an atomic compare/exchange
+publication primitive and immutable `projection_definition_at(name, revision)` lookup
+for source authorization of retained revisions; conditional objects require an atomic compare/exchange
 primitive. Defaults for unavailable primitives return `Unsupported`, never pretend
 an empty result or successful write. Independent read-then-write calls cannot
 implement compare/exchange safely.
@@ -179,12 +180,75 @@ content. Optional resumable sessions and deletion remain separate advertised
 capabilities; they are not implied by `sqlite`. The existing file state/recovery
 backend and its journal/checkpoint format are retained.
 
-Native Rust storage entry points are available now. Protocol messages/mappings,
-built-in operation handlers, runtime composition, generated SDK client surfaces
-and example composition still need to adopt them. The locked tree's two query-backend
-implementers are complete; example journal/stream callbacks are separate consumer owners. In particular,
-the operation-level object exchange must use the atomic primitive. See the locked
-[next-pass inventory](../openspec/changes/storage-interface/design.md#consumer-adoption).
+The native storage interface and `harmos.storage.v1.Storage` operations expose all five
+capabilities. Register `builtins::storage_catalog()` and supply a storage manager with
+`setup.settings().storage(&storage)`. The runtime supplies the retained snapshot registry,
+bounded by the consumer's `StorageRequestSettings.max_active_queries`; backend construction
+and every row/byte/work allowance remain consumer-owned. Embedders composing resources
+directly also supply `harmos_operations::storage::SavedSnapshots::new(capacity)`.
+
+Ordinary `storage.query` retains its bounded row fallback and existing query behavior.
+`WriteObjects`, `WriteRecords` and `WriteStreams` retain streamed batch admission and
+accepted-before-durable receipts. Conditional updates use the separate
+`storage.compare_exchange_object` operation, which validates the declared object catalog,
+schema graph, payload and object key before one atomic admission. Independent calls do not
+form a cross-method transaction. File sessions, recovery and receipt retention remain intact.
+
+## Generated Storage Clients
+
+Rust exposes generated messages at `harmos::storage`; each new request implements
+`OperationRequest` and works with the existing invocation context. External clients bind
+`client::Method<Request, Response>` to the discovered operation contract, then use
+`Client::start` for managed cancellation and settlement. The generated unary gRPC client is
+also available at `harmos::storage::storage_client::StorageClient`. Python uses
+`harmos.v1.storage_pb2` and `storage_pb2_grpc.StorageStub`; C# generates
+`Harmos.Storage.V1.Storage.StorageClient`; C++ generates `harmos::storage::v1::Storage`.
+The SDKs depend only on protocol and transport support.
+
+| RPC / Operation | Result |
+| --- | --- |
+| `Capabilities` / `storage.capabilities` | Native acceleration and correctness capabilities |
+| `OpenSnapshot` / `storage.open_snapshot` | Opaque retained saved cut |
+| `ReleaseSnapshot` / `storage.release_snapshot` | Idempotent release |
+| `ScanArrow` / `storage.scan_arrow` | Arrow IPC batch and source-position continuation |
+| `RegisterIndex` / `storage.register_index` | Durable definition revision |
+| `ScanIndex` / `storage.scan_index` | Ordered key/position seek page |
+| `RegisterProjection` / `storage.register_projection` | Idempotent definition or explicit rebuild |
+| `AdvanceProjection` / `storage.advance_projection` | Atomic durable frontier advancement |
+| `InspectProjection` / `storage.inspect_projection` | Exact-cut status, absent while unpublished |
+| `ReadProjection` / `storage.read_projection` | Exact revision/frontier, IPC and changed keys |
+| `CompareExchangeObject` / `storage.compare_exchange_object` | Durable applied receipt or conflict |
+
+`OpenSnapshot.at` must be a saved cursor, including store history. Return the whole
+`SavedSnapshot` unchanged with each scan or advancement. Return continuation bytes unchanged;
+changing the plan requires starting again. An empty incomplete Arrow page advances source
+work, not output-row offset. Release a saved handle explicitly when the query journey ends;
+cancellation or failure after a saved-page read acquires its cut releases that handle. Successful reads retain it so
+several plans can share one cut. Released, foreign and restarted handles refuse explicitly.
+Concurrent reads already holding a snapshot settle before its backend resource is reclaimed.
+
+Both output `limits` and source `work` are required, nonzero row/byte bounds.
+Wire page bounds include IPC schema metadata, changed-key buffers and continuation metadata. Scan and index
+requests name a schema source; named index/projection requests also carry that source so the
+host can check it against the registered definition. Grants use `objects:schema:<id>`,
+`records:schema:<id>` or `streams:schema:<id>` with the corresponding operation ID. Reading
+an old projection revision checks that revision's source even after a source-changing rebuild.
+Time-bucket transforms now map in both ordinary queries and durable projections; grouping,
+nonzero widths and sample/byte bounds preserve the native contract.
+
+Failures use the existing structured operation failure with `details["storage.kind"]`:
+`STORAGE_FAILURE_UNSUPPORTED`, `CONFLICT`, `EXPIRED`, `NOT_READY`, `GAP`, `EXHAUSTED`,
+`INVALID` or `MISSING_INDEX` (each has the `STORAGE_FAILURE_` prefix). Rust consumers can use
+`StorageFailure::from_operation`. An expected version mismatch is a successful
+`CompareExchangeOutcome.conflict`, including the optional current token. Replaying an admitted
+mutation returns the original durable applied/conflict result. Cancellation after admission
+can leave committed work; retry the same mutation ID, never a new read-then-write sequence.
+
+The Schematic [query composition](../examples/schematic/app/src/services/queries.rs) builds
+SQLite query storage alongside its application-owned JSONL adapter. Its
+[saved preview journey](../examples/schematic/app/tests/storage/main.rs) retains a cut, applies
+an atomic update, refuses a stale writer and reads the unchanged saved preview. It does not
+replace the document journal, checkpoints or JSONL stream adapter.
 
 The focused Windows workload contains 2,000,000 samples across three days and 24
 plots. Run `mise run bench -- --storage --filter baseline` or `--filter native`;

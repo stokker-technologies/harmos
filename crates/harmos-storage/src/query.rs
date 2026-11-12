@@ -20,6 +20,7 @@ mod object_schemas;
 mod order_stats;
 mod ordering;
 pub mod projection;
+pub mod protobuf;
 pub mod quantiles;
 mod reader;
 mod reduction;
