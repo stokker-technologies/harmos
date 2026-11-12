@@ -52,7 +52,10 @@ pub(crate) fn contract(
         return Ok(None);
     };
     let refused = || ContractError::Protobuf(format!("storage declaration {id} differs from its authoritative face contract"));
-    let pool = DescriptorPool::from_file_descriptor_set(harmos_protocol::storage_types().clone()).map_err(|_| refused())?;
+    static POOL: std::sync::OnceLock<DescriptorPool> = std::sync::OnceLock::new();
+    let pool = POOL.get_or_init(|| {
+        DescriptorPool::from_file_descriptor_set(harmos_protocol::storage_types().clone()).expect("generated storage descriptors")
+    });
     let service = pool.get_service_by_name(&format!("{package}.Storage")).ok_or_else(refused)?;
     let method = service.methods().find(|method| operation_id(package, method.name()) == id).ok_or_else(refused)?;
     let expected_binding = (package == "harmos.v1").then(|| Grpc {

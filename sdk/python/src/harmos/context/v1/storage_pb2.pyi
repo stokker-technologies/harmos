@@ -30,14 +30,18 @@ class StorageGetFileProductionRequest(_message.Message):
     def __init__(self, file: _Optional[_Union[_storage_types_pb2.StagedFile, _Mapping]] = ...) -> None: ...
 
 class StorageGetFileProductionResponse(_message.Message):
-    __slots__ = ("production", "writer_generation", "resolved_at")
+    __slots__ = ("production", "writer_generation", "resolved_at", "accepted_length", "durable_length")
     PRODUCTION_FIELD_NUMBER: _ClassVar[int]
     WRITER_GENERATION_FIELD_NUMBER: _ClassVar[int]
     RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    ACCEPTED_LENGTH_FIELD_NUMBER: _ClassVar[int]
+    DURABLE_LENGTH_FIELD_NUMBER: _ClassVar[int]
     production: _storage_types_pb2.FileProgress
     writer_generation: int
     resolved_at: _plugin_pb2.ReadCut
-    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., writer_generation: _Optional[int] = ..., resolved_at: _Optional[_Union[_plugin_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+    accepted_length: int
+    durable_length: int
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., writer_generation: _Optional[int] = ..., resolved_at: _Optional[_Union[_plugin_pb2.ReadCut, _Mapping]] = ..., accepted_length: _Optional[int] = ..., durable_length: _Optional[int] = ...) -> None: ...
 
 class StorageAppendFileBytesRequest(_message.Message):
     __slots__ = ("session", "offset", "data", "mutation")

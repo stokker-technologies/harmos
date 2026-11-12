@@ -105,14 +105,45 @@ async fn resume_fence_publish_and_range_across_faces() {
         data: b"first-".to_vec(),
         mutation: mutation("first"),
     };
-    let appended = super::transfer_plugin::client_call::<operations::AppendFileBytes>(&channel, append.clone()).await.unwrap();
-    assert_eq!(super::transfer_plugin::client_call::<operations::AppendFileBytes>(&channel, append.clone()).await.unwrap(), appended);
-
-    // Reconnect Through Context, Inspect Progress and Fence the Old Writer.
     let file = payload::StagedFile {
         id: "unary-file".into(),
         history: first_writer.as_ref().unwrap().history.clone(),
     };
+    fixture.data.control.block_chunk.store(true, std::sync::atomic::Ordering::Release);
+    {
+        let pending = super::transfer_plugin::client_call::<operations::AppendFileBytes>(&channel, append.clone());
+        tokio::pin!(pending);
+        crate::support::events::until(pending.as_mut(), fixture.data.control.chunk_entered.notified()).await.unwrap();
+        let status = super::transfer_plugin::call::<context::GetFileProduction>(
+            calls,
+            child::StorageGetFileProductionRequest { file: Some(file.clone()) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(status.accepted_length, 6);
+        assert_eq!(status.durable_length, 0);
+        // Lose the Client Reply While Its Admitted Storage Work Remains Owned.
+    }
+    fixture.data.control.block_chunk.store(false, std::sync::atomic::Ordering::Release);
+    fixture.data.control.chunk_release.notify_one();
+    let appended = super::transfer_plugin::client_call::<operations::AppendFileBytes>(&channel, append.clone()).await.unwrap();
+    assert_eq!(super::transfer_plugin::client_call::<operations::AppendFileBytes>(&channel, append.clone()).await.unwrap(), appended);
+
+    // Persist the Recoverable Prefix; a Lost Checkpoint Reply Cannot Acknowledge Durability.
+    let save = fixture.storage.capture_files(None).unwrap();
+    fixture.data.control.checkpoint_failures.store(1, std::sync::atomic::Ordering::Release);
+    assert!(fixture.storage.persist_files(&save).await.is_err());
+    let status = super::transfer_plugin::call::<context::GetFileProduction>(
+        calls,
+        child::StorageGetFileProductionRequest { file: Some(file.clone()) },
+    )
+    .await
+    .unwrap();
+    assert_eq!(status.accepted_length, 6);
+    assert_eq!(status.durable_length, 0);
+    fixture.storage.persist_files(&save).await.unwrap();
+
+    // Reconnect Through Context, Inspect Progress and Fence the Old Writer.
     let status = super::transfer_plugin::call::<context::GetFileProduction>(
         calls,
         child::StorageGetFileProductionRequest { file: Some(file.clone()) },
@@ -120,6 +151,8 @@ async fn resume_fence_publish_and_range_across_faces() {
     .await
     .unwrap();
     assert_eq!(status.production.unwrap().length, 6);
+    assert_eq!(status.accepted_length, 6);
+    assert_eq!(status.durable_length, 6);
     assert_eq!(status.writer_generation, first_writer.as_ref().unwrap().generation);
     let resumed = super::transfer_plugin::call::<context::CreateFileWriter>(
         calls,
@@ -263,6 +296,79 @@ async fn resume_fence_publish_and_range_across_faces() {
         .data
         .is_empty()
     );
+
+    // Enforce the Full Unary Response Ceiling and Verify Whole-Content Corruption.
+    fixture.data.control.corrupt_file.store(true, std::sync::atomic::Ordering::Release);
+    assert!(
+        super::transfer_plugin::client_call::<operations::GetFileBytes>(
+            &channel,
+            client::StorageGetFileBytesRequest {
+                file: Some(reference.clone()),
+                offset: 0,
+                max_bytes: u64::MAX,
+                at: None,
+            }
+        )
+        .await
+        .is_err()
+    );
+    fixture.data.control.corrupt_file.store(false, std::sync::atomic::Ordering::Release);
+    let bound = fixture.storage.settings().response.batch_bytes.get();
+    let bytes = vec![0x5a; bound + 1000];
+    let digest = Sha256::digest(&bytes).to_vec();
+    let production = super::transfer_plugin::client_call::<operations::CreateFileProduction>(
+        &channel,
+        client::StorageCreateFileProductionRequest {
+            metadata: Some(payload::FileMetadata {
+                id: "bounded-unary".into(),
+                media_type: "application/octet-stream".into(),
+                ..Default::default()
+            }),
+            mutation: mutation("bounded-create"),
+        },
+    )
+    .await
+    .unwrap()
+    .production
+    .unwrap();
+    for (index, chunk) in bytes.chunks(bound).enumerate() {
+        super::transfer_plugin::client_call::<operations::AppendFileBytes>(
+            &channel,
+            client::StorageAppendFileBytesRequest {
+                session: production.session.clone(),
+                offset: (index * bound) as u64,
+                data: chunk.to_vec(),
+                mutation: mutation(&format!("bounded-append-{index}")),
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let published = super::transfer_plugin::client_call::<operations::PublishFileProduction>(
+        &channel,
+        client::StoragePublishFileProductionRequest {
+            session: production.session,
+            length: bytes.len() as u64,
+            sha256: digest,
+            mutation: mutation("bounded-publish"),
+        },
+    )
+    .await
+    .unwrap();
+    let range = super::transfer_plugin::client_call::<operations::GetFileBytes>(
+        &channel,
+        client::StorageGetFileBytesRequest {
+            file: published.file,
+            offset: 0,
+            max_bytes: u64::MAX,
+            at: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(prost::Message::encoded_len(&range) <= bound);
+    assert!(!range.data.is_empty());
+    assert_eq!(range.data, bytes[..range.data.len()]);
 
     // Abandon Another Production Without Publishing It.
     let created = super::transfer_plugin::call::<context::CreateFileProduction>(

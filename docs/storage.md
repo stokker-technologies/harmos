@@ -444,8 +444,10 @@ Chunks are bounded by the configured response batch byte limit and pending write
 budget. Appends require contiguous offsets. Replaying an identical retained
 prefix under a new key succeeds; different bytes conflict without modifying it.
 `GetFileProduction` observes retained length, phase and current writer generation
-without acquiring a writer. Length reports completed backend appends; pending
-commands are excluded. `CreateFileWriter` advances the generation and fences the
+without acquiring a writer. `accepted_length` includes an admitted in-flight
+append; the production length includes completed backend appends.
+`durable_length` advances only after the existing production recovery checkpoint
+acknowledges its prefix, and is restored from that checkpoint after reopening. `CreateFileWriter` advances the generation and fences the
 previous writer. Terminal productions have no live writer (generation zero).
 
 `PublishFileProduction` supplies the exact length and SHA-256. It validates both
@@ -463,3 +465,4 @@ An offset at the end returns an empty range, an offset beyond it refuses, and
 configuration bounds oversized ranges. Native embedders can call
 `StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Streaming
 transfers remain for the required throughput comparison before their removal.
+

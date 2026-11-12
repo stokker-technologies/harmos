@@ -98,6 +98,7 @@ impl StorageManager {
                                 progress: progress.clone(),
                                 hash: Sha256::new(),
                                 length: 0,
+                                durable_length: 0,
                                 ticket: 0,
                                 command: Some(Command::Create),
                                 abandoned: false,

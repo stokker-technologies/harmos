@@ -30,6 +30,10 @@ pub struct StorageGetFileProductionResponse {
     pub writer_generation: u64,
     #[prost(message, optional, tag = "3")]
     pub resolved_at: ::core::option::Option<crate::v1::ReadCut>,
+    #[prost(uint64, tag = "4")]
+    pub accepted_length: u64,
+    #[prost(uint64, tag = "5")]
+    pub durable_length: u64,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

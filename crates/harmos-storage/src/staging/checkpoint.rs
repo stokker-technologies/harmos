@@ -40,6 +40,7 @@ pub(crate) struct FileSnapshot {
 }
 
 struct CheckpointSource {
+    file_id: Option<u64>,
     context: crate::execution::Context,
     queued: std::sync::Mutex<Option<tracing::Span>>,
 }
@@ -139,6 +140,7 @@ impl StorageManager {
                 progress,
                 hash,
                 length: checkpoint.length,
+                durable_length: checkpoint.length,
                 ticket: 0,
                 command: None,
                 abandoned: false,
@@ -184,9 +186,10 @@ impl State {
         self.collect();
         let mut checkpoints = Vec::with_capacity(count);
         let mut sources = Vec::with_capacity(count);
-        for file in self.files.values().filter(selected) {
+        for (&file_id, file) in self.files.iter().filter(|(_, file)| selected(file)) {
             let queued = file.context.sync(|| tracing::debug_span!("storage.file.checkpoint.queue", file = %file.staging.id));
             sources.push(CheckpointSource {
+                file_id: Some(file_id),
                 context: file.context.clone(),
                 queued: std::sync::Mutex::new(Some(queued)),
             });
@@ -206,6 +209,7 @@ impl State {
         for receipt in &receipts {
             let span = tracing::debug_span!("storage.receipt.checkpoint.queue", mutation = %receipt.mutation.key, window = %receipt.mutation.window);
             sources.push(CheckpointSource {
+                file_id: None,
                 context: crate::execution::Context::current(),
                 queued: std::sync::Mutex::new(Some(span)),
             });
@@ -255,6 +259,13 @@ impl FileSnapshot {
                             inner.primary.set_file_production_checkpoints(self.checkpoints.clone()),
                         )
                         .await?;
+                    // Publish Only the Prefix Whose Recovery Checkpoint Was Acknowledged.
+                    let mut state = inner.state.lock().unwrap();
+                    for (checkpoint, source) in self.checkpoints.as_slice().iter().zip(&self.sources) {
+                        if let Some(file) = source.file_id.and_then(|id| state.files.get_mut(&id)) {
+                            file.durable_length = file.durable_length.max(checkpoint.length);
+                        }
+                    }
                 }
                 if !self.receipts.is_empty() {
                     inner

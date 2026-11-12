@@ -1192,7 +1192,7 @@ from source closure.
 `crates/harmos-operations/src/storage/**`, storage handlers/tests/benches in runtime,
 storage benchmark tooling and Nightly wiring, `docs/storage.md`, and the storage tasks/design
 in this change. Shared protocol primitives and SDK bindings belong to the parallel core worker.
-Streaming transfers remain until task 6.1; no accepted-data snapshot is implemented.
+Streaming transfers remain until task 5.2; no accepted-data snapshot is implemented.
 
 ### Windows Durable-Lag Measurements
 
@@ -1286,3 +1286,16 @@ shared payload file move (including import-only edits and generated consumers). 
 host registration uses factory validation, matching the core worker's existing fix,
 and child fingerprinting reads native protobuf descriptors without requiring a client
 gRPC projection. README links the new transfer API; no other runtime subsystem changes.
+
+### Recoverable Upload Progress
+
+Status exposes admitted bytes separately from the last acknowledged production
+recovery checkpoint. Pending and completed but uncheckpointed appends never become
+`durable_length`; reopening restores that length from the persisted checkpoint.
+Publication still requires its separate reference/receipt barrier. A lost checkpoint
+reply retains the prior acknowledged length until the same checkpoint is retried.
+The cross-face transfer story controls a blocked append and a failed checkpoint reply,
+then checks exact ranges, corruption refusal and the complete encoded response ceiling.
+Structured transient failures retain retry classification, and replay payload/prefix
+conflicts retain the conflict classification. The existing lost-reply/cancellation
+receipt story passes without changing its retry budget or durability guarantees.

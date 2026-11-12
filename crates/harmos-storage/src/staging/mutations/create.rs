@@ -89,6 +89,7 @@ impl StorageManager {
                     progress: Arc::new(Mutex::new(Progress { generation: 1, ..Progress::default() })),
                     hash: Sha256::new(),
                     length: 0,
+                    durable_length: 0,
                     ticket: 0,
                     command: Some(Command::Create),
                     abandoned: false,

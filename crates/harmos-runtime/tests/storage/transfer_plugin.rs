@@ -60,7 +60,7 @@ impl harmos_runtime::operations::authorization::Authorizer for AllowTransfers {
         Ok(Some(harmos_runtime::operations::authorization::Authorization::Restricted(
             harmos_runtime::operations::authorization::Required {
                 contract: provider.contract.clone(),
-                grants: ["unary-file", "abandoned-unary", "invalid-unary"]
+                grants: ["unary-file", "abandoned-unary", "invalid-unary", "bounded-unary"]
                     .into_iter()
                     .map(|file| harmos_operations::plugin::Grant::of(provider.contract.operation().id.to_string(), file))
                     .collect(),

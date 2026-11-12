@@ -40,6 +40,24 @@ use harmos_storage::{StorageCursor, StorageManager};
 
 /* === Public Functions === */
 
+pub(super) fn range_bytes(encoded: usize, data: usize, limit: usize) -> crate::Result<usize> {
+    let overhead = encoded.saturating_sub(limit);
+    if overhead > data || data > 0 && overhead == data {
+        return Err(harmos_storage::Error::ResourceExhausted {
+            resource: "GetFileBytes response metadata",
+        }
+        .into());
+    }
+    Ok(data - overhead)
+}
+
+pub(super) fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind {
+    if let Some(crate::execution::ServingError::Handler(failure)) = error.downcast_ref::<crate::execution::ServingError>() {
+        return failure.code();
+    }
+    error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(crate::operations::FailureKind::Permanent)
+}
+
 pub(super) fn grant(id: &'static str, name: Option<&str>) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
     let name = name.ok_or_else(|| harmos_domain::MessageError::borrowed("file identity is required"))?;
     Ok(Some(crate::plugin::Grant::of(id, name.to_owned())))
@@ -99,6 +117,14 @@ pub(super) fn required<T>(value: Option<T>) -> crate::Result<T> {
 pub(super) async fn create(
     storage: &StorageManager, metadata: wire::FileMetadata, mutation: wire::MutationId,
 ) -> crate::Result<(wire::FileProducer, v1::Receipt)> {
+    if !storage.capabilities().file_sessions || !storage.capabilities().mutation_receipts {
+        return Err(harmos_storage::Error::backend(
+            "CreateFileProduction",
+            harmos_storage::BackendFailure::Unsupported,
+            std::io::Error::new(std::io::ErrorKind::Unsupported, "provider requires resumable sessions and mutation receipts"),
+        )
+        .into());
+    }
     let production = storage.create_file_once(&mutation.clone().try_into()?, &metadata.try_into()?).await?;
     Ok((production.into(), receipt(&mutation, None)))
 }
@@ -139,11 +165,8 @@ pub(super) async fn delete(
     Ok((progress.into(), receipt(&mutation, None)))
 }
 
-pub(super) async fn status(storage: &StorageManager, file: wire::StagedFile) -> crate::Result<(wire::FileProgress, u64, v1::ReadCut)> {
-    let file = file.try_into()?;
-    let (progress, generation) = storage.get_file_production_status(&file).await?;
-    let generation = generation.unwrap_or(0);
-    Ok((progress.into(), generation, cut(storage.get_saved_position())))
+pub(super) async fn status(storage: &StorageManager, file: wire::StagedFile) -> crate::Result<harmos_storage::FileProductionStatus> {
+    Ok(storage.get_file_production_status(&file.try_into()?).await?)
 }
 
 pub(super) async fn get(

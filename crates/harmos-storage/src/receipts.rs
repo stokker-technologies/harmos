@@ -145,10 +145,11 @@ impl Receipts {
             }
             if entry.fingerprint != *fingerprint {
                 tracing::error!(window = %id.window, mutation = %id.key, reason = "identity reused with different request", "storage mutation rejected");
-                return Err(Error::InvalidInput {
-                    field: "storage mutation",
-                    reason: "identity reused with different request",
-                });
+                return Err(Error::backend(
+                    "replay storage mutation",
+                    crate::BackendFailure::Conflict,
+                    std::io::Error::other("request identifier reused with different normalized payload"),
+                ));
             }
             return Ok(match &entry.value {
                 Some(value) => ReceiptState::Complete(value.clone()),

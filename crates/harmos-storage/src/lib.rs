@@ -84,7 +84,7 @@ pub use read_batch::{ReadBatch, ReadPages};
 pub use receipts::{MutationReceipt, MutationValue};
 pub use record_view::RecordView;
 pub use snapshot::Snapshot;
-pub use staging::StorageFile;
+pub use staging::{FileProductionStatus, StorageFile};
 
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
 pub use staging::checkpoint::FileSave;

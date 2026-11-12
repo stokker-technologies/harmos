@@ -71,7 +71,7 @@ impl StorageManager {
             file.command = Some(if replay { Command::Replay { offset, bytes: payload } } else { Command::Write(payload) });
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Append });
             Ok(true)
-        }).await?.producer().map_err(|_| invalid("AppendFileBytes conflicts with the accepted prefix"))
+        }).await?.producer().map_err(|_| Error::backend("AppendFileBytes", crate::BackendFailure::Conflict, std::io::Error::other("bytes differ from the accepted prefix")))
     }
 }
 

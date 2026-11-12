@@ -47,6 +47,14 @@ static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 
 /* === Structs === */
 
+#[derive(Clone, Debug)]
+pub struct FileProductionStatus {
+    pub progress: FileProgress,
+    pub writer_generation: Option<u64>,
+    pub accepted_length: u64,
+    pub durable_length: u64,
+}
+
 pub struct StorageFile {
     manager: StorageManager,
     id: u64,
@@ -84,6 +92,7 @@ pub(super) struct FileState {
     progress: Arc<Mutex<Progress>>,
     hash: Sha256,
     length: u64,
+    durable_length: u64,
     ticket: u64,
     command: Option<Command>,
     abandoned: bool,
@@ -143,7 +152,7 @@ impl FileAction {
 
 impl StorageManager {
     /// Status Is Read From the Production Owner, Without Creating a Writer.
-    pub async fn get_file_production_status(&self, file: &StagedFile) -> Result<(FileProgress, Option<u64>)> {
+    pub async fn get_file_production_status(&self, file: &StagedFile) -> Result<FileProductionStatus> {
         self.inner.primary.get_history().check(&file.history)?;
         {
             let state = self.inner.state.lock().unwrap();
@@ -153,10 +162,25 @@ impl StorageManager {
             if let Some(active) = state.files.values().find(|active| active.staging == *file) {
                 let progress = active.production(file).expect("selected production")?;
                 let generation = active.session.as_ref().map(|session| session.generation);
-                return Ok((progress, generation));
+                let pending = match &active.command {
+                    Some(Command::Write(bytes)) => bytes.len() as u64,
+                    _ => 0,
+                };
+                return Ok(FileProductionStatus {
+                    progress,
+                    writer_generation: generation,
+                    accepted_length: progress.length + pending,
+                    durable_length: active.durable_length,
+                });
             }
         }
-        Ok((self.get_file_production(file).await?, None))
+        let progress = self.get_file_production(file).await?;
+        Ok(FileProductionStatus {
+            progress,
+            writer_generation: None,
+            accepted_length: progress.length,
+            durable_length: if progress.phase == FilePhase::Finished { progress.length } else { 0 },
+        })
     }
 }
 

@@ -93,7 +93,7 @@ impl ProtobufOperation for CreateFileProduction {
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
-        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+        super::transfers::classify(error)
     }
 }
 
@@ -120,11 +120,13 @@ impl ProtobufOperation for GetFileProduction {
                 reason: "file identity is required",
             })?;
             transfers::admit(&context, Self::ID, request.file.as_ref().map(|value| value.id.as_str()).expect("validated file identity"))?;
-            let (production, writer_generation, resolved_at) = transfers::status(&storage, transfers::required(request.file)?).await?;
+            let status = transfers::status(&storage, transfers::required(request.file)?).await?;
             Ok(Self::Response {
-                production: Some(production),
-                writer_generation,
-                resolved_at: Some(resolved_at),
+                production: Some(status.progress.into()),
+                writer_generation: status.writer_generation.unwrap_or(0),
+                resolved_at: Some(transfers::cut(storage.get_saved_position())),
+                accepted_length: status.accepted_length,
+                durable_length: status.durable_length,
             })
         }
         .await;
@@ -132,7 +134,7 @@ impl ProtobufOperation for GetFileProduction {
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
-        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+        super::transfers::classify(error)
     }
 }
 
@@ -181,7 +183,7 @@ impl ProtobufOperation for AppendFileBytes {
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
-        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+        super::transfers::classify(error)
     }
 }
 
@@ -224,7 +226,7 @@ impl ProtobufOperation for CreateFileWriter {
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
-        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+        super::transfers::classify(error)
     }
 }
 
@@ -270,7 +272,7 @@ impl ProtobufOperation for PublishFileProduction {
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
-        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+        super::transfers::classify(error)
     }
 }
 
@@ -313,7 +315,7 @@ impl ProtobufOperation for DeleteFileProduction {
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
-        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+        super::transfers::classify(error)
     }
 }
 
@@ -350,19 +352,26 @@ impl ProtobufOperation for GetFileBytes {
                     .expect("validated file identity"),
             )?;
             let range = transfers::get(&storage, transfers::required(request.file)?, request.offset, request.max_bytes, request.at).await?;
-            Ok(Self::Response {
+            let mut response = Self::Response {
                 data: range.data,
                 total_length: range.total_length,
                 sha256: range.sha256.to_vec(),
                 resolved_at: Some(transfers::cut(range.resolved_at)),
-            })
+            };
+            let length = transfers::range_bytes(
+                prost::Message::encoded_len(&response),
+                response.data.len(),
+                storage.settings().response.batch_bytes.get(),
+            )?;
+            response.data.truncate(length);
+            Ok(response)
         }
         .await;
         result.map_err(super::native::failure)
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
-        error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(FailureKind::Permanent)
+        super::transfers::classify(error)
     }
 }
 
