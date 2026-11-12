@@ -150,6 +150,17 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         descending.limits = work;
         let page = scan_index(backend, snapshot, &descending, &cancel).await.unwrap();
         assert_eq!(page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(), vec![9, 5, 8, 7, 2, 6, 4, 3]);
+        descending.limits = read.limits;
+        let mut positions = Vec::new();
+        loop {
+            let page = scan_index(backend, snapshot, &descending, &cancel).await.unwrap();
+            positions.extend(page.entries.iter().map(|entry| entry.position));
+            if page.complete {
+                break;
+            }
+            descending.after = page.next;
+        }
+        assert_eq!(positions, vec![9, 5, 8, 7, 2, 6, 4, 3]);
         let mut prefix = read.clone();
         prefix.prefix = encode_key(&[ScalarValue::Unsigned(1)]).unwrap();
         prefix.limits = work;

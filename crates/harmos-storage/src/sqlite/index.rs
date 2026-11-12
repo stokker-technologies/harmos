@@ -166,13 +166,26 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &IndexRead, 
     read.validate(snapshot, &definition, revision)?;
     let comparison = if read.descending { "<" } else { ">" };
     let direction = if read.descending { "DESC" } else { "ASC" };
+    let seek = if read.after.is_some() {
+        let upper = if read.descending { "AND i.key<=?8" } else { "" };
+        format!("{upper} AND (i.key,i.position){comparison}(?8,?9)")
+    } else {
+        "AND ?8 IS NULL AND ?9 IS NULL".into()
+    };
+    // Give SQLite One Lower Bound So The Seek Starts At The Continuation.
+    let mut lower = read.lower.as_deref().unwrap_or_default().max(read.prefix.as_slice());
+    if !read.descending
+        && let Some(after) = &read.after
+    {
+        lower = lower.max(after.key.as_slice());
+    }
     let latest = if definition.source.kind == ColumnKind::Objects {
         "AND s.position=(SELECT max(o.position) FROM storage_rows o WHERE o.kind=1 AND o.schema_key=s.schema_key AND o.item=s.item AND o.position<=?3)"
     } else {
         ""
     };
     let sql = format!(
-        "SELECT i.key,i.position FROM storage_index_entries i JOIN storage_rows s ON s.position=i.position WHERE i.name=?1 AND i.revision=?2 AND i.position<=?3 AND (?4 IS NULL OR i.key>=?4) AND (?5 IS NULL OR i.key<?5) AND i.key>=?6 AND (?7 IS NULL OR i.key<?7) AND (?8 IS NULL OR (i.key,i.position){comparison}(?8,?9)) {latest} ORDER BY i.key {direction},i.position {direction} LIMIT {}",
+        "SELECT i.key,i.position FROM storage_index_entries i JOIN storage_rows s ON s.position=i.position WHERE i.name=?1 AND i.revision=?2 AND i.position<=?3 AND (?4 IS NULL OR i.key>=?4) AND (?5 IS NULL OR i.key<?5) AND i.key>=?6 AND (?7 IS NULL OR i.key<?7) {seek} {latest} ORDER BY i.key {direction},i.position {direction} LIMIT {}",
         read.limits.rows.get().saturating_add(1)
     );
     let prefix_end = prefix_end(&read.prefix);
@@ -186,7 +199,7 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &IndexRead, 
             integer(snapshot.at.sequence)?,
             read.lower.as_deref(),
             read.upper.as_deref(),
-            read.prefix,
+            lower,
             prefix_end,
             seek_key,
             seek_position

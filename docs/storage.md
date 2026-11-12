@@ -191,3 +191,57 @@ plots. Run `mise run bench -- --storage --filter baseline` or `--filter native`;
 raw output and Criterion artifacts remain under `target/benchmarks/storage/`.
 Correctness checks stay outside timing. Local measurements and proposed budgets
 are recorded in the change; Linux and consumer performance proof remain open.
+
+## Shared Benchmark Workload
+
+Enable `harmos-storage`'s `testing` feature to use `bench_support`. In a dedicated
+benchmark executable, install `bench_support::TrackingAllocator` as `#[global_allocator]`,
+construct `bench_support::workload::Workload::new(workload::ROWS)`, and call
+`bench_support::run_with_reopen(&runtime, &workload, || Box::new(open_backend()))`.
+The opener first creates an empty backend, then reopens that same store after disposal.
+This runs identical data, plans, corrections, checks and case names against any backend;
+no concrete database or host engine is required. For JSON, consume its `STORAGE_MEASUREMENT`
+and `STORAGE_COUNTER` lines; the repository producer's `storage_bench.measurements(lines,
+revision, system, backend="reference")` emits the release schema for another backend.
+
+The fixed input is 2,000,000 `(time_ns:i64, plot:u32, value:f64)` records over three days
+and 24 plots. There is no RNG: logical index is admission index except every 4096th row
+arrives 2048 positions late; value is `(logical*7919)%65521`. Chunks contain 16,384 rows,
+windows 4096 rows, output/physical chunk limit 8 MiB and work limit 1 GiB. Corrected input
+replaces the first 4096 identities, shifts their time back one minute and adds one to each
+value. Bucket width is one minute, grouped by plot. Conditional contention is 64 rounds
+of eight requests sharing one expected version; exactly one applies in every round.
+
+| Stable Case Name | Measurement (Unit: `s`) |
+| --- | --- |
+| `storage.ingest.2m` | Commit the pre-generated source batches |
+| `storage.scan.read.2m` | Traverse all values |
+| `storage.window.read.2m`, `storage.window.next.2m` | Read at one-third of the source and the next window |
+| `storage.index.build.2m` | Register/build the value index |
+| `storage.index.read.2m`, `storage.index.next.2m`, `storage.index.deep.2m` | First, next and middle-of-source ordered seek pages |
+| `storage.projection.advance.2m`, `storage.projection.read.2m`, `storage.projection.replay.2m` | Publish, read a window and retry an already published cut |
+| `storage.bucket.advance.2m`, `storage.bucket.replace.2m` | Initial grouped buckets and late/corrected replacement |
+| `storage.object.contend.8` | One eight-request round, aggregated across 64 rounds |
+| `storage.object.replay.512`, `storage.object.restart_replay.512` | Replay the final durable outcome before/after reopening |
+| `storage.scan.cancel.2m`, `storage.projection.cancel.2m` | Already-cancelled read/advance refusal |
+| `storage.close.2m`, `storage.stop.2m`, `storage.restart.2m` | Logical close, reference-owner disposal and reference-owner reopen |
+| `storage.projection.restart_replay.2m` | Replay the retained projection cut after reopening |
+
+Scan/window names also have a `.first` single-observation case; it is a first traversal,
+not an OS-cache-cold claim. Repeated read/replay cases use ten samples after a one-second
+warmup; mutating/build cases run once. Every timing name also emits `.allocations` (`count`),
+`.allocated.bytes` (`bytes`) and `.heap.peak.bytes` (`bytes`). These count Rust allocator
+calls, total requested bytes and the increase in live Rust heap high water during the
+region; SQLite's C allocations are outside those counters. `storage.process.peak.bytes`
+(`bytes`) includes native memory and untimed preparation. Scans emit `.read.bytes` (`bytes`)
+and `.payload.rows` (`rows`); encoded fetched bytes are not physical disk I/O. Ingest,
+full scan, projection/bucket advancement emit `.throughput` (`rows/s`); contention uses
+`attempts/s`. Verification and fixture generation are outside every timed region.
+
+`mise run bench -- --storage --filter native` runs the SQLite reference with WAL/FULL
+synchronization; commit, publication and contention costs include durability. Nightly
+runs it on Linux and Windows and adds platform/backend-qualified suites to the published
+`benchmarks.json` and raw report archive. The two-million-row executable is excluded from
+ordinary benchmark lanes. Ordinary tests retain one 16,385-row journey crossing the
+physical chunk boundary on both native and fallback backends. Consumer reports should
+record their own backend/durability mode while retaining these names, units and inputs.

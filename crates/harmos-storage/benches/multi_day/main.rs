@@ -19,7 +19,7 @@ mod fixture;
 mod mapping_fixture;
 
 mod native;
-mod workload;
+use harmos_storage::bench_support::workload;
 
 /* === Re-Exports === */
 
@@ -41,6 +41,9 @@ use harmos_storage::query::transform::{
 use harmos_storage::query::{QueryArrow, RowSlice};
 use mapping_fixture::Mapped;
 use workload::ROWS;
+
+#[global_allocator]
+static ALLOCATOR: harmos_storage::bench_support::TrackingAllocator = harmos_storage::bench_support::TrackingAllocator;
 
 /* === Constants === */
 
@@ -64,7 +67,7 @@ fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut criterion = Criterion::default().configure_from_args();
     if std::env::var_os("HARMOS_STORAGE_NATIVE").is_some() {
-        native::run(&runtime, &mut criterion);
+        native::run(&runtime);
         criterion.final_summary();
         return;
     }

@@ -16,6 +16,8 @@ pub mod arrow;
 mod backend;
 mod batch;
 mod batching;
+#[cfg(feature = "testing")]
+pub mod bench_support;
 mod capacity;
 pub mod config;
 mod deletion;
