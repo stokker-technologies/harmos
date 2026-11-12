@@ -14,9 +14,10 @@
 #[tokio::test]
 async fn guest_hash_uses_the_native_protobuf_handler() {
     use super::*;
-    use harmos_guest::builtins::storage::HASH_FILE_OPERATION;
-    use harmos_guest::builtins::storage::HashFile;
-    use harmos_runtime::storage::{ByteRange, FileHash, FileSource};
+    use harmos_protocol::storage::FileHash;
+    use harmos_protocol::storage::HashFile;
+    use harmos_runtime::storage::{ByteRange, FileSource};
+    use prost::Message as _;
     use sha2::{Digest, Sha256};
     let fixture = Fixture::new(config()).await;
     crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
@@ -25,7 +26,8 @@ async fn guest_hash_uses_the_native_protobuf_handler() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.bin");
     std::fs::write(&path, b"private guest hash").unwrap();
-    let contract = HASH_FILE_OPERATION.wire().contract().unwrap();
+    let contract =
+        harmos_runtime::operations::OperationFactory::protobuf::<harmos_operations::storage::HashFile>().unwrap().contract().unwrap();
     let definitions = PluginDefinitions::new([plugin("reader", vec![Required { contract, grants: vec![] }])], []).unwrap();
     let mut manager = PluginManager::new(definitions).unwrap();
     let mut host = Host {
@@ -38,16 +40,16 @@ async fn guest_hash_uses_the_native_protobuf_handler() {
         .call_encoded(
             "host.storage.hash_file",
             HashFile {
-                source: FileSource::Local(path),
-                range: ByteRange { offset: 0, limit: None },
+                source: Some(FileSource::Local(path).try_into().unwrap()),
+                range: Some(ByteRange { offset: 0, limit: None }.into()),
             }
-            .encode(),
+            .encode_to_vec(),
         )
         .await
         .unwrap();
-    let response = FileHash::decode(&response).unwrap();
+    let response = FileHash::decode(response.as_slice()).unwrap();
     assert_eq!(response.bytes_read, 18);
-    assert_eq!(response.sha256, <[u8; 32]>::from(Sha256::digest(b"private guest hash")));
+    assert_eq!(response.sha256, Sha256::digest(b"private guest hash").to_vec());
     manager.shutdown(&mut host).await.unwrap();
     fixture.finish().await;
 }

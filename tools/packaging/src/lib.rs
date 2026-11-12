@@ -21,6 +21,8 @@ pub mod config;
 #[cfg(feature = "build-tools")]
 mod dev;
 mod error;
+#[cfg(feature = "guest")]
+mod guest;
 #[cfg(feature = "build-tools")]
 mod metadata;
 #[cfg(feature = "sidecar")]
@@ -41,7 +43,6 @@ pub use component::componentize;
 #[cfg(feature = "build-tools")]
 pub use dev::{DevEvent, dev};
 pub use error::Error;
-pub use harmos_operations::inventory::{Declaration, DeclarationError, Facility};
 pub use harmos_runtime::bundle::digest;
 #[cfg(feature = "build-tools")]
 pub use process::BuildCancellation;
@@ -102,25 +103,21 @@ pub fn inspect(path: &Path) -> Result<Inspection, Error> {
         #[cfg(not(feature = "sidecar"))]
         return Err(Error::Settings("native inspection requires the sidecar feature".into()));
     }
-    let facility = if guest { Facility::Guest } else { Facility::Sidecar };
-    let declaration = Declaration::inspect(&bytes, facility)?;
-
-    let mut operations = Vec::with_capacity(declaration.operations.len());
-    for operation in &declaration.operations {
-        operations.push(operation.id.to_string());
-    }
-
-    Ok(Inspection {
-        id: declaration.id,
-        version: declaration.version.to_string(),
-        description: declaration.description,
-        config: declaration.config,
-        operations,
-        sha256: digest(&bytes),
-        facility: if guest { "guest" } else { "sidecar" },
-    })
+    guest_inspection(&bytes)
 }
 
 /* === Private Functions === */
 
+fn guest_inspection(bytes: &[u8]) -> Result<Inspection, Error> {
+    let declaration = harmos_runtime::bundle::guest_registration(bytes)?;
+    Ok(Inspection {
+        id: declaration.id,
+        version: declaration.version,
+        description: String::new(),
+        config: String::new(),
+        operations: declaration.catalog.into_iter().flat_map(|catalog| catalog.operations).map(|operation| operation.id).collect(),
+        sha256: digest(bytes),
+        facility: "guest",
+    })
+}
 /* === Tests === */

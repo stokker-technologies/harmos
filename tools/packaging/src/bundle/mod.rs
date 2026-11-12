@@ -48,12 +48,6 @@ pub struct Source<'a> {
 /* === Public Functions === */
 
 pub fn build(identity: Identity, sources: &[Source<'_>], limits: Limits) -> Result<Bundle, Error> {
-    build_with_settings(identity, sources, limits, &harmos_domain::config::SchemaSettings::default())
-}
-
-pub fn build_with_settings(
-    identity: Identity, sources: &[Source<'_>], limits: Limits, settings: &harmos_domain::config::SchemaSettings,
-) -> Result<Bundle, Error> {
     if sources.len() > limits.files {
         return Err(Error::Limit("file count"));
     }
@@ -89,7 +83,7 @@ pub fn build_with_settings(
     files.sort_by(|left, right| left.path.cmp(&right.path));
     let manifest = Manifest { schema: 1, identity, files };
     let bytes = archive::encode(&manifest, &contents, limits)?;
-    Bundle::inspect_with_settings(&bytes, limits, settings)
+    Bundle::inspect(&bytes, limits)
 }
 
 /* === Private Functions === */

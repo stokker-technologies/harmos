@@ -29,7 +29,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 // Local Imports
 use crate::{Error, OperationRequest, Result, message::fingerprint};
-use harmos_protocol::v1::{self, child_response, plugin_frame};
+use harmos_protocol::v1::{self, plugin_frame};
 
 /* === Constants === */
 
@@ -57,6 +57,8 @@ pub struct Context {
     pub(crate) cancellation: watch::Sender<Option<String>>,
     pub(crate) requires: Arc<HashMap<String, Vec<u8>>>,
     pub(crate) sequence: u64,
+    pub(crate) child: Option<Arc<dyn ChildTransport>>,
+    pub(crate) values: Vec<v1::GuestValue>,
     pub(crate) samples: Option<mpsc::Sender<(Vec<u8>, Option<prost_types::Timestamp>)>>,
 }
 
@@ -68,6 +70,12 @@ pub(crate) struct Calls {
 /* === Enums === */
 
 /* === Traits === */
+
+pub(crate) trait ChildTransport: Send + Sync + Any {
+    fn call<'a>(
+        &'a self, request: v1::ChildRequest, values: Vec<v1::GuestValue>, submit: bool,
+    ) -> crate::operation::LocalFuture<'a, Result<Vec<u8>>>;
+}
 
 /* === Implementations === */
 
@@ -82,6 +90,8 @@ impl Context {
             resources: Arc::new(Mutex::new(HashMap::new())),
             calls: Arc::new(Mutex::new(Calls { next: 0, pending: BTreeMap::new() })),
             output: None,
+            child: None,
+            values: Vec::new(),
             cancellation: watch::channel(None).0,
             requires,
             sequence: 0,
@@ -158,6 +168,21 @@ impl Context {
     }
 
     async fn call(&self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<v1::OperationPolicy>) -> Result<Vec<u8>> {
+        if let Some(child) = &self.child {
+            return child
+                .call(
+                    v1::ChildRequest {
+                        call: 0,
+                        operation: operation.into(),
+                        payload,
+                        fingerprint,
+                        policy,
+                    },
+                    self.values.clone(),
+                    false,
+                )
+                .await;
+        }
         let output = self.output.as_ref().ok_or_else(|| Error::Invalid("Observers Cannot Call Operations or Wait".into()))?;
         if let Some(reason) = self.cancellation.borrow().clone() {
             return Err(self.cancel_failure(reason));
@@ -186,41 +211,7 @@ impl Context {
         receive.await.map_err(|_| tonic::Status::unavailable("Invocation Closed"))?
     }
 
-    pub(crate) fn reply(&self, child: v1::ChildResponse) -> std::result::Result<(), tonic::Status> {
-        let result = match child.result {
-            Some(child_response::Result::Payload(payload)) => Ok(payload),
-            Some(child_response::Result::Failure(failure)) => Err(failure.into()),
-            None => return Err(tonic::Status::invalid_argument("Child Result Missing")),
-        };
-        let send = self
-            .calls
-            .lock()
-            .expect("Child Calls Poisoned")
-            .pending
-            .remove(&child.call)
-            .ok_or_else(|| tonic::Status::invalid_argument("Unknown or Duplicate Child"))?;
-        let _ = send.send(result);
-        Ok(())
-    }
-
-    pub(crate) async fn cancel(&self, reason: String) -> Result<()> {
-        self.cancellation.send_replace(Some(reason.clone()));
-        let pending = std::mem::take(&mut self.calls.lock().expect("Child Calls Poisoned").pending);
-        for (call, send) in pending {
-            if let Some(output) = &self.output {
-                output
-                    .send(Ok(v1::PluginFrame {
-                        frame: Some(plugin_frame::Frame::ChildCancel(v1::ChildCancel { call })),
-                    }))
-                    .await
-                    .map_err(|_| tonic::Status::unavailable("Host Closed"))?;
-            }
-            let _ = send.send(Err(self.cancel_failure(reason.clone())));
-        }
-        Ok(())
-    }
-
-    fn cancel_failure(&self, reason: String) -> Error {
+    pub(crate) fn cancel_failure(&self, reason: String) -> Error {
         v1::Failure {
             classification: v1::Classification::Cancelled as i32,
             code: "cancelled".into(),

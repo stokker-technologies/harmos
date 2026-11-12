@@ -52,7 +52,7 @@ pub struct PluginContributions {
     pub streams: Vec<StreamDeclaration>,
     pub listeners: Vec<harmos_operations::listeners::Definition>,
     pub registrations: Vec<Registration>,
-    pub sections: Vec<harmos_operations::inventory::Section>,
+    pub sections: Vec<harmos_protocol::v1::Section>,
 }
 
 /* === Enums === */
@@ -176,7 +176,7 @@ impl PluginDefinition {
 
     #[cfg(feature = "plugin-guest")]
     fn inspected(
-        declaration: &harmos_operations::inventory::Declaration, artifact: PluginArtifact, configuration: Vec<u8>,
+        declaration: &crate::guest::Declaration, artifact: PluginArtifact, configuration: Vec<u8>,
     ) -> Result<Self, PluginDefinitionError> {
         let mut definition = Self {
             id: declaration.id.clone(),
@@ -189,9 +189,9 @@ impl PluginDefinition {
                 operations: declaration.operations.clone(),
                 wire_contracts: declaration.contracts.provides.clone(),
                 required_contracts: Some(declaration.contracts.requires.clone()),
-                observers: declaration.observers.clone(),
+                observers: Vec::new(),
                 streams: declaration.streams.clone(),
-                listeners: declaration.listeners.clone(),
+                listeners: Vec::new(),
                 sections: declaration.sections.clone(),
                 registrations: Vec::new(),
             },
@@ -242,7 +242,7 @@ impl PluginDefinition {
         }
         let mut sections = BTreeSet::new();
         for section in &self.contributions.sections {
-            if !artifact_subset(&section.namespace) || !sections.insert(&section.namespace) {
+            if !sections.insert(&section.r#type) {
                 return Err(invalid("contribution sections", "section namespace is invalid or repeated"));
             }
         }

@@ -299,11 +299,11 @@
 
 ## 7. Guests
 
-- [ ] 7.1 After domain reduction, complete guest lifecycle/child-control design and migrate guest command/child envelopes to `harmos.v1`, deleting the Postcard envelope codec together with the guest SDK consolidation below; native cutover does not establish guest parity.
-  - [ ] 7.1.1 Specify replacements for lifecycle phases and child submit, status, join and release controls, preserving required behaviour and authority before removing private guest mechanisms.
-  - [ ] 7.1.2 Fold `harmos-guest` into optional SDK WebAssembly support; replace `harmos-guest-macros`' `plugin`/`harmos_guest::guest` declarations with builder values and one author-supplied registration function, then delete both old packages.
-  - [ ] 7.1.3 Keep generated component bindings, canonical ABI exports/resources, async lifting and WIT register/operate glue inside the SDK adapter; keep guest loading, fuel/memory limits and sandbox authority in runtime without SDK host dependencies.
-  - [ ] 7.1.4 Move sandbox fixtures and guest tests with the adapter; migrate example/host consumers, manifests, build/generation tooling, docs and re-exports. Remove replaced guest inventories/grants/markers and account for focused lifecycle, child-control, recovery and sandbox proof on Linux and Windows.
+- [x] 7.1 After domain reduction, complete guest lifecycle/child-control design and migrate guest command/child envelopes to `harmos.v1`, deleting the Postcard envelope codec together with the guest SDK consolidation below; native cutover does not establish guest parity.
+  - [x] 7.1.1 Specify replacements for lifecycle phases and child submit, status, join and release controls, preserving required behaviour and authority before removing private guest mechanisms.
+  - [x] 7.1.2 Fold `harmos-guest` into optional SDK WebAssembly support; replace `harmos-guest-macros`' `plugin`/`harmos_guest::guest` declarations with builder values and one author-supplied registration function, then delete both old packages.
+  - [x] 7.1.3 Keep generated component bindings, canonical ABI exports/resources, async lifting and WIT register/operate glue inside the SDK adapter; keep guest loading, fuel/memory limits and sandbox authority in runtime without SDK host dependencies.
+  - [x] 7.1.4 Move sandbox fixtures and guest tests with the adapter; migrate example/host consumers, manifests, build/generation tooling, docs and re-exports. Remove replaced guest inventories/grants/markers and account for focused lifecycle, child-control, recovery and sandbox proof on Linux and Windows.
 
 ## 8. Final Validation
 

@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 
 /* === Constants === */
 
+pub const UNBOUNDED: Duration = Duration::from_secs(1 << 32);
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -88,6 +90,9 @@ pub enum ReplaySafety {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PolicyError {
+    #[error("invalid protobuf policy duration")]
+    InvalidDuration,
+
     #[error("operation deadlines must be positive (overall {timeout:?}, attempt {attempt_timeout:?})")]
     Deadline { timeout: Duration, attempt_timeout: Duration },
 
@@ -180,6 +185,34 @@ impl Backoff {
         let nanos = mixed % (nominal.as_nanos() / 4 + 1);
 
         Ok(nominal.saturating_add(from_nanos(nanos)).min(maximum))
+    }
+}
+
+impl TryFrom<Option<&crate::v1::OperationPolicy>> for OperationPolicy {
+    type Error = PolicyError;
+    fn try_from(wire: Option<&crate::v1::OperationPolicy>) -> Result<Self, Self::Error> {
+        let wire = wire.cloned().unwrap_or_default();
+        let duration = |value: Option<prost_types::Duration>, default| -> Result<Duration, PolicyError> {
+            value.map(Duration::try_from).transpose().map(|value| value.unwrap_or(default)).map_err(|_| PolicyError::InvalidDuration)
+        };
+        let policy = Self {
+            timeout: duration(wire.timeout, UNBOUNDED)?,
+            attempt_timeout: duration(wire.attempt_timeout, UNBOUNDED)?,
+            cancellation_timeout: duration(wire.cancellation_timeout, Duration::ZERO)?,
+            retries: if wire.attempts <= 1 {
+                RetryPolicy::Never
+            } else {
+                RetryPolicy::OnTransient {
+                    max_retries: wire.attempts as usize - 1,
+                    backoff: Backoff::Fixed {
+                        delay: duration(wire.backoff, Duration::ZERO)?,
+                        jitter: Jitter::None,
+                    },
+                }
+            },
+        };
+        policy.validate()?;
+        Ok(policy)
     }
 }
 

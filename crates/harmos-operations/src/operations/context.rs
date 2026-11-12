@@ -24,9 +24,9 @@ use crate::{Message, MessageError};
 
 /* === Constants === */
 
-pub const PORTABLE_VALUES: usize = 64;
+pub use harmos_protocol::guest::CONTEXT_VALUES as PORTABLE_VALUES;
 
-pub const PORTABLE_BYTES: usize = 64 * 1024;
+pub use harmos_protocol::guest::CONTEXT_BYTES as PORTABLE_BYTES;
 
 /* === Macros === */
 

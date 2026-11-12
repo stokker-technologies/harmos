@@ -143,7 +143,7 @@ impl Manager {
         let mut peak = std::mem::size_of::<Vec<harmos_operations::execution::operations::AssignedOperation>>() + 20;
         for contract in contracts() {
             let entry = select(contract)?;
-            if !entry.contract.as_ref().is_some_and(|actual| crate::guest::host::native_payloads::matches(contract, actual)) {
+            if !entry.contract.as_ref().is_some_and(|actual| actual.compatible(contract)) {
                 return Err(Error::InvalidInput {
                     field: "operation assignment",
                     reason: "provider differs from the frozen contract",

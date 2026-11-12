@@ -188,7 +188,7 @@ usage = 'flag "--check"'
 run = [
   "cargo fmt --all{% if usage.check %} --check{% endif %}",
   "cargo fmt --manifest-path examples/schematic/Cargo.toml --all{% if usage.check %} --check{% endif %}",
-  "cargo fmt --manifest-path crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml{% if usage.check %} --check{% endif %}",
+  "cargo fmt --manifest-path sdk/rust/tests/fixtures/sandbox/Cargo.toml{% if usage.check %} --check{% endif %}",
 ]
 
 [tasks."format:toml"]
@@ -211,10 +211,10 @@ hide = true
 description = "Lint Rust over Every Product and Tests Selection"
 usage = 'flag "--extended"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --lib --bins --tests --profile test --features harmos-runtime/plugin-guest,harmos-packaging/generate-python",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --lib --bins --tests --profile test --features harmos/wasm,harmos-runtime/plugin-guest,harmos-packaging/generate-python",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-cli -p schematic-sidecar",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile dev --manifest-path examples/schematic/Cargo.toml -p schematic-guest --target wasm32-unknown-unknown",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml -p harmos-sandbox-guest --target wasm32-unknown-unknown",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile test --manifest-path sdk/rust/tests/fixtures/sandbox/Cargo.toml -p harmos-sandbox-guest --target wasm32-unknown-unknown",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --workspace --bins --benches --profile bench --features harmos-runtime/plugin-guest,harmos-runtime/grpc,harmos-runtime/benchmark-fixtures{% if usage.extended %} --all-features{% endif %}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo -- --locked --profile bench --manifest-path examples/schematic/Cargo.toml -p schematic-guest --features benchmark --target wasm32-unknown-unknown",
@@ -274,7 +274,7 @@ hide = true
 description = "Build the Shared Test Archive and Fixtures"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}} --features harmos-runtime/plugin-guest,harmos-packaging/generate-python",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --profile {{usage.profile}} --features harmos/wasm,harmos-runtime/plugin-guest,harmos-packaging/generate-python",
 ]
 
 [tasks."test:python:integration"]

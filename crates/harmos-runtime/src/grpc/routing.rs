@@ -95,18 +95,6 @@ where
 
 /* === Public Functions === */
 
-// The gRPC handler of one declaration, selected by the directions it streams.
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub(crate) fn handler<O: crate::operations::RequestShape>() -> Handler {
-    use crate::operations::Direction;
-    match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
-        (false, false) => server::unary::<O, super::Transcoded>,
-        (true, false) => server::upload::<O, super::Transcoded>,
-        (false, true) => server::download::<O, super::Transcoded>,
-        (true, true) => server::exchange::<O, super::Transcoded>,
-    }
-}
-
 /* === Private Functions === */
 
 /* === Tests === */

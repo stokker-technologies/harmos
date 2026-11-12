@@ -378,12 +378,11 @@ fn finish_build(
         if digest(module) != artifact.sha256 {
             return Err(Error::ArtifactChanged(artifact.path.clone()));
         }
-        super::Declaration::inspect(module, super::Facility::Guest)?;
         if module.starts_with(b"\0asm\x0d\0\x01\0") {
             continue;
         }
         let component = super::componentize(module).map_err(Error::Component)?;
-        super::Declaration::inspect(&component, super::Facility::Guest)?;
+        harmos_runtime::bundle::guest_registration(&component)?;
         let output = artifact.path.with_extension("component.wasm");
         artifact.sha256 = digest(&component);
         components.insert(output.clone(), component);
@@ -537,15 +536,18 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
             }
             #[cfg(not(feature = "sidecar"))]
             BuildBackend::Sidecar => return Err(Error::Settings("native packaging requires the sidecar feature".into())),
+            #[cfg(feature = "guest")]
             BuildBackend::Guest => {
-                let declaration = super::Declaration::inspect(&content, super::Facility::Guest)?;
+                let declaration = harmos_runtime::bundle::guest_registration(&content)?;
                 Identity {
                     name: declaration.id,
-                    version: declaration.version,
-                    description: declaration.description,
+                    version: declaration.version.parse().map_err(|error: semver::Error| Error::Settings(error.to_string()))?,
+                    description: String::new(),
                     package: Default::default(),
                 }
             }
+            #[cfg(not(feature = "guest"))]
+            BuildBackend::Guest => return Err(Error::Settings("guest packaging requires the guest feature".into())),
         };
         let mut files = BTreeMap::from([(executable.clone(), content)]);
         for schema in schemas.iter().filter(|schema| schema.producer == artifact.producer) {

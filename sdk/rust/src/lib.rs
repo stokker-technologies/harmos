@@ -52,23 +52,36 @@
 //! `serve` defaults to managed lifecycle. `Plugin::remote` keeps the endpoint alive
 //! after Stop. Both honor `HARMOS_ADDRESS`; cleanup hooks run before Stop replies.
 
+//!
+//! Enable `wasm` for WebAssembly components. Authors return `wasm::Registration`
+//! from one exported `harmos_register` function using the same `Plugin` and
+//! `Operation` builders. The SDK owns the component ABI; the host owns fuel,
+//! memory, lifecycle authority and child admission. Plugin operations are unary.
+
 /* === Modules === */
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod client;
 pub mod clock;
 mod context;
 mod error;
 mod message;
+#[cfg(not(target_arch = "wasm32"))]
+mod native;
 mod operation;
 mod plugin;
 pub mod prelude;
+#[cfg(not(target_arch = "wasm32"))]
 mod server;
 mod stream;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 /* === Re-Exports === */
 
 extern crate self as harmos;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use client::{Client, ClientSettings};
 pub use context::Context;
 pub use error::{Error, Result};

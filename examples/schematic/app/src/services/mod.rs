@@ -23,6 +23,7 @@ use std::path::Path;
 
 // Local Imports
 use crate::app::{Runtime, SchematicEditor};
+use harmos::{OperationRequest, encoding::Message as _};
 use harmos_runtime::guest::Loaded;
 
 /* === Constants === */
@@ -67,6 +68,14 @@ impl Plugin {
 }
 
 /* === Public Functions === */
+
+pub async fn call<Q: OperationRequest>(runtime: &Runtime, request: Q) -> harmos_runtime::Result<Q::Response> {
+    let response = runtime.operations.call_encoded(Q::ID, request.encode_to_vec()).await?;
+    Q::Response::decode(response.as_slice()).map_err(|error| harmos_runtime::Error::OperationPayload {
+        operation: Q::ID.into(),
+        source: harmos_runtime::MessageError::new(error.to_string()),
+    })
+}
 
 /* === Private Functions === */
 

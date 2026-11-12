@@ -62,13 +62,10 @@ pub use operations::{Catalog, CatalogDescription, Invocation, InvocationExt, Lan
 pub use runtime::{Handle, Runtime, StartupError};
 pub use services::{ServiceContext, ServiceManager};
 
-#[cfg(feature = "plugin-guest")]
-pub use harmos_guest::guest;
-
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.
 
+pub use harmos_operations::schema;
 pub use harmos_operations::{StreamEntry, failure, listeners};
-pub use harmos_operations::{artifacts, schema};
 pub use harmos_sdk_derive::{Described, Request, Row};
 
 /* === Imports === */
@@ -116,11 +113,7 @@ pub mod __private {
     pub use harmos_operations::__private::CarrierContext;
     pub use harmos_operations::execution::__private::Catalog;
     pub use harmos_operations::inventory as PluginInventory;
-    pub use harmos_operations::plugin::schema_markers as PluginSchemaMarkers;
-    pub use harmos_operations::plugin::{
-        Contribution as PluginContribution, Declared as PluginDeclared, Grant as PluginGrant, Requirement as PluginRequirement,
-        Requirements as PluginRequirements,
-    };
+    pub use harmos_operations::plugin::{Grant as PluginGrant, Requirement as PluginRequirement, Requirements as PluginRequirements};
     pub use harmos_operations::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
 
     // A stream declaration is authored wherever its row type is, host core or

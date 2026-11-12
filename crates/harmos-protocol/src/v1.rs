@@ -986,3 +986,190 @@ pub mod plugin_server {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
+/// Metadata only: registration must not initialize authored resources.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestRegistration {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub version: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub catalog: ::core::option::Option<Catalog>,
+    #[prost(message, optional, tag = "4")]
+    pub initialization: ::core::option::Option<OperationPolicy>,
+    #[prost(message, optional, tag = "5")]
+    pub shutdown: ::core::option::Option<OperationPolicy>,
+    #[prost(message, repeated, tag = "6")]
+    pub requirements: ::prost::alloc::vec::Vec<GuestRequirement>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GuestRequirement {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub request: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub response: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "4")]
+    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestCommand {
+    #[prost(oneof = "guest_command::Phase", tags = "1, 2, 3, 4, 5")]
+    pub phase: ::core::option::Option<guest_command::Phase>,
+}
+/// Nested message and enum types in `GuestCommand`.
+pub mod guest_command {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Phase {
+        #[prost(message, tag = "1")]
+        Prepare(super::GuestPrepare),
+        #[prost(message, tag = "2")]
+        Initialize(super::GuestInvocation),
+        #[prost(message, tag = "3")]
+        Attempt(super::GuestInvocation),
+        #[prost(uint64, tag = "4")]
+        Finalize(u64),
+        #[prost(uint64, tag = "5")]
+        Cancel(u64),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GuestPrepare {
+    #[prost(uint64, tag = "1")]
+    pub invocation: u64,
+    #[prost(string, tag = "2")]
+    pub operation: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "3")]
+    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
+    #[prost(uint64, tag = "4")]
+    pub generation: u64,
+    #[prost(bytes = "vec", tag = "5")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestInvocation {
+    #[prost(uint64, tag = "1")]
+    pub invocation: u64,
+    /// A host-issued capability for this finite attempt, never an authored id.
+    #[prost(bytes = "vec", tag = "2")]
+    pub context: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, repeated, tag = "3")]
+    pub values: ::prost::alloc::vec::Vec<GuestValue>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GuestValue {
+    #[prost(string, tag = "1")]
+    pub key: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestInitialize {
+    #[prost(bytes = "vec", tag = "1")]
+    pub configuration: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub generation_context: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub assignments: ::core::option::Option<crate::host::OperationAssignments>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GuestShutdown {}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestChild {
+    #[prost(oneof = "guest_child::Action", tags = "1, 2")]
+    pub action: ::core::option::Option<guest_child::Action>,
+}
+/// Nested message and enum types in `GuestChild`.
+pub mod guest_child {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Action {
+        #[prost(message, tag = "1")]
+        Call(super::GuestChildRequest),
+        #[prost(message, tag = "2")]
+        Control(super::GuestChildControl),
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GuestChildRequest {
+    #[prost(bytes = "vec", tag = "1")]
+    pub context: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub generation_context: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub request: ::core::option::Option<ChildRequest>,
+    #[prost(uint64, tag = "4")]
+    pub generation: u64,
+    #[prost(bool, tag = "5")]
+    pub submit: bool,
+    #[prost(message, repeated, tag = "6")]
+    pub values: ::prost::alloc::vec::Vec<GuestValue>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GuestChildControl {
+    /// Must be the capability of the attempt that submitted this instance.
+    #[prost(bytes = "vec", tag = "1")]
+    pub context: ::prost::alloc::vec::Vec<u8>,
+    #[prost(uint64, tag = "2")]
+    pub instance: u64,
+    #[prost(enumeration = "GuestChildAction", tag = "3")]
+    pub action: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct GuestSubmitted {
+    #[prost(uint64, tag = "1")]
+    pub instance: u64,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum GuestChildAction {
+    Unspecified = 0,
+    Status = 1,
+    Cancel = 2,
+    Join = 3,
+    Release = 4,
+    Detach = 5,
+}
+impl GuestChildAction {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "GUEST_CHILD_ACTION_UNSPECIFIED",
+            Self::Status => "GUEST_CHILD_ACTION_STATUS",
+            Self::Cancel => "GUEST_CHILD_ACTION_CANCEL",
+            Self::Join => "GUEST_CHILD_ACTION_JOIN",
+            Self::Release => "GUEST_CHILD_ACTION_RELEASE",
+            Self::Detach => "GUEST_CHILD_ACTION_DETACH",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "GUEST_CHILD_ACTION_UNSPECIFIED" => Some(Self::Unspecified),
+            "GUEST_CHILD_ACTION_STATUS" => Some(Self::Status),
+            "GUEST_CHILD_ACTION_CANCEL" => Some(Self::Cancel),
+            "GUEST_CHILD_ACTION_JOIN" => Some(Self::Join),
+            "GUEST_CHILD_ACTION_RELEASE" => Some(Self::Release),
+            "GUEST_CHILD_ACTION_DETACH" => Some(Self::Detach),
+            _ => None,
+        }
+    }
+}

@@ -11,10 +11,8 @@
 
 /* === Modules === */
 
-#[path = "../sidecar/fixture.rs"]
 mod fixture;
 
-#[path = "../sidecar/transfers.rs"]
 mod transfers;
 
 /* === Re-Exports === */

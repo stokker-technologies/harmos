@@ -73,6 +73,17 @@ struct Produce<T, H> {
 
 /* === Implementations === */
 
+impl Clone for Observer {
+    fn clone(&self) -> Self {
+        Self {
+            stream: self.stream.clone(),
+            handler: Arc::clone(&self.handler),
+            interval: self.interval,
+            interval_setting: self.interval_setting.clone(),
+        }
+    }
+}
+
 impl<T: Message> Stream<T> {
     pub fn new(id: impl Into<String>) -> Self {
         Self {
@@ -138,7 +149,7 @@ impl<T: Message> Publisher<T> {
 
     pub async fn publish_at(&self, value: T, at: Option<prost_types::Timestamp>) -> Result<()> {
         if let Some(at) = at {
-            crate::server::validate_timestamp(at)?;
+            validate_timestamp(at)?;
         }
         self.output.send((value.encode_to_vec(), at)).await.map_err(|_| tonic::Status::cancelled("Demand Closed").into())
     }
@@ -178,6 +189,13 @@ where
 }
 
 /* === Public Functions === */
+
+pub(crate) fn validate_timestamp(at: prost_types::Timestamp) -> std::result::Result<(), tonic::Status> {
+    if at.nanos < 0 || at.nanos >= 1_000_000_000 || !(-62_135_596_800..=253_402_300_799).contains(&at.seconds) {
+        return Err(tonic::Status::invalid_argument("Invalid Timestamp"));
+    }
+    Ok(())
+}
 
 /* === Private Functions === */
 

@@ -14,13 +14,10 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::borrow::Cow;
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::operations::{Contract, ContractError, OperationPolicy, PolicyError, RetryPolicy};
-use harmos_domain::schema::declaration::{Field, Kind};
-use harmos_domain::schema::{Cardinality, Described};
 
 /* === Constants === */
 
@@ -85,43 +82,6 @@ pub trait Policy: 'static {
 }
 
 /* === Implementations === */
-
-pub struct InitializationSchema;
-pub struct ShutdownSchema;
-impl Described for InitializationSchema {
-    const NAME: &'static str = "harmos.lifecycle.Initialize";
-    const FIELDS: &'static [Field] = &[
-        Field {
-            name: Cow::Borrowed("config_json"),
-            tag: 1,
-            kind: Kind::Bytes,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("generation_context"),
-            tag: 2,
-            kind: Kind::Bytes,
-            cardinality: Cardinality::Required,
-        },
-        Field {
-            name: Cow::Borrowed("assignments"),
-            tag: 3,
-            kind: Kind::Bytes,
-            cardinality: Cardinality::Required,
-        },
-    ];
-    const MARKER: &'static [u8] = &harmos_domain::schema::declaration::encode::<
-        { harmos_domain::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
-    >(Self::NAME, Self::FIELDS);
-}
-
-impl Described for ShutdownSchema {
-    const NAME: &'static str = "harmos.lifecycle.Shutdown";
-    const FIELDS: &'static [Field] = &[];
-    const MARKER: &'static [u8] = &harmos_domain::schema::declaration::encode::<
-        { harmos_domain::schema::declaration::encoded_len(Self::NAME, Self::FIELDS) },
-    >(Self::NAME, Self::FIELDS);
-}
 
 impl Descriptor {
     pub fn new(action: Action, policy: OperationPolicy) -> Result<Self, Error> {
@@ -189,12 +149,6 @@ impl Action {
         match self {
             Self::Initialize => "harmos.initialize",
             Self::Shutdown => "harmos.shutdown",
-        }
-    }
-    pub const fn request(self) -> harmos_domain::schema::declaration::Definition {
-        match self {
-            Self::Initialize => InitializationSchema::DEFINITION,
-            Self::Shutdown => ShutdownSchema::DEFINITION,
         }
     }
 }

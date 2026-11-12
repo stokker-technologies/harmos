@@ -47,11 +47,13 @@ struct Encoded;
 struct EncodedOptions {
     expected: Option<([u8; 32], u64)>,
     retry: Option<super::RetryPolicy>,
+    policy: Option<super::OperationPolicy>,
 }
 
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
     pub(super) retry: Option<super::RetryPolicy>,
+    pub(super) policy: Option<super::OperationPolicy>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
 }
 
@@ -135,7 +137,14 @@ impl Manager {
     }
 
     pub fn submit_encoded_with(&self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, Source::Host, None, self.clock().now(), EncodedOptions { expected: None, retry })
+        self.submit_encoded_at_as(
+            operation,
+            payload,
+            Source::Host,
+            None,
+            self.clock().now(),
+            EncodedOptions { expected: None, retry, policy: None },
+        )
     }
 
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
@@ -152,7 +161,14 @@ impl Manager {
     pub(super) fn submit_encoded_retry_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, None, self.clock().now(), EncodedOptions { expected: None, retry })
+        self.submit_encoded_at_as(
+            operation,
+            payload,
+            source,
+            None,
+            self.clock().now(),
+            EncodedOptions { expected: None, retry, policy: None },
+        )
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
@@ -161,10 +177,14 @@ impl Manager {
         options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
-        if let Ok(entry) = self.capture_entry(operation)
-            && entry.binding.is::<crate::plugin::grpc::invoke::Binding>()
-        {
-            return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+        if let Ok(entry) = self.capture_entry(operation) {
+            if entry.binding.is::<crate::plugin::grpc::invoke::Binding>() {
+                return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+            }
+            #[cfg(feature = "plugin-guest")]
+            if entry.plugin().is_some() {
+                return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+            }
         }
         let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
             field: "encoded operation",
@@ -185,22 +205,12 @@ impl Manager {
         &self, entry: Arc<Entry>, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
         options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
-        let EncodedOptions { expected, retry } = options;
+        let EncodedOptions { expected, retry, policy } = options;
         let origin = source.check()?;
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         if expected.is_some_and(|(fingerprint, generation)| {
-            entry.generation.value() != generation
-                || (entry.declared().fingerprint.0 != fingerprint && {
-                    #[cfg(feature = "plugin-guest")]
-                    {
-                        guest_payload(&origin, &entry).is_none_or(|payload| payload.fingerprint() != fingerprint)
-                    }
-                    #[cfg(not(feature = "plugin-guest"))]
-                    {
-                        true
-                    }
-                })
+            entry.generation.value() != generation || entry.declared().fingerprint.0 != fingerprint
         }) {
             return Err(Error::InvalidInput {
                 field: "encoded operation identity",
@@ -222,7 +232,12 @@ impl Manager {
             },
             source,
             parent,
-            EncodedInput { retry, payload, preparation: None },
+            EncodedInput {
+                retry,
+                policy,
+                payload,
+                preparation: None,
+            },
         )
     }
 }
@@ -328,6 +343,7 @@ impl PluginCallback {
             None,
             EncodedInput {
                 retry,
+                policy: None,
                 payload,
                 preparation: Some(preparation),
             },
@@ -339,7 +355,7 @@ impl PluginCallback {
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
+        values: Vec<super::CallValue>, policy: Option<super::OperationPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -348,7 +364,11 @@ impl super::Caller {
             Source::Plugin(self.source.clone()),
             None,
             submitted,
-            EncodedOptions { expected: Some(identity), retry },
+            EncodedOptions {
+                expected: Some(identity),
+                retry: None,
+                policy,
+            },
         )
     }
 }
@@ -364,7 +384,7 @@ impl super::Context<'_> {
                 ancestors: self.admission.held(),
             }),
             self.operations.clock().now(),
-            EncodedOptions { expected: None, retry },
+            EncodedOptions { expected: None, retry, policy: None },
         )
     }
 
@@ -383,7 +403,7 @@ impl super::Context<'_> {
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
+        values: Vec<super::CallValue>, policy: Option<super::OperationPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -395,7 +415,11 @@ impl super::Context<'_> {
                 ancestors: self.admission.held(),
             }),
             submitted,
-            EncodedOptions { expected: Some(identity), retry },
+            EncodedOptions {
+                expected: Some(identity),
+                retry: None,
+                policy,
+            },
         )
     }
 
@@ -415,27 +439,18 @@ impl super::Context<'_> {
                 ancestors: self.admission.held(),
             }),
             self.operations.clock().now(),
-            EncodedOptions { expected: None, retry },
+            EncodedOptions { expected: None, retry, policy: None },
         )
     }
 }
 
 /* === Public Functions === */
 
-#[cfg(feature = "plugin-guest")]
-fn guest_payload(origin: &super::caller::Origin, entry: &Entry) -> Option<crate::guest::host::native_payloads::Payload> {
-    let scope = origin.scope.as_ref()?;
-    let expected = scope.requirement(&entry.declared().id)?;
-    crate::guest::host::native_payloads::Payload::between(&expected.contract, entry.contract.as_ref()?)
-}
-
 pub(super) fn dispatch_native(
     operations: &Manager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
 ) -> Result<EncodedInvocation> {
-    #[cfg(feature = "plugin-guest")]
-    let mut input = input;
     let submitted = submission.submitted;
-    let timeout = submission.entry.declared().policy.timeout;
+    let timeout = input.policy.unwrap_or(submission.entry.declared().policy).timeout;
     budget(operations.clock(), submission.entry.id(), 1, timeout, submitted)?;
     if let Some(binding) = submission.entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
         let prepared = harmos_operations::execution::__private::PreparedNative {
@@ -444,42 +459,11 @@ pub(super) fn dispatch_native(
             streams: None,
         };
         let mut request = super::binding::Request::from(Vec::new());
-        request.retry = input.retry;
+        request.retry = input.retry.or(input.policy.map(|policy| policy.retries));
+        request.policy = input.policy;
         return dispatch_prepared(operations, submission, source, parent, prepared, request);
     }
     let factory = submission.entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>();
-    // Guest Child Calls Retain Their Private Codec Until the Guest Envelope Migration.
-    let protobuf = match source.check()?.identity {
-        super::caller::Identity::Host => true,
-        #[cfg(feature = "grpc")]
-        super::caller::Identity::External(_) => true,
-        #[cfg(feature = "plugin-guest")]
-        super::caller::Identity::Plugin { .. } => false,
-    };
-
-    #[cfg(feature = "plugin-guest")]
-    let guest = guest_payload(&source.check()?, &submission.entry);
-    #[cfg(feature = "plugin-guest")]
-    if let Some(guest) = guest {
-        let error = |source| Error::OperationPayload {
-            operation: submission.entry.id().to_owned(),
-            source,
-        };
-        if input.preparation.is_none() {
-            input.preparation = Some(operations.claim_preparation(std::num::NonZeroUsize::new(input.payload.capacity().max(1)).unwrap())?);
-        }
-        let bytes = guest.preparation(&input.payload).map_err(error)?;
-        let mut permit = operations.claim_preparation(std::num::NonZeroUsize::new(bytes.max(1)).unwrap())?;
-        let converted = guest.request(&input.payload).map_err(error)?;
-        let retained = converted.capacity().max(1);
-        if retained > permit.num_permits() {
-            return Err(Error::ResourceExhausted { resource: "guest conversion memory" });
-        }
-        drop(input.payload);
-        drop(input.preparation.take());
-        input.payload = converted;
-        input.preparation = permit.split(retained);
-    }
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
@@ -487,11 +471,7 @@ pub(super) fn dispatch_native(
     };
     let decoding_bytes = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return if protobuf { factory.grpc_decoding_memory(&input.payload) } else { factory.decoding_memory(&input.payload) };
-        }
-        #[cfg(feature = "plugin-guest")]
-        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
-            return binding.decoding_memory(&input.payload);
+            return factory.grpc_decoding_memory(&input.payload);
         }
         Err(crate::MessageError::borrowed("entry does not own a native codec"))
     }))
@@ -508,11 +488,7 @@ pub(super) fn dispatch_native(
     let resources = operations.resources_for(&submission.entry);
     let prepared = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return factory.prepare_envelope(resources, &input.payload, protobuf, None);
-        }
-        #[cfg(feature = "plugin-guest")]
-        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
-            return binding.prepare(resources, &input.payload);
+            return factory.prepare_envelope(resources, &input.payload, true, None);
         }
         Err(harmos_operations::execution::ServingError::Catalog)
     }))
@@ -523,21 +499,9 @@ pub(super) fn dispatch_native(
     })?;
     drop(input.payload);
     let mut request = super::binding::Request::from(Vec::new());
-    request.retry = input.retry;
+    request.retry = input.retry.or(input.policy.map(|policy| policy.retries));
+    request.policy = input.policy;
     let invocation = dispatch_prepared(operations, submission, source, parent, prepared, request)?;
-    #[cfg(feature = "plugin-guest")]
-    if let Some(guest) = guest {
-        let mut invocation = invocation;
-        let outcome = invocation.outcome;
-        invocation.outcome = Box::pin(async move {
-            let result = outcome.await?;
-            guest.response(&result).map_err(|source| Error::OperationPayload {
-                operation: "guest host response".into(),
-                source,
-            })
-        });
-        return Ok(invocation);
-    }
     Ok(invocation)
 }
 
@@ -702,6 +666,7 @@ mod tests {
                 EncodedOptions {
                     expected: Some((fingerprint, generation)),
                     retry: None,
+                    policy: None,
                 },
             )
         };

@@ -11,6 +11,7 @@
 
 mod archive;
 mod error;
+mod guest;
 mod manifest;
 mod metadata;
 
@@ -18,6 +19,7 @@ mod metadata;
 
 pub use archive::path as validate_path;
 pub use error::Error;
+pub use guest::{METADATA_SECTION as GUEST_METADATA_SECTION, registration as guest_registration};
 pub use manifest::{Executable, Facility, File, Identity, Limits, Manifest, PackageMetadata};
 
 /* === Imports === */
@@ -31,7 +33,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use harmos_operations::inventory::Declaration;
+use harmos_protocol::v1::GuestRegistration;
 
 /* === Constants === */
 
@@ -45,7 +47,7 @@ pub struct Bundle {
     manifest: Manifest,
     bytes: Vec<u8>,
     contents: BTreeMap<String, Range<usize>>,
-    declarations: BTreeMap<String, Declaration>,
+    declarations: BTreeMap<String, GuestRegistration>,
 }
 
 /* === Enums === */
@@ -57,10 +59,6 @@ pub struct Bundle {
 impl Bundle {
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn inspect(bytes: &[u8], limits: Limits) -> Result<Self, Error> {
-        Self::inspect_with_settings(bytes, limits, &harmos_domain::config::SchemaSettings::default())
-    }
-
-    pub fn inspect_with_settings(bytes: &[u8], limits: Limits, settings: &harmos_domain::config::SchemaSettings) -> Result<Self, Error> {
         let (manifest, contents) = archive::decode(bytes, limits)?;
         let mut declarations = BTreeMap::new();
         let mut owners = BTreeSet::new();
@@ -76,12 +74,7 @@ impl Bundle {
                     }
                     continue;
                 }
-                let facility = match executable.facility {
-                    Facility::Sidecar => harmos_operations::inventory::Facility::Sidecar,
-                    Facility::Guest => harmos_operations::inventory::Facility::Guest,
-                };
-                let declaration = Declaration::inspect_with_settings(content, facility, settings)
-                    .map_err(|error| invalid(format!("plugin `{}` executable `{}`: {error}", manifest.identity.name, file.path)))?;
+                let declaration = guest_registration(content)?;
                 if !owners.insert((executable.facility, declaration.id.clone(), &executable.target)) {
                     return Err(invalid("duplicate executable facility, owner, and target"));
                 }
@@ -103,7 +96,7 @@ impl Bundle {
         &self.bytes
     }
 
-    pub fn declaration(&self, path: &str) -> Option<&Declaration> {
+    pub fn declaration(&self, path: &str) -> Option<&GuestRegistration> {
         self.declarations.get(path)
     }
 

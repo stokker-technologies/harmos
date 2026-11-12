@@ -11,8 +11,6 @@
 
 /* === Re-Exports === */
 
-pub use crate::inventory::observers::Entry as ObserverEntry;
-pub use crate::inventory::publications::Entry as PublicationEntry;
 pub use crate::listeners::Entry as ListenerEntry;
 pub use crate::operations::{Entry as OperationEntry, WireDeclaration as WireEntry};
 pub use crate::plugin::Requirement as RequirementEntry;

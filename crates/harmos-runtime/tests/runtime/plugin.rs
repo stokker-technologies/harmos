@@ -15,9 +15,9 @@
 use serde_json::json;
 // Local Imports
 use harmos_operations::Registrar;
-use harmos_operations::inventory::{Declaration, Facility as Inspected};
 use harmos_packaging::bundle::Source;
 use harmos_runtime::bundle::{Bundle, Executable, Facility, Identity, Limits};
+use prost::Message as _;
 
 /* === Private Functions === */
 
@@ -49,47 +49,23 @@ fn executable(facility: Facility) -> Executable {
     }
 }
 
-fn fragments(facility: &str, owner: &str) -> Vec<u8> {
-    use harmos_runtime::operations::RetryPolicy;
-    let policy = harmos_runtime::OperationPolicy {
-        timeout: std::time::Duration::from_secs(2),
-        attempt_timeout: std::time::Duration::from_secs(2),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    };
-    let lifecycle = ["initialize", "shutdown"].map(|action| json!({"action":action,"identity":"harmos.operation.v1","policy":policy}));
-    let mut fragments = vec![
-        json!({"kind":"plugin","facility":facility,"id":owner,"version":"1.0.0","description":"Byte-only fixture","config":"Settings"}),
-        json!({"kind":"contracts","facility":facility,"owner":owner,"entry":{"direction":"lifecycle","lifecycle":lifecycle}}),
-        json!({"kind":"publications","facility":facility,"owner":owner,"streams":[]}),
-    ];
-    if facility == "sidecar" {
-        fragments.push(json!({"kind":"observers","facility":facility,"owner":owner,"observers":[]}));
-        fragments.push(json!({"kind":"restart","facility":facility,"owner":owner,"policy":{"credit":1,"sustained_health_ms":1000,"backoff_base_ms":1,"backoff_cap_ms":2}}));
-    }
-    let mut bytes = Vec::new();
-    for fragment in fragments {
-        bytes.extend_from_slice(harmos_domain::PREFIX);
-        bytes.extend(serde_json::to_vec(&fragment).unwrap());
-        bytes.push(0);
-    }
-    bytes
-}
-
 fn guest() -> Vec<u8> {
-    // Empty Component with Inert Metadata
+    let mut catalog = harmos_protocol::v1::Catalog::default();
+    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+    let registration = harmos_protocol::v1::GuestRegistration {
+        id: "guest_fixture".into(),
+        version: "1.0.0".into(),
+        catalog: Some(catalog),
+        ..Default::default()
+    };
+    let mut section = Vec::new();
+    let name = harmos_runtime::bundle::GUEST_METADATA_SECTION;
+    prost::encoding::encode_varint(name.len() as u64, &mut section);
+    section.extend_from_slice(name.as_bytes());
+    section.extend(registration.encode_to_vec());
     let mut bytes = b"\0asm\x0d\0\x01\0".to_vec();
-    let mut section = vec![0]; // Empty custom-section name.
-    section.extend(fragments("guest", "guest_fixture"));
-
-    // Encode the Custom Section Length
     bytes.push(0);
-    let mut len = section.len();
-    while len >= 128 {
-        bytes.push((len & 127) as u8 | 128);
-        len >>= 7;
-    }
-    bytes.push(len as u8);
+    prost::encoding::encode_varint(section.len() as u64, &mut bytes);
     bytes.extend(section);
     bytes
 }
@@ -176,7 +152,7 @@ fn independent_files_roundtrip() {
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
     assert_eq!(inspected.manifest().identity, identity());
     assert!(inspected.declaration("bin/probe").is_none());
-    assert_eq!(inspected.declaration("guests/tool.wasm"), Some(&Declaration::inspect(&guest, Inspected::Guest).unwrap()));
+    assert_eq!(inspected.declaration("guests/tool.wasm"), Some(&harmos_runtime::bundle::guest_registration(&guest).unwrap()));
     let manifest = serde_json::to_value(inspected.manifest()).unwrap();
     assert!(manifest["files"][0]["executable"].get("declaration").is_none());
     for source in &sources {

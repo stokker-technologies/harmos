@@ -23,7 +23,8 @@ use futures_util::stream;
 use tokio::sync::{mpsc, watch};
 
 // Local Imports
-use super::{Activation, Error, PlacementSettings, rows::Row, v1};
+use super::{Activation, Error, PlacementSettings, v1};
+use crate::streams::protobuf::Row;
 use crate::{
     Application,
     clock::Clock,

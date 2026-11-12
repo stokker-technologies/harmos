@@ -55,7 +55,7 @@ class SdkDependencyClosure(unittest.TestCase):
             package["name"]: package
             for package in json.loads(result.stdout)["packages"]
         }
-        forbidden = {"harmos-domain", "harmos-storage", "harmos-operations", "harmos-runtime", "harmos-guest", "harmos-packaging"}
+        forbidden = {"harmos-domain", "harmos-storage", "harmos-operations", "harmos-runtime", "harmos-packaging"}
         for include_development in (False, True):
             pending = ["harmos"]
             visited = set()

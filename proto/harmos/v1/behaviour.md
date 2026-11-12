@@ -341,7 +341,7 @@ An assignment names an owner-qualified operation, contains exactly 32 fingerprin
 a nonzero provider generation. Local operation identifiers must be unique within a catalog.
 The first valid catalog freezes an activation's assignments; reinstalling identical entries
 is permitted, and changing an entry or its order is refused. This catalog is protobuf even
-inside the deferred guest initialization envelope.
+inside `harmos.v1.GuestInitialize`.
 
 File SHA-256 values contain exactly 32 bytes. A finished file reference has a positive stored
 position, and its length/hash must agree with any expected integrity metadata. Local file
@@ -350,7 +350,7 @@ Wide query integers use minimal decimal strings, datetimes use signed nanosecond
 Unix epoch, exact fractions are reduced, and floating-point query values must be finite.
 Directory response limits count the actual generated protobuf entry/event size.
 
-The deferred WebAssembly boundary retains its private envelopes and typed payload codec.
-Only the exact private guest hash/publication contracts have native payload conversions;
-the host still checks the frozen fingerprint, selected provider generation and grants.
-These conversions do not define a second public host contract.
+The WebAssembly boundary uses `harmos.v1.GuestCommand`, `GuestChild`, `Response`
+and `Failure`. Submit and child control require the original finite attempt
+capability; retained generation capabilities permit declared calls and publication
+only while that generation remains active. Guest operations are unary.
