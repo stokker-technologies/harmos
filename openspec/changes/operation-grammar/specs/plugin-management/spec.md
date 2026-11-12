@@ -5,7 +5,7 @@
 ### Requirement: Client-Facing Plugin Resources
 
 The library SHALL expose `Plugins.Get`, `List`, `Watch`, `Create`, `Set`, `Delete`
-and `Restart`, with service-qualified request/response wrappers. `Plugin` SHALL
+and `Restart`, with service-qualified request/response wrappers. `Instance` SHALL
 remain the distinct plugin-implemented carrier service. Reads SHALL accept an
 optional issued cut and return the resolved cut. Set SHALL replace the complete
 writable value under the expected revision returned by Get.

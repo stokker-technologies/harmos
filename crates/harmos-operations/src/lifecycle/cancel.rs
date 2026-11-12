@@ -35,11 +35,11 @@ pub struct Cancel;
 /* === Implementations === */
 
 impl ProtobufOperation for Cancel {
-    type Request = harmos_protocol::host::InvocationsCancelRequest;
-    type Response = harmos_protocol::host::InvocationsCancelResponse;
+    type Request = harmos_protocol::v1::InvocationsCancelRequest;
+    type Response = harmos_protocol::v1::InvocationsCancelResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.invocations.cancel";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Invocations", "Cancel"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Invocations", "Cancel"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
@@ -58,15 +58,15 @@ impl ProtobufOperation for Cancel {
             })));
         }
         instance.request_cancel();
-        Ok(harmos_protocol::host::InvocationsCancelResponse {
+        Ok(harmos_protocol::v1::InvocationsCancelResponse {
             invocation: Some(super::state(instance.status())),
         })
     }
 }
 
 impl Cancel {
-    pub fn of(instance: Id) -> harmos_protocol::host::InvocationsCancelRequest {
-        harmos_protocol::host::InvocationsCancelRequest {
+    pub fn of(instance: Id) -> harmos_protocol::v1::InvocationsCancelRequest {
+        harmos_protocol::v1::InvocationsCancelRequest {
             instance: instance.value(),
             reason: String::new(),
         }

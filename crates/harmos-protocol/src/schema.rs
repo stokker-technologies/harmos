@@ -59,7 +59,7 @@ pub fn fingerprint(id: &str, types: &FileDescriptorSet, request: &str, response:
 }
 
 /// Fingerprint A Host Operation, Including Its Optional Stream Message Graphs.
-pub fn host_fingerprint(id: &str, contract: &crate::host::Protobuf) -> Result<Vec<u8>, Error> {
+pub fn host_fingerprint(id: &str, contract: &crate::v1::Protobuf) -> Result<Vec<u8>, Error> {
     let descriptors = FileDescriptorSet::decode(contract.descriptors.as_slice()).map_err(|error| Error(error.to_string()))?;
     let fingerprint = fingerprint(id, &descriptors, &contract.request, &contract.response)?;
     if contract.input.is_none() && contract.output.is_none() {

@@ -38,7 +38,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 // Local Imports
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::{host as wire, v1};
+use harmos_protocol::{v1 as wire, v1};
 
 /* === Constants === */
 

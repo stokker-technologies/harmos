@@ -13,7 +13,7 @@
 
 use super::support::{self, Backends, Host, Peer};
 use crate::plugin_grpc::invoke_support::payload;
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 use harmos_runtime::plugin::manager::Management;
 
 /* === Tests === */
@@ -36,7 +36,10 @@ async fn client_manages_remote_plugins() {
     let created = host.client.create(request.clone()).await.unwrap().into_inner();
     assert!(created.receipt.as_ref().unwrap().completed);
     let ready = support::state(&mut watch, "remote", wire::PluginState::Ready, 1).await;
-    assert_eq!(ready.description.as_ref(), Some(&peer.description));
+    let description = ready.description.as_ref().unwrap();
+    assert_eq!(description.id, peer.description.id);
+    assert_eq!(description.version, peer.description.version);
+    assert_eq!(description.catalog, peer.description.catalog);
     assert!(!ready.catalog_digest.is_empty());
     assert!(ready.process.is_none());
     assert_eq!(host.client.create(request.clone()).await.unwrap().into_inner(), created);

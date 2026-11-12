@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{Error, PluginManagerSettings};
 use harmos_domain::model::storage::{ObjectCatalog, ObjectDefinition, ObjectRetention, StoredObject};
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 use harmos_storage::{CompareExchange, ObjectVersion, ObjectVersionToken, StorageManager};
 
 /* === Constants === */

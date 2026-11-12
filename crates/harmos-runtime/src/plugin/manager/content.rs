@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 use super::{Error, PluginManagerSettings, persistence::problem};
 use crate::bundle::{Bundle, Facility};
 use crate::storage::{ByteRange, FileRead, FileReference, FileSource, StorageManager};
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 
 /* === Constants === */
 

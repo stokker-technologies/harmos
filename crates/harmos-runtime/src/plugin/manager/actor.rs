@@ -36,7 +36,7 @@ use super::{
     persistence::{Registry, SavedCreate, SavedEntry, Store, problem},
 };
 use crate::plugin::grpc::{Attached, Managed, Placement, Status};
-use harmos_protocol::{host as wire, v1};
+use harmos_protocol::{v1 as wire, v1};
 
 /* === Constants === */
 
@@ -775,7 +775,15 @@ impl Actor {
                         executable_digest: current.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
                         started_at: current.description.started_at,
                     });
-                    entry.description = Some(current.description);
+                    entry.description = Some(wire::PluginDescription {
+                        id: current.description.id,
+                        version: current.description.version,
+                        started_at: current.description.started_at,
+                        catalog: current.description.catalog,
+                        revision: current.description.revision,
+                        sdk: current.description.sdk,
+                        sdk_version: current.description.sdk_version,
+                    });
                 } else {
                     entry.state = wire::PluginState::Unavailable as i32;
                     entry.process = None;

@@ -33,7 +33,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::storage::StorageManager;
 use crate::{Application, Runtime};
 use harmos_operations::plugins::{Access, Pending};
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 
 /* === Constants === */
 

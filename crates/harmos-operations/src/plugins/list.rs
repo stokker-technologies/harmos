@@ -22,7 +22,7 @@
 // Local Imports
 use super::{Access, admit};
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 
 /* === Constants === */
 
@@ -45,7 +45,7 @@ impl ProtobufOperation for List {
     type Response = wire::PluginsListResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.plugins.list";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Plugins", "List"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Plugins", "List"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: crate::operations::ReplaySafety = crate::operations::ReplaySafety::Idempotent;

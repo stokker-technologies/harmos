@@ -701,7 +701,7 @@ async fn external_call(
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_protocol::host::{CatalogEntriesListRequest, CatalogEntriesListResponse, CatalogKind};
+    use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse, CatalogKind};
     let (decode, encode) = limits();
     let mut client = tonic::client::Grpc::new(channel)
         .max_decoding_message_size(decode.message_bytes.get())
@@ -725,7 +725,7 @@ async fn external_catalog(
             request.metadata_mut().insert("authorization", token.parse().unwrap());
         }
         let response: tonic::Response<CatalogEntriesListResponse> = client
-            .unary(request, http::uri::PathAndQuery::from_static("/harmos.host.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
+            .unary(request, http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
             .await?;
         let page = response.into_inner();
         assert!(prost::Message::encoded_len(&page) <= 2048);

@@ -45,7 +45,7 @@ impl ProtobufOperation for Get {
     type Response = harmos_protocol::v1::TimeGetResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.time.get";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Time", "Get"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Time", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];

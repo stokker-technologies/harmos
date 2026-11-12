@@ -22,7 +22,7 @@
 // Local Imports
 use super::{Access, admit};
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 
 /* === Constants === */
 
@@ -45,7 +45,7 @@ impl ProtobufOperation for Watch {
     type Response = wire::PluginsWatchResponse;
     type Endpoints = ProtobufOutput<Self::Response>;
     const ID: &'static str = "harmos.plugins.watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Plugins", "Watch"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Plugins", "Watch"));
     const POLICY: crate::OperationPolicy = super::WATCH_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<Access>(), Resource::of::<crate::execution::operations::access::GrantAccess>()];

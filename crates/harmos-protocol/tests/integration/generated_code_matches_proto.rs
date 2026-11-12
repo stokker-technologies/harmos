@@ -89,17 +89,8 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     codegen::generate(&compiler, &includes, output.path())?;
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.
-    let generated = fs::read(output.path().join("harmos.v1.rs"))?;
-    let committed = fs::read(root.join("crates/harmos-protocol/src/v1.rs"))?;
-    if generated != committed {
-        let output = output.keep();
-        panic!("generated Rust differs from src/v1.rs; regenerated source retained in {}", output.display());
-    }
-    let generated = fs::read(output.path().join("harmos.host.v1.rs"))?;
-    let committed = fs::read(root.join("crates/harmos-protocol/src/host.rs"))?;
-    if generated != committed {
-        let output = output.keep();
-        panic!("generated Rust differs from src/host.rs; regenerated source retained in {}", output.display());
+    for (package, module) in [("harmos.v1", "v1"), ("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin")] {
+        assert_eq!(fs::read(output.path().join(format!("{package}.rs")))?, fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?);
     }
     assert_eq!(fs::read(output.path().join("harmos.storage.v1.rs"))?, include_bytes!("../../src/storage.rs"));
     assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));

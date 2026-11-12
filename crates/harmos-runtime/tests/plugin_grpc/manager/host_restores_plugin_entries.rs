@@ -13,7 +13,7 @@
 
 use super::support::{self, Backends, Host};
 use crate::plugin_grpc::support::Remote;
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 use harmos_runtime::plugin::manager::Management;
 
 /* === Tests === */

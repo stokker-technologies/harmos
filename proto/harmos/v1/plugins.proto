@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
-package harmos.host.v1;
+package harmos.v1;
 
-import "harmos/v1/plugin.proto";
+import "harmos/v1/types.proto";
 import "harmos/v1/storage.proto";
 import "google/protobuf/timestamp.proto";
 
-// Client-facing management of hosted entries, distinct from Plugin.
+// Client-facing management of hosted entries, distinct from Instance.
 service Plugins {
   rpc Get(PluginsGetRequest) returns (PluginsGetResponse);
   rpc List(PluginsListRequest) returns (PluginsListResponse);
@@ -18,6 +18,15 @@ service Plugins {
 }
 
 message PluginValue { bool enabled = 1; }
+message PluginDescription {
+  string id = 1;
+  string version = 2;
+  google.protobuf.Timestamp started_at = 3;
+  Catalog catalog = 4;
+  uint32 revision = 5;
+  string sdk = 6;
+  string sdk_version = 7;
+}
 message PluginRemote { string url = 1; }
 // Content names refer exclusively to published library upload content.
 message PluginManaged { harmos.storage.v1.FileReference content = 1; bytes sha256 = 2; }
@@ -47,7 +56,7 @@ message PluginEntry {
   bytes revision = 4;
   PluginState state = 5;
   harmos.v1.Failure failure = 6;
-  harmos.v1.PluginGetResponse description = 7;
+  PluginDescription description = 7;
   bytes catalog_digest = 8;
   PluginProcess process = 9;
   uint64 activation = 10;

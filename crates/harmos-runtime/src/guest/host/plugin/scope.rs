@@ -826,7 +826,7 @@ mod tests {
     async fn transport_restart_renews_only_the_committed_inventory() {
         let stream = harmos_operations::StreamDeclaration {
             id: "frozen.samples".into(),
-            metadata: crate::Metadata::new(crate::Identifier::new("frozen.samples").unwrap(), "PluginSamplesResponse", None),
+            metadata: crate::Metadata::new(crate::Identifier::new("frozen.samples").unwrap(), "InstanceSamplesResponse", None),
             row_metadata: Vec::new(),
             window: 4,
             row: crate::schema::graph::Schema {

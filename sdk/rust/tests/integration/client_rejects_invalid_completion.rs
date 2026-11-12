@@ -26,7 +26,7 @@ use std::{
 // Third Party Imports
 use futures_core::Stream;
 use harmos::{Client, ClientSettings, client::Method};
-use harmos_protocol::{host, schema};
+use harmos_protocol::{v1 as host, schema};
 use prost_reflect::ReflectMessage;
 use tonic::{
     Request, Response, Status, Streaming,
@@ -179,13 +179,13 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     let descriptors = host::CatalogEntriesListRequest::default().descriptor().parent_pool().encode_to_vec();
     let protobuf = host::Protobuf {
         descriptors,
-        request: "harmos.host.v1.CatalogEntriesListRequest".into(),
-        response: "harmos.host.v1.CatalogEntriesListResponse".into(),
+        request: "harmos.v1.CatalogEntriesListRequest".into(),
+        response: "harmos.v1.CatalogEntriesListResponse".into(),
         input: None,
         output: None,
     };
     let fingerprint = schema::host_fingerprint("fault.read", &protobuf).unwrap();
-    let contract = host::OperationContract {
+    let contract = host::DiscoveredContract {
         id: "fault.read".into(),
         visibility: host::Visibility::Public as i32,
         fingerprint,

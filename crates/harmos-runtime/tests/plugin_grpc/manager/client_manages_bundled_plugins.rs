@@ -12,7 +12,7 @@
 /* === Imports === */
 
 use super::support::{self, Backends, Host};
-use harmos_protocol::host as wire;
+use harmos_protocol::v1 as wire;
 
 /* === Tests === */
 

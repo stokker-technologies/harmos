@@ -1,3 +1,4 @@
+using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Net;
@@ -117,7 +118,7 @@ public sealed class Plugin(string id, string version)
     builder.WebHost.ConfigureKestrel(options => options.Listen(endpoint.Address, endpoint.Port,
         listener => listener.Protocols = HttpProtocols.Http2));
     builder.Services.AddGrpc();
-    builder.Services.AddSingleton(provider => new PluginService(new PluginGetResponse
+    builder.Services.AddSingleton(provider => new PluginService(new InstanceGetResponse
     {
       Id = id,
       Version = version,

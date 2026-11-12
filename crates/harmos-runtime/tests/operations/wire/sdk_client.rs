@@ -16,7 +16,7 @@ use std::{num::NonZeroUsize, time::Duration};
 
 // Third Party Imports
 use harmos::{Client, ClientSettings, client::Method};
-use harmos_protocol::host;
+use harmos_protocol::v1 as host;
 use tonic::{Request as RpcRequest, transport::Endpoint};
 
 // Local Imports

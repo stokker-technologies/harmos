@@ -1,8 +1,8 @@
 # Plugin Management
 
 `harmos_runtime::plugin::manager` owns a persistent set of hosted plugins.
-Its client-facing `harmos.host.v1.Plugins` service is separate from
-`harmos.v1.Plugin`, which each plugin executable implements.
+Its client-facing `harmos.v1.Plugins` service is separate from
+`harmos.plugin.v1.Instance`, which each plugin executable implements.
 
 ## Host Composition
 
@@ -28,7 +28,7 @@ manager.start(&runtime).await?;
 ```
 
 The host's existing gRPC listener projects the registered operations. Generated
-Rust clients use `harmos_protocol::host::plugins_client::PluginsClient`;
+Rust clients use `harmos_protocol::v1::plugins_client::PluginsClient`;
 `harmos::client::Client` can bind the same generated request/response contracts.
 Rust SDK `OperationRequest` bindings exist for each unary manager operation.
 Native hosts can also use the `Management` trait on `Manager` directly.
@@ -118,5 +118,6 @@ persistence, bundle installer, enable/restart/remove handlers and duplicated
 connection, dispatch, stream and process-launch implementation. Its client
 interface calls the generated `Plugins` service. Catalog interpretation, selection
 of plugins for a unit of work, per-plugin settings and secrets stay with the
-product. Whether settings and secrets merit a shared library contract remains an
-open design question; this manager adds no settings or credential schema.
+product. The owner's boundary decision closes the settings/secrets question:
+generic catalog declarations and context host-value delivery belong to their
+existing library owners; stores, schemas and credential policy remain product-owned.

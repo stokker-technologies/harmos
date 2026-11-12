@@ -35,7 +35,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 // Local Imports
 use super::super::support as placement;
 use crate::storage::fixture::{Data, Recovery, history, storage_settings};
-use harmos_protocol::{host as wire, v1};
+use harmos_protocol::{v1 as wire, v1};
 use harmos_runtime::{
     Runtime,
     clock::Clock,
@@ -72,7 +72,7 @@ pub struct Backends {
 
 pub struct Peer {
     pub url: String,
-    pub description: v1::PluginGetResponse,
+    pub description: harmos_protocol::plugin::InstanceGetResponse,
     child: tokio::process::Child,
     drain: tokio::task::JoinHandle<()>,
 }
@@ -188,8 +188,9 @@ impl Peer {
             }
         };
         let drain = tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} });
-        let mut client = v1::plugin_client::PluginClient::connect(url.clone()).await.unwrap();
-        let description = client.get(v1::PluginGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
+        let mut client = harmos_protocol::plugin::instance_client::InstanceClient::connect(url.clone()).await.unwrap();
+        let description =
+            client.get(harmos_protocol::plugin::InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
         Self { url, description, child, drain }
     }
     pub fn is_running(&mut self) -> bool {

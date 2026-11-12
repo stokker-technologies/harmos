@@ -155,7 +155,7 @@ impl PluginSdkRegistration {
             let request = Initialize {
                 configuration: config_json.to_vec(),
                 generation_context: generation_context.to_vec(),
-                assignments: Some(harmos_protocol::host::OperationAssignments::decode(assignments.as_slice()).map_err(|_| {
+                assignments: Some(harmos_protocol::v1::OperationAssignments::decode(assignments.as_slice()).map_err(|_| {
                     Error::InvalidInput {
                         field: "guest assignments",
                         reason: "invalid host assignments",

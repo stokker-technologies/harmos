@@ -104,8 +104,8 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         // Demand Closure Releases an Observer's In-Progress Device Read.
         let (demand, mut samples) = support::publish(&mut process.client, "execution.reading").await?;
         demand
-            .send(v1::PluginSamplesRequest {
-                frame: Some(v1::plugin_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
+            .send(harmos_protocol::plugin::InstanceSamplesRequest {
+                frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
             })
             .await?;
         assert_eq!(process.event().await?, "observer_reading");
@@ -118,11 +118,11 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         // Reject an Unset Frame During an Active Call Without Losing the Connection.
         let (send, mut input) = support::invoke(&mut process.client, "execution.clock").await?;
         support::child(&mut input).await?;
-        send.send(v1::PluginInvokeRequest { frame: None }).await?;
+        send.send(harmos_protocol::plugin::InstanceInvokeRequest { frame: None }).await?;
         assert_eq!(input.message().await.unwrap_err().code(), tonic::Code::InvalidArgument);
 
         // Stop Completes Cleanup Before Replying and Keeps the Remote Process Available.
-        process.client.stop(v1::PluginStopRequest { reason: "Story Finished".into() }).await?;
+        process.client.stop(harmos_protocol::plugin::InstanceStopRequest { reason: "Story Finished".into() }).await?;
         assert_eq!(std::fs::read(&cleanup)?, b"cleaned");
         let second = support::describe(&mut process.client).await?;
         assert_eq!(first, second);

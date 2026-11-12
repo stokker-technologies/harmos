@@ -16,7 +16,7 @@
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 use crate::{Error, Identifier, MessageError};
 use harmos_operations::plugin::Grant;
-use harmos_protocol::host::{CatalogEntriesListResponse, CatalogKind as Kind};
+use harmos_protocol::v1::{CatalogEntriesListResponse, CatalogKind as Kind};
 use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
 use serde::Serialize;
 use std::{num::NonZeroUsize, sync::Arc};
@@ -40,11 +40,11 @@ pub struct List;
 /* === Implementations === */
 
 impl ProtobufOperation for List {
-    type Request = harmos_protocol::host::CatalogEntriesListRequest;
+    type Request = harmos_protocol::v1::CatalogEntriesListRequest;
     type Response = CatalogEntriesListResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.catalog_entries.list";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "CatalogEntries", "List"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "CatalogEntries", "List"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] =
@@ -68,7 +68,7 @@ impl ProtobufOperation for List {
 
 /* === Public Functions === */
 
-pub fn limits(request: &harmos_protocol::host::CatalogEntriesListRequest) -> std::result::Result<(usize, usize), MessageError> {
+pub fn limits(request: &harmos_protocol::v1::CatalogEntriesListRequest) -> std::result::Result<(usize, usize), MessageError> {
     let page = request.page.as_ref().ok_or_else(|| MessageError::borrowed("List requires page_size and max_bytes"))?;
     let rows = page.page_size;
     let bytes = page.max_bytes;
@@ -80,10 +80,10 @@ pub fn limits(request: &harmos_protocol::host::CatalogEntriesListRequest) -> std
 
 /* === Private Functions === */
 
-fn kind(request: &harmos_protocol::host::CatalogEntriesListRequest) -> std::result::Result<Kind, MessageError> {
+fn kind(request: &harmos_protocol::v1::CatalogEntriesListRequest) -> std::result::Result<Kind, MessageError> {
     Kind::try_from(request.kind).map_err(|_| MessageError::borrowed("unknown catalog kind"))
 }
-async fn run(context: ExecutionContext, request: harmos_protocol::host::CatalogEntriesListRequest) -> Result<CatalogEntriesListResponse> {
+async fn run(context: ExecutionContext, request: harmos_protocol::v1::CatalogEntriesListRequest) -> Result<CatalogEntriesListResponse> {
     let storage = context.resource::<Option<Arc<StorageManager>>>().map_err(|_| Error::NotReady { domain: "catalog storage" })?;
     let access = context
         .resource::<crate::execution::operations::access::DiscoveryAccess>()
@@ -129,7 +129,7 @@ async fn run(context: ExecutionContext, request: harmos_protocol::host::CatalogE
 }
 
 async fn stored<T>(
-    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::host::CatalogEntriesListRequest,
+    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::v1::CatalogEntriesListRequest,
     keep: impl Fn(&T) -> bool,
 ) -> Result<CatalogEntriesListResponse>
 where
