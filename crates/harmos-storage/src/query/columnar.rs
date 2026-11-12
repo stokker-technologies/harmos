@@ -34,7 +34,9 @@ use super::transform::{
     project::{Project, Projection},
 };
 use super::{ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
-use crate::{BackendSnapshot, Error, ReadLimits, Result, ScanPage, SchemaKey, StorageBackend, StorageSchema};
+#[cfg(feature = "sqlite")]
+use crate::StorageSchema;
+use crate::{BackendSnapshot, Error, ReadLimits, Result, ScanPage, SchemaKey, StorageBackend};
 
 /* === Constants === */
 
@@ -334,6 +336,7 @@ fn leaves(field: &arrow_schema::Field, parent: String, paths: &mut Vec<String>) 
     }
 }
 
+#[cfg(feature = "sqlite")]
 pub(crate) fn empty(schema: &StorageSchema, kind: ColumnKind) -> Result<RecordBatch> {
     let batch = match kind {
         ColumnKind::Objects => super::source::objects(schema, &[])?,
@@ -343,12 +346,15 @@ pub(crate) fn empty(schema: &StorageSchema, kind: ColumnKind) -> Result<RecordBa
     flatten(&batch)
 }
 
+#[cfg(feature = "sqlite")]
 pub(crate) fn records(schema: &StorageSchema, rows: &[crate::StoredRecord]) -> Result<RecordBatch> {
     flatten(&super::source::records(schema, rows)?)
 }
+#[cfg(feature = "sqlite")]
 pub(crate) fn streams(schema: &StorageSchema, rows: &[crate::StoredRow]) -> Result<RecordBatch> {
     flatten(&super::source::stream(schema, rows)?)
 }
+#[cfg(feature = "sqlite")]
 pub(crate) fn objects(schema: &StorageSchema, rows: &[crate::ObjectEntry]) -> Result<RecordBatch> {
     flatten(&super::source::objects(schema, rows)?)
 }

@@ -122,7 +122,7 @@ async fn query_operation_batches() {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
     };
-    let mut response = fixture.runtime.operations.download_protobuf::<Query>(request.into(), stream).unwrap();
+    let mut response = fixture.runtime.operations.download_protobuf::<Query>(request.try_into().unwrap(), stream).unwrap();
 
     // One Invocation Announces One Schema, Then Bounded Batches.
     let first = QueryArrow::try_from(response.next().await.unwrap().unwrap()).unwrap();
