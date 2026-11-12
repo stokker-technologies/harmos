@@ -42,12 +42,14 @@ use harmos_runtime::storage::{FilePhase, MutationId, StagedFile};
 
 /* === Private Functions === */
 
-async fn fixture() -> Fixture {
+pub(super) async fn fixture() -> Fixture {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&f.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     f
 }
-fn key(f: &Fixture, key: &str) -> MutationId {
+pub(super) fn key(f: &Fixture, key: &str) -> MutationId {
     MutationId {
         window: f.storage.mutation_window().unwrap().id,
         key: Identifier::new(key).unwrap(),
@@ -55,125 +57,6 @@ fn key(f: &Fixture, key: &str) -> MutationId {
 }
 
 /* === Tests === */
-
-#[tokio::test]
-async fn file_receipts_replay() {
-    let f = fixture().await;
-    let create = harmos_protocol::storage::CreateFile {
-        mutation: Some(key(&f, "create").into()),
-        metadata: Some(metadata("shared").into()),
-    };
-    let producer = f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFile>(create.clone()).await.unwrap();
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFile>(create.clone()).await.unwrap(), producer);
-    let first = harmos_protocol::storage::AppendFile {
-        mutation: Some(key(&f, "first").into()),
-        session: producer.session.clone(),
-        offset: 0,
-        bytes: b"one".to_vec(),
-    };
-    let appended = f.runtime.operations.call_protobuf::<harmos_operations::storage::AppendFile>(first.clone()).await.unwrap();
-    assert_eq!(appended.length, 3);
-    let second = harmos_protocol::storage::AppendFile {
-        mutation: Some(key(&f, "second").into()),
-        offset: 3,
-        bytes: b"two".to_vec(),
-        ..first.clone()
-    };
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::AppendFile>(second).await.unwrap().length, 6);
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::AppendFile>(first.clone()).await.unwrap(), appended);
-    let conflict = harmos_protocol::storage::AppendFile { bytes: b"bad".to_vec(), ..first.clone() };
-    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::AppendFile>(conflict).await.is_err());
-    let wrong_offset = harmos_protocol::storage::AppendFile {
-        mutation: Some(key(&f, "wrong-offset").into()),
-        ..first
-    };
-    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::AppendFile>(wrong_offset).await.is_err());
-    let finish = harmos_protocol::storage::FinishFile {
-        mutation: Some(key(&f, "finish").into()),
-        session: producer.session.clone(),
-    };
-    let reference = f.runtime.operations.call_protobuf::<harmos_operations::storage::FinishFile>(finish.clone()).await.unwrap();
-    assert_eq!(reference.length, 6);
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::FinishFile>(finish.clone()).await.unwrap(), reference);
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFile>(create).await.unwrap(), producer);
-    let identity = StagedFile {
-        history: producer.session.as_ref().unwrap().history.clone().unwrap().try_into().unwrap(),
-        id: Identifier::new(producer.session.as_ref().unwrap().id.clone()).unwrap(),
-    };
-    let mut reader = f.storage.follow_production(&identity, 0).await.unwrap();
-    assert_eq!(reader.next_batch(NonZeroUsize::new(16).unwrap()).await.unwrap().unwrap().bytes(), b"onetwo");
-    assert!(reader.next_batch(NonZeroUsize::MIN).await.unwrap().is_none());
-    drop(reader);
-    f.finish().await;
-}
-
-#[tokio::test(start_paused = true)]
-async fn lost_responses_retry() {
-    let f = fixture().await;
-    f.data.control.create_failures.store(3, Ordering::SeqCst);
-    let producer = f
-        .runtime
-        .operations
-        .call_protobuf::<harmos_operations::storage::CreateFile>(harmos_protocol::storage::CreateFile {
-            mutation: Some(key(&f, "create").into()),
-            metadata: Some(metadata("lost").into()),
-        })
-        .await
-        .unwrap();
-    assert_eq!(producer.session.as_ref().unwrap().generation, 1);
-    assert_eq!(f.data.control.create_failures.load(Ordering::SeqCst), 0);
-    f.data.control.chunk_failures.store(3, Ordering::SeqCst);
-    let append = harmos_protocol::storage::AppendFile {
-        mutation: Some(key(&f, "append").into()),
-        session: producer.session.clone(),
-        offset: 0,
-        bytes: b"partial".to_vec(),
-    };
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::AppendFile>(append.clone()).await.unwrap().length, 7);
-    assert_eq!(*f.data.control.chunk_offsets.lock().unwrap(), vec![0, 0, 0, 0]);
-    f.data.control.abandon_failures.store(3, Ordering::SeqCst);
-    let abandon = harmos_protocol::storage::AbandonFile {
-        mutation: Some(key(&f, "abandon").into()),
-        session: producer.session.clone(),
-    };
-    let abandoned = f.runtime.operations.call_protobuf::<harmos_operations::storage::AbandonFile>(abandon.clone()).await.unwrap();
-    assert_eq!(abandoned.phase, harmos_protocol::storage::FilePhase::Abandoned as i32);
-    assert_eq!(abandoned.length, 7);
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::AbandonFile>(abandon).await.unwrap(), abandoned);
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::AppendFile>(append).await.unwrap().length, 7);
-    assert_eq!(f.data.staged.lock().unwrap()["lost"].1, b"partial");
-    f.data.control.delete_failures.store(3, Ordering::SeqCst);
-    let delete = harmos_protocol::storage::DeleteFile {
-        mutation: Some(key(&f, "delete").into()),
-        file: Some(harmos_protocol::storage::StagedFile {
-            history: producer.session.as_ref().unwrap().history.clone(),
-            id: producer.session.as_ref().unwrap().id.clone(),
-        }),
-    };
-    let deleted = f.runtime.operations.call_protobuf::<harmos_operations::storage::DeleteFile>(delete.clone()).await.unwrap();
-    assert_eq!(Some(deleted), delete.file);
-    assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 0);
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn cancelled_append_replays() {
-    let f = fixture().await;
-    let producer = f.storage.create_file_once(&key(&f, "create"), &metadata("cancelled")).await.unwrap();
-    let id = key(&f, "append");
-    f.data.control.block_chunk.store(true, Ordering::SeqCst);
-    {
-        let append = f.storage.append_file_once(&id, &producer.session, 0, (b"bytes").to_vec());
-        tokio::pin!(append);
-        tokio::select! { biased; _ = &mut append => panic!("chunk must block"), _ = f.data.control.chunk_entered.notified() => {} }
-    }
-    f.data.control.block_chunk.store(false, Ordering::SeqCst);
-    f.data.control.chunk_release.notify_one();
-    let appended = f.storage.append_file_once(&id, &producer.session, 0, (b"bytes").to_vec()).await.unwrap();
-    assert_eq!(appended.length, 5);
-    assert_eq!(*f.data.control.chunk_offsets.lock().unwrap(), vec![0]);
-    f.finish().await;
-}
 
 #[tokio::test]
 async fn concurrent_appends_exclusive() {
@@ -270,7 +153,9 @@ async fn finish_reconciles_lost() {
 #[tokio::test]
 async fn retries_never_multiply() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register_catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    crate::support::app::register(&f.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let request = harmos_protocol::storage::CreateFile {
         mutation: Some(key(&f, "create").into()),
         metadata: Some(metadata("retry-budget").into()),

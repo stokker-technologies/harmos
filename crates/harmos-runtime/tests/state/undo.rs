@@ -60,24 +60,6 @@ async fn conflicting_undo_refused() {
 }
 
 #[tokio::test]
-async fn undo_redo_append() {
-    let runtime = runtime().await;
-    let mine = runtime.state.as_principal(alice());
-
-    let taken = mine.commit(deposit(40)).await.expect("accepted");
-    let answer = mine.undo(alice(), Focus::all()).await.expect("alice has an entry to undo");
-
-    assert_eq!(answer.position, Position(2), "history got longer");
-    assert_eq!(support::balance(&runtime, support::HOUSE).await, 0);
-    assert_eq!(history(&runtime).await, vec![taken.position, answer.position]);
-
-    let restored = mine.redo(alice(), Focus::all()).await.expect("the undone entry is redoable");
-
-    assert_eq!(restored.position, Position(3));
-    assert_eq!(support::balance(&runtime, support::HOUSE).await, 40);
-}
-
-#[tokio::test]
 async fn undo_selects_within() {
     let runtime = runtime().await;
     let mine = runtime.state.as_principal(alice());
@@ -95,34 +77,6 @@ async fn undo_selects_within() {
         matches!(mine.undo(alice(), Focus::all()).await, Err(Error::NothingToUndo)),
         "alice cannot reach into bob's history for a second undo"
     );
-}
-
-#[tokio::test]
-async fn reversals_report_undo() {
-    let runtime = runtime().await;
-    let mine = runtime.state.as_principal(alice());
-
-    assert_eq!(
-        available(&runtime, Focus::all()).await.value,
-        Reversals { undoable: false, redoable: false },
-        "an empty history offers neither direction"
-    );
-
-    let taken = mine.commit(deposit(40)).await.expect("accepted");
-    let answered = available(&runtime, Focus::all()).await;
-
-    assert_eq!(answered.value, Reversals { undoable: true, redoable: false });
-    assert_eq!(answered.position, taken.position, "the answer says which point in history it reflects");
-
-    mine.undo(alice(), Focus::all()).await.expect("undone");
-    assert_eq!(
-        available(&runtime, Focus::all()).await.value,
-        Reversals { undoable: false, redoable: true },
-        "the entry moved from one side to the other"
-    );
-
-    mine.redo(alice(), Focus::all()).await.expect("restored");
-    assert_eq!(available(&runtime, Focus::all()).await.value, Reversals { undoable: true, redoable: false });
 }
 
 #[tokio::test]
@@ -160,38 +114,11 @@ async fn availability_per_principal() {
     assert!(!available(&runtime, only(support::HOUSE)).await.value.undoable, "alice's own entry is outside the scope being asked about");
 }
 
-#[tokio::test]
-async fn availability_appends_nothing() {
-    let runtime = runtime().await;
-    let mine = runtime.state.as_principal(alice());
-
-    mine.commit(deposit(40)).await.expect("accepted");
-    let frontier = runtime.state.applied();
-
-    available(&runtime, Focus::all()).await;
-    available(&runtime, Focus::all()).await;
-
-    assert_eq!(runtime.state.applied(), frontier, "a question about undo is a read, not a commit");
-}
-
-#[tokio::test]
-async fn forward_commit_clears() {
-    let runtime = runtime().await;
-    let mine = runtime.state.as_principal(alice());
-
-    mine.commit(deposit(40)).await.expect("accepted");
-    mine.undo(alice(), Focus::all()).await.expect("undone");
-
-    mine.commit(deposit(7)).await.expect("the present diverges");
-
-    assert!(matches!(mine.redo(alice(), Focus::all()).await, Err(Error::NothingToRedo)), "a new forward commit truncates the redo branch");
-}
-
-async fn history(runtime: &harmos_runtime::Runtime<support::Bank>) -> Vec<Position> {
+pub(super) async fn history(runtime: &harmos_runtime::Runtime<support::Bank>) -> Vec<Position> {
     runtime.state.query::<Change>(Position::ORIGIN).await.map(|entry| entry.expect("the tail holds the whole history").position).collect()
 }
 
-async fn available(runtime: &harmos_runtime::Runtime<support::Bank>, scope: Focus<support::Bank>) -> At<Reversals> {
+pub(super) async fn available(runtime: &harmos_runtime::Runtime<support::Bank>, scope: Focus<support::Bank>) -> At<Reversals> {
     runtime.state.reversals(alice(), scope).await.expect("the writer answers")
 }
 

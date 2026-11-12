@@ -13,6 +13,8 @@
 mod mutations;
 #[path = "manager/production.rs"]
 mod production;
+#[path = "manager/receipts.rs"]
+mod receipts;
 #[path = "manager/recovery.rs"]
 mod recovery;
 

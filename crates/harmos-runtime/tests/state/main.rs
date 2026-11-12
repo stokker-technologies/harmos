@@ -40,6 +40,7 @@ mod listeners;
 
 #[path = "undo.rs"]
 mod undo;
+mod undo_redo;
 
 /* === Re-Exports === */
 
