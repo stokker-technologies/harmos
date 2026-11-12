@@ -1,6 +1,9 @@
 # Operation Grammar Design
 
-Status: locked by the owner on 2026-11-12. Nothing here claims implementation.
+Status: locked by the owner on 2026-11-12
+Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
+
+Nothing here claims implementation.
 Only the explicitly listed open questions await decisions when their work is reached.
 
 ## Context
@@ -23,11 +26,30 @@ SDKs and conformance suite self-sufficient without product vocabulary.
 The following shared text uses the supplied decisions and both reports' Shared
 Vocabulary sections. Product-specific meanings belong in the next section.
 
-- **Names (Owner):** symmetric, predictable `VerbResource`; singular for one
-  resource and plural for collections. Requests are `<Method>Request`, replies
-  are `<Method>Response`. **Owner:** always the response wrapper, never a bare
-  resource. Operation IDs are namespaced and derive mechanically from the method;
-  their namespace includes the service group, without a second authored alias.
+- **Names (Owner):** a service names its resource with a plural noun, or a
+  singular noun when it represents one thing, such as Plugin. Methods on that
+  resource are bare verbs: Get, List, Watch, Set, Create, Delete, Append and the
+  justified domain verbs below. Never repeat the service's resource noun in a
+  method. A part read in exactly one way uses its noun alone, whether streamed,
+  paged or returned whole: Executions.Progress, Executions.Steps and
+  Executions.Parameters. Only parts with multiple read/change modes carry a verb
+  plus part, such as ListNotes/WatchNotes or GetSettings/SetSettings. Prefer a
+  small service for such a part when clearer, keeping Get/Set as an exact pair.
+  A mixed-resource service such as Storage retains resource nouns in its methods;
+  do not split it merely to shorten names or repeat its own service name.
+  Messages follow `<Service><Method>Request` and `<Service><Method>Response`,
+  for example ExecutionsStartRequest; service qualification keeps repeated bare
+  verbs unique and predictable. Always return the response wrapper, including
+  empty results. Operation IDs derive mechanically from service namespace and
+  method, without a second authored alias. Generated clients take names directly
+  from proto, yielding short names in every language without a handwritten layer:
+
+  ```python
+  executions.start(request)
+  executions.cancel(request)
+  executions.get(request)
+  executions.progress(request)
+  ```
 - **Ordinary verbs (Owner):** the closed set is Get, List, Watch, Set, Create,
   Delete and Append. Get observes one identified or derived value; List enumerates
   one bounded selection; Watch opens that selection and follows changes; Set
@@ -42,7 +64,7 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   Read-only and runtime-owned facts do not acquire a Set merely for symmetry.
   Split an unreasonably large writable part into separately settable sub-resources,
   each with its own Get and Set. Product execution rename and archive merge into
-  SetExecution carrying the whole small writable part returned by GetExecution;
+  Executions.Set carrying the whole small writable part returned by Executions.Get;
   only that identified execution changes.
 - **Domain verbs (Owner):** use a domain verb only where a standard verb would
   hide a side effect, and state its one meaning. Start activates; Stop finishes at
@@ -50,8 +72,8 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   an evidence lifecycle; Publish commits prepared visibility; Import admits an
   external representation; Export produces an external representation; Invoke
   calls a declared operation; Advance materializes a projection frontier; Capture
-  freezes external data. PublishFileProduction validates and publishes an upload;
-  DeleteFileProduction abandons its unpublished session. Plugin lifecycle verbs keep
+  freezes external data. Storage.PublishFileProduction validates and publishes an upload;
+  Storage.DeleteFileProduction abandons its unpublished session. Plugin lifecycle verbs keep
   their distinct meanings. The clock wait keeps the name Sleep.
 - **Operation and invocation (Owner):** an operation is a declaration, an
   invocation is one execution of it, and an attempt is one retry attempt.
@@ -104,8 +126,10 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   Missing evidence, gaps and unavailable positions cannot become empty success.
 - **Receipts (Owner):** admission, application and durability are separate
   facts. Receipts identify the semantic mutation and accepted/durable positions;
-  accepted is not durable. Same key and same normalized request replay the original
-  outcome; changed payload conflicts. Declare deduplication lifetime; expired keys
+  accepted is not durable. When a call fails on the client, resending is the
+  client's responsibility. The same request identifier and normalized payload
+  return the original receipt; a changed payload under that identifier conflicts.
+  Declare deduplication lifetime; expired keys
   fail rather than silently repeat irreversible work.
 - **Retry policy (Owner):** one policy vocabulary for invocation budget,
   per-attempt budget, cancellation grace, total attempts, backoff and replay safety.
@@ -123,7 +147,8 @@ Vocabulary sections. Product-specific meanings belong in the next section.
   replaces the ordinary gRPC method only where a cooperative final result after
   cancellation is actually promised. Native gRPC cancellation abandons observation
   and cannot promise that final response; accepted durable work survives lost
-  observers. Server streaming is reserved for Watch; plugin protocol carriers
+  observers. Server streaming is reserved for Watch semantics (including noun-only
+  single-mode streamed parts); plugin protocol carriers
   retain their own streams. Get/List and transfers are bounded unary calls.
 
 ## Library Design
@@ -264,27 +289,26 @@ message RetryPolicy {
   google.protobuf.Duration maximum = 3; // Presence selects exponential backoff.
   bool deterministic_jitter = 4;
 }
-// Every rpc M has MRequest and MResponse, including empty responses.
-message GetTimeRequest {}
-message GetTimeResponse { google.protobuf.Timestamp now = 1; }
-message SleepRequest { google.protobuf.Duration duration = 1; }
-message SleepResponse {}
+message TimeGetRequest {}
+message TimeGetResponse { google.protobuf.Timestamp now = 1; }
+message TimeSleepRequest { google.protobuf.Duration duration = 1; }
+message TimeSleepResponse {}
 ```
 
 ```proto
-message ListRowsRequest {
+message StorageListRowsRequest {
   QuerySource source = 1;
   ReadCut at = 2;
   repeated Transform transforms = 3;
   PageRequest page = 4;
 }
-message ListRowsResponse {
+message StorageListRowsResponse {
   repeated StoredRow rows = 1;
   ReadCut resolved_at = 2;
   string next_page_token = 3;
 }
-message WatchRowsRequest { ListRowsRequest selection = 1; }
-message WatchRowsResponse {
+message StorageWatchRowsRequest { StorageListRowsRequest selection = 1; }
+message StorageWatchRowsResponse {
   ReadCut resolved_at = 1;
   oneof event {
     RowsSnapshot snapshot = 2;
@@ -293,12 +317,12 @@ message WatchRowsResponse {
     Position durable_progress = 5;
   }
 }
-message AppendRecordsRequest {
+message StorageAppendRecordsRequest {
   string parent = 1;
   string request_id = 2;
   repeated Record records = 3;
 }
-message AppendRecordsResponse { Receipt receipt = 1; }
+message StorageAppendRecordsResponse { Receipt receipt = 1; }
 ```
 
 The rows union covers records, samples and object revisions with the same source
@@ -308,42 +332,44 @@ Arrow/index/projection mechanisms remain
 distinct from application-level selection. Get/List return bounded unary pages
 or ranges; callers repeat reads for further data. No streaming download remains.
 
-Plugin WatchSamples observes publication demand; it has no historical List on the
+Plugin.Samples observes publication demand; it has no historical List on the
 plugin carrier. Retained sample reads belong to host storage. Do not manufacture
 catalog watches without an actual change feed, and retain device-driven streams
 alongside host-clock interval streams.
 
 ```proto
-message GetObjectRequest { string name = 1; ReadCut at = 2; }
-message GetObjectResponse {
+message StorageGetObjectRequest { string name = 1; ReadCut at = 2; }
+message StorageGetObjectResponse {
   ObjectValue object = 1; // Complete writable value.
   bytes revision = 2;
   ReadCut resolved_at = 3;
 }
-message SetObjectRequest {
+message StorageSetObjectRequest {
   ObjectValue object = 1; // Complete writable value from GetObject.
   bytes expected_revision = 2;
   string request_id = 3;
   bool create_if_absent = 4;
 }
-message SetObjectResponse {
+message StorageSetObjectResponse {
   oneof outcome {
     AppliedObject applied = 1; // Value, revision and receipt.
     ObjectConflict conflict = 2;
   }
 }
-message GetInvocationRequest { string name = 1; ReadCut at = 2; }
-message GetInvocationResponse { Invocation invocation = 1; ReadCut resolved_at = 2; }
-message WatchInvocationRequest { string name = 1; ReadCut at = 2; }
-message WatchInvocationResponse { Invocation invocation = 1; ReadCut resolved_at = 2; }
-message CancelInvocationRequest { string name = 1; string reason = 2; }
-message CancelInvocationResponse { Invocation invocation = 1; }
-service Host {
-  rpc GetInvocation(GetInvocationRequest) returns (GetInvocationResponse);
-  rpc WatchInvocation(WatchInvocationRequest) returns (stream WatchInvocationResponse);
-  rpc CancelInvocation(CancelInvocationRequest) returns (CancelInvocationResponse);
-  rpc GetTime(GetTimeRequest) returns (GetTimeResponse);
-  rpc Sleep(SleepRequest) returns (SleepResponse);
+message InvocationsGetRequest { string name = 1; ReadCut at = 2; }
+message InvocationsGetResponse { Invocation invocation = 1; ReadCut resolved_at = 2; }
+message InvocationsWatchRequest { string name = 1; ReadCut at = 2; }
+message InvocationsWatchResponse { Invocation invocation = 1; ReadCut resolved_at = 2; }
+message InvocationsCancelRequest { string name = 1; string reason = 2; }
+message InvocationsCancelResponse { Invocation invocation = 1; }
+service Invocations {
+  rpc Get(InvocationsGetRequest) returns (InvocationsGetResponse);
+  rpc Watch(InvocationsWatchRequest) returns (stream InvocationsWatchResponse);
+  rpc Cancel(InvocationsCancelRequest) returns (InvocationsCancelResponse);
+}
+service Time {
+  rpc Get(TimeGetRequest) returns (TimeGetResponse);
+  rpc Sleep(TimeSleepRequest) returns (TimeSleepResponse);
 }
 ```
 
@@ -356,43 +382,43 @@ AppendObjectRevisions remains separate bulk immutable ingestion. The library's
 invocation controls expose runtime-owned status, not writable status fields.
 
 ```proto
-message CreateFileProductionRequest {
+message StorageCreateFileProductionRequest {
   FileMetadata metadata = 1;
   string request_id = 2;
 }
-message CreateFileProductionResponse { FileProduction production = 1; Receipt receipt = 2; }
-message GetFileProductionRequest { string name = 1; ReadCut at = 2; }
-message GetFileProductionResponse { FileProduction production = 1; ReadCut resolved_at = 2; }
-message AppendFileBytesRequest {
+message StorageCreateFileProductionResponse { FileProduction production = 1; Receipt receipt = 2; }
+message StorageGetFileProductionRequest { string name = 1; ReadCut at = 2; }
+message StorageGetFileProductionResponse { FileProduction production = 1; ReadCut resolved_at = 2; }
+message StorageAppendFileBytesRequest {
   string name = 1;
   bytes writer_token = 2;
   uint64 offset = 3;
   bytes data = 4;
   string request_id = 5;
 }
-message AppendFileBytesResponse { FileProduction production = 1; Receipt receipt = 2; }
-message CreateFileWriterRequest { string name = 1; bytes expected_writer = 2; }
-message CreateFileWriterResponse { bytes writer_token = 1; FileProduction production = 2; }
-message PublishFileProductionRequest {
+message StorageAppendFileBytesResponse { FileProduction production = 1; Receipt receipt = 2; }
+message StorageCreateFileWriterRequest { string name = 1; bytes expected_writer = 2; }
+message StorageCreateFileWriterResponse { bytes writer_token = 1; FileProduction production = 2; }
+message StoragePublishFileProductionRequest {
   string name = 1;
   bytes writer_token = 2;
   uint64 length = 3;
   bytes sha256 = 4;
   string request_id = 5;
 }
-message PublishFileProductionResponse { FileReference file = 1; Receipt receipt = 2; }
-message DeleteFileProductionRequest { string name = 1; string request_id = 2; }
-message DeleteFileProductionResponse { FileProduction production = 1; Receipt receipt = 2; }
+message StoragePublishFileProductionResponse { FileReference file = 1; Receipt receipt = 2; }
+message StorageDeleteFileProductionRequest { string name = 1; string request_id = 2; }
+message StorageDeleteFileProductionResponse { FileProduction production = 1; Receipt receipt = 2; }
 ```
 
 ```proto
-message GetFileBytesRequest {
+message StorageGetFileBytesRequest {
   string name = 1;
   uint64 offset = 2;
   uint64 max_bytes = 3;
   ReadCut at = 4;
 }
-message GetFileBytesResponse {
+message StorageGetFileBytesResponse {
   bytes data = 1;
   uint64 total_length = 2;
   bytes sha256 = 3;
@@ -419,7 +445,9 @@ test assertion or a new hard throughput threshold.
 
 ### Complete Public Operation Mapping
 
-Every current logical operation appears once. Present types use the current
+Every current logical operation appears once and maps to exactly one destination.
+The removed streaming-upload convenience maps to the shared session entry point;
+its subsequent workflow calls are not additional destinations. Present types use the current
 request and final reply; current stream item types are noted in the reason. Locked
 request/reply names always follow the method-wrapper rule. All target names and
 dispositions are Owner decisions, including retained names whose payloads change.
@@ -431,55 +459,55 @@ are invocation evidence, not claims that tests were run in this authoring task.
 
 | Present Operation | Present Request → Final Reply | Locked Operation | Disposition and Reason / Caller Evidence |
 | --- | --- | --- | --- |
-| Plugin.Describe | DescribeRequest → Description | GetPlugin | Renamed; connection.rs and SDK servers use identity/catalog admission. |
-| Plugin.Invoke | HostFrame → PluginFrame | InvokeOperation | Renamed; invoke.rs; duplex control carrier still conveys one unary operation attempt. |
-| Plugin.Publish | PublishFrame → Samples | WatchSamples | Renamed; publish.rs; host-clock ticks and device publication remain distinct. |
-| Plugin.Stop | StopRequest → StopResponse | StopPlugin | Renamed; connection.rs shutdown invokes cleanup. |
-| host.catalog | Catalog → CatalogPage | ListCatalogEntries | Renamed; sdk/rust/src/client.rs calls bounded discovery. |
-| host.operations.status | Status → InstanceState | GetInvocation | Renamed; tests/operations/host.rs invokes owned status. |
-| host.operations.cancel | Cancel → InstanceState | CancelInvocation | Renamed; same host test; cancellation is an action. |
-| host.operations.watch | Watch → InstanceState | WatchInvocation | Renamed; same host test; retain status events. |
-| harmos.clock.now | Now → Time | GetTime | Renamed; four SDK contexts call the host clock. |
-| harmos.clock.sleep | Sleep → SleepResponse | Sleep | Kept; four SDK contexts; locked clock action, not WaitTime. |
-| host.publish | Publish → Published | AppendSamples | Renamed; streams/publish.rs and sdk/rust/src/wasm/context.rs publish immutable samples. |
-| storage.status | StorageStatus → StorageInfo | GetStorageInfo | Renamed; generated_status.rs. |
-| storage.capabilities | Capabilities → StorageCapabilities | GetStorageCapabilities | Renamed; generated_native_journey.rs. |
-| storage.open_snapshot | OpenSnapshot → SavedSnapshot | CreateSnapshot | Renamed; same journey; retained backend read lease, not a second read family. |
-| storage.release_snapshot | ReleaseSnapshot → Empty | DeleteSnapshot | Renamed; same journey; release the lease. |
-| storage.scan_arrow | ScanArrow → ArrowPage | ListColumnRows | Renamed; same journey; preserve bounded physical work. |
-| storage.scan_index | ScanIndex → IndexPage | ListIndexEntries | Renamed; same journey; ordered seek semantics remain. |
-| storage.register_index | RegisterIndex → DefinitionRevision | SetIndexDefinition | Renamed; same journey; whole definition and expected revision from GetIndexDefinition; rebuild preconditions remain. |
-| storage.register_projection | RegisterProjection → DefinitionRevision | SetProjectionDefinition | Renamed; same journey; whole definition and expected revision from GetProjectionDefinition. |
-| storage.advance_projection | AdvanceProjection → DefinitionRevision | AdvanceProjection | Kept; same journey; side effect is checked materialization. |
-| storage.read_projection | ReadProjection → ProjectionPage | ListProjectionRows | Renamed; same journey; exact revision/frontier availability. |
-| storage.inspect_projection | InspectProjection → ProjectionState | GetProjectionStatus | Renamed; same journey; derived status is not writable. |
-| storage.compare_exchange_object | CompareExchangeObject → CompareExchangeOutcome | SetObject | Renamed; same journey; whole writable object and expected revision from GetObject; atomic conditional outcome. |
-| storage.query | Query → QueryCompletion | ListRows | Renamed; generated_query_batches.rs and generated_query_projection.rs; bounded unary pages replace QueryOutput streaming. |
-| storage.follow_records | FollowRecords → StorageCursor | WatchRows, records selector | Merged; generated_record_follow.rs; shared boundary/change union. |
-| storage.follow_stream | FollowStream → StorageCursor | WatchRows, samples selector | Merged; generated_stream_follow.rs; add consistent initial durable boundary. |
-| storage.follow_objects | FollowObjects → StorageCursor | WatchRows, object-revision selector | Merged; generated_object_follow.rs; preserve revision data. |
-| storage.write_schema | WriteSchema → StorageCursor | SetSchema | Renamed; operation_schemas.rs; whole small writable schema and expected revision from GetSchema; immutable revision rules remain. |
-| storage.write_records | WriteRecords → WriteCompletion | AppendRecords | Renamed; generated_record_exchange.rs; bounded unary batch replaces DataBatch/WriteReceipt exchange. |
-| storage.write_streams | WriteStreams → WriteCompletion | AppendSamples | Renamed; generated_exchange_cancellation.rs; preserve admitted outcomes with receipts. |
-| storage.write_objects | WriteObjects → WriteCompletion | AppendObjectRevisions | Renamed; generated_object_exchange.rs; bulk ingestion does not replace atomic SetObject. |
-| storage.write_file | WriteFile → FileReference | CreateFileProduction → AppendFileBytes → PublishFileProduction | Removed; generated_file_upload.rs; shared resumable unary session replaces client-stream FileBatch upload. |
-| storage.create_file | CreateFile → FileProducer | CreateFileProduction | Renamed; generated_file_mutations.rs; create the upload/production session. |
-| storage.append_file | AppendFile → FileProducer | AppendFileBytes | Renamed; same mutations; bounded immutable chunks. |
-| storage.resume_file | ResumeFile → FileProducer | CreateFileWriter | Renamed; same mutations; fence the previous writer. |
-| storage.finish_file | FinishFile → FileReference | PublishFileProduction | Renamed; same mutations; durable final reference. |
-| storage.abandon_file | AbandonFile → FileProgress | DeleteFileProduction | Renamed; same mutations; Delete of the unpublished session abandons it. |
-| storage.delete_file | DeleteFile → StagedFile | DeleteFile | Kept; same mutations; retained-reader decision remains open. |
-| storage.read_file | ReadFile → FileCompletion | GetFileBytes | Renamed; generated_read.rs; streaming download removed in favor of bounded unary ranges with offset, maximum bytes, total length and digest. |
-| storage.hash_file | HashFile → FileHash | GetFileHash | Renamed; examples/schematic/operations/src/transfer/hash.rs and guest SDK call it. |
-| storage.capture_file | CaptureFile → FileReference | CaptureFile | Kept; generated_capture.rs; independent captured bytes. |
-| storage.follow_file | FollowFile → FileCompletion | WatchFileBytes | Renamed; generated_capture.rs; FileEvent preserves replacement/truncation. |
-| storage.follow_production | FollowProduction → FileProgress | WatchFileProduction | Renamed; generated_reconnect.rs and generated_future_offset.rs; writer fencing and retained chunks remain. |
-| storage.list_directory | ListDirectory → DirectoryCompletion | ListDirectoryEntries | Renamed; generated_directory.rs; bounded DirectoryEntry selection. |
-| storage.watch_directory | WatchDirectory → DirectoryCompletion | WatchDirectoryEntries | Renamed; same directory test; preserve DirectoryEvent and rescan-required semantics. |
+| Plugin.Describe | DescribeRequest → Description | Plugin.Get | Renamed; connection.rs and SDK servers use identity/catalog admission. |
+| Plugin.Invoke | HostFrame → PluginFrame | Plugin.Invoke | Kept; invoke.rs; duplex control carrier still conveys one unary operation attempt. |
+| Plugin.Publish | PublishFrame → Samples | Plugin.Samples | Renamed; publish.rs; host-clock ticks and device publication remain distinct. |
+| Plugin.Stop | StopRequest → StopResponse | Plugin.Stop | Kept; connection.rs shutdown invokes cleanup. |
+| host.catalog | Catalog → CatalogPage | CatalogEntries.List | Renamed; sdk/rust/src/client.rs calls bounded discovery. |
+| host.operations.status | Status → InstanceState | Invocations.Get | Renamed; tests/operations/host.rs invokes owned status. |
+| host.operations.cancel | Cancel → InstanceState | Invocations.Cancel | Renamed; same host test; cancellation is an action. |
+| host.operations.watch | Watch → InstanceState | Invocations.Watch | Renamed; same host test; retain status events. |
+| harmos.clock.now | Now → Time | Time.Get | Renamed; four SDK contexts call the host clock. |
+| harmos.clock.sleep | Sleep → TimeSleepResponse | Time.Sleep | Kept; four SDK contexts; locked clock action, not WaitTime. |
+| host.publish | Publish → Published | Samples.Append | Renamed; streams/publish.rs and sdk/rust/src/wasm/context.rs publish immutable samples. |
+| storage.status | StorageStatus → StorageInfo | Storage.Info | Renamed; generated_status.rs. |
+| storage.capabilities | Capabilities → StorageCapabilities | Storage.Capabilities | Renamed; generated_native_journey.rs. |
+| storage.open_snapshot | OpenSnapshot → SavedSnapshot | Storage.CreateSnapshot | Renamed; same journey; retained backend read lease, not a second read family. |
+| storage.release_snapshot | ReleaseSnapshot → Empty | Storage.DeleteSnapshot | Renamed; same journey; release the lease. |
+| storage.scan_arrow | ScanArrow → ArrowPage | Storage.ListColumnRows | Renamed; same journey; preserve bounded physical work. |
+| storage.scan_index | ScanIndex → IndexPage | Storage.ListIndexEntries | Renamed; same journey; ordered seek semantics remain. |
+| storage.register_index | RegisterIndex → DefinitionRevision | Storage.SetIndexDefinition | Renamed; same journey; whole definition and expected revision from GetIndexDefinition; rebuild preconditions remain. |
+| storage.register_projection | RegisterProjection → DefinitionRevision | Storage.SetProjectionDefinition | Renamed; same journey; whole definition and expected revision from GetProjectionDefinition. |
+| storage.advance_projection | AdvanceProjection → DefinitionRevision | Storage.AdvanceProjection | Kept; same journey; side effect is checked materialization. |
+| storage.read_projection | ReadProjection → ProjectionPage | Storage.ListProjectionRows | Renamed; same journey; exact revision/frontier availability. |
+| storage.inspect_projection | InspectProjection → ProjectionState | Storage.GetProjectionStatus | Renamed; same journey; derived status is not writable. |
+| storage.compare_exchange_object | CompareExchangeObject → CompareExchangeOutcome | Storage.SetObject | Renamed; same journey; whole writable object and expected revision from GetObject; atomic conditional outcome. |
+| storage.query | Query → QueryCompletion | Storage.ListRows | Renamed; generated_query_batches.rs and generated_query_projection.rs; bounded unary pages replace QueryOutput streaming. |
+| storage.follow_records | FollowRecords → StorageCursor | Storage.WatchRows, records selector | Merged; generated_record_follow.rs; shared boundary/change union. |
+| storage.follow_stream | FollowStream → StorageCursor | Storage.WatchRows, samples selector | Merged; generated_stream_follow.rs; add consistent initial durable boundary. |
+| storage.follow_objects | FollowObjects → StorageCursor | Storage.WatchRows, object-revision selector | Merged; generated_object_follow.rs; preserve revision data. |
+| storage.write_schema | WriteSchema → StorageCursor | Storage.SetSchema | Renamed; operation_schemas.rs; whole small writable schema and expected revision from GetSchema; immutable revision rules remain. |
+| storage.write_records | WriteRecords → WriteCompletion | Storage.AppendRecords | Renamed; generated_record_exchange.rs; bounded unary batch replaces DataBatch/WriteReceipt exchange. |
+| storage.write_streams | WriteStreams → WriteCompletion | Storage.AppendSamples | Renamed; generated_exchange_cancellation.rs; preserve admitted outcomes with receipts. |
+| storage.write_objects | WriteObjects → WriteCompletion | Storage.AppendObjectRevisions | Renamed; generated_object_exchange.rs; bulk ingestion does not replace atomic SetObject. |
+| storage.write_file | WriteFile → FileReference | Storage.CreateFileProduction | Removed; generated_file_upload.rs; maps to the session entry point, then Storage.AppendFileBytes and Storage.PublishFileProduction replace the streaming convenience workflow. |
+| storage.create_file | CreateFile → FileProducer | Storage.CreateFileProduction | Renamed; generated_file_mutations.rs; create the upload/production session. |
+| storage.append_file | AppendFile → FileProducer | Storage.AppendFileBytes | Renamed; same mutations; bounded immutable chunks. |
+| storage.resume_file | ResumeFile → FileProducer | Storage.CreateFileWriter | Renamed; same mutations; fence the previous writer. |
+| storage.finish_file | FinishFile → FileReference | Storage.PublishFileProduction | Renamed; same mutations; durable final reference. |
+| storage.abandon_file | AbandonFile → FileProgress | Storage.DeleteFileProduction | Renamed; same mutations; Delete of the unpublished session abandons it. |
+| storage.delete_file | DeleteFile → StagedFile | Storage.DeleteFile | Kept; same mutations; retained-reader decision remains open. |
+| storage.read_file | ReadFile → FileCompletion | Storage.GetFileBytes | Renamed; generated_read.rs; streaming download removed in favor of bounded unary ranges with offset, maximum bytes, total length and digest. |
+| storage.hash_file | HashFile → FileHash | Storage.GetFileHash | Renamed; examples/schematic/operations/src/transfer/hash.rs and guest SDK call it. |
+| storage.capture_file | CaptureFile → FileReference | Storage.CaptureFile | Kept; generated_capture.rs; independent captured bytes. |
+| storage.follow_file | FollowFile → FileCompletion | Storage.WatchFileBytes | Renamed; generated_capture.rs; FileEvent preserves replacement/truncation. |
+| storage.follow_production | FollowProduction → FileProgress | Storage.WatchFileProduction | Renamed; generated_reconnect.rs and generated_future_offset.rs; writer fencing and retained chunks remain. |
+| storage.list_directory | ListDirectory → DirectoryCompletion | Storage.ListDirectoryEntries | Renamed; generated_directory.rs; bounded DirectoryEntry selection. |
+| storage.watch_directory | WatchDirectory → DirectoryCompletion | Storage.WatchDirectoryEntries | Renamed; same directory test; preserve DirectoryEvent and rescan-required semantics. |
 
-Host.AppendSamples and Storage.AppendSamples have separate namespaces: the former
+Samples.Append and Storage.AppendSamples have separate namespaces: the former
 publishes a declared stream, the latter admits persisted sample batches. They are
-not merged. Locked library namespaces include their group, for example
+not merged. Locked library namespaces include their service, for example
 `harmos.storage.append_records`; the exact namespace transition and fingerprints
 migrate together. Public names in the table do not rename arbitrary
 consumer-defined operation IDs behind their owners' backs.
@@ -493,31 +521,47 @@ visibility, fingerprints, digest, descriptors and failure causes used in admissi
 
 | Added Library Operation | Exposure | Locked Value Contract |
 | --- | --- | --- |
-| GetIndexDefinition | Storage RPC | Whole writable index definition and revision, mirrored by SetIndexDefinition. |
-| GetProjectionDefinition | Storage RPC | Whole writable projection definition and revision, mirrored by SetProjectionDefinition. |
-| GetObject | Storage RPC | Whole writable object and revision, mirrored by SetObject; explicit absence for creation. |
-| GetSchema | Native-only, matching SetSchema | Whole writable schema and revision, mirrored by SetSchema. |
-| GetFileProduction | Storage RPC | Accepted/durable upload progress, writer generation and resume status. |
+| Storage.GetIndexDefinition | Storage RPC | Whole writable index definition and revision, mirrored by SetIndexDefinition. |
+| Storage.GetProjectionDefinition | Storage RPC | Whole writable projection definition and revision, mirrored by SetProjectionDefinition. |
+| Storage.GetObject | Storage RPC | Whole writable object and revision, mirrored by SetObject; explicit absence for creation. |
+| Storage.GetSchema | Native-only, matching SetSchema | Whole writable schema and revision, mirrored by SetSchema. |
+| Storage.GetFileProduction | Storage RPC | Accepted/durable upload progress, writer generation and resume status. |
 
 These small writable parts need no subdivision. Large product configuration or
 artifact metadata must instead map to separately settable named sub-resources,
 each with its own Get/Set and revision, rather than a monolithic replacement.
-Product rename/archive setters map to GetExecution/SetExecution of the whole small
+Product rename/archive setters map to Executions.Get/Executions.Set of the whole small
 writable execution part; rename affects only the selected execution. These product
 methods are not added to the library counts.
+
+### Service Regrouping
+
+Host is replaced by resource services CatalogEntries (List), Invocations
+(Get, Cancel, Watch), Time (Get, Sleep) and Samples (native-only Append).
+Plugin is the singular resource for its own Get, Invoke, Samples and Stop;
+Samples is its one streamed publication-demand part, not a manufactured Watch/List
+pair. Storage remains one mixed-resource service: its resource nouns are useful
+and do not justify splitting it. Its single whole-value parts are Info and
+Capabilities, without a redundant Storage prefix or Get. Index/projection
+GetDefinition/SetDefinition semantics remain exact pairs under their full
+mixed-resource names; file byte Get/Watch and directory List/Watch likewise retain
+nouns because they have multiple modes. No operation or capability is added by
+regrouping. Six method spellings are retained (Invoke, Stop, Sleep,
+AdvanceProjection, DeleteFile, CaptureFile); disposition counts measure spelling,
+while even retained names adopt their new service namespace where applicable.
 
 ### Resulting Counts
 
 | Count Boundary | Present | Locked Candidate |
 | --- | ---: | ---: |
 | Logical operations: plugin carriers plus built-ins | 45 = 4 + 41 | 47 = 4 + 43 |
-| Dispositions of the 45 present rows | 45 | 4 kept, 37 renamed, 3 merged into 1, 1 removed; 42 surviving operations |
+| Dispositions of the 45 present rows | 45 | 6 kept, 35 renamed, 3 merged into 1, 1 removed; 42 surviving operations |
 | Added operations | 0 | 5: four Get mirrors and GetFileProduction |
 | Storage declarations | 34 | 36 = 34 − 2 watch merges − 1 streaming upload + 5 Get operations |
-| Logical service groups when registered | 5 | 3: Plugin, Host, Storage |
-| gRPC Methods at the stated exposure boundary | 64 = 4 + 30 ordinary + 30 managed | 42 = 4 plugin + 6 Host + 32 Storage; no automatic twins |
+| Logical service namespaces when registered | 5 | 6: Plugin, CatalogEntries, Invocations, Time, Samples, Storage; 5 exposed, Samples native-only |
+| gRPC Methods at the stated exposure boundary | 64 = 4 + 30 ordinary + 30 managed | 42 = 4 Plugin + 1 CatalogEntries + 3 Invocations + 2 Time + 32 Storage; no automatic twins |
 | Static Storage subset | 11 of 34 | 32 exposed declarations generated from the authoritative owner |
-| Method request/response messages, all logical operations | No uniform wrapper rule | 94 = 2 × 47, including 84 for the 42 exposed gRPC methods and 10 for 5 native-only operations |
+| Method request/response messages, all logical operations | No uniform wrapper rule | 94 = 47 requests + 47 responses, including 84 for the 42 exposed gRPC methods and 10 for 5 native-only operations |
 | StorageBackend hooks | 58 | 52 |
 | StateBackend hooks | 8 | 8 |
 
@@ -526,24 +570,26 @@ session bindings + 3 exposed Get mirrors = 42. The six session bindings are
 CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter,
 PublishFileProduction and DeleteFileProduction. The streaming ReadFile operation
 is replaced in place by unary ranged GetFileBytes: zero extra gRPC methods. Get/List
-streamed delivery is removed, not retained as an optional twin. Only Watch and
+streamed delivery is removed, not retained as an optional twin. Only Watch semantics (including noun-only streamed parts) and
 plugin carriers stream, subject to explicitly promised managed final-result gRPC methods
 replacing ordinary gRPC methods one for one. Which methods promise those results remains
 open, without changing gRPC method cardinality.
 
 Message counts here count method-specific request/response definitions, qualified
-by namespace (Host and Storage AppendSamples are distinct). They exclude domain
+by service (Samples.Append and Storage.AppendSamples are distinct). They exclude domain
 payloads, shared primitives, nested event/control frames and imported protobuf
 messages; they are not a claimed transitive descriptor census. The complete proto
 inventory task must enumerate those payload definitions and delete unreachable
 messages as part of implementation, with no automatic managed-envelope additions.
-The five native-only operations are Host.AppendSamples, GetStorageInfo, SetSchema,
-GetSchema and DeleteFile. All six upload-session methods are exposed. Storage's
+The five native-only operations are Samples.Append, Storage.Info, Storage.SetSchema,
+Storage.GetSchema and Storage.DeleteFile. All six upload-session methods are exposed. Storage's
 32 exposed plus four native-only declarations account for all 36 declarations.
 
 ### Complete Native Provider Mapping
 
-These 66 present hooks are not additional RPCs. Locked names below are semantic
+These 66 present hooks are not additional RPCs or resource services. The two
+provider traits cover multiple resources; their semantic names retain those
+resource nouns, without repeating the provider's own Storage name. Locked names below are semantic
 names; implementations retain normal language casing. Private provider hooks
 such as explicit flush remain private mechanisms, not public grammar exceptions.
 Every unchanged guarantee remains required even when a hook is renamed or merged.
@@ -551,9 +597,9 @@ Every unchanged guarantee remains required even when a hook is renamed or merged
 | StorageBackend Hook | Locked Name | Disposition and Preserved Responsibility |
 | --- | --- | --- |
 | history | GetHistory | Renamed; store identity/epoch. |
-| open | CreateStorageSession | Renamed; open durable provider. |
+| open | CreateSession | Renamed; open durable provider. |
 | cursor_saved | GetSavedPosition | Renamed; passive saved frontier. |
-| close | DeleteStorageSession | Renamed; settle and release provider. |
+| close | DeleteSession | Renamed; settle and release provider. |
 | write_schemas | AppendSchemas | Renamed; assigned-position replay. |
 | write_objects | AppendObjectRevisions | Renamed; immutable ingestion. |
 | write_records | AppendRecords | Renamed; ordered immutable ingestion. |
@@ -572,7 +618,7 @@ Every unchanged guarantee remains required even when a hook is renamed or merged
 | read_record_views | ListRecordViews | Renamed; optional shared immutable ownership. |
 | seek_records | GetRecordPosition | Renamed; optional ordinal optimization. |
 | work | GetWork | Renamed; instrumentation, not admission policy. |
-| capabilities | GetStorageCapabilities | Renamed; incorporate support flags below. |
+| capabilities | Capabilities | Renamed; incorporate support flags below. |
 | scan_arrow | ListColumnRows | Renamed; response and physical work bounds remain separate. |
 | scan_index | ListIndexEntries | Renamed; ordered seek and source authorization. |
 | register_index | SetIndexDefinition | Renamed; rebuild/atomic revision preconditions. |
@@ -603,9 +649,9 @@ Every unchanged guarantee remains required even when a hook is renamed or merged
 | read_production | GetFileProductionBytes | Renamed; retained production range. |
 | abandon_file | DeleteFileProduction | Renamed; terminate the unpublished session, preserving declared partial-data retention without publication. |
 | delete_file | DeleteFile | Renamed to language form; retained-reader behavior remains open. |
-| supports_file_sessions | GetStorageCapabilities | Merged; no separate boolean owner. |
-| supports_file_deletion | GetStorageCapabilities | Merged; explicit deletion support. |
-| supports_mutation_receipts | GetStorageCapabilities | Merged; explicit durable replay support. |
+| supports_file_sessions | Capabilities | Merged; no separate boolean owner. |
+| supports_file_deletion | Capabilities | Merged; explicit deletion support. |
+| supports_mutation_receipts | Capabilities | Merged; explicit durable replay support. |
 | save_mutations | AppendMutationReceipts | Renamed; persist original mutation outcomes. |
 | recover_mutations | ListMutationReceipts | Renamed; bounded replay recovery. |
 
