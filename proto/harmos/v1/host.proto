@@ -3,6 +3,22 @@ syntax = "proto3";
 package harmos.host.v1;
 
 import "harmos/v1/plugin.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// Resource Services Projected by the Runtime from These Same Contracts.
+service CatalogEntries {
+  rpc List(CatalogEntriesListRequest) returns (CatalogEntriesListResponse);
+}
+service Invocations {
+  rpc Get(InvocationsGetRequest) returns (InvocationsGetResponse);
+  rpc Cancel(InvocationsCancelRequest) returns (InvocationsCancelResponse);
+  rpc Watch(InvocationsWatchRequest) returns (stream InvocationsWatchResponse);
+}
+service Time {
+  rpc Get(harmos.v1.TimeGetRequest) returns (harmos.v1.TimeGetResponse);
+  rpc Sleep(harmos.v1.TimeSleepRequest) returns (harmos.v1.TimeSleepResponse);
+}
 
 // Assignments are frozen for the lifetime of a private guest activation.
 message AssignedOperation {
@@ -15,10 +31,13 @@ message OperationAssignments {
   repeated AssignedOperation operations = 1;
 }
 
-// Controls refer only to instances owned by the authenticated caller.
-message Status { uint64 instance = 1; }
-message Cancel { uint64 instance = 1; }
-message Watch { uint64 instance = 1; }
+// Controls refer only to invocations owned by the authenticated caller.
+message InvocationsGetRequest { uint64 instance = 1; }
+message InvocationsCancelRequest { uint64 instance = 1; string reason = 2; }
+message InvocationsWatchRequest { uint64 instance = 1; }
+message InvocationsGetResponse { InstanceState invocation = 1; }
+message InvocationsCancelResponse { InstanceState invocation = 1; }
+message InvocationsWatchResponse { InstanceState invocation = 1; }
 message InstanceState {
   string phase = 1;
   string outcome = 2;
@@ -26,20 +45,17 @@ message InstanceState {
   uint32 attempt = 4;
 }
 
-// Select one bounded page. Cursors are opaque and must be returned unchanged.
-message Catalog {
+message CatalogEntriesListRequest {
   CatalogKind kind = 1;
   optional string schema = 2;
-  optional string after = 3;
-  optional uint64 rows = 4;
-  optional uint64 bytes = 5;
+  harmos.v1.PageRequest page = 3;
 }
 // Storage catalogs retain their documented JSON storage representation.
-message CatalogPage {
-  // Stored catalog entries use their native storage JSON representation.
+message CatalogEntriesListResponse {
   bytes entries = 1;
-  optional string next = 2;
+  string next_page_token = 2;
   repeated DiscoveredOperation operations = 3;
+  harmos.v1.ReadCut resolved_at = 4;
 }
 enum CatalogKind {
   CATALOG_KIND_OPERATIONS = 0;
@@ -57,7 +73,7 @@ message Protobuf {
   optional string input = 4;
   optional string output = 5;
 }
-message Grpc { string package = 1; string service = 2; string method = 3; }
+message Grpc { string package = 1; string service = 2; string method = 3; bool managed = 4; }
 message Grant { string operation = 1; optional string scope = 2; }
 enum Visibility {
   VISIBILITY_UNSPECIFIED = 0;
@@ -69,7 +85,7 @@ message OperationContract {
   string description = 2;
   Visibility visibility = 3;
   harmos.v1.OperationPolicy policy = 4;
-  // True only for an explicitly idempotent declaration.
+  // True only for an explicitly replay-safe declaration.
   bool replay_safe = 5;
   bytes fingerprint = 6;
   // Absent for native-only declarations with no public protobuf binding.
@@ -86,16 +102,16 @@ message DiscoveredOperation {
 }
 
 // A Stream Publication Uses the Stream's Own Payload Codec.
-message Publish {
+message SamplesAppendRequest {
   string stream = 1;
   optional uint64 sequence = 3;
-  optional int64 published_unix_micros = 4;
+  google.protobuf.Timestamp published_at = 4;
   optional string context = 5;
   bytes payload = 6;
   repeated FollowingRow following = 7;
 }
 message FollowingRow {
   bytes payload = 1;
-  optional int64 published_delta_micros = 2;
+  google.protobuf.Duration published_delta = 2;
 }
-message Published {}
+message SamplesAppendResponse {}

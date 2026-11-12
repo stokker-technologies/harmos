@@ -65,6 +65,7 @@ async fn client_manages_remote_plugins() {
             package: binding.package.to_string(),
             service: binding.service.to_string(),
             method: binding.method.to_string(),
+            managed: binding.managed,
         }),
         ..Default::default()
     };

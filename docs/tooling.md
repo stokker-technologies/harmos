@@ -169,6 +169,7 @@ those message classes, without an intermediate JSON representation:
 from google.protobuf.duration_pb2 import Duration
 from harmos import Context, Operation, Plugin, observer, on_stop, operation
 from thermal.v1.messages_pb2 import Reading, SetTemperature
+from harmos.v1 import plugin_pb2 as wire
 
 READ_SENSOR = Operation("sensor.read", SetTemperature, Reading)
 
@@ -176,10 +177,10 @@ class Chamber:
     def __init__(self):
         self.target = 0.0
 
-    @operation("thermal.set", request=SetTemperature, response=Reading)
+    @operation("thermal.set", request=SetTemperature, response=Reading, visibility=wire.VISIBILITY_PUBLIC)
     async def set_temperature(self, ctx: Context, request: SetTemperature) -> Reading:
         self.target = request.target
-        return await ctx.operation(READ_SENSOR, request)
+        return await ctx.call(READ_SENSOR, request)
 
     @observer("thermal.temperature", row=Reading, interval=Duration(seconds=1))
     async def temperature(self, ctx: Context) -> Reading:
@@ -200,14 +201,15 @@ credentials. Stop awaits cleanup hooks in declaration order, replies, and keeps
 the endpoint serving. `start(address)` returns an endpoint with its bound
 `address` and an async `close()` for applications that own the server lifecycle.
 
-`ctx.operation(contract, request, policy=...)` sends a typed unary child call on
+`ctx.call(contract, request, policy=...)` sends a typed unary child call on
 the parent invocation. Declare every child contract in `requires`. Raise
 `harmos.Failure(harmos.v1.plugin_pb2.Failure(...))` for a structured application
 failure; failures received from children retain every field. `ctx.cancelled()`
-waits for cooperative cancellation. `ctx.set(value)` and `ctx.get(Type)` retain
+waits for cooperative cancellation and returns its reason. Operation visibility defaults
+to Private; expose a handler with explicit Public visibility. `ctx.set(value)` and `ctx.get(Type)` retain
 invocation-local resources; ordinary `self` fields retain the author's instance state.
 
-Declare `harmos.SLEEP` and `harmos.NOW` in `requires` to use
+Declare `harmos.SLEEP` and `harmos.GET_TIME` in `requires` to use
 `await ctx.sleep(Duration(...))` and `await ctx.now()`. These are host child calls;
 the SDK has no local timer. All SDKs fingerprint clock contracts with the shared
 [canonical projection](../proto/harmos/v1/behaviour.md#schema-fingerprints),
@@ -300,7 +302,7 @@ The fixture is `target/cpp/dev/Debug/harmos-cpp-conformance.exe` on Windows and
 ephemeral loopback port and announces `harmos listening 127.0.0.1:PORT`.
 `HARMOS_ADDRESS` overrides its bind address. `--address HOST:PORT` selects remote
 lifecycle: Stop completes cleanup and leaves the server running. Both modes use
-plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::NOW` with
+plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::GET_TIME` with
 `requires_operation`; observers answer ticks and cannot wait. Authors must not
 start untracked background work if they require virtual-time execution.
 

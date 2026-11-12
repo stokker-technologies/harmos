@@ -13,7 +13,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::v1::{Now, Sleep, SleepResponse, Time};
+pub use harmos_protocol::v1::{TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
 
 /* === Imports === */
 
@@ -40,49 +40,49 @@ use crate::{Message, OperationRequest};
 
 /* === Implementations === */
 
-impl Message for Sleep {
+impl Message for TimeSleepRequest {
     fn name() -> String {
-        "harmos.v1.Sleep".into()
+        "harmos.v1.TimeSleepRequest".into()
     }
     fn types() -> FileDescriptorSet {
         harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
-impl Message for SleepResponse {
+impl Message for TimeSleepResponse {
     fn name() -> String {
-        "harmos.v1.SleepResponse".into()
+        "harmos.v1.TimeSleepResponse".into()
     }
     fn types() -> FileDescriptorSet {
         harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
-impl Message for Now {
+impl Message for TimeGetRequest {
     fn name() -> String {
-        "harmos.v1.Now".into()
+        "harmos.v1.TimeGetRequest".into()
     }
     fn types() -> FileDescriptorSet {
         harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
-impl Message for Time {
+impl Message for TimeGetResponse {
     fn name() -> String {
-        "harmos.v1.Time".into()
+        "harmos.v1.TimeGetResponse".into()
     }
     fn types() -> FileDescriptorSet {
         harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
     }
 }
 
-impl OperationRequest for Sleep {
-    type Response = SleepResponse;
-    const ID: &'static str = "harmos.clock.sleep";
+impl OperationRequest for TimeSleepRequest {
+    type Response = TimeSleepResponse;
+    const ID: &'static str = "harmos.time.sleep";
 }
-impl OperationRequest for Now {
-    type Response = Time;
-    const ID: &'static str = "harmos.clock.now";
+impl OperationRequest for TimeGetRequest {
+    type Response = TimeGetResponse;
+    const ID: &'static str = "harmos.time.get";
 }
 
 impl Message for prost_types::Duration {

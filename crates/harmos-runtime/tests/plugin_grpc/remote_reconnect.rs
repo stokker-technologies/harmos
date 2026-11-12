@@ -34,7 +34,7 @@ async fn remote_reconnect_exposes_process_identity_and_retires_old_handles() {
     // Hold A Call Across The Drop
     let entered = remote.hold_description();
     let retained = first.clone();
-    let inflight = tokio::spawn(async move { retained.describe().await });
+    let inflight = tokio::spawn(async move { retained.get().await });
     entered.await.unwrap();
 
     // Reconnect To The Same Process Without Reusing The Old Connection
@@ -47,8 +47,8 @@ async fn remote_reconnect_exposes_process_identity_and_retires_old_handles() {
     assert_eq!(second.description.started_at, first.description.started_at);
     assert_eq!(second.previous_started_at, first.description.started_at);
     assert_eq!(second.description.catalog, first.description.catalog);
-    assert!(first.describe().await.is_err());
-    assert!(second.describe().await.is_ok());
+    assert!(first.get().await.is_err());
+    assert!(second.get().await.is_ok());
 
     // A Restart Exposes Both Start Times In A Fresh Activation
     remote.drop_connection(200).await;
@@ -57,11 +57,11 @@ async fn remote_reconnect_exposes_process_identity_and_retires_old_handles() {
     let third = support::activation(&mut status, 3).await;
     assert_ne!(third.description.started_at, second.description.started_at);
     assert_eq!(third.previous_started_at, second.description.started_at);
-    assert!(second.describe().await.is_err());
+    assert!(second.get().await.is_err());
 
     // Removing A Remote Plugin Calls Stop And Leaves Its Server Running
     attached.stop("Removed").await.unwrap();
     assert_eq!(remote.stops(), 1);
-    assert_eq!(remote.describe().await.started_at, third.description.started_at);
+    assert_eq!(remote.get().await.started_at, third.description.started_at);
     runtime.shutdown().await.unwrap();
 }

@@ -57,7 +57,7 @@ pub struct Receipt {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct DescribeRequest {
+pub struct PluginGetRequest {
     /// Highest revision of harmos.v1 the host implements. Starts at 1 and grows
     /// with each additive release.
     #[prost(uint32, tag = "1")]
@@ -70,7 +70,7 @@ pub struct DescribeRequest {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Description {
+pub struct PluginGetResponse {
     /// Stable plugin identifier, lowercase with dots or underscores.
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
@@ -209,21 +209,21 @@ pub struct Section {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StopRequest {
+pub struct PluginStopRequest {
     #[prost(string, tag = "1")]
     pub reason: ::prost::alloc::string::String,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StopResponse {}
+pub struct PluginStopResponse {}
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct HostFrame {
-    #[prost(oneof = "host_frame::Frame", tags = "1, 2, 3")]
-    pub frame: ::core::option::Option<host_frame::Frame>,
+pub struct PluginInvokeRequest {
+    #[prost(oneof = "plugin_invoke_request::Frame", tags = "1, 2, 3")]
+    pub frame: ::core::option::Option<plugin_invoke_request::Frame>,
 }
-/// Nested message and enum types in `HostFrame`.
-pub mod host_frame {
+/// Nested message and enum types in `PluginInvokeRequest`.
+pub mod plugin_invoke_request {
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Frame {
@@ -237,12 +237,12 @@ pub mod host_frame {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginFrame {
-    #[prost(oneof = "plugin_frame::Frame", tags = "1, 2, 3")]
-    pub frame: ::core::option::Option<plugin_frame::Frame>,
+pub struct PluginInvokeResponse {
+    #[prost(oneof = "plugin_invoke_response::Frame", tags = "1, 2, 3")]
+    pub frame: ::core::option::Option<plugin_invoke_response::Frame>,
 }
-/// Nested message and enum types in `PluginFrame`.
-pub mod plugin_frame {
+/// Nested message and enum types in `PluginInvokeResponse`.
+pub mod plugin_invoke_response {
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Frame {
@@ -373,18 +373,18 @@ pub struct Failure {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PublishFrame {
-    #[prost(oneof = "publish_frame::Frame", tags = "1, 2")]
-    pub frame: ::core::option::Option<publish_frame::Frame>,
+pub struct PluginSamplesRequest {
+    #[prost(oneof = "plugin_samples_request::Frame", tags = "1, 2")]
+    pub frame: ::core::option::Option<plugin_samples_request::Frame>,
 }
-/// Nested message and enum types in `PublishFrame`.
-pub mod publish_frame {
+/// Nested message and enum types in `PluginSamplesRequest`.
+pub mod plugin_samples_request {
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Frame {
         /// First frame.
         #[prost(message, tag = "1")]
-        Open(super::PublishRequest),
+        Open(super::SamplesSelection),
         #[prost(message, tag = "2")]
         Tick(super::Tick),
     }
@@ -399,7 +399,7 @@ pub struct Tick {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PublishRequest {
+pub struct SamplesSelection {
     #[prost(string, tag = "1")]
     pub stream: ::prost::alloc::string::String,
     /// Opaque to Harmos. The product names what the stream belongs to.
@@ -410,7 +410,7 @@ pub struct PublishRequest {
 /// repeated field lets a later SDK group samples without a protocol change.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Samples {
+pub struct PluginSamplesResponse {
     #[prost(message, repeated, tag = "1")]
     pub samples: ::prost::alloc::vec::Vec<Sample>,
 }
@@ -431,19 +431,19 @@ pub struct Sample {
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Sleep {
+pub struct TimeSleepRequest {
     #[prost(message, optional, tag = "1")]
     pub duration: ::core::option::Option<::prost_types::Duration>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct SleepResponse {}
+pub struct TimeSleepResponse {}
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Now {}
+pub struct TimeGetRequest {}
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Time {
+pub struct TimeGetResponse {
     #[prost(message, optional, tag = "1")]
     pub now: ::core::option::Option<::prost_types::Timestamp>,
 }
@@ -615,10 +615,13 @@ pub mod plugin_client {
             self
         }
         /// Identity, start time and catalog. Called once per connection, first.
-        pub async fn describe(
+        pub async fn get(
             &mut self,
-            request: impl tonic::IntoRequest<super::DescribeRequest>,
-        ) -> std::result::Result<tonic::Response<super::Description>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::PluginGetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginGetResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -628,11 +631,9 @@ pub mod plugin_client {
                     )
                 })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Plugin/Describe",
-            );
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugin/Get");
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugin", "Describe"));
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugin", "Get"));
             self.inner.unary(req, path, codec).await
         }
         /// One invocation of one operation. The host opens the call with a Request.
@@ -641,9 +642,11 @@ pub mod plugin_client {
         /// Response. The host may send Cancel at any time.
         pub async fn invoke(
             &mut self,
-            request: impl tonic::IntoStreamingRequest<Message = super::HostFrame>,
+            request: impl tonic::IntoStreamingRequest<
+                Message = super::PluginInvokeRequest,
+            >,
         ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::PluginFrame>>,
+            tonic::Response<tonic::codec::Streaming<super::PluginInvokeResponse>>,
             tonic::Status,
         > {
             self.inner
@@ -660,15 +663,17 @@ pub mod plugin_client {
             req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugin", "Invoke"));
             self.inner.streaming(req, path, codec).await
         }
-        /// One declared stream. The host opens the call with a PublishRequest;
+        /// One declared stream. The host opens the call with a SamplesSelection;
         /// opening it is the demand for the stream and closing it ends the demand.
         /// For a stream with an interval the host then sends one Tick per interval
         /// and the plugin answers each with one sample.
-        pub async fn publish(
+        pub async fn samples(
             &mut self,
-            request: impl tonic::IntoStreamingRequest<Message = super::PublishFrame>,
+            request: impl tonic::IntoStreamingRequest<
+                Message = super::PluginSamplesRequest,
+            >,
         ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::Samples>>,
+            tonic::Response<tonic::codec::Streaming<super::PluginSamplesResponse>>,
             tonic::Status,
         > {
             self.inner
@@ -680,9 +685,9 @@ pub mod plugin_client {
                     )
                 })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugin/Publish");
+            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugin/Samples");
             let mut req = request.into_streaming_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugin", "Publish"));
+            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugin", "Samples"));
             self.inner.streaming(req, path, codec).await
         }
         /// Sent before the host shuts down or removes the plugin. The plugin runs
@@ -690,8 +695,11 @@ pub mod plugin_client {
         /// afterwards; a remote plugin keeps running.
         pub async fn stop(
             &mut self,
-            request: impl tonic::IntoRequest<super::StopRequest>,
-        ) -> std::result::Result<tonic::Response<super::StopResponse>, tonic::Status> {
+            request: impl tonic::IntoRequest<super::PluginStopRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginStopResponse>,
+            tonic::Status,
+        > {
             self.inner
                 .ready()
                 .await
@@ -723,13 +731,16 @@ pub mod plugin_server {
     #[async_trait]
     pub trait Plugin: std::marker::Send + std::marker::Sync + 'static {
         /// Identity, start time and catalog. Called once per connection, first.
-        async fn describe(
+        async fn get(
             &self,
-            request: tonic::Request<super::DescribeRequest>,
-        ) -> std::result::Result<tonic::Response<super::Description>, tonic::Status>;
+            request: tonic::Request<super::PluginGetRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginGetResponse>,
+            tonic::Status,
+        >;
         /// Server streaming response type for the Invoke method.
         type InvokeStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::PluginFrame, tonic::Status>,
+                Item = std::result::Result<super::PluginInvokeResponse, tonic::Status>,
             >
             + std::marker::Send
             + 'static;
@@ -739,29 +750,32 @@ pub mod plugin_server {
         /// Response. The host may send Cancel at any time.
         async fn invoke(
             &self,
-            request: tonic::Request<tonic::Streaming<super::HostFrame>>,
+            request: tonic::Request<tonic::Streaming<super::PluginInvokeRequest>>,
         ) -> std::result::Result<tonic::Response<Self::InvokeStream>, tonic::Status>;
-        /// Server streaming response type for the Publish method.
-        type PublishStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::Samples, tonic::Status>,
+        /// Server streaming response type for the Samples method.
+        type SamplesStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<super::PluginSamplesResponse, tonic::Status>,
             >
             + std::marker::Send
             + 'static;
-        /// One declared stream. The host opens the call with a PublishRequest;
+        /// One declared stream. The host opens the call with a SamplesSelection;
         /// opening it is the demand for the stream and closing it ends the demand.
         /// For a stream with an interval the host then sends one Tick per interval
         /// and the plugin answers each with one sample.
-        async fn publish(
+        async fn samples(
             &self,
-            request: tonic::Request<tonic::Streaming<super::PublishFrame>>,
-        ) -> std::result::Result<tonic::Response<Self::PublishStream>, tonic::Status>;
+            request: tonic::Request<tonic::Streaming<super::PluginSamplesRequest>>,
+        ) -> std::result::Result<tonic::Response<Self::SamplesStream>, tonic::Status>;
         /// Sent before the host shuts down or removes the plugin. The plugin runs
         /// its stop and cleanup hooks and then replies. A managed plugin exits
         /// afterwards; a remote plugin keeps running.
         async fn stop(
             &self,
-            request: tonic::Request<super::StopRequest>,
-        ) -> std::result::Result<tonic::Response<super::StopResponse>, tonic::Status>;
+            request: tonic::Request<super::PluginStopRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::PluginStopResponse>,
+            tonic::Status,
+        >;
     }
     /// Served by every plugin. The host is always the client.
     #[derive(Debug)]
@@ -840,23 +854,23 @@ pub mod plugin_server {
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
-                "/harmos.v1.Plugin/Describe" => {
+                "/harmos.v1.Plugin/Get" => {
                     #[allow(non_camel_case_types)]
-                    struct DescribeSvc<T: Plugin>(pub Arc<T>);
-                    impl<T: Plugin> tonic::server::UnaryService<super::DescribeRequest>
-                    for DescribeSvc<T> {
-                        type Response = super::Description;
+                    struct GetSvc<T: Plugin>(pub Arc<T>);
+                    impl<T: Plugin> tonic::server::UnaryService<super::PluginGetRequest>
+                    for GetSvc<T> {
+                        type Response = super::PluginGetResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::DescribeRequest>,
+                            request: tonic::Request<super::PluginGetRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Plugin>::describe(&inner, request).await
+                                <T as Plugin>::get(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -867,7 +881,7 @@ pub mod plugin_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = DescribeSvc(inner);
+                        let method = GetSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -886,9 +900,11 @@ pub mod plugin_server {
                 "/harmos.v1.Plugin/Invoke" => {
                     #[allow(non_camel_case_types)]
                     struct InvokeSvc<T: Plugin>(pub Arc<T>);
-                    impl<T: Plugin> tonic::server::StreamingService<super::HostFrame>
+                    impl<
+                        T: Plugin,
+                    > tonic::server::StreamingService<super::PluginInvokeRequest>
                     for InvokeSvc<T> {
-                        type Response = super::PluginFrame;
+                        type Response = super::PluginInvokeResponse;
                         type ResponseStream = T::InvokeStream;
                         type Future = BoxFuture<
                             tonic::Response<Self::ResponseStream>,
@@ -896,7 +912,9 @@ pub mod plugin_server {
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<tonic::Streaming<super::HostFrame>>,
+                            request: tonic::Request<
+                                tonic::Streaming<super::PluginInvokeRequest>,
+                            >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
@@ -927,13 +945,15 @@ pub mod plugin_server {
                     };
                     Box::pin(fut)
                 }
-                "/harmos.v1.Plugin/Publish" => {
+                "/harmos.v1.Plugin/Samples" => {
                     #[allow(non_camel_case_types)]
-                    struct PublishSvc<T: Plugin>(pub Arc<T>);
-                    impl<T: Plugin> tonic::server::StreamingService<super::PublishFrame>
-                    for PublishSvc<T> {
-                        type Response = super::Samples;
-                        type ResponseStream = T::PublishStream;
+                    struct SamplesSvc<T: Plugin>(pub Arc<T>);
+                    impl<
+                        T: Plugin,
+                    > tonic::server::StreamingService<super::PluginSamplesRequest>
+                    for SamplesSvc<T> {
+                        type Response = super::PluginSamplesResponse;
+                        type ResponseStream = T::SamplesStream;
                         type Future = BoxFuture<
                             tonic::Response<Self::ResponseStream>,
                             tonic::Status,
@@ -941,12 +961,12 @@ pub mod plugin_server {
                         fn call(
                             &mut self,
                             request: tonic::Request<
-                                tonic::Streaming<super::PublishFrame>,
+                                tonic::Streaming<super::PluginSamplesRequest>,
                             >,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as Plugin>::publish(&inner, request).await
+                                <T as Plugin>::samples(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -957,7 +977,7 @@ pub mod plugin_server {
                     let max_encoding_message_size = self.max_encoding_message_size;
                     let inner = self.inner.clone();
                     let fut = async move {
-                        let method = PublishSvc(inner);
+                        let method = SamplesSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(
@@ -976,16 +996,16 @@ pub mod plugin_server {
                 "/harmos.v1.Plugin/Stop" => {
                     #[allow(non_camel_case_types)]
                     struct StopSvc<T: Plugin>(pub Arc<T>);
-                    impl<T: Plugin> tonic::server::UnaryService<super::StopRequest>
+                    impl<T: Plugin> tonic::server::UnaryService<super::PluginStopRequest>
                     for StopSvc<T> {
-                        type Response = super::StopResponse;
+                        type Response = super::PluginStopResponse;
                         type Future = BoxFuture<
                             tonic::Response<Self::Response>,
                             tonic::Status,
                         >;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::StopRequest>,
+                            request: tonic::Request<super::PluginStopRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {

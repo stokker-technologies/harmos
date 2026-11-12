@@ -156,7 +156,7 @@ async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources
         fail: false,
         before: None,
     };
-    (runtime, PluginManager::new(candidate(text, "Samples")).unwrap(), host)
+    (runtime, PluginManager::new(candidate(text, "PluginSamplesResponse")).unwrap(), host)
 }
 
 fn current(host: &Host) -> PublishedStream {
@@ -200,7 +200,7 @@ async fn changed_row_commits_a_new_current_revision() {
     let old = current(&host);
     let old_revision = old.definition().version();
     host.before = Some(old_revision);
-    manager.reload(candidate(true, "Text Samples"), &mut host).await.unwrap();
+    manager.reload(candidate(true, "Text PluginSamplesResponse"), &mut host).await.unwrap();
     let new = current(&host);
     assert_ne!(new.definition().version(), old_revision);
     assert_eq!(
@@ -251,7 +251,7 @@ async fn label_only_reload_preserves_revision() {
     manager.initialize(&mut host).await.unwrap();
     let old = current(&host);
     host.before = Some(old.definition().version());
-    manager.reload(candidate(false, "Renamed Samples"), &mut host).await.unwrap();
+    manager.reload(candidate(false, "Renamed PluginSamplesResponse"), &mut host).await.unwrap();
     assert_eq!(current(&host).definition().version(), old.definition().version());
     assert_ne!(current(&host).definition().metadata(), old.definition().metadata());
     manager.shutdown(&mut host).await.unwrap();

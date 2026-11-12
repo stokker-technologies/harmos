@@ -39,12 +39,12 @@ async fn managed_sdk_plugin_is_described_and_stopped_with_its_host() {
     assert_eq!(activation.description.id, "placement");
     assert!(activation.description.started_at.is_some());
     assert!(activation.executable_digest.is_some());
-    assert_eq!(activation.describe().await.unwrap(), activation.description);
+    assert_eq!(activation.get().await.unwrap(), activation.description);
 
     // Host Shutdown Runs Stop Hooks And Reaps The Process
     runtime.shutdown().await.unwrap();
     attached.stop("Already Stopped").await.unwrap();
     assert_eq!(std::fs::read(cleaned).unwrap(), b"stopped");
     assert!(!activation.is_connected());
-    assert!(activation.describe().await.is_err());
+    assert!(activation.get().await.is_err());
 }

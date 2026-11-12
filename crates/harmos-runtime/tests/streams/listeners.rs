@@ -463,7 +463,11 @@ fn fact(value: u32) -> Fact {
 
 fn publication() -> harmos_operations::StreamDeclaration {
     harmos_operations::StreamDeclaration {
-        metadata: harmos_runtime::Metadata::new(harmos_runtime::Identifier::new("listener.samples").unwrap(), "Samples", None),
+        metadata: harmos_runtime::Metadata::new(
+            harmos_runtime::Identifier::new("listener.samples").unwrap(),
+            "PluginSamplesResponse",
+            None,
+        ),
         row_metadata: vec![],
         id: "listener.samples".into(),
         window: 512,

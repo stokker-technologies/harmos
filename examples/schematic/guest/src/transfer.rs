@@ -82,7 +82,7 @@ pub fn plugin() -> Plugin {
     .policy(super::POLICY);
     let hash = Operation::new("benchmark.hash.file", async |context: &Context, request: Hash| {
         let request = request.request.ok_or_else(|| Error::Invalid("Hash Request Is Required".into()))?;
-        let response = context.operation(request).await?;
+        let response = context.call(request).await?;
         Ok(schematic_protocol::FileHash {
             read_bytes: response.bytes_read,
             sha256: response.sha256,

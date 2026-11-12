@@ -38,7 +38,7 @@ use crate::{Error, Refusal, operations::Manager};
 /* === Type Aliases === */
 
 pub type HttpFuture = Pin<Box<dyn Future<Output = http::Response<Body>> + Send>>;
-type Items<I, R> = Pin<Box<dyn Stream<Item = Result<Event<StreamItem<I>, crate::operations::Response<R>>, Status>> + Send>>;
+type Items<I> = Pin<Box<dyn Stream<Item = Result<StreamItem<I>, Status>> + Send>>;
 
 /* === Structs === */
 
@@ -143,8 +143,8 @@ impl<O> tonic::server::ServerStreamingService<StreamItem<O::Request>> for Endpoi
 where
     O: crate::operations::RequestShape,
 {
-    type Response = Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>;
-    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
+    type Response = StreamItem<<O::Output as crate::operations::Direction>::Item>;
+    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
     fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
@@ -154,6 +154,13 @@ where
             let instance = authority.submit_charged::<O, _>(request.into_inner(), output).map_err(status)?;
             let operation = instance.operation().to_owned();
             let output = super::stream(instance, items).map(move |result| result.map_err(|error| in_operation(status(error), &operation)));
+            let output = output.filter_map(|event| async move {
+                match event {
+                    Ok(Event::Item(item)) => Some(Ok(item)),
+                    Ok(Event::Completion(_)) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            });
             Ok(Response::new(Box::pin(output) as Self::ResponseStream))
         })
     }
@@ -188,8 +195,8 @@ impl<O> tonic::server::StreamingService<StreamItem<InputEnvelope<O::Request, <O:
 where
     O: crate::operations::RequestShape,
 {
-    type Response = Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>;
-    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item, O::Response>;
+    type Response = StreamItem<<O::Output as crate::operations::Direction>::Item>;
+    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item>;
     type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
     fn call(
         &mut self, request: Request<Streaming<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>>,
@@ -208,6 +215,13 @@ where
             let operation = instance.operation().to_owned();
             let output = super::exchange(instance, input, incoming, output)
                 .map(move |result| result.map_err(|error| in_operation(input_status(error), &operation)));
+            let output = output.filter_map(|event| async move {
+                match event {
+                    Ok(Event::Item(item)) => Some(Ok(item)),
+                    Ok(Event::Completion(_)) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            });
             Ok(Response::new(Box::pin(output) as Self::ResponseStream))
         })
     }
@@ -257,12 +271,10 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<
-            W,
-            O::Request,
-            Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>,
-        >::new(settings.decode, settings.encode)
-        {
+        let codec = match Codec::<W, O::Request, StreamItem<<O::Output as crate::operations::Direction>::Item>>::new(
+            settings.decode,
+            settings.encode,
+        ) {
             Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
@@ -324,7 +336,7 @@ where
         let codec = match Codec::<
             W,
             InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>,
-            Event<StreamItem<<O::Output as crate::operations::Direction>::Item>, crate::operations::Response<O::Response>>,
+            StreamItem<<O::Output as crate::operations::Direction>::Item>,
         >::new(settings.decode, settings.encode)
         {
             Ok(codec) => codec.with_preparation(authority.preparation()),

@@ -183,7 +183,7 @@ impl Manager {
         if policy.retries != crate::operations::RetryPolicy::Never && entry.declared().replay == crate::operations::ReplaySafety::Unknown {
             return Err(Error::InvalidInput {
                 field: "operation retry",
-                reason: "InvokeOperation retries require declared replay safety",
+                reason: "Call retries require declared replay safety",
             });
         }
         let admission = self.lanes.admit(ancestors, lane, bounded)?;

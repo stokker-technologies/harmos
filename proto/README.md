@@ -15,5 +15,5 @@ The behaviour contract includes build and invocation examples for every SDK.
 
 Within `harmos.v1`, evolve additively: never reuse field numbers or enum values,
 reserve removed names and numbers, and preserve existing meanings. Peers advertise
-their highest revision in `Describe`; the effective revision is their minimum.
+their highest revision in `Plugin.Get`; the effective revision is their minimum.
 Unknown protobuf fields are ignored. An incompatible contract needs a new package.

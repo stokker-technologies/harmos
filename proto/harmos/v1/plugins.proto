@@ -47,7 +47,7 @@ message PluginEntry {
   bytes revision = 4;
   PluginState state = 5;
   harmos.v1.Failure failure = 6;
-  harmos.v1.Description description = 7;
+  harmos.v1.PluginGetResponse description = 7;
   bytes catalog_digest = 8;
   PluginProcess process = 9;
   uint64 activation = 10;

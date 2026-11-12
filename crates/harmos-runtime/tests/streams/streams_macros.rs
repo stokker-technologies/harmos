@@ -43,7 +43,7 @@ enum Change {}
 /* === Implementations === */
 
 impl harmos_runtime::streams::StreamRow for PresentedSample {
-    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("presentation.samples", 8).label("Samples").description("Portable samples").tags(&["lab"]).attributes_json(r#"{"acme.owner":{"type":"text","value":"bench"},"config":{"type":"object","value":{"gain":{"type":"integer","value":"2"},"channels":{"type":"array","value":[{"type":"integer","value":"1"},{"type":"integer","value":"2"}]}}}}"#);
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("presentation.samples", 8).label("PluginSamplesResponse").description("Portable samples").tags(&["lab"]).attributes_json(r#"{"acme.owner":{"type":"text","value":"bench"},"config":{"type":"object","value":{"gain":{"type":"integer","value":"2"},"channels":{"type":"array","value":[{"type":"integer","value":"1"},{"type":"integer","value":"2"}]}}}}"#);
 }
 
 impl Transaction<State> for Change {
@@ -234,7 +234,7 @@ fn row_and_stream_values_preserve_presentation() {
     let decoded = PresentedSample::decode(&row.encode()).unwrap();
     assert_eq!(decoded.voltage.to_bits(), row.voltage.to_bits());
     assert_eq!(decoded.sample_index, u64::MAX);
-    assert_eq!(<PresentedSample as StreamSpec>::metadata().label, "Samples");
+    assert_eq!(<PresentedSample as StreamSpec>::metadata().label, "PluginSamplesResponse");
     assert_eq!(<PresentedSample as StreamSpec>::metadata().attributes["acme.owner"], harmos_runtime::Value::Text("bench".into()));
     assert!(matches!(<PresentedSample as StreamSpec>::metadata().attributes["config"], harmos_runtime::Value::Object(_)));
     assert_eq!(<PresentedSample as StreamSpec>::row_metadata()[0].unit.as_deref(), Some("V"));
@@ -249,8 +249,8 @@ fn row_and_stream_values_preserve_presentation() {
 
 #[test]
 fn stream_values_validate_identity_window_and_presentation() {
-    let valid = harmos_runtime::StreamEntry::<PresentedSample>::new("values.samples", 4).label("Samples");
-    assert_eq!(valid.build().unwrap().metadata().label, "Samples");
+    let valid = harmos_runtime::StreamEntry::<PresentedSample>::new("values.samples", 4).label("PluginSamplesResponse");
+    assert_eq!(valid.build().unwrap().metadata().label, "PluginSamplesResponse");
     assert!(matches!(
         harmos_runtime::StreamEntry::<PresentedSample>::new("bad/path", 4).build(),
         Err(harmos_domain::streams::Error::InvalidId { .. })

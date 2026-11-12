@@ -85,21 +85,23 @@ def descriptors(target: Path, alpha: Path, beta: Path) -> None:
             assert request == response
         assert operation.codec == "protobuf"
         assert json.loads(operation.contract)["fingerprint"] == operation.fingerprint
-        assert (
-            operation.run_grpc_path
-            == operation.grpc_path.rsplit("/", 1)[0]
-            + "/Run"
-            + operation.grpc_path.rsplit("/", 1)[1]
-        )
-        assert operation.run_request.DESCRIPTOR.fields_by_name["cancel"].number == 3
-        assert operation.run_request.DESCRIPTOR.fields_by_name["finish"].number == 4
-        assert operation.run_response.DESCRIPTOR.fields_by_name["response"].number == 2
+        assert operation.managed == json.loads(operation.contract)["grpc"]["managed"]
+        if operation.managed:
+            assert operation.rpc_request.DESCRIPTOR.fields_by_name["cancel"].number == 3
+            assert operation.rpc_request.DESCRIPTOR.fields_by_name["finish"].number == 4
+            assert (
+                operation.rpc_response.DESCRIPTOR.fields_by_name["response"].number == 2
+            )
         if operation.input is not None:
             assert operation.input is operation.response
             assert operation.rpc_request.DESCRIPTOR.oneofs_by_name["value"]
         if operation.output is not None:
             assert operation.output is operation.response
-            assert operation.rpc_response.DESCRIPTOR.oneofs_by_name["value"]
+            assert (
+                operation.rpc_response is operation.output
+                if not operation.managed
+                else operation.rpc_response.DESCRIPTOR.oneofs_by_name["value"]
+            )
         if operation.id == "fixture_checkpoint":
             schema = json.loads(operation.contract)["schema"]
             assert len(schema["definitions"]) == 165
@@ -509,11 +511,9 @@ def _graph_projection(projector: Callable[..., Any]) -> None:
         operation.rpc_request.DESCRIPTOR.full_name == "external.v1.PluginExchangeInput"
     )
     item = operation.output(node=value)
-    output = operation.rpc_response(item=item)
-    assert output.WhichOneof("value") == "item"
+    output = operation.rpc_response(node=value)
+    assert output == item
     assert item.WhichOneof("_harmos_variant") == "node"
-    completion = operation.rpc_response(response=operation.response())
-    assert completion.WhichOneof("value") == "response"
 
 
 def _unary_projection(projector: Callable[..., Any]) -> None:
@@ -548,8 +548,7 @@ def _unary_projection(projector: Callable[..., Any]) -> None:
             assert operation.rpc_response is operation.response
         else:
             assert operation.rpc_request is operation.request
-            response = operation.rpc_response(response=operation.response())
-            assert response.WhichOneof("value") == "response"
+            assert operation.rpc_response is operation.output
 
 
 def _reserved_members(projector: Callable[..., Any]) -> None:
@@ -609,6 +608,7 @@ def _contract() -> dict[str, Any]:
             "fingerprint": "01" * 32,
             "codec": "protobuf",
             "grpc": {
+                "managed": False,
                 "package": "external.v1",
                 "service": "Plugin",
                 "method": "Exchange",

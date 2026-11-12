@@ -72,7 +72,7 @@ pub struct Backends {
 
 pub struct Peer {
     pub url: String,
-    pub description: v1::Description,
+    pub description: v1::PluginGetResponse,
     child: tokio::process::Child,
     drain: tokio::task::JoinHandle<()>,
 }
@@ -189,7 +189,7 @@ impl Peer {
         };
         let drain = tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} });
         let mut client = v1::plugin_client::PluginClient::connect(url.clone()).await.unwrap();
-        let description = client.describe(v1::DescribeRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
+        let description = client.get(v1::PluginGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
         Self { url, description, child, drain }
     }
     pub fn is_running(&mut self) -> bool {

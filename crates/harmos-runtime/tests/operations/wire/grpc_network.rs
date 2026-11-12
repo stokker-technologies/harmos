@@ -67,7 +67,7 @@ async fn filesystem_hash_roundtrip() {
 
 #[tokio::test]
 async fn builtin_grpc_roundtrip() {
-    use harmos_operations::lifecycle::{Cancel, InstanceState, Status};
+    use harmos_operations::lifecycle::{Cancel, Get};
 
     #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
@@ -131,8 +131,8 @@ async fn builtin_grpc_roundtrip() {
         .into_iter()
         .filter_map(|method| method.contract.grpc().map(|grpc| grpc.path()))
         .collect::<Vec<_>>();
-    assert!(paths.contains(&"/harmos.host.v1.Operations/Status".to_owned()));
-    assert!(paths.contains(&"/harmos.host.v1.Operations/Cancel".to_owned()));
+    assert!(paths.contains(&"/harmos.host.v1.Invocations/Get".to_owned()));
+    assert!(paths.contains(&"/harmos.host.v1.Invocations/Cancel".to_owned()));
 
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
@@ -140,24 +140,24 @@ async fn builtin_grpc_roundtrip() {
     let id = parked.id();
 
     // An External Caller Neither Sees nor Cancels a Host Instance
-    let status = generated_call::<harmos_protocol::host::Status, InstanceState>(
+    let status = generated_call::<harmos_protocol::host::InvocationsGetRequest, harmos_protocol::host::InvocationsGetResponse>(
         channel.clone(),
-        "/harmos.host.v1.Operations/Status",
-        Status::of(id),
+        "/harmos.host.v1.Invocations/Get",
+        Get::of(id),
     )
     .await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let cancel = generated_call::<harmos_protocol::host::Cancel, InstanceState>(
+    let cancel = generated_call::<harmos_protocol::host::InvocationsCancelRequest, harmos_protocol::host::InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.host.v1.Operations/Cancel",
+        "/harmos.host.v1.Invocations/Cancel",
         Cancel::of(unknown),
     )
     .await;
     assert!(cancel.is_err());
-    let foreign = generated_call::<harmos_protocol::host::Cancel, InstanceState>(
+    let foreign = generated_call::<harmos_protocol::host::InvocationsCancelRequest, harmos_protocol::host::InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.host.v1.Operations/Cancel",
+        "/harmos.host.v1.Invocations/Cancel",
         Cancel::of(id),
     )
     .await;
@@ -165,10 +165,10 @@ async fn builtin_grpc_roundtrip() {
     assert!(!parked.status().cancellation_requested());
 
     // The Submitting Host Reads and Cancels Its Own Instance
-    let owned = runtime.operations.call_protobuf::<Status>(Status::of(id)).await.unwrap();
-    assert_eq!(owned.phase, "running");
+    let owned = runtime.operations.call_protobuf::<Get>(Get::of(id)).await.unwrap();
+    assert_eq!(owned.invocation.unwrap().phase, "running");
     let cancelled = runtime.operations.call_protobuf::<Cancel>(Cancel::of(id)).await.unwrap();
-    assert!(cancelled.cancellation_requested);
+    assert!(cancelled.invocation.unwrap().cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
     crate::support::app::shutdown(&runtime).await.unwrap();
@@ -451,7 +451,6 @@ async fn independent_listeners() {
 
 #[tokio::test]
 async fn stalled_listener_settles() {
-    use harmos_runtime::grpc::OutputEnvelope;
     let stopped = Arc::new(tokio::sync::Semaphore::new(0));
     let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
@@ -494,10 +493,7 @@ async fn stalled_listener_settles() {
             .server_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                    decode, encode,
-                )
-                .unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
             )
             .await
             .unwrap()
@@ -529,7 +525,7 @@ async fn stalled_listener_settles() {
 
 #[tokio::test]
 async fn shutdown_streams_unavailable() {
-    use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
+    use harmos_runtime::grpc::InputEnvelope;
     let uploading = Arc::new(tokio::sync::Notify::new());
     let stopped = Arc::new(tokio::sync::Semaphore::new(0));
     let runtime = crate::support::app::launch::<App>((), (), |setup| {
@@ -565,10 +561,7 @@ async fn shutdown_streams_unavailable() {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                decode, encode,
-            )
-            .unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap()
@@ -858,7 +851,7 @@ async fn native_batch_streaming_preserves_principals() {
 }
 
 async fn streaming_principals(native: bool) {
-    use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
+    use harmos_runtime::grpc::InputEnvelope;
     let behavior = Arc::new(Behavior::uploading(Arc::new(tokio::sync::Notify::new())));
     let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(behavior.clone());
@@ -930,16 +923,12 @@ async fn streaming_principals(native: bool) {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                decode, encode,
-            )
-            .unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap();
     let mut stream = response.into_inner();
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Response(Reply { actor }) if actor == "alice"));
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "alice"));
     assert!(stream.message().await.unwrap().is_none());
     for exchange in [false, true] {
         client.ready().await.unwrap();
@@ -954,18 +943,15 @@ async fn streaming_principals(native: bool) {
                 .streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-                    Codec::<
-                        harmos_runtime::grpc::Transcoded,
-                        OutputEnvelope<Reply, Reply>,
-                        harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>,
-                    >::new(decode, encode)
+                    Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
+                        decode, encode,
+                    )
                     .unwrap(),
                 )
                 .await
                 .unwrap();
             let mut stream = response.into_inner();
-            assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "bob"));
-            assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Response(Reply { actor }) if actor == "bob"));
+            assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "bob"));
             assert!(stream.message().await.unwrap().is_none());
         } else {
             let response = client
@@ -1032,7 +1018,6 @@ async fn configured_tls_serves() {
 #[tokio::test]
 async fn observes_cancel_deadline() {
     tokio::time::timeout(Duration::from_secs(10), async {
-        use harmos_runtime::grpc::OutputEnvelope;
         #[derive(harmos_runtime::Message, Debug, Default)]
         #[harmos_path(harmos_runtime)]
         #[derive(harmos_runtime::Request)]
@@ -1108,19 +1093,17 @@ async fn observes_cancel_deadline() {
             request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
             let (decode, encode) = limits();
             let response = client
-            .server_streaming(
-                request,
-                http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                    decode, encode,
+                .server_streaming(
+                    request,
+                    http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+                    Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)
+                        .unwrap(),
                 )
-                .unwrap(),
-            )
-            .await
-            .unwrap();
+                .await
+                .unwrap();
             let mut stream = response.into_inner();
 
-            assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
+            assert!(stream.message().await.unwrap().is_some());
             assert!(trace.lock().unwrap().is_empty());
 
             if expired {
@@ -1230,7 +1213,7 @@ async fn access_never_grant() {
 
 #[tokio::test]
 async fn reload_certificate_preserves_stream() {
-    use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope, ServerCertificate};
+    use harmos_runtime::grpc::{InputEnvelope, ServerCertificate};
     use harmos_runtime::operations::Response;
     use rustls::pki_types::ServerName;
     let first = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
@@ -1275,12 +1258,10 @@ async fn reload_certificate_preserves_stream() {
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
     let (decode, encode) = limits();
-    let codec =
-        Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, Response<InputEnvelope<Ask, Reply>>>::new(decode, encode)
-            .unwrap();
+    let codec = Codec::<harmos_runtime::grpc::Transcoded, Reply, Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap();
     let mut stream =
         client.streaming(request, http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"), codec).await.unwrap().into_inner();
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "alice"));
 
     // Invalid And Mismatched Material Never Replaces The Active Identity.
     assert!(certificate.reload(b"invalid", b"invalid").is_err());
@@ -1310,13 +1291,12 @@ async fn reload_certificate_preserves_stream() {
 
     certificate.reload(second.cert.pem().as_bytes(), second.signing_key.serialize_pem().as_bytes()).unwrap();
     sender.send(Response::new(InputEnvelope::Item(Reply { actor: "after".into() }))).await.unwrap();
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "alice"));
     let socket = tokio::net::TcpStream::connect(address).await.unwrap();
     let connection = connector.connect(ServerName::try_from("localhost").unwrap(), socket).await.unwrap();
     assert_eq!(connection.get_ref().1.peer_certificates().unwrap()[0], *second.cert.der());
     drop(connection);
     drop(sender);
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Response(Reply { actor }) if actor == "alice"));
     assert!(stream.message().await.unwrap().is_none());
     drop(stream);
     attached.detach().await.unwrap();
@@ -1325,7 +1305,6 @@ async fn reload_certificate_preserves_stream() {
 
 #[tokio::test]
 async fn native_stream_progress_outlives_listener_and_operation_totals() {
-    use harmos_runtime::grpc::OutputEnvelope;
     #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
     #[derive(harmos_runtime::Request)]
@@ -1379,15 +1358,12 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(Progress {})),
             http::uri::PathAndQuery::from_static("/fixture.Deadlines/Progress"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<Progress>>::new(
-                decode, encode,
-            )
-            .unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, u32, harmos_runtime::operations::Response<Progress>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap()
         .into_inner();
-    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(0)));
+    assert_eq!(*output.message().await.unwrap().unwrap(), 0);
     tokio::time::pause();
     // Keep Socket Delivery From Auto-Advancing The Paused Clock.
     let awake = tokio::spawn(async {
@@ -1398,9 +1374,8 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
     for value in 1..=4 {
         tokio::time::advance(Duration::from_millis(1500)).await;
         next.add_permits(1);
-        assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(item) if *item == value));
+        assert_eq!(*output.message().await.unwrap().unwrap(), value);
     }
-    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Response(4)));
     assert!(output.message().await.unwrap().is_none());
     awake.abort();
     let _ = awake.await;
@@ -1410,7 +1385,6 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
 
 #[tokio::test]
 async fn settled_stream_drain_keeps_idle_deadline() {
-    use harmos_runtime::grpc::OutputEnvelope;
     #[derive(harmos_runtime::Message, Debug, Default)]
     #[harmos_path(harmos_runtime)]
     #[derive(harmos_runtime::Request)]
@@ -1475,7 +1449,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(Buffered {})),
             http::uri::PathAndQuery::from_static("/fixture.Deadlines/Buffered"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Vec<u8>, ()>, harmos_runtime::operations::Response<Buffered>>::new(
+            Codec::<harmos_runtime::grpc::Transcoded, Vec<u8>, harmos_runtime::operations::Response<Buffered>>::new(
                 DecodeSettings {
                     message_bytes: capacity,
                     retained_bytes: capacity,
@@ -1491,7 +1465,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
         .unwrap()
         .into_inner();
     finished.notified().await;
-    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
+    assert!(output.message().await.unwrap().is_some());
     tokio::time::pause();
     let awake = tokio::spawn(async {
         loop {

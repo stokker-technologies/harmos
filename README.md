@@ -79,8 +79,8 @@ application revision that produced them.
 
 Plugin and client authors depend on `harmos` and import `harmos::prelude::*`.
 Its protobuf messages, plugin builders and generated-contract clients compile without host code.
-Clients bind `client::Method` to generated application types, then use `Client::call`
-or managed `Client::start`; see the [Rust client example](sdk/rust/examples/client.rs).
+Clients bind `client::Method` to generated application types, then use `Client::call`,
+`Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote `harmos.v1` placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.

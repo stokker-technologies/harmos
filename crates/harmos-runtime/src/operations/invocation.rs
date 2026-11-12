@@ -542,10 +542,12 @@ mod tests {
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         assert_eq!(*runtime.operation(RetryParent { value: 42, override_retry: true }).await.unwrap(), 42);
         assert!(runtime.operation(RetryParent { value: 42, override_retry: false }).await.is_err());
-        // Macro Defaults Retain Existing Transient Retry Semantics Even Without Replay Safety.
-        assert_eq!(*runtime.operation(Uncertain {}).await.unwrap(), 7);
+        // Unknown Replay Safety Refuses Both Declared And Call-Local Retries Before Execution.
+        let before = evidence.lock().unwrap().len();
+        assert!(matches!(runtime.operation(Uncertain {}).await, Err(crate::Error::InvalidInput { field: "operation retry", .. })));
+        assert_eq!(evidence.lock().unwrap().len(), before);
         assert!(runtime.operation(Uncertain {}).retry(crate::RetryPolicy::Never).await.is_err());
-        assert_eq!(*runtime.operation(Uncertain {}).await.unwrap(), 7);
+        assert!(matches!(runtime.operation(Uncertain {}).await, Err(crate::Error::InvalidInput { field: "operation retry", .. })));
         let before = evidence.lock().unwrap().len();
         assert!(matches!(
             runtime.operation(Uncertain {}).retry(retry).await,

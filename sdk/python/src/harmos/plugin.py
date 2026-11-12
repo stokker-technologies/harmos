@@ -173,7 +173,7 @@ class _Fault(Exception):
 
 class _Service(PluginServicer):
     def __init__(self, plugin: Plugin, catalog: wire.Catalog):
-        self.description = wire.Description(
+        self.description = wire.PluginGetResponse(
             id=plugin.id,
             version=plugin.version,
             started_at=STARTED_AT,
@@ -187,7 +187,7 @@ class _Service(PluginServicer):
         self.streams = {definition.id: (definition, handler, observing) for definition, handler, observing in streams}
         self.requires = {requirement.id: requirement.fingerprint for requirement in catalog.requires}
 
-    async def Describe(self, request, context):
+    async def Get(self, request, context):
         if request.revision == 0:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Revision Must Be at Least One")
         return self.description
@@ -200,7 +200,7 @@ class _Service(PluginServicer):
                     await result
         except Exception as error:
             await context.abort(grpc.StatusCode.INTERNAL, str(error))
-        return wire.StopResponse()
+        return wire.PluginStopResponse()
 
     async def Invoke(self, request_iterator, context):
         first = await anext(request_iterator, None)
@@ -237,7 +237,7 @@ class _Service(PluginServicer):
             execution._output = None
             await _release(running, reading)
 
-    async def Publish(self, request_iterator, context):
+    async def Samples(self, request_iterator, context):
         first = await anext(request_iterator, None)
         if first is None or first.WhichOneof("frame") != "open":
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Open Must Be First")
@@ -263,7 +263,7 @@ class _Service(PluginServicer):
                     await context.abort(sample.code, sample.message)
                 sequence += 1
                 sample.sequence = sequence
-                await context.write(wire.Samples(samples=[sample]))
+                await context.write(wire.PluginSamplesResponse(samples=[sample]))
         finally:
             await _release(running, reading)
 
@@ -315,7 +315,7 @@ async def _execute(handler, execution, request, response, output):
     except Exception as error:
         await output.put(_Fault(grpc.StatusCode.INTERNAL, str(error)))
         return
-    await output.put(wire.PluginFrame(response=result))
+    await output.put(wire.PluginInvokeResponse(response=result))
 
 
 async def _read_invoke(input, execution, output):

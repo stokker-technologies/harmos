@@ -46,8 +46,8 @@ pub(super) struct Publications {
 }
 
 struct Demand {
-    output: mpsc::Sender<v1::PublishFrame>,
-    input: tonic::Streaming<v1::Samples>,
+    output: mpsc::Sender<v1::PluginSamplesRequest>,
+    input: tonic::Streaming<v1::PluginSamplesResponse>,
     row: Row,
     interval: Option<Duration>,
     lease: Arc<StreamWriter>,
@@ -93,8 +93,8 @@ impl Publications {
             let activity = clock.activity(format!("Publish {}", stream.id));
             let (output, input) = mpsc::channel(1);
             output
-                .send(v1::PublishFrame {
-                    frame: Some(v1::publish_frame::Frame::Open(v1::PublishRequest {
+                .send(v1::PluginSamplesRequest {
+                    frame: Some(v1::plugin_samples_request::Frame::Open(v1::SamplesSelection {
                         stream: stream.id.clone(),
                         scope: String::new(),
                     })),
@@ -103,7 +103,7 @@ impl Publications {
                 .unwrap();
             let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
             let mut client = v1::plugin_client::PluginClient::new(activation.connection.channel.clone());
-            let input = client.publish(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
+            let input = client.samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
             let lease =
                 publications.registration.leases().iter().find(|lease| lease.stream().definition().id() == stream.id).unwrap().clone();
             let close = publications.close.subscribe();
@@ -213,7 +213,7 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                     let wait = async {
                         tokio::select! {
                             biased;
-                            frame = input.message() => Err(invalid(format!("Unexpected Interval Samples: {frame:?}"))),
+                            frame = input.message() => Err(invalid(format!("Unexpected Interval PluginSamplesResponse: {frame:?}"))),
                             () = next => Ok(()),
                         }
                     };
@@ -222,8 +222,8 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                     next_tick = Some(reading.instant + period);
                     let at = reading.date.into();
                     output
-                        .send(v1::PublishFrame {
-                            frame: Some(v1::publish_frame::Frame::Tick(v1::Tick { at: Some(at) })),
+                        .send(v1::PluginSamplesRequest {
+                            frame: Some(v1::plugin_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
                         })
                         .await
                         .map_err(invalid)?;

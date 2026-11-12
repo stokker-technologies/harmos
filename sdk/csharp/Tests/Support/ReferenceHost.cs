@@ -37,7 +37,7 @@ internal static class ReferenceHost
     (int ExitCode, string Evidence, bool StillServing) result;
     try
     {
-      // Guard Only Transport Setup; Scenario Time Still Comes Exclusively from Host Ticks.
+      // Guard Only Transport Setup; Scenario TimeGetResponse Still Comes Exclusively from Host Ticks.
       using var startup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
       var readiness = await server.StandardOutput.ReadLineAsync(startup.Token) ?? throw new InvalidOperationException("Missing Remote Readiness");
       const string prefix = "harmos listening ";

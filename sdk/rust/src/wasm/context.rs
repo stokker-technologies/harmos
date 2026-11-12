@@ -162,12 +162,12 @@ impl Context {
     }
     /// Publish through the original activation's host-owned stream lease.
     pub async fn publish<T: Message>(&self, stream: &crate::Stream<T>, row: T) -> Result<()> {
-        let request = host::Publish {
+        let request = host::SamplesAppendRequest {
             stream: stream.definition.declaration.id.clone(),
             payload: row.encode_to_vec(),
             ..Default::default()
         };
-        self.operation(request).await?;
+        self.call(request).await?;
         Ok(())
     }
     async fn child_control(&self, instance: u64, action: GuestChildAction) -> Result<Vec<u8>> {
@@ -216,21 +216,21 @@ impl<R: Message> Child<R> {
     }
 }
 
-impl Message for host::Publish {
+impl Message for host::SamplesAppendRequest {
     fn name() -> String {
-        "harmos.host.v1.Publish".into()
+        "harmos.host.v1.SamplesAppendRequest".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         protocol_types(&Self::name())
     }
 }
-impl OperationRequest for host::Publish {
-    type Response = host::Published;
-    const ID: &'static str = "host.publish";
+impl OperationRequest for host::SamplesAppendRequest {
+    type Response = host::SamplesAppendResponse;
+    const ID: &'static str = "harmos.samples.append";
 }
-impl Message for host::Published {
+impl Message for host::SamplesAppendResponse {
     fn name() -> String {
-        "harmos.host.v1.Published".into()
+        "harmos.host.v1.SamplesAppendResponse".into()
     }
     fn types() -> prost_types::FileDescriptorSet {
         protocol_types(&Self::name())

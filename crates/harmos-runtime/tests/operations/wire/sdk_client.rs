@@ -54,7 +54,7 @@ impl ProtobufOperation for Collect {
     type Response = Reply;
     type Endpoints = ProtobufInput<Request>;
     const ID: &'static str = "generated.collect";
-    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Collect"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Collect").managed());
     const POLICY: OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(_: ExecutionContext, request: Request, input: &Self::Endpoints) -> Result<Reply, ServingError> {
@@ -75,7 +75,7 @@ impl ProtobufOperation for Exchange {
     type Response = Reply;
     type Endpoints = (ProtobufInput<Request>, ProtobufOutput<Reply>);
     const ID: &'static str = "generated.exchange";
-    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Exchange"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Exchange").managed());
     const POLICY: OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(_: ExecutionContext, request: Request, endpoints: &Self::Endpoints) -> Result<Reply, ServingError> {
@@ -101,7 +101,7 @@ impl ProtobufOperation for Wait {
     type Response = Reply;
     type Endpoints = ProtobufOutput<Reply>;
     const ID: &'static str = "generated.wait";
-    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Wait"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("generated.host.v1", "Operations", "Wait").managed());
     const POLICY: OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(context: ExecutionContext, request: Request, output: &Self::Endpoints) -> Result<Reply, ServingError> {
@@ -132,7 +132,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     .await
     .unwrap();
     let registration = Registration::new(harmos_runtime::operations::Lane::default())
-        .protobuf::<harmos_operations::host::Catalog>()
+        .protobuf::<harmos_operations::host::List>()
         .unwrap()
         .protobuf::<Echo>()
         .unwrap()
@@ -164,10 +164,13 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
 
     // Discover And Bind The Exact Generated Application Types.
     let page = client
-        .catalog(RpcRequest::new(host::Catalog {
+        .catalog(RpcRequest::new(host::CatalogEntriesListRequest {
             kind: host::CatalogKind::Operations as i32,
-            rows: Some(64),
-            bytes: Some(1024 * 1024),
+            page: Some(harmos_protocol::v1::PageRequest {
+                page_size: 64,
+                max_bytes: 1024 * 1024,
+                page_token: String::new(),
+            }),
             ..Default::default()
         }))
         .await
@@ -210,14 +213,12 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     };
     let response = client.call(&echo, RpcRequest::new(request.clone())).await.unwrap().into_inner();
     assert_eq!(response, expected);
-    let handle = client.start(&echo, RpcRequest::new(request.clone())).await.unwrap();
-    assert_eq!(handle.join().await.unwrap(), expected);
+    assert!(client.start(&echo, RpcRequest::new(request.clone())).await.is_err());
 
     // Receive Output Items And The Distinct Final Response.
-    let mut handle = client.start(&watch, RpcRequest::new(request)).await.unwrap();
+    let mut handle = client.watch(&watch, RpcRequest::new(request)).await.unwrap();
     assert_eq!(handle.next().await.unwrap().unwrap(), expected);
     assert!(handle.next().await.unwrap().is_none());
-    assert_eq!(handle.join().await.unwrap(), expected);
 
     // Upload Input Items, Half-Close Input And Join The Computed Result.
     let mut handle = client.start(&collect, RpcRequest::new(Request { offset: 10, ..Default::default() })).await.unwrap();
@@ -306,16 +307,18 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let error = bounded.call(&echo, RpcRequest::new(compact.clone())).await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
     assert!(error.message().contains("retained_bytes"));
-    let running = bounded.start(&echo, RpcRequest::new(compact.clone())).await.unwrap();
-    assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
-    let mut running = bounded.start(&watch, RpcRequest::new(compact)).await.unwrap();
+    let mut running = bounded.watch(&watch, RpcRequest::new(compact)).await.unwrap();
     assert_eq!(running.next().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
     // Discovery Uses The Same Admission; Smaller Pages Fit The Caller-Owned Bound.
     let error = bounded
-        .catalog(RpcRequest::new(host::Catalog {
+        .catalog(RpcRequest::new(host::CatalogEntriesListRequest {
             kind: host::CatalogKind::Operations as i32,
-            rows: Some(64),
+            page: Some(harmos_protocol::v1::PageRequest {
+                page_size: 64,
+                max_bytes: 1024 * 1024,
+                page_token: String::new(),
+            }),
             ..Default::default()
         }))
         .await

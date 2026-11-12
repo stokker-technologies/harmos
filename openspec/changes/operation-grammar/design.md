@@ -517,6 +517,28 @@ child request/result, parent cancel/child cancel, and publication opening/ticks.
 They are frames, not additional public RPCs. Keep catalog sections, requirements,
 visibility, fingerprints, digest, descriptors and failure causes used in admission.
 
+### Non-Storage Protocol Inventory
+
+The implemented non-storage inventory has 11 logical operations: four Plugin
+carriers, CatalogEntries.List, Invocations.Get/Cancel/Watch, Time.Get/Sleep, and
+native-only Samples.Append. Ten are exposed, with 20 method-specific messages;
+Samples.Append adds its two native-only messages. All 22 wrappers use the
+service-qualified names in the mapping. Time messages live in plugin.proto so
+plugin SDKs retain a protocol-only clock dependency; host.proto declares the Time
+service using those messages.
+
+Shared messages are History, Position, ResourceRevision, ReadCut, PageRequest,
+Receipt, OperationPolicy, RetryPolicy and Failure. Plugin domain/control messages
+are Catalog, OperationContract, Requirement, StreamDeclaration, Section, Request,
+Cancel, Response, ChildRequest/ChildCancel/ChildResponse, SamplesSelection, Tick
+and Sample. Host domain messages are AssignedOperation/OperationAssignments,
+InstanceState, Protobuf, Grpc, Grant, DiscoveredOperation and FollowingRow.
+Visibility, Classification and CatalogKind are enums; carrier frame alternatives
+and Failure details are nested payloads. Imported descriptors, Duration and
+Timestamp remain protobuf-owned. Generated reflection and descriptor sets retain
+only the roots reachable by each operation's canonical fingerprint projection.
+The storage inventory is owned by its separate implementation task.
+
 ### Added Get Mirrors and Product Mapping
 
 | Added Library Operation | Exposure | Locked Value Contract |
@@ -792,7 +814,7 @@ message PluginEntry {
   bytes revision = 4;
   PluginState state = 5;
   harmos.v1.Failure failure = 6;
-  harmos.v1.Description description = 7;
+  harmos.v1.PluginGetResponse description = 7;
   bytes catalog_digest = 8;
   PluginProcess process = 9;
   uint64 activation = 10;
@@ -923,6 +945,8 @@ which plugins a unit of work uses remain entirely with the product.
 
 ## Open Questions
 
+Implementation decision (3.11): no library built-in promises a cooperative final result after cancellation: actions use unary receipts/status and watches end observation; explicit application `Grpc::managed()` declarations replace the canonical method. The Collect and Exchange fixtures promise the accepted-input aggregate, and Wait promises its typed cancellation summary; those three fixture declarations exercise the opt-in contract.
+
 Implementation decision (4.1): Rust, Python, C# and C++ promise the same native plugin semantics, proven by the common conformance suite; Wasm remains Rust-only.
 
 Implementation decision (4.2): the generic managed application client remains Rust-only; other SDKs use generated application gRPC clients.
@@ -930,21 +954,15 @@ Implementation decision (4.2): the generic managed application client remains Ru
 Only these questions remain open. Settle each when implementation reaches its
 owner; they do not block the other locked work. Each has a corresponding task.
 
-1. **Four-Language Plugin Parity:** settle the semantic parity promise for Rust,
-   Python, C# and C++.
-2. **Generic Managed Clients:** settle whether generic managed-client coverage is
-   Rust-only or includes the other languages.
-3. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
+1. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
    expiry, provenance and retained composite selections across restart. Arbitrary
    earlier positions remain refused; product presentation retention stays there.
-4. **Exact Watch Semantics:** settle opening snapshot/boundary, event/progress and
+2. **Exact Watch Semantics:** settle opening snapshot/boundary, event/progress and
    gap/resynchronization rules, including external file/directory and runtime
    sources. Watch shapes earlier in this document are candidate details
    for that task, not an assertion that these exact semantics are settled.
-5. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
+3. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
    supported backends before implementing deletion changes.
-6. **Cooperative Final Results:** enumerate which operations actually promise a
-   final result after cancellation; only those get a managed replacement gRPC method.
 
 ## Migration Plan
 

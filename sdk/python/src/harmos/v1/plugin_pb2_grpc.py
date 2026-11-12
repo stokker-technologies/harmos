@@ -35,25 +35,25 @@ class PluginStub:
         Args:
             channel: A grpc.Channel.
         """
-        self.Describe = channel.unary_unary(
-                '/harmos.v1.Plugin/Describe',
-                request_serializer=harmos_dot_v1_dot_plugin__pb2.DescribeRequest.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_plugin__pb2.Description.FromString,
+        self.Get = channel.unary_unary(
+                '/harmos.v1.Plugin/Get',
+                request_serializer=harmos_dot_v1_dot_plugin__pb2.PluginGetRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginGetResponse.FromString,
                 _registered_method=True)
         self.Invoke = channel.stream_stream(
                 '/harmos.v1.Plugin/Invoke',
-                request_serializer=harmos_dot_v1_dot_plugin__pb2.HostFrame.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginFrame.FromString,
+                request_serializer=harmos_dot_v1_dot_plugin__pb2.PluginInvokeRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginInvokeResponse.FromString,
                 _registered_method=True)
-        self.Publish = channel.stream_stream(
-                '/harmos.v1.Plugin/Publish',
-                request_serializer=harmos_dot_v1_dot_plugin__pb2.PublishFrame.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_plugin__pb2.Samples.FromString,
+        self.Samples = channel.stream_stream(
+                '/harmos.v1.Plugin/Samples',
+                request_serializer=harmos_dot_v1_dot_plugin__pb2.PluginSamplesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginSamplesResponse.FromString,
                 _registered_method=True)
         self.Stop = channel.unary_unary(
                 '/harmos.v1.Plugin/Stop',
-                request_serializer=harmos_dot_v1_dot_plugin__pb2.StopRequest.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_plugin__pb2.StopResponse.FromString,
+                request_serializer=harmos_dot_v1_dot_plugin__pb2.PluginStopRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginStopResponse.FromString,
                 _registered_method=True)
 
 
@@ -61,7 +61,7 @@ class PluginServicer:
     """Served by every plugin. The host is always the client.
     """
 
-    def Describe(self, request, context):
+    def Get(self, request, context):
         """Identity, start time and catalog. Called once per connection, first.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -78,8 +78,8 @@ class PluginServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def Publish(self, request_iterator, context):
-        """One declared stream. The host opens the call with a PublishRequest;
+    def Samples(self, request_iterator, context):
+        """One declared stream. The host opens the call with a SamplesSelection;
         opening it is the demand for the stream and closing it ends the demand.
         For a stream with an interval the host then sends one Tick per interval
         and the plugin answers each with one sample.
@@ -100,25 +100,25 @@ class PluginServicer:
 
 def add_PluginServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'Describe': grpc.unary_unary_rpc_method_handler(
-                    servicer.Describe,
-                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.DescribeRequest.FromString,
-                    response_serializer=harmos_dot_v1_dot_plugin__pb2.Description.SerializeToString,
+            'Get': grpc.unary_unary_rpc_method_handler(
+                    servicer.Get,
+                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginGetRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_plugin__pb2.PluginGetResponse.SerializeToString,
             ),
             'Invoke': grpc.stream_stream_rpc_method_handler(
                     servicer.Invoke,
-                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.HostFrame.FromString,
-                    response_serializer=harmos_dot_v1_dot_plugin__pb2.PluginFrame.SerializeToString,
+                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginInvokeRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_plugin__pb2.PluginInvokeResponse.SerializeToString,
             ),
-            'Publish': grpc.stream_stream_rpc_method_handler(
-                    servicer.Publish,
-                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.PublishFrame.FromString,
-                    response_serializer=harmos_dot_v1_dot_plugin__pb2.Samples.SerializeToString,
+            'Samples': grpc.stream_stream_rpc_method_handler(
+                    servicer.Samples,
+                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginSamplesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_plugin__pb2.PluginSamplesResponse.SerializeToString,
             ),
             'Stop': grpc.unary_unary_rpc_method_handler(
                     servicer.Stop,
-                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.StopRequest.FromString,
-                    response_serializer=harmos_dot_v1_dot_plugin__pb2.StopResponse.SerializeToString,
+                    request_deserializer=harmos_dot_v1_dot_plugin__pb2.PluginStopRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_plugin__pb2.PluginStopResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -133,7 +133,7 @@ class Plugin:
     """
 
     @staticmethod
-    def Describe(request,
+    def Get(request,
             target,
             options=(),
             channel_credentials=None,
@@ -146,9 +146,9 @@ class Plugin:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.v1.Plugin/Describe',
-            harmos_dot_v1_dot_plugin__pb2.DescribeRequest.SerializeToString,
-            harmos_dot_v1_dot_plugin__pb2.Description.FromString,
+            '/harmos.v1.Plugin/Get',
+            harmos_dot_v1_dot_plugin__pb2.PluginGetRequest.SerializeToString,
+            harmos_dot_v1_dot_plugin__pb2.PluginGetResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -174,8 +174,8 @@ class Plugin:
             request_iterator,
             target,
             '/harmos.v1.Plugin/Invoke',
-            harmos_dot_v1_dot_plugin__pb2.HostFrame.SerializeToString,
-            harmos_dot_v1_dot_plugin__pb2.PluginFrame.FromString,
+            harmos_dot_v1_dot_plugin__pb2.PluginInvokeRequest.SerializeToString,
+            harmos_dot_v1_dot_plugin__pb2.PluginInvokeResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -187,7 +187,7 @@ class Plugin:
             _registered_method=True)
 
     @staticmethod
-    def Publish(request_iterator,
+    def Samples(request_iterator,
             target,
             options=(),
             channel_credentials=None,
@@ -200,9 +200,9 @@ class Plugin:
         return grpc.experimental.stream_stream(
             request_iterator,
             target,
-            '/harmos.v1.Plugin/Publish',
-            harmos_dot_v1_dot_plugin__pb2.PublishFrame.SerializeToString,
-            harmos_dot_v1_dot_plugin__pb2.Samples.FromString,
+            '/harmos.v1.Plugin/Samples',
+            harmos_dot_v1_dot_plugin__pb2.PluginSamplesRequest.SerializeToString,
+            harmos_dot_v1_dot_plugin__pb2.PluginSamplesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -228,8 +228,8 @@ class Plugin:
             request,
             target,
             '/harmos.v1.Plugin/Stop',
-            harmos_dot_v1_dot_plugin__pb2.StopRequest.SerializeToString,
-            harmos_dot_v1_dot_plugin__pb2.StopResponse.FromString,
+            harmos_dot_v1_dot_plugin__pb2.PluginStopRequest.SerializeToString,
+            harmos_dot_v1_dot_plugin__pb2.PluginStopResponse.FromString,
             options,
             channel_credentials,
             insecure,

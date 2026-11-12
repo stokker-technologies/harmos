@@ -16,7 +16,7 @@
 /* === Imports === */
 
 use crate::{Context, Result};
-use harmos_protocol::v1::{self, child_response, plugin_frame};
+use harmos_protocol::v1::{self, child_response, plugin_invoke_response};
 
 // Standard Library Imports
 
@@ -70,8 +70,8 @@ impl Context {
         for (call, send) in pending {
             if let Some(output) = &self.output {
                 output
-                    .send(Ok(v1::PluginFrame {
-                        frame: Some(plugin_frame::Frame::ChildCancel(v1::ChildCancel { call })),
+                    .send(Ok(v1::PluginInvokeResponse {
+                        frame: Some(plugin_invoke_response::Frame::ChildCancel(v1::ChildCancel { call })),
                     }))
                     .await
                     .map_err(|_| tonic::Status::unavailable("Host Closed"))?;

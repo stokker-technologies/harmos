@@ -34,16 +34,32 @@ internal sealed class ConformancePlugin
       .Operation(new Operation<Graph, Value>("conformance.projected", Visibility.Public),
           (context, request) => Task.FromResult(request.Tail?.Value ?? new Value()))
       .Operation(new Operation<Value, Value>("conformance.clock", Visibility.Public), ClockCall)
+      .Operation(new Operation<Value, Value>("conformance.private"), Echo)
+      .Operation(new Operation<Value, Value>("conformance.resources", Visibility.Public, replaySafe: true), Resources)
+      .Operation(new Operation<Value, Value>("conformance.cancel_reason", Visibility.Public), CancelReason)
       .Requires(hostEcho)
       .Requires(hostPending)
       .Requires(hostFail)
       .Requires(new Operation<Graph, Value>("conformance.host.schema", Visibility.Public))
       .Requires(Clock.Sleep)
-      .Requires(Clock.Now)
+      .Requires(Clock.GetTime)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
       .Stream<Value>("conformance.device", Device)
       .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "harmos.conformance.v1.Graph.interval")
       .Section(new Graph { Interval = new Duration { Seconds = 2 } });
+
+  private async Task<Value> Resources(Context context, Value request)
+  {
+    context.Set(request.Clone());
+    await context.CallAsync(hostEcho, request);
+    return context.Get<Value>();
+  }
+
+  private async Task<Value> CancelReason(Context context, Value request)
+  {
+    await context.CallAsync(hostEcho, request);
+    return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
+  }
 
   private async Task<Value> ClockCall(Context context, Value request)
   {
@@ -71,7 +87,7 @@ internal sealed class ConformancePlugin
 
   private async Task<Value> Policy(Context context, Value request)
   {
-    var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 } } });
+    var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } });
     return await context.CallAsync(hostEcho, first);
   }
 

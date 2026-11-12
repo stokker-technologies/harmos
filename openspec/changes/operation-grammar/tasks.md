@@ -16,14 +16,15 @@ The existing `grpc-plugins` implementing marker covers this combined delivery.
 
 ## 1. Shared Primitives and Nightly Benchmark Cases
 
-- [ ] 1.1 Implement shared positions `(history, sequence)`, composite cuts, one bounded paging shape, protobuf Timestamp/Duration, response wrappers, Failure, retry policy and accepted/durable receipts in `proto/harmos/v1/` and `crates/harmos-protocol/`; verify focused schema, encoding and fingerprint checks.
+- [x] 1.1 Implement shared positions `(history, sequence)`, composite cuts, one bounded paging shape, protobuf Timestamp/Duration, response wrappers, Failure, retry policy and accepted/durable receipts in `proto/harmos/v1/` and `crates/harmos-protocol/`; verify focused schema, encoding and fingerprint checks.
 - [ ] 1.2 Add reusable `integration/durable_lag` to the Nightly benchmark set with `small_high_rate`, `multi_megabyte` and `mixed` backend loads; report acceptance-to-durability p50, p95 and maximum per load, backlog and synchronous commit contribution, comparing each p95 with 250 ms independently of payload size. Use benchmarks, never wall-clock test assertions; if missed, try smaller and earlier size-triggered flushes first and remeasure. Accepted-data snapshots remain the named fallback, not built.
 - [ ] 1.3 Add Nightly `integration/file_transfer` benchmark cases for large-file unary upload/download through client and plugin carriers, reporting bytes, configured chunk/range sizes and throughput; measure before deleting streaming transfers, without timing assertions or new consumer budgets.
 
 ## 2. Complete Proto Inventory Without Automatic Twins
 
 - [ ] 2.1 Enumerate the complete proto inventory from the mapping: 47 logical operations, 36 storage declarations, 42 exposed gRPC methods in 5 services (6 logical services, including native-only Samples) and 94 method messages: 47 requests and 47 responses (84 exposed, 10 native-only); enumerate shared/domain/nested/imported payloads separately and verify every declaration and consumer is accounted for before handlers. Apply bare verbs, noun-only single-mode parts, multimode verb-plus-part names and service-qualified wrappers throughout; regroup Host into CatalogEntries, Invocations, Time and Samples while retaining mixed-resource Storage. Include Storage.GetIndexDefinition, GetProjectionDefinition, GetObject and native GetSchema as exact writable-value/revision mirrors of Set, plus GetFileProduction status.
-- [ ] 2.2 Replace unconditional twins in runtime gRPC projection and packaging/client generators with explicit canonical gRPC methods; Get/List are unary, streams serve Watch and plugin carriers, and a managed final-result gRPC method replaces its ordinary gRPC method only where promised. Verify focused descriptor and generation checks, with no unreachable automatic envelopes in the final inventory.
+- [x] 2.1.1 Inventory and migrate the 11 non-storage logical operations, 10 exposed methods and 22 service-qualified wrappers; regenerate protocol messages, reflection and descriptors and prove generated drift plus SDK conformance. Storage's inventory remains with 2.3.
+- [x] 2.2 Replace unconditional twins in runtime gRPC projection and packaging/client generators with explicit canonical gRPC methods; Get/List are unary, streams serve Watch and plugin carriers, and a managed final-result gRPC method replaces its ordinary gRPC method only where promised. Verify focused descriptor and generation checks, with no unreachable automatic envelopes in the final inventory.
 - [ ] 2.3 Generate the 32 exposed Storage methods and SDK bindings from one authoritative declaration owner, with matching request/response wrappers; preserve grants and the five native-only operations in design.md. Update `proto/harmos/v1/behaviour.md` with the locked grammar and policy.
 
 ## 3. Handlers, Native Storage and Transfers
@@ -38,15 +39,16 @@ The existing `grpc-plugins` implementing marker covers this combined delivery.
 - [ ] 3.8 Settle issued-position and page-token validity, provenance, composite selection and restart behavior when implementing retention; record the decision in design.md and implement explicit expiry/unavailability without arbitrary earlier reads.
 - [ ] 3.9 Settle exact Watch opening, events, progress, gaps and resynchronization at the Watch task; record the decision in design.md, implement one WatchRows selector for records/samples/object revisions, and preserve distinct file/directory/production watches with durable versus accepted facts. Verify deterministic opening-race, filter-progress and gap behavior.
 - [ ] 3.10 Settle deletion while readers retain content before changing DeleteFile or reclamation; record the decision in design.md and verify it across supported backends without implicit data-loss migrations.
-- [ ] 3.11 Enumerate operations promising a cooperative final result after cancellation at the managed-gRPC method task; record the decision in design.md and implement one replacement gRPC method per such promise. Preserve running-only Cancel, queued refusal naming Cancel, distinct Stop and typed settlement with focused tests.
+- [x] 3.11 Enumerate operations promising a cooperative final result after cancellation at the managed-gRPC method task; record the decision in design.md and implement one replacement gRPC method per such promise. Preserve running-only Cancel, queued refusal naming Cancel, distinct Stop and typed settlement with focused tests.
 
 ## 4. Library SDKs, Plugin Hosts and Conformance
 
-- [ ] 4.1 Settle four-language plugin semantic parity when SDK migration reaches it; record the promise in design.md and inventory Rust, Python, C# and C++ peers without moving library ownership.
-- [ ] 4.2 Settle generic managed-client language coverage at its SDK task; record whether coverage is Rust-only or includes other languages, without treating current scope as a parity promise.
+- [x] 4.1 Settle four-language plugin semantic parity when SDK migration reaches it; record the promise in design.md and inventory Rust, Python, C# and C++ peers without moving library ownership.
+- [x] 4.2 Settle generic managed-client language coverage at its SDK task; record whether coverage is Rust-only or includes other languages, without treating current scope as a parity promise.
 - [ ] 4.3 Migrate retained SDKs and host plugin carriers to proto-derived short method names without a handwritten layer, service-qualified wrappers, fingerprints and one policy vocabulary; preserve independent protocol/SDK/conformance ownership without product vocabulary, with product SDKs building on them. Verify focused catalog, child-call, failure, scope, clock and call-local policy tests and update language guides.
-- [ ] 4.4 Align Python's default to Private with explicit Public intent, add C# invocation-local resources and reason-bearing cancellation, and correct the stale draft proto header; verify focused behavioral checks and update affected guides.
-- [ ] 4.5 Preserve interval/device publication, activation fencing, disconnect isolation and cooperative settlement; migrate `tools/conformance/`, SDK fixtures, native/guest examples and affected tests, verifying each with focused project tasks.
+- [x] 4.3.1 Migrate non-storage SDK contracts, plugin carriers, requirements, clock fingerprints and call-local policy in all four languages; preserve declared guest replay safety and prove the 23-case common conformance suite, Rust clock/resources and invalid-completion journeys, runtime retry policy and named native/guest lifecycle/publication journeys. Storage bindings remain coupled to 2.3.
+- [x] 4.4 Align Python's default to Private with explicit Public intent, add C# invocation-local resources and reason-bearing cancellation, and correct the stale draft proto header; verify focused behavioral checks and update affected guides.
+- [x] 4.5 Preserve interval/device publication, activation fencing, disconnect isolation and cooperative settlement; migrate `tools/conformance/`, SDK fixtures, native/guest examples and affected tests, verifying each with focused project tasks.
 
 ## 5. Product Handoff, Command-Line Tool and Desktop
 
@@ -54,10 +56,12 @@ The existing `grpc-plugins` implementing marker covers this combined delivery.
 - [ ] 5.2 After product SDK migration, migrate the product command-line tool to the pinned grammar, unary transfers, receipts and issued-position paging; verify focused command behavior in the product repository.
 - [ ] 5.3 After the command-line migration, migrate the product desktop host and regenerate its client against the same library revision; verify focused product interactions without adding product vocabulary to this library.
 - [ ] 5.4 Review README, `docs/product-guide.md`, `docs/storage.md`, language guides, generator examples and capability contracts; update affected claims and links with each owning change, leaving unrelated migrations alone.
+- [x] 5.4.1 Review and update the non-storage README, product/tooling/schematic guides, protocol behavior and SDK examples for explicit managed methods, renamed operations, short SDK calls and canonical shared policy. Storage guidance remains with its owner.
 
 ## 6. Delete Superseded Code Last and Close Source
 
 - [ ] 6.1 After every affected consumer migrates and the Nightly large-file throughput case has been measured, delete streaming uploads/downloads, superseded gRPC methods, policies, adapters, generators, envelopes, fixtures and guidance; verify no automatic twins or streaming Get/List remain, retaining Watch, plugin carriers and explicitly promised managed replacements.
+- [x] 6.1.1 Retire the domain publication wire-tag oracles for the replaced scalar timestamp format; retain the runtime publication journey covering payloads and batch metadata with Timestamp and Duration.
 - [ ] 6.2 Verify the complete inventory is closed in one combined candidate with all writers handed off, focused tests and owned format/language checks complete; only then declare source closure. Final validation remains separate.
 
 ## 7. Final Validation
@@ -80,9 +84,7 @@ The existing `grpc-plugins` implementing marker covers this combined delivery.
 
 ## Workflow Follow-Up
 
-- Plugin manager integration awaits the core worker's canonical Watch transport in `crates/harmos-runtime/src/grpc/{native,projection}.rs`; the current native output envelope cannot decode as `PluginsWatchResponse`. Published content already uses the shared file-session owner; the storage worker's unary service/client join remains in task 8.4. At the native storage join, migrate the registry's `read_object` call to `get_object` in `plugin/manager/persistence.rs` with the owning hook rename. Keep the canonical manager contract and client stories unchanged at these joins.
-- The global Python check requires the formatter correction in `sdk/python/src/harmos/conformance/__main__.py`, already present in the storage checkpoint. Keep that unowned formatter change with its owner when joining the branches.
-- The global Rust check also requires the core policy migration in `examples/schematic/guest/src/lib.rs`: its removed `OperationPolicy.attempts` and `backoff` fields must become `retries`. Native workspace checking passes; this unowned Wasm example keeps the complete check open.
+- Published content uses the shared file-session owner; the storage worker's unary service/client join remains in task 8.4. At the native storage join, migrate the registry's `read_object` call to `get_object` in `plugin/manager/persistence.rs` with the owning hook rename, and move story uploads to the unary client operations. The manager continues to consume the same published-content source.
 
 - The manager implementation and local commits are authorized. Push, review creation, publication and specification lifecycle commands remain outside this task's authorization.
 - Keep final validation unchecked until the combined implementation proof is actually performed; documentation validation alone does not close it.

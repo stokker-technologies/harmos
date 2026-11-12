@@ -23,7 +23,7 @@ use std::{
 
 // Third Party Imports
 use futures_util::{StreamExt, stream};
-use harmos_protocol::v1::{self, host_frame, plugin_frame};
+use harmos_protocol::v1::{self, plugin_invoke_request, plugin_invoke_response};
 use tokio::sync::mpsc;
 
 // Local Imports
@@ -157,8 +157,8 @@ async fn invoke(
             scope: host.borrow().context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
         };
         output
-            .send(v1::HostFrame {
-                frame: Some(host_frame::Frame::Request(request)),
+            .send(v1::PluginInvokeRequest {
+                frame: Some(plugin_invoke_request::Frame::Request(request)),
             })
             .await
             .unwrap();
@@ -175,7 +175,7 @@ async fn invoke(
         enum Event {
             Cancel,
             Child(u64, String, crate::Result<Vec<u8>>),
-            Frame(Result<Option<v1::PluginFrame>, tonic::Status>),
+            Frame(Result<Option<v1::PluginInvokeResponse>, tonic::Status>),
         }
         loop {
             let has_children = !children.is_empty();
@@ -195,8 +195,8 @@ async fn invoke(
                         reason: format!("Operation {} Cancelled", binding.contract.id),
                     };
                     let _ = output
-                        .send(v1::HostFrame {
-                            frame: Some(host_frame::Frame::Cancel(cancel)),
+                        .send(v1::PluginInvokeRequest {
+                            frame: Some(plugin_invoke_request::Frame::Cancel(cancel)),
                         })
                         .await;
                 }
@@ -211,13 +211,13 @@ async fn invoke(
                     };
                     let child = v1::ChildResponse { call, result: Some(result) };
                     let _ = output
-                        .send(v1::HostFrame {
-                            frame: Some(host_frame::Frame::Child(child)),
+                        .send(v1::PluginInvokeRequest {
+                            frame: Some(plugin_invoke_request::Frame::Child(child)),
                         })
                         .await;
                 }
                 Event::Frame(frame) => match frame.map_err(CallError::Transport)?.and_then(|frame| frame.frame) {
-                    Some(plugin_frame::Frame::Response(response)) => {
+                    Some(plugin_invoke_response::Frame::Response(response)) => {
                         if input.message().await.map_err(CallError::Transport)?.is_some() {
                             return Err(CallError::Protocol("Frame After Terminal Response".into()));
                         }
@@ -227,7 +227,7 @@ async fn invoke(
                             None => Err(CallError::Protocol("Missing Response Result".into())),
                         };
                     }
-                    Some(plugin_frame::Frame::Child(child)) => {
+                    Some(plugin_invoke_response::Frame::Child(child)) => {
                         if !seen.insert(child.call) {
                             return Err(CallError::Protocol(format!("Duplicate Child ID {}", child.call)));
                         }
@@ -245,7 +245,7 @@ async fn invoke(
                             (call, operation, result)
                         }));
                     }
-                    Some(plugin_frame::Frame::ChildCancel(child)) => {
+                    Some(plugin_invoke_response::Frame::ChildCancel(child)) => {
                         if let Some(control) = controls.get(&child.call) {
                             cancelled_children.insert(child.call);
                             control.request_cancel();

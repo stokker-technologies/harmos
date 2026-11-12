@@ -53,17 +53,17 @@ struct Invoke;
 #[derive(Clone, PartialEq, prost::Message)]
 struct Opening {
     #[prost(message, optional, tag = "1")]
-    request: Option<host::Catalog>,
+    request: Option<host::CatalogEntriesListRequest>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
 struct Frame {
     #[prost(message, optional, tag = "3")]
-    unknown: Option<host::CatalogPage>,
+    unknown: Option<host::CatalogEntriesListResponse>,
     #[prost(message, optional, tag = "1")]
-    item: Option<host::CatalogPage>,
+    item: Option<host::CatalogEntriesListResponse>,
     #[prost(message, optional, tag = "2")]
-    response: Option<host::CatalogPage>,
+    response: Option<host::CatalogEntriesListResponse>,
 }
 
 /* === Enums === */
@@ -111,13 +111,13 @@ impl tonic::server::StreamingService<Opening> for Invoke {
                 Ok(Frame {
                     unknown: None,
                     item: None,
-                    response: Some(host::CatalogPage::default()),
+                    response: Some(host::CatalogEntriesListResponse::default()),
                 })
             };
             let item = || {
                 Ok(Frame {
                     unknown: None,
-                    item: Some(host::CatalogPage::default()),
+                    item: Some(host::CatalogEntriesListResponse::default()),
                     response: None,
                 })
             };
@@ -127,19 +127,19 @@ impl tonic::server::StreamingService<Opening> for Invoke {
                 2 => vec![terminal(), item()],
                 3 => vec![item()],
                 6 => vec![Ok(Frame {
-                    unknown: Some(host::CatalogPage::default()),
+                    unknown: Some(host::CatalogEntriesListResponse::default()),
                     item: None,
                     response: None,
                 })],
                 7 => vec![Ok(Frame {
                     unknown: None,
-                    item: Some(host::CatalogPage::default()),
-                    response: Some(host::CatalogPage::default()),
+                    item: Some(host::CatalogEntriesListResponse::default()),
+                    response: Some(host::CatalogEntriesListResponse::default()),
                 })],
                 5 => vec![Ok(Frame {
                     unknown: None,
                     item: None,
-                    response: Some(host::CatalogPage {
+                    response: Some(host::CatalogEntriesListResponse {
                         entries: vec![0; 2048],
                         ..Default::default()
                     }),
@@ -176,11 +176,11 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
         input_bytes: NonZeroUsize::new(1024).unwrap(),
     };
     let client = Client::new(channel, settings).unwrap();
-    let descriptors = host::Catalog::default().descriptor().parent_pool().encode_to_vec();
+    let descriptors = host::CatalogEntriesListRequest::default().descriptor().parent_pool().encode_to_vec();
     let protobuf = host::Protobuf {
         descriptors,
-        request: "harmos.host.v1.Catalog".into(),
-        response: "harmos.host.v1.CatalogPage".into(),
+        request: "harmos.host.v1.CatalogEntriesListRequest".into(),
+        response: "harmos.host.v1.CatalogEntriesListResponse".into(),
         input: None,
         output: None,
     };
@@ -194,14 +194,15 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
             package: "fault.v1".into(),
             service: "Operations".into(),
             method: "Read".into(),
+            managed: true,
         }),
         ..Default::default()
     };
-    let method = Method::<host::Catalog, host::CatalogPage>::new(contract).unwrap();
+    let method = Method::<host::CatalogEntriesListRequest, host::CatalogEntriesListResponse>::new(contract).unwrap();
 
     // Refuse Missing, Duplicate, Post-Terminal And Undeclared Item Frames.
     for kind in 0..4 {
-        let request = host::Catalog { kind, ..Default::default() };
+        let request = host::CatalogEntriesListRequest { kind, ..Default::default() };
         let mut running = client.start(&method, Request::new(request)).await.unwrap();
         let error = running.next().await.unwrap_err();
         assert_eq!(error.code(), tonic::Code::DataLoss);
@@ -209,19 +210,19 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     }
 
     // Refuse Unknown Envelope Variants And Honor Protobuf's Last Oneof Variant.
-    let running = client.start(&method, Request::new(host::Catalog { kind: 6, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 6, ..Default::default() })).await.unwrap();
     assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::DataLoss);
-    let running = client.start(&method, Request::new(host::Catalog { kind: 7, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 7, ..Default::default() })).await.unwrap();
     assert!(running.join().await.is_ok());
 
     // Preserve A Terminal gRPC Status And Its Binary Details.
-    let running = client.start(&method, Request::new(host::Catalog { kind: 4, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 4, ..Default::default() })).await.unwrap();
     let error = running.join().await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::PermissionDenied);
     assert_eq!(error.details(), b"evidence");
 
     // Refuse A Frame Larger Than The Consumer's Wire Budget.
-    let running = client.start(&method, Request::new(host::Catalog { kind: 5, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 5, ..Default::default() })).await.unwrap();
     assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::OutOfRange);
 
     // Close The Peer After Every Response Has Settled.

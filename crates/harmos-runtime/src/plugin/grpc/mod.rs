@@ -52,7 +52,7 @@ type Outcome = Result<(), Arc<Error>>;
 #[derive(Clone)]
 pub struct Activation {
     pub number: u64,
-    pub description: v1::Description,
+    pub description: v1::PluginGetResponse,
     pub previous_started_at: Option<prost_types::Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
     pub process_id: Option<u32>,
@@ -144,7 +144,7 @@ impl Activation {
     }
 
     /// Inspect This Connection Only; An Old Handle Never Follows Reconnection.
-    pub async fn describe(&self) -> Result<v1::Description, Error> {
+    pub async fn get(&self) -> Result<v1::PluginGetResponse, Error> {
         self.connected(describe(&self.connection)).await
     }
 
@@ -256,10 +256,10 @@ impl Attached {
 
 /* === Private Functions === */
 
-async fn describe(connection: &Connection) -> Result<v1::Description, Error> {
+async fn describe(connection: &Connection) -> Result<v1::PluginGetResponse, Error> {
     let mut client = PluginClient::new(connection.channel.clone());
     client
-        .describe(v1::DescribeRequest {
+        .get(v1::PluginGetRequest {
             revision: 1,
             host: "harmos".into(),
             host_version: env!("CARGO_PKG_VERSION").into(),
@@ -285,7 +285,7 @@ async fn connect(
         || !valid_time
         || description.catalog.is_none()
     {
-        return Err(Error::Invalid("Invalid Plugin Description".into()));
+        return Err(Error::Invalid("Get Plugin returned an invalid response".into()));
     }
     catalog::verify(description.catalog.as_ref().expect("description catalog was checked"))?;
     Ok(Activation {
@@ -357,7 +357,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             let streams_closed = clock.timeout_at(deadline, publications.close()).await;
             let mut client = PluginClient::new(activation.connection.channel.clone());
             let result = clock
-                .timeout_at(deadline, client.stop(v1::StopRequest { reason }))
+                .timeout_at(deadline, client.stop(v1::PluginStopRequest { reason }))
                 .await
                 .map_err(|_| Error::Timeout("Stop"))
                 .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));
