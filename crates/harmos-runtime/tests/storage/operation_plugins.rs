@@ -17,7 +17,6 @@ mod generated_guest_hash;
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::sync::Arc;
 
 // Third Party Imports
 
@@ -26,8 +25,7 @@ use super::{Fixture, config};
 use harmos_operations::execution::operations::ProtobufHost;
 use harmos_operations::inventory::contracts::Required;
 use harmos_operations::plugin::Grant;
-use harmos_operations::storage::{WriteRecords, context::ListRows};
-use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
+use harmos_operations::storage::context::{AppendRecords, ListRows};
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
 use harmos_runtime::guest::{
@@ -176,7 +174,7 @@ async fn write_grants_enforced() {
         callers: BTreeMap::new(),
     };
     let definitions = PluginDefinitions::new(
-        [plugin("writer", vec![required::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
+        [plugin("writer", vec![required::<AppendRecords>(vec![Grant::of(AppendRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
         [],
     )
     .unwrap();
@@ -187,44 +185,28 @@ async fn write_grants_enforced() {
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
     super::writes::seed(&fixture).await;
-    let mut exchange = writer
-        .exchange_protobuf::<WriteRecords>(
-            harmos_protocol::storage::WriteRecords { scope: None },
-            super::writes::settings(),
-            super::writes::settings(),
-        )
-        .unwrap();
-    exchange.send(super::writes::batch(1, "bench").into()).await.unwrap();
-    let cursor = loop {
-        let receipt = exchange.next().await.unwrap().unwrap();
-        if let Some(WriteReceipt::Durable(receipt)) = receipt.receipt {
-            break Arc::new(harmos_runtime::storage::StorageCursor::try_from(receipt.cursor.unwrap()).unwrap());
-        }
+    let mutation = harmos_storage::MutationId {
+        window: fixture.storage.mutation_window().unwrap().id,
+        key: Identifier::new("authorized-records").unwrap(),
     };
-    // A Second Destination On The Same Invocation Needs Its Own Grant.
-    exchange.send(super::writes::batch(2, "other").into()).await.unwrap();
-    exchange.finish_input().unwrap();
-    while exchange.next().await.unwrap().is_some() {}
-    let failure = exchange.join().await.unwrap_err();
-    assert!(
-        matches!(
-            &failure,
-            Error::OperationFailed { source, .. }
-                if matches!(source.downcast_ref::<harmos_operations::Error>(), Some(harmos_operations::Error::Access(cause))
-                    if matches!(cause.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. })))
-        ),
-        "unexpected write failure: {failure:?}"
-    );
+    let request = harmos_protocol::context::StorageAppendRecordsRequest {
+        mutation: Some(mutation.clone().into()),
+        scope: None,
+        batch: Some(super::writes::batch(1, "bench").into()),
+    };
+    let accepted = writer.call_protobuf::<AppendRecords>(request.clone()).await.unwrap().receipt.unwrap();
+    let cursor = fixture.storage.cursor_accepted();
+    fixture.storage.wait_mutation_durable(&mutation, &cursor).await.unwrap();
+    let completed = writer.call_protobuf::<AppendRecords>(request.clone()).await.unwrap().receipt.unwrap();
+    assert_eq!(completed.accepted_at, accepted.accepted_at);
+    assert_eq!(completed.durable_at, completed.accepted_at);
+    let mut other = request.clone();
+    other.mutation.as_mut().unwrap().key = "unauthorized-destination".into();
+    other.batch = Some(super::writes::batch(2, "other").into());
+    assert!(writer.call_protobuf::<AppendRecords>(other).await.is_err());
     assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
-    assert_eq!(fixture.storage.cursor_accepted(), *cursor);
-    assert!(matches!(
-        bystander.exchange_protobuf::<WriteRecords>(
-            harmos_protocol::storage::WriteRecords { scope: None },
-            super::writes::settings(),
-            super::writes::settings()
-        ),
-        Err(Error::OperationUnauthorized { .. })
-    ));
+    assert_eq!(fixture.storage.cursor_accepted(), cursor);
+    assert!(matches!(bystander.call_protobuf::<AppendRecords>(request).await, Err(Error::OperationUnauthorized { .. })));
 
     manager.shutdown(&mut host).await.unwrap();
     fixture.finish().await;

@@ -17,7 +17,6 @@ mod records;
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
@@ -26,21 +25,12 @@ use arrow_schema::{DataType, Field, Fields, Schema};
 
 // Local Imports
 use super::{Fixture, config};
-use harmos_operations::storage::{WriteRecords, WriteStreams};
-use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
+use harmos_operations::storage::{AppendRecords, AppendSamples};
 use harmos_runtime::Identifier;
-use harmos_runtime::operations::StreamSettings;
 use harmos_runtime::storage::arrow::ArrowBatch;
 use harmos_storage::writes::DataBatch;
 
 /* === Public Functions === */
-
-pub(super) fn settings() -> StreamSettings {
-    StreamSettings {
-        items: NonZeroUsize::new(4).unwrap(),
-        bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-    }
-}
 
 pub(super) fn batch(sequence: u64, destination: &str) -> DataBatch {
     let fields: Fields = vec![Field::new("value", DataType::UInt64, false)].into();

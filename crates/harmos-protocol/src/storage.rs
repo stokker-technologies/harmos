@@ -878,57 +878,6 @@ pub struct DataBatch {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct BatchReceipt {
-    #[prost(uint64, tag = "1")]
-    pub sequence: u64,
-    #[prost(message, optional, tag = "2")]
-    pub cursor: ::core::option::Option<StorageCursor>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct WriteReceipt {
-    #[prost(oneof = "write_receipt::Receipt", tags = "1, 2")]
-    pub receipt: ::core::option::Option<write_receipt::Receipt>,
-}
-/// Nested message and enum types in `WriteReceipt`.
-pub mod write_receipt {
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Receipt {
-        #[prost(message, tag = "1")]
-        Accepted(super::BatchReceipt),
-        #[prost(message, tag = "2")]
-        Durable(super::BatchReceipt),
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct WriteCompletion {
-    #[prost(uint64, tag = "1")]
-    pub batches: u64,
-    #[prost(message, optional, tag = "2")]
-    pub cursor: ::core::option::Option<StorageCursor>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct WriteRecords {
-    #[prost(string, optional, tag = "1")]
-    pub scope: ::core::option::Option<::prost::alloc::string::String>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct WriteStreams {
-    #[prost(string, optional, tag = "1")]
-    pub scope: ::core::option::Option<::prost::alloc::string::String>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct WriteObjects {
-    #[prost(string, optional, tag = "1")]
-    pub scope: ::core::option::Option<::prost::alloc::string::String>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct WriteFile {
     #[prost(message, optional, tag = "1")]
     pub metadata: ::core::option::Option<FileMetadata>,

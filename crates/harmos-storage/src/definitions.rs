@@ -329,7 +329,8 @@ impl State {
         if !matches!(&receipt.value, MutationValue::Definition {kind,name,..} if *kind == work.input.kind() && name == work.input.name()) {
             return Err(invalid("provider changed the definition result"));
         }
-        self.receipts.complete(&receipt.mutation, receipt.value);
+        self.receipts.complete(&receipt.mutation, receipt.value.clone());
+        self.receipts.saved(std::slice::from_ref(&receipt));
         self.definition_mutations.remove(&receipt.mutation);
         self.reserved -= work.bytes;
         self.reserved_batches -= 1;

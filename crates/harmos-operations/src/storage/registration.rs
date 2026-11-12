@@ -17,7 +17,7 @@
 
 use super::{
     CaptureFile, DeleteFile, FollowFile, FollowObjects, FollowProduction, FollowRecords, FollowStream, HashFile, ListDirectory, ReadFile,
-    StorageStatus, WatchDirectory, WriteFile, WriteObjects, WriteRecords, WriteSchema, WriteStreams,
+    StorageStatus, WatchDirectory, WriteFile, WriteSchema,
 };
 
 // Standard Library Imports
@@ -47,6 +47,14 @@ pub fn storage_catalog() -> crate::execution::operations::Catalog {
 pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
     let mut batch = crate::execution::__private::Catalog::new();
     batch.operations.extend([
+        crate::execution::operations::OperationFactory::protobuf::<super::AppendRecords>().expect("AppendRecords declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AppendSamples>().expect("AppendSamples declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AppendObjectRevisions>()
+            .expect("AppendObjectRevisions declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AppendRecords>().expect("AppendRecords declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AppendSamples>().expect("AppendSamples declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AppendObjectRevisions>()
+            .expect("AppendObjectRevisions declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::context::ListProjectionRows>()
             .expect("ListProjectionRows declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::ListProjectionRows>().expect("ListProjectionRows declaration"),
@@ -111,9 +119,6 @@ pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
         crate::execution::operations::OperationFactory::protobuf::<super::context::SetObject>().expect("SetObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteStreams>().expect("WriteStreams declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteObjects>().expect("WriteObjects declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowRecords>().expect("FollowRecords declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowStream>().expect("FollowStream declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowObjects>().expect("FollowObjects declaration"),

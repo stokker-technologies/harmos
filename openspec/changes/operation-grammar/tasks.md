@@ -190,3 +190,16 @@ and the complete built-in mapping.
   proof: `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
   (one passed), including socket/client and plugin-child replay and old-cut reads.
   Schema mirrors and common list paging still keep 3.3/3.2 open.
+
+- Storage Append migration: separate client/context AppendRecords, AppendSamples
+  and AppendObjectRevisions declarations share bounded unary handlers. Superseded
+  streaming declarations, exchange implementation, DTOs and consumers are removed.
+  Durable completion includes acknowledged replay-ledger persistence; admitted
+  data/receipts survive lost delivery. Capacity retirement refuses removed IDs.
+  Focused proofs (one each):
+  `storage::operations::writes::records::record_append_receipts`,
+  `storage::operations::writes::cancellation::admitted_samples_survive_lost_delivery`,
+  `storage::operations::objects::exchange::object_append_saves`,
+  `storage::operations::plugins::write_grants_enforced`, and
+  `receipts::tests::admission_evicts_completed_receipts_without_losing_active_owners`.
+  Log-line Append belongs to its core service owner; task 3.4 stays open for that join.

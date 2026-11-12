@@ -865,3 +865,75 @@ impl ProtobufOperation for SetObject {
         super::native::read_response(&context, Self::Response { outcome: Some(outcome) })
     }
 }
+
+/* === Immutable Append === */
+
+pub struct AppendRecords;
+impl ProtobufOperation for AppendRecords {
+    type Request = wire::StorageAppendRecordsRequest;
+    type Response = wire::StorageAppendRecordsResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.append_records";
+    const GRPC: Option<crate::operations::Grpc> = Some(Grpc::new("harmos.v1", "Storage", "AppendRecords"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::append::grant(Self::ID, request.batch.as_ref())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let receipt =
+            super::append::append(&context, Self::ID, super::append::Kind::Records, request.mutation, request.scope, request.batch).await?;
+        super::native::read_response(&context, Self::Response { receipt: Some(receipt) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+pub struct AppendSamples;
+impl ProtobufOperation for AppendSamples {
+    type Request = wire::StorageAppendSamplesRequest;
+    type Response = wire::StorageAppendSamplesResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.append_samples";
+    const GRPC: Option<crate::operations::Grpc> = Some(Grpc::new("harmos.v1", "Storage", "AppendSamples"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::append::grant(Self::ID, request.batch.as_ref())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let receipt =
+            super::append::append(&context, Self::ID, super::append::Kind::Samples, request.mutation, request.scope, request.batch).await?;
+        super::native::read_response(&context, Self::Response { receipt: Some(receipt) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+pub struct AppendObjectRevisions;
+impl ProtobufOperation for AppendObjectRevisions {
+    type Request = wire::StorageAppendObjectRevisionsRequest;
+    type Response = wire::StorageAppendObjectRevisionsResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.storage.append_object_revisions";
+    const GRPC: Option<crate::operations::Grpc> = Some(Grpc::new("harmos.v1", "Storage", "AppendObjectRevisions"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::append::grant(Self::ID, request.batch.as_ref())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let receipt =
+            super::append::append(&context, Self::ID, super::append::Kind::Objects, request.mutation, request.scope, request.batch).await?;
+        super::native::read_response(&context, Self::Response { receipt: Some(receipt) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}

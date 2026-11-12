@@ -1403,3 +1403,22 @@ this does not revive its old opaque page token. Provider/recovery internals reta
 their explicit durable-cut APIs; public client/context continuations use this issuer.
 There is no snapshot of accepted data. The file-range handler now reuses the same
 retained durable snapshot for all ranges instead of opening/copying it per call.
+
+### Append Receipt Completion and Capacity Retirement
+
+The three storage Append families admit one bounded immutable batch and return
+its fixed request identity and accepted position immediately. Replaying the same
+normalized input observes the same admission; durable completion advances only
+after both the primary data and the replay ledger have acknowledged persistence.
+The storage worker owns this second stage after caller loss. No read requests it.
+Native `wait_mutation_durable` observes that owner without scheduling a flush;
+wire callers resend their original Append. An unacknowledged ledger response
+cannot populate `durable_at`, even if the data frontier already covers the batch.
+
+Unsaved cursor receipts are retained until this stage settles. At capacity,
+evicting a completed replay entry rotates the issuance window: retained identities
+continue to replay, while an absent identity from the retired window refuses
+rather than becoming fresh work. New mutations obtain the current window from
+Capabilities. Restart restores retained acknowledged receipts; missing identities
+from a previous manager window refuse. This preserves explicit expiry and the
+consumer's bounded receipt capacity without an unbounded tombstone collection.

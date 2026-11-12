@@ -230,30 +230,36 @@ content. Optional resumable sessions and deletion remain separate advertised
 capabilities; they are not implied by `sqlite`. The existing file state/recovery
 backend and its journal/checkpoint format are retained.
 
-The native storage interface and `harmos.storage.v1.Storage` operations expose all five
+The native storage interface and the two face-local Storage services expose these
 capabilities. Register `builtins::storage_catalog()` and supply a storage manager with
 `setup.settings().storage(&storage)`. The runtime supplies the retained snapshot registry,
 bounded by the consumer's `StorageRequestSettings.max_active_queries`; backend construction
 and every row/byte/work allowance remain consumer-owned. Embedders composing resources
 directly also supply `harmos_operations::storage::SavedSnapshots::new(capacity)`.
 
-Ordinary `storage.query` retains its bounded row fallback and existing query behavior.
-`WriteObjects`, `WriteRecords` and `WriteStreams` retain streamed batch admission and
-accepted-before-durable receipts. Conditional updates use the separate
+Ordinary native queries retain their bounded row fallback. Public `ListRows` uses
+bounded unary pages. `AppendRecords`, `AppendSamples` and `AppendObjectRevisions` take
+one bounded immutable batch and a mutation identity. Their replies report the original
+accepted position immediately. Resend the same normalized request to observe completion:
+`durable_at` appears only after the data and its replay receipt are acknowledged durable.
+The storage worker owns both stages after caller loss; latest reads never request them.
+The identity and accepted position stay fixed as completion advances. Native consumers can
+wait passively with `wait_mutation_durable`; client resending stays client-owned.
+Changing data under the identity conflicts. Receipt capacity eviction retires unknown IDs
+from that retry window; retained IDs still replay, while new work obtains a current window
+from Capabilities. Conditional updates use the separate
 `Storage.SetObject` operation, which validates the declared object catalog,
 schema graph, payload and object key before one atomic admission. Independent calls do not
 form a cross-method transaction. File sessions, recovery and receipt retention remain intact.
 
 ## Generated Storage Clients
 
-Rust exposes generated messages at `harmos::storage`; each new request implements
-`OperationRequest` and works with the existing invocation context. External clients bind
-`client::Method<Request, Response>` to the discovered operation contract, then use
-`Client::start` for managed cancellation and settlement. The generated unary gRPC client is
-also available at `harmos::storage::storage_client::StorageClient`. Python uses
-`harmos.v1.storage_pb2` and `storage_pb2_grpc.StorageStub`; C# generates
-`Harmos.Storage.V1.Storage.StorageClient`; C++ generates `harmos::storage::v1::Storage`.
-The SDKs depend only on protocol and transport support.
+Shared storage payloads live under `harmos.storage.v1`. The Rust client wrappers are
+in `harmos_protocol::v1`, and context wrappers in `harmos_protocol::context`. Each face's
+generated methods use its own descriptors and fingerprints. Python's client service is
+`harmos.v1.storage_pb2_grpc.StorageStub`; the context declarations are under
+`harmos.context.v1`. SDK root generation and audience-specific stubs follow the protocol
+owner's descriptor table.
 
 Client storage uses `harmos.v1.Storage`; invocation context uses
 `harmos.context.v1.Storage`. Each face owns its service-qualified method wrappers
@@ -271,6 +277,8 @@ and grant identity. Both faces delegate to the same storage handlers.
 | AdvanceProjection | Checked materialization at a retained cut |
 | GetProjectionStatus | Selected revision and newest readable or issued exact frontier |
 | ListProjectionRows | Bounded exact-frontier page and composite cut |
+| GetObject / SetObject | Complete object, opaque revision and atomic applied/conflict outcome |
+| AppendRecords / AppendSamples / AppendObjectRevisions | Bounded immutable ingestion and accepted/durable receipts |
 
 A missing `at` selects the current durable position immediately. Projection status
 without a frontier selects its newest readable materialization; an explicit frontier

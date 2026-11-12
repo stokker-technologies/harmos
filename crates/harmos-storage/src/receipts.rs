@@ -242,6 +242,22 @@ impl Receipts {
         self.unsaved.insert(id.clone());
     }
 
+    pub(super) fn pending_positions(&self, through: &super::StorageCursor) -> Vec<MutationReceipt> {
+        self.snapshot(Some(through)).into_iter().filter(|receipt| matches!(receipt.value, MutationValue::Cursor(_))).collect()
+    }
+    fn position_saved(&self, id: &MutationId, position: &super::StorageCursor) -> Result<bool> {
+        let Some(entry) = self.entries.get(id) else { return Err(expired()) };
+        if self.execution.now() >= entry.deadline {
+            return Err(expired());
+        }
+        if !matches!(&entry.value, Some(MutationValue::Cursor(saved)) if saved == position) {
+            return Err(Error::InvalidInput {
+                field: "Append receipt",
+                reason: "mutation owns a different accepted position",
+            });
+        }
+        Ok(!self.unsaved.contains(id))
+    }
     pub(super) fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -254,8 +270,19 @@ impl Receipts {
 
     // Drop The Oldest Completed Receipt; Pending Receipts Still Await Their Outcome.
     fn evict_oldest(&mut self) -> Result<()> {
-        let index = self.order.iter().position(|id| self.entries.get(id).is_some_and(Entry::reclaimable)).ok_or_else(exhausted)?;
+        let index = self
+            .order
+            .iter()
+            .position(|id| {
+                self.entries.get(id).is_some_and(|entry| {
+                    entry.reclaimable() && !(self.unsaved.contains(id) && matches!(entry.value, Some(MutationValue::Cursor(_))))
+                })
+            })
+            .ok_or_else(exhausted)?;
+        // Retained IDs Still Replay; An Evicted ID Must Never Become Fresh Work.
+        let next_window = epoch()?;
         let id = self.order.remove(index).expect("ordered receipt");
+        self.window = next_window;
         self.entries.remove(&id).expect("ordered receipt");
         self.unsaved.remove(&id);
 
@@ -364,6 +391,47 @@ impl Receipts {
 
 impl StorageManager {
     #[tracing::instrument(name = "storage.receipts.recover_receipts", level = "debug", skip_all)]
+    pub fn mutation_durable(&self, mutation: &MutationId, position: &super::StorageCursor) -> Result<bool> {
+        let state = self.inner.state.lock().unwrap();
+        Ok(state.status.saved.covers(position)? && state.receipts.position_saved(mutation, position)?)
+    }
+    pub async fn wait_mutation_durable(&self, mutation: &MutationId, position: &super::StorageCursor) -> Result<()> {
+        let mut changed = self.inner.changed.subscribe();
+        loop {
+            {
+                let state = self.inner.state.lock().unwrap();
+                if state.status.saved.covers(position)? && state.receipts.position_saved(mutation, position)? {
+                    return Ok(());
+                }
+                if let Some(source) = &state.status.failure {
+                    return Err(Error::Persistence { source: source.clone() });
+                }
+                if !state.status.running {
+                    return Err(Error::NotReady { domain: "Append receipt worker" });
+                }
+            }
+            changed.changed().await.map_err(|_| Error::Closing { domain: "Append receipt" })?;
+        }
+    }
+    pub(super) async fn settle_mutation_receipts(&self) -> Result<()> {
+        let mut changed = self.inner.changed.subscribe();
+        loop {
+            {
+                let state = self.inner.state.lock().unwrap();
+                if !state.persisting_receipts && state.receipts.pending_positions(&state.status.saved).is_empty() {
+                    return Ok(());
+                }
+                if let Some(source) = &state.status.failure {
+                    return Err(Error::Persistence { source: source.clone() });
+                }
+                if !state.status.running {
+                    return Err(Error::NotReady { domain: "Append receipt worker" });
+                }
+            }
+            self.inner.notify();
+            changed.changed().await.map_err(|_| Error::Closing { domain: "Append receipts" })?;
+        }
+    }
     pub(super) async fn recover_receipts(&self) -> Result<()> {
         if !self.inner.primary.capabilities().mutation_receipts {
             return Ok(());
@@ -640,8 +708,16 @@ mod tests {
             receipts.insert(id, [1; 32]).unwrap();
         }
         let owned = receipts.completion(&ids[1]);
+        let position = super::super::StorageCursor {
+            history: super::super::StoreHistory {
+                store: Identifier::new("records").unwrap(),
+                epoch: Identifier::new("generation").unwrap(),
+            },
+            sequence: 7,
+        };
         for id in &ids[1..ids.len() - 1] {
-            receipts.complete(id, MutationValue::Rejected);
+            let value = if id == &ids[2] { MutationValue::Cursor(position.clone()) } else { MutationValue::Rejected };
+            receipts.complete(id, value);
         }
 
         // Admission Skips The Pending Receipt And The Completed Receipt Still Owned.
@@ -650,9 +726,12 @@ mod tests {
         receipts.complete(newest, MutationValue::Rejected);
         assert!(matches!(receipts.lookup(&ids[0], &[1; 32], None).unwrap(), ReceiptState::Pending));
         assert!(matches!(receipts.lookup(&ids[1], &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
-        assert!(matches!(receipts.lookup(&ids[2], &[1; 32], None).unwrap(), ReceiptState::Missing));
+        assert!(
+            matches!(receipts.lookup(&ids[2], &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Cursor(cursor)) if cursor == position)
+        );
+        assert!(receipts.lookup(&ids[3], &[1; 32], None).is_err());
         assert!(matches!(receipts.lookup(newest, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
-        assert!(!receipts.snapshot(None).iter().any(|receipt| receipt.mutation == ids[2]));
+        assert!(!receipts.snapshot(None).iter().any(|receipt| receipt.mutation == ids[3]));
         drop(owned);
     }
 

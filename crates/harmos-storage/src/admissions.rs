@@ -57,6 +57,26 @@ impl StorageManager {
         self.admit_record_values(mutation, records).await
     }
 
+    pub async fn append_samples_once(&self, mutation: &MutationId, rows: Vec<super::StreamInput>) -> Result<StorageCursor> {
+        nonempty(rows.len())?;
+        let mut hash = Sha256::new();
+        part(&mut hash, b"storage.append_samples:v1");
+        hash.update((rows.len() as u64).to_le_bytes());
+        for row in &rows {
+            hash_record(&mut hash, &row.record.borrowed());
+            part(&mut hash, row.stream.as_str().as_bytes());
+            hash.update(row.sequence.to_le_bytes());
+        }
+        self.admit_stream(
+            rows,
+            Some(Mutation {
+                id: mutation,
+                fingerprint: hash.finalize().into(),
+            }),
+        )
+        .await
+    }
+
     #[tracing::instrument(name = "storage.admissions.admit_record_values", level = "debug", skip_all)]
     pub(crate) async fn admit_record_values(&self, mutation: &MutationId, records: Vec<RecordInput>) -> Result<StorageCursor> {
         nonempty(records.len())?;

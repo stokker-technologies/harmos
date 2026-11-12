@@ -260,6 +260,27 @@ impl StorageManager {
         Ok(receipts.into_iter().next().unwrap())
     }
 
+    pub async fn append_object_values_once(&self, mutation: &crate::MutationId, values: Vec<ObjectValue>) -> Result<crate::StorageCursor> {
+        let count = NonZeroUsize::new(values.len()).ok_or_else(|| invalid("AppendObjectRevisions requires a nonempty batch"))?;
+        let mut hash = Fingerprint(Sha256::new());
+        hash.0.update(b"storage.append_object_revisions:v1\0");
+        serde_json::to_writer(&mut hash, &values)
+            .map_err(|source| crate::Error::backend("fingerprint AppendObjectRevisions", crate::BackendFailure::Permanent, source))?;
+        let mutation = super::admissions::Mutation {
+            id: mutation,
+            fingerprint: hash.0.finalize().into(),
+        };
+        let receipts = self
+            .admit_object_group(self.object_admission_bytes(), count, Some(mutation), |group| {
+                for value in values {
+                    group.write_value(value)?;
+                }
+                Ok(())
+            })
+            .await?;
+        Ok(receipts.last().expect("nonempty object group").position.clone())
+    }
+
     #[tracing::instrument(name = "storage.objects.write_object_group", level = "debug", skip_all)]
     pub async fn write_object_group(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, build: impl FnOnce(&mut ObjectGroup<'_>) -> Result<()> + Send,

@@ -137,12 +137,6 @@ message ObjectValue { SchemaKey schema = 1; string item = 2; bytes payload = 3; 
 message ObjectEntry { StorageCursor position = 1; ObjectVersionToken version = 2; ObjectValue value = 3; }
 message FollowObjects { StorageCursor after = 1; ObjectSelection selection = 2; }
 message DataBatch { uint64 sequence = 1; string destination = 2; SchemaKey schema = 3; bytes ipc = 4; }
-message BatchReceipt { uint64 sequence = 1; StorageCursor cursor = 2; }
-message WriteReceipt { oneof receipt { BatchReceipt accepted = 1; BatchReceipt durable = 2; } }
-message WriteCompletion { uint64 batches = 1; StorageCursor cursor = 2; }
-message WriteRecords { optional string scope = 1; }
-message WriteStreams { optional string scope = 1; }
-message WriteObjects { optional string scope = 1; }
 message WriteFile { FileMetadata metadata = 1; }
 
 // Native plans use separate output and source-work bounds supplied by the caller.

@@ -1440,36 +1440,6 @@ impl ReflectMessage for crate::storage::DataBatch {
         pool().get_message_by_name("harmos.storage.v1.DataBatch").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::BatchReceipt {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.BatchReceipt").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::WriteReceipt {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WriteReceipt").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::WriteCompletion {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WriteCompletion").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::WriteRecords {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WriteRecords").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::WriteStreams {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WriteStreams").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::WriteObjects {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WriteObjects").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::WriteFile {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.WriteFile").expect("generated message")

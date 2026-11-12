@@ -938,48 +938,6 @@ class DataBatch(_message.Message):
     ipc: bytes
     def __init__(self, sequence: _Optional[int] = ..., destination: _Optional[str] = ..., schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., ipc: _Optional[bytes] = ...) -> None: ...
 
-class BatchReceipt(_message.Message):
-    __slots__ = ("sequence", "cursor")
-    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
-    CURSOR_FIELD_NUMBER: _ClassVar[int]
-    sequence: int
-    cursor: StorageCursor
-    def __init__(self, sequence: _Optional[int] = ..., cursor: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class WriteReceipt(_message.Message):
-    __slots__ = ("accepted", "durable")
-    ACCEPTED_FIELD_NUMBER: _ClassVar[int]
-    DURABLE_FIELD_NUMBER: _ClassVar[int]
-    accepted: BatchReceipt
-    durable: BatchReceipt
-    def __init__(self, accepted: _Optional[_Union[BatchReceipt, _Mapping]] = ..., durable: _Optional[_Union[BatchReceipt, _Mapping]] = ...) -> None: ...
-
-class WriteCompletion(_message.Message):
-    __slots__ = ("batches", "cursor")
-    BATCHES_FIELD_NUMBER: _ClassVar[int]
-    CURSOR_FIELD_NUMBER: _ClassVar[int]
-    batches: int
-    cursor: StorageCursor
-    def __init__(self, batches: _Optional[int] = ..., cursor: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class WriteRecords(_message.Message):
-    __slots__ = ("scope",)
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    scope: str
-    def __init__(self, scope: _Optional[str] = ...) -> None: ...
-
-class WriteStreams(_message.Message):
-    __slots__ = ("scope",)
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    scope: str
-    def __init__(self, scope: _Optional[str] = ...) -> None: ...
-
-class WriteObjects(_message.Message):
-    __slots__ = ("scope",)
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    scope: str
-    def __init__(self, scope: _Optional[str] = ...) -> None: ...
-
 class WriteFile(_message.Message):
     __slots__ = ("metadata",)
     METADATA_FIELD_NUMBER: _ClassVar[int]

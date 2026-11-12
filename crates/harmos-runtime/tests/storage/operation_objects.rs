@@ -29,8 +29,7 @@ use arrow_schema::{DataType, Field, Fields};
 
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
-use harmos_operations::storage::WriteObjects;
-use harmos_protocol::storage::write_receipt::Receipt as WriteReceipt;
+use harmos_operations::storage::AppendObjectRevisions;
 use harmos_runtime::storage::{MutationId, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject};
 use harmos_runtime::{Identified, Identifier, Runtime};
 use harmos_storage::writes::DataBatch;

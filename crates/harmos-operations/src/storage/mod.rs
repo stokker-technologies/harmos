@@ -28,11 +28,11 @@ pub mod context;
 mod transfers;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub(crate) mod append;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod capture_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod delete_file;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub(crate) mod exchange;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod follow_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -58,13 +58,7 @@ mod watch_directory;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod write_objects;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod write_records;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_schema;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod write_streams;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod native;
@@ -79,10 +73,10 @@ pub(crate) use contracts::contract;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use client::{
-    AdvanceProjection, AppendFileBytes, Capabilities, CreateFileProduction, CreateFileWriter, CreateSnapshot, DeleteFileProduction,
-    DeleteSnapshot, GetFileBytes, GetFileProduction, GetIndexDefinition, GetObject, GetProjectionDefinition, GetProjectionStatus,
-    ListColumnRows, ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction, SetIndexDefinition, SetObject,
-    SetProjectionDefinition,
+    AdvanceProjection, AppendFileBytes, AppendObjectRevisions, AppendRecords, AppendSamples, Capabilities, CreateFileProduction,
+    CreateFileWriter, CreateSnapshot, DeleteFileProduction, DeleteSnapshot, GetFileBytes, GetFileProduction, GetIndexDefinition, GetObject,
+    GetProjectionDefinition, GetProjectionStatus, ListColumnRows, ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction,
+    SetIndexDefinition, SetObject, SetProjectionDefinition,
 };
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -117,13 +111,7 @@ pub use watch_directory::WatchDirectory;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_file::WriteFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use write_objects::WriteObjects;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use write_records::WriteRecords;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_schema::WriteSchema;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use write_streams::WriteStreams;
 
 /* === Imports === */
 

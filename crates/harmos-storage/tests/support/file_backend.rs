@@ -41,6 +41,10 @@ impl Drop for Chunk<'_> {
 impl Data {
     pub(super) fn fixture_save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         Box::pin(async move {
+            if self.control.block_receipt.load(Ordering::Acquire) {
+                self.control.receipt_entered.notify_one();
+                self.control.receipt_release.notified().await;
+            }
             let mut saved = self.mutation_receipts.lock().unwrap();
             let now = self.control.date.lock().unwrap().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
             saved.retain(|_, receipt| receipt.expires_at > now);
