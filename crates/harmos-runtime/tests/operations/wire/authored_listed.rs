@@ -208,10 +208,9 @@ async fn restore_defers_borrow() {
         operations: std::sync::OnceLock::new(),
     });
     let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<BorrowOwner>(owner.clone()).operation(
-            borrow_owner_declaration_operation().expect("representable operation"),
-            harmos_runtime::operations::Lane::default(),
-        );
+        setup
+            .resource::<BorrowOwner>(owner.clone())
+            .operation(borrow_owner_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();

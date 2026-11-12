@@ -44,7 +44,8 @@ pub async fn runtime() -> Runtime<Bank> {
 pub async fn streaming() -> Runtime<Bank> {
     booted(Ledger::default(), |setup| {
         setup.settings().register(streams());
-    }).await
+    })
+    .await
 }
 
 pub async fn runtime_from(origin: Ledger) -> Runtime<Bank> {
@@ -61,15 +62,13 @@ pub async fn booted(origin: Ledger, attach: impl FnOnce(&mut Setup<Bank>)) -> Ru
 }
 
 pub async fn launch<A: harmos_runtime::Application>(
-    origin: impl Into<harmos_runtime::state::Origin<A::State>>, config: A::Config,
-    attach: impl FnOnce(&mut Setup<A>),
+    origin: impl Into<harmos_runtime::state::Origin<A::State>>, config: A::Config, attach: impl FnOnce(&mut Setup<A>),
 ) -> Result<Runtime<A>, harmos_runtime::runtime::StartupError> {
     Runtime::<A>::launch_with(origin, config, attach).await
 }
 
 pub async fn register<A: harmos_runtime::Application>(
-    runtime: &Runtime<A>, catalog: harmos_runtime::operations::Catalog,
-    lane: harmos_runtime::operations::Lane,
+    runtime: &Runtime<A>, catalog: harmos_runtime::operations::Catalog, lane: harmos_runtime::operations::Lane,
 ) -> harmos_runtime::Result<()> {
     runtime.operations.register_catalog(catalog, lane).await
 }

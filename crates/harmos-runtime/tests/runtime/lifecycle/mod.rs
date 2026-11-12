@@ -29,9 +29,9 @@ use tokio::sync::{Notify, Semaphore};
 use crate::runtime::boot::catalog;
 use crate::runtime::mirror::Mirror;
 use crate::runtime::probe::{Change, Editor, Sheet, rename};
+use harmos_runtime::Error;
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
-use harmos_runtime::{Error};
 
 /* === Constants === */
 
@@ -153,7 +153,11 @@ async fn repeat_stop_frontier() {
     let settled = crate::support::app::shutdown(&runtime).await.unwrap();
 
     assert_eq!(settled, Position(1));
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), settled, "a repeat stop joins nothing and reports the frontier the first saw");
+    assert_eq!(
+        crate::support::app::shutdown(&runtime).await.unwrap(),
+        settled,
+        "a repeat stop joins nothing and reports the frontier the first saw"
+    );
 }
 
 #[tokio::test]
@@ -223,5 +227,9 @@ async fn abandoned_stop_resumes() {
     }
 
     held.open();
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(1), "the next stop resumes the join rather than panicking on a spent handle");
+    assert_eq!(
+        crate::support::app::shutdown(&runtime).await.unwrap(),
+        Position(1),
+        "the next stop resumes the join rather than panicking on a spent handle"
+    );
 }

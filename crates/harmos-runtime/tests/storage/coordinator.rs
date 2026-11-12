@@ -214,7 +214,10 @@ async fn cancelled_close_retains() {
     let inputs = [record(&key, &item, &[1])];
     let producer = f.storage.write_records((inputs).to_vec());
     tokio::pin!(producer);
-    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(producer.as_mut(), context).is_pending())).await, "queue is full");
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(producer.as_mut(), context).is_pending())).await,
+        "queue is full"
+    );
     {
         let close = f.storage.close();
         tokio::pin!(close);
@@ -304,7 +307,10 @@ async fn close_seals_admission() {
     let storage = f.storage.clone();
     let close = storage.close();
     tokio::pin!(close);
-    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(close.as_mut(), context).is_pending())).await, "read holds the lifecycle lock");
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(close.as_mut(), context).is_pending())).await,
+        "read holds the lifecycle lock"
+    );
     assert!(f.storage.status().closing);
     assert!(matches!(f.storage.write_recovery(vec![b"late".to_vec()]).await, Err(harmos_storage::Error::Closing { domain: "storage" })));
 

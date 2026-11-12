@@ -17,7 +17,6 @@
 
 // Third Party Imports
 
-
 // Local Imports
 use super::*;
 
@@ -74,4 +73,3 @@ async fn retries_preserve_identity_backoff_and_child_settlement() {
     // Stop
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
-

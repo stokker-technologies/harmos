@@ -214,7 +214,9 @@ async fn unrelated_backlog_skipped() {
     let first = f.storage.write_recovery(vec![b"state-one".to_vec()]).await.unwrap();
     let second = f.storage.write_recovery(vec![b"state-two".to_vec()]).await.unwrap();
     let mut flushing = Box::pin(f.storage.flush_recovery());
-    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await);
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await
+    );
     f.data.control.block_write.store(true, Ordering::SeqCst);
     f.data.control.block_view.store(false, Ordering::SeqCst);
     f.data.control.view_release.notify_one();
@@ -293,7 +295,9 @@ async fn journal_awaits_data() {
     assert!(final_dependency.sequence > first_dependency.sequence);
     assert!(first_dependency.sequence > before.sequence);
     let mut flushing = Box::pin(storage.flush_recovery());
-    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await);
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await
+    );
     data.control.block_write.store(true, Ordering::SeqCst);
     state.control.block_write.store(true, Ordering::SeqCst);
     data.control.block_view.store(false, Ordering::SeqCst);

@@ -176,7 +176,9 @@ async fn close_wakes_watch() {
     assert!(matches!(&*watcher.next().await.unwrap().unwrap(), DirectoryEvent::InitialScanComplete(_)));
 
     let mut pending = Box::pin(watcher.next());
-    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(pending.as_mut(), context).is_pending())).await);
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(pending.as_mut(), context).is_pending())).await
+    );
     fixture.storage.close().await.unwrap();
     assert!(tokio::time::timeout(Duration::from_secs(10), &mut pending).await.unwrap().unwrap().is_none());
     drop(pending);

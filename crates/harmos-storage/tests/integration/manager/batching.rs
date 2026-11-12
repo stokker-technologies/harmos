@@ -546,7 +546,10 @@ async fn pressure_preserves_flush() {
     write(&f.storage, "two").await;
     let blocked = write(&storage, "three");
     tokio::pin!(blocked);
-    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(blocked.as_mut(), context).is_pending())).await, "queue is full");
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(blocked.as_mut(), context).is_pending())).await,
+        "queue is full"
+    );
     f.data.control.block_write.store(false, Ordering::SeqCst);
     f.data.control.write_release.notify_one();
     let (saved, admitted) = tokio::join!(flush, blocked);
@@ -1013,7 +1016,10 @@ async fn retained_observer_traced() {
             drop(session);
             f.data.snapshots_released().await;
             let mut observer = Box::pin(f.storage.wait_saved_after(&saved));
-            assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(observer.as_mut(), context).is_pending())).await);
+            assert!(
+                std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(observer.as_mut(), context).is_pending()))
+                    .await
+            );
             {
                 let captured = capture.0.lock().unwrap();
                 let observer = captured.spans.values().find(|span| span.name == "storage.manager.status.wait_saved_after").unwrap();

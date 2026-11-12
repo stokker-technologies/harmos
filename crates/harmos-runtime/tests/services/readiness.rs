@@ -20,8 +20,8 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Notify, mpsc};
 // Local Imports
+use super::Ledger;
 use super::{Bank, assembly, service_status, support};
-use super::{Ledger};
 use harmos_runtime::{services::ServiceContext, services::ServiceExit, services::ServiceStatus};
 
 /* === Constants === */

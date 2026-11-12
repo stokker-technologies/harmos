@@ -42,8 +42,8 @@ use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 use crate::support;
 use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{
-    state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
-    streams::Definition, streams::Item, streams::StreamManager,
+    state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow, streams::Definition,
+    streams::Item, streams::StreamManager,
 };
 
 /* === Constants === */

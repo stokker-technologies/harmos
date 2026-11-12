@@ -26,7 +26,6 @@ mod children;
 mod clock;
 #[path = "../operations/execution.rs"]
 mod execution;
-mod retries;
 #[path = "../operations/host.rs"]
 mod host;
 #[path = "../operations/lanes.rs"]
@@ -37,6 +36,7 @@ mod middleware;
 mod outcomes;
 #[path = "../operations/policy.rs"]
 mod policy;
+mod retries;
 mod virtual_clock;
 use crate::probe;
 #[path = "../operations/resources.rs"]

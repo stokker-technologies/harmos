@@ -307,7 +307,10 @@ async fn stop_seals_registration() {
         }
         let stop = crate::support::app::shutdown(&f.runtime);
         tokio::pin!(stop);
-        assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(stop.as_mut(), context).is_pending())).await, "shutdown retains the participant and startup owners");
+        assert!(
+            std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(stop.as_mut(), context).is_pending())).await,
+            "shutdown retains the participant and startup owners"
+        );
     }
     // The Original Shutdown Driver Advances Without Another Waiter.
     participant.stopping().await;

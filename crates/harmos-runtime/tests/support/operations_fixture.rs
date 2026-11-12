@@ -234,7 +234,9 @@ impl Request {
 
 struct Attempt<'a>(&'a AtomicUsize);
 impl Drop for Attempt<'_> {
-    fn drop(&mut self) { self.0.fetch_add(1, Ordering::SeqCst); }
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 impl Owner {

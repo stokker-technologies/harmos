@@ -25,9 +25,9 @@ use tokio::sync::Notify;
 // Local Imports
 use crate::runtime::boot::catalog;
 use crate::runtime::probe::{Editor, Sheet};
+use harmos_runtime::Error;
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
-use harmos_runtime::{Error};
 
 /* === Constants === */
 

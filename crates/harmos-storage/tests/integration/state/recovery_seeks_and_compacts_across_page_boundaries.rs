@@ -72,11 +72,13 @@ fn recovery_seeks_and_compacts_across_page_boundaries() {
     };
     let mut journal = open(root.path(), &history);
     // Cross A 31-Entry Page And Retain A Tail After Compaction
-    let entries = (1_u64..=32).map(|sequence| RecoveryEntry {
-        position: RecoveryPosition { history: history.clone(), sequence },
-        required_data: StorageCursor { history: history.clone(), sequence: 0 },
-        payload: sequence.to_le_bytes().to_vec(),
-    }).collect::<Vec<_>>();
+    let entries = (1_u64..=32)
+        .map(|sequence| RecoveryEntry {
+            position: RecoveryPosition { history: history.clone(), sequence },
+            required_data: StorageCursor { history: history.clone(), sequence: 0 },
+            payload: sequence.to_le_bytes().to_vec(),
+        })
+        .collect::<Vec<_>>();
     journal.append(&entries).unwrap();
     let through = journal.position();
     drop(journal);
