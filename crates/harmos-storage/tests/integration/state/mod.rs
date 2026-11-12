@@ -11,7 +11,7 @@
 
 mod file;
 mod index_open_cancellation_preserves_the_durable_journal;
-mod seven_day_recovery_seeks_and_compacts_without_rescanning_prefixes;
+mod recovery_seeks_and_compacts_across_page_boundaries;
 
 /* === Re-Exports === */
 

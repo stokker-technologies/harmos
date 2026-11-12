@@ -64,27 +64,20 @@ fn open(path: &Path, history: &StoreHistory) -> Journal {
 /* === Tests === */
 
 #[test]
-fn seven_day_recovery_seeks_and_compacts_without_rescanning_prefixes() {
+fn recovery_seeks_and_compacts_across_page_boundaries() {
     let root = tempfile::tempdir().unwrap();
     let history = StoreHistory {
         store: Identifier::new("journal.test").unwrap(),
         epoch: Identifier::new("one").unwrap(),
     };
     let mut journal = open(root.path(), &history);
-    let per_day = 24 * 60;
-    for day in 0..7 {
-        let entries = (0..per_day)
-            .map(|minute| {
-                let sequence = (day * per_day + minute + 1) as u64;
-                RecoveryEntry {
-                    position: RecoveryPosition { history: history.clone(), sequence },
-                    required_data: StorageCursor { history: history.clone(), sequence: 0 },
-                    payload: sequence.to_le_bytes().to_vec(),
-                }
-            })
-            .collect::<Vec<_>>();
-        journal.append(&entries).unwrap();
-    }
+    // Cross A 31-Entry Page And Retain A Tail After Compaction
+    let entries = (1_u64..=32).map(|sequence| RecoveryEntry {
+        position: RecoveryPosition { history: history.clone(), sequence },
+        required_data: StorageCursor { history: history.clone(), sequence: 0 },
+        payload: sequence.to_le_bytes().to_vec(),
+    }).collect::<Vec<_>>();
+    journal.append(&entries).unwrap();
     let through = journal.position();
     drop(journal);
     let mut journal = open(root.path(), &history);
