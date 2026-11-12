@@ -55,28 +55,20 @@ class SdkDependencyClosure(unittest.TestCase):
             package["name"]: package
             for package in json.loads(result.stdout)["packages"]
         }
-        pending = ["harmos"]
-        visited = set()
-        forbidden = {
-            "harmos-domain",
-            "harmos-storage",
-            "harmos-operations",
-            "harmos-runtime",
-            "harmos-guest",
-            "harmos-packaging",
-        }
-        while pending:
-            name = pending.pop()
-            if name in visited:
-                continue
-            visited.add(name)
-            self.assertNotIn(
-                name, forbidden, f"SDK normal/build dependency reaches {name}"
-            )
-            for dependency in packages.get(name, {}).get("dependencies", []):
-                if dependency["kind"] != "dev":
-                    pending.append(dependency["name"])
-        self.assertIn("harmos-protocol", visited)
+        forbidden = {"harmos-domain", "harmos-storage", "harmos-operations", "harmos-runtime", "harmos-guest", "harmos-packaging"}
+        for include_development in (False, True):
+            pending = ["harmos"]
+            visited = set()
+            while pending:
+                name = pending.pop()
+                if name in visited:
+                    continue
+                visited.add(name)
+                self.assertNotIn(name, forbidden, f"SDK or client-example dependency reaches {name}")
+                for dependency in packages.get(name, {}).get("dependencies", []):
+                    if dependency["kind"] != "dev" or (name == "harmos" and include_development):
+                        pending.append(dependency["name"])
+            self.assertIn("harmos-protocol", visited)
 
 
 # === Public Functions === #

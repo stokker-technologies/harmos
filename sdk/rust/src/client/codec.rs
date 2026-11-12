@@ -102,28 +102,42 @@ impl<R: prost::Message + Default, O: prost::Message + Default> Decoder for Decod
         if !self.envelope {
             return R::decode(buffer).map(|value| Some(Output::Response(value))).map_err(invalid);
         }
-        let mut output = None;
+        let mut selected = None;
+        let mut payload = Vec::new();
         while buffer.has_remaining() {
             let (tag, wire) = decode_key(buffer).map_err(invalid)?;
             if tag != 1 && tag != 2 {
+                if wire == WireType::LengthDelimited {
+                    return Err(Status::data_loss("unknown operation response variant"));
+                }
                 skip_field(wire, tag, buffer, DecodeContext::default()).map_err(invalid)?;
                 continue;
             }
-            if wire != WireType::LengthDelimited || output.is_some() {
+            if wire != WireType::LengthDelimited {
                 return Err(Status::data_loss("invalid operation response envelope"));
             }
             let length = usize::try_from(decode_varint(buffer).map_err(invalid)?).map_err(invalid)?;
             if length > buffer.remaining() {
                 return Err(Status::data_loss("truncated operation response envelope"));
             }
-            let payload = buffer.copy_to_bytes(length);
-            output = Some(if tag == 1 {
-                Output::Item(O::decode(payload).map_err(invalid)?)
-            } else {
-                Output::Response(R::decode(payload).map_err(invalid)?)
-            });
+            let bytes = buffer.copy_to_bytes(length);
+            // Validate Every Occurrence, Even When A Later Oneof Variant Replaces It.
+            let mut fields = bytes.clone();
+            while fields.has_remaining() {
+                let (field, wire) = decode_key(&mut fields).map_err(invalid)?;
+                skip_field(wire, field, &mut fields, DecodeContext::default()).map_err(invalid)?;
+            }
+            if selected != Some(tag) {
+                payload.clear();
+                selected = Some(tag);
+            }
+            payload.extend_from_slice(&bytes);
         }
-        output.map(Some).ok_or_else(|| Status::data_loss("empty operation response envelope"))
+        match selected {
+            Some(1) => O::decode(payload.as_slice()).map(|value| Some(Output::Item(value))).map_err(invalid),
+            Some(2) => R::decode(payload.as_slice()).map(|value| Some(Output::Response(value))).map_err(invalid),
+            _ => Err(Status::data_loss("empty operation response envelope")),
+        }
     }
 }
 

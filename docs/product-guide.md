@@ -1019,7 +1019,7 @@ generated application contract without linking domain, storage, operations or ru
 Build it with `mise run build -- --package harmos --example client`; pass a running
 Schematic application's gRPC URL when launching `target/debug/examples/client`.
 The dependency proof at `sdk/rust/tests/dependency_closure.py` traverses normal/build
-workspace dependencies, excluding development-only edges.
+workspace dependencies and the client example's root development dependencies.
 
 For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
 Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and

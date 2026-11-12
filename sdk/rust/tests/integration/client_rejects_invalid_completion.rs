@@ -58,6 +58,8 @@ struct Opening {
 
 #[derive(Clone, PartialEq, prost::Message)]
 struct Frame {
+    #[prost(message, optional, tag = "3")]
+    unknown: Option<host::CatalogPage>,
     #[prost(message, optional, tag = "1")]
     item: Option<host::CatalogPage>,
     #[prost(message, optional, tag = "2")]
@@ -107,12 +109,14 @@ impl tonic::server::StreamingService<Opening> for Invoke {
                 .ok_or_else(|| Status::invalid_argument("opening required"))?;
             let terminal = || {
                 Ok(Frame {
+                    unknown: None,
                     item: None,
                     response: Some(host::CatalogPage::default()),
                 })
             };
             let item = || {
                 Ok(Frame {
+                    unknown: None,
                     item: Some(host::CatalogPage::default()),
                     response: None,
                 })
@@ -122,7 +126,18 @@ impl tonic::server::StreamingService<Opening> for Invoke {
                 1 => vec![terminal(), terminal()],
                 2 => vec![terminal(), item()],
                 3 => vec![item()],
+                6 => vec![Ok(Frame {
+                    unknown: Some(host::CatalogPage::default()),
+                    item: None,
+                    response: None,
+                })],
+                7 => vec![Ok(Frame {
+                    unknown: None,
+                    item: Some(host::CatalogPage::default()),
+                    response: Some(host::CatalogPage::default()),
+                })],
                 5 => vec![Ok(Frame {
+                    unknown: None,
                     item: None,
                     response: Some(host::CatalogPage {
                         entries: vec![0; 2048],
@@ -191,6 +206,12 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
         assert_eq!(error.code(), tonic::Code::DataLoss);
         assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::DataLoss);
     }
+
+    // Refuse Unknown Envelope Variants And Honor Protobuf's Last Oneof Variant.
+    let running = client.start(&method, Request::new(host::Catalog { kind: 6, ..Default::default() })).await.unwrap();
+    assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::DataLoss);
+    let running = client.start(&method, Request::new(host::Catalog { kind: 7, ..Default::default() })).await.unwrap();
+    assert!(running.join().await.is_ok());
 
     // Preserve A Terminal gRPC Status And Its Binary Details.
     let running = client.start(&method, Request::new(host::Catalog { kind: 4, ..Default::default() })).await.unwrap();
