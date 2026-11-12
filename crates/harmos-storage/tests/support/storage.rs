@@ -48,6 +48,7 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 #[derive(Default)]
 pub struct Control {
     pub record_rows_examined: AtomicUsize,
+    pub record_page_rows: AtomicUsize,
     pub record_rows_copied: AtomicUsize,
     pub snapshot_rows_copied: AtomicUsize,
     pub date: Mutex<Option<std::time::SystemTime>>,
@@ -496,6 +497,8 @@ impl StorageBackend for Data {
         Box::pin(async move {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
+            let limit = self.control.record_page_rows.load(Ordering::Relaxed);
+            let rows = if limit == 0 { page.rows.get() } else { page.rows.get().min(limit) };
             let mut entries = Vec::new();
             let mut bytes = 0usize;
             for view in image.records.selected_views(&selection.schema, page.after, snapshot.at.sequence) {
@@ -506,7 +509,7 @@ impl StorageBackend for Data {
                 {
                     continue;
                 }
-                if entries.len() == page.rows.get() || (!entries.is_empty() && bytes + view.encoded_bytes() > page.bytes.get()) {
+                if entries.len() == rows || (!entries.is_empty() && bytes + view.encoded_bytes() > page.bytes.get()) {
                     break;
                 }
                 bytes += view.encoded_bytes();

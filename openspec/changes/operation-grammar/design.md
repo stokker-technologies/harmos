@@ -1379,15 +1379,24 @@ Failure/cancellation of one page does not discard an explicit lease. Capacity re
 is explicit when pinned or active readers occupy every slot.
 
 ListRows tokens are HMAC-authenticated with an owner-local key and bind the retained
-image, normalized source/transforms/order and output offset. Page size may change
-within consumer bounds. Replays rerun the immutable selection against that same
-image. Positions and definition revisions are retained as one exact composite;
+image, normalized source/transforms/order and query progress. Page size may change
+within consumer bounds. The latest continuation request/result is cached for replay with identical bounds;
+consuming its next token expires older requests. Retained query plans advance one
+bounded source/output step per call, including empty progress pages. Idle plans may
+expire under the existing retained-read capacity. They release active execution
+between calls and bind each resumed step to the current invocation context. Positions and definition revisions are retained as one exact composite;
 callers cannot synthesize another combination. There is no arbitrary historical
 fallback. A provider unable to retain the exact requested revision refuses rather
 than selecting a newer definition or frontier. A selection involving a different
 storage history is unavailable on this owner.
 
-Issuance and signing keys are not recovered across manager retirement/restart.
+Read-lease issuance and signing keys are not recovered across manager retirement/restart.
+Retained mutation receipts may reissue their exact position after the primary saved
+frontier proves durability, including recovered receipts. Pending positions refuse
+without requesting persistence, and expired receipts or lost provider retention
+refuse explicitly. Receipt identity lifetime and a separately retained read lease
+have independent expiry: losing an idempotency key does not silently reclaim a
+still-pinned durable image.
 Expired/foreign/changed leases or tokens require restarting the read with no `at`.
 A still-readable durable position can later be issued again as the same value;
 this does not revive its old opaque page token. Provider/recovery internals retain

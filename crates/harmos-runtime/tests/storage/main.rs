@@ -12,6 +12,7 @@
 mod generated_example_hash;
 mod generated_native_journey;
 
+mod filtered_pages;
 #[path = "generated_capture.rs"]
 mod generated_capture;
 #[path = "generated_directory.rs"]

@@ -73,7 +73,31 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         transforms: vec![],
         page: None,
     };
+    let local_query = harmos_storage::Query {
+        at: fixture.storage.get_saved_position(),
+        source: harmos_storage::query::Source::Records(harmos_storage::query::RecordSelection {
+            schema: schema.clone(),
+            scope: None,
+            item: None,
+            source_start: None,
+            source_end: None,
+        }),
+        transforms: vec![],
+        slice: Default::default(),
+    };
+    let image = std::sync::Arc::new(fixture.storage.snapshot(&local_query.at).await.unwrap());
     let old = fixture.runtime.operations.call_protobuf::<operations::ListRows>(selection.clone()).await.unwrap();
+    // Construction Against A Preopened Image Performs No I/O: The Paused Page
+    // Must Leave The Only Active-Query Slot Available To Another Native Reader.
+    tokio::task::yield_now().await;
+    let mut native = Box::pin(fixture.storage.query_snapshot(local_query, image));
+    let ready = std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(native.as_mut(), cx))).await;
+    let std::task::Poll::Ready(Ok(native_reader)) = ready else {
+        panic!("paused page retained active execution");
+    };
+    drop(native_reader);
+    drop(native);
+
     fixture
         .storage
         .append_records(vec![RecordInput {

@@ -121,32 +121,36 @@ async fn schema_registry_roundtrip() {
         slice: RowSlice { offset: 0, limit: None },
     };
     let query: harmos_protocol::storage::Query = query.try_into().unwrap();
-    let response = f
-        .runtime
-        .operations
-        .call_protobuf::<ListRows>(harmos_protocol::v1::StorageListRowsRequest {
-            source: query.source,
-            at: None,
-            transforms: query.transforms,
-            page: None,
-        })
-        .await
-        .unwrap();
-    assert_eq!(response.resolved_at.as_ref().unwrap().positions[0].sequence, at.sequence);
-    assert!(response.next_page_token.is_empty());
+    let mut listing = harmos_protocol::v1::StorageListRowsRequest {
+        source: query.source,
+        at: None,
+        transforms: query.transforms,
+        page: None,
+    };
     let mut announced = false;
     let mut rows = 0;
-    for output in response.rows {
-        match &QueryArrow::try_from(output).unwrap() {
-            QueryArrow::Schema(_) => {
-                assert!(!announced);
-                announced = true;
-            }
-            QueryArrow::Batch(batch) => {
-                assert!(announced);
-                rows += batch.as_record_batch().num_rows();
+    loop {
+        let response = f.runtime.operations.call_protobuf::<ListRows>(listing.clone()).await.unwrap();
+        assert_eq!(response.resolved_at.as_ref().unwrap().positions[0].sequence, at.sequence);
+        for output in response.rows {
+            match &QueryArrow::try_from(output).unwrap() {
+                QueryArrow::Schema(_) => {
+                    assert!(!announced);
+                    announced = true;
+                }
+                QueryArrow::Batch(batch) => {
+                    assert!(announced);
+                    rows += batch.as_record_batch().num_rows();
+                }
             }
         }
+        if response.next_page_token.is_empty() {
+            break;
+        }
+        listing.page = Some(harmos_protocol::v1::PageRequest {
+            page_token: response.next_page_token,
+            ..Default::default()
+        });
     }
     assert_eq!(rows, 1);
     let persisted = f.data.schemas.lock().unwrap().values().next().unwrap().clone();

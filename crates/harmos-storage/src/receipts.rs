@@ -112,6 +112,18 @@ impl Receipts {
         })
     }
 
+    pub(super) fn issued_position(&self, position: &super::StorageCursor) -> bool {
+        let now = self.execution.now();
+        self.entries.values().any(|entry| {
+            entry.deadline > now
+                && match entry.value.as_ref() {
+                    Some(MutationValue::Cursor(cursor)) => cursor == position,
+                    Some(MutationValue::Reference(file)) => &file.position == position,
+                    _ => false,
+                }
+        })
+    }
+
     pub(super) fn recovery_limits(&self) -> super::ReadLimits {
         super::ReadLimits {
             rows: super::config::MAX_MUTATIONS,
@@ -406,6 +418,22 @@ impl StorageManager {
             mutations,
             file_batch_bytes: self.inner.settings.response.batch_bytes.get() as u64,
         })
+    }
+
+    /// A Retained Mutation Receipt Can Reissue Its Exact Position Once Durability Is Proven.
+    pub fn check_receipt_position(&self, position: &super::StorageCursor) -> Result<bool> {
+        self.inner.primary.get_history().check(&position.history)?;
+        let state = self.inner.state.lock().unwrap();
+        super::capacity::admitting(&state, false)?;
+        if !state.receipts.issued_position(position) {
+            return Ok(false);
+        }
+        if !state.status.saved.covers(position)? {
+            return Err(Error::NotReady {
+                domain: "read at storage mutation receipt before durability",
+            });
+        }
+        Ok(true)
     }
 
     pub fn mutation_window(&self) -> Result<MutationWindow> {

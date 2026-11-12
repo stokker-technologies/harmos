@@ -257,25 +257,31 @@ async fn query_grants_enforced() {
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
     let request: harmos_protocol::storage::Query = query(&fixture, schema.clone()).try_into().unwrap();
-    let response = reducer
-        .call_protobuf::<ListRows>(harmos_protocol::context::StorageListRowsRequest {
-            source: request.source,
-            transforms: request.transforms,
-            at: None,
-            page: None,
-        })
-        .await
-        .unwrap();
+    let mut request = harmos_protocol::context::StorageListRowsRequest {
+        source: request.source,
+        transforms: request.transforms,
+        at: None,
+        page: None,
+    };
     let mut count = None;
-    for output in response.rows {
-        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output).unwrap() {
-            let values =
-                batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
-            count = Some(values.value(0));
+    loop {
+        let response = reducer.call_protobuf::<ListRows>(request.clone()).await.unwrap();
+        for output in response.rows {
+            if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output).unwrap() {
+                let values =
+                    batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
+                count = Some(values.value(0));
+            }
         }
+        if response.next_page_token.is_empty() {
+            break;
+        }
+        request.page = Some(harmos_protocol::v1::PageRequest {
+            page_token: response.next_page_token,
+            ..Default::default()
+        });
     }
     assert_eq!(count, Some(2));
-    assert!(response.next_page_token.is_empty());
     let mut cross_kind = query(&fixture, schema.clone());
     cross_kind.source = Source::Stream(harmos_runtime::storage::query::StreamSelection {
         schema: schema.clone(),

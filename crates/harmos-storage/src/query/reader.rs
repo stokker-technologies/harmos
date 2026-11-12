@@ -69,6 +69,7 @@ pub struct QueryReader {
     projection: Option<(Project, Arc<arrow_schema::Schema>)>,
     after: u64,
     rows: NonZeroUsize,
+    output: crate::StorageResponseSettings,
     source_done: bool,
     pending: Option<RecordBatch>,
     pending_offset: usize,
@@ -86,6 +87,13 @@ struct CancelWork(Arc<AtomicBool>);
 pub enum QueryArrow {
     Schema(ArrowSchema),
     Batch(ArrowBatch),
+}
+
+/// One Bounded Source/Output Step Of A Retained Query.
+pub enum QueryStep {
+    Output(QueryArrow),
+    Progress,
+    Complete,
 }
 
 enum Rows {
@@ -220,6 +228,7 @@ impl StorageManager {
                 projection: None,
                 after,
                 rows: SCAN_ROWS,
+                output: self.inner.settings.response,
                 source_done: false,
                 pending: None,
                 pending_offset: 0,
@@ -236,7 +245,28 @@ impl StorageManager {
 }
 
 impl QueryReader {
+    pub fn configure_page(&mut self, rows: NonZeroUsize, bytes: NonZeroUsize) {
+        self.context = crate::execution::Context::current();
+        self.output.batch_rows = rows.min(self.inner.settings.response.batch_rows);
+        self.output.batch_bytes = bytes.min(self.inner.settings.response.batch_bytes);
+    }
+
+    /// A Retained Page Plan Does Not Occupy Active Execution Between Calls.
+    pub fn suspend_page(&mut self) {
+        self.active = None;
+    }
+
     pub async fn next(&mut self) -> Result<Option<QueryArrow>> {
+        loop {
+            match self.step().await? {
+                QueryStep::Output(output) => return Ok(Some(output)),
+                QueryStep::Progress => {}
+                QueryStep::Complete => return Ok(None),
+            }
+        }
+    }
+
+    pub async fn step(&mut self) -> Result<QueryStep> {
         let context = self.context.clone();
         let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
         let future = async {
@@ -247,7 +277,7 @@ impl QueryReader {
                 });
             }
             self.inflight = true;
-            let result = self.advance().await;
+            let result = self.advance_step().await;
             self.inflight = false;
             if result.is_err() {
                 self.fail();
@@ -285,33 +315,33 @@ impl QueryReader {
     }
 
     #[tracing::instrument(name = "storage.query.reader.advance", level = "trace", skip_all)]
-    async fn advance(&mut self) -> Result<Option<QueryArrow>> {
+    async fn advance_step(&mut self) -> Result<QueryStep> {
         if self.exhausted {
-            return Ok(None);
+            return Ok(QueryStep::Complete);
+        }
+        if self.active.is_none() {
+            self.active = Some(query_slot(&self.inner).await?);
         }
         if self.plan.is_none() {
-            let schema = self.prepare().await?;
-            return Ok(Some(QueryArrow::Schema(schema)));
+            return Ok(QueryStep::Output(QueryArrow::Schema(self.prepare().await?)));
         }
-        loop {
-            if let Some(batch) = self.deliver().await? {
-                return Ok(Some(QueryArrow::Batch(batch)));
-            }
-            let plan = self.plan.as_ref().expect("prepared plan");
-            if plan.is_satisfied() {
-                self.source_done = true;
-            }
-            if !self.source_done {
-                self.next_page().await?;
-                continue;
-            }
-            self.snapshot = None;
-            if !self.finish().await? {
-                self.release();
-                self.exhausted = true;
-                return Ok(None);
-            }
+        if let Some(batch) = self.deliver().await? {
+            return Ok(QueryStep::Output(QueryArrow::Batch(batch)));
         }
+        if self.plan.as_ref().expect("prepared plan").is_satisfied() {
+            self.source_done = true;
+        }
+        if !self.source_done {
+            self.next_page().await?;
+            return Ok(QueryStep::Progress);
+        }
+        self.snapshot = None;
+        if self.finish().await? {
+            return Ok(QueryStep::Progress);
+        }
+        self.release();
+        self.exhausted = true;
+        Ok(QueryStep::Complete)
     }
 
     // Resolve Source Schemas, Validate The Plan And Fix The Output Schema.
@@ -470,7 +500,7 @@ impl QueryReader {
             self.pending_offset = 0;
             return Ok(None);
         }
-        let settings = self.inner.settings.response;
+        let settings = self.output;
         let mut rows = settings.batch_rows.get().min(batch.num_rows() - self.pending_offset);
         loop {
             let slice = batch.slice(self.pending_offset, rows);

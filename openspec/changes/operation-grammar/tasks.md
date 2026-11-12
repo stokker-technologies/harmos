@@ -162,3 +162,15 @@ and the complete built-in mapping.
   request types and SDK bindings are removed. Focused proof:
   `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
   (one passed). Complete unary reply envelopes enforce the storage response ceiling.
+
+- Bounded query progress now retains QueryReader state instead of rescanning prefixes.
+  Source/output steps return bounded data or empty progress pages; latest-token replay,
+  capacity eviction, current invocation binding and active-slot release are implemented.
+  Durable receipt positions can open retained exact reads after saved-frontier proof.
+  Focused proof: `storage::filtered_pages::filtered_physical_pages_return_progress_without_rescanning_the_prefix`
+  plus both issued-cut stories, query batches/grants/schema, unary transfer and native
+  journey stories (eight named focused tests passed). The controlled provider records
+  source work; replay does not rescan it. Receipt-position proof uses the publication
+  receipt directly on the first ranged read. Remaining common paging across the native
+  list mechanisms, metadata/object mirrors, other file/directory methods and Watch
+  still keep 3.2/3.8 open.

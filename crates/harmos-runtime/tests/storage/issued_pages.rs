@@ -159,12 +159,38 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     let storage = fixture.storage.clone();
     let flush = tokio::spawn(async move { storage.flush().await });
     fixture.data.control.write_entered.notified().await;
-    let current =
+    let mut current =
         super::transfer_plugin::client_call::<operations::ListRows>(&channel, v1::StorageListRowsRequest { at: None, ..selection.clone() })
             .await
             .unwrap();
     assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, newer.sequence);
     assert_eq!(fixture.storage.get_saved_position(), newer);
+    let mut durable_rows = 0;
+    loop {
+        assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, newer.sequence);
+        for row in &current.rows {
+            if let Some(wire::query_output::Output::Batch(bytes)) = &row.output {
+                durable_rows += harmos_storage::arrow::ArrowBatch::from_ipc(bytes.clone()).unwrap().as_record_batch().num_rows();
+            }
+        }
+        if current.next_page_token.is_empty() {
+            break;
+        }
+        current = super::transfer_plugin::client_call::<operations::ListRows>(
+            &channel,
+            v1::StorageListRowsRequest {
+                at: None,
+                page: Some(v1::PageRequest {
+                    page_token: current.next_page_token,
+                    ..selection.page.clone().unwrap()
+                }),
+                ..selection.clone()
+            },
+        )
+        .await
+        .unwrap();
+    }
+    assert_eq!(durable_rows, 5);
 
     // Resume On The Plugin Face; Replaying The Token Returns The Same Page.
     let request = child::StorageListRowsRequest {
@@ -190,15 +216,6 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     assert_eq!(replay.next_page_token, second.next_page_token);
     assert_eq!(second.resolved_at, Some(cut.clone()));
     assert!(second.encoded_len() <= maximum);
-    let mut count = 0;
-    for row in first.rows.iter().chain(second.rows.iter()) {
-        if let Some(wire::query_output::Output::Batch(bytes)) = &row.output {
-            count += harmos_storage::arrow::ArrowBatch::from_ipc(bytes.clone()).unwrap().as_record_batch().num_rows();
-        }
-    }
-    assert_eq!(count, 4);
-    assert_eq!(cut.positions[0].sequence, original.sequence);
-
     // Tokens Bind The Selector, Owner And Complete Cut, Including Revisions.
     let mut changed = selection.clone();
     changed.source.as_mut().unwrap().source = Some(wire::query_source::Source::Records(wire::RecordSelection {
@@ -221,6 +238,32 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     });
     assert!(super::transfer_plugin::client_call::<operations::ListRows>(&channel, unissued).await.is_err());
 
+    let mut resume = request.clone();
+    resume.page.as_mut().unwrap().page_token = second.next_page_token;
+    let mut count = 0;
+    loop {
+        let response = super::transfer_plugin::call::<context::ListRows>(&fixture.runtime.operations, resume.clone()).await.unwrap();
+        assert_eq!(response.resolved_at, Some(cut.clone()));
+        assert!(response.encoded_len() <= maximum);
+        for row in response.rows {
+            if let Some(wire::query_output::Output::Batch(bytes)) = row.output {
+                count += harmos_storage::arrow::ArrowBatch::from_ipc(bytes).unwrap().as_record_batch().num_rows();
+            }
+        }
+        if response.next_page_token.is_empty() {
+            break;
+        }
+        resume.page.as_mut().unwrap().page_token = response.next_page_token;
+    }
+    assert_eq!(count, 4);
+    assert_eq!(cut.positions[0].sequence, original.sequence);
+    assert!(
+        super::transfer_plugin::call::<context::ListRows>(&fixture.runtime.operations, resume.clone())
+            .await
+            .unwrap()
+            .next_page_token
+            .is_empty()
+    );
     fixture.data.control.block_write.store(false, Ordering::SeqCst);
     fixture.data.control.write_release.notify_waiters();
     let latest = flush.await.unwrap().unwrap();
@@ -235,7 +278,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     )
     .await
     .unwrap();
-    assert!(super::transfer_plugin::call::<context::ListRows>(&fixture.runtime.operations, request).await.is_err());
+    assert!(super::transfer_plugin::call::<context::ListRows>(&fixture.runtime.operations, resume).await.is_err());
     assert!(super::transfer_plugin::client_call::<operations::ListRows>(&channel, selection).await.is_err());
     attached.stop("page story complete").await.unwrap();
     plugin.stop().await;

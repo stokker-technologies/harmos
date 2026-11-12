@@ -246,7 +246,10 @@ async fn resume_fence_publish_and_range_across_faces() {
         file: Some(reference.clone()),
         offset: 0,
         max_bytes: 5,
-        at: None,
+        at: Some(client::ReadCut {
+            positions: vec![durable_at.clone()],
+            revisions: vec![],
+        }),
     };
     let first = super::transfer_plugin::client_call::<operations::GetFileBytes>(&channel, request.clone()).await.unwrap();
     assert_eq!(first.data, content[..5]);

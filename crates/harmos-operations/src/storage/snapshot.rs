@@ -27,6 +27,7 @@ pub struct SavedSnapshots {
     registry: Mutex<Registry>,
     issuance: tokio::sync::Mutex<()>,
     signing: Mutex<Option<hmac::Key>>,
+    pub(super) queries: super::pages::Queries,
 }
 
 #[derive(Default)]
@@ -56,6 +57,9 @@ impl std::ops::Deref for SnapshotRead {
     }
 }
 impl SnapshotRead {
+    pub(crate) fn identity(&self) -> &[u8] {
+        &self.handle.token
+    }
     pub(crate) fn cut(&self) -> &v1::ReadCut {
         &self.snapshot.cut
     }
@@ -71,6 +75,7 @@ impl SavedSnapshots {
             registry: Mutex::new(Registry::default()),
             issuance: tokio::sync::Mutex::new(()),
             signing: Mutex::new(None),
+            queries: super::pages::Queries::new(capacity),
         }
     }
     pub(crate) fn reserve(&self) -> harmos_storage::Result<tokio::sync::OwnedSemaphorePermit> {
@@ -87,7 +92,13 @@ impl SavedSnapshots {
                             == registry.entries.values().filter(|other| Arc::ptr_eq(&other.snapshot, &held.snapshot)).count()
                 })
             });
-            let Some(index) = index else { break };
+            let Some(index) = index else {
+                let pinned = registry.entries.iter().filter(|(_, held)| held.explicit).map(|(token, _)| token.clone()).collect();
+                if self.queries.evict_idle(Some(&pinned)) {
+                    continue;
+                }
+                break;
+            };
             let token = registry.order.remove(index).unwrap();
             registry.entries.remove(&token);
         }
@@ -167,10 +178,13 @@ impl SavedSnapshots {
         let handle = if let Some(handle) = found {
             handle
         } else {
-            if explicit {
+            if explicit && !cut.revisions.is_empty() {
                 return Err(expired().into());
             }
             let position = super::transfers::at(Some(cut.clone()))?.expect("one storage position");
+            if explicit && !storage.check_receipt_position(&position)? {
+                return Err(expired().into());
+            }
             let permit = self.reserve()?;
             let snapshot = Arc::new(storage.snapshot(&position).await?);
             self.insert_cut(snapshot, cut, false, permit)?
@@ -192,20 +206,28 @@ impl SavedSnapshots {
         self.insert_cut(snapshot, cut.clone(), false, permit)?;
         Ok(cut)
     }
-    pub(crate) fn token(&self, read: &SnapshotRead, plan: &[u8], offset: u64) -> crate::Result<String> {
+    pub(crate) fn contains(&self, read: &SnapshotRead) -> bool {
+        self.registry
+            .lock()
+            .unwrap()
+            .entries
+            .get(&read.handle.token)
+            .is_some_and(|held| Arc::ptr_eq(held, &read.snapshot) && held.snapshot.is_available())
+    }
+    pub(crate) fn token(&self, identity: &[u8], plan: &[u8], sequence: u64) -> crate::Result<String> {
         let mut signing = self.signing.lock().unwrap();
         if signing.is_none() {
             let mut secret = [0; 32];
             getrandom::fill(&mut secret).map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "page token entropy" })?;
             *signing = Some(hmac::Key::new(hmac::HMAC_SHA256, &secret));
         }
-        let mut bytes = read.handle.token.clone();
-        bytes.extend_from_slice(&offset.to_be_bytes());
+        let mut bytes = identity.to_vec();
+        bytes.extend_from_slice(&sequence.to_be_bytes());
         bytes.extend_from_slice(digest::digest(&digest::SHA256, plan).as_ref());
         bytes.extend_from_slice(hmac::sign(signing.as_ref().unwrap(), &bytes).as_ref());
         Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
     }
-    pub(crate) fn page(&self, token: &str, plan: &[u8], at: Option<&v1::ReadCut>) -> crate::Result<(SnapshotRead, u64)> {
+    pub(crate) fn decode_page(&self, token: &str, plan: &[u8]) -> crate::Result<(Vec<u8>, u64)> {
         let bytes = if token.len() == 208 {
             token
                 .as_bytes()
@@ -221,19 +243,7 @@ impl SavedSnapshots {
         if &bytes[40..72] != digest::digest(&digest::SHA256, plan).as_ref() {
             return Err(expired().into());
         }
-        let handle = {
-            let registry = self.registry.lock().unwrap();
-            let held = registry.entries.get(&bytes[..32]).ok_or_else(expired)?;
-            if at.is_some_and(|cut| cut != &held.cut) {
-                return Err(expired().into());
-            }
-            wire::SavedSnapshot {
-                token: bytes[..32].to_vec(),
-                at: Some(held.snapshot.at().clone().into()),
-            }
-        };
-        let read = self.read(handle)?;
-        Ok((read, u64::from_be_bytes(bytes[32..40].try_into().unwrap())))
+        Ok((bytes[..32].to_vec(), u64::from_be_bytes(bytes[32..40].try_into().unwrap())))
     }
 }
 

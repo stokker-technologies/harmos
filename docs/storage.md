@@ -268,13 +268,19 @@ or cancelled page does not release an explicit lease.
 
 Return the whole `SavedSnapshot` unchanged for column/index reads or advancement.
 Arrow/index seek bytes bind that retained image and their plan. ListRows tokens
-bind the retained image, selector, transforms, ordering and output offset with an
-owner-local HMAC; page size may change within consumer bounds. Replaying a token
-repeats the same immutable page. Row-window skipping and stopping belong to the
+bind the retained image, selector, transforms, ordering and query progress with an
+owner-local HMAC; page size may change within consumer bounds. The most recent continuation request/result remains replayable with the same bounds;
+consuming its next token expires older requests. Each call advances one bounded source
+or output step, so an empty page can carry a continuation without claiming end-of-source.
+Idle query plans share the existing retained-read capacity and can expire when another
+read needs it. Paused plans release active execution slots and reacquire them per call. Row-window skipping and stopping belong to the
 caller across bounded pages. Responses include their complete encoded envelope in
 the byte bound. An indivisible row or metadata that cannot fit refuses explicitly.
 
-Issuance and page-token keys are not persisted. Released, evicted, foreign and
+Read-lease issuance and page-token keys are not persisted. A retained mutation receipt
+can reissue its exact position after the saved frontier proves it durable, including
+a recovered durable receipt. Pending receipt positions refuse without flushing;
+expired receipts or unavailable provider images refuse explicitly. Released, evicted, foreign and
 restarted leases/tokens refuse explicitly; restart the read with no `at`. A durable
 position may be returned again as a newly issued cut if it is still the current
 readable image, but that does not restore an old page token. Composite cuts retain
