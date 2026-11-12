@@ -16,7 +16,7 @@ mod append;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use append::Append;
-pub use harmos_protocol::host::FollowingRow;
+pub use harmos_protocol::v1::FollowingRow;
 
 /* === Imports === */
 
@@ -62,7 +62,7 @@ where
     S: harmos_operations::StreamSpec,
     S::Row: harmos_domain::Message,
 {
-    host.call_protobuf::<Append>(harmos_protocol::host::SamplesAppendRequest {
+    host.call_protobuf::<Append>(harmos_protocol::context::SamplesAppendRequest {
         stream: S::ID.to_owned(),
         sequence: None,
         published_at: None,

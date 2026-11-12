@@ -37,7 +37,7 @@ use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuil
 use super::Declaration;
 use crate::config::PluginGuestSettings;
 use crate::{Application, Runtime, streams::StreamManager};
-use harmos_protocol::v1;
+use harmos_protocol::v1 as host;
 use prost::Message as _;
 
 /* === Constants === */
@@ -469,7 +469,7 @@ impl<A: Application> Bridge<A> {
             .map_err(|_| crate::operations::WireCodecError::Shape)?;
         let bytes = factory.grpc_decoding_memory(&call.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
         let preparation = self.operations.claim_preparation(std::num::NonZeroUsize::new(bytes.max(1)).unwrap())?;
-        let mut request = harmos_protocol::host::SamplesAppendRequest::decode(call.payload.as_slice())?;
+        let mut request = harmos_protocol::context::SamplesAppendRequest::decode(call.payload.as_slice())?;
         let catalog = self.declaration.registration.catalog.as_ref().ok_or(crate::operations::WireCodecError::Shape)?;
         let stream = catalog.streams.iter().find(|stream| stream.id == request.stream).ok_or(crate::operations::WireCodecError::Shape)?;
         let pool =

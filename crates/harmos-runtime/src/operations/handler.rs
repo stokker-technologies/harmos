@@ -520,8 +520,8 @@ impl harmos_operations::execution::operations::access::Discovery for HostContext
         harmos_operations::execution::operations::access::AccessError,
     > {
         let context = self.borrow();
-        let request = harmos_protocol::host::CatalogEntriesListRequest {
-            kind: harmos_protocol::host::CatalogKind::Operations as i32,
+        let request = harmos_protocol::v1::CatalogEntriesListRequest {
+            kind: harmos_protocol::v1::CatalogKind::Operations as i32,
             schema: None,
             page: Some(harmos_protocol::v1::PageRequest {
                 page_size: rows as u32,

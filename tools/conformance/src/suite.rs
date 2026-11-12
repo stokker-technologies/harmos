@@ -29,10 +29,8 @@ use tonic::{Code, Streaming, transport::Channel};
 
 // Local Imports
 use crate::{Error, Result, fixture, schema_fixture};
-use harmos_protocol::v1::{
-    self as v1, child_response, plugin_client::PluginClient, plugin_invoke_request, plugin_invoke_response, plugin_samples_request,
-    response,
-};
+use harmos_protocol::v1::{self as v1, child_response, response, };
+use harmos_protocol::plugin::{instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request};
 
 /* === Constants === */
 
@@ -68,9 +66,9 @@ static INVOCATION: AtomicU64 = AtomicU64::new(1);
 
 /* === Type Aliases === */
 
-type Client = PluginClient<Channel>;
-type Invoke = (mpsc::Sender<v1::PluginInvokeRequest>, Streaming<v1::PluginInvokeResponse>);
-type Publish = (mpsc::Sender<v1::PluginSamplesRequest>, Streaming<v1::PluginSamplesResponse>);
+type Client = InstanceClient<Channel>;
+type Invoke = (mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, Streaming<harmos_protocol::plugin::InstanceInvokeResponse>);
+type Publish = (mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>, Streaming<harmos_protocol::plugin::InstanceSamplesResponse>);
 
 /* === Structs === */
 
@@ -107,15 +105,15 @@ pub async fn run(address: &str, managed: bool) -> Result<Vec<Case>> {
 
 /* === Private Functions === */
 
-async fn connect(address: &str) -> Result<(Client, v1::PluginGetResponse)> {
+async fn connect(address: &str) -> Result<(Client, harmos_protocol::plugin::InstanceGetResponse)> {
     let mut client = Client::connect(address.to_owned()).await?;
     let description = describe(&mut client).await?;
     Ok((client, description))
 }
 
-async fn describe(client: &mut Client) -> Result<v1::PluginGetResponse> {
+async fn describe(client: &mut Client) -> Result<harmos_protocol::plugin::InstanceGetResponse> {
     Ok(client
-        .get(v1::PluginGetRequest {
+        .get(harmos_protocol::plugin::InstanceGetRequest {
             revision: 1,
             host: "conformance_host".into(),
             host_version: "1.0.0".into(),
@@ -128,10 +126,10 @@ fn require(condition: bool, message: &str) -> Result<()> {
     if condition { Ok(()) } else { Err(Error::Invalid(message.into())) }
 }
 
-fn request(operation: &str, payload: Vec<u8>) -> v1::PluginInvokeRequest {
+fn request(operation: &str, payload: Vec<u8>) -> harmos_protocol::plugin::InstanceInvokeRequest {
     let invocation = INVOCATION.fetch_add(1, Ordering::Relaxed);
-    v1::PluginInvokeRequest {
-        frame: Some(plugin_invoke_request::Frame::Request(v1::Request {
+    harmos_protocol::plugin::InstanceInvokeRequest {
+        frame: Some(instance_invoke_request::Frame::Request(v1::Request {
             operation: operation.into(),
             payload,
             invocation: format!("fixture-{invocation}"),
@@ -149,18 +147,18 @@ async fn invoke(client: &mut Client, operation: &str, payload: Vec<u8>) -> Resul
     Ok((send, incoming))
 }
 
-async fn terminal(input: &mut Streaming<v1::PluginInvokeResponse>) -> Result<response::Result> {
+async fn terminal(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>) -> Result<response::Result> {
     let frame = input.message().await?.and_then(|frame| frame.frame);
-    let Some(plugin_invoke_response::Frame::Response(v1::Response { result: Some(result) })) = frame else {
+    let Some(instance_invoke_response::Frame::Response(v1::Response { result: Some(result) })) = frame else {
         return Err(Error::Invalid(format!("Expected Terminal Response, Got {frame:?}")));
     };
     require(input.message().await?.is_none(), "Frames After Terminal Response")?;
     Ok(result)
 }
 
-async fn child(input: &mut Streaming<v1::PluginInvokeResponse>, id: u64, operation: &str, payload: &[u8]) -> Result<()> {
+async fn child(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>, id: u64, operation: &str, payload: &[u8]) -> Result<()> {
     let frame = input.message().await?.and_then(|frame| frame.frame);
-    let Some(plugin_invoke_response::Frame::Child(child)) = frame else {
+    let Some(instance_invoke_response::Frame::Child(child)) = frame else {
         return Err(Error::Invalid(format!("Expected Child Request, Got {frame:?}")));
     };
     require(
@@ -173,9 +171,9 @@ async fn child(input: &mut Streaming<v1::PluginInvokeResponse>, id: u64, operati
     )
 }
 
-async fn send_child(send: &mpsc::Sender<v1::PluginInvokeRequest>, call: u64, result: child_response::Result) -> Result<()> {
-    send.send(v1::PluginInvokeRequest {
-        frame: Some(plugin_invoke_request::Frame::Child(v1::ChildResponse { call, result: Some(result) })),
+async fn send_child(send: &mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, call: u64, result: child_response::Result) -> Result<()> {
+    send.send(harmos_protocol::plugin::InstanceInvokeRequest {
+        frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse { call, result: Some(result) })),
     })
     .await
     .map_err(|error| Error::Invalid(error.to_string()))
@@ -183,8 +181,8 @@ async fn send_child(send: &mpsc::Sender<v1::PluginInvokeRequest>, call: u64, res
 
 async fn open(client: &mut Client, name: &str) -> Result<Publish> {
     let (send, receive) = mpsc::channel(8);
-    send.send(v1::PluginSamplesRequest {
-        frame: Some(plugin_samples_request::Frame::Open(v1::SamplesSelection {
+    send.send(harmos_protocol::plugin::InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Open(v1::SamplesSelection {
             stream: name.into(),
             scope: "fixture".into(),
         })),
@@ -197,11 +195,11 @@ async fn open(client: &mut Client, name: &str) -> Result<Publish> {
 }
 
 async fn tick(
-    send: &mpsc::Sender<v1::PluginSamplesRequest>, input: &mut Streaming<v1::PluginSamplesResponse>, sequence: u64, seconds: i64,
+    send: &mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>, input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesResponse>, sequence: u64, seconds: i64,
 ) -> Result<()> {
     let at = fixture::timestamp(seconds);
-    send.send(v1::PluginSamplesRequest {
-        frame: Some(plugin_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
+    send.send(harmos_protocol::plugin::InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
     })
     .await
     .map_err(|error| Error::Invalid(error.to_string()))?;
@@ -215,7 +213,7 @@ async fn tick(
 }
 
 async fn invoke_status(
-    result: std::result::Result<tonic::Response<Streaming<v1::PluginInvokeResponse>>, tonic::Status>, expected: Code,
+    result: std::result::Result<tonic::Response<Streaming<harmos_protocol::plugin::InstanceInvokeResponse>>, tonic::Status>, expected: Code,
 ) -> Result<()> {
     let status = match result {
         Err(status) => status,
@@ -225,7 +223,7 @@ async fn invoke_status(
 }
 
 async fn publish_status(
-    result: std::result::Result<tonic::Response<Streaming<v1::PluginSamplesResponse>>, tonic::Status>, expected: Code,
+    result: std::result::Result<tonic::Response<Streaming<harmos_protocol::plugin::InstanceSamplesResponse>>, tonic::Status>, expected: Code,
 ) -> Result<()> {
     let status = match result {
         Err(status) => status,
@@ -278,7 +276,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // The Author Opts Into Scope Checking; Ordinary Calls Stay Unscoped.
             for scope in ["scope/α", "scope/β", ""] {
                 let mut frame = request("conformance.echo", fixture::payload(b"scope"));
-                let Some(plugin_invoke_request::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
+                let Some(instance_invoke_request::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
                 request.scope = scope.into();
                 let mut input = client.invoke(stream::iter([frame])).await?.into_inner();
                 let result = terminal(&mut input).await?;
@@ -294,7 +292,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 }
             }
             let mut frame = request("conformance.echo", fixture::payload(b"unscoped"));
-            let Some(plugin_invoke_request::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
+            let Some(instance_invoke_request::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
             request.scope.clear();
             let mut input = client.invoke(stream::iter([frame])).await?.into_inner();
             require(
@@ -304,17 +302,17 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         4 => {
             for frame in [
-                v1::PluginInvokeRequest { frame: None },
-                v1::PluginInvokeRequest {
-                    frame: Some(plugin_invoke_request::Frame::Cancel(v1::Cancel { reason: "early".into() })),
+                harmos_protocol::plugin::InstanceInvokeRequest { frame: None },
+                harmos_protocol::plugin::InstanceInvokeRequest {
+                    frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "early".into() })),
                 },
-                v1::PluginInvokeRequest {
-                    frame: Some(plugin_invoke_request::Frame::Child(v1::ChildResponse::default())),
+                harmos_protocol::plugin::InstanceInvokeRequest {
+                    frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse::default())),
                 },
             ] {
                 invoke_status(client.invoke(stream::iter([frame])).await, Code::InvalidArgument).await?;
             }
-            invoke_status(client.invoke(stream::iter(Vec::<v1::PluginInvokeRequest>::new())).await, Code::InvalidArgument).await?;
+            invoke_status(client.invoke(stream::iter(Vec::<harmos_protocol::plugin::InstanceInvokeRequest>::new())).await, Code::InvalidArgument).await?;
             let frames = [request("conformance.cancel", fixture::payload(b"")), request("conformance.echo", fixture::payload(b""))];
             let mut input = client.invoke(stream::iter(frames)).await?.into_inner();
             child(&mut input, 1, "conformance.host.pending", &fixture::payload(b"")).await?;
@@ -325,7 +323,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let payload = fixture::payload(b"policy");
             let (send, mut input) = invoke(&mut client, "conformance.policy", payload.clone()).await?;
             let frame = input.message().await?.and_then(|frame| frame.frame);
-            let Some(plugin_invoke_response::Frame::Child(overridden)) = frame else {
+            let Some(instance_invoke_response::Frame::Child(overridden)) = frame else {
                 return Err(Error::Invalid("Missing Policy Child".into()));
             };
             require(
@@ -370,13 +368,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         7 => {
             let (send, mut input) = invoke(&mut client, "conformance.cancel", fixture::payload(b"pending")).await?;
             child(&mut input, 1, "conformance.host.pending", &fixture::payload(b"pending")).await?;
-            send.send(v1::PluginInvokeRequest {
-                frame: Some(plugin_invoke_request::Frame::Cancel(v1::Cancel { reason: "fixture_cancel".into() })),
+            send.send(harmos_protocol::plugin::InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "fixture_cancel".into() })),
             })
             .await
             .map_err(|error| Error::Invalid(error.to_string()))?;
             let frame = input.message().await?.and_then(|frame| frame.frame);
-            require(frame == Some(plugin_invoke_response::Frame::ChildCancel(v1::ChildCancel { call: 1 })), "Missing Child Cancel")?;
+            require(frame == Some(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call: 1 })), "Missing Child Cancel")?;
             let result = terminal(&mut input).await?;
             let response::Result::Failure(failure) = result else {
                 return Err(Error::Invalid("Expected Cancelled Failure".into()));
@@ -403,7 +401,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 .await?;
             let mut frame = request("conformance.echo", vec![255]);
             invoke_status(client.invoke(stream::iter([frame.clone()])).await, Code::InvalidArgument).await?;
-            if let Some(plugin_invoke_request::Frame::Request(request)) = &mut frame.frame {
+            if let Some(instance_invoke_request::Frame::Request(request)) = &mut frame.frame {
                 request.payload = fixture::payload(b"");
                 request.attempt = 0;
             }
@@ -463,16 +461,16 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         14 => {
             for frame in [
-                v1::PluginSamplesRequest { frame: None },
-                v1::PluginSamplesRequest {
-                    frame: Some(plugin_samples_request::Frame::Tick(v1::Tick { at: Some(fixture::timestamp(1)) })),
+                harmos_protocol::plugin::InstanceSamplesRequest { frame: None },
+                harmos_protocol::plugin::InstanceSamplesRequest {
+                    frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at: Some(fixture::timestamp(1)) })),
                 },
             ] {
                 publish_status(client.samples(stream::iter([frame])).await, Code::InvalidArgument).await?;
             }
-            publish_status(client.samples(stream::iter(Vec::<v1::PluginSamplesRequest>::new())).await, Code::InvalidArgument).await?;
-            let open = v1::PluginSamplesRequest {
-                frame: Some(plugin_samples_request::Frame::Open(v1::SamplesSelection {
+            publish_status(client.samples(stream::iter(Vec::<harmos_protocol::plugin::InstanceSamplesRequest>::new())).await, Code::InvalidArgument).await?;
+            let open = harmos_protocol::plugin::InstanceSamplesRequest {
+                frame: Some(instance_samples_request::Frame::Open(v1::SamplesSelection {
                     stream: "conformance.ticks".into(),
                     scope: "fixture".into(),
                 })),
@@ -485,13 +483,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 Some(prost_types::Timestamp { seconds: 0, nanos: -1 }),
                 Some(prost_types::Timestamp { seconds: 0, nanos: 1_000_000_000 }),
             ] {
-                let tick = v1::PluginSamplesRequest {
-                    frame: Some(plugin_samples_request::Frame::Tick(v1::Tick { at })),
+                let tick = harmos_protocol::plugin::InstanceSamplesRequest {
+                    frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at })),
                 };
                 publish_status(client.samples(stream::iter([open.clone(), tick])).await, Code::InvalidArgument).await?;
             }
-            let missing = v1::PluginSamplesRequest {
-                frame: Some(plugin_samples_request::Frame::Open(v1::SamplesSelection {
+            let missing = harmos_protocol::plugin::InstanceSamplesRequest {
+                frame: Some(instance_samples_request::Frame::Open(v1::SamplesSelection {
                     stream: "conformance.absent".into(),
                     scope: "fixture".into(),
                 })),
@@ -650,8 +648,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let (send, mut input) = invoke(&mut client, "conformance.cancel_reason", payload.clone()).await?;
             child(&mut input, 1, "conformance.host.echo", &payload).await?;
             send_child(&send, 1, child_response::Result::Payload(payload)).await?;
-            send.send(v1::PluginInvokeRequest {
-                frame: Some(plugin_invoke_request::Frame::Cancel(v1::Cancel { reason: "Requested Stop".into() })),
+            send.send(harmos_protocol::plugin::InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "Requested Stop".into() })),
             })
             .await
             .map_err(|_| Error::Invalid("Cancel Closed".into()))?;
@@ -661,7 +659,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             )?;
         }
         16 => {
-            client.stop(v1::PluginStopRequest { reason: "Conformance Complete".into() }).await?;
+            client.stop(harmos_protocol::plugin::InstanceStopRequest { reason: "Conformance Complete".into() }).await?;
             if !managed {
                 connect(address).await?;
             }

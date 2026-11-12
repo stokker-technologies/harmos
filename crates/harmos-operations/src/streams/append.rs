@@ -19,8 +19,8 @@ pub struct Append;
 /* === Implementations === */
 
 impl ProtobufOperation for Append {
-    type Request = harmos_protocol::host::SamplesAppendRequest;
-    type Response = harmos_protocol::host::SamplesAppendResponse;
+    type Request = harmos_protocol::context::SamplesAppendRequest;
+    type Response = harmos_protocol::context::SamplesAppendResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.samples.append";
     const POLICY: crate::OperationPolicy = crate::host::POLICY;
@@ -51,6 +51,6 @@ impl ProtobufOperation for Append {
             .publish(context.call.clone(), publication)
             .await
             .map_err(|error| ServingError::Native(std::sync::Arc::new(crate::Error::Access(error))))?;
-        Ok(harmos_protocol::host::SamplesAppendResponse {})
+        Ok(harmos_protocol::context::SamplesAppendResponse {})
     }
 }

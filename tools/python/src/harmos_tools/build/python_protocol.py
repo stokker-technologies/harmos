@@ -31,20 +31,13 @@ from ..process import spawn_flags
 # === Constants === #
 
 ROOT = Path(__file__).resolve().parents[5]
-GENERATED = (
-    "harmos/v1/host_pb2.py",
-    "harmos/v1/host_pb2.pyi",
-    "harmos/v1/host_pb2_grpc.py",
-    "harmos/v1/storage_pb2.py",
-    "harmos/v1/storage_pb2.pyi",
-    "harmos/v1/storage_pb2_grpc.py",
-    "harmos/v1/plugin_pb2.py",
-    "harmos/v1/plugin_pb2.pyi",
-    "harmos/v1/plugin_pb2_grpc.py",
-    "harmos/conformance/v1/fixture_pb2.py",
-    "harmos/conformance/v1/fixture_pb2.pyi",
-    "harmos/conformance/v1/fixture_pb2_grpc.py",
+PROTOCOLS = (
+    "harmos/v1/types.proto", "harmos/v1/catalog_entries.proto", "harmos/v1/invocations.proto", "harmos/v1/time.proto",
+    "harmos/plugin/v1/instance.proto", "harmos/context/v1/catalog_entries.proto", "harmos/context/v1/invocations.proto",
+    "harmos/context/v1/time.proto", "harmos/context/v1/samples.proto", "harmos/v1/storage.proto",
+    "harmos/conformance/v1/fixture.proto",
 )
+GENERATED = tuple(name.removesuffix(".proto") + suffix for name in PROTOCOLS for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))
 
 # === Types === #
 
@@ -65,10 +58,7 @@ def generate(output: Path) -> None:
         f"--python_out={output}",
         f"--pyi_out={output}",
         f"--grpc_python_out={output}",
-        "harmos/v1/plugin.proto",
-        "harmos/v1/host.proto",
-        "harmos/v1/storage.proto",
-        "harmos/conformance/v1/fixture.proto",
+        *PROTOCOLS,
     ]
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
 

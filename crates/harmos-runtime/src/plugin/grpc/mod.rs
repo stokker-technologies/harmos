@@ -31,7 +31,7 @@ pub use managed::Managed;
 use std::{future::Future, sync::Arc};
 
 // Third Party Imports
-use harmos_protocol::v1::plugin_client::PluginClient;
+use harmos_protocol::plugin::instance_client::InstanceClient;
 use tokio::sync::watch;
 
 // Local Imports
@@ -52,7 +52,7 @@ type Outcome = Result<(), Arc<Error>>;
 #[derive(Clone)]
 pub struct Activation {
     pub number: u64,
-    pub description: v1::PluginGetResponse,
+    pub description: harmos_protocol::plugin::InstanceGetResponse,
     pub previous_started_at: Option<prost_types::Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
     connection: Arc<Connection>,
@@ -143,7 +143,7 @@ impl Activation {
     }
 
     /// Inspect This Connection Only; An Old Handle Never Follows Reconnection.
-    pub async fn get(&self) -> Result<v1::PluginGetResponse, Error> {
+    pub async fn get(&self) -> Result<harmos_protocol::plugin::InstanceGetResponse, Error> {
         self.connected(describe(&self.connection)).await
     }
 
@@ -254,10 +254,10 @@ impl Attached {
 
 /* === Private Functions === */
 
-async fn describe(connection: &Connection) -> Result<v1::PluginGetResponse, Error> {
-    let mut client = PluginClient::new(connection.channel.clone());
+async fn describe(connection: &Connection) -> Result<harmos_protocol::plugin::InstanceGetResponse, Error> {
+    let mut client = InstanceClient::new(connection.channel.clone());
     client
-        .get(v1::PluginGetRequest {
+        .get(harmos_protocol::plugin::InstanceGetRequest {
             revision: 1,
             host: "harmos".into(),
             host_version: env!("CARGO_PKG_VERSION").into(),
@@ -352,9 +352,9 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             let _activity = clock.activity("plugin stop");
             let deadline = clock.now() + settings.stop_grace;
             let streams_closed = clock.timeout_at(deadline, publications.close()).await;
-            let mut client = PluginClient::new(activation.connection.channel.clone());
+            let mut client = InstanceClient::new(activation.connection.channel.clone());
             let result = clock
-                .timeout_at(deadline, client.stop(v1::PluginStopRequest { reason }))
+                .timeout_at(deadline, client.stop(harmos_protocol::plugin::InstanceStopRequest { reason }))
                 .await
                 .map_err(|_| Error::Timeout("Stop"))
                 .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));

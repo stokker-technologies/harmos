@@ -131,8 +131,8 @@ async fn builtin_grpc_roundtrip() {
         .into_iter()
         .filter_map(|method| method.contract.grpc().map(|grpc| grpc.path()))
         .collect::<Vec<_>>();
-    assert!(paths.contains(&"/harmos.host.v1.Invocations/Get".to_owned()));
-    assert!(paths.contains(&"/harmos.host.v1.Invocations/Cancel".to_owned()));
+    assert!(paths.contains(&"/harmos.v1.Invocations/Get".to_owned()));
+    assert!(paths.contains(&"/harmos.v1.Invocations/Cancel".to_owned()));
 
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
@@ -140,24 +140,24 @@ async fn builtin_grpc_roundtrip() {
     let id = parked.id();
 
     // An External Caller Neither Sees nor Cancels a Host Instance
-    let status = generated_call::<harmos_protocol::host::InvocationsGetRequest, harmos_protocol::host::InvocationsGetResponse>(
+    let status = generated_call::<harmos_protocol::v1::InvocationsGetRequest, harmos_protocol::v1::InvocationsGetResponse>(
         channel.clone(),
-        "/harmos.host.v1.Invocations/Get",
+        "/harmos.v1.Invocations/Get",
         Get::of(id),
     )
     .await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let cancel = generated_call::<harmos_protocol::host::InvocationsCancelRequest, harmos_protocol::host::InvocationsCancelResponse>(
+    let cancel = generated_call::<harmos_protocol::v1::InvocationsCancelRequest, harmos_protocol::v1::InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.host.v1.Invocations/Cancel",
+        "/harmos.v1.Invocations/Cancel",
         Cancel::of(unknown),
     )
     .await;
     assert!(cancel.is_err());
-    let foreign = generated_call::<harmos_protocol::host::InvocationsCancelRequest, harmos_protocol::host::InvocationsCancelResponse>(
+    let foreign = generated_call::<harmos_protocol::v1::InvocationsCancelRequest, harmos_protocol::v1::InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.host.v1.Invocations/Cancel",
+        "/harmos.v1.Invocations/Cancel",
         Cancel::of(id),
     )
     .await;
@@ -221,7 +221,7 @@ async fn external_authority_parity() {
     let guarded = alice.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
     assert_eq!(
         guarded.grants,
-        [harmos_protocol::host::Grant {
+        [harmos_protocol::v1::Grant {
             operation: "grpc.guarded".into(),
             scope: Some("reading".into())
         }]

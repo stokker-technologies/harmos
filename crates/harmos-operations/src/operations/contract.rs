@@ -314,9 +314,9 @@ impl Contract {
                 "harmos.samples.append" => ("SamplesAppendRequest", "SamplesAppendResponse", "Samples", "Append", false),
                 _ => return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into()),
             };
-            let request = format!("harmos.host.v1.{request}");
-            let response = format!("harmos.host.v1.{response}");
-            let root = harmos_protocol::host::CatalogEntriesListRequest::default().descriptor();
+            let request = format!("harmos.v1.{request}");
+            let response = format!("harmos.v1.{response}");
+            let root = harmos_protocol::v1::CatalogEntriesListRequest::default().descriptor();
             let types = prost_types::FileDescriptorSet {
                 file: root.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
             };
@@ -330,7 +330,7 @@ impl Contract {
                 output: output.then_some(response),
             };
             let mapping = (service != "Samples").then(|| super::Grpc {
-                package: "harmos.host.v1".into(),
+                package: "harmos.v1".into(),
                 service: service.to_owned().into(),
                 method: method.to_owned().into(),
                 managed: false,
@@ -369,7 +369,7 @@ impl Contract {
             input: None,
             output: None,
         };
-        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.host.v1", "Time", method)), settings)
+        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.v1", "Time", method)), settings)
     }
 
     fn generated(

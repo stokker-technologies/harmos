@@ -17,6 +17,7 @@
 
 // Local Imports
 #include "harmos/harmos.hpp"
+#include "harmos/context/v1/time.pb.h"
 #include "harmos/conformance/v1/fixture.pb.h"
 
 /* === Macros === */
@@ -53,8 +54,8 @@ void observer_preserves_its_stream_contract() {
     auto catalog = plugin.catalog();
     if (catalog.streams(0).row() != Value::descriptor()->full_name()) throw std::logic_error("Observer Replaced the Stream Row Type");
 
-    harmos::Stream<harmos::wire::TimeGetRequest> different_row("example.samples");
-    harmos::Observer<harmos::wire::TimeGetRequest> incompatible(different_row, [](harmos::Context&) { return harmos::wire::TimeGetRequest{}; });
+    harmos::Stream<harmos::context::v1::TimeGetRequest> different_row("example.samples");
+    harmos::Observer<harmos::context::v1::TimeGetRequest> incompatible(different_row, [](harmos::Context&) { return harmos::context::v1::TimeGetRequest{}; });
     incompatible.every(interval);
     harmos::Plugin invalid("example", "1.0.0");
     invalid.stream(stream);
@@ -64,13 +65,13 @@ void observer_preserves_its_stream_contract() {
 }
 
 void catalog_preserves_typed_sections_and_dependencies() {
-    harmos::wire::TimeSleepRequest setting;
+    harmos::context::v1::TimeSleepRequest setting;
     setting.mutable_duration()->set_seconds(37);
     harmos::Plugin plugin("example", "1.0.0");
     plugin.requires_operation(harmos::GET_TIME).requires_operation(harmos::SLEEP).section(setting);
     setting.mutable_duration()->set_seconds(99);
     const auto catalog = plugin.catalog();
-    const auto decoded = harmos::decode<harmos::wire::TimeSleepRequest>(catalog.sections(0).payload());
+    const auto decoded = harmos::decode<harmos::context::v1::TimeSleepRequest>(catalog.sections(0).payload());
     if (decoded.duration().seconds() != 37) throw std::logic_error("Section Did Not Retain Its Typed Value");
 
     google::protobuf::SimpleDescriptorDatabase database;

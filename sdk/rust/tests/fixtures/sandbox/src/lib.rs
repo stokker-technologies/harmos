@@ -155,7 +155,7 @@ pub fn harmos_register() -> Registration {
         )
         .requires::<ProviderEchoOperation>()
         .requires::<ReadOperation>()
-        .requires::<harmos_protocol::host::SamplesAppendRequest>()
+        .requires::<harmos_protocol::context::SamplesAppendRequest>()
         .stream(Stream::<Echoed>::new("progress"));
     Registration::new(plugin)
         .capacity(2)

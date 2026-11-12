@@ -22,7 +22,8 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 // Third Party Imports
-use harmos_protocol::v1::{PluginGetRequest, PluginGetResponse, PluginStopRequest, plugin_client::PluginClient};
+
+use harmos_protocol::plugin::{InstanceGetRequest, InstanceGetResponse, InstanceStopRequest, instance_client::InstanceClient};
 
 // Local Imports
 use crate::{BuildCancellation, Error, process::Process};
@@ -45,7 +46,7 @@ const TRANSPORT_GUARD: Duration = Duration::from_secs(30);
 
 /* === Public Functions === */
 
-pub(crate) fn describe(path: &Path, cancellation: &BuildCancellation) -> Result<PluginGetResponse, Error> {
+pub(crate) fn describe(path: &Path, cancellation: &BuildCancellation) -> Result<InstanceGetResponse, Error> {
     std::thread::scope(|scope| {
         scope.spawn(|| collect(path, cancellation)).join().map_err(|_| std::io::Error::other("Plugin Catalog Worker Panicked"))?
     })
@@ -53,7 +54,7 @@ pub(crate) fn describe(path: &Path, cancellation: &BuildCancellation) -> Result<
 
 /* === Private Functions === */
 
-fn collect(path: &Path, cancellation: &BuildCancellation) -> Result<PluginGetResponse, Error> {
+fn collect(path: &Path, cancellation: &BuildCancellation) -> Result<InstanceGetResponse, Error> {
     // Start the Exact Stamped Executable in Managed Mode
     let mut command = Command::new(std::path::absolute(path)?);
     command.env_remove("HARMOS_ADDRESS").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
@@ -102,16 +103,16 @@ fn collect(path: &Path, cancellation: &BuildCancellation) -> Result<PluginGetRes
         runtime.block_on(async {
             tokio::time::timeout(TRANSPORT_GUARD, async {
                 let mut client =
-                    PluginClient::connect(format!("http://{address}")).await.map_err(|error| Error::Settings(error.to_string()))?;
+                    InstanceClient::connect(format!("http://{address}")).await.map_err(|error| Error::Settings(error.to_string()))?;
                 client = client.max_decoding_message_size(crate::bundle::Limits::default().manifest_bytes);
-                let request = PluginGetRequest {
+                let request = InstanceGetRequest {
                     revision: 1,
                     host: "harmos-packaging".into(),
                     host_version: env!("CARGO_PKG_VERSION").into(),
                 };
                 let description = client.get(request).await.map_err(|error| Error::Settings(error.to_string()))?.into_inner();
                 client
-                    .stop(PluginStopRequest { reason: "Catalog Collected".into() })
+                    .stop(InstanceStopRequest { reason: "Catalog Collected".into() })
                     .await
                     .map_err(|error| Error::Settings(error.to_string()))?;
                 if description.revision < 1 || description.id.is_empty() || description.catalog.is_none() {

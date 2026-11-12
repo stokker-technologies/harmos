@@ -465,7 +465,7 @@ fn publication() -> harmos_operations::StreamDeclaration {
     harmos_operations::StreamDeclaration {
         metadata: harmos_runtime::Metadata::new(
             harmos_runtime::Identifier::new("listener.samples").unwrap(),
-            "PluginSamplesResponse",
+            "InstanceSamplesResponse",
             None,
         ),
         row_metadata: vec![],

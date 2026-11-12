@@ -26,6 +26,13 @@ class Classification(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CLASSIFICATION_CANCELLED: _ClassVar[Classification]
     CLASSIFICATION_TIMED_OUT: _ClassVar[Classification]
     CLASSIFICATION_REFUSED: _ClassVar[Classification]
+
+class CatalogKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    CATALOG_KIND_OPERATIONS: _ClassVar[CatalogKind]
+    CATALOG_KIND_SCHEMAS: _ClassVar[CatalogKind]
+    CATALOG_KIND_STREAMS: _ClassVar[CatalogKind]
+    CATALOG_KIND_OBJECTS: _ClassVar[CatalogKind]
 VISIBILITY_UNSPECIFIED: Visibility
 VISIBILITY_PRIVATE: Visibility
 VISIBILITY_PUBLIC: Visibility
@@ -35,6 +42,10 @@ CLASSIFICATION_TRANSIENT: Classification
 CLASSIFICATION_CANCELLED: Classification
 CLASSIFICATION_TIMED_OUT: Classification
 CLASSIFICATION_REFUSED: Classification
+CATALOG_KIND_OPERATIONS: CatalogKind
+CATALOG_KIND_SCHEMAS: CatalogKind
+CATALOG_KIND_STREAMS: CatalogKind
+CATALOG_KIND_OBJECTS: CatalogKind
 
 class History(_message.Message):
     __slots__ = ("store", "epoch")
@@ -89,34 +100,6 @@ class Receipt(_message.Message):
     durable_at: Position
     completed: bool
     def __init__(self, request_id: _Optional[str] = ..., accepted_at: _Optional[_Union[Position, _Mapping]] = ..., durable_at: _Optional[_Union[Position, _Mapping]] = ..., completed: _Optional[bool] = ...) -> None: ...
-
-class PluginGetRequest(_message.Message):
-    __slots__ = ("revision", "host", "host_version")
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    HOST_FIELD_NUMBER: _ClassVar[int]
-    HOST_VERSION_FIELD_NUMBER: _ClassVar[int]
-    revision: int
-    host: str
-    host_version: str
-    def __init__(self, revision: _Optional[int] = ..., host: _Optional[str] = ..., host_version: _Optional[str] = ...) -> None: ...
-
-class PluginGetResponse(_message.Message):
-    __slots__ = ("id", "version", "started_at", "catalog", "revision", "sdk", "sdk_version")
-    ID_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    STARTED_AT_FIELD_NUMBER: _ClassVar[int]
-    CATALOG_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    SDK_FIELD_NUMBER: _ClassVar[int]
-    SDK_VERSION_FIELD_NUMBER: _ClassVar[int]
-    id: str
-    version: str
-    started_at: _timestamp_pb2.Timestamp
-    catalog: Catalog
-    revision: int
-    sdk: str
-    sdk_version: str
-    def __init__(self, id: _Optional[str] = ..., version: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., catalog: _Optional[_Union[Catalog, _Mapping]] = ..., revision: _Optional[int] = ..., sdk: _Optional[str] = ..., sdk_version: _Optional[str] = ...) -> None: ...
 
 class Catalog(_message.Message):
     __slots__ = ("operations", "requires", "streams", "sections", "digest", "types")
@@ -208,36 +191,6 @@ class Section(_message.Message):
     payload: bytes
     def __init__(self, type: _Optional[str] = ..., payload: _Optional[bytes] = ...) -> None: ...
 
-class PluginStopRequest(_message.Message):
-    __slots__ = ("reason",)
-    REASON_FIELD_NUMBER: _ClassVar[int]
-    reason: str
-    def __init__(self, reason: _Optional[str] = ...) -> None: ...
-
-class PluginStopResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class PluginInvokeRequest(_message.Message):
-    __slots__ = ("request", "child", "cancel")
-    REQUEST_FIELD_NUMBER: _ClassVar[int]
-    CHILD_FIELD_NUMBER: _ClassVar[int]
-    CANCEL_FIELD_NUMBER: _ClassVar[int]
-    request: Request
-    child: ChildResponse
-    cancel: Cancel
-    def __init__(self, request: _Optional[_Union[Request, _Mapping]] = ..., child: _Optional[_Union[ChildResponse, _Mapping]] = ..., cancel: _Optional[_Union[Cancel, _Mapping]] = ...) -> None: ...
-
-class PluginInvokeResponse(_message.Message):
-    __slots__ = ("child", "child_cancel", "response")
-    CHILD_FIELD_NUMBER: _ClassVar[int]
-    CHILD_CANCEL_FIELD_NUMBER: _ClassVar[int]
-    RESPONSE_FIELD_NUMBER: _ClassVar[int]
-    child: ChildRequest
-    child_cancel: ChildCancel
-    response: Response
-    def __init__(self, child: _Optional[_Union[ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[ChildCancel, _Mapping]] = ..., response: _Optional[_Union[Response, _Mapping]] = ...) -> None: ...
-
 class Request(_message.Message):
     __slots__ = ("operation", "payload", "invocation", "attempt", "scope")
     OPERATION_FIELD_NUMBER: _ClassVar[int]
@@ -325,14 +278,6 @@ class Failure(_message.Message):
     diagnostics: str
     def __init__(self, classification: _Optional[_Union[Classification, str]] = ..., code: _Optional[str] = ..., message: _Optional[str] = ..., action: _Optional[str] = ..., operation: _Optional[str] = ..., plugin: _Optional[str] = ..., cause: _Optional[_Union[Failure, _Mapping]] = ..., details: _Optional[_Mapping[str, str]] = ..., diagnostics: _Optional[str] = ...) -> None: ...
 
-class PluginSamplesRequest(_message.Message):
-    __slots__ = ("open", "tick")
-    OPEN_FIELD_NUMBER: _ClassVar[int]
-    TICK_FIELD_NUMBER: _ClassVar[int]
-    open: SamplesSelection
-    tick: Tick
-    def __init__(self, open: _Optional[_Union[SamplesSelection, _Mapping]] = ..., tick: _Optional[_Union[Tick, _Mapping]] = ...) -> None: ...
-
 class Tick(_message.Message):
     __slots__ = ("at",)
     AT_FIELD_NUMBER: _ClassVar[int]
@@ -347,12 +292,6 @@ class SamplesSelection(_message.Message):
     scope: str
     def __init__(self, stream: _Optional[str] = ..., scope: _Optional[str] = ...) -> None: ...
 
-class PluginSamplesResponse(_message.Message):
-    __slots__ = ("samples",)
-    SAMPLES_FIELD_NUMBER: _ClassVar[int]
-    samples: _containers.RepeatedCompositeFieldContainer[Sample]
-    def __init__(self, samples: _Optional[_Iterable[_Union[Sample, _Mapping]]] = ...) -> None: ...
-
 class Sample(_message.Message):
     __slots__ = ("at", "row", "sequence")
     AT_FIELD_NUMBER: _ClassVar[int]
@@ -363,22 +302,108 @@ class Sample(_message.Message):
     sequence: int
     def __init__(self, at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., row: _Optional[bytes] = ..., sequence: _Optional[int] = ...) -> None: ...
 
-class TimeSleepRequest(_message.Message):
-    __slots__ = ("duration",)
-    DURATION_FIELD_NUMBER: _ClassVar[int]
-    duration: _duration_pb2.Duration
-    def __init__(self, duration: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ...) -> None: ...
+class AssignedOperation(_message.Message):
+    __slots__ = ("operation", "fingerprint", "generation")
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_FIELD_NUMBER: _ClassVar[int]
+    operation: str
+    fingerprint: bytes
+    generation: int
+    def __init__(self, operation: _Optional[str] = ..., fingerprint: _Optional[bytes] = ..., generation: _Optional[int] = ...) -> None: ...
 
-class TimeSleepResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
+class OperationAssignments(_message.Message):
+    __slots__ = ("operations",)
+    OPERATIONS_FIELD_NUMBER: _ClassVar[int]
+    operations: _containers.RepeatedCompositeFieldContainer[AssignedOperation]
+    def __init__(self, operations: _Optional[_Iterable[_Union[AssignedOperation, _Mapping]]] = ...) -> None: ...
 
-class TimeGetRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
+class InstanceState(_message.Message):
+    __slots__ = ("phase", "outcome", "cancellation_requested", "attempt")
+    PHASE_FIELD_NUMBER: _ClassVar[int]
+    OUTCOME_FIELD_NUMBER: _ClassVar[int]
+    CANCELLATION_REQUESTED_FIELD_NUMBER: _ClassVar[int]
+    ATTEMPT_FIELD_NUMBER: _ClassVar[int]
+    phase: str
+    outcome: str
+    cancellation_requested: bool
+    attempt: int
+    def __init__(self, phase: _Optional[str] = ..., outcome: _Optional[str] = ..., cancellation_requested: _Optional[bool] = ..., attempt: _Optional[int] = ...) -> None: ...
 
-class TimeGetResponse(_message.Message):
-    __slots__ = ("now",)
-    NOW_FIELD_NUMBER: _ClassVar[int]
-    now: _timestamp_pb2.Timestamp
-    def __init__(self, now: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+class Protobuf(_message.Message):
+    __slots__ = ("descriptors", "request", "response", "input", "output")
+    DESCRIPTORS_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_FIELD_NUMBER: _ClassVar[int]
+    RESPONSE_FIELD_NUMBER: _ClassVar[int]
+    INPUT_FIELD_NUMBER: _ClassVar[int]
+    OUTPUT_FIELD_NUMBER: _ClassVar[int]
+    descriptors: bytes
+    request: str
+    response: str
+    input: str
+    output: str
+    def __init__(self, descriptors: _Optional[bytes] = ..., request: _Optional[str] = ..., response: _Optional[str] = ..., input: _Optional[str] = ..., output: _Optional[str] = ...) -> None: ...
+
+class Grpc(_message.Message):
+    __slots__ = ("package", "service", "method", "managed")
+    PACKAGE_FIELD_NUMBER: _ClassVar[int]
+    SERVICE_FIELD_NUMBER: _ClassVar[int]
+    METHOD_FIELD_NUMBER: _ClassVar[int]
+    MANAGED_FIELD_NUMBER: _ClassVar[int]
+    package: str
+    service: str
+    method: str
+    managed: bool
+    def __init__(self, package: _Optional[str] = ..., service: _Optional[str] = ..., method: _Optional[str] = ..., managed: _Optional[bool] = ...) -> None: ...
+
+class Grant(_message.Message):
+    __slots__ = ("operation", "scope")
+    OPERATION_FIELD_NUMBER: _ClassVar[int]
+    SCOPE_FIELD_NUMBER: _ClassVar[int]
+    operation: str
+    scope: str
+    def __init__(self, operation: _Optional[str] = ..., scope: _Optional[str] = ...) -> None: ...
+
+class DiscoveredContract(_message.Message):
+    __slots__ = ("id", "description", "visibility", "policy", "replay_safe", "fingerprint", "protobuf", "grpc")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    VISIBILITY_FIELD_NUMBER: _ClassVar[int]
+    POLICY_FIELD_NUMBER: _ClassVar[int]
+    REPLAY_SAFE_FIELD_NUMBER: _ClassVar[int]
+    FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
+    PROTOBUF_FIELD_NUMBER: _ClassVar[int]
+    GRPC_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    description: str
+    visibility: Visibility
+    policy: OperationPolicy
+    replay_safe: bool
+    fingerprint: bytes
+    protobuf: Protobuf
+    grpc: Grpc
+    def __init__(self, id: _Optional[str] = ..., description: _Optional[str] = ..., visibility: _Optional[_Union[Visibility, str]] = ..., policy: _Optional[_Union[OperationPolicy, _Mapping]] = ..., replay_safe: _Optional[bool] = ..., fingerprint: _Optional[bytes] = ..., protobuf: _Optional[_Union[Protobuf, _Mapping]] = ..., grpc: _Optional[_Union[Grpc, _Mapping]] = ...) -> None: ...
+
+class DiscoveredOperation(_message.Message):
+    __slots__ = ("owner", "generation", "contract", "grants", "conditional_access", "grpc_available")
+    OWNER_FIELD_NUMBER: _ClassVar[int]
+    GENERATION_FIELD_NUMBER: _ClassVar[int]
+    CONTRACT_FIELD_NUMBER: _ClassVar[int]
+    GRANTS_FIELD_NUMBER: _ClassVar[int]
+    CONDITIONAL_ACCESS_FIELD_NUMBER: _ClassVar[int]
+    GRPC_AVAILABLE_FIELD_NUMBER: _ClassVar[int]
+    owner: str
+    generation: int
+    contract: DiscoveredContract
+    grants: _containers.RepeatedCompositeFieldContainer[Grant]
+    conditional_access: bool
+    grpc_available: bool
+    def __init__(self, owner: _Optional[str] = ..., generation: _Optional[int] = ..., contract: _Optional[_Union[DiscoveredContract, _Mapping]] = ..., grants: _Optional[_Iterable[_Union[Grant, _Mapping]]] = ..., conditional_access: _Optional[bool] = ..., grpc_available: _Optional[bool] = ...) -> None: ...
+
+class FollowingRow(_message.Message):
+    __slots__ = ("payload", "published_delta")
+    PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    PUBLISHED_DELTA_FIELD_NUMBER: _ClassVar[int]
+    payload: bytes
+    published_delta: _duration_pb2.Duration
+    def __init__(self, payload: _Optional[bytes] = ..., published_delta: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ...) -> None: ...

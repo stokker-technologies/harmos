@@ -119,8 +119,8 @@ impl ProtobufOperation for Provider {
     }
 }
 impl ProtobufOperation for Publisher {
-    type Request = harmos_protocol::host::SamplesAppendRequest;
-    type Response = harmos_protocol::host::SamplesAppendResponse;
+    type Request = harmos_protocol::context::SamplesAppendRequest;
+    type Response = harmos_protocol::context::SamplesAppendResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.samples.append";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
@@ -152,7 +152,7 @@ impl ProtobufOperation for Publisher {
                 0,
             )
             .map_err(|error| ServingError::Native(Arc::new(error)))?;
-        Ok(harmos_protocol::host::SamplesAppendResponse {})
+        Ok(harmos_protocol::context::SamplesAppendResponse {})
     }
 }
 impl harmos_runtime::Message for Stage {

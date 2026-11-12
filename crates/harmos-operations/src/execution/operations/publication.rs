@@ -16,7 +16,7 @@
 // Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
-use harmos_protocol::host::FollowingRow;
+use harmos_protocol::v1::FollowingRow;
 // Local Imports
 use super::access::AccessError;
 

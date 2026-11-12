@@ -20,7 +20,7 @@ use std::num::NonZeroUsize;
 
 // Third Party Imports
 use harmos::prelude::*;
-use harmos_protocol::host;
+use harmos_protocol::v1 as host;
 use schematic_protocol::{ValidateSchematic, Validation};
 use tonic::{Request, transport::Endpoint};
 

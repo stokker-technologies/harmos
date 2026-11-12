@@ -1,3 +1,5 @@
+using Harmos.Context.V1;
+using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Threading.Channels;
@@ -12,7 +14,7 @@ namespace Harmos.Sdk;
 public sealed class Context
 {
   private readonly Dictionary<ulong, TaskCompletionSource<ByteString>> pending = [];
-  private readonly ChannelWriter<PluginInvokeResponse>? output;
+  private readonly ChannelWriter<InstanceInvokeResponse>? output;
   private readonly IReadOnlyDictionary<string, ByteString> requires;
   private readonly CancellationTokenSource cancellation;
   private readonly TaskCompletionSource<string> cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -21,7 +23,7 @@ public sealed class Context
   private string? cancelReason;
 
   internal Context(Request request, string plugin, IReadOnlyDictionary<string, ByteString> requires,
-      CancellationTokenSource cancellation, ChannelWriter<PluginInvokeResponse>? output = null)
+      CancellationTokenSource cancellation, ChannelWriter<InstanceInvokeResponse>? output = null)
   {
     Operation = request.Operation;
     Invocation = request.Invocation;
@@ -88,7 +90,7 @@ public sealed class Context
       call = ++nextCall;
       completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
       pending.Add(call, completion);
-      if (!output.TryWrite(new PluginInvokeResponse
+      if (!output.TryWrite(new InstanceInvokeResponse
       {
         Child = new ChildRequest
         {
@@ -141,7 +143,7 @@ public sealed class Context
       cancelReason = reason;
       foreach (var (call, completion) in pending)
       {
-        output?.TryWrite(new PluginInvokeResponse { ChildCancel = new ChildCancel { Call = call } });
+        output?.TryWrite(new InstanceInvokeResponse { ChildCancel = new ChildCancel { Call = call } });
         completion.TrySetException(CancelFailure(reason));
       }
       pending.Clear();

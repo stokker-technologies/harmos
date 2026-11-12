@@ -48,7 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     for (source, target) in [
         ("harmos.v1.rs", "v1.rs"),
-        ("harmos.host.v1.rs", "host.rs"),
+        ("harmos.context.v1.rs", "context.rs"),
+        ("harmos.plugin.v1.rs", "plugin.rs"),
         ("harmos.storage.v1.rs", "storage.rs"),
         ("reflection.rs", "reflection.rs"),
         ("descriptors.bin", "descriptors.bin"),

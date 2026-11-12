@@ -646,27 +646,20 @@ child request/result, parent cancel/child cancel, and publication opening/ticks.
 They are frames, not additional public RPCs. Keep catalog sections, requirements,
 visibility, fingerprints, digest, descriptors and failure causes used in admission.
 
-### Non-Storage Protocol Inventory
+### Non-Storage Package Layout
 
-The implemented non-storage inventory has 11 logical operations: four Plugin
-carriers, CatalogEntries.List, Invocations.Get/Cancel/Watch, Time.Get/Sleep, and
-native-only Samples.Append. Ten are exposed, with 20 method-specific messages;
-Samples.Append adds its two native-only messages. All 22 wrappers use the
-service-qualified names in the mapping. Time messages live in plugin.proto so
-plugin SDKs retain a protocol-only clock dependency; host.proto declares the Time
-service using those messages.
-
-Shared messages are History, Position, ResourceRevision, ReadCut, PageRequest,
-Receipt, OperationPolicy, RetryPolicy and Failure. Plugin domain/control messages
-are Catalog, OperationContract, Requirement, StreamDeclaration, Section, Request,
-Cancel, Response, ChildRequest/ChildCancel/ChildResponse, SamplesSelection, Tick
-and Sample. Host domain messages are AssignedOperation/OperationAssignments,
-InstanceState, Protobuf, Grpc, Grant, DiscoveredOperation and FollowingRow.
-Visibility, Classification and CatalogKind are enums; carrier frame alternatives
-and Failure details are nested payloads. Imported descriptors, Duration and
-Timestamp remain protobuf-owned. Generated reflection and descriptor sets retain
-only the roots reachable by each operation's canonical fingerprint projection.
-The storage inventory is owned by its separate implementation task.
+The running-instance service is `harmos.plugin.v1.Instance` in
+`proto/harmos/plugin/v1/instance.proto`, with Instance-qualified wrappers.
+CatalogEntries, Invocations and Time have separate service files and independent
+wrappers in `harmos.context.v1` and `harmos.v1`. Samples.Append has only a context
+file. Reusable primitives, plugin catalog/control payloads and discovery values
+live in service-free `harmos/v1/types.proto`; the discovery contract is
+DiscoveredContract, distinct from the plugin catalog's OperationContract.
+Rust exposes `plugin`, `context` and `v1` modules; the superseded `host` module is
+removed. Python's authoring Context and Plugin retain their public imports from
+package roots, making room for generated child packages without name collisions.
+Storage face inventory and management services are integrated by their owners.
+Runtime face admission and generation filtering are tracked separately from file moves.
 
 ### Current Visibility Discrepancy
 
