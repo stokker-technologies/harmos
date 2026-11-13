@@ -46,7 +46,7 @@ function(harmos_protocol target root output)
         DEPENDENCIES protobuf::protoc gRPC::grpc_cpp_plugin ${inputs})
     target_include_directories(${target} SYSTEM PUBLIC
         $<BUILD_INTERFACE:${output}>
-        $<INSTALL_INTERFACE:include>)
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
     target_compile_features(${target} PUBLIC cxx_std_20)
     target_link_libraries(${target} PUBLIC protobuf::libprotobuf gRPC::grpc++)
 endfunction()
