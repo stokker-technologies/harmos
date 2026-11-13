@@ -11,6 +11,10 @@ Only the explicitly listed open questions await decisions when their work is rea
 
 ## Owner Confirmations, 2026-11-13
 
+The owner amended the one-package-per-language SDK contract and the storage-owned
+transfer/message defaults on 2026-11-13. Their normative details remain in the
+corresponding requirement deltas.
+
 - Owner decision: the host clock service keeps the name `Time`, with `Time.Get`
   and `Time.Sleep`; no clock-service rename is authorized.
 - Owner decision: library release waits until the consumer product has stabilized

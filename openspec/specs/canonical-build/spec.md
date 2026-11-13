@@ -7,12 +7,28 @@ Defines the one canonical native build configuration, default Cargo profiles and
 
 ### Requirement: Canonical Native Configuration
 
-All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform in independent parallel producer jobs. Independent feature sets are permitted. Build, test, bench, fixture and focused compilation tasks SHALL NOT run Clippy implicitly. Clippy SHALL run with warnings denied only through `lint:rust`, included by `check:rust` and gated by CI Check / Rust; an explicit focused `clippy` operation MAY invoke it deliberately. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
+All provider CI Product and Tests SHALL use existing canonical shipping feature
+configurations per platform in independent parallel producer jobs. Independent feature
+sets are permitted. Simulation and other noncanonical test features SHALL NOT enter CI
+or shipping binaries.
 
 #### Scenario: Ordinary Review
 
 - **WHEN** an ordinary review requests Product and Tests
 - **THEN** independent Product and Tests jobs produce separate exports, and downstream Test and Package consume their declared inputs without rebuilding; fixture preparation may join both manifests without compilation
+
+### Requirement: Explicit Clippy Invocation
+
+Build, test, bench, fixture and focused compilation tasks SHALL NOT run Clippy
+implicitly. Clippy SHALL run with warnings denied only through `lint:rust`, included by
+`check:rust` and gated by CI Check / Rust; an explicit focused `clippy` operation MAY
+invoke it deliberately.
+
+#### Scenario: Focused Compilation
+
+- **WHEN** build, test, bench, fixture or focused compilation tasks run
+- **THEN** they do not run Clippy implicitly; lint:rust runs Clippy with warnings denied, included by check:rust and gated by CI Check / Rust
+- **AND** an explicit focused clippy operation may invoke it deliberately
 
 ### Requirement: Default Cargo Profiles
 
@@ -49,3 +65,12 @@ Every correctness test SHALL have at least a 120-second deadline, preserving lar
 
 - **WHEN** a System story exceeds its former optimized-runtime deadline
 - **THEN** the correctness test retains the 120-second minimum while each observed failure is investigated separately for fixture I/O, validation/JIT, startup and actual-operation cost; the application performance objective remains open until measured
+
+### Requirement: Default Installer Scope
+
+Local installers SHALL NOT build tests by default.
+
+#### Scenario: Default Local Installation
+
+- **WHEN** a local installer runs with default options
+- **THEN** it does not build tests
