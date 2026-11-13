@@ -312,8 +312,8 @@ The wheel is written to `target/build/<profile>/any/python/`. Checked-in
 is generated from `sdk/tests/fixtures/conformance/proto/harmos/conformance/v1/fixture.proto`. The SDK check regenerates into disposable
 scratch and compares every generated file byte for byte. Python language checks
 and tests include the SDK alongside repository tooling. The reference-host story
-  consumes `HARMOS_CONFORMANCE_HOST` when set, otherwise a focused local
-  `target/debug/` build, falling back to Product's `bin/`; it never builds one in a test.
+consumes `HARMOS_CONFORMANCE_HOST` when set, otherwise a focused local
+`target/debug/` build, falling back to Product's `bin/`; it never builds one in a test.
 From the development checkout the standalone fixture can be served with
 `python -m tests.fixtures.conformance --address 127.0.0.1:53124` and checked with
 `harmos-conformance --address 127.0.0.1:53124`. Every current rule applies to remote
@@ -324,7 +324,7 @@ plugins, including the remote-specific Stop check; none is skipped.
 Conformance support belongs to tests and examples, outside every shipped SDK library.
 The unchanged protocol input is `sdk/tests/fixtures/conformance/proto/harmos/conformance/v1/fixture.proto`.
 Rust support lives in `sdk/rust/tests/fixtures/conformance/`, Python in
-`sdk/python/tests/fixtures/conformance/`, C# in `sdk/csharp/Conformance/`, and
+`sdk/python/tests/fixtures/conformance/`, C# in `sdk/csharp/tests/Harmos.Conformance/`, and
 C++ in `sdk/cpp/examples/conformance/`. Their programs construct a plugin using the
 normal packaged SDK, then run the matching `harmos-conformance --plugin EXECUTABLE`
 (managed) or `--address URL` (remote) host.
@@ -348,7 +348,7 @@ against the packaged SDK. C++ stages the standalone example and test input in
 Each SDK includes a short entry program that uses both authoring and the client root:
 [Rust](../sdk/rust/src/bin/install_itself.rs),
 [Python](../sdk/python/tests/fixtures/conformance/install_itself.py),
-[C#](../sdk/csharp/Conformance/InstallItself.cs) and
+[C#](../sdk/csharp/tests/Harmos.Conformance/InstallItself.cs) and
 [C++](../sdk/cpp/examples/conformance/install_itself.cpp).
 Run the conformance program with `--install-itself serve` to serve its minimal
 Public `example.echo` instance. Then run that same program with
@@ -397,31 +397,73 @@ build prerequisites; `bench --extended` consumes `build --artifact bench --exten
 
 ### C# Plugin SDK
 
-The optional C# SDK uses the project-pinned .NET 10 LTS tool through mise. Install it
-with `mise install dotnet`; no machine-wide SDK installation is required. The build
-restores locked NuGet dependencies, generates `harmos.v1` and fixture C# from protobuf,
-and builds the class library, managed fixture and test story. Generated C#, `bin/`,
-`obj/` and test results stay untracked under `sdk/csharp/`.
+The C# SDK pins .NET 10 in both `sdk/csharp/mise.toml` and `global.json`.
+Install it with `mise -C sdk/csharp install --locked`. `Harmos.slnx` is the entry
+point for the library in `src/Harmos`, xUnit stories in `tests/Harmos.Tests` and
+fixture executable in `tests/Harmos.Conformance`. All test namespaces start with
+`Harmos.Tests`; public SDK namespaces and NuGet package id `Harmos` are unchanged.
 
 ```sh
-mise run build -- --language csharp
+mise -C sdk/csharp run build
 mise run build -- --package harmos-conformance
-mise run test -- --language csharp
-mise run check -- --language csharp
+mise -C sdk/csharp run test
+mise -C sdk/csharp run check
+mise -C sdk/csharp run package
 ```
 
-The test consumes both build outputs without rebuilding. Its one managed-plugin story
-runs every reference-host case in managed and remote modes, including successful
-managed process exit and continued remote availability after Stop. A focused unit
-test also checks clock requirement descriptors and the Rust-compatible sleep fingerprint.
-`--profile release` selects matching Release C# and release Rust outputs. Formatting
-uses `dotnet format --verify-no-changes`; apply it with `format --language csharp`.
-Other languages' default selections remain unchanged. The C# authoring example lives
-in the `grpc-plugins` design's Language SDKs section while that change is implementing.
+Root `build`, `test`, `check` and `package` selections with `--language csharp`
+delegate to those tasks; `--profile release` selects Release. Test and package
+consume the built solution without recompiling. The test story runs all 31 host
+rules with managed and remote lifecycles. `--layer unit|integration` narrows the
+C# test selection. `mise run build:rust:csharp-fixture` builds and stages only the
+C# portion of the Rust Tests producer for focused diagnostics.
 
-CI adoption needs native Windows and Linux .NET build/format selections, transfer of
-the C# outputs and Rust reference host to the test consumer, and the C# conformance
-story in Nightly. No CI jobs are added by this SDK task.
+`Directory.Build.props` owns framework, nullable checking, warnings as errors,
+latest .NET analysis, build code style, package metadata and the version read from
+`Cargo.toml`'s workspace package. `Directory.Packages.props` owns each package
+version once; every normal restore is locked against the committed project lock
+files. For an intentional dependency update, run
+`mise -C sdk/csharp exec -- dotnet restore Harmos.slnx --force-evaluate -p:RestoreLockedMode=false`
+and commit the regenerated locks. The SDK pin and mise pin must change together.
+
+Generated client roots are committed as `src/Harmos/Generated/Client.g.cs` and
+`tests/Harmos.Tests/Generated/Client.g.cs`. Update them only with
+`mise run generate -- --sdk csharp`. Check compares generator output in memory
+with both committed files and fails with that command on drift; format and check
+do not rewrite generated roots. Protobuf message/service C# is generated during
+build into ignored intermediates. `UseArtifactsOutput` places all binaries,
+intermediates, test results and packages under `sdk/csharp/artifacts/`.
+`Directory.Build.targets` records each executable's SDK-relative path in
+`artifacts/paths/<Configuration>/<Project>.txt`; C# stories, Python tooling and
+Rust consumers read that manifest instead of constructing framework output paths.
+The independent package consumer queries its own MSBuild `TargetPath`.
+
+Package output is `artifacts/packages/Harmos.<version>.nupkg` plus its symbol
+package. The version is now `0.1.14`, replacing `0.1.0`. Metadata includes the
+Apache-2.0 expression, repository URL, README, authors, description and tags.
+The pinned SDK supplies SourceLink; builds are deterministic and CI enables
+`ContinuousIntegrationBuild`. No task publishes to a registry.
+
+A source-archive consumer switches by removing its Harmos source `Compile` items,
+Harmos library `Protobuf` inputs and direct dependencies used only to compile the
+SDK. Add the package output folder as a local source alongside NuGet.org in its
+`NuGet.Config`, then reference the package:
+
+```xml
+<PackageReference Include="Harmos" Version="0.1.14" />
+```
+
+Target .NET 10, retain the application's own protobuf generation and its build
+dependencies, and refresh the consumer's lock file once before locked restore.
+Keep existing `Harmos.*` using directives. An isolated tooling story compiles the
+test-owned conformance fixture using only this local-feed package and runs all 31
+rules; no conformance messages or implementation ship in `Harmos`.
+
+Validation adds `Check / C#` and `Test / C#` on Linux and Windows. Check builds
+and formats the solution; Test downloads the compiled solution and Rust reference
+host from the existing Tests producer and runs without rebuilding.
+These lanes install only Python, uv and .NET. Dev pushes retain checks/builds only;
+PR and Nightly validation run the C# tests.
 
 ### Rust Integration Tests
 

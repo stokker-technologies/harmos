@@ -422,6 +422,11 @@ and caller-face authorization remain independent checks.
     implementation belongs to example support, outside the installed library. Conformance
     protocol input lives under `sdk/tests/fixtures/conformance/proto/`; generated fixture
     messages and implementations belong only to test and conformance targets in every SDK.
+    C# builds every project through `sdk/csharp/Harmos.slnx`; central properties and
+    package versions own the .NET build. Committed client roots live in `src/Harmos/Generated`
+    and `tests/Harmos.Tests/Generated`. All build outputs live under `artifacts`; executable
+    manifests from MSBuild are the path authority for test and fixture consumers. NuGet `Harmos`
+    takes its version from the Cargo workspace and includes SourceLink and repository metadata.
 
     **Status:** landed for these SDK contracts; Wasm is Rust-only.
 
