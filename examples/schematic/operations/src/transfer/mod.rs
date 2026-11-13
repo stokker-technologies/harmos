@@ -14,7 +14,6 @@
 pub mod download;
 pub mod hash;
 pub mod put;
-#[cfg(feature = "runtime")]
 pub mod store;
 pub mod take;
 pub mod upload;
@@ -24,7 +23,6 @@ pub mod upload;
 pub use download::Download;
 pub use hash::Hash;
 pub use put::Put;
-#[cfg(feature = "runtime")]
 pub use store::Store;
 pub use take::Take;
 pub use upload::Upload;

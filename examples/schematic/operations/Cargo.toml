@@ -7,29 +7,25 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-# Vertical Operation Contracts And Optional Execution.
+# Native Operation Contracts and Execution.
 version = { workspace = true }
 
 # === Package Targets === #
 
 # === Features === #
 
-[features]
-default = []
-runtime = ["harmos-operations/lifecycle", "dep:thiserror", "dep:tokio"]
-
 # === Dependencies === #
 
 [dependencies]
 # Local
-harmos-operations = { workspace = true, default-features = false, features = ["grpc", "streaming"] }
+harmos-operations = { workspace = true, default-features = false, features = ["grpc", "lifecycle", "streaming"] }
 schematic-protocol = { path = "../protocol" }
 schematic-domain = { path = "../domain" }
 
 # Git
 
 # Error Handling
-thiserror = { workspace = true, default-features = true, optional = true }
+thiserror = { workspace = true, default-features = true }
 
 # Logging
 
@@ -46,7 +42,7 @@ thiserror = { workspace = true, default-features = true, optional = true }
 # Concurrency
 
 # Async
-tokio = { workspace = true, optional = true }
+tokio = { workspace = true }
 
 # Networking
 

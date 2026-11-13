@@ -45,7 +45,7 @@ The protocol crate exposes generated contracts without the host stack.
 Its `generate` Cargo example owns regeneration from `examples/schematic/proto/`,
 and its `generated_code_matches_proto` test checks source and descriptor drift.
 Buf formats and lints the example contracts alongside `proto/harmos/`. The operations
-crate enables implementations with `runtime`. The guest uses the same generated
+crate owns native implementations without a feature gate. The guest uses the same generated
 messages with SDK operation builders. Native analysis publishes
 progress through its host-owned callback resource.
 
@@ -109,7 +109,7 @@ CLI from any working directory; native directory listing uses that directory.
 Windows executables have the `.exe` suffix.
 
 The CLI build script derives its schema bundle from the
-shared operations crate in its contract-only configuration. Each bundle contains `manifest.txt`, `descriptors.bin` and
+native operations crate without launching handlers. Each bundle contains `manifest.txt`, `descriptors.bin` and
 package-relative `.proto` files, preserving imports. The native catalogs include
 `ListDirectories`; the guest catalog includes only portable operations. The
 `schematic.v1.Schematic` schema describes known methods. Exporting it does not
