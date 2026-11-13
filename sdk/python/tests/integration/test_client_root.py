@@ -10,14 +10,17 @@
 
 # === Imports === #
 
-import json
 import unittest
-from pathlib import Path
+from collections.abc import AsyncIterator
+from typing import assert_type
 
 import grpc
 
-from harmos import Client
+from harmos import Client as LibraryClient
 from tests.support.client_protocol import diagnostics, jobs, progress, status
+
+# isort: split
+from tests.fixtures.client.client import ClientRoot as Client
 
 # Third Party Imports
 
@@ -34,8 +37,14 @@ from tests.support.client_protocol import diagnostics, jobs, progress, status
 # === Classes === #
 
 
+class ApplicationClient(LibraryClient):
+    def __init__(self, channel: grpc.aio.Channel) -> None:
+        super().__init__(channel)
+        self.jobs = Client(channel).jobs
+
+
 class ClientRoot(unittest.IsolatedAsyncioTestCase):
-    async def test_library_and_product_services_share_parents_and_keep_watch_cardinality(self):
+    async def test_library_and_product_services_share_parents_and_keep_watch_cardinality(self) -> None:
         server = grpc.aio.server()
         # The Native Service Names Are the Dispatch Authority for the Generated Root.
         methods = [
@@ -43,7 +52,9 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
         ]
         for service, method, request, response in methods:
 
-            def unary(value, context, response=response):
+            def unary(
+                value: jobs.JobsStartRequest, context: grpc.aio.ServicerContext, response: type[jobs.JobsStartResponse] = response
+            ) -> jobs.JobsStartResponse:
                 return response(value=value.value)
 
             server.add_generic_rpc_handlers(
@@ -59,12 +70,14 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
                 )
             )
 
-        async def get_status(request, context):
+        async def get_status(request: status.StatusGetRequest, context: grpc.aio.ServicerContext) -> status.StatusGetResponse:
             response = status.StatusGetResponse()
             response.status.identity.application_name = "selection"
             return response
 
-        async def get_diagnostics(request, context):
+        async def get_diagnostics(
+            request: diagnostics.DiagnosticsGetRequest, context: grpc.aio.ServicerContext
+        ) -> diagnostics.DiagnosticsGetResponse:
             return diagnostics.DiagnosticsGetResponse(name=request.name)
 
         for service, request, response, handler in [
@@ -84,7 +97,9 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
                 )
             )
 
-        async def watch(request, context):
+        async def watch(
+            request: progress.ProgressWatchRequest, context: grpc.aio.ServicerContext
+        ) -> AsyncIterator[progress.ProgressWatchResponse]:
             yield progress.ProgressWatchResponse(value="opened:" + request.value)
             yield progress.ProgressWatchResponse(value="finished:" + request.value)
 
@@ -106,8 +121,13 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
         await server.start()
         try:
             async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
-                table = json.loads((Path(__file__).resolve().parents[3] / "tests/fixtures/client/resources.json").read_text())
-                client = Client(channel, table)
+                client = Client(channel)
+                product = ApplicationClient.connect(f"127.0.0.1:{port}")
+                self.addAsyncCleanup(product.close)
+                assert_type(product, ApplicationClient)
+                reply = await product.jobs.start(jobs.JobsStartRequest(value="product"))
+                assert_type(reply, jobs.JobsStartResponse)
+                self.assertEqual(reply.value, "product")
                 self.assertEqual((await client.status.get(status.StatusGetRequest())).status.identity.application_name, "selection")
                 self.assertEqual(
                     (await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection"
@@ -117,10 +137,6 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
                     [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],
                     ["opened:selection", "finished:selection"],
                 )
-                with self.assertRaises(ValueError):
-                    Client(channel, table, table)
-                with self.assertRaises(ValueError):
-                    Client(channel, [{**table[0], "face": "context"}])
         finally:
             await server.stop(None)
 

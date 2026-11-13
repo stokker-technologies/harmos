@@ -21,9 +21,11 @@ from pathlib import Path
 
 # Third Party Imports
 import grpc_tools
+from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
 from ..process import spawn_flags
+from .resource_roots import python, table
 
 # Type Checking Imports
 
@@ -72,6 +74,8 @@ def generate(output: Path) -> None:
                 path.write_text(
                     source.replace("import grpc\n", "import grpc\nimport grpc.experimental\n", 1), encoding="utf-8", newline="\n"
                 )
+    descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
+    python(output / "harmos/generated/client.py", [method for method in table(descriptors) if method["face"] == "client"], descriptors)
 
 
 def generate_client_fixture(output: Path) -> None:
@@ -79,10 +83,29 @@ def generate_client_fixture(output: Path) -> None:
     inputs = sorted(path.relative_to(proto).as_posix() for path in proto.rglob("*.proto"))
     output.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        [sys.executable, "-m", "grpc_tools.protoc", f"-I{proto}", f"--python_out={output}", f"--grpc_python_out={output}", *inputs],
+        [
+            sys.executable,
+            "-m",
+            "grpc_tools.protoc",
+            f"-I{proto}",
+            f"--python_out={output}",
+            f"--pyi_out={output}",
+            f"--grpc_python_out={output}",
+            *inputs,
+        ],
         check=True,
         cwd=ROOT,
         creationflags=spawn_flags(),
+    )
+    descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
+    descriptors.file.extend(
+        FileDescriptorSet.FromString((ROOT / "sdk/rust/tests/fixtures/client/client-descriptors.bin").read_bytes()).file
+    )
+    python(
+        output / "client.py",
+        [method for method in table(descriptors) if method["face"] == "client"],
+        descriptors,
+        module_prefixes={"application": "tests.fixtures.client.application"},
     )
 
 
@@ -125,7 +148,21 @@ def main() -> None:
         output = Path(scratch)
         generate(output)
         changed = [
-            name for name in GENERATED if not (committed / name).exists() or not filecmp.cmp(output / name, committed / name, shallow=False)
+            name
+            for name in (*GENERATED, "harmos/generated/client.py")
+            if not (committed / name).exists() or not filecmp.cmp(output / name, committed / name, shallow=False)
+        ]
+        generated_client = output / "client"
+        generate_client_fixture(generated_client)
+        client = ROOT / "sdk/python/tests/fixtures/client"
+        changed += [
+            str(path.relative_to(output))
+            for path in generated_client.rglob("*")
+            if path.is_file()
+            and (
+                not (client / path.relative_to(generated_client)).exists()
+                or not filecmp.cmp(path, client / path.relative_to(generated_client), shallow=False)
+            )
         ]
         fixture = ROOT / "sdk/python/tests/fixtures/conformance/v1"
         generated_fixture = output / "conformance"

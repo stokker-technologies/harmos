@@ -12,9 +12,10 @@
 # === Imports === #
 
 # Standard Library Imports
-from importlib import import_module
-from pathlib import Path
-import sys
+from harmos.v1 import status_pb2 as status
+from harmos.v1.status import diagnostics_pb2 as diagnostics
+from tests.fixtures.client.application.v1 import jobs_pb2 as jobs
+from tests.fixtures.client.application.v1.jobs import progress_pb2 as progress
 
 # Third Party Imports
 
@@ -27,12 +28,7 @@ import sys
 
 # === Constants === #
 
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/client"
-sys.path.insert(0, str(FIXTURES))
-status = import_module("harmos.v1.status_pb2")
-diagnostics = import_module("harmos.v1.status.diagnostics_pb2")
-jobs = import_module("application.v1.jobs_pb2")
-progress = import_module("application.v1.jobs.progress_pb2")
+__all__ = ["diagnostics", "jobs", "progress", "status"]
 
 
 # === Types === #
