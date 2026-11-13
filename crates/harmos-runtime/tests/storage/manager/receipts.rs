@@ -161,7 +161,7 @@ async fn mutation_receipts_survive_replays_lost_responses_and_cancellation() {
     );
     assert_eq!(f.data.staged.lock().unwrap()["lost"].1, b"partial");
     f.data.control.delete_failures.store(3, Ordering::SeqCst);
-    let delete = harmos_protocol::storage::DeleteFile {
+    let delete = harmos_protocol::storage::StorageDeleteFileRequest {
         mutation: Some(key(&f, "lost-delete").into()),
         file: Some(harmos_protocol::storage::StagedFile {
             history: producer.session.as_ref().unwrap().history.clone(),
@@ -169,7 +169,8 @@ async fn mutation_receipts_survive_replays_lost_responses_and_cancellation() {
         }),
     };
     let deleted = f.runtime.operations.call_protobuf::<harmos_operations::storage::DeleteFile>(delete.clone()).await.unwrap();
-    assert_eq!(Some(deleted), delete.file);
+    assert_eq!(deleted.file, delete.file);
+    assert!(deleted.receipt.unwrap().completed);
     assert_eq!(f.data.control.delete_failures.load(Ordering::SeqCst), 0);
 
     // Cancel An Append And Reattach To Its In-Flight Work

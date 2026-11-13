@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use super::{DeleteFile, ReadFile, StorageStatus, WriteFile, WriteSchema};
+use super::{DeleteFile, Info, ReadFile, SetSchema, WriteFile};
 
 // Standard Library Imports
 
@@ -134,9 +134,10 @@ pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
         crate::execution::operations::OperationFactory::protobuf::<super::context::GetObject>().expect("GetObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::context::SetObject>().expect("SetObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteSchema>().expect("WriteSchema declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<SetSchema>().expect("SetSchema declaration"),
         crate::execution::operations::OperationFactory::protobuf::<ReadFile>().expect("ReadFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<StorageStatus>().expect("StorageStatus declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetSchema>().expect("GetSchema declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<Info>().expect("Info declaration"),
         crate::execution::operations::OperationFactory::protobuf::<DeleteFile>().expect("DeleteFile declaration"),
     ]);
     batch

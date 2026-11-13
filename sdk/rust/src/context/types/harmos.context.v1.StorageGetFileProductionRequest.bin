@@ -4,8 +4,8 @@
 StorageGetFileProductionRequest+
 file (2.harmos.storage.v1.StagedFile
 at (2.harmos.v1.ReadCutbproto3
-´
-harmos/v1/storage_types.protoharmos.storage.v1"J
+Ë
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"J
 
 StagedFile0
 history (2.harmos.storage.v1.StoreHistory

@@ -141,6 +141,61 @@ pub(super) fn put_schema(connection: &Connection, history: &StoreHistory, value:
     Ok(())
 }
 
+pub(super) fn set_schema(state: &mut State, exchange: &crate::SchemaExchange) -> Result<crate::SchemaWriteReceipt> {
+    state.check()?;
+    state.history.check(&exchange.value.position.history)?;
+    exchange.value.encoded_bytes()?;
+    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    let prior: Option<Vec<u8>> = tx
+        .query_row("SELECT data FROM storage_mutations WHERE id=?1", [text(&exchange.mutation().mutation)?], |row| row.get(0))
+        .optional()
+        .map_err(db)?;
+    if let Some(data) = prior {
+        let receipt = decode(&data)?;
+        exchange.replay(&receipt)?;
+        drop(tx);
+        return Ok(crate::SchemaWriteReceipt {
+            saved: state.cursor()?,
+            mutation: Some(receipt),
+        });
+    }
+    let prior: Option<Vec<u8>> = tx
+        .query_row(
+            "SELECT data FROM storage_rows WHERE kind=0 AND schema_key=?1 ORDER BY position DESC LIMIT 1",
+            [text(&exchange.value.key)?],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(db)?;
+    let prior: Option<StorageSchema> = prior.as_deref().map(decode).transpose()?;
+    let current = prior.as_ref().map(|value| &value.position);
+    let unchanged = prior.as_ref().is_none_or(|value| value.schema == exchange.value.schema);
+    let outcome = if current == exchange.expected.as_ref() && unchanged {
+        put_schema(&tx, &state.history, &exchange.value)?;
+        crate::DefinitionOutcome::Applied {
+            revision: exchange.value.position.sequence,
+        }
+    } else {
+        crate::DefinitionOutcome::Refused {
+            kind: crate::DefinitionRefusal::Conflict,
+            reason: if !unchanged {
+                "schema definitions are immutable; use a new version; get again and retry"
+            } else {
+                "schema revision changed; get again and retry"
+            }
+            .to_owned(),
+        }
+    };
+    let receipt = exchange.receipt(outcome);
+    save(&tx, exchange.value.position.sequence)?;
+    tx.execute("INSERT INTO storage_mutations VALUES(?1,?2)", params![text(&receipt.mutation)?, encode(&receipt)?]).map_err(db)?;
+    tx.commit().map_err(db)?;
+    Ok(crate::SchemaWriteReceipt {
+        saved: state.cursor()?,
+        mutation: Some(receipt),
+    })
+}
+
 pub(super) fn append_schemas(state: &mut State, values: &[StorageSchema]) -> Result<StorageCursor> {
     state.check()?;
     let through = values.last().ok_or_else(|| invalid("empty schema batch"))?.position.sequence;

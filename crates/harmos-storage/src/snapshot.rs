@@ -262,6 +262,22 @@ impl Snapshot {
         Ok((entries, bytes))
     }
 
+    pub async fn get_schema(&self, key: &crate::SchemaKey) -> Result<Option<crate::StorageSchema>> {
+        let selection = crate::query::SchemaSelection { schema: Some(key.clone()) };
+        let mut page = ScanPage {
+            after: 0,
+            rows: self.inner.settings.response.batch_rows,
+            bytes: self.inner.settings.response.batch_bytes,
+        };
+        let mut latest = None;
+        loop {
+            let (entries, _) = self.scan::<crate::StorageSchema>(&selection, page).await?;
+            let Some(last) = entries.into_iter().last() else { return Ok(latest) };
+            page.after = last.position.sequence;
+            latest = Some(last);
+        }
+    }
+
     #[tracing::instrument(name = "storage.snapshot.get_object", level = "trace", skip_all)]
     pub async fn get_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;

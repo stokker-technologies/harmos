@@ -5,8 +5,8 @@
 
 production (2.harmos.storage.v1.FileProducer#
 receipt (2.harmos.v1.Receiptbproto3
-š
-harmos/v1/storage_types.protoharmos.storage.v1"O
+±
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"O
 FileProducer/
 session (2.harmos.storage.v1.FileSession
 length ("_

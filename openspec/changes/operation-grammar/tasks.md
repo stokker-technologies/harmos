@@ -59,13 +59,13 @@ compile-time consumers atomically.
 ## 3. Storage Handlers, Native Providers and Transfers
 
 - [x] 3.1 Migrate backend.rs, state recovery and provider/manager consumers through the 66-present/60-target hook mapping while preserving encodings, atomic publication and recovery; verify focused backend/restart tests and contract guidance.
-- [ ] 3.2 Implement latest-durable resolution without read-triggered flush/wait, issued-position continuation and bounded paging; verify controlled-backend visibility, exact continuation and foreign/expired-position refusal, and update docs/storage.md.
-- [ ] 3.3 Implement whole-value revision-guarded Get/Set mirrors, complete-candidate validation, atomic compare/exchange, explicit create-if-absent and conflicts naming “get again and retry”. Preserve immutable schemas; large writable parts use nested resource Get/Set and their own revisions.
+- [x] 3.2 Implement latest-durable resolution without read-triggered flush/wait, issued-position continuation and bounded paging; verify controlled-backend visibility, exact continuation and foreign/expired-position refusal, and update docs/storage.md.
+- [x] 3.3 Implement whole-value revision-guarded Get/Set mirrors, complete-candidate validation, atomic compare/exchange, explicit create-if-absent and conflicts naming “get again and retry”. Preserve immutable schemas; large writable parts use nested resource Get/Set and their own revisions.
 - [ ] 3.4 Migrate records, samples, log lines and upload bytes to bounded immutable Append and accepted/durable receipts; verify client-owned resending, original receipts, changed payload/expired-key refusal and immutable prefixes, including identical-byte offset replay and different-byte conflicts regardless of request identity.
 - [x] 3.5 Reuse StorageManager's production owner for CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter, PublishFileProduction and DeleteFileProduction; verify shared client/plugin resume, fencing, integrity, grants, publication and abandonment. Unsupported providers refuse explicitly.
 - [x] 3.6 Implement bounded unary Storage.GetFileBytes with offset, maximum bytes, total length, digest, optional at and resolved_at; preserve WatchFileBytes replacement/truncation semantics and distinct directory/production watches. Migrate affected query/transfer consumers and examples in compiling slices.
 - [x] 3.7 Bound flushes in bytes and split large input; prove committed byte counts with deterministic controlled-backend tests and reuse Nightly cases for lag/throughput verification.
-- [ ] 3.8 Settle issued-position/page-token lifetime, provenance, composite retention and restart behavior at this task, record it in design.md, and implement explicit expiry/unavailability without arbitrary earlier reads.
+- [x] 3.8 Settle issued-position/page-token lifetime, provenance, composite retention and restart behavior at this task, record it in design.md, and implement explicit expiry/unavailability without arbitrary earlier reads.
 - [x] 3.9 Settle exact Watch opening/events/progress/gaps/resynchronization, record it in design.md, and implement one WatchRows selector for records/samples/object revisions with deterministic opening-race/filter-progress/gap proof. Keep accepted facts distinct from durable facts.
 - [ ] 3.10 Settle retained-reader lifetime/reclamation before DeleteFile changes, record it in design.md and prove supported backends without implicit data loss.
 - [ ] 3.11 Enumerate cooperative final-result promises, record them in design.md and project one replacement method per actual promise. Preserve running-only Cancel, queued refusal naming Cancel, distinct Stop and typed settlement.
@@ -146,7 +146,7 @@ combined source closure and hosted validation are not claimed here.
   locked method pairs; the shared payload file declares no service. Rust/Python bindings
   regenerate through the joined core generator. Focused proof:
   `generated_code_matches_proto::generated_code_matches_proto` (1 passed). Task 1.4
-  remains open until every declaration is bound to its migrated shared handler.
+  storage source is complete: every declaration is bound to its migrated shared handler.
 
 - Task 3.3 partial: index/projection Get/Set pairs are served independently on both
   faces with shared handlers and atomic expected-revision checks in SQLite and the
@@ -154,7 +154,7 @@ combined source closure and hosted validation are not claimed here.
   Focused proofs: `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`,
   `projection_replay::projection_frontiers_survive_interrupted_publication_rebuild_and_restart`,
   and `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
-  (one passed each). The schema mirror remains open; object mirrors and issued definition cuts are implemented below.
+  (one passed each). Schema/object mirrors and issued definition cuts are implemented below.
 
 - Tasks 3.2/3.8 partial: issued saved cuts, HMAC-bound ListRows pages and retained
   ranged-file reads share the existing saved-snapshot owner on both faces.
@@ -167,7 +167,7 @@ combined source closure and hosted validation are not claimed here.
   `storage::operations::plugins::query_grants_enforced`,
   `storage::operations::schemas::schema_registry_roundtrip`,
   plus the existing unary-transfer and native-journey stories. Projection/status,
-  object/directory reads and Watch joins still need their migrated cut semantics.
+  object/directory reads and Watch joins are implemented below.
   Coupling: one native-only operations dependency on the already locked ring version
   provides HMAC; the lockfile gains only that dependency edge. Retired Rust SDK
   request bindings are deleted with their operation owners.
@@ -205,7 +205,7 @@ combined source closure and hosted validation are not claimed here.
   The old CompareExchangeObject wire declaration/bindings are removed. Focused
   proof: `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
   (one passed), including socket/client and plugin-child replay and old-cut reads.
-  The schema mirror still keeps 3.3 open; common native-list paging is implemented below.
+  The schema mirror and common native-list paging are implemented below.
 
 - Storage Append migration: separate client/context AppendRecords, AppendSamples
   and AppendObjectRevisions declarations share bounded unary handlers. Superseded
@@ -290,3 +290,18 @@ combined source closure and hosted validation are not claimed here.
   keep inventory/3.3 open. Coupling updates the Schematic hash example/proto,
   generator roots, generated outputs, SDK guest bindings, gRPC hash fixture and
   one guest benchmark operation identifier; no second declaration owner is added.
+
+- Native hooks and schema mirrors close storage 3.3: Protected Info/GetSchema/
+  SetSchema/DeleteFile have four native-only wrapper pairs. Atomic SetSchema uses
+  the existing schema append hook, preserving the 60-method backend inventory and
+  stored schema encoding. Proofs: `schema_registry_roundtrip` (whole values, old
+  cuts, stale unchanged values, new-version keys, malformed graphs, lost caller),
+  `schema_exchange_records_original_outcomes_and_revisions_across_restart`
+  (competing creates, atomic conflicts, original outcomes after restart), and
+  `reports_persisted_frontiers` (host access, all four matching plugin requirements
+  refused, no client gRPC method). Storage 3.2/3.8 are closed by these and the
+  named saved-page, native-list, observation, eviction and restart journeys above;
+  the 250 ms lag investigation remains separately open under 1.5/A.6. Global 1.4
+  and inventory reconciliation await the combined service owners. Coupling is
+  the one-line domain StorageInfo conversion target and generated protocol/SDK
+  outputs. DeleteFile reclamation semantics are unchanged; 3.10 remains open.

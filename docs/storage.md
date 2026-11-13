@@ -5,6 +5,23 @@ projections and atomic conditional objects. Consumers choose capacity, concurren
 physical chunk sizes, work budgets and response limits. Storage does not expose
 product keys or a database connection.
 
+## Native Schema Mirrors
+
+`Storage.Info`, `Storage.GetSchema`, `Storage.SetSchema` and `Storage.DeleteFile`
+are Protected native hooks with service/method request-response wrappers and no
+gRPC projection. GetSchema resolves optional `at` through the same issued-cut
+owner and returns the whole schema, existence and an opaque revision. SetSchema
+requires that revision or explicit create-if-absent, validates the complete graph,
+and compares atomically in the existing schema-write hook. An existing schema
+key's graph is immutable; a changed graph requires a new version. Even an unchanged
+value with a stale revision conflicts and names SetSchema with get/retry guidance.
+
+The provider commits the original applied/conflict outcome and mutation receipt
+in the same synchronous transaction. Ordered admission owns it after caller loss;
+replay after later revisions or restart preserves that outcome. Successful
+receipts are durable, and stored schema encodings are unchanged. DeleteFile keeps
+its existing retained-reader behavior; this migration makes no reclamation change.
+
 ## Operational Policy and Admission
 
 `StorageSettings.policy: StoragePolicy` owns backend I/O/recovery deadlines, the

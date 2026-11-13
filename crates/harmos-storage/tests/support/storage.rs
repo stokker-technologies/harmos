@@ -640,8 +640,54 @@ impl StorageBackend for Data {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn append_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
-        self.persist(batch, &self.schemas, |value| &value.position, |_| Ok(()))
+    fn append_schemas(&self, write: harmos_storage::SchemaWrite) -> StorageFuture<'_, harmos_storage::SchemaWriteReceipt> {
+        Box::pin(async move {
+            match write {
+                harmos_storage::SchemaWrite::Append(batch) => {
+                    let saved = self.persist(batch, &self.schemas, |value| &value.position, |_| Ok(())).await?;
+                    Ok(harmos_storage::SchemaWriteReceipt { saved, mutation: None })
+                }
+                harmos_storage::SchemaWrite::Set(exchange) => {
+                    self.history.check(&exchange.value.position.history)?;
+                    self.control.write([exchange.value.position.sequence]).await?;
+                    let mut ledger = self.mutation_receipts.lock().unwrap();
+                    if let Some(receipt) = ledger.get(&exchange.mutation().mutation) {
+                        exchange.replay(receipt)?;
+                        return Ok(harmos_storage::SchemaWriteReceipt {
+                            saved: self.at(self.saved.load(Ordering::SeqCst) as u64),
+                            mutation: Some(receipt.clone()),
+                        });
+                    }
+                    let mut schemas = self.schemas.lock().unwrap();
+                    let prior = schemas.values().rev().find(|value| value.key == exchange.value.key);
+                    let unchanged = prior.is_none_or(|value| value.schema == exchange.value.schema);
+                    let outcome = if prior.map(|value| &value.position) == exchange.expected.as_ref() && unchanged {
+                        exchange.value.schema.prepare(&harmos_domain::config::SchemaSettings::default()).map_err(|_| {
+                            Error::InvalidInput {
+                                field: "SetSchema",
+                                reason: "invalid finite schema graph",
+                            }
+                        })?;
+                        schemas.insert(exchange.value.position.sequence, exchange.value.clone());
+                        harmos_storage::DefinitionOutcome::Applied {
+                            revision: exchange.value.position.sequence,
+                        }
+                    } else {
+                        harmos_storage::DefinitionOutcome::Refused {
+                            kind: harmos_storage::DefinitionRefusal::Conflict,
+                            reason: "schema revision changed or graph is immutable; get again and retry".to_owned(),
+                        }
+                    };
+                    let receipt = exchange.receipt(outcome);
+                    ledger.insert(receipt.mutation.clone(), receipt.clone());
+                    self.saved.store(exchange.value.position.sequence as usize, Ordering::SeqCst);
+                    Ok(harmos_storage::SchemaWriteReceipt {
+                        saved: exchange.value.position.clone(),
+                        mutation: Some(receipt),
+                    })
+                }
+            }
+        })
     }
     fn append_object_revisions(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
         self.persist(

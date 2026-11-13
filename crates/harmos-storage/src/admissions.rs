@@ -45,13 +45,6 @@ pub(super) struct Mutation<'a> {
 /* === Implementations === */
 
 impl StorageManager {
-    #[tracing::instrument(name = "storage.admissions.write_schema_once", level = "debug", skip_all)]
-    pub async fn write_schema_once(
-        &self, mutation: &MutationId, key: super::SchemaKey, schema: impl Into<std::sync::Arc<crate::schema::graph::Schema>>,
-    ) -> Result<StorageCursor> {
-        self.admit_schema(key, schema.into(), Some(mutation)).await
-    }
-
     #[tracing::instrument(name = "storage.admissions.write_records_once", level = "debug", skip_all)]
     pub async fn write_records_once(&self, mutation: &MutationId, records: Vec<RecordInput>) -> Result<StorageCursor> {
         self.admit_record_values(mutation, records).await

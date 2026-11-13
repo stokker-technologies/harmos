@@ -247,8 +247,13 @@ impl StorageBackend for SqliteBackend {
         }))
     }
 
-    fn append_schemas(&self, values: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
-        Box::pin(self.call(move |state| rows::append_schemas(state, values.as_slice())))
+    fn append_schemas(&self, write: crate::SchemaWrite) -> StorageFuture<'_, crate::SchemaWriteReceipt> {
+        Box::pin(self.call(move |state| match write {
+            crate::SchemaWrite::Append(values) => {
+                rows::append_schemas(state, values.as_slice()).map(|saved| crate::SchemaWriteReceipt { saved, mutation: None })
+            }
+            crate::SchemaWrite::Set(exchange) => rows::set_schema(state, &exchange),
+        }))
     }
     fn append_object_revisions(&self, values: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
         Box::pin(self.call(move |state| rows::append_object_revisions(state, values.as_slice())))

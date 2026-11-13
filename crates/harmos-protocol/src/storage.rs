@@ -28,10 +28,10 @@ pub struct MutationWindow {
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageStatus {}
+pub struct StorageInfoRequest {}
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageInfo {
+pub struct StorageInfoResponse {
     #[prost(message, optional, tag = "1")]
     pub accepted: ::core::option::Option<StorageCursor>,
     #[prost(message, optional, tag = "2")]
@@ -111,11 +111,19 @@ pub struct FileProgress {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct DeleteFile {
+pub struct StorageDeleteFileRequest {
     #[prost(message, optional, tag = "1")]
     pub mutation: ::core::option::Option<MutationId>,
     #[prost(message, optional, tag = "2")]
     pub file: ::core::option::Option<StagedFile>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StorageDeleteFileResponse {
+    #[prost(message, optional, tag = "1")]
+    pub file: ::core::option::Option<StagedFile>,
+    #[prost(message, optional, tag = "2")]
+    pub receipt: ::core::option::Option<crate::v1::Receipt>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -348,11 +356,45 @@ pub struct SchemaInput {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct WriteSchema {
+pub struct StorageSetSchemaRequest {
     #[prost(message, optional, tag = "1")]
     pub mutation: ::core::option::Option<MutationId>,
     #[prost(message, optional, tag = "2")]
     pub schema: ::core::option::Option<SchemaInput>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bool, tag = "4")]
+    pub create_if_absent: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StorageSetSchemaResponse {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaInput>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub receipt: ::core::option::Option<crate::v1::Receipt>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StorageGetSchemaRequest {
+    #[prost(message, optional, tag = "1")]
+    pub key: ::core::option::Option<SchemaKey>,
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<crate::v1::ReadCut>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StorageGetSchemaResponse {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaInput>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bool, tag = "3")]
+    pub exists: bool,
+    #[prost(message, optional, tag = "4")]
+    pub resolved_at: ::core::option::Option<crate::v1::ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]

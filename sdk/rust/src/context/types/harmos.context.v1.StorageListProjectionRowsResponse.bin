@@ -5,8 +5,8 @@
 page (2!.harmos.storage.v1.ProjectionPage'
 resolved_at (2.harmos.v1.ReadCut
 next_page_token (	bproto3
-o
-harmos/v1/storage_types.protoharmos.storage.v1"3
+†
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"3
 ProjectionPage
 ipc (
 changed_keys (bproto3

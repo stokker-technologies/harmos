@@ -3,6 +3,7 @@ syntax = "proto3";
 package harmos.storage.v1;
 
 import "google/protobuf/timestamp.proto";
+import "harmos/v1/types.proto";
 
 // Histories and positions are native storage identities, independent of transport.
 message StoreHistory { string store = 1; string epoch = 2; }
@@ -12,8 +13,8 @@ message MutationWindow {
   string id = 2;
   google.protobuf.Timestamp expires_at = 3;
 }
-message StorageStatus {}
-message StorageInfo {
+message StorageInfoRequest {}
+message StorageInfoResponse {
   StorageCursor accepted = 1;
   StorageCursor saved = 2;
   MutationWindow mutations = 3;
@@ -34,7 +35,8 @@ message FileProducer { FileSession session = 1; uint64 length = 2; }
 message FileReference { StorageCursor position = 1; FileMetadata metadata = 2; uint64 length = 3; bytes sha256 = 4; }
 enum FilePhase { PRODUCING = 0; FINISHED = 1; ABANDONED = 2; }
 message FileProgress { uint64 length = 1; FilePhase phase = 2; }
-message DeleteFile { MutationId mutation = 1; StagedFile file = 2; }
+message StorageDeleteFileRequest { MutationId mutation = 1; StagedFile file = 2; }
+message StorageDeleteFileResponse { StagedFile file = 1; harmos.v1.Receipt receipt = 2; }
 
 message DirectoryRule { string pattern = 1; bool include = 2; }
 message DirectorySelection { string root = 1; bool recursive = 2; repeated DirectoryRule rules = 3; }
@@ -83,7 +85,15 @@ message SchemaRepresentation {
 }
 message SchemaGraph { uint64 root = 1; repeated SchemaDefinition definitions = 2; repeated SchemaRepresentation representations = 3; }
 message SchemaInput { SchemaKey key = 1; SchemaGraph graph = 2; }
-message WriteSchema { MutationId mutation = 1; SchemaInput schema = 2; }
+message StorageSetSchemaRequest {
+  MutationId mutation = 1;
+  SchemaInput schema = 2;
+  bytes expected_revision = 3;
+  bool create_if_absent = 4;
+}
+message StorageSetSchemaResponse { SchemaInput schema = 1; bytes revision = 2; harmos.v1.Receipt receipt = 3; }
+message StorageGetSchemaRequest { SchemaKey key = 1; harmos.v1.ReadCut at = 2; }
+message StorageGetSchemaResponse { SchemaInput schema = 1; bytes revision = 2; bool exists = 3; harmos.v1.ReadCut resolved_at = 4; }
 
 message RowSlice { uint64 offset = 1; optional uint64 limit = 2; }
 enum ObjectVersions { LATEST = 0; REVISIONS = 1; }

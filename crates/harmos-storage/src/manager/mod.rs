@@ -179,7 +179,7 @@ struct WriteWaiter {
 /* === Enums === */
 
 enum Admitted {
-    Replayed(u64),
+    Replayed(u64, Option<crate::receipts::Completion>),
     Reserved(u64, u64, u64),
 }
 
@@ -192,6 +192,7 @@ pub(super) enum Domain {
 pub(super) enum Operation {
     Conditional(Arc<super::ObjectExchange>),
     Schema(StorageBatch<StorageSchema>),
+    SetSchema(Arc<crate::SchemaExchange>),
     File(StorageBatch<super::FileReference>),
     Records(StorageBatch<StoredRecord>),
     ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry>, bytes: usize },

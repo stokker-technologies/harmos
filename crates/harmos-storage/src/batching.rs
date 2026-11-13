@@ -173,13 +173,37 @@ pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation) -> Res
             state.status.saved = saved.clone();
             Ok(saved)
         }
-        Operation::Schema(values) => persist(inner, values, |batch| inner.primary.append_schemas(batch)).await,
+        Operation::SetSchema(exchange) => {
+            let through = &exchange.value.position;
+            inner.state.lock().unwrap().data_attempted = through.sequence;
+            let result =
+                inner.bounded("primary.append_schemas", inner.primary.append_schemas(crate::SchemaWrite::Set(exchange.clone()))).await?;
+            let receipt = result.mutation.ok_or_else(|| invalid("SetSchema omitted its atomic receipt"))?;
+            exchange.replay(&receipt)?;
+            let mut state = inner.state.lock().unwrap();
+            if !result.saved.covers(through)? || result.saved.sequence > state.data_attempted {
+                return Err(invalid("SetSchema receipt does not cover its admitted frontier"));
+            }
+            state.receipts.complete(&receipt.mutation, receipt.value.clone());
+            state.receipts.saved(&[receipt]);
+            state.status.saved = result.saved.clone();
+            Ok(result.saved)
+        }
+        Operation::Schema(values) => {
+            persist(inner, values, |batch| {
+                Box::pin(async move { inner.primary.append_schemas(batch.into()).await.map(|result| result.saved) })
+            })
+            .await
+        }
         Operation::File(values) => persist(inner, values, |batch| inner.primary.append_file_references(batch)).await,
         Operation::Records(values) => persist(inner, values, |batch| inner.primary.append_records(batch)).await,
         Operation::Stream(values) => persist(inner, values, |batch| inner.primary.append_samples(batch)).await,
         Operation::ObjectGroup { schemas, objects, .. } => {
             for index in 0..objects.len() {
-                persist(inner, &schemas.slice(index..index + 1), |batch| inner.primary.append_schemas(batch)).await?;
+                persist(inner, &schemas.slice(index..index + 1), |batch| {
+                    Box::pin(async move { inner.primary.append_schemas(batch.into()).await.map(|result| result.saved) })
+                })
+                .await?;
                 persist(inner, &objects.slice(index..index + 1), |batch| inner.primary.append_object_revisions(batch)).await?;
             }
             Ok(inner.state.lock().unwrap().status.saved.clone())

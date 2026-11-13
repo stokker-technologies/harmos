@@ -1,6 +1,7 @@
 import datetime
 
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from harmos.v1 import types_pb2 as _types_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -182,11 +183,11 @@ class MutationWindow(_message.Message):
     expires_at: _timestamp_pb2.Timestamp
     def __init__(self, history: _Optional[_Union[StoreHistory, _Mapping]] = ..., id: _Optional[str] = ..., expires_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
-class StorageStatus(_message.Message):
+class StorageInfoRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class StorageInfo(_message.Message):
+class StorageInfoResponse(_message.Message):
     __slots__ = ("accepted", "saved", "mutations", "file_batch_bytes")
     ACCEPTED_FIELD_NUMBER: _ClassVar[int]
     SAVED_FIELD_NUMBER: _ClassVar[int]
@@ -266,13 +267,21 @@ class FileProgress(_message.Message):
     phase: FilePhase
     def __init__(self, length: _Optional[int] = ..., phase: _Optional[_Union[FilePhase, str]] = ...) -> None: ...
 
-class DeleteFile(_message.Message):
+class StorageDeleteFileRequest(_message.Message):
     __slots__ = ("mutation", "file")
     MUTATION_FIELD_NUMBER: _ClassVar[int]
     FILE_FIELD_NUMBER: _ClassVar[int]
     mutation: MutationId
     file: StagedFile
     def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., file: _Optional[_Union[StagedFile, _Mapping]] = ...) -> None: ...
+
+class StorageDeleteFileResponse(_message.Message):
+    __slots__ = ("file", "receipt")
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    file: StagedFile
+    receipt: _types_pb2.Receipt
+    def __init__(self, file: _Optional[_Union[StagedFile, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class DirectoryRule(_message.Message):
     __slots__ = ("pattern", "include")
@@ -474,13 +483,47 @@ class SchemaInput(_message.Message):
     graph: SchemaGraph
     def __init__(self, key: _Optional[_Union[SchemaKey, _Mapping]] = ..., graph: _Optional[_Union[SchemaGraph, _Mapping]] = ...) -> None: ...
 
-class WriteSchema(_message.Message):
-    __slots__ = ("mutation", "schema")
+class StorageSetSchemaRequest(_message.Message):
+    __slots__ = ("mutation", "schema", "expected_revision", "create_if_absent")
     MUTATION_FIELD_NUMBER: _ClassVar[int]
     SCHEMA_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    CREATE_IF_ABSENT_FIELD_NUMBER: _ClassVar[int]
     mutation: MutationId
     schema: SchemaInput
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., schema: _Optional[_Union[SchemaInput, _Mapping]] = ...) -> None: ...
+    expected_revision: bytes
+    create_if_absent: bool
+    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., schema: _Optional[_Union[SchemaInput, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ...) -> None: ...
+
+class StorageSetSchemaResponse(_message.Message):
+    __slots__ = ("schema", "revision", "receipt")
+    SCHEMA_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    schema: SchemaInput
+    revision: bytes
+    receipt: _types_pb2.Receipt
+    def __init__(self, schema: _Optional[_Union[SchemaInput, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class StorageGetSchemaRequest(_message.Message):
+    __slots__ = ("key", "at")
+    KEY_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    key: SchemaKey
+    at: _types_pb2.ReadCut
+    def __init__(self, key: _Optional[_Union[SchemaKey, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageGetSchemaResponse(_message.Message):
+    __slots__ = ("schema", "revision", "exists", "resolved_at")
+    SCHEMA_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    EXISTS_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    schema: SchemaInput
+    revision: bytes
+    exists: bool
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, schema: _Optional[_Union[SchemaInput, _Mapping]] = ..., revision: _Optional[bytes] = ..., exists: _Optional[bool] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class RowSlice(_message.Message):
     __slots__ = ("offset", "limit")

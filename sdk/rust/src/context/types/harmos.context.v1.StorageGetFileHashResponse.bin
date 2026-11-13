@@ -4,8 +4,8 @@
 StorageGetFileHashResponse)
 hash (2.harmos.storage.v1.FileHash'
 resolved_at (2.harmos.v1.ReadCutbproto3
-j
-harmos/v1/storage_types.protoharmos.storage.v1".
+Å
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto".
 FileHash
 
 bytes_read (

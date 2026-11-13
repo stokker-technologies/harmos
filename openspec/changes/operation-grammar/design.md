@@ -1536,3 +1536,18 @@ and refuses old cuts/tokens even if persisted primary positions are unchanged.
 No accepted-payload snapshot is introduced. Capture retains unknown replay safety,
 its existing consistency modes and completed durable publication; without a caller
 mutation ID it does not promise replay-key deduplication.
+
+### Native Schema Compare/Exchange
+
+The four native hooks are Protected Info/GetSchema/SetSchema/DeleteFile and have
+separate service-qualified wrapper pairs without a wire service. GetSchema uses
+the issued saved-cut owner and returns a complete candidate with its exact stored
+position as an opaque revision. SetSchema atomically compares an expected revision
+or explicit absence, validates the whole graph, and refuses a changed graph under
+an existing immutable key. New versions use a new key. The existing AppendSchemas
+provider hook accepts either an ordered append or an atomic schema exchange;
+there is no additional backend hook. SQLite commits the candidate/refusal, saved
+position and replay outcome together under WAL/FULL. Admitted work and its receipt
+remain manager-owned after caller loss. The stored schema bytes are unchanged.
+DeleteFile only gains its Protected wrapper; retained-reader reclamation remains
+the separate undecided task 3.10.

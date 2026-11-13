@@ -140,6 +140,66 @@ impl TransferPlugin {
                 id: child,
             });
         }
+        catalog.operations.push(v1::OperationContract {
+            id: "fixture.transfer.read_file".into(),
+            request: "harmos.storage.v1.ReadFile".into(),
+            response: "harmos.storage.v1.FileHash".into(),
+            fingerprint: schema::fingerprint(
+                "fixture.transfer.read_file",
+                &types,
+                "harmos.storage.v1.ReadFile",
+                "harmos.storage.v1.FileHash",
+            )
+            .unwrap(),
+            visibility: v1::Visibility::Public as i32,
+            ..Default::default()
+        });
+        catalog.requires.push(v1::Requirement {
+            id: "storage.read_file".into(),
+            fingerprint: schema::host_fingerprint(
+                "storage.read_file",
+                &v1::Protobuf {
+                    descriptors: types.encode_to_vec(),
+                    request: "harmos.storage.v1.ReadFile".into(),
+                    response: "harmos.storage.v1.FileCompletion".into(),
+                    input: None,
+                    output: Some("harmos.storage.v1.FileBatch".into()),
+                },
+            )
+            .unwrap(),
+        });
+        for (method, id, request, response) in [
+            ("native_info", "storage.info", "StorageInfoRequest", "StorageInfoResponse"),
+            ("native_get_schema", "storage.get_schema", "StorageGetSchemaRequest", "StorageGetSchemaResponse"),
+            ("native_set_schema", "storage.set_schema", "StorageSetSchemaRequest", "StorageSetSchemaResponse"),
+            ("native_delete_file", "storage.delete_file", "StorageDeleteFileRequest", "StorageDeleteFileResponse"),
+        ] {
+            let parent = format!("fixture.transfer.{method}");
+            let request = format!("harmos.storage.v1.{request}");
+            let response = format!("harmos.storage.v1.{response}");
+            catalog.operations.push(v1::OperationContract {
+                fingerprint: schema::fingerprint(&parent, &types, &request, &response).unwrap(),
+                id: parent,
+                request: request.clone(),
+                response: response.clone(),
+                visibility: v1::Visibility::Public as i32,
+                ..Default::default()
+            });
+            catalog.requires.push(v1::Requirement {
+                id: id.into(),
+                fingerprint: schema::host_fingerprint(
+                    id,
+                    &v1::Protobuf {
+                        descriptors: types.encode_to_vec(),
+                        request,
+                        response,
+                        input: None,
+                        output: None,
+                    },
+                )
+                .unwrap(),
+            });
+        }
         catalog.digest = schema::catalog_digest(&catalog);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
@@ -222,9 +282,13 @@ impl plugin::instance_server::Instance for Service {
             .catalog
             .requires
             .iter()
-            .find(|required| required.id.rsplit_once('/').is_some_and(|(_, name)| snake(name) == method))
+            .find(|required| {
+                required.id.rsplit_once('/').is_some_and(|(_, name)| snake(name) == method)
+                    || method == "read_file" && required.id == "storage.read_file"
+                    || method.strip_prefix("native_").is_some_and(|name| required.id == format!("storage.{name}"))
+            })
             .ok_or_else(|| Status::not_found("Invoke undeclared transfer"))?;
-        let watch = method.starts_with("watch_");
+        let watch = method.starts_with("watch_") || method == "read_file";
         let watch_kind = method.to_owned();
         let watch_opened = self.watch_opened.clone();
         let child = v1::ChildRequest {
@@ -258,9 +322,28 @@ impl plugin::instance_server::Instance for Service {
             {
                 return;
             }
+            use sha2::{Digest, Sha256};
+            let mut stream_hash = Sha256::new();
+            let mut stream_length = 0u64;
             while let Ok(Some(frame)) = input.message().await {
                 if let Some(plugin::instance_invoke_request::Frame::Child(child)) = frame.frame {
                     if let Some(v1::child_response::Result::Item(payload)) = &child.result {
+                        if watch_kind == "read_file" {
+                            let batch = harmos_protocol::storage::FileBatch::decode(payload.as_slice()).unwrap();
+                            assert_eq!(batch.offset, stream_length);
+                            stream_length += batch.bytes.len() as u64;
+                            stream_hash.update(&batch.bytes);
+                            if send
+                                .send(Ok(plugin::InstanceInvokeResponse {
+                                    frame: Some(plugin::instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call: 1 })),
+                                }))
+                                .await
+                                .is_err()
+                            {
+                                return;
+                            }
+                            continue;
+                        }
                         let take = match watch_kind.as_str() {
                             "watch_rows" => {
                                 let frame = harmos_protocol::context::StorageWatchRowsResponse::decode(payload.as_slice()).unwrap();
@@ -320,6 +403,20 @@ impl plugin::instance_server::Instance for Service {
                             return;
                         }
                         continue;
+                    }
+                    if watch_kind == "read_file" && matches!(child.result, Some(v1::child_response::Result::Payload(_))) {
+                        let hash = harmos_protocol::storage::FileHash {
+                            bytes_read: stream_length,
+                            sha256: stream_hash.finalize().to_vec(),
+                        };
+                        let _ = send
+                            .send(Ok(plugin::InstanceInvokeResponse {
+                                frame: Some(plugin::instance_invoke_response::Frame::Response(v1::Response {
+                                    result: Some(v1::response::Result::Payload(hash.encode_to_vec())),
+                                })),
+                            }))
+                            .await;
+                        return;
                     }
                     let result = child.result.map(|result| match result {
                         v1::child_response::Result::Payload(payload) => v1::response::Result::Payload(payload),

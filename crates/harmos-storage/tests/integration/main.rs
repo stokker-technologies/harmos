@@ -23,6 +23,7 @@ mod projection_replay;
 mod query;
 mod record_pages_seek_without_copying_history;
 mod replayed_file_bytes_preserve_the_accepted_prefix;
+mod schema_exchange;
 mod sqlite_files;
 mod state;
 mod time_bucket_replacement;

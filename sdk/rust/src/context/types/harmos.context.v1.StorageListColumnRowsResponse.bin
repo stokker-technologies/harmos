@@ -5,8 +5,8 @@
 page (2.harmos.storage.v1.ArrowPage'
 resolved_at (2.harmos.v1.ReadCut
 next_page_token (	bproto3
-·
-harmos/v1/storage_types.protoharmos.storage.v1"{
+Î
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"{
 	ArrowPage
 ipc (
 complete (

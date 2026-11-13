@@ -44,6 +44,7 @@ pub(super) struct DefinitionWork {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DefinitionKind {
+    Schema,
     Index,
     Projection,
 }
@@ -73,6 +74,7 @@ pub enum DefinitionInput {
 impl DefinitionKind {
     pub fn action(self) -> &'static str {
         match self {
+            Self::Schema => "SetSchema",
             Self::Index => "SetIndexDefinition",
             Self::Projection => "SetProjectionDefinition",
         }

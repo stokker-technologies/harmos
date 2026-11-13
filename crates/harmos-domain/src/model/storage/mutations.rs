@@ -103,7 +103,7 @@ impl From<MutationWindow> for harmos_protocol::storage::MutationWindow {
     }
 }
 
-impl From<StorageInfo> for harmos_protocol::storage::StorageInfo {
+impl From<StorageInfo> for harmos_protocol::storage::StorageInfoResponse {
     fn from(value: StorageInfo) -> Self {
         Self {
             accepted: Some(value.accepted.into()),

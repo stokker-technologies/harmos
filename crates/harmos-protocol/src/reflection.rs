@@ -460,14 +460,14 @@ impl ReflectMessage for crate::storage::MutationWindow {
         pool().get_message_by_name("harmos.storage.v1.MutationWindow").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::StorageStatus {
+impl ReflectMessage for crate::storage::StorageInfoRequest {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.StorageStatus").expect("generated message")
+        pool().get_message_by_name("harmos.storage.v1.StorageInfoRequest").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::StorageInfo {
+impl ReflectMessage for crate::storage::StorageInfoResponse {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.StorageInfo").expect("generated message")
+        pool().get_message_by_name("harmos.storage.v1.StorageInfoResponse").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::MutationId {
@@ -505,9 +505,14 @@ impl ReflectMessage for crate::storage::FileProgress {
         pool().get_message_by_name("harmos.storage.v1.FileProgress").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::DeleteFile {
+impl ReflectMessage for crate::storage::StorageDeleteFileRequest {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.DeleteFile").expect("generated message")
+        pool().get_message_by_name("harmos.storage.v1.StorageDeleteFileRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StorageDeleteFileResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StorageDeleteFileResponse").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::DirectoryRule {
@@ -615,9 +620,24 @@ impl ReflectMessage for crate::storage::SchemaInput {
         pool().get_message_by_name("harmos.storage.v1.SchemaInput").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::WriteSchema {
+impl ReflectMessage for crate::storage::StorageSetSchemaRequest {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WriteSchema").expect("generated message")
+        pool().get_message_by_name("harmos.storage.v1.StorageSetSchemaRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StorageSetSchemaResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StorageSetSchemaResponse").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StorageGetSchemaRequest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StorageGetSchemaRequest").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StorageGetSchemaResponse {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StorageGetSchemaResponse").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::RowSlice {

@@ -5,8 +5,8 @@
 entries (2!.harmos.storage.v1.DirectoryEntry
 next_page_token (	'
 resolved_at (2.harmos.v1.ReadCutbproto3
-}
-harmos/v1/storage_types.protoharmos.storage.v1"A
+”
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"A
 DirectoryEntry
 path (	
 	directory (

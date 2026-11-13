@@ -82,6 +82,7 @@ pub(super) struct Completion(Arc<()>);
 #[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MutationValue {
     Cursor(super::StorageCursor),
+    Schema { position: super::StorageCursor, key: super::SchemaKey, outcome: super::DefinitionOutcome },
     Definition { kind: super::DefinitionKind, name: Identifier, outcome: super::DefinitionOutcome },
     Deleted(super::StagedFile),
     Producer(FileProducer),
@@ -129,7 +130,7 @@ impl Receipts {
         self.entries.values().any(|entry| {
             entry.deadline > now
                 && match entry.value.as_ref() {
-                    Some(MutationValue::Cursor(cursor)) => cursor == position,
+                    Some(MutationValue::Cursor(cursor) | MutationValue::Schema { position: cursor, .. }) => cursor == position,
                     Some(MutationValue::Reference(file)) => &file.position == position,
                     _ => false,
                 }
@@ -460,7 +461,10 @@ impl StorageManager {
             if let MutationValue::Deleted(file) = &receipt.value {
                 self.inner.primary.get_history().check(&file.history)?;
             }
-            if let MutationValue::Cursor(cursor) = &receipt.value {
+            if let MutationValue::Schema { outcome, .. } = &receipt.value {
+                outcome.validate()?;
+            }
+            if let MutationValue::Cursor(cursor) | MutationValue::Schema { position: cursor, .. } = &receipt.value {
                 let state = self.inner.state.lock().unwrap();
                 if !state.status.saved.covers(cursor)? {
                     return Err(Error::InvalidInput {
@@ -555,7 +559,7 @@ impl MutationValue {
 
     pub(super) fn cursor(self) -> Result<super::StorageCursor> {
         match self {
-            Self::Cursor(value) => Ok(value),
+            Self::Cursor(value) | Self::Schema { position: value, .. } => Ok(value),
             _ => Err(rejected()),
         }
     }
@@ -591,6 +595,7 @@ impl MemorySize for MutationValue {
                 Self::Producer(value) => value.memory_size() - std::mem::size_of::<FileProducer>(),
                 Self::Reference(value) => value.as_ref().memory_size(),
                 Self::Definition { name, outcome, .. } => name.memory_size() - std::mem::size_of::<Identifier>() + outcome.heap_bytes(),
+                Self::Schema { position, key, outcome } => position.memory_size() + key.memory_size() + outcome.heap_bytes(),
                 Self::Progress(_) | Self::Rejected => 0,
             }
     }

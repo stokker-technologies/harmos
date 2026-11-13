@@ -208,7 +208,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let mut saved = Vec::new();
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.create_session().await.unwrap();
-        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
+        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()]).into()).await.unwrap();
         backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
         backend
             .set_projection_definition(&definition, None, false, None)

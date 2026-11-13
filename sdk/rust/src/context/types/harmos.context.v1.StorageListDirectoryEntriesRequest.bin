@@ -5,8 +5,8 @@
 	selection (2%.harmos.storage.v1.DirectorySelection$
 page (2.harmos.v1.PageRequest
 at (2.harmos.v1.ReadCutbproto3
-Õ
-harmos/v1/storage_types.protoharmos.storage.v1"1
+ì
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"1
 DirectoryRule
 pattern (	
 include ("f

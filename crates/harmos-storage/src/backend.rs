@@ -197,7 +197,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn delete_session(&self) -> StorageFuture<'_, ()>;
 
     // Independent Durable Writes; Replayed Positions Must Be Idempotent.
-    fn append_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor>;
+    fn append_schemas(&self, write: crate::SchemaWrite) -> StorageFuture<'_, crate::SchemaWriteReceipt>;
     fn append_object_revisions(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor>;
     fn append_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor>;
     fn append_samples(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor>;

@@ -45,6 +45,7 @@ mod read_batch;
 mod receipts;
 mod record_view;
 mod schema_encoding;
+mod schema_sets;
 mod selection;
 mod snapshot;
 #[cfg(feature = "sqlite")]
@@ -87,6 +88,7 @@ pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, Record
 pub use read_batch::{ReadBatch, ReadPages};
 pub use receipts::{MutationHeader, MutationReceipt, MutationValue};
 pub use record_view::RecordView;
+pub use schema_sets::{SchemaExchange, SchemaWrite, SchemaWriteReceipt};
 pub use snapshot::Snapshot;
 pub use staging::{FileProductionStatus, StorageFile};
 
