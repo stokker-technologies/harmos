@@ -13,21 +13,11 @@
 
 mod restart;
 mod runner;
-
-#[cfg(feature = "plugin-sidecar")]
-mod sidecar;
+pub mod status;
 
 /* === Re-Exports === */
 
 pub(crate) use runner::{Once, Typed};
-
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use sidecar::Endpoint as NativeEndpoint;
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use sidecar::RuntimeDriver;
-
-#[cfg(feature = "plugin-sidecar")]
-pub use sidecar::{DemandLease, DemandSource, Managed, ManagedError, Notice, SidecarError, Supervised};
 
 /* === Imports === */
 
@@ -40,7 +30,15 @@ use std::time::Duration;
 use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
-use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, OperationDeclaration, RestartPolicy, Running};
+use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, RequestShape, RestartPolicy, Running};
+impl<A: Application> harmos_operations::execution::operations::ProtobufHost for ServiceContext<A> {
+    type Error = Error;
+    async fn call_protobuf<O: crate::operations::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        harmos_operations::execution::operations::ProtobufHost::call_protobuf::<O>(&self.operations, request).await
+    }
+}
+
+#[cfg(test)]
 use crate::supervision::executor;
 use crate::{Application, Error, Result, state::StateManager, streams::StreamManager};
 
@@ -64,21 +62,24 @@ pub const POLICY: ServicePolicy = ServicePolicy {
 
 /* === Type Aliases === */
 
-pub(crate) type ServiceRunner =
-    fn(ServiceDefinition, harmos_sdk::operations::ServiceFactory, ServiceOwner) -> Arc<dyn crate::operations::resident::Runner>;
+pub(crate) type ServiceRunner = fn(
+    ServiceDefinition,
+    harmos_operations::execution::operations::ServiceFactory,
+    ServiceOwner,
+) -> Arc<dyn crate::operations::resident::Runner>;
 
 #[derive(Clone)]
 pub(crate) enum ServiceOwner {
     Host,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    Plugin(crate::plugin::PluginScope),
+    #[cfg(feature = "plugin-guest")]
+    Plugin(crate::guest::host::plugin::PluginScope),
 }
 
 pub(crate) fn authored_runner<A: Application>(
-    definition: ServiceDefinition, factory: harmos_sdk::operations::ServiceFactory, owner: ServiceOwner,
+    definition: ServiceDefinition, factory: harmos_operations::execution::operations::ServiceFactory, owner: ServiceOwner,
 ) -> Arc<dyn crate::operations::resident::Runner> {
-    Arc::new(Typed::<A, harmos_sdk::ExecutionContext, _>::new(definition, move |_| AuthoredService {
+    Arc::new(Typed::<A, harmos_operations::execution::ExecutionContext, _>::new(definition, move |_| AuthoredService {
         factory: factory.clone(),
         instance: None,
         owner: owner.clone(),
@@ -95,7 +96,7 @@ pub struct ServiceDefinition {
 
 // The runtime managers a service context lends as typed values.
 pub(crate) struct Handles<A: Application> {
-    pub(crate) storage: Arc<std::sync::OnceLock<crate::storage::StorageManager<crate::storage::ErasedCatalog>>>,
+    pub(crate) storage: Arc<std::sync::OnceLock<crate::storage::StorageManager>>,
     pub(crate) state: StateManager<A>,
     pub(crate) records: crate::records::RecordManager<A>,
     pub(crate) streams: StreamManager<A>,
@@ -109,8 +110,8 @@ pub struct ServiceManager {
 
 struct AuthoredService {
     owner: ServiceOwner,
-    factory: harmos_sdk::operations::ServiceFactory,
-    instance: Option<Box<dyn harmos_sdk::operations::ServiceInstance>>,
+    factory: harmos_operations::execution::operations::ServiceFactory,
+    instance: Option<Box<dyn harmos_operations::execution::operations::ServiceInstance>>,
 }
 
 pub struct ServiceContext<A: Application> {
@@ -120,12 +121,6 @@ pub struct ServiceContext<A: Application> {
     pub(crate) streams: StreamManager<A>,
     pub(crate) stopping: watch::Receiver<bool>,
     pub(crate) ready: watch::Sender<bool>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) provider: Arc<crate::supervision::instance::Instance>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    deactivation: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /* === Enums === */
@@ -177,34 +172,78 @@ impl ServiceManager {
     pub(crate) fn new(operations: Manager) -> Self {
         Self { operations, owner: ServiceOwner::Host }
     }
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub(crate) fn scoped(operations: Manager, scope: crate::plugin::PluginScope) -> Self {
+    #[cfg(feature = "plugin-guest")]
+    pub(crate) fn scoped(operations: Manager, scope: crate::guest::host::plugin::PluginScope) -> Self {
         Self {
             operations,
             owner: ServiceOwner::Plugin(scope),
         }
     }
+    pub fn configure_status(&self, settings: status::StatusSettings) -> Result<Arc<status::Status>> {
+        if self.owner() != "host" {
+            return Err(Error::PermissionDenied);
+        }
+        let mut owner = self.operations.registry.status_owner.lock().expect("status owner lock is healthy");
+        if owner.is_some() {
+            return Err(Error::AlreadyRegistered {
+                domain: "host status",
+                name: "Status".into(),
+            });
+        }
+        let status =
+            status::Status::new(settings, self.operations.clock().clone(), self.operations.registry.status_started).map_err(|source| {
+                Error::OperationFailed {
+                    operation: "Status.Configure".into(),
+                    source: Arc::new(source),
+                }
+            })?;
+        status.refresh().map_err(|source| Error::OperationFailed {
+            operation: "Status.Configure".into(),
+            source: Arc::new(source),
+        })?;
+        let catalog = harmos_operations::status::catalog().map_err(|source| Error::OperationFailed {
+            operation: "Status.Configure".into(),
+            source: Arc::new(source),
+        })?;
+        use crate::operations::RegistrationExt;
+        self.operations.register_native(catalog.lane(crate::operations::Lane::default()))?;
+        self.operations.registry.status.0.set(Arc::new(status::Port(status.clone()))).map_err(|_| Error::AlreadyRegistered {
+            domain: "host status",
+            name: "Status".into(),
+        })?;
+        *owner = Some(status.clone());
+        Ok(status)
+    }
+    pub fn status(&self) -> Result<Arc<status::Status>> {
+        self.operations
+            .registry
+            .status_owner
+            .lock()
+            .expect("status owner lock is healthy")
+            .clone()
+            .ok_or(Error::NotReady { domain: "Status" })
+    }
     fn owner(&self) -> &str {
         match &self.owner {
             ServiceOwner::Host => "host",
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             ServiceOwner::Plugin(scope) => scope.owner(),
         }
     }
 
-    pub async fn register<S: harmos_sdk::Service>(&self, id: &str, policy: crate::ServicePolicy) -> Result<()> {
-        let batch = harmos_sdk::__private::RegistrationBatch::new().service::<S>(id, policy);
+    pub async fn register<S: harmos_operations::execution::Service>(&self, id: &str, policy: crate::ServicePolicy) -> Result<()> {
+        let batch = harmos_operations::execution::__private::Catalog::new().service::<S>(id, policy);
         self.register_batch(batch).await
     }
 
-    pub(crate) async fn register_batch(&self, batch: harmos_sdk::__private::RegistrationBatch) -> Result<()> {
+    pub(crate) async fn register_batch(&self, batch: harmos_operations::execution::__private::Catalog) -> Result<()> {
         let (staged, ids) = self.stage(batch)?;
         staged.commit()?;
         self.activate(&ids).await
     }
 
     pub(crate) fn stage(
-        &self, batch: harmos_sdk::__private::RegistrationBatch,
+        &self, batch: harmos_operations::execution::__private::Catalog,
     ) -> Result<(crate::operations::resident::Staged, Vec<String>)> {
         if !batch.operations.is_empty() {
             return Err(Error::InvalidInput {
@@ -230,7 +269,7 @@ impl ServiceManager {
         }
         let staged = self.operations.stage_services(
             entries,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             match &self.owner {
                 ServiceOwner::Host => None,
                 ServiceOwner::Plugin(scope) => Some(scope.clone()),
@@ -260,20 +299,24 @@ impl ServiceManager {
 }
 
 impl<A: Application> Resident<A> for AuthoredService {
-    type Error = harmos_sdk::ServingError;
+    type Error = harmos_operations::execution::ServingError;
 
     async fn run(&mut self, context: ServiceContext<A>) -> std::result::Result<(), Self::Error> {
         let mut stopping = context.stopping.clone();
         let context = Arc::new(context);
-        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+        let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
         match &self.owner {
-            ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_sdk::ServingError::Catalog)?,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            ServiceOwner::Plugin(scope) => dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_sdk::ServingError::Catalog)?,
+            ServiceOwner::Host => dependencies.insert(context.clone()).map_err(|_| harmos_operations::execution::ServingError::Catalog)?,
+            #[cfg(feature = "plugin-guest")]
+            ServiceOwner::Plugin(scope) => {
+                dependencies.insert(Arc::new(scope.clone())).map_err(|_| harmos_operations::execution::ServingError::Catalog)?
+            }
         }
-        let call =
-            harmos_sdk::ExecutionContext::new(dependencies, harmos_sdk::operations::OperationHost::context(&context.operations).clone())
-                .with_resources(context.operations.resources().clone());
+        let call = harmos_operations::execution::ExecutionContext::new(
+            dependencies,
+            harmos_operations::execution::operations::OperationHost::context(&context.operations).clone(),
+        )
+        .with_resources(context.operations.resources().clone());
         self.instance = Some(self.factory.initialize(call.clone()).await?);
         context.ready();
         tokio::select! {
@@ -306,10 +349,7 @@ impl ServiceDefinition {
 }
 
 impl<A: Application> Handles<A> {
-    pub(crate) fn context(
-        &self, operations: Manager, stopping: watch::Receiver<bool>, ready: watch::Sender<bool>,
-        #[cfg(feature = "plugin-sidecar")] provider: Arc<crate::supervision::instance::Instance>,
-    ) -> ServiceContext<A> {
+    pub(crate) fn context(&self, operations: Manager, stopping: watch::Receiver<bool>, ready: watch::Sender<bool>) -> ServiceContext<A> {
         ServiceContext {
             state: self.state.clone(),
             records: self.records.clone(),
@@ -317,10 +357,6 @@ impl<A: Application> Handles<A> {
             streams: self.streams.clone(),
             stopping,
             ready,
-            #[cfg(feature = "plugin-sidecar")]
-            provider,
-            #[cfg(feature = "plugin-sidecar")]
-            deactivation: Arc::default(),
         }
     }
 }
@@ -337,7 +373,7 @@ impl<A: Application> Clone for Handles<A> {
 }
 
 impl<A: Application> ServiceContext<A> {
-    pub fn resource<T: Send + Sync + 'static>(&self) -> std::result::Result<Arc<T>, harmos_sdk::ResourceError> {
+    pub fn resource<T: Send + Sync + 'static>(&self) -> std::result::Result<Arc<T>, harmos_operations::execution::ResourceError> {
         self.operations.resources().resource::<T>()
     }
 
@@ -349,7 +385,7 @@ impl<A: Application> ServiceContext<A> {
 
     // An owned host handle for calls made while this context is borrowed,
     // such as inside `until_stopping`.
-    pub fn host(&self) -> crate::operations::OperationManager<A::Lanes> {
+    pub fn host(&self) -> crate::operations::OperationManager {
         crate::operations::OperationManager::new(self.operations.clone())
     }
 
@@ -378,7 +414,8 @@ impl<A: Application> ServiceContext<A> {
     }
 
     pub async fn rest(&mut self, duration: Duration) -> bool {
-        self.until_stopping(executor::sleep(duration)).await.is_none()
+        let sleep = self.operations.clock().sleep(duration);
+        self.until_stopping(sleep).await.is_none()
     }
 
     pub async fn until_stopping<T>(&mut self, future: impl Future<Output = T>) -> Option<T> {
@@ -398,14 +435,14 @@ impl<A: Application> ServiceContext<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::operations::OperationHost for ServiceContext<A> {
-    async fn invoke<O: crate::operations::OperationDeclaration, E: harmos_sdk::operations::EndpointSet>(
+impl<A: Application> harmos_operations::execution::operations::OperationHost for ServiceContext<A> {
+    async fn invoke<O: crate::operations::RequestShape, E: harmos_operations::execution::operations::EndpointSet>(
         &self, request: O::Request, retry: Option<crate::RetryPolicy>, endpoints: E,
     ) -> Result<Self::Instance<O>> {
-        harmos_sdk::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
+        harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.operations, request, retry, endpoints).await
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(
+    fn publish_on<S: harmos_operations::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
     where
@@ -415,27 +452,27 @@ impl<A: Application> harmos_sdk::operations::OperationHost for ServiceContext<A>
     }
 
     type Error = Error;
-    type Instance<O: OperationDeclaration> = Running<O>;
+    type Instance<O: RequestShape> = Running<O>;
 
     fn context(&self) -> &CallContext {
-        harmos_sdk::operations::OperationHost::context(&self.operations)
+        harmos_operations::execution::operations::OperationHost::context(&self.operations)
     }
 
     fn with_value<T: ContextValue>(&self, value: T) -> std::result::Result<Self, ContextError> {
-        let operations = harmos_sdk::operations::OperationHost::with_value(&self.operations, value)?;
+        let operations = harmos_operations::execution::operations::OperationHost::with_value(&self.operations, value)?;
         let mut child = self.clone();
         child.operations = operations;
         Ok(child)
     }
 
-    fn submit<O: OperationDeclaration>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
-        harmos_sdk::operations::OperationHost::submit::<O>(&self.operations, request)
+    fn submit<O: RequestShape>(&self, request: O::Request) -> impl Future<Output = Result<Running<O>>> + Send {
+        harmos_operations::execution::operations::OperationHost::submit::<O>(&self.operations, request)
     }
 
-    fn submit_owned<O: OperationDeclaration>(
+    fn submit_owned<O: RequestShape>(
         &self, request: O::Request, claims: crate::operations::RequestClaims,
     ) -> impl Future<Output = Result<Running<O>>> + Send {
-        harmos_sdk::operations::OperationHost::submit_owned::<O>(&self.operations, request, claims)
+        harmos_operations::execution::operations::OperationHost::submit_owned::<O>(&self.operations, request, claims)
     }
 }
 
@@ -448,10 +485,6 @@ impl<A: Application> Clone for ServiceContext<A> {
             streams: self.streams.clone(),
             stopping: self.stopping.clone(),
             ready: self.ready.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            provider: self.provider.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            deactivation: self.deactivation.clone(),
         }
     }
 }
@@ -497,12 +530,6 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
-
     struct Model;
     impl crate::Lifecycle for Model {
         type Config = ();
@@ -515,11 +542,9 @@ mod tests {
     }
 
     impl Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
-        type Streams = ();
     }
 
     #[derive(Default)]
@@ -535,16 +560,16 @@ mod tests {
         attempt: usize,
     }
 
-    impl harmos_sdk::Service for Worker {
+    impl harmos_operations::execution::Service for Worker {
         type Error = crate::Error;
 
-        async fn initialize(context: harmos_sdk::ExecutionContext) -> Result<Self> {
+        async fn initialize(context: harmos_operations::execution::ExecutionContext) -> Result<Self> {
             let counts = context.resource::<Counts>()?;
             let attempt = counts.initialized.fetch_add(1, Ordering::SeqCst);
             Ok(Self { counts, attempt })
         }
 
-        async fn run(&mut self, context: harmos_sdk::ExecutionContext) -> Result<()> {
+        async fn run(&mut self, context: harmos_operations::execution::ExecutionContext) -> Result<()> {
             if self.attempt == 0 {
                 return Err(Error::InvalidInput {
                     field: "fixture",
@@ -590,8 +615,8 @@ mod tests {
                 },
             },
         };
-        let batch = harmos_sdk::__private::RegistrationBatch::new().service::<Worker>("worker", policy);
-        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        let batch = harmos_operations::execution::__private::Catalog::new().service::<Worker>("worker", policy);
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         executor::timeout(Duration::from_secs(2), counts.running.notified()).await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 1);

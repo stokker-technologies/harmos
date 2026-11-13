@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,13 +19,9 @@ use tokio::sync::watch;
 // Local Imports
 use crate::streams::support;
 use harmos_runtime::{
-    Error, Runtime, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Horizon, storage::JournalConsumer,
+    Error, runtime::Incompatible, state::Entry, state::Position, state::Recorded, storage::Horizon, storage::JournalConsumer,
     storage::Recovery, storage::Source,
 };
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -58,10 +50,6 @@ struct Watched {
     pruned: watch::Sender<Option<Position>>,
     batches: Arc<Mutex<Vec<Vec<Position>>>>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -151,8 +139,6 @@ impl Source<Bank> for Prunable {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 #[tokio::test]
@@ -184,7 +170,7 @@ async fn snapshot_blocks_pruning() {
     pruned(&watched, second.position).await;
 
     assert!(matches!(runtime.state.query::<Change>(Position::ORIGIN).await.next(), Some(Err(Error::BeyondTail))));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -211,12 +197,12 @@ async fn checkpoint_blocks_pruning() {
     let recovered = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(recovered.position).await;
     pruned(&watched, recovered.position).await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn retention_requires_snapshot() {
-    let started = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let started = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().retain(Horizon::BeneathSnapshot);
     })
@@ -246,7 +232,7 @@ async fn run_stalled(tail: usize) -> Vec<Vec<Position>> {
     for _ in 0..3 {
         runtime.state.commit(deposit(1)).await.expect("accepted");
     }
-    assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN);
+    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position::ORIGIN);
 
     watched.batches.lock().expect("not poisoned").clone()
 }
@@ -258,5 +244,3 @@ async fn saved(attempts: &watch::Sender<usize>) {
 async fn pruned(watched: &Watched, beneath: Position) {
     watched.pruned.subscribe().wait_for(|pruned| *pruned == Some(beneath)).await.expect("the source keeps its prune record");
 }
-
-/* === Tests === */

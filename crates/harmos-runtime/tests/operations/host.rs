@@ -11,10 +11,6 @@
 // through it, and the built-in status, cancel and watch operations it shares
 // with the remote bindings.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,9 +22,9 @@ use std::time::Duration;
 use tokio::sync::{Notify, Semaphore};
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::operations::instance::{Outcome, Phase};
-use harmos_runtime::operations::{Instance, OperationDeclaration, OperationHost, OperationPolicy, RetryPolicy};
+use harmos_runtime::operations::{Instance, OperationHost, OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
 /* === Constants === */
@@ -40,17 +36,23 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 // The declaration is its own request, so `call` and `submit` infer it.
-#[harmos_runtime::operation(resources = [Gate, harmos_runtime::operations::HostContext], id = "fixture.hold",  response = u64, policy = POLICY)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct HoldDeclaration {
     value: u64,
 }
+
+static HOLD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<HoldDeclaration>("fixture.hold", POLICY);
+
+const HOLD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<HoldDeclaration> =
+    harmos_runtime::operations::OperationSpec::<HoldDeclaration>::new(&HOLD_DECLARATION_DESCRIPTION);
 
 struct Gate {
     started: Notify,
@@ -64,30 +66,42 @@ struct Gate {
 struct CompletionGuard(Arc<Gate>);
 
 // A resident service activated through the host by its identity.
-#[harmos_runtime::operation(id = "fixture.ticker",
-    response = (),
-    policy = POLICY
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct TickerDeclaration {}
 
-/* === Enums === */
+static TICKER_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<TickerDeclaration>("fixture.ticker", POLICY);
 
-/* === Traits === */
+const TICKER_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<TickerDeclaration> =
+    harmos_runtime::operations::OperationSpec::<TickerDeclaration>::new(&TICKER_DECLARATION_DESCRIPTION);
 
 /* === Implementations === */
 
-impl harmos_runtime::Operation for HoldDeclaration {
-    type Error = Error;
+async fn hold_declaration_handler(
+    request: HoldDeclaration, ctx: harmos_runtime::operations::FunctionContext<HoldDeclaration>,
+) -> Result<harmos_runtime::Response<u64>, Error> {
+    let gate = ctx.resource::<Gate>().expect("declared resource is registered");
+    *gate.request.lock().unwrap() =
+        ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered").request_claims().cloned();
+    let _guard = CompletionGuard(gate.clone());
+    gate.started.notify_one();
+    gate.release.acquire().await.unwrap().forget();
+    gate.completed.fetch_add(1, Ordering::SeqCst);
+    Ok((request.value * 2).into())
+}
 
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Error> {
-        let gate = ctx.resource::<Gate>();
-        *gate.request.lock().unwrap() = ctx.resource::<harmos_runtime::operations::HostContext>().request_claims().cloned();
-        let _guard = CompletionGuard(gate.clone());
-        gate.started.notify_one();
-        gate.release.acquire().await.unwrap().forget();
-        gate.completed.fetch_add(1, Ordering::SeqCst);
-        Ok((self.value * 2).into())
-    }
+fn hold_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        HOLD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Gate>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        hold_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for CompletionGuard {
@@ -96,8 +110,6 @@ impl Drop for CompletionGuard {
         self.0.cleanup.notify_one();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -110,13 +122,24 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         cleanup: Notify::new(),
         request: Mutex::new(None),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Gate>(gate.clone());
+        setup.settings().lanes(harmos_runtime::operations::LaneSet::new([crate::support::SERIAL]).unwrap());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();
-    runtime.operations.register::<super::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::Lifecycle>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(hold_declaration_operation().expect("representable operation"), crate::support::SERIAL)
+        .await
+        .unwrap();
+    crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     (runtime, gate)
 }
 
@@ -152,7 +175,7 @@ async fn owned_request_survives_caller_cancellation() {
 
     // A Native Worker May Own The Request Allocation After The Caller Cancels.
     assert!(instance.cancel().await.is_err());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(budget.available_permits(), 0);
     drop(retained);
     assert_eq!(budget.available_permits(), 64);
@@ -166,7 +189,7 @@ async fn refused_owned_request_releases_admission() {
     let claims = harmos_runtime::operations::RequestClaims::retain(permit);
     assert!(OperationHost::submit_owned::<TickerDeclaration>(&runtime.operations, TickerDeclaration {}, claims).await.is_err());
     assert_eq!(budget.available_permits(), 64);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -185,7 +208,7 @@ async fn host_instances_settle() {
         gate.release.add_permits(1);
         assert_eq!(*called.await.unwrap(), 8);
         assert_eq!(gate.completed.load(Ordering::SeqCst), 2);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -194,7 +217,7 @@ async fn host_instances_settle() {
         assert!(instance.cancel().await.is_err());
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
         assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -205,48 +228,75 @@ async fn host_instances_settle() {
         // Dropping an unsettled instance cancels it.
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
         let instance = runtime.operation(HoldDeclaration { value: 1 }).start().await.unwrap();
         gate.started.notified().await;
         let id = Instance::detach(instance);
-        let status = runtime.operation(harmos_operations::lifecycle::Status::of(id)).await;
-        assert_eq!(status.unwrap().phase, Phase::Running.as_str());
+        let status = runtime.operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await;
+        assert_eq!(status.unwrap().invocation.unwrap().phase, Phase::Running.as_str());
         let cleaned = gate.cleanup.notified();
         gate.release.add_permits(1);
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 1);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn builtin_controls_instance() {
+    // Inspect The Built-In Catalog Before Using Its Controls
+    let definitions = harmos_operations::builtins_catalog().definitions().unwrap();
+    let ids: std::collections::BTreeSet<_> = definitions.iter().map(|definition| definition.id.as_str()).collect();
+    assert_eq!(ids.len(), definitions.len());
+    assert!(definitions.iter().all(|definition| definition.fingerprint.0 != [0; 32]));
+
+    // Submit And Inspect A Running Instance
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     let mut instance = operations.submit::<HoldDeclaration>(HoldDeclaration { value: 1 }).await.unwrap();
     gate.started.notified().await;
     let id = instance.id();
-    let status = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
-    assert_eq!(status.phase, Phase::Running.as_str());
-    assert_eq!(status.outcome, "");
-    assert!(!status.cancellation_requested);
+    let status = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await.unwrap();
+    assert_eq!(status.invocation.as_ref().unwrap().phase, Phase::Running.as_str());
+    assert_eq!(status.invocation.as_ref().unwrap().outcome, "");
+    assert!(!status.invocation.as_ref().unwrap().cancellation_requested);
+    // Queued Work Refuses Cancel Without Changing Its State
+    let queued = operations.submit::<HoldDeclaration>(HoldDeclaration { value: 2 }).await.unwrap();
+    let queued_id = queued.id();
+    let refusal = operations
+        .call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(queued_id))
+        .await
+        .unwrap_err();
+    assert!(matches!(refusal, Error::OperationFailed { source, .. }
+        if matches!(source.downcast_ref::<harmos_operations::Error>(),
+            Some(harmos_operations::Error::InvalidInput { field: "Cancel", .. }))));
+    let waiting = operations
+        .call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(queued_id))
+        .await
+        .unwrap()
+        .invocation
+        .unwrap();
+    assert_eq!(waiting.phase, Phase::Queued.as_str());
+    assert!(!waiting.cancellation_requested);
     let cancelled =
-        operations.operation::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(id)).await.unwrap();
-    assert!(cancelled.cancellation_requested);
+        operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(id)).await.unwrap();
+    assert!(cancelled.invocation.as_ref().unwrap().cancellation_requested);
     assert!(matches!((&mut instance).await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     instance.settle().await.unwrap();
+    gate.started.notified().await;
+    operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(queued_id)).await.unwrap();
+    assert!(matches!(queued.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     // Settled Instances Leave The Index; Unknown Ids Stay Hidden
-    let settled = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
+    let settled = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await;
     assert!(hidden(settled.err()));
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let refused = operations.operation::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(unknown)).await;
+    let refused = operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(unknown)).await;
     assert!(hidden(refused.err()));
-    let status = harmos_runtime::operations::instance::Status::try_from(&*cancelled);
-    assert_ne!(status.unwrap().outcome, Some(Outcome::Succeeded));
-    runtime.shutdown().await.unwrap();
+    assert_ne!(cancelled.invocation.as_ref().unwrap().outcome, Outcome::Succeeded.as_str());
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -254,57 +304,67 @@ async fn resident_leases_watched() {
     let (runtime, gate) = runtime().await;
     let operations = &runtime.operations;
     operations
-        .register_service::<App, _, _>(harmos_runtime::services::ServiceDefinition::new(TickerDeclaration::ID), |resources| {
-            let gate = resources.resource::<Gate>().unwrap();
-            move |mut context: harmos_runtime::services::ServiceContext<App>| {
-                let gate = gate.clone();
-                async move {
-                    context.ready();
-                    context.stopping().await;
-                    gate.cleaned.fetch_add(1, Ordering::SeqCst);
-                    Ok::<(), std::io::Error>(())
+        .register_service::<App, _, _>(
+            harmos_runtime::services::ServiceDefinition::new(TICKER_DECLARATION_OPERATION.entry().id),
+            |resources| {
+                let gate = resources.resource::<Gate>().unwrap();
+                move |mut context: harmos_runtime::services::ServiceContext<App>| {
+                    let gate = gate.clone();
+                    async move {
+                        context.ready();
+                        context.stopping().await;
+                        gate.cleaned.fetch_add(1, Ordering::SeqCst);
+                        Ok::<(), std::io::Error>(())
+                    }
                 }
-            }
-        })
+            },
+        )
         .unwrap();
 
     // Activations over the Same Resources Share One Instance
-    let first = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
-    let second = operations.submit_resident(TickerDeclaration::ID).await.unwrap();
+    let first = operations.submit_resident(TICKER_DECLARATION_OPERATION.entry().id).await.unwrap();
+    let second = operations.submit_resident(TICKER_DECLARATION_OPERATION.entry().id).await.unwrap();
     assert_eq!(first.id(), second.id());
     first.ready().await.unwrap();
     let id = first.id();
     let key = operations.resident_key(id).unwrap();
     assert_eq!(operations.resident(&key).unwrap().leases, 2);
-    let status = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await.unwrap();
-    assert_eq!(status.phase, Phase::Running.as_str());
+    let status = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await.unwrap();
+    assert_eq!(status.invocation.as_ref().unwrap().phase, Phase::Running.as_str());
 
     // A Watch Streams Every Change Until the Instance Stops
     let settings = harmos_runtime::operations::StreamSettings {
         items: std::num::NonZeroUsize::new(16).unwrap(),
         bytes: std::num::NonZeroUsize::new(4096).unwrap(),
     };
-    let mut watch =
-        operations.download::<harmos_operations::lifecycle::Watch>(harmos_operations::lifecycle::Watch::of(id), settings).unwrap();
-    let current = watch.next().await.unwrap().unwrap();
-    assert_eq!(current.phase, Phase::Running.as_str());
+    let limits = harmos_runtime::operations::WireStreamLimits { input: settings, output: settings };
+    let (watch, stream) = operations
+        .submit_protobuf::<harmos_operations::lifecycle::Watch>(harmos_operations::lifecycle::Watch::of(id), Some(limits))
+        .unwrap();
+    let stream = stream.unwrap();
+    let current = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(
+        stream.receive_current().await.unwrap().unwrap().as_slice(),
+    )
+    .unwrap();
+    assert_eq!(current.invocation.unwrap().phase, Phase::Running.as_str());
     drop(first);
     assert_eq!(operations.resident(&key).unwrap().leases, 1);
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 0);
     second.request_cancel();
     let mut phases = Vec::new();
-    while let Some(state) = watch.next().await.unwrap() {
-        phases.push(state.phase.clone());
+    while let Some(bytes) = stream.receive_current().await.unwrap() {
+        let state = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(bytes.as_slice()).unwrap();
+        phases.push(state.invocation.unwrap().phase);
     }
-    let last = watch.join().await.unwrap();
-    assert_eq!(last.phase, Phase::Stopped.as_str());
+    let last = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(watch.await.unwrap().as_slice()).unwrap();
+    assert_eq!(last.invocation.unwrap().phase, Phase::Stopped.as_str());
     assert_eq!(phases.last().map(String::as_str), Some(Phase::Stopped.as_str()));
     assert!(phases.iter().any(|phase| phase == Phase::Stopping.as_str()));
     second.settle().await.unwrap();
     assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
 
     // A Stopped Resident Leaves the Index Like a Settled Request
-    let stopped = operations.operation::<harmos_operations::lifecycle::Status>(harmos_operations::lifecycle::Status::of(id)).await;
+    let stopped = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await;
     assert!(hidden(stopped.err()));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

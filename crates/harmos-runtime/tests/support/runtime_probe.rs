@@ -8,10 +8,6 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -30,10 +26,6 @@ pub(crate) static RENAME: std::sync::LazyLock<(Kind, &str, u32)> =
 pub(crate) static EXPORTED: std::sync::LazyLock<(Kind, &str, u32)> =
     std::sync::LazyLock::new(|| (Kind::Record, "sheet.exported", <() as harmos_runtime::Identified>::definition().1));
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -51,21 +43,6 @@ pub(crate) struct Rename {
 pub(crate) struct Editor;
 
 /* === Enums === */
-
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Serial,
-
-    #[lane(concurrent(2))]
-    Concurrent,
-
-    #[lane(unbounded)]
-    Unbounded,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Refusal {
@@ -87,8 +64,6 @@ pub(crate) enum Change {
 pub(crate) enum Note {
     Exported,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -148,20 +123,20 @@ impl harmos_runtime::Lifecycle for Editor {
     type Error = std::convert::Infallible;
     type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        setup.settings().lanes(
+            harmos_runtime::operations::LaneSet::new([crate::support::SERIAL, crate::support::CONCURRENT, crate::support::UNBOUNDED])
+                .unwrap(),
+        );
         Ok(Self)
     }
 }
 
 impl Application for Editor {
-    type Lanes = Lanes;
     type State = Sheet;
     type Transaction = Change;
     type Record = Note;
-    type Streams = ();
 }
-
-impl harmos_runtime::state::TransactionCatalog<Sheet> for Change {}
 
 impl harmos_runtime::state::CatalogCodec for Change {
     fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
@@ -189,15 +164,6 @@ impl harmos_runtime::state::CatalogCodec for Note {
     }
 }
 
-impl harmos_runtime::state::RecordCatalog for Note {
-    fn restore(id: &harmos_runtime::DefinitionId, version: u32, _payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        if id.as_str() != "sheet.exported" || version != EXPORTED.2 {
-            return Ok(None);
-        }
-        Ok(Some(Self::Exported))
-    }
-}
-
 /* === Public Functions === */
 
 pub(crate) fn rename(title: &str) -> Change {
@@ -215,6 +181,12 @@ pub(crate) fn inverses(change: &Change, sheet: &Sheet) -> Option<Change> {
     }
 }
 
-/* === Private Functions === */
-
 /* === Tests === */
+
+pub(crate) fn note_registry() -> harmos_runtime::state::RecordRegistry<Note> {
+    harmos_runtime::state::RecordRegistry::new().entry(
+        harmos_runtime::state::RecordEntry::<()>::new("sheet.exported"),
+        |()| Note::Exported,
+        |_| Some(&()),
+    )
+}

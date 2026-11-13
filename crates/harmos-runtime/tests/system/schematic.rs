@@ -9,10 +9,6 @@
 
 // Walk the CLI Across Both Built Plugin Backends
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -28,12 +24,6 @@ use super::support::fixtures;
 
 const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
 /* === Enums === */
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,14 +31,6 @@ enum Startup {
     Initializing,
     Ready,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 
@@ -140,8 +122,8 @@ fn cli_streams_settle() {
         // Wasm Compilation Is Preparation, Outside The Operation Deadline.
         // The System Story Policy Still Bounds The Whole Walkthrough.
         let initializing = ready.recv();
-        let readiness = ready
-            .recv_timeout(<schematic_operations::AnalyzeSchematic as harmos_runtime::operations::OperationDeclaration>::POLICY.timeout);
+        let readiness =
+            ready.recv_timeout(<schematic_operations::AnalyzeSchematic as harmos_runtime::operations::ProtobufOperation>::POLICY.timeout);
         if initializing != Ok(Startup::Initializing) || readiness != Ok(Startup::Ready) {
             let _ = child.kill();
             let output = child.wait_with_output().expect("the failed CLI is reaped");

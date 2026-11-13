@@ -24,7 +24,8 @@ use tokio::sync::{mpsc, oneshot};
 // Local Imports
 use crate::Error;
 use crate::operations::{EncodedInvocation, WireChildAction, WireChildCall, WireChildControl};
-use harmos_domain::{Message, Refusal};
+use harmos_operations::Refusal;
+use prost::Message as _;
 
 /* === Constants === */
 
@@ -49,7 +50,7 @@ pub(crate) struct ChildRequest {
     pub(crate) fingerprint: [u8; 32],
     pub(crate) generation: u64,
     pub(crate) payload: Vec<u8>,
-    pub(crate) retry: Option<super::RetryPolicy>,
+    pub(crate) policy: Option<super::OperationPolicy>,
     pub(crate) values: Vec<super::CallValue>,
     pub(crate) submitted: tokio::time::Instant,
     pub(crate) answer: oneshot::Sender<Result<EncodedInvocation, Error>>,
@@ -81,7 +82,7 @@ impl Children {
             fingerprint: call.fingerprint,
             generation: call.generation,
             payload: call.payload,
-            retry: call.retry,
+            policy: call.policy,
             values: call.values,
             submitted,
             answer,
@@ -102,7 +103,7 @@ impl Children {
         if call.submit {
             let id = invocation.invocation.as_ref().expect("owned child").id();
             self.submitted.lock().expect("submitted child lock is healthy").insert(id.value(), invocation);
-            return Ok(id.value().encode());
+            return Ok(harmos_protocol::v1::GuestSubmitted { instance: id.value() }.encode_to_vec());
         }
         drained(invocation, cancelled)
             .await
@@ -121,8 +122,14 @@ impl Children {
                 if control.action == WireChildAction::Cancel {
                     invocation.request_cancel();
                 }
-                let state = harmos_operations::lifecycle::InstanceState::from(invocation.control.status().portable());
-                Ok(state.encode())
+                let status = invocation.control.status().portable();
+                let state = harmos_protocol::v1::InstanceState {
+                    phase: status.phase.as_str().into(),
+                    outcome: status.outcome.map(|outcome| outcome.as_str()).unwrap_or_default().into(),
+                    cancellation_requested: status.cancellation_requested,
+                    attempt: status.attempt,
+                };
+                Ok(state.encode_to_vec())
             }
             WireChildAction::Release => {
                 drop(take()?);
@@ -159,7 +166,7 @@ impl Drop for Child {
 
 /* === Public Functions === */
 
-#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 #[tracing::instrument(target = "harmos::operations", name = "operations.lifecycle", level = "trace", skip_all)]
 pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: oneshot::Receiver<()>) -> crate::Result<Vec<u8>> {
     let control = std::sync::Arc::clone(&invocation.control);
@@ -186,21 +193,25 @@ pub(crate) fn refused(error: Error) -> Refusal {
             }
             // A Carried Failure Keeps Its Cause and Any Frame Closer to the Origin
             let failure = error.failure().cloned().unwrap_or_else(|| {
-                harmos_domain::Failure::originate(crate::operations::FailureKind::Permanent, &error, harmos_domain::failure::Origin::Host)
+                harmos_operations::Failure::originate(
+                    crate::operations::FailureKind::Permanent,
+                    &error,
+                    harmos_operations::failure::Origin::Host,
+                )
             });
             let failure = failure.in_operation(operation.as_str());
-            Refusal::failed(harmos_domain::FAILED, failure)
+            Refusal::failed(harmos_operations::FAILED, failure)
         }
         Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
-        Error::NotRegistered { .. } => Refusal::new(harmos_domain::UNKNOWN, error),
-        Error::OperationPayload { .. } => Refusal::new(harmos_domain::UNREADABLE, error),
+        Error::NotRegistered { .. } => Refusal::new(harmos_operations::UNKNOWN, error),
+        Error::OperationPayload { .. } => Refusal::new(harmos_operations::UNREADABLE, error),
         Error::OperationRefused(crate::Refusal::TimedOut { .. }) => Refusal::new(-32_607, error),
         Error::OperationRefused(_) | Error::Closing { .. } => Refusal::new(-32_606, error),
         error => Refusal::originate(
-            harmos_domain::FAILED,
+            harmos_operations::FAILED,
             crate::operations::FailureKind::Permanent,
             &error,
-            harmos_domain::failure::Origin::Host,
+            harmos_operations::failure::Origin::Host,
         ),
     }
 }
@@ -211,18 +222,21 @@ pub(crate) fn refused(error: Error) -> Refusal {
 // drains before its outcome is reported.
 #[tracing::instrument(target = "harmos::operations", name = "operations.drained", level = "trace", skip_all)]
 async fn drained(mut invocation: Child, mut cancelled: oneshot::Receiver<()>) -> Result<Vec<u8>, Refusal> {
-    tokio::select! {
-        biased;
-        _ = &mut cancelled => {
-            invocation.invocation.as_ref().expect("owned child").request_cancel();
-            invocation.await.map_err(refused)
+    crate::clock::waiting(async {
+        tokio::select! {
+            biased;
+            _ = &mut cancelled => {
+                invocation.invocation.as_ref().expect("owned child").request_cancel();
+                invocation.await.map_err(refused)
+            }
+            outcome = &mut invocation => outcome.map_err(refused),
         }
-        outcome = &mut invocation => outcome.map_err(refused),
-    }
+    })
+    .await
 }
 
 fn unknown(instance: u64) -> Refusal {
-    Refusal::new(harmos_domain::UNKNOWN, format!("operation instance {instance} is not a child this attempt owns"))
+    Refusal::new(harmos_operations::UNKNOWN, format!("operation instance {instance} is not a child this attempt owns"))
 }
 
 /* === Tests === */

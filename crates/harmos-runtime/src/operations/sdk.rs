@@ -23,13 +23,11 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, Manager};
-use crate::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
-use harmos_operations::lifecycle::Initialize;
+use crate::guest::host::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
+use harmos_protocol::v1::GuestInitialize as Initialize;
+use prost::Message as _;
 
-#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-use crate::operations::{OperationDeclaration, OperationPolicy, RetryPolicy};
-use crate::supervision::executor;
-use crate::{Error, Message, Result};
+use crate::{Error, Result};
 
 /* === Constants === */
 
@@ -96,18 +94,11 @@ impl crate::MemorySize for Encoded {
 
 // This Adapter Is Never Declared Or Registered By Its Static Identity.
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-impl OperationDeclaration for Encoded {
+impl harmos_operations::operations::RequestShape for Encoded {
     type Request = Self;
     type Response = Vec<u8>;
     type Input = crate::operations::NoStream;
     type Output = crate::operations::NoStream;
-    const ID: &'static str = "harmos.encoded";
-    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
-        timeout: harmos_domain::operations::UNBOUNDED,
-        attempt_timeout: harmos_domain::operations::UNBOUNDED,
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    };
 }
 
 impl PluginSdkRegistration {
@@ -146,7 +137,7 @@ impl PluginSdkRegistration {
     ) -> Result<EncodedInvocation> {
         self.authorize(authority, 0)?;
         let generation_context = self.entries[0].plugin().expect("SDK retains its original scope").issue_generation_context()?;
-        harmos_domain::validate_config(config_json).map_err(|source| Error::OperationFailed {
+        harmos_operations::validate_config(config_json).map_err(|source| Error::OperationFailed {
             operation: self.entries[0].id().to_owned(),
             source: Arc::new(source),
         })?;
@@ -162,11 +153,16 @@ impl PluginSdkRegistration {
             let scope = self.entries[0].plugin().expect("SDK retains its original scope");
             let assignments = self.operations.encode_assignments(scope, allowance - peak)?;
             let request = Initialize {
-                config_json: config_json.to_vec(),
+                configuration: config_json.to_vec(),
                 generation_context: generation_context.to_vec(),
-                assignments,
+                assignments: Some(harmos_protocol::v1::OperationAssignments::decode(assignments.as_slice()).map_err(|_| {
+                    Error::InvalidInput {
+                        field: "guest assignments",
+                        reason: "invalid host assignments",
+                    }
+                })?),
             };
-            Ok(request.encode())
+            Ok(request.encode_to_vec())
         })
     }
 
@@ -192,23 +188,21 @@ impl PluginSdkRegistration {
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit", level = "debug", skip_all)]
     fn submit(&self, index: usize, bytes: NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>) -> Result<EncodedInvocation> {
-        let submitted = executor::now();
+        let submitted = self.operations.clock().now();
         let entry = &self.entries[index];
         entry.available()?;
         if !entry.settled() {
             return Err(Error::ResourceExhausted { resource: "SDK physical settlement" });
         }
-        let preparation = self.operations.claim_preparation(bytes)?;
-        #[cfg(feature = "plugin-sidecar")]
-        let native_capacity =
-            entry.native.as_ref().map(|binding| binding.reserve()).transpose().map_err(|source| Error::OperationFailed {
-                operation: entry.id().to_owned(),
-                source: Arc::new(source),
-            })?;
+        let mut preparation = self.operations.claim_preparation(bytes)?;
+
         let payload = encode(bytes.get())?;
         if payload.capacity() > bytes.get() {
             return Err(Error::ResourceExhausted { resource: "SDK encoding memory" });
         }
+        // Encoding Is Finished; Retain Only The Actual Forwarded Payload.
+        let retained = preparation.split(payload.capacity().max(1)).expect("payload fits its encoding reservation");
+        drop(preparation);
         let dispatch = entry.wire.ok_or(Error::InvalidInput {
             field: "SDK lifecycle",
             reason: "entry has no original wire adapter",
@@ -225,10 +219,9 @@ impl PluginSdkRegistration {
             None,
             EncodedInput {
                 retry: None,
+                policy: None,
                 payload,
-                preparation: Some(preparation),
-                #[cfg(feature = "plugin-sidecar")]
-                native_capacity,
+                preparation: Some(retained),
             },
         )?;
         let outcome = invocation.outcome;
@@ -250,12 +243,7 @@ impl PluginSdkRegistration {
     #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
     pub async fn settle(&self) -> Result<()> {
         self.operations.settle_owned_entries(&self.entries).await?;
-        #[cfg(feature = "plugin-sidecar")]
-        if self.entries[0].plugin().is_some_and(PluginScope::is_closed)
-            && let Some(binding) = &self.entries[0].native
-        {
-            binding.settle_observers().await?;
-        }
+
         Ok(())
     }
 

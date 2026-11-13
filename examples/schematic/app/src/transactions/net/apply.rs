@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{NetId, Point, Schematic};
-use harmos::{state::Invertible, state::Transaction};
+use harmos_runtime::{state::Invertible, state::Transaction};
 
 /* === Constants === */
 
@@ -31,11 +31,14 @@ use harmos::{state::Invertible, state::Transaction};
 
 /* === Structs === */
 
-#[harmos::transaction(id = "net.route",  inverse = Self)]
-#[derive(harmos::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ApplyRoute {
     pub net: NetId,
     pub points: Vec<Point>,
+}
+impl ApplyRoute {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("net.route").reversible::<Self>();
 }
 
 /* === Enums === */

@@ -20,22 +20,11 @@
 // Local Imports
 use super::FieldPath;
 use crate::MemorySize;
-use crate::model::storage::codec::{Code, Flag, Nested, Repeated, coded, product, variants};
 use crate::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(Filter { clauses: Repeated<Clause> => 1 });
-product!(Clause { terms: Repeated<Term> => 1 });
-product!(Term { field: Nested<FieldPath> => 1, condition: Nested<Condition> => 2, negate: Flag => 3 });
-coded!(Compare { Eq, Ne, Lt, Le, Gt, Ge });
-variants!(Condition {
-    0, 1, "compare": Self::Compare { op, value } => { op: Code<Compare> => 1, value: Nested<ScalarValue> => 2 } => Self::Compare { op, value };
-    1, 2, "in": Self::In { values } => { values: Repeated<ScalarValue> => 1 } => Self::In { values };
-    2, 3, "is_null": Self::IsNull => {} => Self::IsNull;
-});
 
 /* === Type Aliases === */
 

@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,12 +20,6 @@ use harmos_runtime::state::{CorrelationId, DecodeError, Entry, Envelope, Focus, 
 use harmos_runtime::storage::{JournalConsumer, Payload, Recovery, Source};
 use harmos_runtime::{DefinitionId, Runtime, runtime::Catalog, runtime::Incompatible, runtime::Registration};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(Clone)]
@@ -40,10 +30,6 @@ struct Replaying {
     resume: Position,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
 impl Registration<Editor> for Definitions {
@@ -53,9 +39,11 @@ impl Registration<Editor> for Definitions {
         }
 
         Catalog::Transactions {
+            states: None,
+            records: Some(crate::runtime::probe::note_registry()),
             definitions: self.0,
-            decode,
-            inverses: Some(inverses),
+            decode: std::sync::Arc::new(decode),
+            inverses: Some(std::sync::Arc::new(inverses)),
         }
     }
 }
@@ -151,7 +139,7 @@ async fn title(runtime: &Runtime<Editor>) -> String {
 
 #[tokio::test]
 async fn boot_preserves_origin() {
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
@@ -160,12 +148,12 @@ async fn boot_preserves_origin() {
     assert_eq!(title(&runtime).await, "");
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert_eq!(runtime.state.stored(), runtime.state.applied(), "with nothing attached, stored tracks applied");
-    assert_eq!(runtime.shutdown().await.unwrap(), Position::ORIGIN);
+    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position::ORIGIN);
 }
 
 #[tokio::test]
 async fn read_stamped_position() {
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
@@ -182,7 +170,7 @@ async fn read_stamped_position() {
 #[tokio::test]
 async fn boot_folds_state() {
     // The live path: two renames and one undo of the second.
-    let live = Runtime::<Editor>::launch_with(origin(), (), |setup| {
+    let live = crate::support::app::launch::<Editor>(origin(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
@@ -193,7 +181,7 @@ async fn boot_folds_state() {
     handle.undo(alice(), Focus::all()).await.expect("alice has an entry to undo");
 
     // The recovered path: the very same entries, replayed.
-    let recovered = Runtime::<Editor>::launch_with(origin(), (), |setup| {
+    let recovered = crate::support::app::launch::<Editor>(origin(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().recover(recovering(vec![
             renamed(1, "first", None),
@@ -220,7 +208,7 @@ async fn boot_folds_state() {
 
 #[tokio::test]
 async fn boot_refuses_loudly() {
-    let booted = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let booted = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().recover(recovering(vec![stored(
             1,

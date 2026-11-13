@@ -28,22 +28,6 @@ mod shape_versions;
 #[path = "state/snapshots.rs"]
 mod snapshots;
 
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(Clone, Default)]
@@ -66,14 +50,6 @@ fn incompatible(error: harmos_runtime::StartupError) -> harmos_runtime::runtime:
     }
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 // A Dropped Boot Joins Its Cleanup Before Storage Reports Closed.
@@ -82,5 +58,3 @@ async fn closed(storage: &harmos_runtime::storage::StorageManager, cleanup: &har
     let status = storage.status();
     assert!(status.closed && !status.running);
 }
-
-/* === Tests === */

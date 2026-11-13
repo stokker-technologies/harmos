@@ -8,10 +8,6 @@
  */
 
 #![allow(dead_code, unused_imports)]
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,12 +21,10 @@ pub(crate) use tokio::sync::Notify;
 // Local Imports
 use super::support;
 pub(crate) use harmos_runtime::operations::{
-    Backoff, CacheKey, Context, FailureKind, Jitter, OperationDeclaration, OperationInstanceId, OperationPolicy, RestartPolicy, RetryPolicy,
+    Backoff, Context, FailureKind, Jitter, OperationInstanceId, OperationPolicy, RequestShape, RestartPolicy, RetryPolicy,
 };
 pub(crate) use harmos_runtime::{Error, Refusal, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
-
-/* === Constants === */
 
 /* === Macros === */
 
@@ -75,49 +69,72 @@ pub(crate) type Request = Compute;
 
 // Requests Clone Shared Gates; Responses Retain Their Owned Value.
 
-#[harmos_runtime::operation(codec = manual, id = "test.compute", response = Response,
-    resources = [Owner, harmos_runtime::operations::HostContext], key = |request: &Compute| (request.keyed && request.valid).then(|| CacheKey::new(request.value.to_le_bytes().to_vec()).unwrap()),
-    policy = OperationPolicy {
-        timeout: Duration::from_secs(2),
-        attempt_timeout: Duration::from_secs(1),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::OnTransient {
-            max_retries: 3,
-            backoff: Backoff::Fixed {
-                delay: Duration::from_millis(1),
-                jitter: Jitter::None,
-            },
-        },
-    },
-)]
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = Response)]
 #[derive(Clone)]
 pub(crate) struct Compute {
     pub(crate) value: usize,
     pub(crate) failures: usize,
     pub(crate) failure: FailureKind,
     pub(crate) valid: bool,
-    pub(crate) keyed: bool,
     pub(crate) gate: Option<(Arc<Notify>, Arc<Notify>)>,
 }
 
-#[harmos_runtime::operation(codec = manual, id = "test.slow", response = Response,
-    resources = [Owner],
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_millis(50),
-        attempt_timeout: Duration::from_millis(10),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: Compute::POLICY.retries,
-    },
-)]
+pub(crate) static COMPUTE_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<Compute>(
+        "test.compute",
+        OperationPolicy {
+            timeout: Duration::from_secs(2),
+            attempt_timeout: Duration::from_secs(1),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::OnTransient {
+                total_attempts: 4,
+                backoff: Backoff::Fixed {
+                    delay: Duration::from_millis(1),
+                    jitter: Jitter::None,
+                },
+            },
+        },
+    )
+    .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
+
+pub(crate) const COMPUTE_OPERATION: harmos_runtime::operations::OperationSpec<Compute> =
+    harmos_runtime::operations::OperationSpec::<Compute>::new(&COMPUTE_DESCRIPTION);
+
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = Response)]
 #[derive(Clone)]
 pub(crate) struct Slow(pub(crate) Compute);
 
-#[harmos_runtime::operation(codec = manual, id = "test.parent", response = Response,
-    resources = [ParentOwner], operations = [Compute], visibility = Public,
-    policy = Compute::POLICY,
-)]
+pub(crate) static SLOW_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<Slow>(
+        "test.slow",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_millis(50),
+            attempt_timeout: Duration::from_millis(10),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: COMPUTE_OPERATION.entry().policy.retries,
+        },
+    );
+
+pub(crate) const SLOW_OPERATION: harmos_runtime::operations::OperationSpec<Slow> =
+    harmos_runtime::operations::OperationSpec::<Slow>::new(&SLOW_DESCRIPTION);
+
+#[derive(harmos_runtime::Request)]
+#[harmos_path(harmos_runtime)]
+#[request(response = Response)]
 #[derive(Clone)]
 pub(crate) struct Parent(pub(crate) Compute);
+
+pub(crate) static PARENT_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<Parent>("test.parent", COMPUTE_OPERATION.entry().policy)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+static PARENT_CALLEES: [harmos_runtime::operations::WireDeclaration; 1] = [COMPUTE_DESCRIPTION.copied()];
+pub(crate) const PARENT_OPERATION: harmos_runtime::operations::OperationSpec<Parent> =
+    harmos_runtime::operations::OperationSpec::<Parent>::new(&PARENT_DESCRIPTION).calls(&PARENT_CALLEES);
 
 #[derive(Debug)]
 pub(crate) struct Response {
@@ -129,6 +146,8 @@ pub(crate) struct Response {
 pub(crate) struct Owner {
     pub(crate) prepared: AtomicUsize,
     pub(crate) runs: AtomicUsize,
+    pub(crate) finished: AtomicUsize,
+    pub(crate) times: Mutex<Vec<tokio::time::Instant>>,
     pub(crate) seen: Mutex<Vec<OperationInstanceId>>,
     pub(crate) wire_started: Notify,
     pub(crate) wire_joined: AtomicUsize,
@@ -139,18 +158,16 @@ pub(crate) struct ParentOwner;
 
 /* === Enums === */
 
-#[harmos_runtime::catalog]
-pub(crate) enum Operations {
-    Compute(Compute),
-    Slow(Slow),
+pub(crate) fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
 }
 
-#[harmos_runtime::catalog]
-pub(crate) enum Single<O: harmos_runtime::OperationDeclaration> {
-    Operation(O),
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(compute_operation().expect("representable operation"));
+    batch = batch.entry(slow_operation().expect("representable operation"));
+    batch
 }
-
-pub(crate) use support::Lanes;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Failed {
@@ -163,8 +180,6 @@ pub(crate) enum Failed {
     #[error(transparent)]
     Invocation(#[from] harmos_runtime::operations::InvocationError),
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -205,9 +220,15 @@ impl Request {
             failures: self.failures,
             failure: self.failure,
             valid: self.valid,
-            keyed: self.keyed,
             gate: self.gate.take(),
         }
+    }
+}
+
+struct Attempt<'a>(&'a AtomicUsize);
+impl Drop for Attempt<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -216,7 +237,9 @@ impl Owner {
         if !request.valid {
             return Err(Failed::Scripted(FailureKind::Invalid));
         }
+        let _attempt = Attempt(&self.finished);
         self.runs.fetch_add(1, Ordering::SeqCst);
+        self.times.lock().unwrap().push(context.scope().now());
         self.seen.lock().unwrap().push(context.id());
         let attempts = context.attempt() + 1;
         if request.value == usize::MAX {
@@ -243,44 +266,66 @@ impl Owner {
     }
 }
 
-impl harmos_runtime::Operation for Compute {
-    type Error = Failed;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Response>, Failed> {
-        let owner = ctx.resource::<Owner>();
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        if context.attempt() == 0 {
-            owner.prepared.fetch_add(1, Ordering::SeqCst);
-        }
-        owner.compute(&self, context).await.map(Into::into)
-    }
-
-    fn classify(error: &Failed) -> FailureKind {
-        Owner::classify(error)
-    }
-}
-
-impl harmos_runtime::Operation for Slow {
-    type Error = Failed;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Response>, Failed> {
-        let owner = ctx.resource::<Owner>();
+pub(crate) async fn compute_handler(
+    request: Compute, ctx: harmos_runtime::operations::FunctionContext<Compute>,
+) -> Result<harmos_runtime::Response<Response>, Failed> {
+    let owner = ctx.resource::<Owner>().expect("declared resource is registered");
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    if context.attempt() == 0 {
         owner.prepared.fetch_add(1, Ordering::SeqCst);
-        owner.runs.fetch_add(1, Ordering::SeqCst);
-        std::future::pending().await
     }
+    owner.compute(&request, context).await.map(Into::into)
 }
 
-impl harmos_runtime::Operation for Parent {
-    type Error = Failed;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<Response>, Failed> {
-        ctx.operation(self.0).await.map_err(Failed::Invocation)
-    }
+fn compute_classification(error: &Failed) -> FailureKind {
+    Owner::classify(error)
 }
 
-/* === Public Functions === */
+pub(crate) fn compute_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        COMPUTE_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Owner>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        compute_handler,
+        compute_classification,
+    )
+}
+
+pub(crate) async fn slow_handler(
+    _request: Slow, ctx: harmos_runtime::operations::FunctionContext<Slow>,
+) -> Result<harmos_runtime::Response<Response>, Failed> {
+    let owner = ctx.resource::<Owner>().expect("declared resource is registered");
+    owner.prepared.fetch_add(1, Ordering::SeqCst);
+    owner.runs.fetch_add(1, Ordering::SeqCst);
+    std::future::pending().await
+}
+
+pub(crate) fn slow_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        SLOW_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Owner>()] },
+        slow_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+pub(crate) async fn parent_handler(
+    request: Parent, ctx: harmos_runtime::operations::FunctionContext<Parent>,
+) -> Result<harmos_runtime::Response<Response>, Failed> {
+    ctx.operation(COMPUTE_OPERATION, request.0).await.map_err(Failed::Invocation)
+}
+
+pub(crate) fn parent_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PARENT_OPERATION,
+        const { &[harmos_runtime::Resource::of::<ParentOwner>()] },
+        parent_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
 
 /* === Private Functions === */
 
@@ -289,7 +334,7 @@ pub(crate) async fn runtime() -> Runtime<Bank> {
 }
 
 pub(crate) async fn runtime_with(update: impl FnOnce(&mut harmos_runtime::Setup<Bank>)) -> Runtime<Bank> {
-    Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup
             .settings()
             .operation_settings(harmos_runtime::operations::Settings {
@@ -304,7 +349,7 @@ pub(crate) async fn runtime_with(update: impl FnOnce(&mut harmos_runtime::Setup<
     .unwrap()
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) async fn runtime_with_preparation(bytes: std::num::NonZeroUsize) -> Runtime<Bank> {
     runtime_with(|setup| {
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
@@ -321,9 +366,6 @@ pub(crate) fn request() -> Request {
         failures: 0,
         failure: FailureKind::Transient,
         valid: true,
-        keyed: false,
         gate: None,
     }
 }
-
-/* === Tests === */

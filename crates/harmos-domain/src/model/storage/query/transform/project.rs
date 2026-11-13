@@ -20,14 +20,10 @@
 // Local Imports
 use super::FieldPath;
 use crate::MemorySize;
-use crate::model::storage::codec::{Nested, Repeated, Text, product};
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(Project { fields: Repeated<Projection> => 1 });
-product!(Projection { field: Nested<FieldPath> => 1, name: Text => 2 });
 
 /* === Type Aliases === */
 

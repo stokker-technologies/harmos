@@ -1,0 +1,103 @@
+name: Verification
+'on':
+  workflow_call:
+    inputs:
+      channel:
+        type: string
+        required: true
+      profile:
+        type: string
+        default: release
+      build-run:
+        type: string
+        default: ''
+      build-sha:
+        type: string
+        default: ''
+      build-version:
+        type: string
+        default: ''
+permissions:
+  contents: read
+env:
+  MISE_LOCKED: '1'
+  MISE_EXPERIMENTAL: '1'
+  CARGO_INCREMENTAL: '0'
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.longpaths
+  GIT_CONFIG_VALUE_0: 'true'
+jobs:
+  verify:
+    name: Release / Verify (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.minutes }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: package-${{ inputs.profile }}-rust-${{ matrix.platform }}
+        path: target/ci
+        run-id: ${{ inputs.build-run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Download Release Manifest
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: release-manifest
+        path: target/release-assets
+        run-id: ${{ github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Run Project Task
+      run: mise run release:verify -- --channel ${{ inputs.channel }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CI_INPUT_ARCHIVES: '["target/ci/package-${{ inputs.profile }}-rust-${{ matrix.platform }}.tar.zst"]'
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.cargo_downloads-cache-hit
+        != 'true'
+      with:
+        key: ${{ steps.setup.outputs.cargo_downloads-cache-primary-key }}
+        path: ${{ steps.setup.outputs.cargo_downloads-path }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.mise-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup.outputs.mise-path }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && steps.setup.outputs.uv-cache-hit != 'true'
+      with:
+        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup.outputs.uv-path }}
+    env:
+      MISE_ENABLE_TOOLS: git-cliff,go,node,python,rust,uv
+      PROFILE: ${{ inputs.profile }}
+      RELEASE_BUILD_RUN_ID: ${{ inputs.build-run }}
+      RELEASE_BUILD_SHA: ${{ inputs.build-sha }}
+      RELEASE_BUILD_VERSION: ${{ inputs.build-version }}
+    environment: ${{ inputs.channel == 'stable' && 'release' || 'nightly' }}
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - unix
+        - windows
+        include:
+        - platform: unix
+          runner: ubuntu-24.04
+          minutes: 120
+          container: ''
+        - platform: windows
+          runner: windows-2022
+          minutes: 120
+          container: ''

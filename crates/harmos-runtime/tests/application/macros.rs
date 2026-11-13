@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -19,25 +15,9 @@ use std::collections::BTreeMap;
 // Third Party Imports
 
 // Local Imports
-use self::sheet::{Change, Erase, Fact, Noted, Rename, Sheet, Studio, Untitled};
+use self::sheet::{Erase, Fact, Noted, Rename, Sheet, Studio, Untitled, change_state_catalog, fact_registry};
 use crate::application::support;
-use harmos_runtime::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position, state::Transaction};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
+use harmos_runtime::{Error, Runtime, runtime::Registration, state::Focus, state::Kind, state::Position};
 
 /* === Private Functions === */
 
@@ -55,7 +35,7 @@ async fn product_commits_refuses() {
     assert!(matches!(refused, Err(Error::Rejected(Untitled))));
     assert_eq!(runtime.state.applied(), first.position);
 
-    // The Catalog Infers Reversibility From The Invertible Implementation.
+    // The Entry Explicitly Registers The Authored Inverse.
     handle.undo(support::alice(), Focus::all()).await.expect("a rename comes back");
     assert_eq!(title(&runtime).await, "origin");
 
@@ -69,40 +49,18 @@ async fn product_commits_refuses() {
 #[tokio::test]
 async fn catalog_declares_records() {
     {
-        // The stamped identity is the permanent wire name, not the Rust type name.
-
-        // The generated conversions and dispatch are ordinary Rust the application
-        // could have written itself.
-        let change: Change = Change::from(sheet::rename("named"));
-        let mut state = Sheet::default();
-
-        assert_eq!(change, Change::Rename(sheet::rename("named")));
-        assert_eq!(Transaction::check(&change, &state), Ok(()));
-        Transaction::apply(&change, &mut state);
-        assert_eq!(state.title, "named");
-        assert_eq!(
-            harmos_runtime::state::Invertible::inverse(&sheet::rename("named"), &Sheet::default()),
-            Rename { to: String::new() },
-            "the declared body answers against the state before the change"
-        );
-
-        // The record catalog is the same shape minus behavior.
-        let fact: Fact = Noted("exported".to_owned()).into();
-        assert_eq!(fact, Fact::Noted(Noted("exported".to_owned())));
-    }
-    {
-        let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(Change::catalog())
+        let registered: BTreeMap<(String, u32), Kind> = definitions_of::<Studio>(change_state_catalog())
             .into_iter()
-            .chain(definitions_of::<Studio>(Fact::catalog()))
+            .chain(definitions_of::<Studio>(fact_registry()))
             .map(|(kind, id, version)| ((id.as_str().to_owned(), version), kind))
             .collect();
 
         assert_eq!(
             registered,
             BTreeMap::from([
-                (("sheet.erase".to_owned(), <sheet::Erase as harmos_runtime::Identified>::definition().1), Kind::Transaction),
+                (("sheet.erase".to_owned(), sheet::Erase::ENTRY.definition().1), Kind::Transaction),
                 (("sheet.noted".to_owned(), <Noted as harmos_runtime::Identified>::definition().1), Kind::Record),
-                (("sheet.rename".to_owned(), <Rename as harmos_runtime::Identified>::definition().1), Kind::Transaction),
+                (("sheet.rename".to_owned(), Rename::ENTRY.definition().1), Kind::Transaction),
             ]),
             "one variant per current definition"
         );
@@ -121,10 +79,10 @@ async fn catalog_declares_records() {
 
 #[tokio::test]
 async fn derived_aggregate_writer() {
-    use counter::{Counter, Down, Step, StepError, Tally, Underflow, Up};
+    use counter::{Counter, Down, Step, StepError, Tally, Underflow, Up, step_state_catalog};
 
     let runtime = Runtime::<Counter>::launch_with(Tally::default(), (), |setup| {
-        setup.settings().register(Step::catalog());
+        setup.settings().register(step_state_catalog());
     })
     .await
     .expect("a memory-only boot recovers nothing");
@@ -175,8 +133,8 @@ async fn studio() -> Runtime<Studio> {
     };
 
     Runtime::<Studio>::launch_with(origin, (), |setup| {
-        setup.settings().register(Change::catalog());
-        setup.settings().register(Fact::catalog());
+        setup.settings().register(change_state_catalog());
+        setup.settings().register(fact_registry());
     })
     .await
     .expect("a memory-only boot recovers nothing")
@@ -219,17 +177,22 @@ mod sheet {
     #[error("the title must not be empty")]
     pub struct Untitled;
 
-    #[harmos_runtime::transaction(id = "sheet.rename")]
     #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Rename {
         pub to: String,
     }
+    impl Rename {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Sheet, Self> =
+            harmos_runtime::state::TransactionEntry::new("sheet.rename").reversible::<Self>();
+    }
 
-    #[harmos_runtime::transaction(id = "sheet.erase")]
     #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Erase;
+    impl Erase {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Sheet, Self> =
+            harmos_runtime::state::TransactionEntry::new("sheet.erase").barrier();
+    }
 
-    #[harmos_runtime::record(id = "sheet.noted")]
     #[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Noted(pub String);
 
@@ -238,28 +201,103 @@ mod sheet {
 
     /* === Enums === */
 
-    #[harmos_runtime::transactions(state = Sheet, error = Untitled)]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum Change {
         Rename(Rename),
         Erase(Erase),
     }
+    impl From<Rename> for Change {
+        fn from(value: Rename) -> Self {
+            Self::Rename(value)
+        }
+    }
+    impl From<Erase> for Change {
+        fn from(value: Erase) -> Self {
+            Self::Erase(value)
+        }
+    }
+    impl harmos_runtime::state::Transaction<Sheet> for Change {
+        type Error = Untitled;
+        fn check(&self, state: &Sheet) -> std::result::Result<(), Self::Error> {
+            match self {
+                Self::Rename(value) => harmos_runtime::state::Transaction::check(value, state),
+                Self::Erase(value) => harmos_runtime::state::Transaction::check(value, state),
+            }
+        }
+        fn apply(&self, state: &mut Sheet) {
+            match self {
+                Self::Rename(value) => harmos_runtime::state::Transaction::apply(value, state),
+                Self::Erase(value) => harmos_runtime::state::Transaction::apply(value, state),
+            }
+        }
+        fn records(&self, state: &Sheet, records: &mut harmos_runtime::state::Records) {
+            match self {
+                Self::Rename(value) => harmos_runtime::state::Transaction::records(value, state, records),
+                Self::Erase(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            }
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Change {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Rename(_) => Rename::ENTRY.definition(),
+                Self::Erase(_) => Erase::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Rename(value) => serde::Serialize::serialize(value, serializer),
+                Self::Erase(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn change_state_catalog() -> harmos_runtime::state::StateCatalog<Sheet, Change> {
+        harmos_runtime::state::StateCatalog::new()
+            .transaction(Rename::ENTRY, Change::Rename, |value| match value {
+                Change::Rename(value) => Some(value),
+                _ => None,
+            })
+            .transaction(Erase::ENTRY, Change::Erase, |value| match value {
+                Change::Erase(value) => Some(value),
+                _ => None,
+            })
+    }
 
-    #[harmos_runtime::records]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum Fact {
         Noted(Noted),
     }
-
-    #[harmos_runtime::lanes]
-    pub enum StudioLanes {
-        #[default]
-        Open,
+    impl From<Noted> for Fact {
+        fn from(value: Noted) -> Self {
+            Self::Noted(value)
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Fact {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Noted(_) => <Noted as harmos_runtime::state::Record>::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Noted(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn fact_registry() -> harmos_runtime::state::RecordRegistry<Fact> {
+        harmos_runtime::state::RecordRegistry::new().entry(<Noted as harmos_runtime::state::Record>::ENTRY, Fact::Noted, |value| {
+            let Fact::Noted(value) = value;
+            Some(value)
+        })
     }
 
     /* === Traits === */
 
     /* === Implementations === */
+
+    impl harmos_runtime::state::Record for Noted {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("sheet.noted");
+    }
 
     impl Transaction<Sheet> for Rename {
         type Error = Untitled;
@@ -306,11 +344,9 @@ mod sheet {
     }
 
     impl harmos_runtime::Application for Studio {
-        type Lanes = StudioLanes;
         type State = Sheet;
         type Transaction = Change;
         type Record = Fact;
-        type Streams = ();
     }
 
     /* === Public Functions === */
@@ -360,30 +396,99 @@ mod counter {
     #[error("the tally would go negative")]
     pub struct Underflow;
 
-    #[harmos_runtime::transaction(id = "tally.up",  inverse = Down)]
     #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Up(pub i64);
+    impl Up {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Tally, Self> =
+            harmos_runtime::state::TransactionEntry::new("tally.up").reversible::<Down>();
+    }
 
-    #[harmos_runtime::transaction(id = "tally.down",  inverse = Up)]
     #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     pub struct Down(pub i64);
+    impl Down {
+        pub const ENTRY: harmos_runtime::state::TransactionEntry<Tally, Self> =
+            harmos_runtime::state::TransactionEntry::new("tally.down").reversible::<Up>();
+    }
 
     #[derive(Clone, Copy, Debug)]
     pub struct Counter;
 
     /* === Enums === */
 
-    #[harmos_runtime::transactions(state = Tally)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Step {
         Up(Up),
         Down(Down),
     }
-
-    #[harmos_runtime::lanes]
-    pub enum CounterLanes {
-        #[default]
-        Open,
+    impl From<Up> for Step {
+        fn from(value: Up) -> Self {
+            Self::Up(value)
+        }
+    }
+    impl From<Down> for Step {
+        fn from(value: Down) -> Self {
+            Self::Down(value)
+        }
+    }
+    #[derive(Debug)]
+    pub enum StepError {
+        Up(<Up as harmos_runtime::state::Transaction<Tally>>::Error),
+        Down(<Down as harmos_runtime::state::Transaction<Tally>>::Error),
+    }
+    impl std::fmt::Display for StepError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Up(error) => std::fmt::Display::fmt(error, formatter),
+                Self::Down(error) => std::fmt::Display::fmt(error, formatter),
+            }
+        }
+    }
+    impl std::error::Error for StepError {}
+    impl harmos_runtime::state::Transaction<Tally> for Step {
+        type Error = StepError;
+        fn check(&self, state: &Tally) -> std::result::Result<(), Self::Error> {
+            match self {
+                Self::Up(value) => harmos_runtime::state::Transaction::check(value, state).map_err(StepError::Up),
+                Self::Down(value) => harmos_runtime::state::Transaction::check(value, state).map_err(StepError::Down),
+            }
+        }
+        fn apply(&self, state: &mut Tally) {
+            match self {
+                Self::Up(value) => harmos_runtime::state::Transaction::apply(value, state),
+                Self::Down(value) => harmos_runtime::state::Transaction::apply(value, state),
+            }
+        }
+        fn records(&self, state: &Tally, records: &mut harmos_runtime::state::Records) {
+            match self {
+                Self::Up(value) => harmos_runtime::state::Transaction::records(value, state, records),
+                Self::Down(value) => harmos_runtime::state::Transaction::records(value, state, records),
+            }
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Step {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::Up(_) => Up::ENTRY.definition(),
+                Self::Down(_) => Down::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::Up(value) => serde::Serialize::serialize(value, serializer),
+                Self::Down(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    pub fn step_state_catalog() -> harmos_runtime::state::StateCatalog<Tally, Step> {
+        harmos_runtime::state::StateCatalog::new()
+            .transaction(Up::ENTRY, Step::Up, |value| match value {
+                Step::Up(value) => Some(value),
+                _ => None,
+            })
+            .transaction(Down::ENTRY, Step::Down, |value| match value {
+                Step::Down(value) => Some(value),
+                _ => None,
+            })
     }
 
     /* === Traits === */
@@ -441,11 +546,9 @@ mod counter {
     }
 
     impl harmos_runtime::Application for Counter {
-        type Lanes = CounterLanes;
         type State = Tally;
         type Transaction = Step;
         type Record = ();
-        type Streams = ();
     }
 
     /* === Public Functions === */
@@ -453,612 +556,76 @@ mod counter {
     /* === Private Functions === */
 
     /* === Tests === */
-}
-
-#[cfg(all(feature = "plugin-sidecar", feature = "plugin-guest"))]
-mod unified_plugins {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-    use std::convert::Infallible;
-    use std::time::Duration;
-
-    // Third Party Imports
-
-    // Local Imports
-    use harmos_operations::lifecycle;
-    use harmos_runtime::__private::{PluginDeclared, PluginInventory};
-    use harmos_runtime::operations::{Contracts, OperationPolicy, RetryPolicy};
-
-    /* === Constants === */
-
-    const PROJECTED: &[PluginInventory::publications::Entry] = &[PluginInventory::publications::Entry::of::<Extra>()];
-    const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(15),
-        attempt_timeout: Duration::from_secs(5),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    };
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    #[harmos_runtime::operation(id = "fixture.unified.echo",  response = (), policy = POLICY)]
-    struct Echo {}
-
-    #[harmos_runtime::stream(id = "unified_rows", window = 4)]
-    #[harmos_runtime::message]
-    #[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize)]
-    struct Row {
-        value: u32,
-    }
-
-    #[harmos_runtime::stream(id = "unified_extra", window = 2)]
-    #[harmos_runtime::message]
-    #[derive(Clone, PartialEq, serde::Deserialize, serde::Serialize)]
-    struct Extra {
-        value: u64,
-    }
-
-    struct Native;
-
-    struct CustomHost;
-
-    struct InertObserver;
-
-    struct SdkAuthored;
-
-    #[derive(Default, serde::Deserialize)]
-    struct SdkInitialization {
-        settings: String,
-        snapshot: Vec<u8>,
-    }
-
-    struct Guest;
-
-    struct Catalog;
-
-    struct Panels;
-
-    struct Contributing;
-
-    #[harmos_runtime::listener(
-        id = "fixture.row-listener",
-        stream = Row,
-        callback = "fixture.unified.heard",
-        policy = POLICY
-    )]
-    struct RowListener;
-
-    #[harmos_runtime::operation(codec = manual, resources = [], id = "fixture.unified.heard", response = (),
-    policy = <RowListener as harmos_runtime::listeners::Listener>::POLICY, visibility = Public)]
-    #[derive(Clone)]
-    struct RowCallback(harmos_runtime::listeners::Delivery<RowListener>);
-
-    struct Listening;
-
-    struct ListeningGuest;
-
-    /* === Enums === */
-
-    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-    enum Leaves {
-        Echo(Echo),
-    }
-
-    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-    enum Selected {
-        #[nested]
-        Leaves(Leaves),
-    }
-
-    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-    enum ObserverOperations {
-        #[nested]
-        Selected(Selected),
-    }
-
-    #[harmos_domain::catalog]
-    enum ObserverLeaves {
-        Inert(InertObserver),
-    }
-
-    #[harmos_domain::catalog]
-    enum ObserverCatalog {
-        #[nested]
-        Leaves(ObserverLeaves),
-    }
-
-    #[harmos_domain::catalog]
-    enum Audience {
-        Row(RowListener),
-    }
-
-    #[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-    enum Callbacks {
-        Heard(RowCallback),
-    }
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl harmos_runtime::operations::Operation for Echo {
-        type Error = Infallible;
-        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-            panic!("metadata inspection must not execute operations")
-        }
-    }
-
-    impl lifecycle::Policy for Native {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Native {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(description = "Native Authored Plugin",
-        id = "unified_native",
-        requires = Selected,
-        streams(Row),
-        stream_entries = PROJECTED
-    )]
-    impl harmos_runtime::Plugin for Native {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
-    }
-
-    impl harmos_runtime::sidecar::ObserverHost for CustomHost {
-        fn bind(_: std::sync::Arc<harmos_sdk::ExecutionContext>, _: harmos_runtime::sidecar::Supervisor) -> Self {
-            Self
-        }
-    }
-
-    #[harmos_runtime::observer(interval_ms = 100, id = "fixture.unified.inert-observer")]
-    impl InertObserver {
-        fn interval(_: &harmos_sdk::ExecutionContext) -> Result<std::time::Duration, Infallible> {
-            panic!("metadata inspection must not resolve observer cadence")
-        }
-
-        async fn initialize(_: &harmos_sdk::ExecutionContext) -> Result<Self, Infallible> {
-            panic!("metadata inspection must not initialize callback resources")
-        }
-        async fn observe(&mut self, _: &harmos_runtime::sidecar::ObserverContext<'_, CustomHost>) -> Result<(), Infallible> {
-            panic!("metadata inspection must not start a callback")
-        }
-    }
-
-    impl harmos_runtime::Lifecycle for SdkAuthored {
-        type Config = SdkInitialization;
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-        async fn prepare(_: SdkInitialization, _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            panic!("inert inspection must not prepare the product plugin")
-        }
-    }
-
-    impl lifecycle::Policy for SdkAuthored {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    #[harmos_runtime::plugin(
-        id = "unified_sdk_projection",
-        description = "Inert Product SDK Declaration",
-        requires(
-            harmos_operations::streams::Publish,
-            harmos_operations::lifecycle::Status: scope("reading", "power")
-        ),
-        observers = ObserverCatalog,
-        restart = "never"
-    )]
-    impl harmos_runtime::Plugin for SdkAuthored {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[ObserverOperations::CATALOG];
-    }
-
-    impl lifecycle::Policy for Guest {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Guest {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::guest::kit::Context;
-
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(
-        id = "unified_guest",
-        description = "Guest Authored Plugin",
-        requires = (),
-        streams(Row)
-    )]
-    impl harmos_runtime::Plugin for Guest {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Selected::CATALOG];
-    }
-
-    impl harmos_domain::plugin::Contribution for Catalog {
-        const NAMESPACE: &'static str = "dokime.catalog";
-        const SECTION: harmos_domain::inventory::Section =
-            harmos_domain::inventory::Section::new(Self::NAMESPACE, r#"{"kinds":["bench"]}"#);
-        fn register(registrar: &mut harmos_domain::Registrar) -> Result<(), harmos_domain::RegistrationError> {
-            registrar.register(Self::NAMESPACE, 1, &["bench"])
-        }
-    }
-
-    impl harmos_domain::plugin::Contribution for Panels {
-        const NAMESPACE: &'static str = "studio.panels";
-        const SECTION: harmos_domain::inventory::Section = harmos_domain::inventory::Section::new(Self::NAMESPACE, "[]");
-        fn register(registrar: &mut harmos_domain::Registrar) -> Result<(), harmos_domain::RegistrationError> {
-            registrar.register(Self::NAMESPACE, 2, &Vec::<String>::new())
-        }
-    }
-
-    impl lifecycle::Policy for Contributing {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Contributing {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(
-        id = "unified_contributing",
-        requires = (),
-        contributions(Catalog, Panels)
-    )]
-    impl harmos_runtime::Plugin for Contributing {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[];
-    }
-
-    impl harmos_runtime::Message for RowCallback {
-        const CODEC: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::CODEC;
-        fn encode(&self) -> Vec<u8> {
-            harmos_runtime::Message::encode(&self.0)
-        }
-        fn encoded_size(&self) -> usize {
-            harmos_runtime::Message::encoded_size(&self.0)
-        }
-        fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
-            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::decoding_memory(bytes)
-        }
-        fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::Message>::decode(bytes).map(Self)
-        }
-    }
-
-    impl harmos_runtime::MemorySize for RowCallback {
-        fn memory_size(&self) -> usize {
-            harmos_runtime::MemorySize::memory_size(&self.0)
-        }
-    }
-
-    impl harmos_runtime::schema::Described for RowCallback {
-        const NAME: &'static str = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::NAME;
-        const FIELDS: &'static [harmos_runtime::schema::Field] =
-            <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::FIELDS;
-        const MARKER: &'static [u8] = <harmos_runtime::listeners::Delivery<RowListener> as harmos_runtime::schema::Described>::MARKER;
-    }
-
-    impl harmos_runtime::operations::Operation for RowCallback {
-        type Error = Infallible;
-        async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Self::Error> {
-            panic!("metadata inspection must not execute callbacks")
-        }
-    }
-
-    impl lifecycle::Policy for Listening {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for Listening {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::sidecar::Supervisor;
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(id = "unified_listening", requires = (), listeners = Audience)]
-    impl harmos_runtime::Plugin for Listening {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
-    }
-
-    impl lifecycle::Policy for ListeningGuest {
-        const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-        const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-    }
-
-    impl harmos_runtime::Lifecycle for ListeningGuest {
-        type Config = ();
-        type Error = Infallible;
-        type Context = harmos_runtime::guest::kit::Context;
-        async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-            Ok(Self)
-        }
-    }
-
-    #[harmos_runtime::plugin(id = "unified_listening_guest", requires = (), listeners = Audience)]
-    impl harmos_runtime::Plugin for ListeningGuest {
-        const CATALOGS: &'static [harmos_runtime::Catalog] = &[Callbacks::CATALOG];
-    }
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    fn inspect<P: PluginDeclared>(facility: &str, streams: usize, requires: usize) {
-        assert_eq!(harmos_runtime::catalog::count(P::PROVIDES), 1);
-        assert_eq!(harmos_runtime::catalog::count(P::REQUIRES), requires);
-        assert_eq!(P::STREAMS.len(), streams);
-        assert_eq!(P::STREAMS[0].id, "unified_rows");
-        let mut bytes = Vec::new();
-        for marker in P::markers().unwrap() {
-            assert!(marker.starts_with(harmos_domain::PREFIX));
-            bytes.extend_from_slice(marker);
-        }
-        let declaration = PluginInventory::Declaration::inspect(
-            &bytes,
-            match facility {
-                "sidecar" => PluginInventory::Facility::Sidecar,
-                "guest" => PluginInventory::Facility::Guest,
-                _ => unreachable!("fixture selects one supported carrier"),
-            },
-        )
-        .unwrap();
-        assert_eq!(declaration.id, P::ID);
-        assert_eq!(declaration.version.to_string(), env!("CARGO_PKG_VERSION"));
-        assert_eq!(declaration.description, P::DESCRIPTION);
-        assert!(!declaration.config.is_empty());
-        let contracts = declaration.contracts;
-        assert_eq!(contracts.provides, Contracts::of::<Selected>().unwrap());
-        assert_eq!(contracts.requires.len(), requires);
-        if requires != 0 {
-            let required = contracts.requires.iter().map(|required| required.contract.clone()).collect::<Vec<_>>();
-            assert_eq!(required, contracts.provides);
-        }
-        assert_eq!(contracts.lifecycle[0].action(), lifecycle::Action::Initialize);
-        assert_eq!(contracts.lifecycle[1].action(), lifecycle::Action::Shutdown);
-        assert_eq!(contracts.lifecycle[0].contract().operation().policy, POLICY);
-        assert_eq!(contracts.lifecycle[1].contract().operation().policy, POLICY);
-        assert_eq!(declaration.streams.len(), streams);
-
-        let inspected = match facility {
-            "sidecar" => {
-                let declaration =
-                    harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
-                        .unwrap();
-                assert_eq!(declaration.restart(), None);
-                assert_eq!(declaration.operations.len(), contracts.provides.len());
-                assert_eq!(declaration.streams.len(), streams);
-                declaration.contracts
-            }
-            "guest" => {
-                let declaration =
-                    harmos_runtime::guest::inventory::Declaration::inspect(&bytes, harmos_runtime::guest::inventory::Facility::Guest)
-                        .unwrap();
-                assert_eq!(declaration.operations.len(), contracts.provides.len());
-                assert_eq!(declaration.streams.len(), streams);
-                declaration.contracts
-            }
-            _ => unreachable!("only actual SDK contexts are authored"),
-        };
-        assert_eq!(inspected, contracts);
-    }
-
-    /* === Tests === */
-
-    #[test]
-    fn metadata_never_require() {
-        let initialization = SdkInitialization::default();
-        assert!(initialization.settings.is_empty());
-        assert!(initialization.snapshot.is_empty());
-        let markers = SdkAuthored::markers().unwrap();
-        let declaration = harmos_runtime::sidecar::inventory::Declaration::inspect(
-            &markers.concat(),
-            harmos_runtime::sidecar::inventory::Facility::Sidecar,
-        )
-        .unwrap();
-        assert_eq!(declaration.id, SdkAuthored::ID);
-        let required = &declaration.contracts.requires;
-        assert_eq!(required.len(), 2);
-        assert_eq!(
-            required[0].contract.operation().id.as_str(),
-            <harmos_operations::streams::Publish as harmos_runtime::operations::OperationDeclaration>::ID
-        );
-        assert!(required[0].grants.is_empty());
-        assert_eq!(
-            required[1].grants,
-            [
-                harmos_domain::plugin::Grant::of("host.operations.status", "reading"),
-                harmos_domain::plugin::Grant::of("host.operations.status", "power"),
-            ]
-        );
-        // A grant names the operation it permits and, for a scoped
-        // operation, the stream; the retired kinded shape is refused.
-        assert_eq!(serde_json::to_string(&required[1].grants[0]).unwrap(), r#"{"operation":"host.operations.status","scope":"reading"}"#);
-        assert!(serde_json::from_str::<harmos_domain::plugin::Grant>(r#"{"survey":"reading"}"#).is_err());
-        assert_eq!(declaration.config, "SdkInitialization");
-        let provides = Contracts::of::<ObserverOperations>().unwrap();
-        assert_eq!(declaration.contracts.provides, provides);
-        assert_eq!(
-            declaration.restart().unwrap(),
-            harmos_runtime::sidecar::inventory::RestartPolicy {
-                credit: 0,
-                sustained_health_ms: 30_000,
-                backoff_base_ms: 250,
-                backoff_cap_ms: 10_000,
-            }
-        );
-        assert_eq!(declaration.observers.len(), 1);
-        assert_eq!(declaration.observers[0].id, "fixture.unified.inert-observer");
-        let inert = <InertObserver as harmos_domain::inventory::observers::Declared>::ENTRY;
-        let physical =
-            <harmos_runtime::sidecar::__private::ObserverInventory<CustomHost> as harmos_runtime::catalog::Member<InertObserver>>::ENTRY;
-        assert_eq!(inert.id, physical.id);
-        assert_eq!(inert.streams.len(), physical.streams.len());
-        // The Observe Control Is Built In, Never An Authored Provision.
-        let control = <harmos_runtime::operations::observers::Control as harmos_runtime::operations::OperationDeclaration>::ID;
-        assert_eq!(control, "harmos.observe");
-        assert!(provides.iter().all(|contract| contract.operation().id.as_str() != control));
-    }
-
-    #[test]
-    fn contributions_carry_inert() {
-        use harmos_domain::inventory::{Declaration, Facility};
-        let declaration = Declaration::inspect(&Contributing::markers().unwrap().concat(), Facility::Sidecar).unwrap();
-        let namespaces = declaration.sections.iter().map(|section| section.namespace.as_ref()).collect::<Vec<_>>();
-        assert_eq!(namespaces, ["dokime.catalog", "studio.panels"]);
-        let catalog = declaration.section("dokime.catalog").unwrap();
-        assert_eq!(catalog.decode::<serde_json::Value>().unwrap()["kinds"][0], "bench");
-        // A Host That Does Not Own a Namespace Simply Never Asks for It
-        assert!(declaration.section("unknown.host").is_none());
-        let mut registrar = harmos_domain::Registrar::new();
-        <Contributing as harmos_runtime::Plugin>::register(&mut registrar).unwrap();
-        let registered =
-            registrar.finish().into_iter().map(|registration| (registration.namespace, registration.schema)).collect::<Vec<_>>();
-        assert_eq!(registered, [("dokime.catalog".to_owned(), 1), ("studio.panels".to_owned(), 2)]);
-        harmos_runtime::sidecar::PluginNative::<Contributing>::new(std::num::NonZeroUsize::new(1).unwrap())
-            .expect("the native owner accepts the inspected sections");
-    }
-
-    #[test]
-    fn listener_inventory_contract() {
-        {
-            let bytes: Vec<_> = Listening::markers().unwrap().into_iter().flatten().copied().collect();
-            let declaration =
-                harmos_runtime::sidecar::inventory::Declaration::inspect(&bytes, harmos_runtime::sidecar::inventory::Facility::Sidecar)
-                    .unwrap();
-            let selected = declaration.listeners;
-            assert_eq!(selected, harmos_runtime::listeners::Declarations::of::<Audience>().unwrap());
-            assert_eq!(selected[0].callback(), &declaration.contracts.provides[0]);
-            let guest_markers: Vec<_> = ListeningGuest::markers().unwrap().into_iter().flatten().copied().collect();
-            let guest =
-                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
-                    .unwrap();
-            assert_eq!(&guest.listeners, &selected);
-            assert_eq!(guest.listeners[0].callback(), &guest.contracts.provides[0]);
-
-            let guest_markers: Vec<_> = Guest::markers().unwrap().into_iter().flatten().copied().collect();
-            assert_eq!(
-                harmos_runtime::guest::inventory::Declaration::inspect(&guest_markers, harmos_runtime::guest::inventory::Facility::Guest)
-                    .unwrap()
-                    .listeners,
-                Vec::new()
-            );
-        }
-        {
-            let mut parts = harmos_domain::artifacts::fragments::<serde_json::Value>(
-                &Listening::markers().unwrap().concat(),
-                &["contracts", "listeners", "plugin", "contributions", "publications", "observers", "schema"],
-            )
-            .unwrap();
-            let bytes = |parts: &[serde_json::Value]| {
-                let mut bytes = Vec::new();
-                for part in parts {
-                    bytes.extend_from_slice(harmos_domain::PREFIX);
-                    bytes.extend_from_slice(&serde_json::to_vec(part).unwrap());
-                    bytes.push(0);
-                }
-                bytes
-            };
-            parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 2.into();
-            assert!(
-                harmos_runtime::sidecar::inventory::Declaration::inspect(
-                    &bytes(&parts),
-                    harmos_runtime::sidecar::inventory::Facility::Sidecar
-                )
-                .is_err()
-            );
-            parts.iter_mut().find(|part| part["kind"] == "listeners").unwrap()["listeners"][0]["callback"]["version"] = 1.into();
-            parts.retain(|part| part["kind"] != "contracts" || part["entry"]["direction"] != "provides");
-            assert!(
-                harmos_runtime::sidecar::inventory::Declaration::inspect(
-                    &bytes(&parts),
-                    harmos_runtime::sidecar::inventory::Facility::Sidecar
-                )
-                .is_err()
-            );
-        }
-    }
-
-    #[test]
-    fn context_selects_native() {
-        inspect::<Native>("sidecar", 2, 1);
-        let native = harmos_runtime::sidecar::PluginNative::<Native>::new(std::num::NonZeroUsize::new(1).unwrap()).unwrap();
-        assert_eq!(harmos_runtime::sidecar::Attach::operation_contracts(&native).unwrap().unwrap(), Contracts::of::<Selected>().unwrap());
-        let required = harmos_runtime::sidecar::Attach::required_contracts(&native)
-            .unwrap()
-            .unwrap()
-            .into_iter()
-            .map(|required| required.contract)
-            .collect::<Vec<_>>();
-        assert_eq!(required, Contracts::of::<Selected>().unwrap());
-        assert_eq!(Native::STREAMS[1].id, "unified_extra");
-        assert_eq!(Native::DESCRIPTION, "Native Authored Plugin");
-    }
-
-    #[test]
-    fn context_selects_guest() {
-        inspect::<Guest>("guest", 1, 0);
-        assert_eq!(Guest::DESCRIPTION, "Guest Authored Plugin");
-    }
 }
 
 /* === Tests === */
 
 #[test]
 fn catalog_projects_borrowed() {
-    #[harmos_runtime::record(id = "projection.first")]
     #[derive(harmos_runtime::Described, serde::Deserialize, serde::Serialize)]
     struct First(String);
 
-    #[harmos_runtime::record(id = "projection.second")]
+    impl harmos_runtime::state::Record for First {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("projection.first");
+    }
+
     #[derive(harmos_runtime::Described, serde::Deserialize, serde::Serialize)]
     struct Second(String);
 
-    #[harmos_runtime::records]
+    impl harmos_runtime::state::Record for Second {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("projection.second");
+    }
+
     enum Facts {
         First(First),
         Second(Second),
     }
+    impl From<First> for Facts {
+        fn from(value: First) -> Self {
+            Self::First(value)
+        }
+    }
+    impl From<Second> for Facts {
+        fn from(value: Second) -> Self {
+            Self::Second(value)
+        }
+    }
+    impl harmos_runtime::state::CatalogCodec for Facts {
+        fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+            match self {
+                Self::First(_) => <First as harmos_runtime::state::Record>::ENTRY.definition(),
+                Self::Second(_) => <Second as harmos_runtime::state::Record>::ENTRY.definition(),
+            }
+        }
+        fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+            match self {
+                Self::First(value) => serde::Serialize::serialize(value, serializer),
+                Self::Second(value) => serde::Serialize::serialize(value, serializer),
+            }
+        }
+    }
+    fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+        harmos_runtime::state::RecordRegistry::new()
+            .entry(<First as harmos_runtime::state::Record>::ENTRY, Facts::First, |value| match value {
+                Facts::First(value) => Some(value),
+                _ => None,
+            })
+            .entry(<Second as harmos_runtime::state::Record>::ENTRY, Facts::Second, |value| match value {
+                Facts::Second(value) => Some(value),
+                _ => None,
+            })
+    }
 
     let first = Facts::First(First("first".to_owned()));
-    let projected = harmos_runtime::state::RecordProjection::<First>::project(&first).unwrap();
+    let projected = facts_registry().project::<First>(&first).unwrap();
     let Facts::First(original) = &first else { unreachable!("the selected record variant") };
     assert!(std::ptr::eq(projected, original));
-    assert!(harmos_runtime::state::RecordProjection::<Second>::project(&first).is_none());
+    assert!(facts_registry().project::<Second>(&first).is_none());
 
     let second = Facts::Second(Second("second".to_owned()));
-    assert!(harmos_runtime::state::RecordProjection::<First>::project(&second).is_none());
-    assert_eq!(harmos_runtime::state::RecordProjection::<Second>::project(&second).unwrap().0, "second",);
+    assert!(facts_registry().project::<First>(&second).is_none());
+    assert_eq!(facts_registry().project::<Second>(&second).unwrap().0, "second",);
 
     let single = sheet::Fact::Noted(sheet::Noted("single".to_owned()));
-    assert_eq!(harmos_runtime::state::RecordProjection::<sheet::Noted>::project(&single).unwrap().0, "single",);
+    assert_eq!(sheet::fact_registry().project::<sheet::Noted>(&single).unwrap().0, "single",);
 }

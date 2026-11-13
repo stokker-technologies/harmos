@@ -34,9 +34,9 @@ use harmos_domain::state::Position;
 
 /* === Structs === */
 
-pub struct RecoveryReader<'a, C> {
+pub struct RecoveryReader<'a> {
     context: crate::execution::Context,
-    storage: &'a StorageManager<C>,
+    storage: &'a StorageManager,
     _lifecycle: RwLockReadGuard<'a, Lifecycle>,
     through: RecoveryPosition,
     limits: ReadLimits,
@@ -49,9 +49,9 @@ pub struct RecoveryReader<'a, C> {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.state.reader.recovery_reader", level = "debug", skip_all)]
-    pub async fn recovery_reader(&self, limits: ReadLimits, snapshot_bytes: Option<NonZeroUsize>) -> Result<RecoveryReader<'_, C>> {
+    pub async fn recovery_reader(&self, limits: ReadLimits, snapshot_bytes: Option<NonZeroUsize>) -> Result<RecoveryReader<'_>> {
         let lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         let invalid = |reason| Error::InvalidInput { field: "state recovery", reason };
         let through = {
@@ -73,7 +73,7 @@ impl<C> StorageManager<C> {
     }
 }
 
-impl<C> RecoveryReader<'_, C> {
+impl RecoveryReader<'_> {
     pub fn through(&self) -> &RecoveryPosition {
         &self.through
     }
@@ -85,11 +85,17 @@ impl<C> RecoveryReader<'_, C> {
             let Some(payload_limit) = self.snapshot_bytes else {
                 return Ok(None);
             };
-            let encoded_bound =
-                recovery_encoded_bound(payload_limit.get(), self.storage.inner.recovery.history(), self.storage.inner.primary.history())?;
+            let encoded_bound = recovery_encoded_bound(
+                payload_limit.get(),
+                self.storage.inner.recovery.get_history(),
+                self.storage.inner.primary.get_history(),
+            )?;
             let encoded_bound = NonZeroUsize::new(encoded_bound).expect("recovery envelope is nonempty");
-            let snapshot =
-                self.storage.inner.bounded("recovery.read_snapshot", self.storage.inner.recovery.read_snapshot(encoded_bound)).await?;
+            let snapshot = self
+                .storage
+                .inner
+                .bounded("recovery.get_recovery_snapshot", self.storage.inner.recovery.get_recovery_snapshot(encoded_bound))
+                .await?;
             if let Some(snapshot) = &snapshot
                 && (!self.through.covers(&snapshot.through)? || snapshot.payload.segment_bytes() > payload_limit.get())
             {
@@ -117,7 +123,10 @@ impl<C> RecoveryReader<'_, C> {
             let page = self
                 .storage
                 .inner
-                .bounded("recovery.read_entries", self.storage.inner.recovery.read_entries(after, &self.through, self.limits))
+                .bounded(
+                    "recovery.list_recovery_entries",
+                    self.storage.inner.recovery.list_recovery_entries(after, &self.through, self.limits),
+                )
                 .await?;
             page.check(after, &self.through, self.limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
             for entry in &page.entries {

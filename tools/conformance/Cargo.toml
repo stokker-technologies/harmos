@@ -1,0 +1,138 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "harmos-conformance"
+description = "Language-neutral Harmos plugin conformance host and reference plugin."
+autotests = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# === Package Targets === #
+
+# Executable Fixtures Have No Inline Tests; Their Behavior Is Proved by Stories.
+[[bin]]
+name = "harmos-conformance"
+path = "src/main.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-conformance-plugin"
+path = "src/bin/harmos-conformance-plugin.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-sdk-conformance-plugin"
+path = "../../sdk/rust/src/bin/conformance.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-sdk-diagnostics-plugin"
+path = "../../sdk/rust/src/bin/diagnostics.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-sdk-host-fixture"
+path = "../../sdk/rust/src/bin/host-fixture.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-sdk-invoke-fixture"
+path = "../../sdk/rust/src/bin/invoke-fixture.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "harmos-stream-consumer-fixture"
+path = "../../crates/harmos-runtime/tests/fixtures/stream_consumer.rs"
+test = false
+bench = false
+
+# === Features === #
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos = { workspace = true }
+harmos-protocol = { workspace = true }
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true }
+
+# Logging
+
+# Utilities
+
+# Serialization
+prost-reflect = { workspace = true }
+prost = { workspace = true, features = ["derive", "std"] }
+prost-types = { workspace = true, features = ["std"] }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "process", "rt-multi-thread", "time"] }
+
+# Networking
+tonic = { workspace = true, features = ["codegen", "router", "transport"] }
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+# === Target Dependencies === #
+
+# === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

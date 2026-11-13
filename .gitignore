@@ -1,7 +1,7 @@
 # Rust
 /target
 /examples/schematic/target
-/crates/harmos-guest/tests/fixtures/sandbox/target
+/sdk/rust/tests/fixtures/sandbox/target
 /target-editor
 /.stkr-cargo-*.json
 /.stkr-cargo-*.lock
@@ -46,6 +46,7 @@ Thumbs.db
 __pycache__/
 .ruff_cache/
 !.vscode/project.code-snippets
+!.vscode/settings.json
 
 # Native Coverage Profiles
 *.profraw

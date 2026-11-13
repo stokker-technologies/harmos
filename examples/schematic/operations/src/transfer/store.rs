@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 
 // Third Party Imports
-use schematic_domain::model::transfer::Batch;
+use crate::protocol::Batch;
 
 // Local Imports
 
@@ -54,3 +54,11 @@ pub(super) struct Stored {
 /* === Private Functions === */
 
 /* === Tests === */
+
+pub(super) fn memory(batch: &Batch) -> usize {
+    std::mem::size_of::<Batch>()
+        .saturating_add(batch.records.capacity().saturating_mul(std::mem::size_of::<crate::protocol::Record>()))
+        .saturating_add(batch.records.iter().map(|record| record.payload.capacity()).sum::<usize>())
+        .saturating_add(batch.samples.capacity().saturating_mul(std::mem::size_of::<crate::protocol::Sample>()))
+        .saturating_add(batch.bytes.capacity())
+}

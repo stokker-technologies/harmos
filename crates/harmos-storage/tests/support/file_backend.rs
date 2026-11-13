@@ -9,10 +9,6 @@
 
 // Serve Staged File And Mutation Persistence.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +19,12 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use super::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Chunk<'a> {
     control: &'a Control,
     id: String,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -52,19 +38,15 @@ impl Drop for Chunk<'_> {
     }
 }
 
-impl<C: ObjectCatalog> Data<C> {
-    pub(super) fn fixture_supports_file_sessions(&self) -> bool {
-        true
-    }
-
-    pub(super) fn fixture_supports_mutation_receipts(&self) -> bool {
-        true
-    }
-
+impl Data {
     pub(super) fn fixture_save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         Box::pin(async move {
+            if self.control.block_receipt.load(Ordering::Acquire) {
+                self.control.receipt_entered.notify_one();
+                self.control.receipt_release.notified().await;
+            }
             let mut saved = self.mutation_receipts.lock().unwrap();
-            let now = std::time::SystemTime::now();
+            let now = self.control.date.lock().unwrap().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
             saved.retain(|_, receipt| receipt.expires_at > now);
             for receipt in receipts {
                 if receipt.expires_at <= now {
@@ -85,7 +67,7 @@ impl<C: ObjectCatalog> Data<C> {
     pub(super) fn fixture_recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
-            saved.retain(|_, receipt| receipt.expires_at > std::time::SystemTime::now());
+            saved.retain(|_, receipt| receipt.expires_at > self.control.date.lock().unwrap().unwrap_or(std::time::SystemTime::UNIX_EPOCH));
             let mut newest: Vec<_> = saved.values().collect();
             newest.sort_by_key(|receipt| std::cmp::Reverse(receipt.expires_at));
             let mut bytes = std::mem::size_of::<Vec<MutationReceipt>>();
@@ -247,7 +229,9 @@ impl<C: ObjectCatalog> Data<C> {
             let _io = self.file_io.lock().unwrap();
             let copy = |bytes: &[u8]| -> Result<Vec<u8>> {
                 let offset = usize::try_from(offset).map_err(|_| failure(BackendFailure::Permanent))?;
-                let end = bytes.len().min(offset.saturating_add(max_bytes.get()));
+                let configured = self.control.production_read_bytes.load(Ordering::SeqCst);
+                let maximum = if configured == 0 { max_bytes.get() } else { max_bytes.get().min(configured) };
+                let end = bytes.len().min(offset.saturating_add(maximum));
                 let chunk = bytes.get(offset..end).ok_or_else(|| failure(BackendFailure::Permanent))?;
                 Ok(Box::<[u8]>::from(chunk).into_vec())
             };
@@ -261,10 +245,6 @@ impl<C: ObjectCatalog> Data<C> {
             let (_, bytes) = staged.get(file.id.as_str()).ok_or_else(|| failure(BackendFailure::Permanent))?;
             copy(bytes)
         })
-    }
-
-    pub(super) fn fixture_supports_file_deletion(&self) -> bool {
-        true
     }
 
     pub(super) fn fixture_delete_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
@@ -300,6 +280,7 @@ impl<C: ObjectCatalog> Data<C> {
 
     pub(super) fn fixture_abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
+            let _settled = IoAttempt(&self.control.abort_settled);
             if self.control.block_abort.load(Ordering::SeqCst) {
                 self.control.abort_entered.notify_one();
                 self.control.abort_release.notified().await;
@@ -449,6 +430,7 @@ impl<C: ObjectCatalog> Data<C> {
 
     pub(super) fn fixture_abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
+            let _settled = IoAttempt(&self.control.abort_settled);
             self.control.aborts.fetch_add(1, Ordering::SeqCst);
             if self.control.block_abort.load(Ordering::SeqCst) {
                 self.control.abort_entered.notify_one();
@@ -470,9 +452,9 @@ impl<C: ObjectCatalog> Data<C> {
                 self.control.read_entered.notify_one();
                 self.control.read_release.notified().await;
             }
-            self.image(snapshot)?;
+            let image = self.image(snapshot)?;
             let mut result = {
-                let blobs = self.blobs.lock().unwrap();
+                let blobs = &image.blobs;
                 let (actual, bytes) = blobs.get(file.metadata.id.as_str()).ok_or_else(|| failure(BackendFailure::Permanent))?;
                 if actual != file {
                     return Err(failure(BackendFailure::Conflict));
@@ -493,9 +475,3 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1.status;
+option csharp_namespace = "Harmos.V1.StatusResources";
+import "harmos/v1/types.proto";
+import "harmos/v1/status/logs.proto";
+message TraceEventsListRequest { harmos.v1.Position at = 1; harmos.v1.PageRequest page = 2; }
+message TraceEventsListResponse { repeated Event events = 1; harmos.v1.Position resolved_at = 2; string next_page_token = 3; }
+message TraceEventsWatchRequest { harmos.v1.Position at = 1; uint64 max_bytes = 2; uint32 max_events = 3; }
+message TraceEventsWatchResponse { repeated Event events = 1; harmos.v1.Position resolved_at = 2; }
+service TraceEvents {
+ rpc List(TraceEventsListRequest) returns (TraceEventsListResponse);
+ rpc Watch(TraceEventsWatchRequest) returns (stream TraceEventsWatchResponse);
+}

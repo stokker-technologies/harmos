@@ -23,9 +23,9 @@ use std::path::Path;
 
 // Local Imports
 use crate::Result;
-use harmos::{state::Focus, state::PrincipalId};
+use harmos_runtime::{state::Focus, state::PrincipalId};
 use schematic_app::domain::model;
-use schematic_app::operations::{ProposeRoute, ValidateSchematic};
+use schematic_app::protocol::{ProposeRoute, ValidateSchematic};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
@@ -139,24 +139,31 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         let schematic = model::Snapshot { symbols, connections };
 
         // Validate the Schematic
-        let request = ValidateSchematic { schematic: schematic.clone() };
-        let validation = runtime.operation(request).await?;
-        println!("Validation: {} diagnostics", validation.diagnostics.len());
+        let request = ValidateSchematic {
+            schematic: Some(schematic.clone().into()),
+        };
+        let diagnostics = schematic_app::services::call(&runtime, request).await?.diagnostics;
+        println!("Validation: {} diagnostics", diagnostics.len());
 
         // Propose a Route
         let from = snapshot.symbol(SymbolId(1)).position;
         let to = snapshot.symbol(SymbolId(2)).position;
         let request = ProposeRoute {
-            from: model::Point { x: from.x, y: from.y },
-            to: model::Point { x: to.x, y: to.y },
+            from: Some(schematic_app::protocol::Point { x: from.x, y: from.y }),
+            to: Some(schematic_app::protocol::Point { x: to.x, y: to.y }),
         };
-        let proposed = runtime.operation(request).await?;
+        let proposed: Vec<_> = schematic_app::services::call(&runtime, request)
+            .await?
+            .points
+            .into_iter()
+            .map(|point| model::Point { x: point.x, y: point.y })
+            .collect();
 
         // Apply the Route
-        let points = proposed.points.iter().map(|point| Point::new(point.x, point.y)).collect();
+        let points = proposed.iter().map(|point| Point::new(point.x, point.y)).collect();
         let request = ApplyRoute { net: NetId(1), points };
         state.commit(request).await?;
-        println!("Applied route: {:?}", proposed.points);
+        println!("Applied route: {:?}", proposed);
 
         // Undo the Route
         let selection = Focus::all();

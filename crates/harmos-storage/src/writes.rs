@@ -15,7 +15,7 @@ mod decoded;
 /* === Re-Exports === */
 
 pub use decoded::DecodedBatch;
-pub use harmos_domain::model::storage::{BatchReceipt, DataBatch, WriteCompletion, WriteReceipt};
+pub use harmos_domain::model::storage::DataBatch;
 
 /* === Imports === */
 

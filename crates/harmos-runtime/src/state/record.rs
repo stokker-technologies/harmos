@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::state::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordProjection, Records};
+pub use harmos_domain::state::{CatalogCodec, PreparationError, Prepared, Record, RecordEntry, RecordRegistry, Records};
 
 /* === Imports === */
 
@@ -50,7 +50,12 @@ pub(crate) struct PreparedCommit<A: Application> {
 pub(crate) fn prepare<A: Application>(
     transaction: &A::Transaction, state: &A::State, catalog: &super::dispatch::Dispatch<A, crate::storage::Payload<A>>,
 ) -> Result<PreparedCommit<A>, PreparationError> {
-    let (prepared, members) = Records::collect(transaction, state)?;
+    let (prepared, members) = if catalog.states.is_empty() {
+        Records::collect(transaction, state)?
+    } else {
+        let prepared = catalog.states.prepare(transaction)?.ok_or(PreparationError::Membership)?;
+        Records::collect_prepared(transaction, state, prepared)?
+    };
     let records = members
         .into_iter()
         .map(|(system, member)| {
@@ -60,10 +65,16 @@ pub(crate) fn prepare<A: Application>(
             if !matches!(catalog.has_record(&member.id, member.version), Ok(true)) {
                 return Err(PreparationError::Membership);
             }
-            let value = A::Record::restore(&member.id, member.version, &member.payload)
+            let value = catalog
+                .record_registry
+                .restore(&member.id, member.version, &member.payload)
                 .map_err(|_| PreparationError::Membership)?
                 .ok_or(PreparationError::Membership)?;
-            if value.identify() != (member.id.clone(), member.version) {
+            if !catalog
+                .record_registry
+                .prepare(&value)?
+                .is_some_and(|prepared| (prepared.id, prepared.version) == (member.id.clone(), member.version))
+            {
                 return Err(PreparationError::Membership);
             }
             Ok((Recorded::Record(value), member))

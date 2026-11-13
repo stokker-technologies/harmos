@@ -74,7 +74,7 @@ enum Step {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.file_follow.follow_file", level = "debug", skip_all)]
     pub async fn follow_file(&self, request: FileFollow) -> Result<FileFollower> {
         self.open_follower(request).await
@@ -160,7 +160,7 @@ impl FileFollower {
                     Step::Wait => {
                         let mut changed = self.inner.changed.subscribe();
                         tokio::select! {
-                            _ = tokio::time::sleep(self.inner.settings.filesystem.poll_interval) => {},
+                            _ = self.inner.execution.sleep(self.inner.settings.filesystem.poll_interval) => {},
                             _ = changed.changed() => {},
                         }
                     }

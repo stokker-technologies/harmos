@@ -48,16 +48,18 @@ type Completion = Pin<Box<dyn Future<Output = (Arc<Instance>, std::result::Resul
 /* === Structs === */
 
 pub(crate) struct Instances {
+    pub(crate) clock: crate::clock::Clock,
     lanes: Lanes,
     state: Mutex<State>,
     ordinary: Queue,
     lifecycle: Queue,
     supervisor: Task<()>,
     application_state: Box<dyn Any + Send + Sync>,
-    pub(crate) resources: harmos_sdk::__private::ResourceSet,
+    pub(crate) resources: harmos_operations::execution::__private::ResourceSet,
 }
 
 pub(crate) struct Reservation<O> {
+    clock: crate::clock::Clock,
     outcome: oneshot::Receiver<Result<O>>,
     deposit: oneshot::Sender<(Prepared<O>, Option<crate::state::Position>)>,
     control: Arc<Instance>,
@@ -108,7 +110,8 @@ enum Event {
 
 impl Instances {
     pub(crate) fn start(
-        lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: harmos_sdk::__private::ResourceSet, settings: &Settings,
+        lanes: Lanes, application_state: Box<dyn Any + Send + Sync>, resources: harmos_operations::execution::__private::ResourceSet,
+        settings: &Settings,
     ) -> Arc<Self> {
         let (ordinary, ordinary_receiving) = Queue::new(settings.queued.get());
         let (lifecycle, lifecycle_receiving) = Queue::new(settings.lifecycle_queued.get());
@@ -118,6 +121,7 @@ impl Instances {
         };
         let supervisor = Task::spawn(move |stopping| dispatch(receiving, stopping.subscribe()));
         Arc::new(Self {
+            clock: crate::clock::current(),
             lanes,
             state: Mutex::new(State {
                 closing: false,
@@ -195,6 +199,7 @@ impl Instances {
         self: &Arc<Self>, id: OperationInstanceId, lane: &'static str, submitted: tokio::time::Instant, privileged: bool,
         retired: impl Fn() + Send + Sync + 'static,
     ) -> Result<Reservation<O>> {
+        let activity = self.clock.activity(format!("invocation {}", id.value()));
         let admission = self.lanes.get(lane).expect("registration validated its lane");
         let mut state = self.state.lock().expect("operation instance index is healthy");
         if state.closing {
@@ -209,7 +214,7 @@ impl Instances {
         let owner = Arc::downgrade(self);
         let (cancellation, cancelled) = watch::channel(false);
         let (reply, outcome) = oneshot::channel();
-        let instance = Instance::queued(cancellation).on_settled(move || {
+        let instance = Instance::queued(cancellation, self.clock.clone()).on_settled(move || {
             retiring.release();
             if let Some(owner) = owner.upgrade() {
                 let retired = {
@@ -228,6 +233,7 @@ impl Instances {
         let queued_driver = queued;
         let (deposit, prepared) = oneshot::channel();
         let reservation = Reservation {
+            clock: self.clock.clone(),
             outcome,
             deposit,
             control: instance.clone(),
@@ -247,7 +253,7 @@ impl Instances {
         sending.send(Submission {
             instance,
             driver: Box::pin(
-                async move {
+                crate::clock::active(activity, async move {
                     let dispatch = tracing::debug_span!(target: "harmos::operations", "operations.dispatch");
                     dispatch.follows_from(queued_driver.id());
                     drop(queued_driver);
@@ -258,9 +264,9 @@ impl Instances {
                         }
                         Err(_) => control.finished(),
                     }
-                }
+                })
                 .instrument(trace)
-                .in_current_context(),
+                .in_clock(self.clock.clone()),
             ),
         });
         Ok(reservation)
@@ -296,7 +302,7 @@ impl<O> Reservation<O> {
 
     pub(crate) fn submit(self, prepared: Prepared<O>, cause: Option<crate::state::Position>) -> oneshot::Receiver<Result<O>> {
         if let Err((prepared, _)) = self.deposit.send((prepared, cause.or(self.cause))) {
-            prepared.retain_unavailable(&self.control, self.admission);
+            prepared.retain_unavailable(&self.control, self.admission, &self.clock);
         }
         self.outcome
     }

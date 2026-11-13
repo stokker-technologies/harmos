@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{Point, Rotation, Schematic, Symbol, SymbolId};
-use harmos::state::Transaction;
+use harmos_runtime::state::Transaction;
 
 /* === Constants === */
 
@@ -31,13 +31,16 @@ use harmos::state::Transaction;
 
 /* === Structs === */
 
-#[harmos::transaction(id = "symbol.place")]
-#[derive(harmos::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct PlaceSymbol {
     pub symbol: SymbolId,
     pub reference: String,
     pub at: Point,
     pub rotation: Rotation,
+}
+impl PlaceSymbol {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("symbol.place").barrier();
 }
 
 /* === Enums === */

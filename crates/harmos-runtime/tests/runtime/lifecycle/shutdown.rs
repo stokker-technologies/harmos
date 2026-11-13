@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,27 +21,9 @@ use tokio::sync::Notify;
 // Local Imports
 use crate::runtime::boot::catalog;
 use crate::runtime::probe::{Editor, Sheet};
+use harmos_runtime::Error;
 use harmos_runtime::state::{Entry, Position, Recorded};
 use harmos_runtime::storage::JournalConsumer;
-use harmos_runtime::{Error, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 
@@ -74,32 +52,54 @@ struct Cancellation {
 
 struct PendingGuard(Arc<Cancellation>);
 
-#[harmos_runtime::operation(resources = [Cancellation], id = "shutdown.pending",
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(3),
-        attempt_timeout: Duration::from_secs(2),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: harmos_runtime::operations::RetryPolicy::Never,
-    },
-    response = (),
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct PendingContractDeclaration {}
 
-#[harmos_runtime::catalog]
-enum Operations {
-    PendingContractDeclaration(PendingContractDeclaration),
+static PENDING_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<PendingContractDeclaration>(
+        "shutdown.pending",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(3),
+            attempt_timeout: Duration::from_secs(2),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: harmos_runtime::operations::RetryPolicy::Never,
+        },
+    );
+
+const PENDING_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PendingContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<PendingContractDeclaration>::new(&PENDING_CONTRACT_DECLARATION_DESCRIPTION);
+
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
 }
 
-use crate::runtime::probe::Lanes;
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(pending_contract_declaration_operation().expect("representable operation"));
+    batch
+}
 
-impl harmos_runtime::Operation for PendingContractDeclaration {
-    type Error = std::convert::Infallible;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let cancellation = ctx.resource::<Cancellation>();
-        let _guard = PendingGuard(cancellation.clone());
-        cancellation.started.notify_one();
-        std::future::pending().await
-    }
+async fn pending_contract_declaration_handler(
+    _request: PendingContractDeclaration, ctx: harmos_runtime::operations::FunctionContext<PendingContractDeclaration>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let cancellation = ctx.resource::<Cancellation>().expect("declared resource is registered");
+    let _guard = PendingGuard(cancellation.clone());
+    cancellation.started.notify_one();
+    std::future::pending().await
+}
+
+fn pending_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PENDING_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Cancellation>()] },
+        pending_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl Drop for PendingGuard {
     fn drop(&mut self) {
@@ -108,7 +108,7 @@ impl Drop for PendingGuard {
 }
 
 struct StopNotification {
-    operations: harmos_runtime::operations::OperationManager<crate::runtime::probe::Lanes>,
+    operations: harmos_runtime::operations::OperationManager,
     operation: harmos_runtime::operations::OperationInstanceId,
     cancelled: Arc<std::sync::OnceLock<bool>>,
 }
@@ -123,12 +123,12 @@ impl std::task::Wake for StopNotification {
 #[tokio::test]
 async fn services_stop_first() {
     let trace = Arc::new(Cancellation::default());
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.resource::<Cancellation>(trace.clone());
     })
     .await
     .unwrap();
-    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let operation = runtime.operations.submit::<PendingContractDeclaration>(PendingContractDeclaration {}).unwrap();
     trace.started.notified().await;
     runtime
@@ -138,7 +138,7 @@ async fn services_stop_first() {
                 id: "caller".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| {
+            |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 |mut context: harmos_runtime::services::ServiceContext<Editor>| async move {
                     context.ready();
                     context.stopping().await;
@@ -162,7 +162,7 @@ async fn services_stop_first() {
     assert!(std::future::Future::poll(changed.as_mut(), &mut context).is_pending());
 
     // Observe the Stop Notification Synchronously, Before Scheduling Cleanup
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(cancelled.get(), Some(&false));
     assert!(lease.status().cancellation_requested());
     assert!(matches!(operation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
@@ -174,7 +174,7 @@ async fn services_stop_first() {
 async fn budget_retains_journal() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
@@ -195,7 +195,7 @@ async fn budget_retains_journal() {
     }
     release.notify_one();
     assert_eq!(runtime.shutdown_with_timeout(Duration::from_secs(1)).await.unwrap(), Position(1));
-    assert_eq!(runtime.shutdown().await.unwrap(), Position(1));
+    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(1));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
@@ -203,7 +203,7 @@ async fn budget_retains_journal() {
 async fn shutdown_budget_shared() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = Runtime::<Editor>::launch_with(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
             release: release.clone(),
@@ -223,5 +223,5 @@ async fn shutdown_budget_shared() {
     assert_eq!(started.elapsed(), Duration::from_millis(10));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     release.notify_one();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

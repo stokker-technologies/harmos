@@ -14,18 +14,13 @@
 import argparse
 import json
 import os
-import shutil
 import stat
-import subprocess
 import sys
-import tomllib
-from functools import partial
 from pathlib import Path
 
 # Third Party Imports
 
 # Local Imports
-from .. import temporary
 from ..build.fixtures import ROOT
 from ..build import paths
 
@@ -46,13 +41,12 @@ def main(arguments: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--category", choices=("integration", "acceptance", "system"), required=True)
-    parser.add_argument("--starter", action="store_true")
     options = parser.parse_args(arguments)
     profile, category = options.profile, options.category
     fixtures = paths.output(ROOT, "build", profile) / "fixtures"
     stamp_path = fixtures / "stamp.json"
     if not stamp_path.is_file():
-        sys.exit(f"fixture stamp {stamp_path} is absent; run mise run build:rust:tests")
+        sys.exit(f"fixture stamp {stamp_path} is absent; run mise run build -- --artifact tests")
     stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
     if stamp.get("profile") != profile or stamp.get("target") != paths.target():
         sys.exit("fixture stamp belongs to another profile or native target")
@@ -60,7 +54,7 @@ def main(arguments: list[str] | None = None) -> None:
     if category == "integration":
         selected = [selectors["inspections"][name] for name in ("schematic-sidecar", "schematic-guest", "harmos-sandbox-guest")]
     else:
-        executable = "cargo-harmos" if category == "acceptance" else "schematic-cli"
+        executable = "schematic-cli"
         selected = [selectors["artifacts"][name] for name in (executable, "schematic-sidecar", "schematic-guest")]
     if category == "system":
         selected.append(selectors["artifacts"]["harmos-sandbox-guest"])
@@ -69,10 +63,7 @@ def main(arguments: list[str] | None = None) -> None:
         selected.extend(selectors[name] for name in ("vendor", "wheels", "requirements"))
     missing = [relative for relative in selected if not _input(fixtures, relative).exists()]
     if missing:
-        sys.exit(f"fixture input {missing[0]} is absent; run mise run build:rust:tests")
-
-    if options.starter:
-        _install_starters()
+        sys.exit(f"fixture input {missing[0]} is absent; run mise run build -- --artifact tests")
 
     # The Native Runner Verifies Selected Stamp Hashes And Archive Ownership.
     # Only Hosts Used Here And Acceptance Compiler Inputs Need Executable Modes.
@@ -84,40 +75,11 @@ def main(arguments: list[str] | None = None) -> None:
     for relative in executables:
         path = _input(fixtures, relative)
         if not path.is_file():
-            sys.exit(f"executable input {relative} is absent; run mise run build:rust:tests")
+            sys.exit(f"executable input {relative} is absent; run mise run build -- --artifact tests")
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
 # === Private Functions === #
-
-
-def _install_starters() -> None:
-    # Resolve Each Starter's Locked Versions Before Parallel Stories Share Mise's Runtime Links.
-    environment = dict(os.environ)
-    environment.pop("UV_PROJECT_ENVIRONMENT", None)
-    templates = ROOT / "crates/cargo-harmos/templates"
-    with temporary.directory() as scratch:
-        for kind in ("guest", "sidecar"):
-            directory = scratch / kind
-            directory.mkdir()
-            for name in ("mise.toml", "mise.lock"):
-                shutil.copyfile(templates / kind / f"{name}.tmpl", directory / name)
-            tools = tomllib.loads((directory / "mise.toml").read_text(encoding="utf-8"))["tools"]
-            selected = environment | {"MISE_ENABLE_TOOLS": ",".join(sorted(tools))}
-            execute = partial(
-                subprocess.run,
-                cwd=directory,
-                env=selected,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                stdin=sys.stdin,
-                stdout=sys.stdout,
-                stderr=sys.stderr,
-            )
-            execute(["mise", "trust", "mise.toml"], check=True)
-            try:
-                execute(["mise", "install"], check=True)
-            finally:
-                execute(["mise", "untrust", "mise.toml"], check=False)
 
 
 def _input(fixtures: Path, relative: str) -> Path:

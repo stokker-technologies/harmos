@@ -11,10 +11,8 @@
 
 /* === Modules === */
 
-#[path = "../sidecar/fixture.rs"]
 mod fixture;
 
-#[path = "../sidecar/transfers.rs"]
 mod transfers;
 
 /* === Re-Exports === */
@@ -74,7 +72,6 @@ fn benchmarks(criterion: &mut Criterion) {
     startup.finish();
 
     let fixture = executor.block_on(fixture::Fixture::guest());
-    executor.block_on(fixture.verify_filesystem());
     for _ in 0..8 {
         let answer = executor.block_on(fixture.command());
         fixture::verify_route(&answer);

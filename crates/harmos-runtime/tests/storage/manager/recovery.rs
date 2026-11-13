@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -20,24 +16,8 @@ use std::time::Duration;
 // Third Party Imports
 // Local Imports
 use super::metadata;
-use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, Runtime, catalog, config};
+use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, catalog, config};
 use harmos_runtime::storage::{StagedFile, StorageBackends, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -80,7 +60,7 @@ fn crash_image(source: &Fixture) -> Arc<Data> {
 pub(super) async fn restart(source: &Fixture) -> Fixture {
     let data = crash_image(source);
     let recovery = Arc::new(Recovery::new(source.data.history.clone()));
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
@@ -95,7 +75,7 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
     )
     .unwrap();
     storage.start(&runtime).await.unwrap();
-    Fixture { runtime, storage, data, recovery }
+    Fixture::from_parts(runtime, storage, data, recovery)
 }
 
 /* === Tests === */
@@ -246,7 +226,7 @@ async fn failed_recovery_releases() {
             // File Restoration Succeeded Before The Recovery Owner Failed.
             _ => recovery.control.fail_open.store(true, Ordering::SeqCst),
         }
-        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(catalog());
         })
         .await
@@ -256,7 +236,7 @@ async fn failed_recovery_releases() {
         storage.close().await.unwrap();
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(data.saved_productions.lock().unwrap().len(), 2);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     drop((first, second));
     source.finish().await;
@@ -291,6 +271,18 @@ async fn receipts_replay_restart() {
     assert!(restored.storage.write_records_once(&second, (values).to_vec()).await.is_err());
     assert!(!restored.data.records.lock().unwrap().is_empty());
     restored.finish().await;
+
+    // Receipt Persistence Expires At The Controlled Backend Date
+    let expiry = f.data.mutation_receipts.lock().unwrap()[&first].expires_at;
+    let limits = harmos_storage::ReadLimits {
+        rows: std::num::NonZeroUsize::new(32).unwrap(),
+        bytes: std::num::NonZeroUsize::new(1024 * 1024).unwrap(),
+    };
+    *f.data.control.date.lock().unwrap() = Some(expiry - Duration::from_millis(1));
+    let retained = harmos_storage::StorageBackend::list_mutation_receipts(&*f.data, limits).await.unwrap();
+    assert!(retained.iter().any(|receipt| receipt.mutation == first));
+    *f.data.control.date.lock().unwrap() = Some(expiry);
+    assert!(harmos_storage::StorageBackend::list_mutation_receipts(&*f.data, limits).await.unwrap().is_empty());
     f.finish().await;
 }
 

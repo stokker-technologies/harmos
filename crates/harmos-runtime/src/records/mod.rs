@@ -9,14 +9,14 @@
 
 /* === Modules === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 mod listeners;
 mod manager;
 mod registration;
 
 /* === Re-Exports === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub use listeners::{PluginListenerBindings, PluginListenerRegistration};
 pub use manager::RecordManager;
 pub use registration::Definition;

@@ -9,17 +9,10 @@
 
 // State Journal Admission Story
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
-use std::future::{Future, poll_fn};
-use std::pin::Pin;
 use std::sync::atomic::Ordering;
-use std::task::Poll;
 
 // Third Party Imports
 
@@ -29,10 +22,6 @@ use crate::storage::waveforms;
 use harmos_runtime::Application;
 use harmos_runtime::state::Envelope;
 
-/* === Constants === */
-
-/* === Macros === */
-
 /* === Type Aliases === */
 
 type Refusal = std::convert::Infallible;
@@ -41,11 +30,13 @@ type Refusal = std::convert::Infallible;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "admission.advance")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Advance {}
+impl Advance {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<u64, Self> =
+        harmos_runtime::state::TransactionEntry::new("admission.advance").barrier();
+}
 
-#[harmos_runtime::record(id = "admission.observed")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Observed {
     before: u64,
@@ -55,27 +46,86 @@ struct Projection;
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = u64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
     Advance(Advance),
 }
+impl From<Advance> for Transactions {
+    fn from(value: Advance) -> Self {
+        Self::Advance(value)
+    }
+}
+impl harmos_runtime::state::Transaction<u64> for Transactions {
+    type Error = Refusal;
+    fn check(&self, state: &u64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut u64) {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &u64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Transactions {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Advance(_) => Advance::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Advance(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn transactions_state_catalog() -> harmos_runtime::state::StateCatalog<u64, Transactions> {
+    harmos_runtime::state::StateCatalog::new().transaction(Advance::ENTRY, Transactions::Advance, |value| {
+        let Transactions::Advance(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Records {
     Observed(Observed),
 }
-
-/* === Traits === */
+impl From<Observed> for Records {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Records::Observed, |value| {
+        let Records::Observed(value) = value;
+        Some(value)
+    })
+}
 
 /* === Implementations === */
 
-#[harmos_runtime::lanes]
-pub enum ModelLanes {
-    #[default]
-    Open,
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("admission.observed");
 }
+
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -87,11 +137,9 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl Application for Model {
-    type Lanes = ModelLanes;
     type State = u64;
     type Transaction = Transactions;
     type Record = Records;
-    type Streams = ();
 }
 
 impl harmos_runtime::state::Transaction<u64> for Advance {
@@ -124,8 +172,6 @@ impl RecordProjection for Projection {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 // A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
@@ -143,20 +189,22 @@ fn gate(at: StorageCursor) -> harmos_runtime::storage::Query {
 #[tokio::test]
 async fn unrelated_backlog_skipped() {
     let f = Fixture::new(config()).await;
-    let durable = f.storage.cursor_saved();
+    let durable = f.storage.get_saved_position();
 
     // Hold The Worker At A Snapshot Gate Until Both Domains Have Been Admitted.
     f.data.control.block_view.store(true, Ordering::SeqCst);
-    let mut acquiring = Box::pin(f.storage.query(gate(f.storage.cursor_saved())));
+    let mut acquiring = Box::pin(f.storage.query(gate(f.storage.get_saved_position())));
     tokio::select! {
         result = &mut acquiring => { let _ = result; panic!("view must reach its gate") },
         _ = f.data.control.view_entered.notified() => {}
     }
     write(&f.storage, "unrelated-measurement").await;
-    let first = f.storage.write_recovery(vec![b"state-one".to_vec()]).await.unwrap();
-    let second = f.storage.write_recovery(vec![b"state-two".to_vec()]).await.unwrap();
+    let first = f.storage.append_recovery_entries(vec![b"state-one".to_vec()]).await.unwrap();
+    let second = f.storage.append_recovery_entries(vec![b"state-two".to_vec()]).await.unwrap();
     let mut flushing = Box::pin(f.storage.flush_recovery());
-    assert_pending(flushing.as_mut()).await;
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await
+    );
     f.data.control.block_write.store(true, Ordering::SeqCst);
     f.data.control.block_view.store(false, Ordering::SeqCst);
     f.data.control.view_release.notify_one();
@@ -167,7 +215,7 @@ async fn unrelated_backlog_skipped() {
         result = &mut flushing => assert_eq!(result.unwrap(), second),
         _ = f.data.control.write_entered.notified() => panic!("ready journal was held behind unrelated primary data")
     }
-    assert_eq!(f.storage.cursor_saved(), durable);
+    assert_eq!(f.storage.get_saved_position(), durable);
     assert_eq!(f.recovery.control.writes.lock().unwrap().as_slice(), &[first.sequence, second.sequence]);
     {
         let entries = f.recovery.entries.lock().unwrap();
@@ -183,14 +231,6 @@ async fn unrelated_backlog_skipped() {
     f.finish().await;
 }
 
-async fn assert_pending<F: Future>(mut future: Pin<&mut F>) {
-    poll_fn(|context| {
-        assert!(future.as_mut().poll(context).is_pending(), "gated future completed unexpectedly");
-        Poll::Ready(())
-    })
-    .await;
-}
-
 #[tokio::test]
 async fn journal_awaits_data() {
     let data = Arc::new(Data::new(history()));
@@ -204,12 +244,12 @@ async fn journal_awaits_data() {
         policy.clone(),
     )
     .unwrap();
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
         setup
             .settings()
             .storage(&storage)
-            .register(Transactions::catalog())
-            .register(Records::catalog())
+            .register(transactions_state_catalog())
+            .register(records_registry())
             .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: ReadLimits {
                     rows: NonZeroUsize::new(1).unwrap(),
@@ -231,7 +271,7 @@ async fn journal_awaits_data() {
 
     // Keep Both Transactions In The Queue Until The Recovery Barrier Exists.
     data.control.block_view.store(true, Ordering::SeqCst);
-    let mut acquiring = Box::pin(storage.query(gate(storage.cursor_saved())));
+    let mut acquiring = Box::pin(storage.query(gate(storage.get_saved_position())));
     tokio::select! {
         result = &mut acquiring => { let _ = result; panic!("view must reach its gate") },
         _ = data.control.view_entered.notified() => {}
@@ -243,7 +283,9 @@ async fn journal_awaits_data() {
     assert!(final_dependency.sequence > first_dependency.sequence);
     assert!(first_dependency.sequence > before.sequence);
     let mut flushing = Box::pin(storage.flush_recovery());
-    assert_pending(flushing.as_mut()).await;
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(flushing.as_mut(), context).is_pending())).await
+    );
     data.control.block_write.store(true, Ordering::SeqCst);
     state.control.block_write.store(true, Ordering::SeqCst);
     data.control.block_view.store(false, Ordering::SeqCst);
@@ -255,7 +297,7 @@ async fn journal_awaits_data() {
         _ = state.control.write_entered.notified() => panic!("journal preceded its required data"),
         _ = data.control.write_entered.notified() => {}
     }
-    assert_eq!(storage.cursor_saved(), before);
+    assert_eq!(storage.get_saved_position(), before);
     assert!(state.control.writes.lock().unwrap().is_empty());
     data.control.block_write.store(false, Ordering::SeqCst);
     data.control.write_release.notify_one();
@@ -263,7 +305,7 @@ async fn journal_awaits_data() {
         result = &mut flushing => panic!("journal must reach its gate: {result:?}"),
         _ = state.control.write_entered.notified() => {}
     }
-    assert!(storage.cursor_saved().covers(&first_dependency).unwrap());
+    assert!(storage.get_saved_position().covers(&first_dependency).unwrap());
     state.control.block_write.store(false, Ordering::SeqCst);
     state.control.write_release.notify_one();
     let saved = flushing.await.unwrap();
@@ -276,5 +318,5 @@ async fn journal_awaits_data() {
     }
     drop(view);
     storage.close().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

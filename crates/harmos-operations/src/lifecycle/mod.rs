@@ -10,21 +10,18 @@
 /* === Modules === */
 
 mod cancel;
-mod initialize;
-mod shutdown;
-mod status;
+mod get;
+mod invoke;
 mod watch;
 
 /* === Re-Exports === */
 
 pub use cancel::Cancel;
-pub use harmos_domain::model::operations::lifecycle::*;
+pub use harmos_operations::model::operations::lifecycle::*;
 
-#[cfg(feature = "lifecycle")]
-pub use initialize::ControlError;
-pub use initialize::Initialize;
-pub use shutdown::Shutdown;
-pub use status::{InstanceState, Status};
+pub use get::Get;
+pub use harmos_protocol::v1::InstanceState;
+pub use invoke::Invoke;
 pub use watch::Watch;
 
 /* === Imports === */
@@ -37,15 +34,15 @@ pub use watch::Watch;
 
 /* === Constants === */
 
-pub const POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
+pub const POLICY: harmos_operations::OperationPolicy = harmos_operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(30),
     attempt_timeout: std::time::Duration::from_secs(30),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos_domain::RetryPolicy::Never,
+    retries: harmos_operations::RetryPolicy::Never,
 };
-const WATCH_POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPolicy {
-    timeout: harmos_domain::operations::UNBOUNDED,
-    attempt_timeout: harmos_domain::operations::UNBOUNDED,
+const WATCH_POLICY: harmos_operations::OperationPolicy = harmos_operations::OperationPolicy {
+    timeout: harmos_operations::operations::UNBOUNDED,
+    attempt_timeout: harmos_operations::operations::UNBOUNDED,
     cancellation_timeout: std::time::Duration::ZERO,
     ..POLICY
 };
@@ -58,43 +55,39 @@ const WATCH_POLICY: harmos_domain::OperationPolicy = harmos_domain::OperationPol
 
 /* === Enums === */
 
-#[harmos::catalog(harmos_path = crate)]
-pub enum Lifecycle {
-    Status(Status),
-    Cancel(Cancel),
-    Watch(Watch),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
 
-/* === Public Functions === */
-
-#[cfg(feature = "lifecycle")]
-pub fn bind<P: harmos_sdk::Plugin>(
-    owner: std::sync::Arc<harmos_sdk::plugin::Owner<P>>, table: &harmos_sdk::plugin::Table,
-) -> Result<(), harmos_sdk::plugin::Error<P>> {
-    use harmos_sdk::operations::lifecycle::LifecycleAccess;
-    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
-    dependencies
-        .insert(std::sync::Arc::new(LifecycleAccess(owner)))
-        .map_err(|error| harmos_sdk::plugin::Error::Resource(std::sync::Arc::new(error)))?;
-    let mut table = table.lock().map_err(|_| harmos_sdk::plugin::Error::Poisoned)?;
-    let initialize = Descriptor::of_initialize::<P>()
-        .map_err(harmos_sdk::ServingError::from)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
-    let shutdown = Descriptor::of_shutdown::<P>()
-        .map_err(harmos_sdk::ServingError::from)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
-    table
-        .install_lifecycle::<Initialize, initialize::Control>(dependencies.clone(), initialize)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))?;
-    table
-        .install_lifecycle::<Shutdown, shutdown::Control>(dependencies, shutdown)
-        .map_err(|error| harmos_sdk::plugin::Error::Serving(std::sync::Arc::new(error)))
+pub fn lifecycle_catalog() -> crate::execution::operations::Catalog {
+    lifecycle_catalog_batch().named("harmos.lifecycle")
 }
 
+pub fn lifecycle_catalog_batch() -> crate::execution::__private::Catalog {
+    use crate::execution::operations::OperationFactory;
+    crate::execution::__private::Catalog {
+        name: "",
+        operations: vec![
+            OperationFactory::protobuf::<Invoke>().expect("invoke declaration"),
+            OperationFactory::protobuf::<Get>().expect("status declaration"),
+            OperationFactory::protobuf::<Cancel>().expect("cancel declaration"),
+            OperationFactory::protobuf::<Watch>().expect("watch declaration"),
+        ],
+        services: vec![],
+    }
+}
+
+/* === Public Functions === */
+
 /* === Private Functions === */
+
+fn state(status: harmos_operations::operations::instance::Status) -> InstanceState {
+    InstanceState {
+        phase: status.phase.as_str().to_owned(),
+        outcome: status.outcome.map(harmos_operations::operations::instance::Outcome::as_str).unwrap_or_default().to_owned(),
+        cancellation_requested: status.cancellation_requested,
+        attempt: status.attempt,
+    }
+}
 
 /* === Tests === */

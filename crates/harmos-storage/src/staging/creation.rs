@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.creation.create_file", level = "debug", skip_all)]
     pub async fn create_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
         self.create(metadata, false).await
@@ -43,7 +43,7 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.staging.creation.create", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub(super) async fn create(&self, metadata: FileMetadata, resumable: bool) -> Result<StorageFile> {
         let result = async {
-            let reference_bytes = file_bytes(&metadata, self.inner.primary.history())?;
+            let reference_bytes = file_bytes(&metadata, self.inner.primary.get_history())?;
             // Bound The Finished Reference Before Creating Its Producer.
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(Error::InvalidInput {
@@ -56,7 +56,7 @@ impl<C> StorageManager<C> {
                 ..Progress::default()
             }));
             let token = resumable.then(|| FileSession {
-                history: self.inner.primary.history().clone(),
+                history: self.inner.primary.get_history().clone(),
                 id: metadata.id.clone(),
                 generation: 1,
             });
@@ -74,7 +74,7 @@ impl<C> StorageManager<C> {
                     }
                     state.collect();
                     // Leave at least one byte for batch progress even with tiny policies.
-                    if state.files.len() < crate::storage::config::MAX_FILES.get()
+                    if state.files.len() < self.inner.settings.request.max_file_productions.get()
                         && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
                         && state.status.pending_bytes < self.inner.settings.request.max_pending_write_bytes.get()
                     {
@@ -82,7 +82,7 @@ impl<C> StorageManager<C> {
                             NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)).map_err(|_| size_error())?;
                         let metadata = metadata.take().expect("unadmitted file metadata");
                         let staging = StagedFile {
-                            history: self.inner.primary.history().clone(),
+                            history: self.inner.primary.get_history().clone(),
                             id: metadata.id.clone(),
                         };
                         state.files.insert(
@@ -92,12 +92,13 @@ impl<C> StorageManager<C> {
                                 queued: Some(tracing::debug_span!("storage.file.queue")),
                                 metadata: Arc::new(metadata),
                                 staging,
-                                session: resumable.then(|| Session::new(self.inner.execution)),
+                                session: resumable.then(|| Session::new(self.inner.execution.clone())),
                                 extra: None,
                                 mutation: None,
                                 progress: progress.clone(),
                                 hash: Sha256::new(),
                                 length: 0,
+                                durable_length: 0,
                                 ticket: 0,
                                 command: Some(Command::Create),
                                 abandoned: false,
@@ -115,13 +116,13 @@ impl<C> StorageManager<C> {
                 })
                 .await?;
             let mut cancel = CancelProduction {
-                manager: self.erased(),
+                manager: self.clone(),
                 id,
                 armed: true,
                 generation: token.as_ref().map(|token| token.generation),
             };
             let file = StorageFile {
-                manager: self.erased(),
+                manager: self.clone(),
                 id,
                 progress,
                 session: token,
@@ -190,7 +191,7 @@ impl<C> StorageManager<C> {
         if let Some(file) = state.files.get_mut(&id) {
             if let Some(session) = &mut file.session {
                 if generation == Some(session.generation) && !file.abandoned {
-                    session.disconnect(&file.staging, file.length, crate::storage::config::FILE_SESSION_TIMEOUT);
+                    session.disconnect(&file.staging, file.length, self.inner.settings.policy.file_session_timeout);
                 }
                 self.inner.notify();
                 return;

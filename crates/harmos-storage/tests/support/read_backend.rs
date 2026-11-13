@@ -9,10 +9,6 @@
 
 // Serve Retained Snapshot Reads.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,21 +18,9 @@
 // Local Imports
 use super::*;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
-impl<C: ObjectCatalog> Data<C> {
+impl Data {
     #[allow(dead_code, reason = "Shared fixture also compiles in runtime stories without native snapshot reads.")]
     pub async fn snapshots_released(&self) {
         loop {
@@ -55,6 +39,9 @@ impl<C: ObjectCatalog> Data<C> {
                 self.control.view_release.notified().await;
             }
             self.history.check(&at.history)?;
+            if at.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(Error::NotReady { domain: "requested storage cut" });
+            }
             let lost_objects_through = self.control.lost_objects_through.load(Ordering::SeqCst) as u64;
             // Pruned Revisions No Longer Reconstruct An Older Image.
             if at.sequence < lost_objects_through {
@@ -63,16 +50,26 @@ impl<C: ObjectCatalog> Data<C> {
                     available: lost_objects_through,
                 });
             }
+            let records = self.records.lock().unwrap();
+            let retained = records.clone();
+            let copied = if records.shares(&retained) { 0 } else { records.len() };
+            self.control.snapshot_rows_copied.fetch_add(copied, Ordering::Relaxed);
+            drop(records);
             let snapshot = Snapshot {
+                at: at.clone(),
+                pruned_objects: self.pruned_objects.lock().unwrap().clone(),
+                blobs: self.blobs.lock().unwrap().clone(),
                 lost_objects_through,
                 objects: self.objects.lock().unwrap().clone(),
                 files: self.files.lock().unwrap().clone(),
                 schemas: self.schemas.lock().unwrap().clone(),
-                records: self.records.lock().unwrap().clone(),
+                records: retained,
                 rows: self.rows.lock().unwrap().clone(),
             };
-            let token = self.next_snapshot.fetch_add(1, Ordering::SeqCst).to_le_bytes().to_vec();
-            self.snapshots.lock().unwrap().insert(token.clone(), snapshot);
+            let token =
+                format!("{}:{}:{}", std::any::type_name::<Self>(), self.snapshot_scope, self.next_snapshot.fetch_add(1, Ordering::SeqCst))
+                    .into_bytes();
+            self.snapshots.lock().unwrap().insert(token.clone(), Arc::new(snapshot));
             Ok(BackendSnapshot { at: at.clone(), token })
         })
     }
@@ -115,8 +112,14 @@ impl<C: ObjectCatalog> Data<C> {
         Box::pin(async move {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
-            // Complete Revision History Cannot Begin Before Pruned Revisions.
-            if selection.versions == ObjectVersions::Revisions && page.after < image.lost_objects_through {
+            // Only Pruning Within The Selected History Creates A Gap.
+            let pruned = image.pruned_objects.iter().any(|(position, (schema, item))| {
+                *position > page.after
+                    && *position <= snapshot.at.sequence
+                    && selection.schema.as_ref().is_none_or(|selected| selected == schema)
+                    && selection.key.as_ref().is_none_or(|selected| selected == item)
+            });
+            if selection.versions == ObjectVersions::Revisions && pruned {
                 return Err(Error::Gap {
                     requested: page.after + 1,
                     available: image.lost_objects_through + 1,
@@ -161,16 +164,22 @@ impl<C: ObjectCatalog> Data<C> {
         Box::pin(async move {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
-            let mut entries = scan(
-                image.records.values(),
-                snapshot,
-                page,
-                |row| &row.position,
-                |row| {
-                    record_matches(row, &selection.schema, &selection.scope, &selection.item)
-                        && window(selection.source_start, selection.source_end, row.source_time)
-                },
-            )?;
+            let mut entries = Vec::new();
+            let mut bytes = 0usize;
+            for (row, size) in image.records.selected(&selection.schema, page.after, snapshot.at.sequence) {
+                self.control.record_rows_examined.fetch_add(1, Ordering::Relaxed);
+                if !record_matches(row, &selection.schema, &selection.scope, &selection.item)
+                    || !window(selection.source_start, selection.source_end, row.source_time)
+                {
+                    continue;
+                }
+                if entries.len() == page.rows.get() || (!entries.is_empty() && bytes + size > page.bytes.get()) {
+                    break;
+                }
+                bytes += size;
+                self.control.record_rows_copied.fetch_add(1, Ordering::Relaxed);
+                entries.push(row.clone());
+            }
             if self.control.invalid_page.load(Ordering::SeqCst) && !entries.is_empty() {
                 entries[0].item = Identifier::new("wrong-item").unwrap();
             }
@@ -241,9 +250,3 @@ impl<C: ObjectCatalog> Data<C> {
         })
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

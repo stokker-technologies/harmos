@@ -10,10 +10,6 @@
 // Locate the Fixtures the One Build Stamped and the Package Binaries Nextest Exposes
 #![allow(dead_code)]
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,20 +23,6 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
 
 /* === Public Functions === */
 
@@ -61,7 +43,11 @@ pub fn manifest() -> PathBuf {
 }
 
 pub fn workspace() -> PathBuf {
-    manifest().ancestors().nth(2).expect("crates live two levels below the workspace").to_owned()
+    manifest()
+        .ancestors()
+        .find(|path| path.join("tools/project.toml").is_file())
+        .expect("the repository owns tools/project.toml")
+        .to_owned()
 }
 
 pub fn artifact(name: &str) -> PathBuf {
@@ -70,7 +56,12 @@ pub fn artifact(name: &str) -> PathBuf {
 }
 
 pub fn component(name: &str) -> Vec<u8> {
-    std::fs::read(artifact(name)).unwrap_or_else(|error| panic!("stamped component {name} is unreadable: {error}"))
+    let bytes = std::fs::read(artifact(name)).unwrap_or_else(|error| panic!("stamped component {name} is unreadable: {error}"));
+    if focused_manifest() {
+        let expected = stamp()["metadata"]["inspection_sha256"][name].as_str().expect("the focused component has a digest");
+        verify_digest(&bytes, expected, &format!("focused component {name}"));
+    }
+    bytes
 }
 
 // Tests Own These Inert Copies; Inspecting Them Never Loads Or Executes A Plugin.
@@ -114,8 +105,19 @@ pub fn dependencies() -> PathBuf {
     resolve(path)
 }
 
-// Nextest Names The Extracted Executable At Run Time; Plain `cargo test` Only Has The Compile-Time Path.
+// Archived Runs Use Stamped Executables From The Consumer Checkout.
 pub fn binary(name: &str, compiled: Option<&str>) -> PathBuf {
+    if std::env::var_os("STKR_TEST_PROFILE").is_some() {
+        let path = artifact(name);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&path).expect("transferred fixture executable").permissions();
+            permissions.set_mode(permissions.mode() | 0o100);
+            std::fs::set_permissions(&path, permissions).unwrap();
+        }
+        return path;
+    }
     let variable = format!("NEXTEST_BIN_EXE_{}", name.replace('-', "_"));
     let path = std::env::var_os(&variable).map(PathBuf::from);
     let path = match path {
@@ -208,5 +210,3 @@ fn resolve(path: &str) -> PathBuf {
     let path = PathBuf::from(path);
     if path.is_absolute() { path } else { directory().join(path) }
 }
-
-/* === Tests === */

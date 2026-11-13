@@ -19,7 +19,6 @@ import io
 import json
 import os
 import runpy
-import subprocess
 import tempfile
 import tomllib
 import unittest
@@ -30,8 +29,8 @@ from unittest.mock import patch
 
 # Third Party Imports
 # Local Imports
-from harmos_tools.release import layout, nightly, pins, policy, registry, run
-from harmos_tools.test import preflight
+from harmos_tools.ci import bootstrap
+from harmos_tools.release import nightly, pins, policy, registry, review, run
 
 # Type Checking Imports
 
@@ -49,90 +48,12 @@ LATER = "c" * 40
 # === Classes === #
 
 
-class ImpactTests(unittest.TestCase):
-    def setUp(self):
-        self.action = runpy.run_path(str(ROOT / ".github/actions/plan-impact/run.py"))
-        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        authored = next(line.removeprefix("        plan: ") for line in workflow.splitlines() if line.startswith("        plan: "))
-        self.plan = json.loads(json.loads(authored))
-
-    def test_dev_and_review(self):
-        full = self.action["select"](self.plan, {"Cargo.toml"})
-        development = self.action["scope"](self.plan, full, "build")
-        self.assertTrue({"build", "build:rust:tests", "check:rust"} <= development)
-        self.assertFalse(any(job.startswith(("test:", "release:", "bench:", "prepare:", "package:")) for job in development))
-        self.assertTrue(any(job.startswith("test:") for job in self.action["scope"](self.plan, full)))
-        for job in development:
-            self.assertTrue(set(self.plan["dependencies"][job]) <= development)
-        print("Dev Impact:", ", ".join(sorted(development)))
-        print("PR Impact:", ", ".join(sorted(full)))
-
-    def test_guidance_scope(self):
-        selected = self.action["select"](self.plan, {"CONTRIBUTING.md"})
-        self.assertEqual(self.action["scope"](self.plan, selected, "build"), set())
-
-    def test_conservative_scope(self):
-        plan = {"dependencies": {"package:rust": ["build"], "build": ["producer"], "producer": []}, "rules": []}
-        self.assertEqual(self.action["close"](plan["dependencies"], {"unknown"}), set(plan["dependencies"]))
-        self.assertEqual(self.action["scope"](plan, {"package:rust", "build"}, "build"), {"build", "producer"})
-        with self.assertRaises(ValueError):
-            self.action["scope"](plan, set(), "typo")
-
-
-class StarterTests(unittest.TestCase):
-    def test_version_preflight(self):
-        templates = ROOT / "crates/cargo-harmos/templates"
-        expected = [
-            ((templates / kind / "mise.toml.tmpl").read_bytes(), (templates / kind / "mise.lock.tmpl").read_bytes())
-            for kind in ("guest", "sidecar")
-        ]
-        installed = []
-        directories = []
-        trusted = set()
-        fail = False
-
-        def execute(arguments, **options):
-            directory = options["cwd"]
-            operation = arguments[1]
-            if operation == "trust":
-                trusted.add(directory)
-            elif operation == "untrust":
-                trusted.remove(directory)
-            elif operation == "install":
-                configuration = (directory / "mise.toml").read_bytes()
-                lock = (directory / "mise.lock").read_bytes()
-                tools = tomllib.loads(configuration.decode())["tools"]
-                self.assertEqual(set(options["env"]["MISE_ENABLE_TOOLS"].split(",")), set(tools))
-                self.assertNotIn("UV_PROJECT_ENVIRONMENT", options["env"])
-                self.assertIn(directory, trusted)
-                installed.append((configuration, lock))
-                directories.append(directory)
-                if fail and len(installed) == len(expected):
-                    raise subprocess.CalledProcessError(1, arguments)
-            return subprocess.CompletedProcess(arguments, 0)
-
-        with (
-            patch.object(preflight.os, "environ", dict(os.environ, UV_PROJECT_ENVIRONMENT="another-project")),
-            patch.object(preflight.subprocess, "run", side_effect=execute),
-        ):
-            preflight._install_starters()
-            self.assertCountEqual(installed, expected)
-            self.assertFalse(trusted)
-            installed.clear()
-            fail = True
-            with self.assertRaises(subprocess.CalledProcessError):
-                preflight._install_starters()
-        self.assertCountEqual(installed, expected)
-        self.assertFalse(trusted)
-        self.assertTrue(all(not directory.exists() for directory in directories))
-
-
 class ReleaseTagTests(unittest.TestCase):
     def setUp(self):
-        self.action = runpy.run_path(str(ROOT / ".github/actions/review-release/run.py"))
+        self.action = vars(review)
         self.project = (ROOT / "tools/project.toml").read_text(encoding="utf-8")
         self.tag = "v" + tomllib.loads(self.project)["version"]["value"]
-        self.review = {
+        self.review: dict = {
             "number": 211,
             "merged": True,
             "merged_at": "2026-11-10T00:00:00Z",
@@ -245,7 +166,7 @@ class ReleaseTagTests(unittest.TestCase):
 
 class ReleaseChecksTests(unittest.TestCase):
     def setUp(self):
-        self.guard = runpy.run_path(str(ROOT / ".github/actions/review-release/checks.py"))
+        self.guard = runpy.run_module("harmos_tools.release.checks")
         self.sha = "a" * 40
         self.ci_run: dict = {
             "id": 7,
@@ -343,19 +264,17 @@ class PinTests(unittest.TestCase):
         with (
             patch.object(pins, "check", return_value=False) as check,
             patch.dict(os.environ, {"GITHUB_WORKFLOW_REF": "owner/repo/.github/workflows/nightly.yml@refs/heads/dev"}, clear=True),
-            patch.object(registry.storage, "preflight") as preflight,
         ):
             registry.rehearse_crates(ROOT)
             self.assertTrue(check.call_args.kwargs["warn"])
-            preflight.assert_not_called()
 
 
 class PublicationTests(unittest.TestCase):
     def test_publication_replaces_previous(self):
-        for previous in (True, False):
-            with self.subTest(previous=previous), tempfile.TemporaryDirectory() as temporary:
+        for previous, metadata in ((True, True), (False, True), (True, False)):
+            with self.subTest(previous=previous, metadata=metadata), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
-                github = FakeGitHub(previous=previous)
+                github = FakeGitHub(previous=previous, faults=set() if metadata else {"no-digest"})
                 github.releases[3] = {"id": 3, "name": "v0.1.2", "tag_name": "v0.1.2", "draft": False, "prerelease": False}
                 github.releases[4] = {"id": 4, "name": nightly.TITLE, "tag_name": "untagged-4", "draft": True, "prerelease": True}
                 github.assets.update({3: [], 4: []})
@@ -369,7 +288,7 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual(set(github.releases), {3, published["id"]})
 
     def test_failure_before_swap_keeps_previous(self):
-        for fault in ("create", "upload:linux.zip", "upload:SHA256SUMS", "size", "pending", "digest"):
+        for fault in ("create", "upload:linux.zip", "upload:SHA256SUMS", "size", "pending", "digest", "bytes"):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
                 github = FakeGitHub(previous=True, faults={fault})
@@ -388,7 +307,7 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(sorted(names), sorted(item["name"] for item in files))
 
     def test_failure_during_swap_restores_previous(self):
-        for fault in ("tag-create", "draft-previous", "publish", "lookup"):
+        for fault in ("tag-create", "draft-previous", "publish", "lookup", "public-bytes"):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
                 github = FakeGitHub(previous=True, faults={fault})
@@ -468,12 +387,56 @@ class ProviderRetryTests(unittest.TestCase):
                 self.assertEqual(pauses, [registry.RETRY_PAUSE_SECONDS * 2**index for index in range(calls - 1)])
 
 
+class CompilerCacheKeyTests(unittest.TestCase):
+    def test_tool_changes_preserve_compiler_cache_and_lock_changes_restore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "outputs"
+            environment = {
+                "GITHUB_OUTPUT": str(output),
+                "RUNNER_OS": "Windows",
+                "RUNNER_ARCH": "X64",
+                "MISE_DATA_DIR": str(root / "mise"),
+                "COMPILER_CACHE_BACKEND": "disk",
+                "PROFILE": "release",
+            }
+            keys = []
+            for rust, tools, lock in [
+                ("1.2.3", "first", "first"),
+                ("1.2.3", "second", "first"),
+                ("1.2.3", "second", "second"),
+                ("1.2.4", "second", "second"),
+            ]:
+                (root / "mise.toml").write_text('[tools]\nrust = { version = "' + rust + '" }\n')
+                (root / "mise.lock").write_text(tools)
+                (root / "uv.lock").write_text(tools)
+                (root / "Cargo.lock").write_text(lock)
+                output.write_text("")
+                with (
+                    patch.dict(os.environ, environment, clear=True),
+                    patch("sys.argv", ["bootstrap", "--roots-only"]),
+                    patch.object(bootstrap.Path, "cwd", return_value=root),
+                    patch.object(bootstrap.Path, "home", return_value=root),
+                    patch.object(bootstrap, "rustup"),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    bootstrap.main()
+                fields = output.read_text().split("CACHE_VALUE\n")
+                key = next(fields[i + 1].strip() for i in range(len(fields) - 1) if fields[i].endswith("sccache-key<<"))
+                prefix = next(fields[i + 1].strip() for i in range(len(fields) - 1) if fields[i].endswith("sccache-restore-keys<<"))
+                keys.append((key, prefix))
+            self.assertEqual(keys[0], keys[1])
+            self.assertNotEqual(keys[1][0], keys[2][0])
+            self.assertEqual(keys[1][1], keys[2][1])
+            self.assertNotEqual(keys[2][1], keys[3][1])
+
+
 class SetupDownloadTests(unittest.TestCase):
     URL = "https://example.com/archive.zip"
     CHECKSUM = hashlib.sha256(b"archive").hexdigest()
 
     def setUp(self):
-        self.download = runpy.run_path(str(ROOT / ".github/actions/setup/run.py"))["download"]
+        self.download = runpy.run_path(str(ROOT / "tools/python/src/harmos_tools/ci/bootstrap.py"))["download"]
         self.calls: list[str] = []
         self.pauses: list[float] = []
 
@@ -544,6 +507,7 @@ class FakeGitHub:
         self.workflows = {OLD: "previous-workflows", NEW: "build-workflows"}
         self.releases: dict[int, dict] = {}
         self.assets: dict[int, list[dict]] = {}
+        self.data: dict[int, bytes] = {}
         self.next_id = 10
         if previous:
             self.releases[1] = {
@@ -628,12 +592,24 @@ class FakeGitHub:
         for fault, change in (("size", {"size": 0}), ("pending", {"state": "new"}), ("digest", {"digest": "sha256:" + "0" * 64})):
             if fault in self.faults and assets:
                 assets[0].update(change)
+        if "no-digest" in self.faults:
+            for asset in assets:
+                asset.pop("digest", None)
         return assets
 
     def request(self, settings, endpoint, method="GET", data=None, **kwargs):
         if endpoint == f"git/refs/tags/{nightly.TAG}" and method == "DELETE":
             self.tag = None
             return
+        if endpoint.startswith("releases/assets/") and method == "GET":
+            identity = int(endpoint.rsplit("/", 1)[1])
+            published = any(
+                not release["draft"] and any(asset["id"] == identity for asset in self.assets[release["id"]])
+                for release in self.releases.values()
+            )
+            if "bytes" in self.faults or "public-bytes" in self.faults and published:
+                return b"!" * len(self.data[identity])
+            return self.data[identity]
         if endpoint.startswith("releases/assets/") and method == "DELETE":
             identity = int(endpoint.rsplit("/", 1)[1])
             for assets in self.assets.values():
@@ -657,6 +633,7 @@ class FakeGitHub:
                 "digest": "sha256:" + hashlib.sha256(data).hexdigest(),
             }
         )
+        self.data[self.next_id] = data
         self.next_id += 1
         # The Upload Lands But The Response Is Lost, Leaving A Same-Name Asset For The Retry To Replace.
         self._fault(f"partial:{name}")
@@ -683,47 +660,6 @@ class NightlyTests(unittest.TestCase):
                 else:
                     with self.assertRaises(policy.ToolError):
                         nightly._github_source()
-
-
-class CatalogTests(unittest.TestCase):
-    def test_distribution_inventory(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            root = directory / run.ASSETS
-            shared = root / run.SHARED
-            shared.mkdir(parents=True)
-            (shared / "CHANGELOG.md").write_bytes(b"notes")
-            (shared / run.SUMS).write_bytes(b"initial")
-            layout.upload_manifest(directory, root, [run._describe(root, path) for path in shared.iterdir()])
-            targets = ["linux-x86_64", "windows-x86_64"]
-            for target in targets:
-                packaged = directory / "target/package/release" / target
-                assets = {}
-                for relative in (f"rust/tool-{target}.zip", f"rust/schematic-{target}.zip", "producer/plugin.harmos"):
-                    source = packaged / relative
-                    source.parent.mkdir(parents=True, exist_ok=True)
-                    data = (target + relative).encode()
-                    source.write_bytes(data)
-                    assets[relative] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
-                (packaged / "catalog.json").write_text(json.dumps({"profile": "release", "assets": assets}), encoding="utf-8")
-            nightly._include_packages(directory, targets)
-            files = layout.uploads(directory, staged=True)
-            names = {item["name"] for item in files}
-            expected = {"CHANGELOG.md", "SHA256SUMS"}
-            for target in targets:
-                expected.update({f"tool-{target}.zip", f"schematic-{target}.zip", f"{target}-plugin.harmos"})
-            self.assertEqual(names, expected)
-            inventory = {item["name"]: item for item in files}
-            run._checksums(shared / run.SUMS, inventory)
-            source.write_bytes(b"changed")
-            with self.assertRaises(policy.ToolError):
-                nightly._include_packages(directory, targets)
-
-    def test_missing_platform(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            with patch.object(layout, "uploads", return_value=[]), self.assertRaises(FileNotFoundError):
-                nightly._include_packages(directory, ["windows-x86_64"])
 
 
 # === Public Functions === #

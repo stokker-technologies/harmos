@@ -45,9 +45,9 @@ impl Manager {
         Ok(entry.definition.clone())
     }
 
-    pub fn submit_from<O: OperationDeclaration>(&self, owner: &str, request: O::Request) -> Result<Running<O>> {
-        let submitted = executor::now();
-        let entry = self.capture_provider(O::ID, Some(owner))?;
+    pub fn submit_from<O: RequestShape>(&self, owner: &str, request: O::Request) -> Result<Running<O>> {
+        let submitted = self.clock().now();
+        let entry = self.typed_entry::<O, ()>(&Source::Host.check()?, Some(owner))?;
         self.admit_entry::<O, ()>(
             (request.into(), ()),
             None,

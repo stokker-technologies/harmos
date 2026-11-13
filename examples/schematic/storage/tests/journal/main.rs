@@ -28,7 +28,7 @@ use std::sync::{
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 // Local Imports
-use harmos::{Application, Runtime, state::Position, state::Recorded, state::Records, state::Transaction};
+use harmos_runtime::{Application, Runtime, state::Position, state::Recorded, state::Records, state::Transaction};
 use schematic_storage::{Jsonl, Wire};
 use support::scratch;
 
@@ -48,28 +48,23 @@ struct State {
     applications: usize,
 }
 
-#[harmos::record(id = "atomic.observed")]
-#[derive(harmos::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
     amount: i64,
     ordinal: usize,
 }
 
-#[harmos::record(id = "atomic.foreign")]
-#[derive(harmos::Described, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos::record(id = "harmos:sidecar/my_sidecar_2/result")]
-#[derive(harmos::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
-#[harmos::record(id = "atomic.broken")]
-#[derive(harmos::Described, Deserialize)]
+#[derive(harmos_runtime::Described, Deserialize)]
 struct Broken;
 
-#[harmos::transaction(id = "atomic.add",  inverse = Self,)]
-#[derive(harmos::Described, Clone, Debug, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Deserialize)]
 struct Add {
     amount: i64,
     count: usize,
@@ -78,38 +73,140 @@ struct Add {
     #[serde(skip)]
     encodings: Arc<AtomicUsize>,
 }
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<State, Self> =
+        harmos_runtime::state::TransactionEntry::new("atomic.add").reversible::<Self>();
+}
 
 struct Model;
 
-#[harmos::record(id = "atomic.large")]
-#[derive(harmos::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
 /* === Enums === */
 
-#[harmos::lanes]
-pub enum TestLanes {
-    #[default]
-    Open,
-}
-
-#[harmos::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
     Add(Add),
 }
+impl From<Add> for Changes {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<State> for Changes {
+    type Error = Refusal;
+    fn check(&self, state: &State) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut State) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &State, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Changes {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<State, Changes> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+        let Changes::Add(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos::records]
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Facts {
     Observed(Observed),
     Large(Large),
     Reserved(Reserved),
 }
+impl From<Observed> for Facts {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl From<Large> for Facts {
+    fn from(value: Large) -> Self {
+        Self::Large(value)
+    }
+}
+impl From<Reserved> for Facts {
+    fn from(value: Reserved) -> Self {
+        Self::Reserved(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Facts {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+            Self::Large(_) => <Large as harmos_runtime::state::Record>::ENTRY.definition(),
+            Self::Reserved(_) => <Reserved as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+            Self::Large(value) => serde::Serialize::serialize(value, serializer),
+            Self::Reserved(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+    harmos_runtime::state::RecordRegistry::new()
+        .entry(<Observed as harmos_runtime::state::Record>::ENTRY, Facts::Observed, |value| match value {
+            Facts::Observed(value) => Some(value),
+            _ => None,
+        })
+        .entry(<Large as harmos_runtime::state::Record>::ENTRY, Facts::Large, |value| match value {
+            Facts::Large(value) => Some(value),
+            _ => None,
+        })
+        .entry(<Reserved as harmos_runtime::state::Record>::ENTRY, Facts::Reserved, |value| match value {
+            Facts::Reserved(value) => Some(value),
+            _ => None,
+        })
+}
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.observed");
+}
+
+impl harmos_runtime::state::Record for Foreign {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.foreign");
+}
+
+impl harmos_runtime::state::Record for Reserved {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("harmos:sidecar/my_sidecar_2/result");
+}
+
+impl harmos_runtime::state::Record for Broken {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.broken");
+}
+
+impl harmos_runtime::state::Record for Large {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.large");
+}
 
 impl Serialize for Broken {
     fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
@@ -151,8 +248,8 @@ impl Transaction<State> for Add {
                 13 => "",
                 _ => "my_sidecar_2",
             };
-            let _ = out.push_system(harmos::state::SystemFact::new(
-                harmos::state::FactSource::Sidecar(owner.to_owned()),
+            let _ = out.push_system(harmos_runtime::state::SystemFact::new(
+                harmos_runtime::state::FactSource::Sidecar(owner.to_owned()),
                 if self.mode == 14 { "" } else { "result/sample" }.to_owned(),
                 if self.mode == 15 { vec![255; Records::MAX_BYTES] } else { vec![0, 255, 17] },
             ));
@@ -185,7 +282,7 @@ impl Transaction<State> for Add {
     }
 }
 
-impl harmos::state::Invertible<State> for Add {
+impl harmos_runtime::state::Invertible<State> for Add {
     type Inverse = Self;
 
     fn inverse(&self, _: &State) -> Self::Inverse {
@@ -193,12 +290,12 @@ impl harmos::state::Invertible<State> for Add {
     }
 }
 
-impl harmos::Lifecycle for Model {
+impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
-    type Context = harmos::Startup<Self>;
+    type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 }
@@ -207,41 +304,43 @@ impl Application for Model {
     type State = State;
     type Transaction = Changes;
     type Record = Facts;
-    type Streams = ();
-    type Lanes = TestLanes;
 }
 
 impl Wire for Model {
-    fn identify(v: &Recorded<Self>) -> (harmos::DefinitionId, u32) {
+    fn identify(v: &Recorded<Self>) -> (harmos_runtime::DefinitionId, u32) {
         match v {
-            Recorded::Transaction(v) => v.identify(),
-            Recorded::Record(v) => v.identify(),
+            Recorded::Transaction(v) => harmos_runtime::state::CatalogCodec::identify(&**v),
+            Recorded::Record(v) => harmos_runtime::state::CatalogCodec::identify(v),
             Recorded::System(v) => v.identify(),
         }
     }
     fn encode<S: serde::Serializer>(v: &Recorded<Self>, s: S) -> Result<S::Ok, S::Error> {
         match v {
-            Recorded::Transaction(v) => v.encode_with(s),
-            Recorded::Record(v) => v.encode_with(s),
+            Recorded::Transaction(v) => harmos_runtime::state::CatalogCodec::encode(&**v, s),
+            Recorded::Record(v) => harmos_runtime::state::CatalogCodec::encode(v, s),
             Recorded::System(_) => unreachable!(),
         }
     }
     fn decode<'de, D: serde::Deserializer<'de> + Copy>(
-        kind: harmos::state::Kind, id: &harmos::DefinitionId, version: u32, payload: D,
-    ) -> Result<Option<harmos::storage::Payload<Self>>, D::Error> {
+        kind: harmos_runtime::state::Kind, id: &harmos_runtime::DefinitionId, version: u32, payload: D,
+    ) -> Result<Option<harmos_runtime::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
-            harmos::state::Kind::Transaction => Changes::restore(id, version, payload)?.map(|value| harmos::storage::Payload {
-                prepared: None,
-                id: id.clone(),
-                version,
-                value: Recorded::Transaction(harmos::operations::Response::new(value)),
-            }),
-            harmos::state::Kind::Record => Facts::restore(id, version, payload)?.map(|value| harmos::storage::Payload {
-                prepared: None,
-                id: id.clone(),
-                version,
-                value: Recorded::Record(value),
-            }),
+            harmos_runtime::state::Kind::Transaction => {
+                changes_state_catalog().restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
+                    prepared: None,
+                    id: id.clone(),
+                    version,
+                    value: Recorded::Transaction(harmos_runtime::operations::Response::new(value)),
+                })
+            }
+            harmos_runtime::state::Kind::Record => {
+                facts_registry().restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
+                    prepared: None,
+                    id: id.clone(),
+                    version,
+                    value: Recorded::Record(value),
+                })
+            }
         })
     }
 }
@@ -261,7 +360,12 @@ fn add(amount: i64, count: usize, mode: u8) -> Add {
 
 async fn boot(path: &std::path::Path, tail: usize) -> Runtime<Model> {
     Runtime::<Model>::launch_with(State::default(), (), |setup| {
-        setup.settings().register(Changes::catalog()).register(Facts::catalog()).recover(Jsonl::<Model>::open(path).unwrap()).tail(tail);
+        setup
+            .settings()
+            .register(changes_state_catalog())
+            .register(facts_registry())
+            .recover(Jsonl::<Model>::open(path).unwrap())
+            .tail(tail);
     })
     .await
     .unwrap()
@@ -273,7 +377,7 @@ fn contract_scenario() {
         {
             let mut builder = tokio::runtime::Builder::new_current_thread();
             builder.enable_all().build().expect("scenario runtime is valid").block_on(async {
-                use harmos::storage::Source;
+                use harmos_runtime::storage::Source;
                 let directory = scratch("atomic-truncation");
                 let path = directory.join("journal.jsonl");
                 let runtime = boot(&path, 16).await;

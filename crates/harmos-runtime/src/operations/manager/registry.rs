@@ -35,39 +35,13 @@ use super::*;
 /* === Implementations === */
 
 impl Registry {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(crate) fn generation_commit(&self) -> Result<GenerationCommit<'_>> {
         let state = self.state.lock().expect("operation registry lock is healthy");
         if state.closing {
             return Err(Error::Closing { domain: "plugin generation commit" });
         }
         Ok(GenerationCommit { _state: state })
-    }
-
-    pub(in crate::operations) fn insert_erased(
-        &self, entry: &Arc<Entry>, key: CacheKey, identity: Identity, response: harmos_sdk::__private::ErasedResponse,
-    ) {
-        let mut state = self.state.lock().expect("operation registry lock is healthy");
-        if state.closing
-            || state.cache_capacity == 0
-            || entry.available().is_err()
-            || !state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry))
-        {
-            return;
-        }
-        let mut retired = state.remove_cache(|cached| {
-            cached.key == key && cached.identity == identity && cached.target.upgrade().is_some_and(|target| Arc::ptr_eq(&target, entry))
-        });
-        let available = state.cache_capacity - 1;
-        retired.extend(state.evict_to(available));
-        state.cache.push_back(Cached {
-            target: Arc::downgrade(entry),
-            key,
-            identity,
-            response,
-        });
-        drop(state);
-        drop(retired);
     }
 }
 
@@ -76,14 +50,14 @@ impl State {
         self.entries.get(id)?.get(owner)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn host_provider(&self, id: &str, contract: &crate::operations::Contract) -> Result<&Arc<Entry>> {
         let mut compatible = self
             .entries
             .get(id)
             .into_iter()
             .flat_map(|providers| providers.values())
-            .filter(|entry| entry.plugin.is_none() && entry.contract.as_ref() == Some(contract));
+            .filter(|entry| entry.plugin.is_none() && entry.contract.as_ref().is_some_and(|actual| actual.compatible(contract)));
         let selected = compatible.next().ok_or_else(|| Error::NotRegistered {
             domain: "host provider",
             name: id.to_owned(),
@@ -120,7 +94,6 @@ impl State {
         #[cfg(feature = "grpc")]
         if let Some(binding) = removed.as_ref().and_then(|entry| entry.contract.as_ref()).and_then(|contract| contract.grpc()) {
             self.grpc.remove(&binding.path());
-            self.grpc.remove(&binding.run_path());
         }
         if providers.is_empty() {
             self.entries.remove(id);
@@ -140,20 +113,20 @@ impl State {
     }
 
     pub(super) fn definitions(&self) -> Vec<OperationDefinition> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin-guest")]
         let mut ready = BTreeMap::new();
         self.entries
             .values()
             .flat_map(|providers| providers.values())
             .filter(|entry| {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin-guest")]
                 if entry.sdk.is_some() {
                     return false;
                 }
                 if !entry.active.load(Ordering::Acquire) || !entry.publication.load(Ordering::Acquire) {
                     return false;
                 }
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin-guest")]
                 if let Some(scope) = &entry.plugin {
                     return *ready.entry(scope.generation()).or_insert_with(|| scope.is_ready());
                 }
@@ -161,30 +134,6 @@ impl State {
             })
             .map(|entry| entry.definition.clone())
             .collect()
-    }
-
-    pub(super) fn remove_cache(&mut self, mut remove: impl FnMut(&Cached) -> bool) -> Vec<Cached> {
-        let mut kept = VecDeque::new();
-        let mut retired = Vec::new();
-        for cached in std::mem::take(&mut self.cache) {
-            if remove(&cached) {
-                retired.push(cached);
-            } else {
-                kept.push_back(cached);
-            }
-        }
-        self.cache = kept;
-        retired
-    }
-
-    pub(super) fn evict_to(&mut self, capacity: usize) -> Vec<Cached> {
-        let mut retired = Vec::new();
-        while self.cache.len() > capacity {
-            if let Some(cached) = self.cache.pop_front() {
-                retired.push(cached);
-            }
-        }
-        retired
     }
 }
 

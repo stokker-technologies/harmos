@@ -60,7 +60,7 @@ impl FileState {
 
     pub(crate) fn bytes(&self) -> usize {
         match &self.command {
-            Some(Command::Write(bytes)) => bytes.len(),
+            Some(Command::Write(bytes) | Command::Replay { bytes, .. }) => bytes.len(),
             Some(Command::Finish { .. }) => self.reference_bytes,
             _ => 0,
         }
@@ -91,6 +91,7 @@ impl FileAction {
             Self::Create { id, .. }
             | Self::Resume { id, .. }
             | Self::Write { id, .. }
+            | Self::Replay { id, .. }
             | Self::Finish { id, .. }
             | Self::Abandon { id, .. }
             | Self::Abort { id, .. }
@@ -136,6 +137,12 @@ impl State {
                 id,
                 staging: file.staging.clone(),
                 offset: file.length,
+                bytes: bytes.clone(),
+            },
+            Command::Replay { offset, bytes } => FileAction::Replay {
+                id,
+                staging: file.staging.clone(),
+                offset: *offset,
                 bytes: bytes.clone(),
             },
             Command::Finish { target, sha256 } => {
@@ -221,7 +228,7 @@ impl State {
             use mutations::Kind;
             match (&completed, mutation.kind) {
                 (FileCompleted::Created, Kind::Create)
-                | (FileCompleted::Written, Kind::Append)
+                | (FileCompleted::Written | FileCompleted::Replayed(true), Kind::Append)
                 | (FileCompleted::Resumed(_), Kind::Resume) => {
                     let generation = match &completed {
                         FileCompleted::Resumed(generation) => *generation,
@@ -271,6 +278,10 @@ impl State {
                 progress.length = file.length;
                 progress.completed = file.ticket;
             }
+            FileCompleted::Replayed(_) => {
+                file.command = None;
+                progress.completed = file.ticket;
+            }
             FileCompleted::Finished(reference) => {
                 let reference = *reference;
                 let FileAction::Finish { target, .. } = action else { unreachable!("one finish owner") };
@@ -282,6 +293,7 @@ impl State {
                     inner,
                     None,
                     target.index,
+                    file.reference_bytes,
                     file.reference_bytes,
                     Operation::File(crate::StorageBatch::new(vec![reference.clone()])),
                 )));

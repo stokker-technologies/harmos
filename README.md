@@ -38,23 +38,23 @@ Your application defines each change; Harmos manages its accepted history.
 
 ## Features
 
-- **Managed State** [`runtime`]: Apply typed transactions, inspect history and scope undo or redo to selected changes.
-- **Operations and Services** [`runtime`]: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
-- **Streams and Storage** [`runtime`]: Capture bounded live measurements and supply adapters for history, snapshots and streams.
-- **Crash Recovery** [`runtime`]: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
-- **Plugin Lifecycle** [`plugin`]: Register typed plugin contracts and manage activation, routing and reload, with automatic stream schema revisions.
+- **Managed State**: Apply typed transactions, inspect history and scope undo or redo to selected changes.
+- **Operations and Services**: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
+- **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
+- **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
-- **Native Sidecars** [`plugin-sidecar`]: Integrate supervised executables through typed contracts; native processes do not provide a Wasm sandbox.
-- **gRPC Interfaces** [`grpc`, `generate-proto`]: Expose typed operations and generate client contracts.
-- **Signal Processing** [`signal`, `signal-fft`]: Summarize and downsample waveforms, with an optional FFT.
+- **gRPC Plugin Placement**: Invoke managed or remote `harmos.plugin.v1.Instance` plugins, capture their streams and drive plugin waits and observers from the host clock.
+- **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
+- **[Plugin Management](docs/plugin-manager.md)**: Persist, install, enable, restart and remove managed or remote plugin entries.
+- **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
+- **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
 ## Interfaces
 
 ### CLI
 
-`cargo harmos` supports plugin authoring and contract generation. The Schematic
-example supplies a runnable application CLI that demonstrates plugin routing,
+The Schematic example supplies a runnable application CLI that demonstrates plugin routing,
 history and recovery without a graphical editor.
 
 #### Examples
@@ -68,9 +68,8 @@ target/build/dev/linux-x86_64/bin/schematic-cli --guest
 
 ### Python
 
-Applications can generate Python clients from their operation contracts.
-The application owns the generated package, connection and authentication;
-Harmos does not ship a separate general-purpose PyPI client.
+Install `harmos-sdk` (import `harmos`) for plugin authoring and the host client root.
+Applications generate their own protobuf messages and own connection and authentication.
 
 #### Examples
 
@@ -80,16 +79,26 @@ application revision that produced them.
 
 ### Rust
 
-Use the `harmos` facade to compose a runtime and define your application's
-state, transactions and operations. Optional Cargo features select plugin,
-transport and simulation capabilities. The default facade exposes portable contracts;
-enable `runtime` for SDK execution and, on native targets, host runtime facilities.
-The [product guide](docs/product-guide.md)
-shows one operation file where the request implements consuming execution with declared resources and child operations.
+Plugin and client authors depend on `harmos` and import `harmos::prelude::*`.
+Its protobuf messages, plugin builders and generated-contract clients compile without host code.
+Clients bind `client::Method` to generated application types, then use `Client::call`,
+`Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
+Host applications depend explicitly on `harmos-runtime` for state, storage,
+managed or remote `harmos.plugin.v1.Instance` placement and optional guest hosting.
+See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
+Host operations, state catalogs and record registries are values; data shapes use
+field-reading derives. See [Native Operation Values](docs/product-guide.md#native-operation-values).
 
 Portable messages support standard Rust maps with deterministic key ordering
 and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/product-guide.md)
 describes their repeated key/value entry representation.
+
+`harmos-storage/sqlite` adds an optional durable reference backend with bounded Arrow scans,
+ordered indexes, exact-frontier projections, grouped time buckets and atomic object updates.
+See [Storage Interfaces](docs/storage.md) for native and generated SDK APIs, backend obligations, bounded unary pages and retained-cut query examples.
+Clients and plugins share resumable unary file productions and bounded content ranges.
+Hosts can register [application-owned immutable content](docs/storage.md#application-owned-content)
+for those ranged reads without copying it into library persistence.
 
 Structured operation and storage tracing supports performance investigation;
 applications control collection. See [Performance](docs/product-guide.md#performance).
@@ -99,24 +108,24 @@ applications control collection. See [Performance](docs/product-guide.md#perform
 The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers
 editing, plugin validation, undo/redo and save/reopen. Its
 [storage adapter](examples/schematic/storage/) shows application-owned persistence.
-Its sidecar and guest also provide shared transfer endpoints under the `benchmark`
-feature for the [performance suites](docs/product-guide.md#performance).
-Harmos also ships a filesystem `JsonStorage` backend for records, streams, objects
-and files; see the [storage configuration guide](docs/product-guide.md).
+Its native plugin serves unary advice over gRPC; analysis and transfer streams run
+in the host. The guest uses SDK builders with `harmos/wasm` and exposes unary transfer endpoints under its `benchmark` feature
+for the [performance suites](docs/product-guide.md#performance).
 
 ### C++
 
-Rust remains the nominal SDK. The C++20 sidecar prototype is a thin layer over
-the shared Rust core through `harmos-ffi`; it has no stable ABI promise.
-See the [C++ guide](docs/sidecar-cpp-prototype.md) for toolchain setup and ownership.
+The C++20 SDK serves `harmos.plugin.v1.Instance` with protobuf messages and builder values for
+operations, streams and observers. See the [C++ SDK guide](docs/tooling.md#c-plugin-sdk)
+for toolchain setup and managed or remote serving.
 
 #### Examples
 
-Build the SDK and run the simulated instrument through its native Rust host:
+Build the SDK and run its plugin against the reference host:
 
 ```sh
-mise run build:cpp
-mise run test:rust:cpp
+mise run build -- --language cpp
+mise run build -- --package harmos-conformance
+mise run test -- --language cpp
 ```
 
 These opt-in tasks require a C++20 compiler and CMake; ordinary Rust builds do not.
@@ -138,16 +147,20 @@ target/build/dev/linux-x86_64/bin/schematic-cli
 On Windows, run the corresponding executable under
 `target/build/dev/windows-x86_64/bin/`. For library integration, select a
 [published Harmos version](https://crates.io/crates/harmos) and the
-[Cargo features](crates/harmos/Cargo.toml) your application needs.
+[SDK](sdk/rust/Cargo.toml) or [runtime features](crates/harmos-runtime/Cargo.toml) your application needs.
 
-The [release downloads](https://github.com/stokker-technologies/harmos/releases/latest)
-also provide `cargo-harmos` tool archives with README, LICENSE and generated
-CHANGELOG. See the [installation guide](docs/product-guide.md#tool-installation)
-for archive names and checksum verification. The
-[Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
-prerelease provides unsigned release-profile tool archives, Schematic ZIPs and
-plugin bundles from dev, with SHA256SUMS. Its downloads change in place with each
-nightly run, and its notes record whether that run's suite passed.
+The conformance tool package lives in `tools/conformance`; build and generation tooling
+lives in `tools/packaging`, outside the core libraries.
+Every SDK includes an importable fixture for [layered SDK conformance](docs/tooling.md#conformance-for-a-layered-sdk).
+
+[Releases](https://github.com/stokker-technologies/harmos/releases) attach
+`harmos-proto-<version>.zip`, one `harmos-conformance-<version>-<platform>.zip|tar.gz`
+per platform, `harmos-compliance-<version>.zip`, `release.json` and `SHA256SUMS`.
+The changelog is the release body; crates and language SDKs use their registries.
+The mutable [Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
+adds `harmos-reports-<version>.zip` and fixed-name `benchmarks.json`. Its notes record
+coverage, benchmark regressions, suite results and the workflow link; failed suites
+can accompany a published build.
 
 Harmos is pre-1.0; public APIs and plugin contracts can change. Keep application
 and plugin revisions aligned and review release notes before updating. Stored data
@@ -157,14 +170,17 @@ written definitions across shape changes and plugin removal. Wire compatibility
 versions remain explicit.
 
 Built-in operation contracts live in `harmos-operations`, re-exported as
-`harmos::builtins`. Its `host`, `lifecycle`, `storage` and `streams` catalogs
-and `Builtins::catalog()` are available without runtime dependencies.
+`harmos_runtime::builtins`. Its `host_catalog()`, `lifecycle_catalog()`, `storage_catalog()`,
+`streams_catalog()` and `builtins_catalog()` functions return owned catalogs
+without depending on `harmos-runtime`.
 
 ## Contributing
 
 Focused fixes, API feedback and useful examples are welcome. Read
-[Contributing](CONTRIBUTING.md) for setup, validation and pull requests.
+[Contributing](docs/CONTRIBUTING.md) for setup, validation and pull requests.
+Read [Architecture](docs/architecture.md) before proposing architecture or public API changes.
 Run targeted tasks locally; hosted CI and Nightly provide full validation.
+Tool configuration lives in `tools/config/`; see [Repository Tooling](docs/tooling.md).
 
 ## About
 

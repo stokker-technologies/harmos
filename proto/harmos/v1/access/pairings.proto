@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1.access;
+import "harmos/v1/types.proto";
+message Pairing { string id = 1; string label = 2; }
+message PairingsCreateRequest { string label = 1; }
+message PairingsCreateResponse { Pairing pairing = 1; string endpoint = 2; string pinned_certificate_pem = 3; string credential = 4; }
+message PairingsListRequest { harmos.v1.Position at = 2; }
+message PairingsListResponse { repeated Pairing pairings = 1; harmos.v1.Position resolved_at = 2; }
+message PairingsDeleteRequest { string name = 1; }
+message PairingsDeleteResponse {}
+service Pairings {
+ rpc Create(PairingsCreateRequest) returns (PairingsCreateResponse);
+ rpc List(PairingsListRequest) returns (PairingsListResponse);
+ rpc Delete(PairingsDeleteRequest) returns (PairingsDeleteResponse);
+}

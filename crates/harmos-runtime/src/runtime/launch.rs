@@ -25,7 +25,7 @@ use futures_util::FutureExt;
 
 // Local Imports
 use super::{Builder, Runtime, StartupError};
-use crate::operations::{Lane, LaneSettings};
+use crate::operations::LaneSettings;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Application, Error, Setup, Startup};
 
@@ -94,6 +94,13 @@ impl<A: Application> Runtime<A> {
     pub async fn launch_with(
         origin: impl Into<crate::state::Origin<A::State>>, config: A::Config, overrides: impl FnOnce(&mut Setup<A>),
     ) -> Result<Self, StartupError> {
+        let clock = crate::clock::Clock::default();
+        crate::clock::scope(clock, Box::pin(Self::launch_clocked(origin, config, overrides))).await
+    }
+
+    async fn launch_clocked(
+        origin: impl Into<crate::state::Origin<A::State>>, config: A::Config, overrides: impl FnOnce(&mut Setup<A>),
+    ) -> Result<Self, StartupError> {
         let mut setup = Setup::<A>::new(Self::builder(origin));
         let mut preparation = Preparation {
             cleanup: setup.settings().startup_cleanup(),
@@ -134,7 +141,7 @@ impl<A: Application> Runtime<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::lifecycle::SetupConfiguration for Builder<A> {
+impl<A: Application> harmos_operations::execution::lifecycle::SetupConfiguration for Builder<A> {
     fn resource<T: Send + Sync + 'static>(&mut self, value: Arc<T>, replace: bool) {
         if replace {
             self.resources.replace(value);
@@ -148,18 +155,22 @@ impl<A: Application> harmos_sdk::lifecycle::SetupConfiguration for Builder<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::lifecycle::ApplicationConfiguration for Builder<A> {
-    type Lane = A::Lanes;
+impl<A: Application> harmos_operations::execution::lifecycle::ApplicationConfiguration for Builder<A> {
+    type Lane = crate::operations::Lane;
     type LaneSettings = LaneSettings;
 
-    fn lane(&mut self, lane: A::Lanes, settings: LaneSettings) {
+    fn lane(&mut self, lane: crate::operations::Lane, settings: LaneSettings) {
         if !self.lanes.configure(lane.name(), settings.capacity) {
             self.configuration_errors.push(StartupError::UnknownLane { lane: lane.name() });
         }
     }
 
-    fn operations<C: harmos_sdk::operations::OperationCatalog>(&mut self, lane: A::Lanes) {
-        self.operations::<C>(lane);
+    fn catalog(&mut self, catalog: crate::operations::Catalog, lane: crate::operations::Lane) {
+        self.catalog(catalog, lane);
+    }
+
+    fn operation(&mut self, operation: crate::operations::OperationFactory, lane: crate::operations::Lane) {
+        self.with_registration(crate::operations::Registration::new(lane).entry(operation));
     }
 }
 

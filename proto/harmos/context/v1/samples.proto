@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.context.v1;
+import "harmos/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+service Samples { rpc Append(SamplesAppendRequest) returns (SamplesAppendResponse); }
+message SamplesAppendRequest {
+  string stream = 1;
+  optional uint64 sequence = 3;
+  google.protobuf.Timestamp published_at = 4;
+  optional string context = 5;
+  bytes payload = 6;
+  repeated harmos.v1.FollowingRow following = 7;
+}
+
+message SamplesAppendResponse {}

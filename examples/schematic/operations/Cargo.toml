@@ -16,13 +16,14 @@ version = { workspace = true }
 
 [features]
 default = []
-runtime = ["harmos/runtime", "dep:thiserror", "dep:tokio"]
+runtime = ["harmos-operations/lifecycle", "dep:thiserror", "dep:tokio"]
 
 # === Dependencies === #
 
 [dependencies]
 # Local
-harmos = { workspace = true, default-features = false }
+harmos-operations = { workspace = true, default-features = false, features = ["grpc", "streaming"] }
+schematic-protocol = { path = "../protocol" }
 schematic-domain = { path = "../domain" }
 
 # Git

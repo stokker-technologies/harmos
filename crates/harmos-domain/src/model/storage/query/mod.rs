@@ -10,14 +10,14 @@
 /* === Modules === */
 
 pub mod contract;
+mod protobuf;
 pub mod scalar;
 pub mod transform;
 
 /* === Re-Exports === */
 
 pub use contract::{
-    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, QueryOutput, RecordSelection, RowSlice, SchemaSelection, Source,
-    StreamSelection,
+    FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
 };
 
 /* === Imports === */

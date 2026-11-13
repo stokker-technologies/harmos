@@ -9,14 +9,10 @@
 
 // Serve Benchmark Commands In A Separate Process Until The Parent Closes Stdin.
 
-extern crate harmos_runtime as harmos;
-
 /* === Modules === */
 
 #[path = "benchmark_protocol.rs"]
 mod protocol;
-
-/* === Re-Exports === */
 
 /* === Imports === */
 
@@ -27,22 +23,6 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 
 // Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -57,7 +37,7 @@ fn main() {
         };
         let runtime = harmos_runtime::Runtime::<protocol::Model>::launch_with((), (), |setup| {
             setup.settings().operation_settings(settings);
-            setup.operations::<protocol::Operations>(protocol::Lanes::Open);
+            setup.catalog(protocol::operations_catalog(), harmos_runtime::operations::Lane::default());
         })
         .await
         .unwrap();
@@ -75,5 +55,3 @@ fn main() {
         runtime.shutdown().await.unwrap();
     });
 }
-
-/* === Tests === */

@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{NetId, NetName, Schematic};
-use harmos::{state::Invertible, state::Transaction};
+use harmos_runtime::{state::Invertible, state::Transaction};
 
 /* === Constants === */
 
@@ -31,11 +31,14 @@ use harmos::{state::Invertible, state::Transaction};
 
 /* === Structs === */
 
-#[harmos::transaction(id = "net.rename", inverse = Self)]
-#[derive(harmos::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct RenameNet {
     pub net: NetId,
     pub to: NetName,
+}
+impl RenameNet {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("net.rename").reversible::<Self>();
 }
 
 /* === Enums === */

@@ -35,7 +35,7 @@ const CHUNK_ROWS: usize = 16_384;
 
 /* === Structs === */
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
 struct Sample {
     x: f64,
     y: f64,

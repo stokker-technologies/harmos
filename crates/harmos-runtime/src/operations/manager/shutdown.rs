@@ -36,6 +36,9 @@ use super::*;
 
 impl Manager {
     pub(crate) fn close_admission(&self) {
+        if let Some(status) = self.registry.status_owner.lock().expect("status owner lock is healthy").as_ref() {
+            status.close();
+        }
         self.close_entries(true);
     }
 
@@ -49,8 +52,7 @@ impl Manager {
             return;
         }
         state.closing = true;
-        let retired = std::mem::take(&mut state.cache);
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin-guest")]
         let staging: Vec<_> = state.staging.iter().filter_map(std::sync::Weak::upgrade).collect();
         for entry in state.entries.values().flat_map(|providers| providers.values()) {
             let _pending = entry.pending.lock().expect("operation settlement lock is healthy");
@@ -61,10 +63,11 @@ impl Manager {
                 entry.retirement.store(Retirement::Runtime as u8, Ordering::Release);
             }
             entry.active.store(false, Ordering::Release);
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             let ordinary = entry.sdk.is_none();
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+            #[cfg(not(feature = "plugin-guest"))]
             let ordinary = true;
+
             if _retain_shutdown && ordinary {
                 for control in _pending.values() {
                     control.request_cancel();
@@ -72,8 +75,7 @@ impl Manager {
             }
         }
         drop(state);
-        drop(retired);
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin-guest")]
         for scope in staging {
             scope.close_staging();
         }

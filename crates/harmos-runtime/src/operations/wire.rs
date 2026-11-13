@@ -26,7 +26,7 @@ use tokio::sync::OwnedSemaphorePermit;
 use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::{Manager, OperationInstanceId};
-use crate::operations::OperationDeclaration;
+#[cfg(test)]
 use crate::supervision::executor;
 use crate::{Error, Refusal, Result, operations::Scope};
 
@@ -47,28 +47,23 @@ struct Encoded;
 struct EncodedOptions {
     expected: Option<([u8; 32], u64)>,
     retry: Option<super::RetryPolicy>,
+    policy: Option<super::OperationPolicy>,
 }
 
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
     pub(super) retry: Option<super::RetryPolicy>,
+    pub(super) policy: Option<super::OperationPolicy>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(super) native_capacity: Option<OwnedSemaphorePermit>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone)]
 pub struct PluginCallback {
     operations: Manager,
     entry: Arc<Entry>,
     contract: crate::operations::Contract,
 }
-
-#[cfg(feature = "plugin-sidecar")]
-#[derive(Clone)]
-pub(crate) struct PluginControl(PluginCallback);
 
 pub(super) struct Parent<'a> {
     pub(super) scope: &'a Scope<'a>,
@@ -80,9 +75,6 @@ pub struct EncodedInvocation {
     pub(super) generation: super::OperationGeneration,
     pub(super) outcome: Outcome,
     pub(crate) control: Arc<crate::supervision::instance::Instance>,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) observer_stop: Option<harmos_sdk::operations::Cancellation>,
 }
 
 /* === Enums === */
@@ -91,18 +83,11 @@ pub struct EncodedInvocation {
 
 /* === Implementations === */
 
-impl OperationDeclaration for Encoded {
+impl harmos_operations::operations::RequestShape for Encoded {
     type Request = Vec<u8>;
     type Response = Vec<u8>;
     type Input = super::NoStream;
     type Output = super::NoStream;
-    const ID: &'static str = "encoded";
-    const POLICY: super::OperationPolicy = super::OperationPolicy {
-        timeout: harmos_domain::operations::UNBOUNDED,
-        attempt_timeout: harmos_domain::operations::UNBOUNDED,
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: super::RetryPolicy::Never,
-    };
 }
 
 impl EncodedInvocation {
@@ -152,7 +137,14 @@ impl Manager {
     }
 
     pub fn submit_encoded_with(&self, operation: &str, payload: Vec<u8>, retry: Option<super::RetryPolicy>) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, Source::Host, None, executor::now(), EncodedOptions { expected: None, retry })
+        self.submit_encoded_at_as(
+            operation,
+            payload,
+            Source::Host,
+            None,
+            self.clock().now(),
+            EncodedOptions { expected: None, retry, policy: None },
+        )
     }
 
     pub async fn call_encoded(&self, operation: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
@@ -162,14 +154,21 @@ impl Manager {
     pub(super) fn submit_encoded_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, parent, executor::now(), EncodedOptions::default())
+        self.submit_encoded_at_as(operation, payload, source, parent, self.clock().now(), EncodedOptions::default())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn submit_encoded_retry_as(
         &self, operation: &str, payload: Vec<u8>, source: Source, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
-        self.submit_encoded_at_as(operation, payload, source, None, executor::now(), EncodedOptions { expected: None, retry })
+        self.submit_encoded_at_as(
+            operation,
+            payload,
+            source,
+            None,
+            self.clock().now(),
+            EncodedOptions { expected: None, retry, policy: None },
+        )
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.submit_encoded_at_as", level = "debug", skip_all)]
@@ -178,6 +177,25 @@ impl Manager {
         options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
         let origin = source.check()?;
+        if let Ok(entry) = self.capture_entry(operation) {
+            let native_protobuf = entry.binding.is::<harmos_operations::execution::operations::OperationFactory>()
+                && entry.contract.as_ref().is_some_and(|contract| contract.protobuf().is_some());
+            if native_protobuf || entry.binding.is::<crate::plugin::grpc::invoke::Binding>() {
+                return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+            }
+            #[cfg(feature = "plugin-guest")]
+            if entry.plugin().is_some() {
+                return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+            }
+        }
+        // Guest Assignments Retain Their Provider Beside the Canonical Service/Method Identity.
+        if let Some((owner, local)) = operation.split_once('.')
+            && local.starts_with("harmos.")
+            && local.contains('/')
+        {
+            let entry = self.capture_routed(local, owner, &origin)?;
+            return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
+        }
         let qualified = crate::QualifiedId::parse(operation).map_err(|_| Error::InvalidInput {
             field: "encoded operation",
             reason: "routing requires an owner-qualified operation identity",
@@ -197,12 +215,12 @@ impl Manager {
         &self, entry: Arc<Entry>, payload: Vec<u8>, source: Source, parent: Option<Parent<'_>>, submitted: tokio::time::Instant,
         options: EncodedOptions,
     ) -> Result<EncodedInvocation> {
-        let EncodedOptions { expected, retry } = options;
+        let EncodedOptions { expected, retry, policy } = options;
         let origin = source.check()?;
         entry.available_to(&origin)?;
         entry.authorize(&origin)?;
         if expected.is_some_and(|(fingerprint, generation)| {
-            entry.declared().fingerprint.0 != fingerprint || entry.generation.value() != generation
+            entry.generation.value() != generation || entry.declared().fingerprint.0 != fingerprint
         }) {
             return Err(Error::InvalidInput {
                 field: "encoded operation identity",
@@ -226,31 +244,19 @@ impl Manager {
             parent,
             EncodedInput {
                 retry,
+                policy,
                 payload,
                 preparation: None,
-                #[cfg(feature = "plugin-sidecar")]
-                native_capacity: None,
             },
         )
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 impl Manager {
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn capture_host_control(
-        &self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract,
-    ) -> Result<PluginControl> {
-        if contract.operation().visibility != crate::operations::Visibility::Host || scope.observe_contract() != Some(contract) {
-            return Err(Error::InvalidInput {
-                field: "observer control",
-                reason: "control differs from the frozen Host contract",
-            });
-        }
-        self.capture_callback(scope, contract).map(PluginControl)
-    }
-
-    pub fn capture_callback(&self, scope: &crate::plugin::PluginScope, contract: &crate::operations::Contract) -> Result<PluginCallback> {
+    pub fn capture_callback(
+        &self, scope: &crate::guest::host::plugin::PluginScope, contract: &crate::operations::Contract,
+    ) -> Result<PluginCallback> {
         if scope.is_closed() {
             return Err(Error::Closing { domain: "callback scope" });
         }
@@ -269,7 +275,7 @@ impl Manager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 impl PluginCallback {
     pub(super) fn from_entry(operations: Manager, entry: Arc<Entry>, contract: &crate::operations::Contract) -> Result<Self> {
         if entry.declared() != contract.operation() || entry.contract.as_ref() != Some(contract) {
@@ -313,38 +319,24 @@ impl PluginCallback {
         &self, source: Source, encoding_memory_bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
         resident: bool, retry: Option<super::RetryPolicy>,
     ) -> Result<EncodedInvocation> {
-        #[cfg(not(feature = "plugin-sidecar"))]
         let _ = resident;
-        let submitted = executor::now();
+        let submitted = self.operations.clock().now();
         let origin = source.check()?;
         self.entry.available()?;
         self.entry.authorize(&origin)?;
         let timeout = self.entry.declared().policy.timeout;
-        budget(self.entry.id(), 1, timeout, submitted)?;
+        budget(self.operations.clock(), self.entry.id(), 1, timeout, submitted)?;
         let preparation = self.operations.claim_preparation(encoding_memory_bytes)?;
-        #[cfg(feature = "plugin-sidecar")]
-        let native_capacity = self
-            .entry
-            .native
-            .as_ref()
-            .map(|binding| if resident { Ok(super::native::Binding::resident_slot()) } else { binding.reserve() })
-            .transpose()
-            .map_err(|source| Error::OperationFailed {
-                operation: self.entry.id().to_owned(),
-                source: Arc::new(source),
-            })?;
+
         let payload = catch_unwind(AssertUnwindSafe(|| encode(encoding_memory_bytes.get())))
             .map_err(|_| Error::OperationPanicked { operation: self.entry.id().to_owned() })??;
         if payload.capacity() > encoding_memory_bytes.get() {
             return Err(Error::ResourceExhausted { resource: "callback encoding claim" });
         }
-        #[cfg(feature = "plugin-sidecar")]
-        if native_capacity.is_some() && payload.capacity() > harmos_sidecar::Frame::LIMIT {
-            return Err(Error::ResourceExhausted { resource: "native callback frame" });
-        }
+
         source.check()?;
         self.entry.available()?;
-        budget(self.entry.id(), 1, timeout, submitted)?;
+        budget(self.operations.clock(), self.entry.id(), 1, timeout, submitted)?;
         let dispatch = self.entry.wire.ok_or(Error::InvalidInput {
             field: "callback codec",
             reason: "callback target has no original codec binding",
@@ -361,29 +353,19 @@ impl PluginCallback {
             None,
             EncodedInput {
                 retry,
+                policy: None,
                 payload,
                 preparation: Some(preparation),
-                #[cfg(feature = "plugin-sidecar")]
-                native_capacity,
             },
         )
     }
 }
 
-#[cfg(feature = "plugin-sidecar")]
-impl PluginControl {
-    pub(crate) fn submit_with(
-        &self, bytes: std::num::NonZeroUsize, encode: impl FnOnce(usize) -> Result<Vec<u8>>,
-    ) -> Result<EncodedInvocation> {
-        self.0.submit_with_as(Source::Host, bytes, encode, true, None)
-    }
-}
-
-#[cfg(any(feature = "plugin-sidecar", feature = "plugin-guest"))]
+#[cfg(feature = "plugin-guest")]
 impl super::Caller {
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
+        values: Vec<super::CallValue>, policy: Option<super::OperationPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -392,7 +374,11 @@ impl super::Caller {
             Source::Plugin(self.source.clone()),
             None,
             submitted,
-            EncodedOptions { expected: Some(identity), retry },
+            EncodedOptions {
+                expected: Some(identity),
+                retry: None,
+                policy,
+            },
         )
     }
 }
@@ -407,8 +393,8 @@ impl super::Context<'_> {
                 scope: &self.scope,
                 ancestors: self.admission.held(),
             }),
-            executor::now(),
-            EncodedOptions { expected: None, retry },
+            self.operations.clock().now(),
+            EncodedOptions { expected: None, retry, policy: None },
         )
     }
 
@@ -424,10 +410,10 @@ impl super::Context<'_> {
         )
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(crate) fn submit_encoded_at(
         &self, operation: &str, identity: ([u8; 32], u64), payload: Vec<u8>, submitted: tokio::time::Instant,
-        values: Vec<super::CallValue>, retry: Option<super::RetryPolicy>,
+        values: Vec<super::CallValue>, policy: Option<super::OperationPolicy>,
     ) -> Result<EncodedInvocation> {
         let context = self.operations.call_context().with_values(values)?;
         self.operations.with_context(context).submit_encoded_at_as(
@@ -439,7 +425,11 @@ impl super::Context<'_> {
                 ancestors: self.admission.held(),
             }),
             submitted,
-            EncodedOptions { expected: Some(identity), retry },
+            EncodedOptions {
+                expected: Some(identity),
+                retry: None,
+                policy,
+            },
         )
     }
 
@@ -458,8 +448,8 @@ impl super::Context<'_> {
                 scope: &self.scope,
                 ancestors: self.admission.held(),
             }),
-            executor::now(),
-            EncodedOptions { expected: None, retry },
+            self.operations.clock().now(),
+            EncodedOptions { expected: None, retry, policy: None },
         )
     }
 }
@@ -470,9 +460,20 @@ pub(super) fn dispatch_native(
     operations: &Manager, mut submission: Submission, source: Source, parent: Option<Parent<'_>>, input: EncodedInput,
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
-    let timeout = submission.entry.declared().policy.timeout;
-    budget(submission.entry.id(), 1, timeout, submitted)?;
-    let factory = submission.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>();
+    let timeout = input.policy.unwrap_or(submission.entry.declared().policy).timeout;
+    budget(operations.clock(), submission.entry.id(), 1, timeout, submitted)?;
+    if let Some(binding) = submission.entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
+        let prepared = harmos_operations::execution::__private::PreparedNative {
+            instance: binding.prepare(input.payload),
+            grant: None,
+            streams: None,
+        };
+        let mut request = super::binding::Request::from(Vec::new());
+        request.retry = input.retry.or(input.policy.map(|policy| policy.retries));
+        request.policy = input.policy;
+        return dispatch_prepared(operations, submission, source, parent, prepared, request);
+    }
+    let factory = submission.entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>();
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
@@ -480,11 +481,7 @@ pub(super) fn dispatch_native(
     };
     let decoding_bytes = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return factory.decoding_memory(&input.payload);
-        }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
-            return binding.decoding_memory(&input.payload);
+            return factory.grpc_decoding_memory(&input.payload);
         }
         Err(crate::MessageError::borrowed("entry does not own a native codec"))
     }))
@@ -501,13 +498,9 @@ pub(super) fn dispatch_native(
     let resources = operations.resources_for(&submission.entry);
     let prepared = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return factory.prepare_encoded(resources, &input.payload);
+            return factory.prepare_envelope(resources, &input.payload, true, None);
         }
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-        if let Some(binding) = submission.entry.binding.downcast_ref::<super::EncodedBinding>() {
-            return binding.prepare(resources, &input.payload);
-        }
-        Err(harmos_sdk::ServingError::Catalog)
+        Err(harmos_operations::execution::ServingError::Catalog)
     }))
     .map_err(|_| Error::OperationPanicked { operation: name.clone() })?
     .map_err(|source| Error::OperationFailed {
@@ -516,28 +509,29 @@ pub(super) fn dispatch_native(
     })?;
     drop(input.payload);
     let mut request = super::binding::Request::from(Vec::new());
-    request.retry = input.retry;
-    dispatch_prepared(operations, submission, source, parent, prepared, request)
+    request.retry = input.retry.or(input.policy.map(|policy| policy.retries));
+    request.policy = input.policy;
+    let invocation = dispatch_prepared(operations, submission, source, parent, prepared, request)?;
+    Ok(invocation)
 }
 
 pub(super) fn dispatch_prepared(
     operations: &Manager, submission: Submission, source: Source, parent: Option<Parent<'_>>,
-    prepared: harmos_sdk::__private::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
+    prepared: harmos_operations::execution::__private::PreparedNative, mut request: super::binding::Request<Vec<u8>>,
 ) -> Result<EncodedInvocation> {
     let submitted = submission.submitted;
-    let timeout = submission.entry.declared().policy.timeout;
+    let timeout = request.policy.unwrap_or(submission.entry.declared().policy).timeout;
     let streaming = submission.entry.contract.as_ref().is_some_and(|contract| contract.input().is_some() || contract.output().is_some());
-    let harmos_sdk::__private::PreparedNative { instance, grant, key, .. } = prepared;
+    let harmos_operations::execution::__private::PreparedNative { instance, grant, .. } = prepared;
     let instance = std::sync::Mutex::new(Some(instance));
     let binding = super::authored::factory_with::<Encoded, ()>(operations, move |_, ()| {
-        instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_sdk::ServingError::Uninitialized)
+        instance.lock().expect("native preparation lock is healthy").take().ok_or(harmos_operations::execution::ServingError::Uninitialized)
     });
     request.binding = Some(Arc::new(binding));
     request.grant = grant;
-    request.key = key;
     let operation = submission.entry.id().to_owned();
     let target = Arc::downgrade(&submission.entry);
-    budget(&operation, 1, timeout, submitted)?;
+    budget(operations.clock(), &operation, 1, timeout, submitted)?;
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
     let invocation = operations.admit_entry::<Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
@@ -545,22 +539,16 @@ pub(super) fn dispatch_prepared(
     let control = Arc::clone(&invocation.control);
     let invocation = invocation.unguarded();
     let outcome_control = Arc::clone(&control);
+    let clock = operations.clock().clone();
     let outcome = Box::pin(async move {
         let response = invocation.await?;
         available(&target, &source)?;
         if !streaming {
-            budget(&operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
+            budget(&clock, &operation, outcome_control.status().attempt() + 1, timeout, submitted)?;
         }
         Ok(response.try_unwrap().unwrap_or_else(|response| response.to_vec()))
     });
-    Ok(EncodedInvocation {
-        id,
-        generation,
-        outcome,
-        control,
-        #[cfg(feature = "plugin-sidecar")]
-        observer_stop: None,
-    })
+    Ok(EncodedInvocation { id, generation, outcome, control })
 }
 
 pub(super) fn available(target: &Weak<Entry>, source: &Source) -> Result<()> {
@@ -568,8 +556,10 @@ pub(super) fn available(target: &Weak<Entry>, source: &Source) -> Result<()> {
     target.upgrade().ok_or(Error::Closing { domain: "operation" })?.available_to(&origin)
 }
 
-pub(super) fn budget(operation: &str, attempt: usize, timeout: Duration, submitted: tokio::time::Instant) -> Result<()> {
-    if executor::now().saturating_duration_since(submitted) >= timeout {
+pub(super) fn budget(
+    clock: &crate::clock::Clock, operation: &str, attempt: usize, timeout: Duration, submitted: tokio::time::Instant,
+) -> Result<()> {
+    if clock.now().saturating_duration_since(submitted) >= timeout {
         return Err(Refusal::TimedOut {
             operation: operation.into(),
             attempt,
@@ -590,12 +580,6 @@ mod tests {
     use super::*;
     use crate::operations::RegistrationExt;
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
-
     struct Model;
     impl crate::Lifecycle for Model {
         type Config = ();
@@ -608,39 +592,75 @@ mod tests {
     }
 
     impl crate::Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = ();
-        type Streams = ();
     }
 
-    #[crate::operation(harmos_path = crate, resources = [], id = "fenced.probe", response = u64,
-        policy = crate::OperationPolicy {
+    #[derive(crate::Message, Debug, Default)]
+    #[harmos_path(crate)]
+    #[derive(crate::Request)]
+    #[request(response = u64)]
+    #[derive(Clone)]
+    struct Probe {
+        value: u64,
+    }
+
+    static PROBE_DESCRIPTION: crate::operations::WireDeclaration = crate::operations::WireDeclaration::request::<Probe>(
+        "fenced.probe",
+        crate::OperationPolicy {
             timeout: Duration::from_secs(1),
             attempt_timeout: Duration::from_secs(1),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: crate::RetryPolicy::Never,
         },
-    )]
-    struct Probe {
-        value: u64,
+    );
+
+    const PROBE_OPERATION: crate::operations::OperationSpec<Probe> = crate::operations::OperationSpec::<Probe>::new(&PROBE_DESCRIPTION);
+
+    async fn probe_handler(request: Probe, _: crate::operations::FunctionContext<Probe>) -> std::io::Result<crate::Response<u64>> {
+        Ok(request.value.into())
     }
 
-    impl crate::Operation for Probe {
-        type Error = std::io::Error;
+    fn probe_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
+        crate::operations::OperationFactory::function(PROBE_OPERATION, const { &[] }, probe_handler, |_| {
+            crate::operations::FailureKind::Permanent
+        })
+    }
 
-        async fn run(self, _: crate::Context<'_, Self>) -> std::io::Result<crate::Response<u64>> {
-            Ok(self.value.into())
-        }
+    #[cfg(feature = "grpc")]
+    #[tokio::test]
+    async fn protected_external_calls_are_refused() {
+        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+            setup.settings().operation_settings(crate::operations::Settings {
+                preparation_bytes: std::num::NonZeroUsize::new(4096),
+                ..Default::default()
+            });
+        })
+        .await
+        .unwrap();
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
+
+        let source = Source::Host.external().unwrap();
+        assert!(matches!(
+            runtime.operations.admit::<Probe, ()>((Probe { value: 7 }.into(), ()), None, &[], &source, None),
+            Err(Error::OperationUnauthorized { .. })
+        ));
+        assert!(matches!(
+            runtime.operations.submit_encoded_as("host.fenced.probe", Vec::new(), source, None),
+            Err(Error::OperationUnauthorized { .. })
+        ));
+        assert_eq!(*runtime.operation(Probe { value: 7 }).await.unwrap(), 7);
+        runtime.shutdown().await.unwrap();
     }
 
     #[tokio::test]
     async fn assigned_identity_fences_before_decoding() {
         let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
-        let batch = harmos_sdk::__private::RegistrationBatch::new().operation::<Probe>();
-        runtime.register_batch(batch.clone().lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
-        let entry = runtime.operations.entry(Probe::ID).unwrap();
+        let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
+        runtime.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
+        let entry = runtime.operations.entry(PROBE_OPERATION.entry().id).unwrap();
         let fingerprint = entry.declared().fingerprint.0;
         let generation = entry.generation.value();
         let mut wrong = fingerprint;
@@ -656,6 +676,7 @@ mod tests {
                 EncodedOptions {
                     expected: Some((fingerprint, generation)),
                     retry: None,
+                    policy: None,
                 },
             )
         };
@@ -664,7 +685,7 @@ mod tests {
 
         let id = crate::QualifiedId::parse("host.fenced.probe").unwrap();
         runtime.unregister(&id).await.unwrap();
-        runtime.register_batch(batch.lane(<Lanes as crate::operations::Lane>::default_lane())).await.unwrap();
+        runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
         runtime.shutdown().await.unwrap();
     }

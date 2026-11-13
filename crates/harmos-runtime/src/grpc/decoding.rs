@@ -26,7 +26,7 @@ use tonic::{Status, codec::DecodeBuf};
 // Local Imports
 use super::codec::Wire;
 use crate::{MemorySize, operations::StreamItem};
-use harmos_sdk::grpc::DecodeInput;
+use harmos_operations::execution::grpc::DecodeInput;
 
 /* === Constants === */
 

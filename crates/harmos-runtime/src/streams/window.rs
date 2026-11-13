@@ -51,7 +51,6 @@ pub(crate) struct Window {
 }
 
 struct Ring {
-    batches: Option<super::batches::State>,
     rows: VecDeque<(u64, u64, Position, Row)>,
     capacity: usize,
     next: u64,
@@ -64,7 +63,7 @@ struct Ring {
     standing: bool,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub(super) struct ListenerCandidate {
     pub(super) cursor: u64,
     pub(super) sequence: u64,
@@ -112,14 +111,8 @@ pub enum Item<S> {
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum BeneathWindow {
-    #[error("no series adapter serves beneath the retained window")]
-    Unserved,
-
     #[error("the served history begins after position {}", floor.0)]
     Floor { floor: Position },
-
-    #[error("the series adapter could not read its own history: {0}")]
-    Unreadable(String),
 }
 
 enum Turn {
@@ -139,7 +132,6 @@ impl Window {
         Self {
             visibility: Arc::new(RwLock::new(())),
             ring: RwLock::new(Ring {
-                batches: None,
                 rows: VecDeque::with_capacity(capacity),
                 capacity,
                 next: 0,
@@ -159,22 +151,6 @@ impl Window {
     pub(super) fn visible_with(mut self, visibility: Arc<RwLock<()>>) -> Self {
         self.visibility = visibility;
         self
-    }
-
-    pub(crate) fn batching(self, definition: Option<super::BatchDefinition>) -> Self {
-        self.ring.write().expect("ring is healthy").batches = definition.map(super::batches::State::new);
-        self
-    }
-
-    pub(crate) fn batches<S>(&self, held: Holding) -> super::Batches<S> {
-        let ring = self.ring.read().expect("ring is healthy");
-        ring.batches.as_ref().expect("stream declared batching").feed.following(held)
-    }
-
-    pub(crate) fn close_batches(&self) {
-        if let Some(batches) = &mut self.ring.write().expect("ring is healthy").batches {
-            batches.close();
-        }
     }
 
     pub(crate) fn publish(&self, at: Position, row: Row) {
@@ -205,9 +181,6 @@ impl Window {
             let cursor = previous + advance;
             if missed > 0 {
                 ring.missed = cursor - 1;
-                if let Some(batches) = &mut ring.batches {
-                    batches.miss(missed);
-                }
             }
             evicted = if ring.rows.len() == ring.capacity {
                 let (lost, _, stamp, row) = ring.rows.pop_front().expect("full ring");
@@ -218,9 +191,7 @@ impl Window {
             } else {
                 None
             };
-            if let Some(batches) = &mut ring.batches {
-                batches.publish(row.as_ref());
-            }
+
             if let Some(publication) = row.downcast_ref::<super::ManagedPublication>() {
                 publication.assign_sequence(next);
             }
@@ -282,48 +253,11 @@ impl Window {
     }
 
     // Rows the window still takes without evicting one past `taken`.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn room(&self, taken: u64) -> usize {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let read = ring.rows.partition_point(|(cursor, ..)| *cursor <= taken);
         ring.capacity - (ring.rows.len() - read)
-    }
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn miss(&self, count: u64) {
-        let _visibility = self.visibility.read().expect("stream visibility poisoned");
-        if count == 0 {
-            return;
-        }
-
-        let published;
-        {
-            let mut ring = self.ring.write().expect("the ring is never poisoned");
-            let next = ring.next.checked_add(count).expect("native stream cursor exhausted");
-            let previous = self
-                .sequence
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |cursor| cursor.checked_add(count))
-                .expect("native stream cursor exhausted");
-            let cursor = previous + count;
-            if let Some(batches) = &mut ring.batches {
-                batches.miss(count);
-            }
-            ring.missed = cursor;
-            ring.next = next;
-            ring.last = cursor;
-            published = ring.next;
-        }
-        drop(_visibility);
-        self.doorbell.send_replace(published);
-        self.pump.send_modify(|()| {});
-    }
-
-    pub(crate) fn stands_on(&self, floor: Position) {
-        let _visibility = self.visibility.read().expect("stream visibility poisoned");
-        let mut ring = self.ring.write().expect("the ring is never poisoned");
-
-        ring.floor = floor;
-        ring.standing = true;
     }
 
     pub(crate) fn snapshot(&self, start: Bound<Position>, end: Bound<Position>, as_of: Option<Position>) -> Retained {
@@ -380,7 +314,7 @@ impl Window {
         (rows, ring.evicted > resume || ring.missed > resume)
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn listener_candidates(&self, after: u64, through: u64, source: usize, limit: usize, selected: &mut Vec<ListenerCandidate>) {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let mut lower = 0;
@@ -412,7 +346,7 @@ impl Window {
         }
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn listener_row(&self, cursor: u64) -> Option<Row> {
         let ring = self.ring.read().expect("the ring is never poisoned");
         let mut lower = 0;
@@ -428,7 +362,7 @@ impl Window {
         ring.rows.get(lower).filter(|row| row.0 == cursor).map(|row| Arc::clone(&row.3))
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn logical_frontier(&self) -> u64 {
         self.ring.read().expect("the ring is never poisoned").next
     }

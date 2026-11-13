@@ -40,12 +40,12 @@ use crate::storage::MutationId;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.object_admissions.write_objects_once", level = "debug", skip_all)]
     pub async fn write_objects_once(&self, mutation: &MutationId, objects: Vec<ObjectValue>) -> Result<Vec<ObjectReceipt>> {
         let count = NonZeroUsize::new(objects.len()).ok_or_else(|| invalid("object batch must not be empty"))?;
         let mut hash = Sha256::new();
-        part(&mut hash, b"storage.write_objects:v1");
+        part(&mut hash, b"storage.append_object_revisions:v1");
         hash.update((objects.len() as u64).to_le_bytes());
         for object in &objects {
             part(&mut hash, object.schema.id.as_str().as_bytes());

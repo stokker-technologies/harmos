@@ -29,7 +29,6 @@ pub(crate) use encoding::recovery_encoded_bound;
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::io::{self, Write};
-use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
@@ -39,7 +38,6 @@ use tokio::sync::watch;
 // Local Imports
 use super::admissions::Mutation;
 use super::capacity::{Attempt, Refusal};
-use super::config::{IO_TIMEOUT, MUTATION_RETENTION};
 use super::queue::PendingQueue;
 use super::receipts::{MutationValue, ReceiptState};
 use super::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
@@ -77,9 +75,8 @@ pub struct StorageMetrics {
     pub failure: Option<Arc<Error>>,
 }
 
-pub struct StorageManager<C = ()> {
+pub struct StorageManager {
     pub(super) inner: Arc<Inner>,
-    catalog: PhantomData<fn() -> C>,
 }
 
 pub(super) struct Inner {
@@ -93,10 +90,10 @@ pub(super) struct Inner {
     pub(super) query_pending: Arc<tokio::sync::Semaphore>,
     pub(super) settings: StorageSettings,
     pub(super) primary: Arc<dyn StorageBackend>,
+    pub(super) content: Mutex<Option<Arc<dyn crate::ContentSource>>>,
     pub(super) recovery: Arc<dyn StateBackend>,
     pub(super) has_objects: bool,
-    pub(super) object_definition: fn(&SchemaKey) -> harmos_domain::Result<harmos_domain::model::storage::catalog::ObjectDefinition>,
-    pub(super) object_retention: fn(&SchemaKey) -> harmos_domain::Result<super::ObjectRetention>,
+    pub(super) catalog: super::ObjectCatalog,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
     pub(super) lifecycle: tokio::sync::RwLock<Lifecycle>,
@@ -128,6 +125,7 @@ pub(super) struct State {
     pub(super) ready: bool,
     service_owner: Option<Arc<()>>,
     pub(super) next: u64,
+    pub(super) persistence: crate::PersistenceWork,
     pub(super) queue: PendingQueue,
 
     pub(super) data_attempted: u64,
@@ -146,6 +144,8 @@ pub(super) struct State {
     pub(super) followers: BTreeMap<u64, super::follow::Following>,
     pub(super) files: BTreeMap<u64, super::staging::FileState>,
     pub(super) receipts: super::receipts::Receipts,
+    pub(super) persisting_receipts: bool,
+    pub(super) definition_mutations: BTreeMap<super::MutationId, super::definitions::DefinitionPending>,
     pub(super) deletions: BTreeMap<super::MutationId, super::deletion::Deletion>,
     pub(super) file_cursor: u64,
     pub(super) finishing: Option<u64>,
@@ -163,7 +163,11 @@ pub(super) struct Pending {
     pub(super) journal: Option<harmos_domain::state::Position>,
     pub(super) index: u64,
     pub(super) bytes: usize,
+    pub(super) encoded_bound: usize,
     pub(super) operation: Operation,
+    accepted_at: std::time::Instant,
+    pub(super) ready_at: std::sync::OnceLock<std::time::Instant>,
+    selected: std::sync::atomic::AtomicBool,
 }
 
 struct Counter(usize);
@@ -181,11 +185,9 @@ struct WriteWaiter {
 /* === Enums === */
 
 enum Admitted {
-    Replayed(u64),
+    Replayed(u64, Option<crate::receipts::Completion>),
     Reserved(u64, u64, u64),
 }
-
-pub enum ErasedCatalog {}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Domain {
@@ -194,7 +196,9 @@ pub(super) enum Domain {
 }
 
 pub(super) enum Operation {
+    Conditional(Arc<super::ObjectExchange>),
     Schema(StorageBatch<StorageSchema>),
+    SetSchema(Arc<crate::SchemaExchange>),
     File(StorageBatch<super::FileReference>),
     Records(StorageBatch<StoredRecord>),
     ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry>, bytes: usize },
@@ -217,7 +221,8 @@ pub trait WorkerOwner: Send + Sync {
 
 impl Pending {
     pub(super) fn new(
-        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, operation: Operation,
+        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, encoded_bound: usize,
+        operation: Operation,
     ) -> Self {
         Self {
             context: crate::execution::Context::current(),
@@ -225,48 +230,89 @@ impl Pending {
             journal,
             index,
             bytes,
+            encoded_bound,
             operation,
+            accepted_at: std::time::Instant::now(),
+            ready_at: std::sync::OnceLock::new(),
+            selected: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+    pub(super) fn measure_selection(&self, work: &mut crate::PersistenceWork, now: std::time::Instant) {
+        if self.operation.domain() != Domain::Data || self.selected.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let ready = *self.ready_at.get_or_init(|| now);
+        work.cadence_wait.record(ready.saturating_duration_since(self.accepted_at));
+        let ordered = now.saturating_duration_since(ready);
+        work.ordered_wait.record(ordered);
+        if self.bytes >= 1024 * 1024 {
+            work.ordered_wait_large.record(ordered);
+        } else {
+            work.ordered_wait_small.record(ordered);
         }
     }
 }
 
-impl<C> Clone for StorageManager<C> {
+impl Clone for StorageManager {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            catalog: PhantomData,
-        }
+        Self { inner: self.inner.clone() }
     }
 }
 
-impl<C> StorageManager<C> {
-    pub fn erased(&self) -> StorageManager<ErasedCatalog> {
-        StorageManager {
-            inner: self.inner.clone(),
-            catalog: PhantomData,
+impl StorageManager {
+    /// Bind An Idle Storage Engine Before The Host Starts Its Worker.
+    pub fn adopt_clock(&self, clock: &Execution) -> Result<()> {
+        if self.inner.execution.same_source(clock) {
+            return Ok(());
         }
+        let mut state = self.inner.state.lock().unwrap();
+        if state.status.running || state.ready || !state.receipts.is_empty() {
+            return Err(Error::AlreadyRegistered {
+                domain: "storage clock",
+                name: "active engine".to_owned(),
+            });
+        }
+        self.inner.execution.adopt(clock);
+        state.receipts = super::receipts::Receipts::new(
+            self.inner.settings.policy.mutation_retention,
+            self.inner.settings.request.max_mutation_receipts,
+            self.inner.execution.clone(),
+        )?;
+        Ok(())
+    }
+
+    pub fn clock(&self) -> &Execution {
+        &self.inner.execution
     }
 }
 
-impl<C: super::ObjectCatalog> StorageManager<C> {
+impl StorageManager {
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
-        Self::with_execution(backends, settings, Execution::default())
+        Self::with_catalog(super::ObjectCatalog::new(), backends, settings)
     }
 
-    #[tracing::instrument(name = "storage.manager.new", level = "debug", skip_all)]
+    pub fn with_catalog(catalog: super::ObjectCatalog, backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
+        Self::with_catalog_execution(catalog, backends, settings, Execution::default())
+    }
     pub fn with_execution(backends: StorageBackends, settings: StorageSettings, execution: Execution) -> Result<Self> {
-        C::validate()?;
+        Self::with_catalog_execution(super::ObjectCatalog::new(), backends, settings, execution)
+    }
+    #[tracing::instrument(name = "storage.manager.new", level = "debug", skip_all)]
+    pub fn with_catalog_execution(
+        catalog: super::ObjectCatalog, backends: StorageBackends, settings: StorageSettings, execution: Execution,
+    ) -> Result<Self> {
+        catalog.validate()?;
         settings.validate()?;
         let StorageBackends { primary, state: state_backend } = backends;
-        primary.history().check(state_backend.history())?;
-        let history = primary.history().clone();
+        primary.get_history().check(state_backend.get_history())?;
+        let history = primary.get_history().clone();
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
-        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution)?;
+        let receipts =
+            super::receipts::Receipts::new(settings.policy.mutation_retention, settings.request.max_mutation_receipts, execution.clone())?;
         Ok(Self {
-            catalog: PhantomData,
             inner: Arc::new(Inner {
-                execution,
+                execution: execution.clone(),
                 measurement_admission: tokio::sync::Mutex::new(()),
                 control_admission: tokio::sync::Mutex::new(()),
                 measurement_waiting: std::sync::atomic::AtomicUsize::new(0),
@@ -276,12 +322,12 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                 query_pending: Arc::new(tokio::sync::Semaphore::new(settings.request.max_pending_queries.get())),
                 settings,
                 primary,
+                content: Mutex::new(None),
                 recovery: state_backend,
-                has_objects: C::definition_count() != 0,
-                object_definition: harmos_domain::model::storage::catalog::definition::<C>,
-                object_retention: harmos_domain::model::storage::catalog::retention::<C>,
+                has_objects: catalog.definition_count() != 0,
+                catalog,
                 state: Mutex::new(State {
-                    execution,
+                    execution: execution.clone(),
                     prefer_measurement: false,
                     journal_required_data: position.clone(),
                     reserved: 0,
@@ -304,6 +350,7 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     ready: false,
                     service_owner: None,
                     next: 0,
+                    persistence: crate::PersistenceWork::default(),
                     queue: PendingQueue::default(),
 
                     data_attempted: 0,
@@ -322,7 +369,9 @@ impl<C: super::ObjectCatalog> StorageManager<C> {
                     followers: BTreeMap::new(),
                     files: BTreeMap::new(),
                     deletions: BTreeMap::new(),
+                    definition_mutations: BTreeMap::new(),
                     receipts,
+                    persisting_receipts: false,
                     file_cursor: 0,
                     finishing: None,
                 }),

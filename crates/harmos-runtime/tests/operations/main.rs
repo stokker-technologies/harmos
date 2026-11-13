@@ -28,7 +28,7 @@ mod clock;
 mod execution;
 #[path = "../operations/host.rs"]
 mod host;
-#[path = "../operations/lanes.rs"]
+#[path = "../operations/lane_validation_and_capacity_control_admission.rs"]
 mod lanes;
 #[path = "../operations/middleware.rs"]
 mod middleware;
@@ -36,6 +36,8 @@ mod middleware;
 mod outcomes;
 #[path = "../operations/policy.rs"]
 mod policy;
+mod retries;
+mod virtual_clock;
 use crate::probe;
 #[path = "../operations/resources.rs"]
 mod resources;
@@ -45,33 +47,3 @@ mod scoped;
 mod shutdown;
 #[path = "../operations/wire/mod.rs"]
 mod wire;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

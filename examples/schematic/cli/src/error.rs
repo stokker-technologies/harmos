@@ -35,7 +35,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Incompatible(#[from] harmos::runtime::Incompatible),
+    Incompatible(#[from] harmos_runtime::runtime::Incompatible),
 
     #[error(transparent)]
     Document(#[from] DocumentError),
@@ -47,13 +47,13 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
-    Guest(#[from] harmos::guest::Error),
+    Guest(#[from] harmos_runtime::guest::Error),
 
     #[error(transparent)]
-    Edit(#[from] harmos::Error<SchematicError>),
+    Edit(#[from] harmos_runtime::Error<SchematicError>),
 
     #[error(transparent)]
-    State(#[from] harmos::Error),
+    State(#[from] harmos_runtime::Error),
 }
 
 /* === Traits === */

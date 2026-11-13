@@ -25,9 +25,9 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
 use super::{Codec, Event, Wire, server};
-use crate::operations::{Direction, OperationDeclaration, StreamItem};
+use crate::operations::{Direction, RequestShape, StreamItem};
 use crate::{MemorySize, MessageError};
-use harmos_sdk::grpc::DecodeInput;
+use harmos_operations::execution::grpc::DecodeInput;
 
 /* === Constants === */
 
@@ -35,10 +35,8 @@ use harmos_sdk::grpc::DecodeInput;
 
 /* === Type Aliases === */
 
-type Output<O> = Event<
-    StreamItem<<<O as OperationDeclaration>::Output as Direction>::Item>,
-    crate::operations::Response<<O as OperationDeclaration>::Response>,
->;
+type Output<O> =
+    Event<StreamItem<<<O as RequestShape>::Output as Direction>::Item>, crate::operations::Response<<O as RequestShape>::Response>>;
 type Events<O> = Pin<Box<dyn Stream<Item = Result<Output<O>, Status>> + Send>>;
 type Forward = Pin<Box<dyn Future<Output = Result<bool, Status>> + Send>>;
 
@@ -127,7 +125,7 @@ where
     }
 }
 
-impl<O: OperationDeclaration> tonic::server::StreamingService<StreamItem<ControlEnvelope<O::Request, <O::Input as Direction>::Item>>>
+impl<O: RequestShape> tonic::server::StreamingService<StreamItem<ControlEnvelope<O::Request, <O::Input as Direction>::Item>>>
     for Endpoint<O>
 {
     type Response = Output<O>;
@@ -141,7 +139,9 @@ impl<O: OperationDeclaration> tonic::server::StreamingService<StreamItem<Control
         let settings = self.settings;
         Box::pin(async move {
             let mut incoming = request.into_inner();
-            let first = tokio::time::timeout(settings.opening_timeout, incoming.next())
+            let first = authority
+                .clock()
+                .timeout(settings.opening_timeout, incoming.next())
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))?
                 .transpose()?
@@ -162,6 +162,7 @@ impl<O: OperationDeclaration> tonic::server::StreamingService<StreamItem<Control
                 (true, true) => authority.submit_charged::<O, _>(request, (receiving, sending)),
             }
             .map_err(server::status)?;
+            let operation = instance.operation().to_owned();
             let control = instance.control.clone();
             let forward: Forward = Box::pin(async move {
                 let mut input = Some(input);
@@ -192,7 +193,8 @@ impl<O: OperationDeclaration> tonic::server::StreamingService<StreamItem<Control
                 Ok(false)
             });
             let events: Events<O> = Box::pin(
-                super::stream(instance, items).map(|answer| answer.map_err(|error| server::in_operation(server::status(error), O::ID))),
+                super::stream(instance, items)
+                    .map(move |answer| answer.map_err(|error| server::in_operation(server::status(error), &operation))),
             );
             let state = (events, Some(forward), control);
             let output = futures_util::stream::unfold(Some(state), |state| async move {
@@ -221,14 +223,14 @@ impl<O: OperationDeclaration> tonic::server::StreamingService<StreamItem<Control
 
 pub(super) fn is_managed(authority: &server::Authority, path: &str) -> bool {
     match authority {
-        server::Authority::Binding(binding) => binding.contract().grpc().is_some_and(|grpc| path == grpc.run_path()),
+        server::Authority::Binding(binding) => binding.contract().grpc().is_some_and(|grpc| grpc.managed && path == grpc.path()),
         _ => false,
     }
 }
 
 pub(super) fn serve<O, W>(authority: server::Authority, settings: server::Settings, request: http::Request<Body>) -> server::HttpFuture
 where
-    O: OperationDeclaration,
+    O: RequestShape,
     W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
 {
     Box::pin(async move {

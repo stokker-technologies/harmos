@@ -15,20 +15,18 @@
 
 // Standard Library Imports
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, RwLock, Weak};
 // Third Party Imports
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 use tokio::sync::watch;
 // Local Imports
 use super::demand::Holding;
 use super::window::{Row, Window};
-use crate::streams::{BatchDefinition, Definition, StreamCatalog, StreamRow};
-use crate::{Application, state::Position, storage::Cursor};
+use crate::streams::Definition;
+use crate::{state::Position, storage::Cursor};
 
 /* === Constants === */
 
@@ -68,7 +66,7 @@ pub(crate) struct Wired {
     pub(super) validation: Option<Arc<crate::schema::Validator>>,
     pub(super) publisher: Mutex<Weak<Mutex<bool>>>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) staged: Option<super::registration::Staged>,
 }
 
@@ -82,7 +80,7 @@ pub(crate) struct Table {
     pub(super) publications: Arc<super::publication::Pool>,
     pub(super) ingest: Arc<super::ingest::Ingest>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -102,52 +100,7 @@ pub(crate) enum Refused {
 
 /* === Traits === */
 
-pub trait Stream<A: Application>: crate::schema::Described + Clone + Send + Sync + Serialize + DeserializeOwned + 'static {
-    const ID: &'static str;
-
-    const WINDOW: usize;
-
-    fn batch_definition() -> Option<BatchDefinition> {
-        None
-    }
-
-    fn metadata() -> crate::Metadata {
-        crate::Metadata::new(crate::Identifier::declared(Self::ID, "stream"), Self::ID, None)
-    }
-
-    fn row_metadata() -> Vec<crate::StreamField> {
-        Vec::new()
-    }
-
-    fn definition() -> Definition {
-        Definition::native::<Self>(Self::ID, Self::WINDOW)
-            .batching(Self::batch_definition())
-            .presentation(Self::metadata(), Self::row_metadata())
-    }
-}
-
 /* === Implementations === */
-
-impl<A, S> Stream<A> for S
-where
-    A: Application,
-    S: StreamRow,
-    A::Streams: StreamCatalog<S>,
-{
-    const ID: &'static str = S::ID;
-    const WINDOW: usize = S::WINDOW;
-    fn metadata() -> crate::Metadata {
-        S::metadata()
-    }
-
-    fn row_metadata() -> Vec<crate::StreamField> {
-        S::row_metadata()
-    }
-
-    fn batch_definition() -> Option<BatchDefinition> {
-        S::batch_definition()
-    }
-}
 
 impl Contract {
     pub(super) fn of(definition: &Definition) -> Self {
@@ -174,7 +127,7 @@ impl Table {
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
             ingest: Arc::new(super::ingest::Ingest::new()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             listeners: Mutex::new(BTreeMap::new()),
         };
 
@@ -197,16 +150,14 @@ impl Table {
         }
 
         let window = Arc::new(
-            Window::wired(definition.window(), floor, Arc::clone(&self.sequence), self.pump.clone())
-                .visible_with(self.visibility.clone())
-                .batching(definition.batch()),
+            Window::wired(definition.window(), floor, Arc::clone(&self.sequence), self.pump.clone()).visible_with(self.visibility.clone()),
         );
         let wired = Arc::new(Wired {
             validation: None,
             definition,
             window,
             publisher: Mutex::new(Weak::new()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             staged: None,
         });
         windows.insert(
@@ -251,13 +202,13 @@ impl Table {
         for revisions in windows.values_mut() {
             revisions.wires.retain(|revision, wired| {
                 let pending = {
-                    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-                    {
-                        wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed())
-                    }
-                    #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
+                    #[cfg(not(feature = "plugin-guest"))]
                     {
                         false
+                    }
+                    #[cfg(feature = "plugin-guest")]
+                    {
+                        wired.staged.as_ref().is_some_and(|staged| !staged.scope.has_committed())
                     }
                 };
                 revisions.current == Some(*revision) || pending || wired.window.latest_locked() > taken
@@ -288,6 +239,7 @@ impl Table {
         let _visibility = self.visibility.read().expect("stream visibility poisoned");
         let mut windows = self.windows.write().expect("stream registry poisoned");
         self.retire(&mut windows);
+        self.ingest.drained(cursor);
     }
 
     pub(crate) fn delivery(&self) -> watch::Receiver<()> {
@@ -336,7 +288,7 @@ impl Table {
         Cursor(self.sequence.load(std::sync::atomic::Ordering::Acquire))
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) fn can_advance(&self, count: u64) -> bool {
         self.sequence.load(std::sync::atomic::Ordering::Relaxed).checked_add(count).is_some()
     }
@@ -351,7 +303,7 @@ impl Table {
 
 impl Wired {
     fn admitted(self: &Arc<Self>) -> Option<Arc<Self>> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some(staged) = &self.staged
             && !staged.scope.has_committed()
         {
@@ -366,50 +318,3 @@ impl Wired {
 /* === Private Functions === */
 
 /* === Tests === */
-
-#[cfg(all(test, any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn retired_windows_release_after_feeds_and_readers_release_them() {
-        let table = Table::resuming([], Position::ORIGIN, Cursor::ORIGIN).unwrap();
-        let feed = table.ingest.engage(0);
-        let mut weak = Vec::new();
-        let mut readers = Vec::new();
-        for index in 1..=64 {
-            let definition = Definition::native::<u64>("samples", index);
-            let revision = definition.version();
-            let window = Arc::new(
-                Window::wired(4, Position::ORIGIN, table.sequence.clone(), table.pump.clone()).visible_with(table.visibility.clone()),
-            );
-            window.publish(Position::ORIGIN, Arc::new(index as u64));
-            weak.push(Arc::downgrade(&window));
-            if index == 1 {
-                readers.push(window.clone());
-            }
-            let wired = Arc::new(Wired {
-                definition: definition.clone(),
-                window,
-                validation: None,
-                publisher: Mutex::new(Weak::new()),
-                staged: None,
-            });
-            {
-                let mut windows = table.windows.write().unwrap();
-                let revisions = windows.entry("samples".into()).or_default();
-                revisions.current = Some(revision);
-                revisions.definitions.insert(revision, Contract::of(&definition));
-                revisions.wires.insert(revision, wired);
-            }
-            table.drained(u64::MAX);
-        }
-        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 64);
-        feed.took(64);
-        table.drained(64);
-        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 2);
-        readers.clear();
-        assert_eq!(weak.iter().filter(|window| window.strong_count() > 0).count(), 1);
-        assert_eq!(table.declared()[0].definition.version(), Definition::native::<u64>("samples", 64).version());
-    }
-}

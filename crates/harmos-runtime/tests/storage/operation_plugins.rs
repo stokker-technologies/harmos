@@ -9,29 +9,30 @@
 
 /* === Modules === */
 
-/* === Re-Exports === */
+#[path = "generated_guest_hash.rs"]
+mod generated_guest_hash;
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, Lanes, config};
-use harmos_domain::inventory::contracts::Required;
-use harmos_domain::plugin::Grant;
-use harmos_operations::storage::{Query, WriteRecords};
+use super::{Fixture, config};
+use harmos_operations::execution::operations::ProtobufHost;
+use harmos_operations::inventory::contracts::Required;
+use harmos_operations::plugin::Grant;
+use harmos_operations::storage::context::{AppendRecords, ListRows};
 use harmos_runtime::Aggregate;
 use harmos_runtime::Message;
-use harmos_runtime::operations::{OperationDeclaration, OperationManager, WireDeclaration};
-use harmos_runtime::plugin::{
+use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginCaller, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
+use harmos_runtime::operations::{OperationManager, ProtobufOperation};
 use harmos_runtime::storage::SchemaKey;
 use harmos_runtime::storage::query::transform::{
     Transform,
@@ -39,32 +40,23 @@ use harmos_runtime::storage::query::transform::{
 };
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use harmos_runtime::{Error, Identifier, Result};
-use harmos_storage::writes::WriteReceipt;
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<(), (), Option<PluginEndpoint>>;
+type Backends = PluginBackend<(), Option<PluginEndpoint>>;
 
 /* === Structs === */
 
 struct Host {
-    operations: OperationManager<Lanes>,
+    operations: OperationManager,
     callers: BTreeMap<String, PluginCaller>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
 impl PluginLifecycle for Host {
     type Guest = ();
-    type Sidecar = ();
+
     type Embedded = Option<PluginEndpoint>;
 
     fn preflight(&mut self, candidate: &PluginDefinitions) -> Result<()> {
@@ -98,16 +90,11 @@ impl PluginLifecycle for Host {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
-fn required<O>(grants: Vec<Grant>) -> Required
-where
-    O: OperationDeclaration,
-{
+fn required<O: ProtobufOperation>(grants: Vec<Grant>) -> Required {
     Required {
-        contract: WireDeclaration::of::<O>().contract().unwrap(),
+        contract: harmos_operations::execution::operations::OperationFactory::protobuf::<O>().unwrap().contract().unwrap(),
         grants,
     }
 }
@@ -126,9 +113,9 @@ fn plugin(id: &str, required: Vec<Required>) -> PluginDefinition {
     }
 }
 
-fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_operations::storage::Query {
-    harmos_operations::storage::Query {
-        at: fixture.storage.cursor_saved(),
+fn query(fixture: &Fixture, schema: SchemaKey) -> harmos_runtime::storage::Query {
+    harmos_runtime::storage::Query {
+        at: fixture.storage.get_saved_position(),
         source: Source::Records(RecordSelection {
             schema,
             scope: None,
@@ -171,7 +158,7 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
     for (index, value) in values.iter().enumerate() {
         let payload = value.encode();
         let item = Identifier::new(format!("value{index}")).unwrap();
-        fixture.storage.write_records(vec![super::super::record(&schema, &item, &payload)]).await.unwrap();
+        fixture.storage.append_records(vec![super::super::record(&schema, &item, &payload)]).await.unwrap();
     }
     fixture.storage.flush().await.unwrap();
 }
@@ -179,13 +166,15 @@ async fn seed(fixture: &Fixture, values: &[u64]) {
 #[tokio::test]
 async fn write_grants_enforced() {
     let fixture = Fixture::new(config()).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut host = Host {
         operations: fixture.runtime.operations.clone(),
         callers: BTreeMap::new(),
     };
     let definitions = PluginDefinitions::new(
-        [plugin("writer", vec![required::<WriteRecords>(vec![Grant::of(WriteRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
+        [plugin("writer", vec![required::<AppendRecords>(vec![Grant::of(AppendRecords::ID, "bench")])]), plugin("bystander", Vec::new())],
         [],
     )
     .unwrap();
@@ -196,44 +185,28 @@ async fn write_grants_enforced() {
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
     super::writes::seed(&fixture).await;
-    let mut exchange = writer
-        .exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecords { scope: None },
-            super::writes::settings(),
-            super::writes::settings(),
-        )
-        .unwrap();
-    exchange.send(super::writes::batch(1, "bench")).await.unwrap();
-    let cursor = loop {
-        let receipt = exchange.next().await.unwrap().unwrap();
-        if let WriteReceipt::Durable(receipt) = &*receipt {
-            break Arc::new(receipt.cursor.clone());
-        }
+    let mutation = harmos_storage::MutationId {
+        window: fixture.storage.mutation_window().unwrap().id,
+        key: Identifier::new("authorized-records").unwrap(),
     };
-    // A Second Destination On The Same Invocation Needs Its Own Grant.
-    exchange.send(super::writes::batch(2, "other")).await.unwrap();
-    exchange.finish_input();
-    while exchange.next().await.unwrap().is_some() {}
-    let failure = exchange.join().await.unwrap_err();
-    assert!(
-        matches!(
-            &failure,
-            Error::OperationFailed { source, .. }
-                if matches!(source.downcast_ref::<harmos_operations::Error>(), Some(harmos_operations::Error::Access(cause))
-                    if matches!(cause.downcast_ref::<Error>(), Some(Error::OperationUnauthorized { .. })))
-        ),
-        "unexpected write failure: {failure:?}"
-    );
+    let request = harmos_protocol::context::StorageAppendRecordsRequest {
+        mutation: Some(mutation.clone().into()),
+        scope: None,
+        batch: Some(super::writes::batch(1, "bench").into()),
+    };
+    let accepted = writer.call_protobuf::<AppendRecords>(request.clone()).await.unwrap().receipt.unwrap();
+    let cursor = fixture.storage.cursor_accepted();
+    fixture.storage.wait_mutation_durable(&mutation, &cursor).await.unwrap();
+    let completed = writer.call_protobuf::<AppendRecords>(request.clone()).await.unwrap().receipt.unwrap();
+    assert_eq!(completed.accepted_at, accepted.accepted_at);
+    assert_eq!(completed.durable_at, completed.accepted_at);
+    let mut other = request.clone();
+    other.mutation.as_mut().unwrap().key = "unauthorized-destination".into();
+    other.batch = Some(super::writes::batch(2, "other").into());
+    assert!(writer.call_protobuf::<AppendRecords>(other).await.is_err());
     assert_eq!(fixture.data.records.lock().unwrap().len(), 2);
-    assert_eq!(fixture.storage.cursor_accepted(), *cursor);
-    assert!(matches!(
-        bystander.exchange::<WriteRecords>(
-            harmos_operations::storage::WriteRecords { scope: None },
-            super::writes::settings(),
-            super::writes::settings()
-        ),
-        Err(Error::OperationUnauthorized { .. })
-    ));
+    assert_eq!(fixture.storage.cursor_accepted(), cursor);
+    assert!(matches!(bystander.call_protobuf::<AppendRecords>(request).await, Err(Error::OperationUnauthorized { .. })));
 
     manager.shutdown(&mut host).await.unwrap();
     fixture.finish().await;
@@ -243,7 +216,9 @@ async fn write_grants_enforced() {
 async fn query_grants_enforced() {
     let fixture = Fixture::new(config()).await;
     seed(&fixture, &[9_007_199_254_740_993, 9_007_199_254_740_995]).await;
-    fixture.runtime.operations.register::<harmos_operations::Storage>(Lanes::Open).await.unwrap();
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let mut host = Host {
         operations: fixture.runtime.operations.clone(),
         callers: BTreeMap::new(),
@@ -254,26 +229,41 @@ async fn query_grants_enforced() {
         version: NonZeroU32::MIN,
         ..schema.clone()
     };
-    let survey = |schema: &SchemaKey| Grant::of(Query::ID, query(&fixture, schema.clone()).source.grant_scope());
+    let survey = |schema: &SchemaKey| Grant::of(ListRows::ID, query(&fixture, schema.clone()).source.grant_scope());
     let definitions =
-        PluginDefinitions::new([plugin("reducer", vec![required::<Query>(vec![survey(&schema)])]), plugin("bystander", Vec::new())], [])
+        PluginDefinitions::new([plugin("reducer", vec![required::<ListRows>(vec![survey(&schema)])]), plugin("bystander", Vec::new())], [])
             .unwrap();
     let mut manager = PluginManager::new(definitions).unwrap();
     manager.initialize(&mut host).await.unwrap();
     let reducer = fixture.runtime.operations.caller(&host.callers["reducer"]).unwrap();
     let bystander = fixture.runtime.operations.caller(&host.callers["bystander"]).unwrap();
 
-    let mut collected = reducer.download::<Query>(query(&fixture, schema.clone()), super::writes::settings()).unwrap();
+    let request: harmos_protocol::storage::Query = query(&fixture, schema.clone()).try_into().unwrap();
+    let mut request = harmos_protocol::context::StorageListRowsRequest {
+        source: request.source,
+        transforms: request.transforms,
+        at: None,
+        page: None,
+    };
     let mut count = None;
-    while let Some(output) = collected.next().await.unwrap() {
-        if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output.into_owned_request().unwrap().0).unwrap() {
-            let values =
-                batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
-            count = Some(values.value(0));
+    loop {
+        let response = reducer.call_protobuf::<ListRows>(request.clone()).await.unwrap();
+        for output in response.rows {
+            if let QueryArrow::Batch(batch) = &QueryArrow::try_from(output).unwrap() {
+                let values =
+                    batch.as_record_batch().column_by_name("count").unwrap().as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
+                count = Some(values.value(0));
+            }
         }
+        if response.next_page_token.is_empty() {
+            break;
+        }
+        request.page = Some(harmos_protocol::v1::PageRequest {
+            page_token: response.next_page_token,
+            ..Default::default()
+        });
     }
     assert_eq!(count, Some(2));
-    assert_eq!(collected.join().await.unwrap().rows, 1);
     let mut cross_kind = query(&fixture, schema.clone());
     cross_kind.source = Source::Stream(harmos_runtime::storage::query::StreamSelection {
         schema: schema.clone(),
@@ -284,18 +274,49 @@ async fn query_grants_enforced() {
         source_end: None,
         after: 0,
     });
-    assert!(matches!(reducer.download::<Query>(cross_kind, super::writes::settings()), Err(Error::OperationUnauthorized { .. })));
+    assert!(matches!(
+        reducer
+            .call_protobuf::<ListRows>({
+                let request: harmos_protocol::storage::Query = cross_kind.try_into().unwrap();
+                harmos_protocol::context::StorageListRowsRequest {
+                    source: request.source,
+                    transforms: request.transforms,
+                    at: None,
+                    page: None,
+                }
+            })
+            .await,
+        Err(Error::OperationUnauthorized { .. })
+    ));
 
     assert!(matches!(
-        reducer.download::<Query>(query(&fixture, other), super::writes::settings()),
+        reducer
+            .call_protobuf::<ListRows>({
+                let request: harmos_protocol::storage::Query = query(&fixture, other).try_into().unwrap();
+                harmos_protocol::context::StorageListRowsRequest {
+                    source: request.source,
+                    transforms: request.transforms,
+                    at: None,
+                    page: None,
+                }
+            })
+            .await,
         Err(Error::OperationUnauthorized { .. })
     ));
     assert!(matches!(
-        bystander.download::<Query>(query(&fixture, schema), super::writes::settings()),
+        bystander
+            .call_protobuf::<ListRows>({
+                let request: harmos_protocol::storage::Query = query(&fixture, schema).try_into().unwrap();
+                harmos_protocol::context::StorageListRowsRequest {
+                    source: request.source,
+                    transforms: request.transforms,
+                    at: None,
+                    page: None,
+                }
+            })
+            .await,
         Err(Error::OperationUnauthorized { .. })
     ));
     manager.shutdown(&mut host).await.unwrap();
     fixture.finish().await;
 }
-
-/* === Tests === */

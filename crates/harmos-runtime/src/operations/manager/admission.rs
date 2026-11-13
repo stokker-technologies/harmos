@@ -35,8 +35,8 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub fn validate_requirements(&self, candidate: &crate::plugin::PluginDefinitions) -> Result<()> {
+    #[cfg(feature = "plugin-guest")]
+    pub fn validate_requirements(&self, candidate: &crate::guest::host::plugin::PluginDefinitions) -> Result<()> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
         for (definition, required) in candidate.host_requirements() {
             let id = required.contract.operation().id.as_str();
@@ -80,12 +80,51 @@ impl Manager {
         let (result, retired) = {
             let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
             let retired = state.retired();
-            for caller in entries {
-                let Some(factory) = caller.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>() else {
+            for entry in entries {
+                if let Some(previous) = state.entries.get(entry.id()).and_then(|providers| {
+                    providers.values().find(|previous| {
+                        entry.binding.is::<crate::plugin::grpc::invoke::Binding>()
+                            || previous.binding.is::<crate::plugin::grpc::invoke::Binding>()
+                    })
+                }) {
+                    return Err(Error::AlreadyRegistered {
+                        domain: "operation",
+                        name: format!("{} (owners {} and {})", entry.id(), previous.owner, entry.owner),
+                    });
+                }
+            }
+            for caller in state.entries.values().flat_map(|providers| providers.values()).chain(entries) {
+                let Some(binding) = caller.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() else {
                     continue;
                 };
-                for required in factory.operations {
-                    let id = required.operation.id;
+                for required in &binding.requires {
+                    let target = entries
+                        .iter()
+                        .find(|entry| entry.id() == required.id)
+                        .or_else(|| state.entries.get(&required.id).and_then(|providers| providers.values().next()));
+                    // Absent Callees Do Not Impose An Arrival Order.
+                    let Some(target) = target else { continue };
+                    if plugin_grpc::fingerprint(target)? != required.fingerprint {
+                        return Err(Error::InvalidInput {
+                            field: "plugin requirement",
+                            reason: "callee fingerprint differs from the declared requirement",
+                        });
+                    }
+                }
+            }
+            for caller in entries {
+                let Some(factory) = caller.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>() else {
+                    continue;
+                };
+                let dependencies = (factory.operations)().map_err(|source| match source {
+                    harmos_operations::execution::ServingError::Declaration(source) => Error::OperationDeclaration { source },
+                    source => Error::OperationFailed {
+                        operation: factory.definition.id.to_string(),
+                        source: Arc::new(source),
+                    },
+                })?;
+                for required in dependencies {
+                    let id = required.id.as_str();
                     let target = entries
                         .iter()
                         .find(|entry| entry.id() == id && entry.owner == caller.owner)
@@ -97,15 +136,11 @@ impl Manager {
                     let runtime_caller = matches!(Source::for_binding(caller), Source::Host);
                     let runtime_target = matches!(Source::for_binding(target), Source::Host);
                     let same_owner = caller.owner == target.owner && runtime_caller == runtime_target;
-                    let permitted = same_owner
-                        || visibility == crate::operations::Visibility::Public
-                        || (runtime_caller && visibility == crate::operations::Visibility::Host);
+                    let permitted = same_owner || runtime_caller || visibility == crate::operations::Visibility::Public;
                     if !permitted {
                         return Err(Error::PermissionDenied);
                     }
-                    if target.definition.fingerprint
-                        != (required.operation.fingerprint)().map_err(|source| Error::OperationDeclaration { source })?
-                    {
+                    if target.definition.fingerprint != required.fingerprint {
                         return Err(Error::InvalidInput {
                             field: "declared operation",
                             reason: "callee fingerprint differs",
@@ -124,13 +159,14 @@ impl Manager {
                     name: entry.id().to_owned(),
                 })
             } else {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin-guest")]
                 let gate = entries
                     .iter()
                     .find_map(|entry| entry.plugin.as_ref())
                     .map_or(Ok(()), |scope| if scope.is_closed() { Err(Error::Closing { domain: "plugin scope" }) } else { Ok(()) });
-                #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-                let gate: Result<()> = Ok(());
+
+                #[cfg(not(feature = "plugin-guest"))]
+                let gate = Ok(());
                 #[cfg(feature = "grpc")]
                 let gate = gate.and_then(|()| {
                     let mut staged = BTreeMap::new();
@@ -138,13 +174,12 @@ impl Manager {
                         let Some(binding) = entry.contract.as_ref().and_then(|contract| contract.grpc()) else {
                             continue;
                         };
-                        for path in [binding.path(), binding.run_path()] {
-                            if state.grpc_services.contains(&format!("{}.{}", binding.package, binding.service))
-                                || state.grpc.get(&path).and_then(Weak::upgrade).is_some()
-                                || staged.insert(path.clone(), Arc::downgrade(entry)).is_some()
-                            {
-                                return Err(Error::AlreadyRegistered { domain: "gRPC method", name: path });
-                            }
+                        let path = binding.path();
+                        if state.grpc_services.contains(&format!("{}.{}", binding.package, binding.service))
+                            || state.grpc.get(&path).and_then(Weak::upgrade).is_some()
+                            || staged.insert(path.clone(), Arc::downgrade(entry)).is_some()
+                        {
+                            return Err(Error::AlreadyRegistered { domain: "gRPC method", name: path });
                         }
                     }
                     state.grpc.extend(staged);

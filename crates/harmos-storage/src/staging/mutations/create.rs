@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.mutations.create.create_file_once", level = "debug", skip_all)]
     pub async fn create_file_once(&self, mutation: &MutationId, metadata: &FileMetadata) -> Result<FileProducer> {
         let mut hash = Sha256::new();
@@ -55,10 +55,10 @@ impl<C> StorageManager<C> {
         }
         let fingerprint = hash.finalize().into();
         self.mutate_file(mutation, fingerprint, |state| {
-            if !self.inner.primary.supports_file_sessions() {
+            if !self.inner.primary.capabilities().file_sessions {
                 return Err(invalid("backend does not support resumable production"));
             }
-            let reference_bytes = file_bytes(metadata, self.inner.primary.history())?;
+            let reference_bytes = file_bytes(metadata, self.inner.primary.get_history())?;
             if reference_bytes > self.inner.settings.max_batch_bytes().get() {
                 return Err(invalid("reference exceeds max_batch_bytes"));
             }
@@ -68,7 +68,7 @@ impl<C> StorageManager<C> {
                     name: metadata.id.to_string(),
                 });
             }
-            if state.files.len() >= crate::storage::config::MAX_FILES.get() {
+            if state.files.len() >= self.inner.settings.request.max_file_productions.get() {
                 return Err(Error::ResourceExhausted { resource: "file producers" });
             }
             let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
@@ -80,15 +80,16 @@ impl<C> StorageManager<C> {
                     queued: Some(tracing::debug_span!("storage.file.queue")),
                     metadata: Arc::new(metadata.clone()),
                     staging: StagedFile {
-                        history: self.inner.primary.history().clone(),
+                        history: self.inner.primary.get_history().clone(),
                         id: metadata.id.clone(),
                     },
-                    session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution)),
+                    session: Some(Session::token(self.inner.settings.policy.file_session_timeout, self.inner.execution.clone())),
                     mutation: Some(Mutation { id: mutation.clone(), kind: Kind::Create }),
                     extra: None,
                     progress: Arc::new(Mutex::new(Progress { generation: 1, ..Progress::default() })),
                     hash: Sha256::new(),
                     length: 0,
+                    durable_length: 0,
                     ticket: 0,
                     command: Some(Command::Create),
                     abandoned: false,

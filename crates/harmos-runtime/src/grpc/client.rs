@@ -23,7 +23,7 @@ use tonic::{Request, Status, Streaming, transport::Channel};
 
 // Local Imports
 use super::{Codec, Completion, ControlEnvelope, Encode, OutputEnvelope, Transcoded, Wire};
-use crate::operations::{Direction, OperationDeclaration, RequestClaims, Response, StreamItem, StreamOutput};
+use crate::operations::{Direction, RequestClaims, RequestShape, Response, StreamItem, StreamOutput};
 use crate::{MemorySize, MessageError};
 
 /* === Constants === */
@@ -32,8 +32,8 @@ use crate::{MemorySize, MessageError};
 
 /* === Type Aliases === */
 
-type Input<O> = ControlEnvelope<<O as OperationDeclaration>::Request, <<O as OperationDeclaration>::Input as Direction>::Item>;
-type Output<O> = OutputEnvelope<<<O as OperationDeclaration>::Output as Direction>::Item, <O as OperationDeclaration>::Response>;
+type Input<O> = ControlEnvelope<<O as RequestShape>::Request, <<O as RequestShape>::Input as Direction>::Item>;
+type Output<O> = OutputEnvelope<<<O as RequestShape>::Output as Direction>::Item, <O as RequestShape>::Response>;
 
 /* === Structs === */
 
@@ -46,7 +46,7 @@ pub struct Settings {
 
 // One Managed Remote Call. Cancel Signals The Server And Awaits Its Typed Response.
 #[must_use = "dropping a remote operation abandons its response and requests cancellation"]
-pub struct Running<O: OperationDeclaration> {
+pub struct Running<O: RequestShape> {
     outgoing: StreamOutput<Input<O>>,
     input_finished: bool,
     incoming: Streaming<StreamItem<Output<O>>>,
@@ -81,7 +81,7 @@ impl<W: Wire<T>, T: Send + Sync + 'static> Encode<W> for Frame<T> {
     }
 }
 
-impl<O: OperationDeclaration> Running<O> {
+impl<O: RequestShape> Running<O> {
     pub async fn request_cancel(&self) -> Result<(), Status> {
         self.send_frame(ControlEnvelope::Cancel).await
     }
@@ -155,13 +155,16 @@ impl<O: OperationDeclaration> Running<O> {
 /* === Public Functions === */
 
 // Starts A Managed Call With Consumer-Supplied Transport And Buffer Limits.
-pub async fn start<O: OperationDeclaration>(
-    channel: Channel, request: Request<O::Request>, settings: Settings,
+pub async fn start<O: RequestShape>(
+    channel: Channel, operation: harmos_operations::operations::OperationSpec<O>, request: Request<O::Request>, settings: Settings,
 ) -> Result<Running<O>, Status> {
     settings.decode.validate()?;
     settings.encode.validate()?;
-    let grpc = O::GRPC.ok_or_else(|| Status::invalid_argument("operation has no gRPC declaration"))?;
-    let path = grpc.run_path().parse().map_err(|_| Status::invalid_argument("invalid managed path"))?;
+    let grpc = operation.declaration.grpc.as_ref().ok_or_else(|| Status::invalid_argument("operation has no gRPC declaration"))?;
+    if !grpc.managed {
+        return Err(Status::invalid_argument("start requires a declared cooperative final result"));
+    }
+    let path = grpc.path().parse().map_err(|_| Status::invalid_argument("invalid managed path"))?;
     let (outgoing, incoming) = crate::operations::stream::<Input<O>>(settings.input).map_err(super::server::status)?;
     let (metadata, extensions, request) = request.into_parts();
     let frame = ControlEnvelope::Request(request);

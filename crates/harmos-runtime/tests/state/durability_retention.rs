@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,22 +17,6 @@ use support::{Bank, Change, Ledger, booted, deposit, ledger};
 use super::support;
 use harmos_runtime::{Error, state::Origin, state::Position, storage::Source};
 use support::journal::{Journal, Store};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -53,7 +33,7 @@ async fn pruned_copy_recovers() {
     for amount in [2, 3] {
         runtime.state.commit(deposit(amount)).await.expect("accepted");
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let mut source = Journal::<Bank>::open(&copy);
     Source::prune(&mut source, first.position).await;
@@ -67,7 +47,5 @@ async fn pruned_copy_recovers() {
     assert_eq!(ledger(&recovered).await.balance, 6);
     assert!(matches!(recovered.state.query::<Change>(Position::ORIGIN).await.next(), Some(Err(Error::BeneathHorizon))));
     assert!(matches!(recovered.state.state().at(Origin::initial(Ledger::default()), first.position).await, Err(Error::BeneathHorizon)));
-    recovered.shutdown().await.unwrap();
+    crate::support::app::shutdown(&recovered).await.unwrap();
 }
-
-/* === Tests === */

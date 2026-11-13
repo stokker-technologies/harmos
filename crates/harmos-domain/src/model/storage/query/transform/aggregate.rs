@@ -18,7 +18,6 @@
 // Third Party Imports
 
 // Local Imports
-use crate::model::storage::codec::{Nested, Repeated, Text, product};
 
 use super::FieldPath;
 use super::project::Projection;
@@ -27,9 +26,6 @@ use crate::MemorySize;
 /* === Constants === */
 
 /* === Macros === */
-
-product!(Aggregate { groups: Repeated<Projection> => 1, measures: Repeated<Measure> => 2 });
-product!(Measure { field: Nested<FieldPath> => 1, statistic: Nested<crate::Aggregate> => 2, name: Text => 3 });
 
 /* === Type Aliases === */
 

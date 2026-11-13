@@ -22,7 +22,7 @@ use tokio::sync::watch;
 // Local Imports
 use crate::state::dispatch::{Decode, Dispatch, Restored};
 use crate::state::{Feed, ReplayPayload};
-use crate::storage::consumer::{Attached, JournalConsumer, Recording, Series, Serving, StreamConsumer};
+use crate::storage::consumer::{Attached, JournalConsumer, Recording, StreamConsumer};
 use crate::{
     Application, DefinitionId, Error, runtime::Incompatible, state::DecodeError, state::Entry, state::Envelope, state::Kind,
     state::Position, state::Recorded, state::Transaction,
@@ -54,7 +54,6 @@ pub(crate) struct Attachments<A: Application> {
     pub(crate) capture: Option<crate::state::capture::Declaration<A>>,
     attached: Vec<Box<dyn Attached<A>>>,
     streams: Vec<Box<dyn Recording<A>>>,
-    series: Option<Box<dyn Serving<A>>>,
     recovery: Option<Box<dyn Recovering<A>>>,
     snapshot: Option<Box<dyn Attached<A>>>,
     retention: Option<Horizon>,
@@ -64,7 +63,6 @@ pub(crate) struct Attachments<A: Application> {
 pub(crate) struct Consumers<A: Application> {
     attached: Vec<Box<dyn Attached<A>>>,
     streams: Vec<Box<dyn Recording<A>>>,
-    series: Option<Box<dyn Serving<A>>>,
     recovery: Option<Box<dyn Recovering<A>>>,
     snapshot: Option<Box<dyn Attached<A>>>,
     retention: Option<Horizon>,
@@ -189,7 +187,6 @@ impl<A: Application> Attachments<A> {
             capture: None,
             attached: Vec::new(),
             streams: Vec::new(),
-            series: None,
             recovery: None,
             snapshot: None,
             retention: None,
@@ -221,12 +218,6 @@ impl<A: Application> Attachments<A> {
 
     pub(crate) fn attach_streams(&mut self, consumer: impl StreamConsumer<A>) {
         self.streams.push(Box::new(consumer));
-    }
-
-    pub(crate) fn series(&mut self, series: impl Series<A>) {
-        if let Some(demoted) = self.series.replace(Box::new(series)) {
-            self.streams.push(demoted);
-        }
     }
 
     pub(crate) fn recover(&mut self, source: impl Source<A>) {
@@ -263,7 +254,6 @@ impl<A: Application> Attachments<A> {
         Consumers {
             attached: std::mem::take(&mut self.attached),
             streams: std::mem::take(&mut self.streams),
-            series: self.series.take(),
             recovery: self.recovery.take(),
             snapshot: self.snapshot.take(),
             retention: self.retention,
@@ -373,50 +363,7 @@ impl<A: Application> Consumers<A> {
     }
 
     pub(crate) fn recordings(&mut self) -> impl Iterator<Item = &mut dyn Recording<A>> {
-        self.streams
-            .iter_mut()
-            .map(|recording| recording.as_mut() as &mut dyn Recording<A>)
-            .chain(self.series.iter_mut().map(|series| series.as_mut() as &mut dyn Recording<A>))
-    }
-
-    #[tracing::instrument(target = "harmos::storage", name = "storage.served", level = "debug", skip_all)]
-    pub(crate) async fn served(
-        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<Position>, end: std::ops::Bound<Position>,
-    ) -> Result<Vec<crate::state::At<Arc<dyn std::any::Any + Send + Sync>>>, crate::streams::BeneathWindow> {
-        match &mut self.series {
-            Some(series) => series.rows(stream, track, start, end).await,
-            None => Err(crate::streams::BeneathWindow::Unserved),
-        }
-    }
-
-    #[tracing::instrument(target = "harmos::storage", name = "storage.surveyed", level = "debug", skip_all)]
-    pub(crate) async fn surveyed(
-        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<u64>, end: std::ops::Bound<u64>,
-        budget: usize,
-    ) -> Result<Vec<crate::streams::Bucket>, crate::streams::BeneathWindow> {
-        match &mut self.series {
-            Some(series) => series.buckets(stream, track, start, end, budget).await,
-            None => Err(crate::streams::BeneathWindow::Unserved),
-        }
-    }
-
-    #[tracing::instrument(target = "harmos::storage", name = "storage.aggregated", level = "debug", skip_all)]
-    pub(crate) async fn aggregated(
-        &mut self, stream: crate::streams::Definition, track: &[String], start: std::ops::Bound<u64>, end: std::ops::Bound<u64>,
-        kind: crate::Aggregate,
-    ) -> Result<Vec<crate::streams::Aggregated>, crate::streams::BeneathWindow> {
-        match &mut self.series {
-            Some(series) => series.aggregate(stream, track, start, end, kind).await,
-            None => Err(crate::streams::BeneathWindow::Unserved),
-        }
-    }
-
-    #[tracing::instrument(target = "harmos::storage", name = "storage.sealed", level = "debug", skip_all)]
-    pub(crate) async fn sealed(&mut self, stream: crate::streams::Definition, track: &[String]) -> Position {
-        match &mut self.series {
-            Some(series) => series.seal(stream, track).await,
-            None => Position::ORIGIN,
-        }
+        self.streams.iter_mut().map(|recording| recording.as_mut() as &mut dyn Recording<A>)
     }
 
     #[tracing::instrument(target = "harmos::storage", name = "storage.flush", level = "debug", skip_all)]
@@ -474,19 +421,31 @@ pub(crate) fn declare<A: Application>(
     catalog: &mut Dispatch<A, Payload<A>>, kind: Kind, id: DefinitionId, version: u32, decode: Decode<A>,
 ) {
     match kind {
-        Kind::Transaction => catalog.set_transaction(id, version, apply, decode),
+        Kind::Transaction => {
+            let states = catalog.states.clone();
+            catalog.set_transaction(id, version, Arc::new(move |payload, state| apply(payload, state, &states)), decode);
+        }
         Kind::Record => catalog.set_record(id, version, retain),
     }
 }
 
 /* === Private Functions === */
 
-fn apply<A: Application>(payload: Payload<A>, state: &mut A::State) -> Result<(), DecodeError> {
+fn apply<A: Application>(
+    payload: Payload<A>, state: &mut A::State, states: &crate::state::StateCatalog<A::State, A::Transaction>,
+) -> Result<(), DecodeError> {
     let Payload { prepared, id, version, value } = payload;
     match value {
         Recorded::Transaction(transaction) => {
             if let Some(prepared) = prepared {
-                crate::state::TransactionCatalog::replay(&*transaction, &prepared, state)
+                if !states.is_empty() {
+                    return states.replay(&prepared, state);
+                }
+                if crate::state::CatalogCodec::identify(&*transaction) != (prepared.id.clone(), prepared.version) {
+                    return Err(mismatched(prepared.id, prepared.version));
+                }
+                transaction.apply(state);
+                Ok(())
             } else {
                 transaction.apply(state);
                 Ok(())

@@ -94,10 +94,10 @@ impl Session {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.session.produce_file", level = "debug", skip_all)]
     pub async fn produce_file(&self, metadata: FileMetadata) -> Result<StorageFile> {
-        if !self.inner.primary.supports_file_sessions() {
+        if !self.inner.primary.capabilities().file_sessions {
             return Err(Error::InvalidInput {
                 field: "file session",
                 reason: "backend does not support resumable file sessions",
@@ -108,7 +108,7 @@ impl<C> StorageManager<C> {
 
     #[tracing::instrument(name = "storage.staging.session.resume_file", level = "debug", skip_all)]
     pub async fn resume_file(&self, token: &FileSession) -> Result<StorageFile> {
-        if let Err(error) = self.inner.primary.history().check(&token.history) {
+        if let Err(error) = self.inner.primary.get_history().check(&token.history) {
             tracing::error!(file = %token.id, generation = token.generation, reason = "history mismatch", %error, "file resume rejected");
             return Err(error.into());
         }
@@ -142,7 +142,7 @@ impl<C> StorageManager<C> {
                     let mut token = token.clone();
                     token.generation = next;
                     Some(StorageFile {
-                        manager: self.erased(),
+                        manager: self.clone(),
                         id: *id,
                         progress: file.progress.clone(),
                         session: Some(token),

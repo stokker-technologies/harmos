@@ -9,7 +9,9 @@
 
 /* === Modules === */
 
-#[allow(clippy::duplicate_mod, reason = "the minimal app binds each domain's own `super::Lanes`")]
+mod status;
+
+#[allow(clippy::duplicate_mod, reason = "the runtime and service fixtures share the minimal application")]
 #[path = "../support/app/minimal.rs"]
 mod app;
 #[path = "../services/lifecycle.rs"]
@@ -27,8 +29,6 @@ mod shutdown;
 
 use crate::support;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -40,51 +40,60 @@ use std::time::Duration;
 use tokio::sync::{Barrier, Notify};
 // Local Imports
 use harmos_runtime::operations::RetryPolicy;
-use harmos_runtime::{Error, Runtime, services::ServiceContext, services::ServiceStatus};
+use harmos_runtime::{Error, services::ServiceContext, services::ServiceStatus};
 use support::{Bank, Ledger, catalog};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
 
 /* === Enums === */
 
-#[harmos_runtime::operation(resources = [], response = u64,
-        id = "service.ping",
-        policy = harmos_runtime::OperationPolicy {
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
+struct PingContractDeclaration {}
+
+static PING_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<PingContractDeclaration>(
+        "service.ping",
+        harmos_runtime::OperationPolicy {
             timeout: Duration::from_secs(120),
             attempt_timeout: Duration::from_secs(120),
             cancellation_timeout: std::time::Duration::ZERO,
             retries: RetryPolicy::Never,
         },
-    )]
-struct PingContractDeclaration {}
+    );
 
-#[harmos_runtime::catalog]
-enum Operations {
-    PingContractDeclaration(PingContractDeclaration),
+const PING_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PingContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<PingContractDeclaration>::new(&PING_CONTRACT_DECLARATION_DESCRIPTION);
+
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
 }
 
-use support::Lanes;
-
-/* === Traits === */
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(ping_contract_declaration_operation().expect("representable operation"));
+    batch
+}
 
 /* === Implementations === */
 
-impl harmos_runtime::operations::Operation for PingContractDeclaration {
-    type Error = std::convert::Infallible;
-
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<u64>, Self::Error> {
-        let result: ::core::result::Result<u64, Self::Error> = async move { Ok(42) }.await;
-        result.map(::core::convert::Into::into)
-    }
+async fn ping_contract_declaration_handler(
+    _request: PingContractDeclaration, _: harmos_runtime::operations::FunctionContext<PingContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<u64>, std::convert::Infallible> {
+    let result: ::core::result::Result<u64, std::convert::Infallible> = async move { Ok(42) }.await;
+    result.map(::core::convert::Into::into)
 }
 
-/* === Public Functions === */
+fn ping_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PING_CONTRACT_DECLARATION_OPERATION,
+        const { &[] },
+        ping_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
 
 /* === Private Functions === */
 
@@ -117,7 +126,7 @@ async fn resident(mut context: ServiceContext<Bank>) -> Result<(), std::io::Erro
 
 #[tokio::test]
 async fn handle_shares_manager() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", resident);
     })
@@ -130,18 +139,18 @@ async fn handle_shares_manager() {
                 id: "dynamic".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| resident,
+            |_: Arc<harmos_operations::execution::ExecutionContext>| resident,
         )
         .unwrap();
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
     assert_eq!(runtime.operations.residents().len(), 2);
     assert_eq!(runtime.operations.resident_key(dynamic.id()), Some(harmos_runtime::operations::resident::Key::root("dynamic")));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn duplicate_service_refused() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", resident);
     })
@@ -153,16 +162,16 @@ async fn duplicate_service_refused() {
                 id: "boot".into(),
                 policy: harmos_runtime::services::POLICY
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| resident
+            |_: Arc<harmos_operations::execution::ExecutionContext>| resident
         ),
         Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot"
     ));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn shutdown_preserves_work() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", resident);
     })
@@ -171,14 +180,14 @@ async fn shutdown_preserves_work() {
     let manager = runtime.operations.clone();
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
-    runtime.operations.register::<Operations>(Lanes::Open).await.unwrap();
+    crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     assert_eq!(*runtime.operations.operation::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn admission_rejects_reserved() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -189,17 +198,17 @@ async fn admission_rejects_reserved() {
                 id: String::new(),
                 policy: harmos_runtime::services::POLICY
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| resident
+            |_: Arc<harmos_operations::execution::ExecutionContext>| resident
         ),
         Err(Error::InvalidInput { field: "service name", .. })
     ));
     assert!(runtime.operations.residents().is_empty());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shutdown_join_started() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -221,7 +230,7 @@ async fn shutdown_join_started() {
                     id: id.clone(),
                     policy: harmos_runtime::services::POLICY,
                 },
-                move |_: Arc<harmos_sdk::ExecutionContext>| {
+                move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                     let entered = entered.clone();
                     let exited = exited.clone();
                     move |mut context: ServiceContext<Bank>| {
@@ -250,14 +259,14 @@ async fn shutdown_join_started() {
     }
     assert_eq!(entered.load(Ordering::SeqCst), exited.load(Ordering::SeqCst));
     assert!(runtime.operations.residents().values().all(|instance| instance.health == Some(ServiceStatus::Stopped)));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn concurrent_shutdowns_join() {
     let stopping = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", {
             let stopping = stopping.clone();
@@ -296,7 +305,5 @@ async fn concurrent_shutdowns_join() {
         runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("boot")).and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

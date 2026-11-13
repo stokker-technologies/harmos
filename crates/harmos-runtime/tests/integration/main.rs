@@ -9,21 +9,24 @@
 
 /* === Modules === */
 
+#[path = "../support/access_status.rs"]
+mod access_status;
+
+#[cfg(feature = "grpc")]
+#[path = "../grpc/main.rs"]
+mod grpc;
+
 #[path = "../application/main.rs"]
 mod application;
 
 #[path = "../filesystem/main.rs"]
 mod publication;
 
-#[path = "../observers/main.rs"]
-mod observers;
-
 #[path = "../operations/main.rs"]
 mod operations;
 
-#[cfg(feature = "plugin")]
-#[path = "../plugin/main.rs"]
-mod plugin;
+#[path = "../plugin_grpc/main.rs"]
+mod plugin_grpc;
 
 #[path = "../support/runtime_probe.rs"]
 mod probe;
@@ -34,10 +37,6 @@ mod runtime;
 
 #[path = "../services/main.rs"]
 mod services;
-
-#[cfg(feature = "plugin-sidecar")]
-#[path = "../sidecar/main.rs"]
-mod sidecar;
 
 #[cfg(feature = "simulation")]
 #[path = "../simulation/main.rs"]
@@ -54,34 +53,3 @@ mod streams;
 
 #[path = "../support/mod.rs"]
 mod support;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-extern crate harmos_runtime as harmos;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

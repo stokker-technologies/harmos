@@ -15,11 +15,11 @@
 
 // Standard Library Imports
 use std::future::Future;
-use std::time::Duration;
+
 // Third Party Imports
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
-use tokio::time::error::Elapsed;
+
 // Local Imports
 use super::clock::Clock;
 use super::entropy;
@@ -48,17 +48,38 @@ impl Executor {
     pub(crate) fn seeded(seed: u64) -> Self {
         let runtime =
             tokio::runtime::Builder::new_current_thread().enable_all().build().expect("the simulation current-thread executor builds");
-        runtime.block_on(async { tokio::time::pause() });
 
+        let clock = {
+            let _entered = runtime.enter();
+            Clock::new()
+        };
         Self {
             runtime,
-            clock: Clock::new(),
+            clock,
             entropy: entropy::Context::seeded(seed),
         }
     }
 
     pub(crate) fn block_on<F: Future>(&self, future: F) -> F::Output {
-        self.runtime.block_on(self.entropy.scope(future))
+        self.runtime.block_on(crate::clock::scope(
+            self.clock.host.clone(),
+            self.entropy.scope(async {
+                tokio::pin!(future);
+                loop {
+                    tokio::select! {
+                        biased;
+                        result = &mut future => return result,
+                        () = async {
+                            // Drain Runnable Host Work Before Choosing The Next Timer
+                            for _ in 0..8 {
+                                tokio::task::yield_now().await;
+                            }
+                            self.clock.controller.advance_next().await;
+                        } => {}
+                    }
+                }
+            }),
+        ))
     }
 
     pub(crate) fn drive(&self) {
@@ -70,12 +91,16 @@ impl Executor {
     }
 
     pub(crate) fn advance_ms(&self, milliseconds: u64) {
-        self.block_on(self.clock.advance_ms(milliseconds));
+        self.runtime.block_on(crate::clock::scope(self.clock.host.clone(), self.entropy.scope(self.clock.advance_ms(milliseconds))));
         self.drive();
     }
 
+    pub(crate) fn clock(&self) -> crate::clock::Clock {
+        self.clock.host.clone()
+    }
+
     pub(crate) fn elapsed_ms(&self) -> u64 {
-        self.clock.elapsed_ms()
+        self.block_on(async { self.clock.elapsed_ms() })
     }
 
     pub(crate) fn entropy_trace(&self) -> Vec<u64> {
@@ -99,21 +124,6 @@ where
 pub(crate) fn entropy_or(fallback: u64) -> u64 {
     let context = entropy::Context::current();
     context.map_or(fallback, |context| context.draw())
-}
-
-pub(crate) fn now() -> tokio::time::Instant {
-    tokio::time::Instant::now()
-}
-
-pub(crate) async fn sleep(duration: Duration) {
-    tokio::time::sleep(duration).await;
-}
-
-pub(crate) async fn timeout<F>(duration: Duration, future: F) -> Result<F::Output, Elapsed>
-where
-    F: Future,
-{
-    tokio::time::timeout(duration, future).await
 }
 
 /* === Private Functions === */

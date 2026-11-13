@@ -21,7 +21,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
-use harmos::{
+use harmos_runtime::{
     state::CausationId, state::CorrelationId, state::Entry, state::FactSource, state::Focus, state::Link,
     state::Metadata as JournalMetadata, state::Position, state::PrincipalId, state::Recorded, state::RequestKey, state::SystemFact,
     state::Timestamp, storage::JournalConsumer,

@@ -38,8 +38,9 @@ impl Manager {
     pub(crate) fn new<A: crate::Application>(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
         schema_settings: Arc<crate::config::SchemaSettings>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let status_started = instances.clock.date().into();
+        let manager = Self {
             schema_settings,
             resident: crate::operations::resident::Registry::new(&instances, reserved, identity),
             context: Arc::new(std::sync::OnceLock::from(crate::operations::CallContext::default())),
@@ -47,22 +48,28 @@ impl Manager {
             preparation: settings.preparation_bytes.map(|bytes| Arc::new(Semaphore::new(bytes.get()))),
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
+                access: Arc::new(harmos_operations::access::AccessAccess::default()),
+                status: Arc::new(harmos_operations::status::StatusAccess::default()),
+                status_owner: std::sync::Mutex::new(None),
+                status_started,
                 service_runner: crate::services::authored_runner::<A>,
+                #[cfg(feature = "grpc")]
+                values: std::sync::RwLock::new(None),
                 middleware: crate::operations::middleware::Configuration::default(),
                 state: Mutex::new(State {
                     closing: false,
                     entries: BTreeMap::new(),
-                    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                    #[cfg(feature = "plugin-guest")]
                     staging: Vec::new(),
                     #[cfg(feature = "grpc")]
                     grpc: BTreeMap::new(),
                     #[cfg(feature = "grpc")]
                     grpc_services: std::collections::BTreeSet::new(),
-                    cache: VecDeque::new(),
-                    cache_capacity: DEFAULT_CACHE_CAPACITY,
                 }),
             }),
-        }
+        };
+        manager.register_grpc_clock()?;
+        Ok(manager)
     }
 
     pub fn register_middleware(&self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Result<()> {
@@ -78,7 +85,7 @@ impl Manager {
     }
 
     #[cfg(feature = "grpc")]
-    pub(crate) fn submit_external_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub(crate) fn submit_external_charged<O: RequestShape, P: Send + 'static>(
         &self, request: crate::operations::StreamItem<O::Request>, endpoints: P,
     ) -> Result<Running<O>> {
         self.admit::<O, P>((crate::operations::binding::Request::charged(request)?, endpoints), None, &[], &Source::Host.external()?, None)
@@ -99,10 +106,10 @@ impl Manager {
                 operation: entry.id().to_owned(),
             };
             let contract = entry.contract.as_ref().ok_or_else(denied)?;
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            let plugin = entry.plugin.is_some();
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-            let plugin = false;
+            let plugin = entry.binding.is::<crate::plugin::grpc::invoke::Binding>();
+            #[cfg(feature = "plugin-guest")]
+            let plugin = plugin || entry.plugin.is_some();
+
             let selected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 authorizer.authorize(
                     self.call_context(),
@@ -134,6 +141,14 @@ impl Manager {
         Ok(None)
     }
 
+    /// Bind an Opaque Invocation Scope to This Handle and All Its Descendants.
+    pub fn with_scope(&self, scope: impl Into<String>) -> Result<Self> {
+        let scope = crate::Scope::new(scope)?;
+        let mut context = self.call_context().clone();
+        context.insert(scope)?;
+        Ok(self.with_context(context))
+    }
+
     pub fn with_context(&self, context: crate::operations::CallContext) -> Self {
         let mut handle = self.clone();
         handle.context = Arc::new(std::sync::OnceLock::from(context));
@@ -148,7 +163,7 @@ impl Manager {
         self.instances.status(id)
     }
 
-    pub(in crate::operations) fn claim_preparation(&self, bytes: std::num::NonZeroUsize) -> Result<OwnedSemaphorePermit> {
+    pub(crate) fn claim_preparation(&self, bytes: std::num::NonZeroUsize) -> Result<OwnedSemaphorePermit> {
         let count = u32::try_from(bytes.get()).map_err(|_| Error::ResourceExhausted { resource: "operation preparation bytes" })?;
         self.preparation
             .as_ref()

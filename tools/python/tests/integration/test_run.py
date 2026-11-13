@@ -12,7 +12,6 @@
 
 # Standard Library Imports
 import json
-import runpy
 import socket
 import sys
 import tempfile
@@ -31,7 +30,6 @@ from harmos_tools.test import run
 
 # === Constants === #
 
-ROOT = Path(__file__).resolve().parents[4]
 
 # === Types === #
 
@@ -44,11 +42,6 @@ class RunTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.runners = [run]
-        for path in sorted((ROOT / "crates/cargo-harmos/templates").rglob("test/run.py.tmpl")):
-            namespace = runpy.run_path(str(path), run_name=f"{run.__package__}.template_runner")
-            module = ModuleType(namespace["__name__"])
-            module.__dict__.update(namespace)
-            cls.runners.append(module)
 
     def test_completed_story_measurements_preserve_results(self):
         for runner in self.runners:

@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.context.v1;
+
+import "harmos/v1/types.proto";
+import "harmos/v1/storage_types.proto";
+
+message StorageCreateFileProductionRequest { .harmos.storage.v1.FileMetadata metadata = 1; .harmos.storage.v1.MutationId mutation = 2; }
+message StorageCreateFileProductionResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageGetFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; .harmos.v1.ReadCut at = 2; }
+message StorageGetFileProductionResponse { .harmos.storage.v1.FileProgress production = 1; uint64 writer_generation = 2; .harmos.v1.ReadCut resolved_at = 3; uint64 accepted_length = 4; uint64 durable_length = 5; }
+message StorageAppendFileBytesRequest { .harmos.storage.v1.FileSession session = 1; uint64 offset = 2; bytes data = 3; .harmos.storage.v1.MutationId mutation = 4; }
+message StorageAppendFileBytesResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageCreateFileWriterRequest { .harmos.storage.v1.FileSession session = 1; .harmos.storage.v1.MutationId mutation = 2; }
+message StorageCreateFileWriterResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
+message StoragePublishFileProductionRequest { .harmos.storage.v1.FileSession session = 1; uint64 length = 2; bytes sha256 = 3; .harmos.storage.v1.MutationId mutation = 4; }
+message StoragePublishFileProductionResponse { .harmos.storage.v1.FileReference file = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageDeleteFileProductionRequest { .harmos.storage.v1.FileSession session = 1; .harmos.storage.v1.MutationId mutation = 2; }
+message StorageDeleteFileProductionResponse { .harmos.storage.v1.FileProgress production = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageGetFileBytesRequest { .harmos.storage.v1.FileReference file = 1; uint64 offset = 2; uint64 max_bytes = 3; .harmos.v1.ReadCut at = 4; }
+message StorageGetFileBytesResponse { bytes data = 1; uint64 total_length = 2; bytes sha256 = 3; .harmos.v1.ReadCut resolved_at = 4; }
+
+message StorageCapabilitiesRequest {  }
+message StorageCapabilitiesResponse { .harmos.storage.v1.StorageCapabilities capabilities = 1; .harmos.storage.v1.MutationWindow mutations = 2; uint64 file_batch_bytes = 3; }
+message StorageCreateSnapshotRequest { .harmos.v1.ReadCut at = 1; }
+message StorageCreateSnapshotResponse { .harmos.storage.v1.SavedSnapshot snapshot = 1; .harmos.v1.ReadCut resolved_at = 2; }
+message StorageDeleteSnapshotRequest { .harmos.storage.v1.SavedSnapshot snapshot = 1; }
+message StorageDeleteSnapshotResponse {  }
+message StorageListColumnRowsRequest { .harmos.storage.v1.ColumnSelection selection = 1; .harmos.v1.ReadCut at = 2; .harmos.v1.PageRequest page = 3; }
+message StorageListColumnRowsResponse { .harmos.storage.v1.ArrowPage page = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
+message StorageListIndexEntriesRequest { .harmos.storage.v1.IndexSelection selection = 1; .harmos.v1.ReadCut at = 2; .harmos.v1.PageRequest page = 3; .harmos.storage.v1.ColumnSource source = 4; }
+message StorageListIndexEntriesResponse { .harmos.storage.v1.IndexPage page = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
+message StorageSetIndexDefinitionRequest { .harmos.storage.v1.IndexDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; .harmos.storage.v1.ReadLimits work = 5; .harmos.storage.v1.MutationId mutation = 6; }
+message StorageSetIndexDefinitionResponse { .harmos.storage.v1.IndexDefinition definition = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
+message StorageSetProjectionDefinitionRequest { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; .harmos.storage.v1.MutationId mutation = 5; }
+message StorageSetProjectionDefinitionResponse { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
+message StorageAdvanceProjectionRequest { .harmos.storage.v1.SavedSnapshot snapshot = 1; string name = 2; .harmos.storage.v1.ReadLimits work = 3; .harmos.storage.v1.ColumnSource source = 4; }
+message StorageAdvanceProjectionResponse { bytes revision = 1; .harmos.v1.ReadCut resolved_at = 2; }
+message StorageListProjectionRowsRequest { .harmos.storage.v1.ProjectionSelection selection = 1; .harmos.v1.ReadCut at = 2; .harmos.v1.PageRequest page = 3; .harmos.storage.v1.ColumnSource source = 4; }
+message StorageListProjectionRowsResponse { .harmos.storage.v1.ProjectionPage page = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
+message StorageGetProjectionStatusRequest { string name = 1; bytes revision = 2; .harmos.v1.ReadCut at = 3; .harmos.storage.v1.ColumnSource source = 4; }
+message StorageGetProjectionStatusResponse { .harmos.storage.v1.ProjectionStatus status = 1; .harmos.v1.ReadCut resolved_at = 2; }
+message StorageSetObjectRequest { .harmos.storage.v1.MutationId mutation = 1; bytes expected_revision = 2; bool create_if_absent = 3; .harmos.storage.v1.SchemaInput schema = 4; .harmos.storage.v1.ObjectValue value = 5; }
+message StorageSetObjectResponse {
+  message Applied { .harmos.storage.v1.ObjectValue value = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
+  message Conflict { bytes current_revision = 1; string action = 2; }
+  oneof outcome { Applied applied = 1; Conflict conflict = 2; }
+}
+message StorageListRowsRequest { .harmos.storage.v1.QuerySource source = 1; .harmos.v1.ReadCut at = 2; repeated .harmos.storage.v1.Transform transforms = 3; .harmos.v1.PageRequest page = 4; }
+message StorageListRowsResponse { repeated .harmos.storage.v1.QueryOutput rows = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
+message StorageWatchRowsRequest { .harmos.storage.v1.QuerySource source = 1; .harmos.v1.ReadCut at = 2; }
+message StorageWatchRowsResponse { .harmos.v1.ReadCut resolved_at = 1; oneof event { .harmos.storage.v1.Empty boundary = 2; .harmos.storage.v1.StoredRecord record = 3; .harmos.storage.v1.StoredRow sample = 4; .harmos.storage.v1.ObjectEntry object = 5; .harmos.storage.v1.Empty durable_progress = 6; .harmos.storage.v1.StorageFailure resync_required = 7; } }
+message StorageAppendRecordsRequest { .harmos.storage.v1.MutationId mutation = 1; optional string scope = 2; .harmos.storage.v1.DataBatch batch = 3; }
+message StorageAppendRecordsResponse { .harmos.v1.Receipt receipt = 1; }
+message StorageAppendSamplesRequest { .harmos.storage.v1.MutationId mutation = 1; optional string scope = 2; .harmos.storage.v1.DataBatch batch = 3; }
+message StorageAppendSamplesResponse { .harmos.v1.Receipt receipt = 1; }
+message StorageAppendObjectRevisionsRequest { .harmos.storage.v1.MutationId mutation = 1; optional string scope = 2; .harmos.storage.v1.DataBatch batch = 3; }
+message StorageAppendObjectRevisionsResponse { .harmos.v1.Receipt receipt = 1; }
+message StorageGetFileHashRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.ByteRange range = 2; .harmos.v1.ReadCut at = 3; }
+message StorageGetFileHashResponse { .harmos.storage.v1.FileHash hash = 1; .harmos.v1.ReadCut resolved_at = 2; }
+message StorageCaptureFileRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.ByteRange range = 2; .harmos.storage.v1.FileMetadata metadata = 3; .harmos.storage.v1.CaptureConsistency consistency = 4; }
+message StorageCaptureFileResponse { .harmos.storage.v1.FileReference file = 1; .harmos.v1.Receipt receipt = 2; }
+message StorageWatchFileBytesRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.FollowStart start = 2; }
+message StorageWatchFileBytesResponse { .harmos.storage.v1.FileEvent event = 1; .harmos.storage.v1.FileCompletion completion = 2; }
+message StorageWatchFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; uint64 offset = 2; }
+message StorageWatchFileProductionResponse { oneof event { .harmos.storage.v1.FileBatch data = 1; .harmos.storage.v1.FileProgress progress = 2; } }
+message StorageListDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; .harmos.v1.PageRequest page = 2; .harmos.v1.ReadCut at = 3; }
+message StorageListDirectoryEntriesResponse { repeated .harmos.storage.v1.DirectoryEntry entries = 1; string next_page_token = 2; .harmos.v1.ReadCut resolved_at = 3; }
+message StorageWatchDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; bool include_existing = 2; }
+message StorageWatchDirectoryEntriesResponse { .harmos.storage.v1.DirectoryEvent event = 1; }
+message StorageGetIndexDefinitionRequest { string name = 1; .harmos.storage.v1.ColumnSource source = 2; .harmos.v1.ReadCut at = 3; }
+message StorageGetIndexDefinitionResponse { .harmos.storage.v1.IndexDefinition definition = 1; bytes revision = 2; .harmos.v1.ReadCut resolved_at = 3; }
+message StorageGetProjectionDefinitionRequest { string name = 1; .harmos.storage.v1.ColumnSource source = 2; .harmos.v1.ReadCut at = 3; }
+message StorageGetProjectionDefinitionResponse { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes revision = 2; .harmos.v1.ReadCut resolved_at = 3; }
+message StorageGetObjectRequest { .harmos.storage.v1.SchemaKey schema = 1; string item = 2; .harmos.v1.ReadCut at = 3; }
+message StorageGetObjectResponse { .harmos.storage.v1.ObjectValue value = 1; bytes revision = 2; bool exists = 3; .harmos.v1.ReadCut resolved_at = 4; }
+
+service Storage {
+  rpc CreateFileProduction(StorageCreateFileProductionRequest) returns (StorageCreateFileProductionResponse);
+  rpc GetFileProduction(StorageGetFileProductionRequest) returns (StorageGetFileProductionResponse);
+  rpc AppendFileBytes(StorageAppendFileBytesRequest) returns (StorageAppendFileBytesResponse);
+  rpc CreateFileWriter(StorageCreateFileWriterRequest) returns (StorageCreateFileWriterResponse);
+  rpc PublishFileProduction(StoragePublishFileProductionRequest) returns (StoragePublishFileProductionResponse);
+  rpc DeleteFileProduction(StorageDeleteFileProductionRequest) returns (StorageDeleteFileProductionResponse);
+  rpc GetFileBytes(StorageGetFileBytesRequest) returns (StorageGetFileBytesResponse);
+  rpc Capabilities(StorageCapabilitiesRequest) returns (StorageCapabilitiesResponse);
+  rpc CreateSnapshot(StorageCreateSnapshotRequest) returns (StorageCreateSnapshotResponse);
+  rpc DeleteSnapshot(StorageDeleteSnapshotRequest) returns (StorageDeleteSnapshotResponse);
+  rpc ListColumnRows(StorageListColumnRowsRequest) returns (StorageListColumnRowsResponse);
+  rpc ListIndexEntries(StorageListIndexEntriesRequest) returns (StorageListIndexEntriesResponse);
+  rpc SetIndexDefinition(StorageSetIndexDefinitionRequest) returns (StorageSetIndexDefinitionResponse);
+  rpc SetProjectionDefinition(StorageSetProjectionDefinitionRequest) returns (StorageSetProjectionDefinitionResponse);
+  rpc AdvanceProjection(StorageAdvanceProjectionRequest) returns (StorageAdvanceProjectionResponse);
+  rpc ListProjectionRows(StorageListProjectionRowsRequest) returns (StorageListProjectionRowsResponse);
+  rpc GetProjectionStatus(StorageGetProjectionStatusRequest) returns (StorageGetProjectionStatusResponse);
+  rpc SetObject(StorageSetObjectRequest) returns (StorageSetObjectResponse);
+  rpc ListRows(StorageListRowsRequest) returns (StorageListRowsResponse);
+  rpc WatchRows(StorageWatchRowsRequest) returns (stream StorageWatchRowsResponse);
+  rpc AppendRecords(StorageAppendRecordsRequest) returns (StorageAppendRecordsResponse);
+  rpc AppendSamples(StorageAppendSamplesRequest) returns (StorageAppendSamplesResponse);
+  rpc AppendObjectRevisions(StorageAppendObjectRevisionsRequest) returns (StorageAppendObjectRevisionsResponse);
+  rpc GetFileHash(StorageGetFileHashRequest) returns (StorageGetFileHashResponse);
+  rpc CaptureFile(StorageCaptureFileRequest) returns (StorageCaptureFileResponse);
+  rpc WatchFileBytes(StorageWatchFileBytesRequest) returns (stream StorageWatchFileBytesResponse);
+  rpc WatchFileProduction(StorageWatchFileProductionRequest) returns (stream StorageWatchFileProductionResponse);
+  rpc ListDirectoryEntries(StorageListDirectoryEntriesRequest) returns (StorageListDirectoryEntriesResponse);
+  rpc WatchDirectoryEntries(StorageWatchDirectoryEntriesRequest) returns (stream StorageWatchDirectoryEntriesResponse);
+  rpc GetIndexDefinition(StorageGetIndexDefinitionRequest) returns (StorageGetIndexDefinitionResponse);
+  rpc GetProjectionDefinition(StorageGetProjectionDefinitionRequest) returns (StorageGetProjectionDefinitionResponse);
+  rpc GetObject(StorageGetObjectRequest) returns (StorageGetObjectResponse);
+}

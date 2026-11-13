@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -19,24 +15,6 @@
 
 // Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 
@@ -61,10 +39,10 @@ async fn admission_durability_distinct() {
     );
     let item = Identifier::new("sample").unwrap();
     let stream = Identifier::new("voltage").unwrap();
-    assert_eq!(f.storage.write_records(vec![record(&key, &item, &[3])]).await.unwrap().sequence, 2);
+    assert_eq!(f.storage.append_records(vec![record(&key, &item, &[3])]).await.unwrap().sequence, 2);
     assert_eq!(
         f.storage
-            .write_stream(vec![StreamInput {
+            .append_samples(vec![StreamInput {
                 stream: stream.clone(),
                 sequence: 99,
                 record: record(&key, &item, &[4])
@@ -74,7 +52,7 @@ async fn admission_durability_distinct() {
             .sequence,
         3
     );
-    let recovery = f.storage.write_recovery(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
+    let recovery = f.storage.append_recovery_entries(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
     assert_eq!(recovery.sequence, 2);
     assert_eq!(f.storage.status().saved.sequence, 0);
     assert_eq!(f.storage.flush().await.unwrap().sequence, 3);
@@ -94,12 +72,9 @@ async fn recovery_share_backpressure() {
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     write(&f.storage, "one").await;
     {
-        let blocked = f.storage.write_recovery(vec![b"state".to_vec()]);
+        let blocked = f.storage.append_recovery_entries(vec![b"state".to_vec()]);
         tokio::pin!(blocked);
-        assert!(crate::storage::pending(blocked.as_mut()).await);
-        // The Held Flush Of The First Batch Is What Keeps The Recovery Write Waiting.
-        f.data.control.flush_entered.notified().await;
-        assert!(crate::storage::pending(blocked.as_mut()).await);
+        assert!(crate::support::events::until(blocked.as_mut(), f.data.control.flush_entered.notified()).await.is_ok());
     }
     assert_eq!(f.storage.status().recovery_accepted.sequence, 0);
     assert_eq!(f.storage.status().pending_batches, 1);
@@ -107,7 +82,7 @@ async fn recovery_share_backpressure() {
     assert_eq!(f.storage.status().saved.sequence, 0);
     f.data.control.block_flush.store(false, Ordering::SeqCst);
     f.data.control.flush_release.notify_one();
-    assert_eq!(f.storage.write_recovery(vec![b"state".to_vec()]).await.unwrap().sequence, 1);
+    assert_eq!(f.storage.append_recovery_entries(vec![b"state".to_vec()]).await.unwrap().sequence, 1);
     f.finish().await;
 }
 
@@ -127,7 +102,7 @@ async fn close_retains_writes() {
     let key = schema();
     let item = Identifier::new("late").unwrap();
     assert!(matches!(
-        f.storage.write_records(vec![record(&key, &item, &[4])]).await,
+        f.storage.append_records(vec![record(&key, &item, &[4])]).await,
         Err(harmos_storage::Error::Closing { domain: "storage" })
     ));
     f.data.control.permanent.store(false, Ordering::SeqCst);
@@ -135,7 +110,7 @@ async fn close_retains_writes() {
     assert_eq!(f.data.records.lock().unwrap().len(), 1);
     assert!(f.data.control.writes.lock().unwrap().iter().all(|at| *at == 1));
     assert_eq!(f.storage.status().saved.sequence, 1);
-    f.runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -169,12 +144,12 @@ async fn backend_close_failure() {
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
     assert_eq!(f.recovery.control.closes.load(Ordering::SeqCst), 2);
-    f.runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn partial_open_remains() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
@@ -202,7 +177,7 @@ async fn partial_open_remains() {
             .and_then(|item| item.health)
             .is_none()
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -215,9 +190,12 @@ async fn cancelled_close_retains() {
     let key = schema();
     let item = Identifier::new("blocked").unwrap();
     let inputs = [record(&key, &item, &[1])];
-    let producer = f.storage.write_records((inputs).to_vec());
+    let producer = f.storage.append_records((inputs).to_vec());
     tokio::pin!(producer);
-    assert!(crate::storage::pending(producer.as_mut()).await, "queue is full");
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(producer.as_mut(), context).is_pending())).await,
+        "queue is full"
+    );
     {
         let close = f.storage.close();
         tokio::pin!(close);
@@ -228,16 +206,16 @@ async fn cancelled_close_retains() {
     f.data.control.flush_release.notify_one();
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[1]);
-    f.runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn snapshots_require_flush() {
     let f = Fixture::new(config()).await;
-    let through = f.storage.write_recovery(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
+    let through = f.storage.append_recovery_entries(vec![b"one".to_vec(), b"two".to_vec()]).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
     let snapshot = RecoverySnapshot {
-        required_data: f.storage.cursor_saved(),
+        required_data: f.storage.get_saved_position(),
         through: through.clone(),
         payload: harmos_storage::state::SnapshotPayload::from_bytes(
             &[5],
@@ -246,10 +224,10 @@ async fn snapshots_require_flush() {
         )
         .unwrap(),
     };
-    f.storage.write_snapshot(snapshot.clone()).await.unwrap();
+    f.storage.set_recovery_snapshot(snapshot.clone()).await.unwrap();
     f.storage.flush_recovery().await.unwrap();
     assert_eq!(f.recovery.control.flushes.lock().unwrap().as_slice(), &[2, 2]);
-    assert_eq!(f.storage.read_snapshot(NonZeroUsize::new(1024).unwrap()).await.unwrap().as_deref(), Some(&snapshot));
+    assert_eq!(f.storage.get_recovery_snapshot(NonZeroUsize::new(1024).unwrap()).await.unwrap().as_deref(), Some(&snapshot));
     let after = RecoveryPosition { sequence: 0, ..through.clone() };
     let page = f
         .storage
@@ -301,15 +279,21 @@ async fn close_seals_admission() {
     let f = Fixture::new(config()).await;
     f.recovery.control.block_read.store(true, Ordering::SeqCst);
     let storage = f.storage.clone();
-    let reader = tokio::spawn(async move { storage.read_snapshot(NonZeroUsize::new(1024).unwrap()).await });
+    let reader = tokio::spawn(async move { storage.get_recovery_snapshot(NonZeroUsize::new(1024).unwrap()).await });
     f.recovery.control.read_entered.notified().await;
 
     let storage = f.storage.clone();
     let close = storage.close();
     tokio::pin!(close);
-    assert!(crate::storage::pending(close.as_mut()).await, "read holds the lifecycle lock");
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(close.as_mut(), context).is_pending())).await,
+        "read holds the lifecycle lock"
+    );
     assert!(f.storage.status().closing);
-    assert!(matches!(f.storage.write_recovery(vec![b"late".to_vec()]).await, Err(harmos_storage::Error::Closing { domain: "storage" })));
+    assert!(matches!(
+        f.storage.append_recovery_entries(vec![b"late".to_vec()]).await,
+        Err(harmos_storage::Error::Closing { domain: "storage" })
+    ));
 
     f.recovery.control.read_release.notify_one();
     assert!(reader.await.unwrap().unwrap().is_none());

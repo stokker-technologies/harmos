@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1.status;
+option csharp_namespace = "Harmos.V1.StatusResources";
+message DiagnosticsGetRequest { string name = 1; uint64 offset = 2; uint64 max_bytes = 3; }
+message DiagnosticsGetResponse { string name = 1; bytes data = 2; uint64 total_length = 3; bytes sha256 = 4; }
+service Diagnostics { rpc Get(DiagnosticsGetRequest) returns (DiagnosticsGetResponse); }

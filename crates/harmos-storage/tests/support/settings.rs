@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,24 +17,12 @@ use harmos_storage::*;
 
 // Local Imports
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
 /* === Public Functions === */
 
 pub fn storage_settings() -> StorageSettings {
     StorageSettings {
+        transfer: Default::default(),
+        policy: Default::default(),
         filesystem: harmos_storage::StorageFilesystemSettings {
             poll_interval: std::time::Duration::from_millis(100),
             max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
@@ -46,6 +30,8 @@ pub fn storage_settings() -> StorageSettings {
         },
 
         request: StorageRequestSettings {
+            max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),
+            max_mutation_receipts: std::num::NonZeroUsize::new(1024).unwrap(),
             max_pending_queries: nz(64),
             max_active_queries: nz(4),
             max_pending_write_batches: nz(256),
@@ -63,4 +49,3 @@ pub fn storage_settings() -> StorageSettings {
 fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).unwrap()
 }
-/* === Tests === */

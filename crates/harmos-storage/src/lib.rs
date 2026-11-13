@@ -11,13 +11,17 @@
 
 mod admissions;
 
-pub mod aggregate;
+mod aggregate;
 pub mod arrow;
 mod backend;
 mod batch;
 mod batching;
+#[cfg(feature = "testing")]
+pub mod bench_support;
 mod capacity;
 pub mod config;
+mod content;
+mod definitions;
 mod deletion;
 pub mod directory;
 mod error;
@@ -31,30 +35,38 @@ mod file_production;
 mod file_reads;
 pub mod follow;
 mod frozen_file;
-pub mod json;
 mod local;
 mod manager;
 mod object_admissions;
 mod objects;
 mod opened_capture;
+mod persistence_work;
 pub mod query;
 mod queue;
 mod read_batch;
 mod receipts;
+mod record_view;
 mod schema_encoding;
+mod schema_sets;
 mod selection;
-pub mod signal;
 mod snapshot;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 mod staging;
 pub mod state;
+mod statistics;
 mod worker;
 pub mod writes;
 
 /* === Re-Exports === */
 
-pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture};
+pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture, StorageWork};
 pub use batch::{FileChunk, StorageBatch};
-pub use config::{StorageAccumulatorSettings, StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use config::{
+    StorageAccumulatorSettings, StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings,
+};
+pub use content::{ContentLease, ContentRead, ContentSource};
+pub use definitions::{DefinitionInput, DefinitionKind, DefinitionOutcome, DefinitionRefusal};
 pub use directory::{DirectoryReader, DirectoryWatcher};
 pub use error::{BackendFailure, Error, Result};
 pub use file_batch::{FileReadBatch, FileReadEvent, FileReadSlice};
@@ -62,24 +74,27 @@ pub use file_capture::FileCapture;
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::{FileFollow, FileFollower};
 pub use file_production::ProductionFollower;
-pub use file_reads::{FileRead, FileReader};
+pub use file_reads::{ContentRange, FileBytesRange, FileRead, FileReader};
 pub use frozen_file::FrozenFile;
 pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{
     ByteRange, CaptureConsistency, FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FilePhase, FileProducer, FileProgress,
     FileReference, FileSession, FileSource, FollowStart, IdentityKind, IdentitySelection, MutationId, MutationWindow, ObjectCatalog,
-    ObjectDefinition, ObjectDefinitions, ObjectEntry, ObjectKey, ObjectPoint, ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue,
-    ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput, RecordWrite, RecoveryPosition, SchemaInfo, SchemaInput, SchemaKey,
-    StagedFile, StorageCursor, StorageInfo, StoreHistory, StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
+    ObjectDefinition, ObjectEntry, ObjectHandle, ObjectKey, ObjectPoint, ObjectReceipt, ObjectRetention, ObjectRevision, ObjectValue,
+    ObjectVersion, ObjectVersionToken, PayloadEncoding, RecordInput, RecordWrite, RecoveryPosition, SchemaKey, StagedFile, StorageCursor,
+    StorageInfo, StoreHistory, StoredIdentity, StoredObject, StoredRecord, StoredRow, StreamInput, StreamWrite,
 };
-pub use json::{JsonStorage, JsonStorageSettings};
-pub use manager::{ErasedCatalog, StorageManager, StorageMetrics, WorkerOwner, encoded_size};
-pub use objects::ObjectGroup;
+pub use manager::{StorageManager, StorageMetrics, WorkerOwner, encoded_size};
+pub use objects::{CompareExchange, ObjectExchange, ObjectGroup};
 pub use opened_capture::OpenedCapture;
+pub use persistence_work::{PersistenceWork, StageWork};
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
 pub use read_batch::{ReadBatch, ReadPages};
-pub use receipts::{MutationReceipt, MutationValue};
-pub use staging::StorageFile;
+pub use receipts::{MutationHeader, MutationReceipt, MutationValue};
+pub use record_view::RecordView;
+pub use schema_sets::{SchemaExchange, SchemaWrite, SchemaWriteReceipt};
+pub use snapshot::Snapshot;
+pub use staging::{FileProductionStatus, StorageFile};
 
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
 pub use staging::checkpoint::FileSave;

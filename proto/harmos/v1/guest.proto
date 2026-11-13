@@ -1,0 +1,85 @@
+// Harmos WebAssembly Component Messages.
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1;
+
+import "harmos/v1/types.proto";
+
+
+// Metadata only: registration must not initialize authored resources.
+message GuestRegistration {
+  string id = 1;
+  string version = 2;
+  Catalog catalog = 3;
+  OperationPolicy initialization = 4;
+  OperationPolicy shutdown = 5;
+  repeated GuestRequirement requirements = 6;
+  uint64 message_bytes = 7;
+}
+message GuestRequirement {
+  string id = 1;
+  string request = 2;
+  string response = 3;
+  bytes fingerprint = 4;
+}
+message GuestCommand {
+  oneof phase {
+    GuestPrepare prepare = 1;
+    GuestInvocation initialize = 2;
+    GuestInvocation attempt = 3;
+    uint64 finalize = 4;
+    uint64 cancel = 5;
+  }
+}
+message GuestPrepare {
+  uint64 invocation = 1;
+  string operation = 2;
+  bytes fingerprint = 3;
+  uint64 generation = 4;
+  bytes payload = 5;
+}
+message GuestInvocation {
+  uint64 invocation = 1;
+  // A host-issued capability for this finite attempt, never an authored id.
+  bytes context = 2;
+  repeated GuestValue values = 3;
+}
+message GuestValue {
+  string key = 1;
+  bytes payload = 2;
+}
+message GuestInitialize {
+  bytes configuration = 1;
+  bytes generation_context = 2;
+  harmos.v1.OperationAssignments assignments = 3;
+}
+message GuestShutdown {}
+message GuestChild {
+  oneof action {
+    GuestChildRequest call = 1;
+    GuestChildControl control = 2;
+  }
+}
+message GuestChildRequest {
+  bytes context = 1;
+  bytes generation_context = 2;
+  ChildRequest request = 3;
+  uint64 generation = 4;
+  bool submit = 5;
+  repeated GuestValue values = 6;
+}
+message GuestChildControl {
+  // Must be the capability of the attempt that submitted this instance.
+  bytes context = 1;
+  uint64 instance = 2;
+  GuestChildAction action = 3;
+}
+enum GuestChildAction {
+  GUEST_CHILD_ACTION_UNSPECIFIED = 0;
+  GUEST_CHILD_ACTION_STATUS = 1;
+  GUEST_CHILD_ACTION_CANCEL = 2;
+  GUEST_CHILD_ACTION_JOIN = 3;
+  GUEST_CHILD_ACTION_RELEASE = 4;
+  GUEST_CHILD_ACTION_DETACH = 5;
+}
+message GuestSubmitted { uint64 instance = 1; }

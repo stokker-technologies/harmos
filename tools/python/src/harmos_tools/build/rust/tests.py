@@ -16,12 +16,15 @@ import argparse
 import os
 import shutil
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 # Third Party Imports
 
 # Local Imports
 from ... import temporary
+from ...ci import summary
 from ...test import archive
 from .. import fixtures as staging
 from .. import cargo, paths
@@ -63,17 +66,51 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
     fixtures.mkdir(parents=True)
     files: dict[str, str] = {}
 
-    # Nextest Builds The CLI Test Harness; Sandbox Collection Needs Its Ordinary Executable.
     compiler_profile = "test"
-    collector = staging.capture("collector", ROOT, compiler_profile, ["-p", "cargo-harmos"], scratch)
-    tool = staging.executable(staging.messages(collector), "cargo-harmos")
+    binaries = {}
+    messages = archive.location(ROOT, profile).with_name(archive.MESSAGES)
+    artifacts = list(cargo.artifacts(ROOT, messages))
+    for message in artifacts:
+        fixture = Path(message["manifest_path"]) == ROOT / "tools/conformance/Cargo.toml"
+        if not fixture or message["target"]["kind"] != ["bin"] or not message.get("executable"):
+            continue
+        source = Path(message["executable"])
+        destination = fixtures / "bin" / source.name
+        staging.copy(source, destination, files)
+        binaries[message["target"]["name"]] = destination.relative_to(fixtures).as_posix()
+
+    # Build and Retain the Two Native-Language SDK Programs Used by Installation Stories.
+    subprocess.run(
+        [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "csharp", "--profile", profile], cwd=Path.cwd(), check=True
+    )
+    subprocess.run(
+        [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "cpp", "--profile", profile], cwd=Path.cwd(), check=True
+    )
+    configuration = "Debug" if profile == "dev" else "Release"
+    csharp = ROOT / "sdk/csharp/Conformance/bin" / configuration / "net10.0"
+    for source in csharp.iterdir():
+        if source.is_file():
+            staging.copy(source, fixtures / "csharp" / source.name, files)
+    suffix = ".exe" if os.name == "nt" else ""
+    binaries["harmos-csharp-conformance-plugin"] = f"csharp/harmos-csharp-conformance-plugin{suffix}"
+    cpp = ROOT / "target/cpp" / profile
+    source = cpp / configuration / f"harmos-cpp-conformance{suffix}" if os.name == "nt" else cpp / "harmos-cpp-conformance"
+    staging.copy(source, fixtures / "bin" / source.name, files)
+    binaries["harmos-cpp-conformance"] = f"bin/{source.name}"
+
+    with summary.phase("Fixture Driver"):
+        tool = staging.executable(artifacts, "fixture-driver")
 
     sandbox = "harmos-sandbox-guest"
     manifest = GUESTS[sandbox]
-    capture = staging.capture(sandbox, manifest.parent, compiler_profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch)
+    with summary.phase("Guest Fixture"):
+        capture = staging.capture(
+            sandbox, manifest.parent, compiler_profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch
+        )
     built, receipt = staging.collect(tool, manifest, sandbox, "guest", compiler_profile, capture, scratch)
     artifact, build = staging.stage_build(built, receipt, sandbox, files, fixtures)
-    inputs = staging.offline_inputs(fixtures / "inputs")
+    with summary.phase("Offline Inputs"):
+        inputs = staging.offline_inputs(fixtures / "inputs")
     # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.
     selected_inputs = (path for path in inputs.rglob("*") if path.is_file() and path.stat().st_mode & stat.S_IXUSR)
     executables = [path.relative_to(fixtures).as_posix() for path in selected_inputs]
@@ -83,7 +120,7 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
         profile,
         sorted(files),
         {
-            "artifacts": {sandbox: artifact},
+            "artifacts": {sandbox: artifact, **binaries},
             "inspections": {sandbox: artifact},
             "libraries": {},
             "builds": {sandbox: build},
@@ -91,7 +128,7 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
             "vendor": "inputs/vendor",
             "wheels": "inputs/wheels",
             "requirements": "inputs/requirements.txt",
-            "executables": [],
+            "executables": sorted(binaries.values()),
             "input_executables": executables,
         },
     )

@@ -10,18 +10,16 @@
 /* === Modules === */
 
 pub(crate) mod cleanup;
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-pub(crate) mod dependencies;
 pub(crate) mod executor;
 pub(crate) mod instance;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 mod listeners;
 mod task;
 
 /* === Re-Exports === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) use listeners::{Delivery as ListenerDelivery, Listener};
 pub(crate) use task::{Task, settle_all};
 
@@ -45,7 +43,7 @@ use tokio::task::{JoinError, JoinHandle};
 
 /* === Structs === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) struct Backoff;
 
 struct Attempt<T>(JoinHandle<T>);
@@ -62,7 +60,7 @@ pub(crate) enum Failure {
 
 /* === Implementations === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 impl Backoff {
     pub(crate) fn duration(attempt: usize, base: Duration, cap: Duration) -> Duration {
         let shift = u32::try_from(attempt.min(16)).expect("the capped attempt fits u32");

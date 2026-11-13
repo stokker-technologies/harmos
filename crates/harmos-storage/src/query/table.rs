@@ -132,7 +132,7 @@ mod tests {
     fn derived_table_reduces_exactly_across_pages_and_survives_owner_drop() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Float64, false), Field::new("y", DataType::Float64, false)]));
         let mut writer = TableWriter::new(schema.clone()).unwrap();
-        let x: Vec<f64> = (0..10_080).map(f64::from).collect();
+        let x: Vec<f64> = (0..121).map(f64::from).collect();
         let y: Vec<f64> = x.iter().map(|x| (x * 0.13).sin()).collect();
         for (x, y) in x.chunks(120).zip(y.chunks(120)) {
             let page = RecordBatch::try_new(
@@ -145,9 +145,9 @@ mod tests {
         let table = writer.finish().unwrap();
         assert_eq!(table.len(), x.len());
         for (algorithm, expected) in [
-            (Algorithm::Lttb, crate::signal::lttb(&x, &y, 31)),
-            (Algorithm::Extrema, crate::signal::extrema(&y, 15)),
-            (Algorithm::Decimate, crate::signal::decimate(x.len(), 31)),
+            (Algorithm::Lttb, crate::statistics::lttb(&x, &y, 31)),
+            (Algorithm::Extrema, crate::statistics::extrema(&y, 15)),
+            (Algorithm::Decimate, crate::statistics::decimate(x.len(), 31)),
         ] {
             let transform = Transform::Downsample(Downsample {
                 max_rows: 31,

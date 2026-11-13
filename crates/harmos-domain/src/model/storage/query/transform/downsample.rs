@@ -20,14 +20,10 @@
 // Local Imports
 use super::FieldPath;
 use crate::MemorySize;
-use crate::model::storage::codec::{Code, Index, Nested, Optional, coded, product};
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(Downsample { max_rows: Index => 1, algorithm: Code<Algorithm> => 2, value: Optional<Nested<FieldPath>> => 3, axis: Optional<Nested<FieldPath>> => 4 });
-coded!(Algorithm { Decimate, Extrema, Lttb, LttbLog });
 
 /* === Type Aliases === */
 

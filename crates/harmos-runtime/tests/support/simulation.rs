@@ -9,10 +9,6 @@
 
 // Share the Deterministic Script Between Stories and Benchmarks
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 use super::support::{Bank, Deposit, Noted, alice, pulse};
@@ -24,18 +20,6 @@ use harmos_runtime::{Setup, simulation::SimulatedRuntime};
 // Third Party Imports
 
 // Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -78,5 +62,3 @@ async fn resident(mut context: harmos_runtime::services::ServiceContext<Bank>) -
     context.stopping().await;
     Ok(())
 }
-
-/* === Tests === */

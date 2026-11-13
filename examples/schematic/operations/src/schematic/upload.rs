@@ -7,128 +7,87 @@
  * ***
  */
 
-// AnalyzeUpload Contracts and Execution.
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-#[cfg(feature = "runtime")]
-use std::sync::atomic::{AtomicU64, Ordering};
+use harmos_operations::execution::operations::{ExecutionContext, ProtobufOperation, ServingError, Visibility};
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::execution::operations::OperationPolicy = harmos_operations::execution::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::execution::operations::RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
-    id = "schematic.analyze.upload", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
-    grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeUpload"),
-)]
-pub struct AnalyzeUpload {
-    pub title: String,
-}
-
-#[cfg(feature = "runtime")]
-pub struct AnalysisResources {
-    pub(crate) analysis: tokio::sync::Semaphore,
-    progress_sequence: AtomicU64,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct AnalyzeUpload;
 
 /* === Implementations === */
 
-#[cfg(feature = "runtime")]
-impl harmos::Operation for AnalyzeUpload {
-    type Error = crate::Error;
+impl ProtobufOperation for AnalyzeUpload {
+    type Request = crate::protocol::AnalyzeUpload;
+    type Response = crate::protocol::Analysis;
+    type Endpoints = harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>;
+    const ID: &'static str = "schematic.analyze.upload";
+    const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: harmos_operations::execution::operations::ReplaySafety =
+        harmos_operations::execution::operations::ReplaySafety::Idempotent;
+    const GRPC: Option<harmos_operations::execution::operations::Grpc> =
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "AnalyzeUpload"));
+    const RESOURCES: &'static [harmos_operations::Resource] = &[harmos_operations::Resource::of::<super::upload::AnalysisResources>()];
+    async fn run(ctx: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let result: Result<Self::Response, crate::Error> = async {
+            if request.title.trim().is_empty() || request.title.len() > 128 {
+                return Err(crate::Error::InvalidInput);
+            }
+            let resources = ctx.resource::<super::upload::AnalysisResources>()?;
+            let _permit = resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
+            let mut checked = 0u32;
+            while let Some(item) = endpoints.recv().await {
+                let (snapshot, _claims) = item.into_owned_request()?;
+                let snapshot: schematic_domain::model::Snapshot = snapshot.into();
+                snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
+                checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
 
-    fn classify(error: &Self::Error) -> harmos::operations::FailureKind {
-        match error {
-            crate::Error::InvalidInput => harmos::operations::FailureKind::Invalid,
-            _ => harmos::operations::FailureKind::Permanent,
+                resources
+                    .publish(schematic_domain::model::schematic::progress::AnalysisProgress { title: request.title.clone(), checked })?;
+            }
+            Ok(crate::protocol::Analysis { checked })
         }
+        .await;
+        result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
-
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<super::analyze::Analysis>, Self::Error> {
-        let resources = ctx.resource::<AnalysisResources>();
-
-        // Check / Title Presence
-        let title_present = !self.title.trim().is_empty();
-
-        // Check / Title Size
-        let title_fits = self.title.len() <= 128;
-        if !(title_present && title_fits) {
-            return Err(crate::Error::InvalidInput);
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> harmos_operations::execution::operations::FailureKind {
+        match error.downcast_ref::<crate::Error>() {
+            Some(crate::Error::InvalidInput) => harmos_operations::execution::operations::FailureKind::Invalid,
+            _ => harmos_operations::execution::operations::FailureKind::Permanent,
         }
-        let _permit = resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
-        let mut checked = 0u32;
-        while let Some(snapshot) = ctx.streams().recv().await {
-            snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
-            checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
-            let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: self.title.clone(), checked };
-            let sequence = resources.next_progress_sequence()?;
-            let payload = harmos::Message::encode(&progress);
-            // Publish Analysis Progress
-            let request = harmos::builtins::streams::Publish {
-                stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
-                sequence: Some(sequence),
-                published_unix_micros: None,
-                context: None,
-                payload,
-                following: Vec::new(),
-            };
-            ctx.operation(request).await?;
-        }
-        Ok(super::analyze::Analysis { checked }.into())
     }
 }
 
-#[cfg(feature = "runtime")]
+/* === Structs === */
+
+pub struct AnalysisResources {
+    pub(crate) analysis: tokio::sync::Semaphore,
+    pub progress: std::sync::OnceLock<std::sync::Arc<dyn Fn(schematic_domain::model::schematic::progress::AnalysisProgress) + Send + Sync>>,
+}
+
+/* === Implementations === */
+
 impl Default for AnalysisResources {
     fn default() -> Self {
         Self {
             analysis: tokio::sync::Semaphore::new(1),
-            progress_sequence: AtomicU64::new(0),
+            progress: Default::default(),
         }
     }
 }
-
-#[cfg(feature = "runtime")]
 impl AnalysisResources {
-    // The Analysis Permit Keeps Publications in Sequence Order Across Calls.
-    pub(crate) fn next_progress_sequence(&self) -> Result<u64, crate::Error> {
-        let advance = |sequence: u64| sequence.checked_add(1);
-        let previous = self.progress_sequence.try_update(Ordering::Relaxed, Ordering::Relaxed, advance);
-        let previous = previous.map_err(|_| crate::Error::Unavailable)?;
-        Ok(previous + 1)
+    pub(crate) fn publish(&self, row: schematic_domain::model::schematic::progress::AnalysisProgress) -> Result<(), crate::Error> {
+        self.progress.get().ok_or(crate::Error::Unavailable)?(row);
+        Ok(())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

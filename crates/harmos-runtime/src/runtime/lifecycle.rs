@@ -68,8 +68,8 @@ enum Drain {
 /* === Implementations === */
 
 impl<A: Application> Runtime<A> {
-    pub async fn start_storage<C>(&self, storage: StorageManager<C>) -> Result<()> {
-        let storage = storage.erased();
+    pub async fn start_storage(&self, storage: StorageManager) -> Result<()> {
+        let storage = storage.clone();
         let storage = {
             let _stopping = self.stopping.lock().expect("runtime transition is healthy");
             if self.closing.load(Ordering::Acquire) {
@@ -84,21 +84,22 @@ impl<A: Application> Runtime<A> {
                 });
             }
             storage.claim_owner(self.operations.resident_identity())?;
+            storage.adopt_clock(self.operations.clock())?;
             self.storage.get_or_init(|| storage)
         };
         storage.start_on::<A>(&self.operations).await
     }
 
-    pub fn storage(&self) -> Option<&StorageManager<crate::storage::ErasedCatalog>> {
+    pub fn storage(&self) -> Option<&StorageManager> {
         self.storage.get()
     }
 
     pub async fn shutdown_with_timeout(&self, timeout: Duration) -> Result<Position> {
-        let deadline = tokio::time::Instant::now().checked_add(timeout).filter(|_| !timeout.is_zero()).ok_or(Error::InvalidInput {
+        let deadline = self.operations.clock().now().checked_add(timeout).filter(|_| !timeout.is_zero()).ok_or(Error::InvalidInput {
             field: "runtime shutdown timeout",
             reason: "must be positive and representable",
         })?;
-        match tokio::time::timeout_at(deadline, self.shutdown()).await {
+        match self.operations.clock().timeout_at(deadline, self.shutdown()).await {
             Ok(result) => result,
             Err(_) => {
                 let stopping = self.stopping.lock().expect("runtime transition is healthy");
@@ -116,14 +117,14 @@ impl<A: Application> Runtime<A> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
-        #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+        #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
         self.plugin.close_admission();
-        #[cfg(not(all(feature = "plugin", not(target_arch = "wasm32"))))]
+        #[cfg(not(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
         {
             // Notify Residents Before Cancelling Their In-Flight Calls
             self.operations.close_resident_admission();
             self.operations.close_admission();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             {
                 self.records.stop_listeners();
                 self.streams.stop_listeners();
@@ -132,6 +133,7 @@ impl<A: Application> Runtime<A> {
         let (cleanup, completed) = {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
             if let Stopping::Running(supervisor) = &mut *stopping {
+                let _clock = crate::clock::enter(self.operations.clock().clone());
                 let outcome = Arc::new(OnceLock::new());
                 let progress = watch::channel("producers and listeners").0;
                 let original = Shutdown {
@@ -172,31 +174,24 @@ impl<A: Application> Resource for Shutdown<A> {
 impl<A: Application> Shutdown<A> {
     async fn finish(&mut self) -> Result<()> {
         if let Drain::Running(supervisor) = &mut self.state {
-            #[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+            #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             {
                 self.progress.send_replace("plugins");
                 self.handles.plugin.shutdown().await?;
             }
             self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             {
                 self.handles.records.stop_listeners();
                 self.handles.streams.stop_listeners();
             }
-            self.progress.send_replace("observers and listeners");
-            let observers = self.handles.operations.shutdown_observers();
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-            let (observers, records, streams) =
-                tokio::join!(observers, self.handles.records.shutdown_listeners(), self.handles.streams.shutdown_listeners(),);
-            #[cfg(not(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar")))]
-            let observers = observers.await;
-            if self.handles.operations.observer_cleanup_pending() {
-                return Err(observers.err().unwrap_or(Error::NotReady { domain: "observer cleanup" }));
-            }
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            self.progress.send_replace("listeners");
+            #[cfg(feature = "plugin-guest")]
+            let (records, streams) = tokio::join!(self.handles.records.shutdown_listeners(), self.handles.streams.shutdown_listeners());
+            #[cfg(feature = "plugin-guest")]
             records?;
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             streams?;
             self.progress.send_replace("application services");
             let services = self.handles.operations.shutdown_application_services().await;
@@ -216,19 +211,11 @@ impl<A: Application> Shutdown<A> {
             }
             self.handles.state.seal();
             self.progress.send_replace("journal");
-            let mut settled = joined(supervisor, &self.journal_handles, &self.notices).await;
+            let mut settled = joined(self.handles.operations.clock(), supervisor, &self.journal_handles, &self.notices).await;
             if let Some(source) = self.application.as_ref().and_then(super::launch::ApplicationCleanup::failure)
                 && settled.is_ok()
             {
                 settled = Err(Failure { domain: "application", source });
-            }
-            if let Err(source) = observers
-                && settled.is_ok()
-            {
-                settled = Err(Failure {
-                    domain: "observer",
-                    source: Arc::new(source),
-                });
             }
             if let Err(source) = services
                 && settled.is_ok()
@@ -268,7 +255,7 @@ impl<A: Application> Shutdown<A> {
 }
 
 impl<A: Application> Handle<A> {
-    pub fn storage(&self) -> Option<&StorageManager<crate::storage::ErasedCatalog>> {
+    pub fn storage(&self) -> Option<&StorageManager> {
         self.storage.get()
     }
 }
@@ -277,8 +264,10 @@ impl<A: Application> Handle<A> {
 
 /* === Private Functions === */
 
-async fn joined(supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>) -> Outcome {
-    let mut grace = Box::pin(tokio::time::sleep(STOP_GRACE));
+async fn joined(
+    clock: &crate::clock::Clock, supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>,
+) -> Outcome {
+    let mut grace = Box::pin(clock.sleep(STOP_GRACE));
     let joined = std::future::poll_fn(|context| {
         if let Poll::Ready(settled) = Pin::new(&mut *supervisor).poll(context) {
             return Poll::Ready(Some(settled));

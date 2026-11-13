@@ -25,7 +25,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 // Local Imports
 use super::{Codec, InputEnvelope, server};
 use crate::operations::{EncodedInvocation, GrpcBinding, StreamItem};
-use harmos_sdk::operations::{WireStreamLimits, WireStreams};
+use harmos_operations::execution::operations::{WireStreamLimits, WireStreams};
 
 /* === Constants === */
 
@@ -58,6 +58,8 @@ struct Pending {
     forward: Option<Forward>,
     response: Option<Vec<u8>>,
     output: bool,
+    streaming: bool,
+    managed: bool,
     settled: bool,
 }
 
@@ -80,7 +82,7 @@ impl super::Wire<Vec<u8>> for Raw {
     }
 
     fn decode_admitted<C>(
-        input: harmos_sdk::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>,
+        input: harmos_operations::execution::grpc::DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>,
     ) -> Result<(Vec<u8>, C), Status> {
         let bytes = input.contiguous().map_err(|error| Status::invalid_argument(error.to_string()))?;
         let claim = admit(bytes.len().saturating_add(std::mem::size_of::<Vec<u8>>()))?;
@@ -125,8 +127,9 @@ impl Pending {
         loop {
             if !self.output
                 && let Some(bytes) = self.response.take()
+                && (!self.streaming || self.managed)
             {
-                return Ok(Some(Output { bytes, tag: Some(2) }));
+                return Ok(Some(Output { bytes, tag: self.managed.then_some(2) }));
             }
             if self.settled && !self.output {
                 return Ok(None);
@@ -150,7 +153,7 @@ impl Pending {
                 }
                 result = async { self.streams.as_ref().expect("declared output").receive_current().await }, if self.output => {
                     match result.map_err(serving)? {
-                        Some(bytes) => return Ok(Some(Output { bytes, tag: Some(1) })),
+                        Some(bytes) => return Ok(Some(Output { bytes, tag: self.managed.then_some(1) })),
                         None => self.output = false,
                     }
                 }
@@ -197,6 +200,8 @@ impl Endpoint {
             invocation,
             streams,
             output,
+            streaming: output,
+            managed: binding.contract().grpc().is_some_and(|grpc| grpc.managed),
             forward: None,
             response: None,
             settled: false,
@@ -204,7 +209,11 @@ impl Endpoint {
     }
     async fn opening(&self, request: Request<Incoming>) -> Result<Pending, Status> {
         let binding = self.binding(&request);
-        let (request, incoming) = tokio::time::timeout(self.settings.opening_timeout, super::open(request.into_inner()))
+        let (request, incoming) = self
+            .binding
+            .operations
+            .clock()
+            .timeout(self.settings.opening_timeout, super::open(request.into_inner()))
             .await
             .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
         let mut pending = self.start(binding, request)?;
@@ -225,7 +234,15 @@ impl tonic::server::UnaryService<StreamItem<Vec<u8>>> for Endpoint {
     type Future = tonic::codegen::BoxFuture<Response<Output>, Status>;
     fn call(&mut self, request: Request<StreamItem<Vec<u8>>>) -> Self::Future {
         let pending = self.start(self.binding(&request), request.into_inner());
-        Box::pin(async move { pending?.response().await })
+        let maximum = self.settings.encode.message_bytes.get();
+        let action = self.binding.contract().operation().id.to_string();
+        Box::pin(async move {
+            let response = pending?.response().await?;
+            if response.get_ref().bytes.len() > maximum {
+                return Err(Status::resource_exhausted(format!("{action}: response exceeds carrier message_bytes")));
+            }
+            Ok(response)
+        })
     }
 }
 
@@ -276,7 +293,11 @@ impl tonic::server::StreamingService<StreamItem<super::ControlEnvelope<Vec<u8>, 
         };
         Box::pin(async move {
             let mut incoming = request.into_inner();
-            let first = tokio::time::timeout(endpoint.settings.opening_timeout, incoming.next())
+            let first = endpoint
+                .binding
+                .operations
+                .clock()
+                .timeout(endpoint.settings.opening_timeout, incoming.next())
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))?
                 .transpose()?
@@ -345,7 +366,7 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
             Err(error) => return server::status(error).into_http(),
         };
         let memory: super::decoding::AdditionalMemory = std::sync::Arc::new(move |bytes| {
-            let encoded = harmos_sdk::grpc::DecodeInput::new(bytes);
+            let encoded = harmos_operations::execution::grpc::DecodeInput::new(bytes);
             let payload = if input || managed {
                 let (tag, payload) = encoded
                     .variant(if managed { &[1, 2, 3, 4] } else { &[1, 2] })
@@ -392,7 +413,7 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
 
 /* === Private Functions === */
 
-fn serving(error: harmos_sdk::ServingError) -> Status {
+fn serving(error: harmos_operations::execution::ServingError) -> Status {
     Status::internal(error.to_string())
 }
 

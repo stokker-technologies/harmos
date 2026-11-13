@@ -9,6 +9,28 @@
 
 /* === Modules === */
 
+mod application_content;
+mod callee_policy;
+mod definition_receipts;
+mod generated_example_hash;
+mod generated_native_journey;
+
+mod durable_row_watch;
+mod file_observation;
+mod filesystem_metadata;
+mod filtered_pages;
+#[path = "generated_capture.rs"]
+mod generated_capture;
+#[path = "generated_directory.rs"]
+mod generated_directory;
+#[path = "generated_status.rs"]
+mod generated_status;
+mod issued_cut_lifetime;
+mod issued_pages;
+mod native_pages;
+mod transfer_plugin;
+mod unary_transfers;
+
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 #[path = "../storage/coordinator.rs"]
@@ -28,33 +50,3 @@ use crate::support;
 #[allow(dead_code, reason = "shared with the benchmark of the same domain")]
 mod waveforms;
 use fixture::*;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

@@ -15,24 +15,17 @@ mod allocation;
 #[path = "retention.rs"]
 mod retention;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 mod revisions;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 #[path = "../streams/listeners.rs"]
 mod listeners;
-
-#[path = "series.rs"]
-mod series;
-
-#[path = "stream_batches.rs"]
-#[allow(dead_code, reason = "shared with the benchmark of the same domain")]
-pub mod stream_batches;
 
 #[path = "streams_macros.rs"]
 mod streams_macros;
 
-/* === Re-Exports === */
+mod watch_delivery_accounts_for_rows_overruns_and_shutdown;
 
 /* === Imports === */
 
@@ -47,24 +40,15 @@ use support::{Bank, Ledger, Pulse, Reading, deposit, pulse, streaming, streams};
 
 // Local Imports
 use crate::support;
+use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{
-    Runtime, state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow,
-    streams::Definition, streams::Item, streams::Stream, streams::StreamManager,
+    state::At, state::Position, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::BeneathWindow, streams::Definition,
+    streams::Item, streams::StreamManager,
 };
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
 struct Selecting;
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -82,99 +66,10 @@ impl StreamConsumer<Bank> for Selecting {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 async fn next<S: Clone + 'static>(watching: &mut (impl futures_core::Stream<Item = Item<S>> + Unpin)) -> Option<Item<S>> {
     std::future::poll_fn(|context| Pin::new(&mut *watching).poll_next(context)).await
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn rows_gaps_account() {
-    let runtime = streaming().await;
-    let mut live = runtime.streams.watch::<Pulse>();
-    let streams = runtime.streams.clone();
-
-    // A bare-thread publisher races an actively polling watcher. However the
-    // two interleave, the invariant is total accounting: every published row
-    // is either delivered or inside an exact gap count.
-    let published: u64 = 50_000;
-    let publisher = std::thread::spawn(move || {
-        for sample in 1..=published {
-            streams.publish(pulse(sample));
-        }
-    });
-
-    let mut delivered: u64 = 0;
-    let mut missed: u64 = 0;
-    let mut last = 0;
-    while delivered + missed < published {
-        match next(&mut live).await.expect("the watch is live") {
-            Item::Row(At { value, .. }) => {
-                assert!(value.sample > last, "delivery is in publish order with no repeats: {} then {}", last, value.sample);
-                last = value.sample;
-                delivered += 1;
-            }
-            Item::Gap { missed: count } => missed += count,
-        }
-    }
-
-    publisher.join().expect("the publisher panics nowhere");
-    assert_eq!(delivered + missed, published, "no row is lost silently: what was not delivered was counted");
-    assert_eq!(last, published, "the newest row is always delivered");
-
-    runtime.shutdown().await.unwrap();
-}
-
-#[tokio::test]
-async fn watch_delivery_settles() {
-    {
-        let runtime = streaming().await;
-        // A watcher that makes no progress at all while publishing runs, and a
-        // snapshot taken before it: zero consumer progress of any kind.
-        let mut stalled = runtime.streams.watch::<Pulse>();
-        let held: Vec<At<Pulse>> = runtime.streams.query::<Pulse>(..).await.expect("nothing was evicted yet").collect();
-        let streams = runtime.streams.clone();
-
-        // A bare OS thread with no async runtime underneath: a publish that
-        // parked, waited on capacity, or required polling could never complete
-        // here. Totality under overrun is the whole claim, so no timing is read.
-        let published: u64 = 10_000;
-        let publisher = std::thread::spawn(move || {
-            for sample in 1..=published {
-                streams.publish(pulse(sample));
-            }
-        });
-        publisher.join().expect("publish is sync and infallible");
-
-        assert!(held.is_empty(), "the earlier snapshot is unmoved by publishes");
-
-        // The stalled watcher, polled only now, accounts for every row: the exact
-        // gap, then the newest window in order.
-        let window = Pulse::WINDOW as u64;
-        assert_eq!(next(&mut stalled).await, Some(Item::Gap { missed: published - window }));
-        for sample in (published - window + 1)..=published {
-            assert!(matches!(
-                next(&mut stalled).await,
-                Some(Item::Row(At { value, .. })) if value == pulse(sample)
-            ));
-        }
-
-        runtime.shutdown().await.unwrap();
-    }
-    {
-        let runtime = streaming().await;
-        let mut live = runtime.streams.watch::<Pulse>();
-
-        runtime.streams.publish(pulse(1));
-        runtime.streams.publish(pulse(2));
-        runtime.shutdown().await.unwrap();
-
-        assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(1)));
-        assert!(matches!(next(&mut live).await, Some(Item::Row(At { value, .. })) if value == pulse(2)));
-        assert_eq!(next(&mut live).await, None, "every row published before the stop is delivered, then the watch ends");
-    }
 }
 
 #[tokio::test]
@@ -205,12 +100,12 @@ async fn history_respects_cuts() {
 
         assert_eq!(
             runtime.streams.query::<Pulse>(..).await.expect_err("an unbounded start reaches beneath the window"),
-            BeneathWindow::Unserved,
-            "with no series adapter attached the window is the whole served history"
+            BeneathWindow::Floor { floor: Position(4) },
+            "the window cannot answer beneath its retained floor"
         );
         assert_eq!(
             runtime.streams.query::<Pulse>(Position::ORIGIN..).await.expect_err("the origin lies beneath the floor"),
-            BeneathWindow::Unserved,
+            BeneathWindow::Floor { floor: Position(4) },
         );
 
         // A start the caller actually holds — the stamp of a row still retained —
@@ -224,7 +119,7 @@ async fn history_respects_cuts() {
             .collect();
         assert_eq!(retained, vec![5, 6, 7, 8, 9, 10, 11, 12]);
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let runtime = streaming().await;
@@ -263,7 +158,7 @@ async fn history_respects_cuts() {
             .collect();
         assert_eq!(all, vec![1, 2, 3]);
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -288,10 +183,10 @@ async fn demand_tracks_consumers() {
         drop(other);
         assert_eq!(*demand.borrow(), 0, "demand falls back to zero on drop");
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
-        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
             setup.settings().register(streams());
             setup.settings().attach_streams(Selecting);
@@ -304,7 +199,7 @@ async fn demand_tracks_consumers() {
         assert_eq!(*pulse_demand.borrow(), 1, "the attached consumer counts for the stream it selected");
         assert_eq!(*reading_demand.borrow(), 0, "selection is per definition, not per facility");
 
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         assert_eq!(*pulse_demand.borrow(), 0, "the consumer leaves demand when its supervisor joins");
     }
@@ -360,10 +255,10 @@ async fn demand_drives_capture() {
 #[tokio::test]
 async fn definitions_refuse_invalid() {
     {
-        let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let refused = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
             setup.settings().register(streams());
-            setup.settings().register(colliding::Bank::catalog());
+            setup.settings().register(colliding::stream_definitions());
         })
         .await;
 
@@ -376,14 +271,9 @@ async fn definitions_refuse_invalid() {
         #[derive(harmos_runtime::Described, Clone, Copy, Debug, Serialize, Deserialize)]
         struct Hollow;
 
-        impl Stream<Bank> for Hollow {
-            const ID: &'static str = "hollow";
-            const WINDOW: usize = 0;
-        }
-
-        let refused = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let refused = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(support::catalog());
-            setup.settings().register([Hollow::definition()]);
+            setup.settings().register([Definition::native::<Hollow>("hollow", 0)]);
         })
         .await;
 
@@ -422,26 +312,26 @@ mod colliding {
 
     /* === Structs === */
 
-    #[harmos_runtime::stream(id = "pulse", window = 1)]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Imposter;
 
     /* === Enums === */
-
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Imposter(Imposter),
-    }
 
     /* === Traits === */
 
     /* === Implementations === */
 
+    impl harmos_runtime::streams::StreamRow for Imposter {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("pulse", 1).label("Imposter");
+    }
+
     /* === Public Functions === */
+
+    pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+        vec![<Imposter as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
+    }
 
     /* === Private Functions === */
 
     /* === Tests === */
 }
-
-/* === Tests === */

@@ -17,8 +17,8 @@
 // Third Party Imports
 use prost::encoding::{WireType, encode_key, encode_varint};
 // Local Imports
-use harmos_domain::{MemorySize, MessageError, message, schema::Described};
-use harmos_sdk::grpc::{self, DecodeInput, prost};
+use harmos_domain::{MemorySize, Message, MessageError, schema::Described};
+use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 
@@ -39,13 +39,15 @@ struct Native {
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 struct Wire {
     value: u64,
     payload: Vec<u8>,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Required {
     row: Native,
@@ -54,13 +56,15 @@ struct Required {
     label: String,
 }
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug, Default)]
+#[harmos_path(::harmos_domain)]
 struct Optional {
     row: Option<Native>,
     rows: Vec<Native>,
 }
 
-#[message(skip_debug, harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Default)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 struct Secret {
     secrets_json: String,
@@ -68,14 +72,16 @@ struct Secret {
 
 /* === Enums === */
 
-#[message(harmos_path = ::harmos_domain)]
+#[derive(Message, Clone, Debug)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 enum Choice {
     Selected { row: Native },
     Empty,
 }
 
-#[message(harmos_path = ::harmos_domain, skip_debug)]
+#[derive(Message, Clone)]
+#[harmos_path(::harmos_domain)]
 #[derive(PartialEq)]
 enum RedactedChoice {
     Selected { row: Native },

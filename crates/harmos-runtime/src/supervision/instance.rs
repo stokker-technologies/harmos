@@ -23,7 +23,6 @@ use tracing::Instrument;
 
 // Local Imports
 use super::cleanup::{Cleanup, Finalize, Resource};
-use super::executor;
 use crate::Error;
 use crate::supervision::executor::InContext;
 
@@ -49,6 +48,7 @@ pub struct Status {
 }
 
 pub(crate) struct Instance {
+    clock: crate::clock::Clock,
     dispatcher: tracing::Dispatch,
     trace: Mutex<Option<tracing::Span>>,
     status: watch::Sender<Status>,
@@ -136,8 +136,8 @@ impl Status {
     }
 
     // Project onto the status every host binding reports.
-    pub fn portable(&self) -> harmos_domain::operations::instance::Status {
-        use harmos_domain::operations::instance;
+    pub fn portable(&self) -> harmos_operations::operations::instance::Status {
+        use harmos_operations::operations::instance;
         let phase = match self.phase {
             Phase::Queued => instance::Phase::Queued,
             Phase::Initializing => instance::Phase::Initializing,
@@ -172,7 +172,7 @@ impl Phase {
 }
 
 impl Instance {
-    pub(crate) fn queued(cancellation: watch::Sender<bool>) -> Self {
+    pub(crate) fn queued(cancellation: watch::Sender<bool>, clock: crate::clock::Clock) -> Self {
         let status = Status {
             phase: Phase::Queued,
             outcome: None,
@@ -185,6 +185,7 @@ impl Instance {
             settled_at: None,
         };
         Self {
+            clock,
             dispatcher: tracing::dispatcher::get_default(Clone::clone),
             trace: Mutex::new(Some(
                 tracing::debug_span!(target: "harmos::operations", "operations.instance", instance_id = tracing::field::Empty, operation = tracing::field::Empty, generation = tracing::field::Empty, outcome = tracing::field::Empty, settled = false),
@@ -226,7 +227,7 @@ impl Instance {
             !matches!(phase, Phase::Queued | Phase::Stopped | Phase::Settled),
             "admission and physical settlement own terminal transitions"
         );
-        let now = executor::now();
+        let now = self.clock.now();
         self.status.send_modify(|status| {
             if status.phase.is_terminal() {
                 return;
@@ -256,7 +257,7 @@ impl Instance {
         tracing::dispatcher::with_default(&self.dispatcher, || {
             tracing::debug!(target: "harmos::operations", parent: &self.trace(), attempt, ?phase, "instance attempt");
         });
-        let now = executor::now();
+        let now = self.clock.now();
         let mut admitted = false;
         self.status.send_modify(|status| {
             if status.cancellation_requested || status.phase.is_terminal() {
@@ -294,7 +295,7 @@ impl Instance {
             if let Some(notify) = &self.on_settled {
                 notify();
             }
-            let now = executor::now();
+            let now = self.clock.now();
             let mut failure = None;
             self.status.send_modify(|status| {
                 status.phase = self.terminal;
@@ -338,53 +339,6 @@ impl Instance {
         }
     }
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(crate) fn depend_on(self: &Arc<Self>, provider: &Arc<Self>, retirement: bool) -> crate::Result<()> {
-        if Arc::ptr_eq(self, provider) {
-            return Err(Error::InvalidInput {
-                field: "physical provider",
-                reason: "an instance cannot retain itself",
-            });
-        }
-        let mut providers = self.providers.lock().expect("instance providers are healthy");
-        if providers.iter().any(|held| Arc::ptr_eq(&held.provider, provider)) {
-            return Ok(());
-        }
-        let mut admitted = false;
-        let mut stopping_control = false;
-        provider.status.send_modify(|status| {
-            if status.phase.is_terminal() {
-                return;
-            }
-            if status.cancellation_requested {
-                if !retirement {
-                    return;
-                }
-                if status.dependents == 0 {
-                    // The Existing Physical Stop Owner Drives Its Own SDK Controls.
-                    stopping_control = true;
-                    return;
-                }
-            }
-            if let Some(count) = status.dependents.checked_add(1) {
-                status.dependents = count;
-                admitted = true;
-            }
-        });
-        if stopping_control {
-            return Ok(());
-        }
-        if !admitted {
-            return Err(Error::Closing { domain: "physical provider" });
-        }
-        providers.push(Dependency { provider: provider.clone() });
-        drop(providers);
-        if !retirement {
-            provider.track(self);
-        }
-        Ok(())
-    }
-
     pub(crate) fn retain<R: Resource>(&self, resource: R, failure: Arc<Error>) {
         let mut retained = self.retained.lock().expect("instance cleanup lock is healthy");
         assert!(retained.is_none(), "one instance has one physical cleanup owner");
@@ -407,6 +361,7 @@ impl Instance {
     }
 
     pub(crate) fn settle(&self) -> Finalize<'_> {
+        let _clock = crate::clock::enter(self.clock.clone());
         Box::pin(
             async move {
                 let mut changed = self.settlement();

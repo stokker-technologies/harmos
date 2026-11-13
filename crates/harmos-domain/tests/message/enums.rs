@@ -22,7 +22,7 @@ use std::fmt::Debug;
 
 // Local Imports
 use harmos_domain::Message;
-use harmos_sdk::grpc::{self, DecodeInput};
+use harmos_operations::execution::grpc::{self, DecodeInput};
 
 /* === Constants === */
 
@@ -69,7 +69,7 @@ mod known {
     // Third Party Imports
 
     // Local Imports
-    use harmos_domain::message;
+    use harmos_domain::Message;
 
     /* === Constants === */
 
@@ -79,14 +79,16 @@ mod known {
 
     /* === Structs === */
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Run {
         pub id: u32,
         pub mode: Mode,
     }
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Boxed {
         pub id: u32,
@@ -95,14 +97,17 @@ mod known {
 
     /* === Enums === */
 
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq, Default)]
     pub enum Mode {
+        #[default]
         Automatic,
         Manual,
     }
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, Default, PartialEq)]
     pub enum Preferred {
         Automatic,
@@ -111,7 +116,8 @@ mod known {
         Manual,
     }
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Wrapped {
         Hold(Box<Mode>),
@@ -141,7 +147,7 @@ mod newer {
     // Third Party Imports
 
     // Local Imports
-    use harmos_domain::message;
+    use harmos_domain::Message;
 
     /* === Constants === */
 
@@ -151,7 +157,8 @@ mod newer {
 
     /* === Structs === */
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Run {
         pub id: u32,
@@ -159,7 +166,8 @@ mod newer {
     }
 
     // Omits the Mode Field Entirely
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message, Default)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub struct Bare {
         pub id: u32,
@@ -167,15 +175,18 @@ mod newer {
 
     /* === Enums === */
 
-    #[message(harmos_path = ::harmos_domain)]
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
+    #[derive(Clone, Debug, PartialEq, Default)]
     pub enum Mode {
+        #[default]
         Automatic,
         Manual,
         Remote,
     }
 
-    #[message(harmos_path = ::harmos_domain)]
+    #[derive(Message)]
+    #[harmos_path(::harmos_domain)]
     #[derive(Clone, Debug, PartialEq)]
     pub enum Wrapped {
         Hold(Box<Mode>),

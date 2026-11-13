@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 // Local Imports
-use harmos::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::Stream};
+use harmos_runtime::{Application, storage::Batch, storage::Cursor, storage::StreamConsumer, streams::Definition, streams::StreamRow};
 
 /* === Constants === */
 
@@ -81,7 +81,7 @@ impl<A: Application> JsonlStreams<A> {
         })
     }
 
-    pub fn select<S: Stream<A>>(mut self) -> Self {
+    pub fn select<S: StreamRow>(mut self) -> Self {
         if self.selections.iter().any(|selected| selected.definition.id() == S::ID) {
             return self;
         }
@@ -157,7 +157,7 @@ impl<A: Application> StreamConsumer<A> for JsonlStreams<A> {
 }
 
 impl<A: Application> Selection<A> {
-    fn of<S: Stream<A>>() -> Self {
+    fn of<S: StreamRow>() -> Self {
         Self {
             definition: S::definition(),
             encode: encode::<A, S>,
@@ -209,7 +209,7 @@ pub fn read_rows<S: DeserializeOwned>(path: impl AsRef<Path>) -> io::Result<Vec<
 
 /* === Private Functions === */
 
-fn encode<A: Application, S: Stream<A>>(batch: &Batch<A>) -> io::Result<Vec<Map<String, Value>>> {
+fn encode<A: Application, S: StreamRow>(batch: &Batch<A>) -> io::Result<Vec<Map<String, Value>>> {
     let mut rows = Vec::new();
     for row in batch.select::<S>() {
         let Value::Object(mut members) = serde_json::to_value(row.value).map_err(json_error)? else {

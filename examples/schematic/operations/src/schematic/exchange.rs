@@ -7,111 +7,71 @@
  * ***
  */
 
-// AnalyzeExchange Contracts and Execution.
-
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-#[cfg(feature = "runtime")]
-use super::upload::AnalysisResources;
-#[cfg(feature = "runtime")]
-use harmos::MemorySize;
+use harmos_operations::execution::operations::{ExecutionContext, ProtobufOperation, ServingError, Visibility};
 
 /* === Constants === */
 
-const POLICY: harmos::operations::OperationPolicy = harmos::operations::OperationPolicy {
+const POLICY: harmos_operations::execution::operations::OperationPolicy = harmos_operations::execution::operations::OperationPolicy {
     timeout: std::time::Duration::from_secs(10),
     attempt_timeout: std::time::Duration::from_secs(10),
     cancellation_timeout: std::time::Duration::ZERO,
-    retries: harmos::operations::RetryPolicy::Never,
+    retries: harmos_operations::execution::operations::RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos::operation(resources = [AnalysisResources], operations = [harmos::builtins::streams::Publish],
-    id = "schematic.analyze.exchange", response = super::analyze::Analysis, input = schematic_domain::model::Snapshot,
-    output = super::analyze::Finding,
-    policy = POLICY,
-    visibility = Public,
-    replay = harmos::operations::ReplaySafety::Idempotent,
-    grpc(package = "schematic.v1", service = "Schematic", method = "AnalyzeExchange"),
-)]
-pub struct AnalyzeExchange {
-    pub title: String,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct AnalyzeExchange;
 
 /* === Implementations === */
 
-#[cfg(feature = "runtime")]
-impl harmos::Operation for AnalyzeExchange {
-    type Error = crate::Error;
-
-    fn classify(error: &Self::Error) -> harmos::operations::FailureKind {
-        match error {
-            crate::Error::InvalidInput => harmos::operations::FailureKind::Invalid,
-            _ => harmos::operations::FailureKind::Permanent,
+impl ProtobufOperation for AnalyzeExchange {
+    type Request = crate::protocol::AnalyzeExchange;
+    type Response = crate::protocol::Analysis;
+    type Endpoints = (
+        harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>,
+        harmos_operations::execution::operations::ProtobufOutput<crate::protocol::Finding>,
+    );
+    const ID: &'static str = "schematic.analyze.exchange";
+    const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: harmos_operations::execution::operations::ReplaySafety =
+        harmos_operations::execution::operations::ReplaySafety::Idempotent;
+    const GRPC: Option<harmos_operations::execution::operations::Grpc> =
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "AnalyzeExchange"));
+    const RESOURCES: &'static [harmos_operations::Resource] = &[harmos_operations::Resource::of::<super::upload::AnalysisResources>()];
+    async fn run(ctx: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let result: Result<Self::Response, crate::Error> = async {
+            if request.title.trim().is_empty() || request.title.len() > 128 {
+                return Err(crate::Error::InvalidInput);
+            }
+            let resources = ctx.resource::<super::upload::AnalysisResources>()?;
+            let _permit = resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
+            let mut checked = 0u32;
+            while let Some(item) = endpoints.0.recv().await {
+                let (snapshot, _claims) = item.into_owned_request()?;
+                let snapshot: schematic_domain::model::Snapshot = snapshot.into();
+                snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
+                checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
+                endpoints
+                    .1
+                    .send(crate::protocol::Finding {
+                        text: format!("{} Symbols, {} Connections", snapshot.symbols.len(), snapshot.connections.len()),
+                    })
+                    .await?;
+                resources
+                    .publish(schematic_domain::model::schematic::progress::AnalysisProgress { title: request.title.clone(), checked })?;
+            }
+            Ok(crate::protocol::Analysis { checked })
         }
+        .await;
+        result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
     }
-
-    async fn run(self, ctx: harmos::Context<'_, Self>) -> Result<harmos::Response<super::analyze::Analysis>, Self::Error> {
-        let resources = ctx.resource::<AnalysisResources>();
-
-        // Check / Title Presence
-        let title_present = !self.title.trim().is_empty();
-
-        // Check / Title Size
-        let title_fits = self.title.len() <= 128;
-        if !(title_present && title_fits) {
-            return Err(crate::Error::InvalidInput);
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> harmos_operations::execution::operations::FailureKind {
+        match error.downcast_ref::<crate::Error>() {
+            Some(crate::Error::InvalidInput) => harmos_operations::execution::operations::FailureKind::Invalid,
+            _ => harmos_operations::execution::operations::FailureKind::Permanent,
         }
-        let _permit = resources.analysis.acquire().await.map_err(|_| crate::Error::Unavailable)?;
-        let mut checked = 0u32;
-        while let Some(snapshot) = ctx.streams().0.recv().await {
-            snapshot.validate().map_err(|_| crate::Error::InvalidInput)?;
-            checked = checked.checked_add(1).ok_or(crate::Error::InvalidInput)?;
-            let finding = super::analyze::Finding {
-                text: format!("{} Symbols, {} Connections", snapshot.symbols.len(), snapshot.connections.len()),
-            };
-            let bytes = finding.memory_size();
-            let output = &ctx.streams().1;
-            let make = || Ok(finding);
-            output.send_with(bytes, make).await?;
-            let progress = schematic_domain::model::schematic::progress::AnalysisProgress { title: self.title.clone(), checked };
-            let sequence = resources.next_progress_sequence()?;
-            let payload = harmos::Message::encode(&progress);
-            // Publish Analysis Progress
-            let request = harmos::builtins::streams::Publish {
-                stream: <schematic_domain::model::schematic::progress::AnalysisProgress as harmos::StreamSpec>::ID.to_owned(),
-                sequence: Some(sequence),
-                published_unix_micros: None,
-                context: None,
-                payload,
-                following: Vec::new(),
-            };
-            ctx.operation(request).await?;
-        }
-        Ok(super::analyze::Analysis { checked }.into())
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

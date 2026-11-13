@@ -1,0 +1,130 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+// Check the Committed Bindings Against the Wire Definition.
+
+/* === Modules === */
+
+#[path = "../../codegen.rs"]
+mod codegen;
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::{fs, path::Path};
+
+// Third Party Imports
+
+// Local Imports
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */
+
+#[test]
+fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
+    // Locate the Wire Definition and Disposable Output.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let output_root = root.join("target/generated/rust/harmos-protocol");
+    fs::create_dir_all(&output_root)?;
+    let output = tempfile::tempdir_in(output_root)?;
+
+    // Archived Tests Consume the Transferred Compiler, Not the Producer's Registry.
+    let (compiler, includes) = if let Ok(profile) = std::env::var("STKR_TEST_PROFILE") {
+        let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        let vendor = root.join("target/build").join(profile).join(target).join("fixtures/inputs/vendor");
+        let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("linux", "x86_64") => "linux-x86_64",
+            ("linux", "aarch64") => "linux-aarch_64",
+            ("macos", "x86_64") => "macos-x86_64",
+            ("macos", "aarch64") => "macos-aarch_64",
+            ("windows", _) => "win32",
+            other => panic!("no vendored protoc for {other:?}"),
+        };
+        let prefix = format!("protoc-bin-vendored-{platform}-");
+        let package = fs::read_dir(vendor)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .find(|path| path.file_name().unwrap().to_string_lossy().starts_with(&prefix))
+            .expect("the transferred vendor inputs contain the pinned protobuf compiler");
+        let executable = if cfg!(windows) { "protoc.exe" } else { "protoc" };
+        (package.join("bin").join(executable), package.join("include"))
+    } else {
+        (protoc_bin_vendored::protoc_bin_path()?, protoc_bin_vendored::include_path()?)
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&compiler)?.permissions();
+        permissions.set_mode(permissions.mode() | 0o100);
+        fs::set_permissions(&compiler, permissions)?;
+    }
+
+    // Regenerate With the Pinned Compiler, Without Mutating the Environment.
+    codegen::generate(&compiler, &includes, output.path())?;
+
+    // Compare the Complete Generated Source, Retaining Evidence on Failure.
+    for (package, module) in [("harmos.v1", "v1"), ("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin")] {
+        assert_eq!(
+            fs::read(output.path().join(format!("{package}.rs")))?,
+            fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?
+        );
+    }
+    assert_eq!(fs::read(output.path().join("harmos.v1.access.rs"))?, include_bytes!("../../src/v1/access.rs"));
+    assert_eq!(fs::read(output.path().join("harmos.v1.status.rs"))?, include_bytes!("../../src/v1/status.rs"));
+    assert_eq!(fs::read(output.path().join("harmos.storage.v1.rs"))?, include_bytes!("../../src/storage.rs"));
+    assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
+    assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
+    assert_eq!(fs::read(output.path().join("guest-descriptors.bin"))?, include_bytes!("../../src/guest-descriptors.bin"));
+    for entry in fs::read_dir(output.path().join("context-types"))? {
+        let path = entry?.path();
+        assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);
+    }
+    codegen::generate_example(&compiler, &includes, output.path())?;
+    for (generated, committed) in
+        [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
+    {
+        assert_eq!(fs::read(output.path().join(generated))?, fs::read(root.join("examples/schematic/protocol/src").join(committed))?);
+    }
+    codegen::generate_client_fixture(&compiler, &includes, output.path())?;
+    for name in [
+        "library.v1.rs",
+        "library.v1.plugins.rs",
+        "application.v1.rs",
+        "application.v1.jobs.rs",
+        "client-descriptors.bin",
+        "client-reflection.rs",
+    ] {
+        assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
+    }
+    codegen::generate_conformance(&compiler, &includes, output.path())?;
+    for (source, target) in [("harmos.conformance.v1.rs", "generated.rs"), ("conformance-descriptors.bin", "descriptors.bin")] {
+        assert_eq!(fs::read(output.path().join(source))?, fs::read(root.join("sdk/rust/src/conformance").join(target))?);
+    }
+    Ok(())
+}

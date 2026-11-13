@@ -81,8 +81,6 @@ macro_rules! postcard_product {
     };
 }
 
-pub(crate) use postcard_product;
-
 /* === Type Aliases === */
 
 /* === Structs === */

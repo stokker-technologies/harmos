@@ -12,67 +12,83 @@
 
 /* === Modules === */
 
-mod abandon_file;
-mod append_file;
-mod capture_file;
-mod create_file;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod definitions;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod file_access;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod file_watches;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod lists;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod pages;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod views;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod watch_rows;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod client;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod context;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod transfers;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub(crate) mod append;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod delete_file;
-#[cfg(feature = "runtime")]
-pub(crate) mod exchange;
-mod finish_file;
-mod follow_file;
-mod follow_objects;
-mod follow_production;
-mod follow_records;
-mod follow_stream;
-mod hash_file;
-mod list_directory;
-mod query;
-mod read_file;
-mod resume_file;
-mod storage_status;
-mod watch_directory;
-mod write_file;
-mod write_objects;
-mod write_records;
-mod write_schema;
-mod write_streams;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod get_schema;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod info;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod native;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod object;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod registration;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod set_schema;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod snapshot;
 
 /* === Re-Exports === */
 
-pub use abandon_file::AbandonFile;
-pub use append_file::AppendFile;
-pub use capture_file::CaptureFile;
-pub use create_file::CreateFile;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use client::{
+    AdvanceProjection, AppendFileBytes, AppendObjectRevisions, AppendRecords, AppendSamples, Capabilities, CaptureFile,
+    CreateFileProduction, CreateFileWriter, CreateSnapshot, DeleteFileProduction, DeleteSnapshot, GetFileBytes, GetFileHash,
+    GetFileProduction, GetIndexDefinition, GetObject, GetProjectionDefinition, GetProjectionStatus, ListColumnRows, ListDirectoryEntries,
+    ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction, SetIndexDefinition, SetObject, SetProjectionDefinition,
+    WatchDirectoryEntries, WatchFileBytes, WatchFileProduction, WatchRows,
+};
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use snapshot::SavedSnapshots;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use delete_file::DeleteFile;
-pub use finish_file::FinishFile;
-pub use follow_file::FollowFile;
-pub use follow_objects::FollowObjects;
-pub use follow_production::FollowProduction;
-pub use follow_records::{FollowBoundaries, FollowRecords, Followed};
-pub use follow_stream::FollowStream;
-pub use hash_file::HashFile;
-pub use list_directory::ListDirectory;
-pub use query::Query;
-pub use read_file::ReadFile;
-pub use resume_file::ResumeFile;
-pub use storage_status::StorageStatus;
-pub use watch_directory::WatchDirectory;
-pub use write_file::WriteFile;
-pub use write_objects::WriteObjects;
-pub use write_records::WriteRecords;
-pub use write_schema::WriteSchema;
-pub use write_streams::WriteStreams;
-
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use get_schema::GetSchema;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use info::Info;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use registration::storage_catalog;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use set_schema::SetSchema;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 /* === Imports === */
-
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
 
-use harmos_domain::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
+use harmos_operations::operations::{Backoff, Jitter, OperationPolicy, RetryPolicy};
 
 /* === Constants === */
 
@@ -81,7 +97,7 @@ pub const POLICY: OperationPolicy = OperationPolicy {
     attempt_timeout: Duration::from_secs(15),
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::OnTransient {
-        max_retries: 3,
+        total_attempts: 4,
         backoff: Backoff::Exponential {
             initial: Duration::from_millis(250),
             maximum: Duration::from_secs(2),
@@ -98,40 +114,13 @@ pub const STREAM_POLICY: OperationPolicy = OperationPolicy {
 };
 
 pub const IO_POLICY: OperationPolicy = OperationPolicy {
-    timeout: harmos_domain::operations::UNBOUNDED,
-    attempt_timeout: harmos_domain::operations::UNBOUNDED,
+    timeout: harmos_operations::operations::UNBOUNDED,
+    attempt_timeout: harmos_operations::operations::UNBOUNDED,
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
 
 /* === Macros === */
-
-#[harmos::catalog(harmos_path = crate)]
-pub enum Storage {
-    ListDirectory(ListDirectory),
-    WatchDirectory(WatchDirectory),
-    Query(Query),
-    ReadFile(ReadFile),
-    HashFile(HashFile),
-    CaptureFile(CaptureFile),
-    FollowProduction(FollowProduction),
-    FollowRecords(FollowRecords),
-    FollowStream(FollowStream),
-    FollowFile(FollowFile),
-    StorageStatus(StorageStatus),
-    ResumeFile(ResumeFile),
-    CreateFile(CreateFile),
-    AppendFile(AppendFile),
-    FinishFile(FinishFile),
-    AbandonFile(AbandonFile),
-    WriteRecords(WriteRecords),
-    WriteStreams(WriteStreams),
-    WriteFile(WriteFile),
-    DeleteFile(DeleteFile),
-    WriteSchema(WriteSchema),
-    WriteObjects(WriteObjects),
-    FollowObjects(FollowObjects),
-}
 
 /* === Type Aliases === */
 
@@ -149,32 +138,22 @@ pub enum Storage {
 
 /* === Tests === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-#[cfg(feature = "runtime")]
-fn output_timeout() -> crate::Error {
-    harmos_storage::Error::backend(
-        "storage output",
-        harmos_storage::BackendFailure::Transient,
-        std::io::Error::new(std::io::ErrorKind::TimedOut, "consumer delivery deadline exceeded"),
-    )
-    .into()
-}
-
-#[cfg(feature = "runtime")]
-fn classify(error: &crate::Error) -> harmos_domain::operations::FailureKind {
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+fn classify(error: &crate::Error) -> harmos_operations::operations::FailureKind {
     match error {
         crate::Error::Storage(source) if source.backend_failure() == Some(harmos_storage::BackendFailure::Transient) => {
-            harmos_domain::operations::FailureKind::Transient
+            harmos_operations::operations::FailureKind::Transient
         }
-        _ => harmos_domain::operations::FailureKind::Permanent,
+        _ => harmos_operations::operations::FailureKind::Permanent,
     }
 }
 
-#[cfg(all(test, feature = "runtime"))]
+#[cfg(all(test, not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod tests {
     use super::classify;
-    use harmos_domain::operations::FailureKind;
+    use harmos_operations::operations::FailureKind;
     use harmos_storage::{BackendFailure, Error as StorageError};
 
     #[test]

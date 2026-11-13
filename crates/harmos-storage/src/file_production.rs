@@ -18,7 +18,7 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 use tokio::sync::watch;
 // Local Imports
-use super::{ErasedCatalog, FileBatch, FilePhase, FileProgress, StagedFile, StorageManager};
+use super::{FileBatch, FilePhase, FileProgress, StagedFile, StorageManager};
 use crate::FileReadBatch;
 use crate::{Error, Result};
 
@@ -32,7 +32,7 @@ use crate::{Error, Result};
 
 pub struct ProductionFollower {
     context: crate::execution::Context,
-    manager: StorageManager<ErasedCatalog>,
+    manager: StorageManager,
     file: StagedFile,
     offset: u64,
     progress: FileProgress,
@@ -45,7 +45,7 @@ pub struct ProductionFollower {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.file_production.follow_production", level = "debug", skip_all)]
     pub async fn follow_production(&self, file: &StagedFile, offset: u64) -> Result<ProductionFollower> {
         self.open_production_follower(file, offset).await
@@ -55,7 +55,7 @@ impl<C> StorageManager<C> {
         let context = crate::execution::Context::current();
         let span = context.sync(|| tracing::debug_span!("storage.file.follow_production", outcome = "cancelled"));
         context.result(span, async {
-        self.inner.primary.history().check(&file.history)?;
+        self.inner.primary.get_history().check(&file.history)?;
 
         let changed = self.inner.changed.subscribe();
         let progress = self.production_progress(file).await?;
@@ -65,7 +65,7 @@ impl<C> StorageManager<C> {
         }
         Ok(ProductionFollower {
             context: crate::execution::Context::current(),
-            manager: self.erased(),
+            manager: self.clone(),
             file: file.clone(),
             offset,
             progress,
@@ -77,15 +77,15 @@ impl<C> StorageManager<C> {
         }).await
     }
 
-    #[tracing::instrument(name = "storage.file_production.file_progress", level = "debug", skip_all)]
-    pub async fn file_progress(&self, file: &StagedFile) -> Result<FileProgress> {
+    #[tracing::instrument(name = "storage.file_production.get_file_production", level = "debug", skip_all)]
+    pub async fn get_file_production(&self, file: &StagedFile) -> Result<FileProgress> {
         let context = crate::execution::Context::current();
-        let span = context.sync(|| tracing::debug_span!("storage.file.file_progress", outcome = "cancelled"));
+        let span = context.sync(|| tracing::debug_span!("storage.file.get_file_production", outcome = "cancelled"));
         context.result(span, async { self.production_progress(file).await }).await
     }
 
     pub(crate) async fn production_progress(&self, file: &StagedFile) -> Result<FileProgress> {
-        self.inner.primary.history().check(&file.history)?;
+        self.inner.primary.get_history().check(&file.history)?;
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         {
             let state = self.inner.state.lock().unwrap();
@@ -97,7 +97,7 @@ impl<C> StorageManager<C> {
             }
         }
 
-        self.inner.bounded("primary.file_progress", self.inner.primary.file_progress(file)).await
+        self.inner.bounded("primary.get_file_production", self.inner.primary.get_file_production(file)).await
     }
 }
 
@@ -139,7 +139,10 @@ impl ProductionFollower {
                     let bytes = self
                         .manager
                         .inner
-                        .bounded("primary.read_production", self.manager.inner.primary.read_production(&self.file, self.offset, maximum))
+                        .bounded(
+                            "primary.get_file_production_bytes",
+                            self.manager.inner.primary.get_file_production_bytes(&self.file, self.offset, maximum),
+                        )
                         .await?;
                     if bytes.is_empty() || bytes.len() > size || bytes.capacity() > size {
                         return Err(Error::InvalidInput {

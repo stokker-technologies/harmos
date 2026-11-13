@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,21 +23,11 @@ use support::{Change, Deposit, deposit, runtime};
 use crate::state::support;
 use harmos_runtime::{state::Entry, state::Position};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct OwnedChange {
     transaction: Change,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -50,8 +36,6 @@ impl Borrow<Change> for OwnedChange {
         &self.transaction
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -88,7 +72,7 @@ async fn owned_commit_survives_queued_caller_cancellation_and_tail_eviction() {
     drop(entry);
     drop(feed);
     assert!(owner.upgrade().is_none());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -112,7 +96,7 @@ async fn owned_forward_history_survives_undo_and_redo() {
     journal.undo(support::alice(), harmos_runtime::state::Focus::all()).await.unwrap();
     journal.commit(deposit(2)).await.unwrap();
     assert!(owner.upgrade().is_none());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -127,7 +111,7 @@ async fn keyed_owned_duplicate_releases_the_unused_owner() {
     assert_eq!(support::balance(&runtime, support::HOUSE).await, 4);
     assert!(original.upgrade().is_some());
     assert!(unused.upgrade().is_none());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -205,5 +189,3 @@ async fn amounts(runtime: &harmos_runtime::Runtime<support::Bank>) -> Vec<(Posit
         })
         .collect()
 }
-
-/* === Tests === */

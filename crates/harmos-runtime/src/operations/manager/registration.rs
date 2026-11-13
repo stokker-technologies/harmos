@@ -37,36 +37,37 @@ use super::*;
 impl Manager {
     pub(crate) fn provided_resources() -> Vec<std::any::TypeId> {
         vec![
-            std::any::TypeId::of::<harmos_sdk::operations::Calls>(),
-            std::any::TypeId::of::<harmos_sdk::operations::access::DiscoveryAccess>(),
-            std::any::TypeId::of::<harmos_sdk::operations::access::GrantAccess>(),
-            std::any::TypeId::of::<harmos_sdk::operations::instances::InstanceAccess>(),
+            std::any::TypeId::of::<harmos_operations::access::AccessAccess>(),
+            std::any::TypeId::of::<harmos_operations::status::StatusAccess>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::Calls>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::access::DiscoveryAccess>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::access::GrantAccess>(),
+            std::any::TypeId::of::<harmos_operations::execution::operations::instances::InstanceAccess>(),
             std::any::TypeId::of::<crate::operations::HostContext>(),
-            #[cfg(feature = "plugin-sidecar")]
-            std::any::TypeId::of::<harmos_sdk::operations::publication::PublicationAccess>(),
+            std::any::TypeId::of::<harmos_operations::clock::ClockAccess>(),
         ]
     }
 
-    pub(in crate::operations) fn register_with_services<L: Lane>(
-        &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged,
+    pub(in crate::operations) fn register_with_services(
+        &self, registration: crate::operations::Registration, staged: crate::operations::resident::Staged,
     ) -> Result<()> {
         self.register_scoped_services(
             registration,
             staged,
             "host",
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             None,
         )
     }
 
-    pub(in crate::operations) fn register_scoped_services<L: Lane>(
-        &self, registration: crate::operations::Registration<L>, staged: crate::operations::resident::Staged, owner: &str,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] scope: Option<&PluginScope>,
+    pub(in crate::operations) fn register_scoped_services(
+        &self, registration: crate::operations::Registration, staged: crate::operations::resident::Staged, owner: &str,
+        #[cfg(feature = "plugin-guest")] scope: Option<&PluginScope>,
     ) -> Result<()> {
         let mut entries = self.native_entries(
             registration,
             owner,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             scope,
         )?;
         let publication = staged.publication();
@@ -86,19 +87,18 @@ impl Manager {
         Ok(())
     }
 
-    pub(crate) fn register_native<L: Lane>(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+    pub(crate) fn register_native(&self, registration: crate::operations::Registration) -> Result<()> {
         let entries = self.native_entries(
             registration,
             "host",
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             None,
         )?;
         self.reserve(&entries)
     }
 
-    pub(in crate::operations) fn native_entries<L: Lane>(
-        &self, registration: crate::operations::Registration<L>, owner: &str,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] scope: Option<&PluginScope>,
+    pub(in crate::operations) fn native_entries(
+        &self, registration: crate::operations::Registration, owner: &str, #[cfg(feature = "plugin-guest")] scope: Option<&PluginScope>,
     ) -> Result<Vec<Arc<Entry>>> {
         let crate::operations::Registration { batch, lane, defaults } = registration;
         if !batch.services.is_empty() {
@@ -108,15 +108,29 @@ impl Manager {
             });
         }
         let mut entries = Vec::with_capacity(batch.operations.len());
+        let mut factories = Vec::new();
+        let declared: std::collections::BTreeSet<_> = batch.operations.iter().map(|factory| factory.definition.id.clone()).collect();
         for factory in batch.operations {
+            if let Ok(contract) = factory.contract_with_settings(&self.schema_settings)
+                && let Some(context) = contract.context(&self.schema_settings).map_err(|source| Error::OperationFailed {
+                    operation: factory.definition.id.to_string(),
+                    source: Arc::new(source),
+                })?
+                && !declared.contains(&context.operation().id)
+            {
+                factories.push(factory.clone().with_contract(context));
+            }
+            factories.push(factory);
+        }
+        for factory in factories {
             let provided = Self::provided_resources();
             factory.verify_resources(self.resources(), &provided).map_err(|source| Error::OperationFailed {
                 operation: factory.definition.id.to_string(),
                 source: Arc::new(source),
             })?;
-            factory.definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
             factory.validate().map_err(|source| match source {
-                harmos_sdk::ServingError::EndpointTypes => Error::InvalidInput {
+                harmos_operations::execution::ServingError::Declaration(source) => Error::OperationDeclaration { source },
+                harmos_operations::execution::ServingError::EndpointTypes => Error::InvalidInput {
                     field: "operation endpoint types",
                     reason: "endpoints differ from the declaration",
                 },
@@ -135,9 +149,8 @@ impl Manager {
                     });
                 }
             };
-            let selected = defaults.get(factory.definition.id.as_str()).copied().or(lane).unwrap_or_else(L::default_lane);
+            let selected = defaults.get(factory.definition.id.as_str()).copied().or(lane).unwrap_or_else(Lane::default);
             let definition = factory.definition.clone();
-            definition.validate().map_err(|source| Error::OperationDeclaration { source })?;
             let wire: Option<crate::operations::wire::Dispatch> =
                 if contract.as_ref().is_some_and(|contract| contract.input().is_none() && contract.output().is_none()) {
                     Some(crate::operations::wire::dispatch_native)
@@ -150,7 +163,7 @@ impl Manager {
                 Arc::new(factory),
                 definition,
                 wire,
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin-guest")]
                 scope.cloned(),
             )?;
             #[cfg(feature = "grpc")]
@@ -162,34 +175,34 @@ impl Manager {
         }
         Ok(entries)
     }
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(in crate::operations) fn bind_native<D, O>(
-        &self, owner: &str, lane: &'static str, dependencies: harmos_sdk::__private::ResourceSet, definition: OperationDefinition,
-        wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
+        &self, owner: &str, lane: &'static str, dependencies: harmos_operations::execution::__private::ResourceSet,
+        definition: OperationDefinition, wire: Option<crate::operations::wire::Dispatch>, plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>>
     where
-        D: OperationDeclaration,
-        O: harmos_sdk::operations::Carrier<Declaration = D>,
+        D: RequestShape,
+        O: harmos_operations::execution::operations::Carrier<Declaration = D>,
     {
-        let mut batch = harmos_sdk::__private::RegistrationBatch::new().carrier::<D, O>();
-        let factory = batch.operations.pop().expect("one native implementation");
-        let resources = harmos_sdk::ExecutionContext::new(dependencies, super::super::CallContext::default())
+        let resources = harmos_operations::execution::ExecutionContext::new(dependencies, super::super::CallContext::default())
             .with_resources(self.resources().clone())
             .resources()
             .clone();
         let binding = crate::operations::authored::factory_with::<D, O::StreamEndpoints>(self, move |request, endpoints| {
-            factory.prepare_native(resources.clone(), Box::new(request), Box::new(endpoints))
+            Ok(harmos_operations::execution::operations::OperationFactory::prepare_carrier::<O>(resources.clone(), request, endpoints))
         });
         self.binding_erased(owner, lane, Arc::new(binding), definition, wire, plugin)
     }
 
     pub(in crate::operations) fn binding_erased(
         &self, owner: impl Into<String>, lane: &'static str, binding: Arc<dyn Any + Send + Sync>, definition: OperationDefinition,
-        wire: Option<crate::operations::wire::Dispatch>,
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))] plugin: Option<PluginScope>,
+        wire: Option<crate::operations::wire::Dispatch>, #[cfg(feature = "plugin-guest")] plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>> {
         let owner = Identifier::new(owner.into()).map_err(|source| Error::OperationDeclaration { source: source.into() })?;
-        if !harmos_domain::identity::segment(owner.as_str()) {
+        let valid_owner = harmos_domain::identity::segment(owner.as_str());
+        let valid_owner = valid_owner
+            || (binding.is::<crate::plugin::grpc::invoke::Binding>() && owner.as_str().split('.').all(harmos_domain::identity::segment));
+        if !valid_owner {
             return Err(Error::InvalidInput {
                 field: "operation owner",
                 reason: "owner must be a lowercase portable segment",
@@ -201,7 +214,7 @@ impl Manager {
         })?;
         let generation = OperationGeneration::fresh()?;
         Ok(Arc::new(Entry {
-            carrier: harmos_sdk::__private::ResourceSet::new(),
+            carrier: harmos_operations::execution::__private::ResourceSet::new(),
             owner,
             definition,
             contract: None,
@@ -209,21 +222,18 @@ impl Manager {
             grpc: None,
             generation,
             lane,
-            #[cfg(feature = "plugin-sidecar")]
-            resident: false,
+
             active: AtomicBool::new(true),
             publication: Arc::new(AtomicBool::new(true)),
             retirement: AtomicU8::new(Retirement::Retained as u8),
             pending: Mutex::new(BTreeMap::new()),
             binding,
-            #[cfg(feature = "plugin-sidecar")]
-            native_binding: None,
+
             wire,
-            #[cfg(feature = "plugin-sidecar")]
-            native: None,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+
+            #[cfg(feature = "plugin-guest")]
             plugin,
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             sdk: None,
         }))
     }

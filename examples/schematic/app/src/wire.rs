@@ -20,9 +20,9 @@ use serde::{Deserializer, Serializer};
 
 // Local Imports
 use crate::app::SchematicEditor;
-use crate::records::Records;
-use crate::transactions::Transactions;
-use harmos::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
+use crate::records::records_registry;
+use crate::transactions::transactions_state_catalog;
+use harmos_runtime::{DefinitionId, state::Kind, state::Recorded, storage::Payload};
 use schematic_storage::Wire;
 
 /* === Constants === */
@@ -42,16 +42,16 @@ use schematic_storage::Wire;
 impl Wire for SchematicEditor {
     fn identify(value: &Recorded<Self>) -> (DefinitionId, u32) {
         match value {
-            Recorded::Transaction(change) => change.identify(),
-            Recorded::Record(fact) => fact.identify(),
+            Recorded::Transaction(change) => harmos_runtime::state::CatalogCodec::identify(&**change),
+            Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::identify(fact),
             Recorded::System(_) => unreachable!("system facts are encoded by the adapter"),
         }
     }
 
     fn encode<S: Serializer>(value: &Recorded<Self>, serializer: S) -> Result<S::Ok, S::Error> {
         match value {
-            Recorded::Transaction(change) => change.encode_with(serializer),
-            Recorded::Record(fact) => fact.encode_with(serializer),
+            Recorded::Transaction(change) => harmos_runtime::state::CatalogCodec::encode(&**change, serializer),
+            Recorded::Record(fact) => harmos_runtime::state::CatalogCodec::encode(fact, serializer),
             Recorded::System(_) => unreachable!("system facts are encoded by the adapter"),
         }
     }
@@ -60,13 +60,13 @@ impl Wire for SchematicEditor {
         kind: Kind, id: &DefinitionId, version: u32, payload: D,
     ) -> Result<Option<Payload<Self>>, D::Error> {
         Ok(match kind {
-            Kind::Transaction => Transactions::restore(id, version, payload)?.map(|change| Payload {
+            Kind::Transaction => transactions_state_catalog().restore(id, version, payload)?.map(|change| Payload {
                 prepared: None,
                 id: id.clone(),
                 version,
-                value: Recorded::Transaction(harmos::operations::Response::new(change)),
+                value: Recorded::Transaction(harmos_runtime::operations::Response::new(change)),
             }),
-            Kind::Record => Records::restore(id, version, payload)?.map(|fact| Payload {
+            Kind::Record => records_registry().restore(id, version, payload)?.map(|fact| Payload {
                 prepared: None,
                 id: id.clone(),
                 version,

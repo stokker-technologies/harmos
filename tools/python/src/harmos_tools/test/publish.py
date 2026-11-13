@@ -21,7 +21,6 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
-from ..build import storage
 from ..process import spawn_flags
 from ..release import policy as release_policy
 from . import policy
@@ -85,7 +84,6 @@ def main() -> None:
                 "CARGO_BUILD_BUILD_DIR",
             ):
                 environment[name] = target
-            storage.preflight(directory, target=Path(target))
             subprocess.run(
                 command,
                 stdin=sys.stdin,

@@ -9,10 +9,6 @@
 
 // Derived Data Shape Recovery Contracts
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,15 +20,10 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use harmos_runtime::state::{CatalogCodec, DecodeError, Position, SnapshotPolicy, Transaction};
-use harmos_runtime::storage::{JsonStorage, JsonStorageSettings, ObjectCatalog, ObjectRetention, StorageManager, StoredObject};
+use harmos_runtime::storage::{ObjectCatalog, ObjectRetention, StorageManager, StoredObject};
+use harmos_runtime::streams::StreamRow as _;
 use harmos_runtime::{Application, Identified, Lifecycle, Runtime, Setup, Startup};
 use serde::{Deserialize, Serialize};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -44,38 +35,39 @@ struct Recording {
     cursor: harmos_runtime::storage::Cursor,
 }
 
-#[harmos_runtime::transaction(id = "shape.add")]
 #[derive(harmos_runtime::Described, Clone, Serialize, Deserialize)]
 struct Add {
     amount: i64,
 }
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<i64, Self> =
+        harmos_runtime::state::TransactionEntry::new("shape.add").barrier();
+}
 
-#[harmos_runtime::record(id = "shape.observed")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
 }
 
-#[harmos_runtime::record(id = "shape.observed")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Changed {
     before: String,
 }
 
-#[harmos_runtime::stream(id = "shape.samples", window = 4, label = "Samples")]
+#[derive(harmos_runtime::Row)]
+#[serde(crate = "harmos_runtime::__private::serde")]
+#[derive(Clone, Debug, Default, PartialEq, harmos_runtime::__private::serde::Serialize, harmos_runtime::__private::serde::Deserialize)]
 struct Sample {
     value: u64,
 }
 
-#[harmos_runtime::message]
-#[derive(Serialize, Deserialize)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default, Serialize, Deserialize)]
 struct PluginObject {
     id: String,
     value: u64,
 }
 
-#[harmos_runtime::message]
-#[derive(Serialize, Deserialize)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default, Serialize, Deserialize)]
 struct NewPluginObject {
     id: String,
     value: String,
@@ -83,48 +75,135 @@ struct NewPluginObject {
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = i64, error = std::convert::Infallible)]
 #[derive(Clone)]
 enum Changes {
     Add(Add),
 }
+impl From<Add> for Changes {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<i64> for Changes {
+    type Error = std::convert::Infallible;
+    fn check(&self, state: &i64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut i64) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &i64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Changes {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<i64, Changes> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+        let Changes::Add(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Facts {
     Observed(Observed),
 }
+impl From<Observed> for Facts {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Facts {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Facts::Observed, |value| {
+        let Facts::Observed(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum NewFacts {
     Changed(Changed),
 }
-
-#[harmos_runtime::streams]
-enum Streams {
-    Sample(Sample),
+impl From<Changed> for NewFacts {
+    fn from(value: Changed) -> Self {
+        Self::Changed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for NewFacts {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Changed(_) => <Changed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Changed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn new_facts_registry() -> harmos_runtime::state::RecordRegistry<NewFacts> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Changed as harmos_runtime::state::Record>::ENTRY, NewFacts::Changed, |value| {
+        let NewFacts::Changed(value) = value;
+        Some(value)
+    })
 }
 
-#[harmos_runtime::lanes]
-enum Lanes {
-    #[default]
-    Open,
+fn plugin_objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<PluginObject>())
 }
 
-#[harmos_domain::catalog]
-enum PluginObjects {
-    Object(PluginObject),
+fn new_plugin_objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<NewPluginObject>())
 }
 
-#[harmos_domain::catalog]
-enum NewPluginObjects {
-    Object(NewPluginObject),
+fn stored_plugin_objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new()
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<PluginObject>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<NewPluginObject>())
 }
-
-/* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_runtime::streams::StreamRow for Sample {
+    const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("shape.samples", 4).label("Samples");
+}
+
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("shape.observed");
+}
+
+impl harmos_runtime::state::Record for Changed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("shape.observed");
+}
 
 impl Identified for PluginObject {
     const ID: &'static str = "plugin.document";
@@ -186,19 +265,15 @@ impl Lifecycle for Model<true> {
 }
 
 impl Application for Model<false> {
-    type Lanes = Lanes;
     type State = i64;
     type Transaction = Changes;
     type Record = Facts;
-    type Streams = Streams;
 }
 
 impl Application for Model<true> {
-    type Lanes = Lanes;
     type State = i64;
     type Transaction = Changes;
     type Record = NewFacts;
-    type Streams = ();
 }
 
 impl Transaction<i64> for Add {
@@ -216,18 +291,11 @@ impl Transaction<i64> for Add {
 
 /* === Public Functions === */
 
-/* === Private Functions === */
-
-fn storage(root: &Path) -> StorageManager {
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.to_owned(),
-            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-        },
-        crate::storage::history(),
-    );
-    StorageManager::new(primary.into_backends(crate::storage::state_settings()), crate::storage::config()).unwrap()
+fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+    vec![<Sample as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap()]
 }
+
+/* === Private Functions === */
 
 fn managed(snapshot: bool) -> harmos_runtime::config::ManagedStorageSettings {
     harmos_runtime::config::ManagedStorageSettings {
@@ -248,42 +316,43 @@ fn managed(snapshot: bool) -> harmos_runtime::config::ManagedStorageSettings {
     }
 }
 
-async fn original<C>(storage: &StorageManager<C>, snapshot: bool) -> Runtime<Model<false>> {
+async fn original(storage: &StorageManager, snapshot: bool) -> Runtime<Model<false>> {
     Runtime::<Model<false>>::launch_with(0, (), |setup| {
         setup
             .settings()
             .storage(storage)
-            .register(Changes::catalog())
-            .register(Facts::catalog())
-            .register(Streams::catalog())
+            .register(changes_state_catalog())
+            .register(facts_registry())
+            .register(stream_definitions())
             .managed_storage(managed(snapshot));
     })
     .await
     .unwrap()
 }
 
-fn plugin_storage<C: ObjectCatalog>(root: &Path) -> StorageManager<C> {
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: root.to_owned(),
-            max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-        },
-        crate::storage::history(),
-    );
-    StorageManager::new(primary.into_backends(crate::storage::state_settings()), crate::storage::config()).unwrap()
+fn plugin_storage(catalog: ObjectCatalog, root: &Path, data: &Arc<crate::storage::Data>) -> StorageManager {
+    let backends = harmos_runtime::storage::StorageBackends {
+        primary: data.clone(),
+        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(
+            root.join("state"),
+            crate::storage::history(),
+            crate::storage::state_settings(),
+        )),
+    };
+    StorageManager::with_catalog(catalog, backends, crate::storage::config()).unwrap()
 }
 
-async fn plugin_runtime<C>(storage: &StorageManager<C>, snapshot: bool) -> Runtime<Model<false>> {
+async fn plugin_runtime(storage: &StorageManager, snapshot: bool) -> Runtime<Model<false>> {
     let mut settings = managed(snapshot);
     settings.journal_tail = 16;
     Runtime::<Model<false>>::launch_with(0, (), |setup| {
-        setup.settings().storage(storage).register(Changes::catalog()).register(Facts::catalog()).managed_storage(settings);
+        setup.settings().storage(storage).register(changes_state_catalog()).register(facts_registry()).managed_storage(settings);
     })
     .await
     .unwrap()
 }
 
-async fn historical_plugin_values<C>(storage: &StorageManager<C>, schema: &harmos_runtime::storage::SchemaKey) {
+async fn historical_plugin_values(storage: &StorageManager, schema: &harmos_runtime::storage::SchemaKey) {
     use arrow_array::{StructArray, UInt64Array};
     use harmos_runtime::storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RecordSelection, RowSlice, Source};
 
@@ -303,7 +372,7 @@ async fn historical_plugin_values<C>(storage: &StorageManager<C>, schema: &harmo
     ] {
         let mut reader = storage
             .query(harmos_runtime::storage::Query {
-                at: storage.cursor_saved(),
+                at: storage.get_saved_position(),
                 source,
                 transforms: vec![],
                 slice: RowSlice::default(),
@@ -334,13 +403,14 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
     for snapshot in [false, true] {
         // Write Plugin History And Host State.
         let root = tempfile::tempdir().unwrap();
-        let disk = plugin_storage::<PluginObjects>(root.path());
+        let data = Arc::new(crate::storage::Data::with_catalog(stored_plugin_objects_catalog(), crate::storage::history()));
+        let disk = plugin_storage(plugin_objects_catalog(), root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         let value = PluginObject { id: "document".into(), value: 41 };
         let receipt = disk.write_object(&value).await.unwrap();
-        let encoded = PluginObjects::encode(&value, NonZeroUsize::new(4096).unwrap()).unwrap();
+        let encoded = plugin_objects_catalog().encode(&value, NonZeroUsize::new(4096).unwrap()).unwrap();
         let schema = encoded.schema;
-        disk.write_records(vec![RecordInput {
+        disk.append_records(vec![RecordInput {
             schema: schema.clone(),
             scope: None,
             item: Identifier::new("plugin-row").unwrap(),
@@ -354,10 +424,10 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         let old = SystemFact::encode(FactSource::Sidecar("probe".into()), "reading".into(), &value).unwrap();
         runtime.records.publish_system(old.clone()).await.unwrap();
         runtime.state.commit(Add { amount: 7 }).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         // Reopen With The Changed Plugin Definition And Write Current State.
-        let disk = plugin_storage::<NewPluginObjects>(root.path());
+        let disk = plugin_storage(new_plugin_objects_catalog(), root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         let history = runtime.state.query::<SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(history[0].value, old);
@@ -371,7 +441,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         };
         assert_ne!(PluginObject::definition().1, NewPluginObject::definition().1);
         // A Typed Read Must Never Interpret Old Bytes As The New Definition.
-        assert!(disk.read_object::<NewPluginObject>(&value.id, ObjectVersion::Exact(receipt.version)).await.is_err());
+        assert!(disk.get_object::<NewPluginObject>(&value.id, ObjectVersion::Exact(receipt.version)).await.is_err());
         disk.write_object(&current).await.unwrap();
         disk.write_object(&NewPluginObject {
             id: value.id.clone(),
@@ -380,27 +450,32 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         .await
         .unwrap();
         disk.flush().await.unwrap();
-        assert_eq!(disk.read_object::<NewPluginObject>(&value.id, ObjectVersion::Latest).await.unwrap().unwrap().value.value, "latest");
+        assert_eq!(disk.get_object::<NewPluginObject>(&value.id, ObjectVersion::Latest).await.unwrap().unwrap().value.value, "latest");
         let next = SystemFact::encode(FactSource::Sidecar("probe".into()), "reading".into(), &current).unwrap();
         assert_ne!(old.identify().1, next.identify().1);
         runtime.records.publish_system(next.clone()).await.unwrap();
         historical_plugin_values(&disk, &schema).await;
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         // Reopen Without Any Plugin Object Catalog Or Installed Plugin.
-        let disk = plugin_storage::<()>(root.path());
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         historical_plugin_values(&disk, &schema).await;
         assert_eq!(disk.lookup_schema(&schema).await.unwrap().schema.as_ref(), &graph);
         let history = runtime.state.query::<SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(history.into_iter().map(|entry| entry.value).collect::<Vec<_>>(), [old, next]);
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         // The Same Root Still Refuses A Changed Host Record Definition.
-        let disk = plugin_storage::<()>(root.path());
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
-            setup.settings().storage(&disk).register(Changes::catalog()).register(NewFacts::catalog()).managed_storage(managed(snapshot));
+            setup
+                .settings()
+                .storage(&disk)
+                .register(changes_state_catalog())
+                .register(new_facts_registry())
+                .managed_storage(managed(snapshot));
         })
         .await;
         let error = match result {
@@ -409,10 +484,10 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         };
         assert!(error.to_string().contains(Observed::ID), "{error}");
         assert!(error.to_string().contains("fresh"), "{error}");
-        let disk = plugin_storage::<()>(root.path());
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = plugin_runtime(&disk, snapshot).await;
         historical_plugin_values(&disk, &schema).await;
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -420,20 +495,21 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
 async fn unchanged_shapes_restart_on_one_root() {
     for snapshot in [false, true] {
         let root = tempfile::tempdir().unwrap();
-        let disk = storage(root.path());
+        let data = Arc::new(crate::storage::Data::with_catalog(stored_plugin_objects_catalog(), crate::storage::history()));
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         runtime.state.commit(Add { amount: 7 }).await.unwrap();
         runtime.records.publish(Observed { before: 7 }).await.unwrap();
         let expected = runtime.state.applied();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
-        let disk = storage(root.path());
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
         assert_eq!(runtime.state.applied(), expected);
         let facts = runtime.state.query::<Facts>(Position(expected.0 - 1)).await.collect::<Result<Vec<_>, _>>().unwrap();
         assert!(matches!(&facts.last().unwrap().value, Facts::Observed(value) if value.before == 7));
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -442,7 +518,8 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
     assert_ne!(Observed::definition().1, Changed::definition().1);
     for snapshot in [false, true] {
         let root = tempfile::tempdir().unwrap();
-        let disk = storage(root.path());
+        let data = Arc::new(crate::storage::Data::with_catalog(stored_plugin_objects_catalog(), crate::storage::history()));
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         runtime.records.publish(Observed { before: 3 }).await.unwrap();
         runtime.state.commit(Add { amount: 7 }).await.unwrap();
@@ -455,11 +532,16 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
             ))
             .await
             .unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
-        let disk = storage(root.path());
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let result = Runtime::<Model<true>>::launch_with(0, (), |setup| {
-            setup.settings().storage(&disk).register(Changes::catalog()).register(NewFacts::catalog()).managed_storage(managed(snapshot));
+            setup
+                .settings()
+                .storage(&disk)
+                .register(changes_state_catalog())
+                .register(new_facts_registry())
+                .managed_storage(managed(snapshot));
         })
         .await;
         let error = match result {
@@ -478,26 +560,27 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
             if id.as_str() == Observed::ID && *version == Observed::definition().1));
         assert!(disk.status().closed);
 
-        let disk = storage(root.path());
+        let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
         let runtime = original(&disk, snapshot).await;
         assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 7);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn native_stream_round_trip_uses_shared_revision() {
     let root = tempfile::tempdir().unwrap();
-    let disk = storage(root.path());
+    let data = Arc::new(crate::storage::Data::with_catalog(stored_plugin_objects_catalog(), crate::storage::history()));
+    let disk = plugin_storage(ObjectCatalog::new(), root.path(), &data);
     let borrowed = Arc::new(Mutex::new(Vec::new()));
     let shared = Arc::new(Mutex::new(Vec::new()));
     let runtime = Runtime::<Model<false>>::launch_with(0, (), |setup| {
         setup
             .settings()
             .storage(&disk)
-            .register(Changes::catalog())
-            .register(Facts::catalog())
-            .register(Streams::catalog())
+            .register(changes_state_catalog())
+            .register(facts_registry())
+            .register(stream_definitions())
             .managed_storage(managed(false))
             .attach_streams(Recording {
                 borrowed: borrowed.clone(),
@@ -511,28 +594,38 @@ async fn native_stream_round_trip_uses_shared_revision() {
     let mut rows = runtime.streams.query::<Sample>(..).await.unwrap();
     assert_eq!(rows.next_back().unwrap().value.value, 41);
     let definition = Sample::definition();
-    let revision = harmos_domain::streams::revision(definition.schema(), definition.window()).unwrap();
+    let revision = harmos_domain::schema::stream_revision(definition.schema(), definition.window()).unwrap();
     assert_eq!(definition.version(), revision);
     let stored = runtime.streams.definitions().into_iter().find(|item| item.id() == Sample::ID).unwrap();
     assert_eq!(stored.version(), revision);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(*borrowed.lock().unwrap(), [41]);
     assert_eq!(*shared.lock().unwrap(), [41]);
 }
 
 #[test]
 fn label_only_change_keeps_revision() {
-    #[harmos_runtime::stream(id = "shape.samples", window = 4, label = "Renamed Samples")]
+    #[derive(harmos_runtime::Row)]
+    #[serde(crate = "harmos_runtime::__private::serde")]
+    #[derive(
+        Clone, Debug, Default, PartialEq, harmos_runtime::__private::serde::Serialize, harmos_runtime::__private::serde::Deserialize,
+    )]
     struct Relabelled {
         value: u64,
     }
 
-    #[harmos_runtime::record(id = "shape.observed")]
-    #[harmos_runtime::message]
-    #[derive(serde::Serialize, serde::Deserialize)]
+    impl harmos_runtime::streams::StreamRow for Relabelled {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("shape.samples", 4).label("Renamed Samples");
+    }
+
+    #[derive(harmos_runtime::Message, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
     struct LabelledRecord {
         #[row(label = "Previous Value")]
         before: i64,
+    }
+
+    impl harmos_runtime::state::Record for LabelledRecord {
+        const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("shape.observed");
     }
 
     assert_eq!(Observed::definition().1, LabelledRecord::definition().1);
@@ -541,6 +634,6 @@ fn label_only_change_keeps_revision() {
     let value = Observed { before: 9 };
     let (id, revision) = value.identify();
     let encoded = serde_json::to_value(&value).unwrap();
-    assert!(Facts::restore(&id, revision, &encoded).unwrap().is_some());
-    assert!(Facts::restore(&id, Changed::definition().1, &encoded).unwrap().is_none());
+    assert!(facts_registry().restore(&id, revision, &encoded).unwrap().is_some());
+    assert!(facts_registry().restore(&id, Changed::definition().1, &encoded).unwrap().is_none());
 }

@@ -602,17 +602,15 @@ mod tests {
     use crate::state::{CorrelationId, Metadata};
     use serde::{Deserialize, Serialize};
 
-    #[crate::record(id = "listener.page")]
     #[derive(crate::Described, Clone, Serialize, Deserialize)]
     struct PageRecord(u64);
 
+    impl crate::state::Record for PageRecord {
+        const ENTRY: crate::state::RecordEntry<Self> = crate::state::RecordEntry::new("listener.page");
+    }
+
     struct Model;
 
-    #[crate::lanes]
-    enum Lanes {
-        #[default]
-        Default,
-    }
     impl crate::Lifecycle for Model {
         type Config = ();
         type Error = std::convert::Infallible;
@@ -624,11 +622,9 @@ mod tests {
     }
 
     impl Application for Model {
-        type Lanes = Lanes;
         type State = ();
         type Transaction = crate::state::Never;
         type Record = PageRecord;
-        type Streams = ();
     }
 
     #[test]

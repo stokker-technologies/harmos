@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package schematic.v1;
+import "harmos/context/v1/storage.proto";
+message Connection { uint64 from = 1; uint64 to = 2; }
+message Snapshot { repeated uint64 symbols = 1; repeated Connection connections = 2; }
+message Point { int32 x = 1; int32 y = 2; }
+message ValidateSchematic { Snapshot schematic = 1; }
+message Validation { repeated string diagnostics = 1; }
+message ProposeRoute { Point from = 1; Point to = 2; }
+message Route { repeated Point points = 1; }
+message ListDirectories {}
+message Directories { repeated string directories = 1; }
+message AnalyzeSchematic { Snapshot schematic = 1; }
+message Analysis { uint32 checked = 1; }
+message Finding { string text = 1; }
+message AnalyzeUpload { string title = 1; }
+message AnalyzeExchange { string title = 1; }
+message Record { uint64 sequence = 1; bytes payload = 2; }
+message Sample { uint64 sequence = 1; uint64 timestamp_us = 2; double value = 3; }
+message Batch { repeated Record records = 1; repeated Sample samples = 2; bytes bytes = 3; }
+message Receipt { uint64 records = 1; uint64 samples = 2; uint64 bytes = 3; }
+message Upload { uint64 transfer = 1; }
+message Download { uint64 transfer = 1; }
+message Put { uint64 transfer = 1; bool first = 2; Batch batch = 3; }
+message Take { uint64 transfer = 1; }
+message Hash { harmos.context.v1.StorageGetFileHashRequest request = 1; }
+message FileHash { uint64 read_bytes = 1; bytes sha256 = 2; }

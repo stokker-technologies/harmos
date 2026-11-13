@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,16 +17,10 @@ use std::sync::{
 // Third Party Imports
 use tokio::sync::Notify;
 // Local Imports
-use super::{Bank, Ledger, Runtime, assembly};
+use super::{Bank, Ledger, assembly};
 use harmos_runtime::operations::OperationManager;
 use harmos_runtime::services::ServiceDefinition;
 use harmos_runtime::{Error, services::ServiceContext, services::ServiceStatus};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -42,24 +32,16 @@ struct Resources {
     cleanup: Notify,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 /* === Private Functions === */
 
-fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::Lanes>, resources: Arc<Resources>) {
+fn register(manager: &OperationManager, resources: Arc<Resources>) {
     manager
         .register_service(
             ServiceDefinition {
                 id: "scoped".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<harmos_sdk::ExecutionContext>| {
+            move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 let resources = resources.clone();
                 move |mut service: ServiceContext<Bank>| {
                     let resources = resources.clone();
@@ -80,7 +62,7 @@ fn register(manager: &OperationManager<<Bank as harmos_runtime::Application>::La
 
 #[tokio::test]
 async fn control_retains_join() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -129,12 +111,12 @@ async fn control_retains_join() {
     ));
     resources.cleanup.notify_one();
     replacement.release().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn final_release_joins() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -163,12 +145,12 @@ async fn final_release_joins() {
     resources.cleanup.notify_one();
     release.await.unwrap();
     assert_eq!(resources.finished.load(SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn dropped_lease_cleanup() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -193,12 +175,12 @@ async fn dropped_lease_cleanup() {
     assert_eq!(resources.started.load(SeqCst), 2);
     resources.cleanup.notify_one();
     second.release().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn unregister_reserves_name() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -226,7 +208,7 @@ async fn unregister_reserves_name() {
                     id: "scoped".into(),
                     policy: harmos_runtime::services::POLICY
                 },
-                |_: Arc<harmos_sdk::ExecutionContext>| super::resident
+                |_: Arc<harmos_operations::execution::ExecutionContext>| super::resident
             ),
             Err(Error::AlreadyRegistered { .. })
         ));
@@ -245,7 +227,7 @@ async fn unregister_reserves_name() {
     ));
     resources.cleanup.notify_one();
     replacement.release().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -264,7 +246,7 @@ async fn shutdown_preserve_typed() {
         }
     }
 
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -276,7 +258,7 @@ async fn shutdown_preserve_typed() {
                 id: "broken".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) },
+            |_: Arc<harmos_operations::execution::ExecutionContext>| |_service: ServiceContext<Bank>| async { Err::<(), _>(Refused(42)) },
         )
         .unwrap();
     let lease = runtime.operations.submit_resident("broken").await.unwrap();
@@ -284,14 +266,14 @@ async fn shutdown_preserve_typed() {
     assert!(typed(&error), "{error:?}");
     assert!(typed(&lease.release().await.unwrap_err()));
     for _ in 0..2 {
-        assert!(typed(&runtime.shutdown().await.unwrap_err()));
+        assert!(typed(&crate::support::app::shutdown(&runtime).await.unwrap_err()));
     }
 }
 
 #[tokio::test]
 async fn unregister_drops_factory() {
     struct Reentrant {
-        manager: OperationManager<<Bank as harmos_runtime::Application>::Lanes>,
+        manager: OperationManager,
         dropped: Arc<AtomicUsize>,
     }
     impl Drop for Reentrant {
@@ -300,7 +282,7 @@ async fn unregister_drops_factory() {
             self.dropped.fetch_add(1, SeqCst);
         }
     }
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -317,7 +299,7 @@ async fn unregister_drops_factory() {
                 id: "unused".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            move |_: Arc<harmos_sdk::ExecutionContext>| {
+            move |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 let _owner = resource.clone();
                 super::resident
             },
@@ -325,12 +307,12 @@ async fn unregister_drops_factory() {
         .unwrap();
     runtime.operations.unregister_resident("unused").await.unwrap();
     assert_eq!(dropped.load(SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn resident_not_reinitialized() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("one-shot", |_service| async { Ok::<(), std::io::Error>(()) });
     })
@@ -345,12 +327,12 @@ async fn resident_not_reinitialized() {
         .unwrap();
     assert!(matches!(runtime.operations.submit_resident("one-shot").await, Err(Error::NotReady { domain: "retired assembly service" })));
     assert_eq!(runtime.operations.resident(&key).unwrap().health, Some(ServiceStatus::Stopped));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn factory_panic_reported() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -362,7 +344,7 @@ async fn factory_panic_reported() {
                 id: "factory".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| {
+            |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 assert!(std::hint::black_box(false), "factory initialization failed");
                 super::resident
             },
@@ -377,7 +359,5 @@ async fn factory_panic_reported() {
             ..
         })
     ));
-    assert!(matches!(runtime.shutdown().await, Err(Error::TaskFailed { .. })));
+    assert!(matches!(crate::support::app::shutdown(&runtime).await, Err(Error::TaskFailed { .. })));
 }
-
-/* === Tests === */

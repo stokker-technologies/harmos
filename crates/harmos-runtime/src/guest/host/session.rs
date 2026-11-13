@@ -31,9 +31,9 @@ use wasmtime::AsContextMut;
 // Local Imports
 use super::{Active, Error};
 use crate::Application;
+use crate::guest::host::plugin::PluginEndpoint;
 use crate::operations::children::Children;
 use crate::operations::{OperationDefinition, WireAnswer, WireChildCall, WireCommand};
-use crate::plugin::PluginEndpoint;
 use crate::supervision::executor;
 use crate::supervision::executor::InContext;
 
@@ -63,7 +63,7 @@ struct Loan {
 
 pub(crate) struct Endpoint {
     definitions: Vec<OperationDefinition>,
-    scope: Option<crate::plugin::PluginScope>,
+    scope: Option<crate::guest::host::plugin::PluginScope>,
     accepting: AtomicBool,
     requests: mpsc::Sender<Request>,
     ended: watch::Receiver<bool>,
@@ -133,7 +133,7 @@ impl Endpoint {
         self.accepting.load(Ordering::Acquire)
     }
 
-    pub(crate) fn scope(&self) -> Option<&crate::plugin::PluginScope> {
+    pub(crate) fn scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.scope.as_ref()
     }
 
@@ -217,18 +217,21 @@ impl<A: Application> Session<A> {
             loans: Arc::new(Mutex::new(BTreeMap::new())),
         };
         let (stopping, stopped) = watch::channel(false);
+        let mut activity =
+            owned.guest.as_ref().expect("owned guest store").store.data().operations.clock().activity("guest component execution");
         let running = executor::task(async move {
             let mut owned = owned;
             let result = {
                 let running = owned.run(incoming, stopped);
                 let mut running = std::pin::pin!(running);
-                std::future::poll_fn(|context| {
-                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| running.as_mut().poll(context))) {
-                        Ok(poll) => poll.map(Ok),
-                        Err(_) => std::task::Poll::Ready(Err(())),
-                    }
-                })
-                .await
+                activity
+                    .wait(std::future::poll_fn(|context| {
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| running.as_mut().poll(context))) {
+                            Ok(poll) => poll.map(Ok),
+                            Err(_) => std::task::Poll::Ready(Err(())),
+                        }
+                    }))
+                    .await
             };
             let result = match result {
                 Ok(result) => result,
@@ -364,13 +367,13 @@ impl<A: Application> Owned<A> {
                         // It Must Progress Even When Retained Background Debts Fill Admission.
                         let finalization = matches!(&request.call, Command::Operation(WireCommand::Finalize { .. } | WireCommand::Cancel { .. }));
                         if !finalization && finite + background_debts >= CALLS {
-                            let _ = request.answer.send(Err(crate::plugin::DispatchError::Busy.into()));
+                            let _ = request.answer.send(Err(crate::guest::host::plugin::DispatchError::Busy.into()));
                             continue;
                         }
                         if let Command::Background { call, submitted } = request.call {
                             let admitted = if call.generation_context.as_ref().is_some_and(|token| scope.as_ref().is_some_and(|scope| scope.accepts_generation_context(token))) {
                                 caller.as_ref().ok_or(crate::Error::Closing { domain: "guest generation context" })
-                                    .and_then(|caller| caller.submit_encoded_at(&call.operation, (call.fingerprint, call.generation), call.payload, submitted, call.values, call.retry))
+                                    .and_then(|caller| caller.submit_encoded_at(&call.operation, (call.fingerprint, call.generation), call.payload, submitted, call.values, call.policy))
                             } else { Err(crate::Error::Closing { domain: "guest generation context" }) };
                             let invocation = match admitted {
                                 Ok(invocation) => invocation,
@@ -409,7 +412,7 @@ impl<A: Application> Owned<A> {
                             continue;
                         }
                         if let Some(scope) = request.children.take() {
-                            let Command::Operation(WireCommand::Initialize { invocation, .. } | WireCommand::Attempt { invocation, .. } | WireCommand::StreamAttempt { invocation, .. }) = &request.call else {
+                            let Command::Operation(WireCommand::Initialize { invocation, .. } | WireCommand::Attempt { invocation, .. }) = &request.call else {
                                 let _ = request.answer.send(Err(Error::Guest { message: "guest child context requires initialization or an attempt".to_owned() }));
                                 continue;
                             };
@@ -444,7 +447,6 @@ impl<A: Application> Owned<A> {
                                         let payload = command.encode().map_err(|source| Error::Malformed { method: "operate".to_owned(), message: source.to_string() })?;
                                         let owner = owner.clone().ok_or_else(|| Error::Malformed { method: "operate".to_owned(), message: "operation has no assigned owner".to_owned() })?;
                                         let (reply,) = function.call_concurrent(context, (owner, payload)).await.map_err(|source| Error::Execution { source: Arc::new(source) })?;
-                                        let reply = reply.map_err(|refusal| Error::Operation { refusal: super::refused(refusal) })?;
                                         let answer = WireAnswer::decode(&reply).map_err(|source| Error::Malformed { method: "operate".to_owned(), message: source.to_string() })?;
                                         Ok(Reply::Operation(answer))
                                     }

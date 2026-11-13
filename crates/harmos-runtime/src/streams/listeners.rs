@@ -25,13 +25,13 @@ use std::task::Poll;
 use tokio::sync::watch;
 // Local Imports
 use super::window::{ListenerCandidate, Row};
-use super::{Holding, ManagedPublication, Stream, StreamManager, Table, Wired};
+use super::{Holding, ManagedPublication, StreamManager, StreamRow, Table, Wired};
+use crate::guest::host::plugin::PluginScope;
 use crate::operations::{EncodedInvocation, Manager, PluginCallback};
-use crate::plugin::PluginScope;
 use crate::schema::{Described, graph::Schema};
 use crate::supervision::{Listener, ListenerDelivery};
 use crate::{Application, Error, Message, MessageError, Result};
-use harmos_domain::listeners::{Context, Source};
+use harmos_operations::listeners::{Context, Source};
 
 /* === Constants === */
 
@@ -210,7 +210,7 @@ impl<A: Application> StreamManager<A> {
 }
 
 impl<A: Application> PluginListenerBindings<'_, A> {
-    pub fn stream<S: Stream<A> + Message + Described>(&mut self, after: u64) -> Result<()> {
+    pub fn stream<S: StreamRow + Message + Described>(&mut self, after: u64) -> Result<()> {
         let wired = self.source(S::ID)?;
         if wired.definition.row() != TypeId::of::<S>() || wired.definition.owner().is_some() {
             return Err(Error::InvalidInput {
@@ -439,9 +439,9 @@ fn submit<R: Message>(row: &R, context: Context, callback: &PluginCallback) -> R
         operation: callback.contract().operation().id.to_string(),
         source: Arc::new(source),
     };
-    let bytes = harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(encoding_error)?;
+    let bytes = harmos_operations::listeners::encoding_memory_bytes(context, row).map_err(encoding_error)?;
     let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted { resource: "stream callback encoding" })?;
-    callback.submit_with(bytes, |budget| harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(encoding_error))
+    callback.submit_with(bytes, |budget| harmos_operations::listeners::encode_borrowed(context, row, budget).map_err(encoding_error))
 }
 
 async fn closed_provider(providers: &[PluginScope]) {

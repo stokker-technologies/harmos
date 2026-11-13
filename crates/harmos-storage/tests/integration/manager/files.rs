@@ -7,36 +7,19 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
 use std::future::Future;
+use std::num::NonZeroUsize;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -57,78 +40,18 @@ fn whole(file: &harmos_storage::FileReference) -> harmos_storage::FileRead {
     }
 }
 
-fn shareable_tempfile() -> (tempfile::NamedTempFile, std::fs::File) {
-    let owner = tempfile::NamedTempFile::new().unwrap();
-    let file = owner.as_file().try_clone().unwrap();
+fn shareable_tempfile() -> (tempfile::TempDir, std::fs::File) {
+    // Keep Named Sources in a Private Directory With Ordinary Shared Handles.
+    let owner = tempfile::tempdir().unwrap();
+    let file = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(owner.path().join("source")).unwrap();
     (owner, file)
 }
 
-#[tokio::test(start_paused = true)]
-async fn file_roundtrip_recovers() {
-    let large = (0..8192).map(|n| (n % 251) as u8).collect::<Vec<_>>();
-    let cases =
-        [("large", large), ("unsaved", b"unsaved bytes".to_vec()), ("retry", b"one chunk".to_vec()), ("finish", b"finished once".to_vec())];
-    for (id, bytes) in cases {
-        let mut policy = config();
-        policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
-        let f = Fixture::new(policy).await;
-        let mut file = f.storage.create_file(metadata(id, &bytes)).await.unwrap();
-        f.data.control.chunk_failures.store(1, Ordering::SeqCst);
-        file.write_all((bytes).to_vec()).await.unwrap();
-        let offsets = f.data.control.chunk_offsets.lock().unwrap().clone();
-        assert_eq!(&offsets[..2], &[0, 0]);
-        if bytes.len() <= 31 {
-            assert_eq!(offsets, [0, 0]);
-        }
-        assert!(f.data.control.chunk_sizes.lock().unwrap().iter().all(|n| *n <= 31));
+#[path = "files/file_roundtrip_recovers.rs"]
+mod file_roundtrip_recovers;
 
-        // An Uncertain Publication Reuses Its Position Without Duplicating The Blob.
-        f.data.control.finish_failures.store(1, Ordering::SeqCst);
-        let reference = file.finish().await.unwrap();
-        assert_eq!(reference.position.sequence, 1);
-        assert_eq!(reference.length, bytes.len() as u64);
-        assert!(f.data.control.finish_positions.lock().unwrap().iter().all(|position| *position == 1));
-        assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
-        assert!(f.data.files.lock().unwrap().is_empty());
-        file.abort().await.unwrap();
-        assert_eq!(f.data.blobs.lock().unwrap().len(), 1);
-
-        // Bounded Reads Reconstruct The Exact Published Bytes.
-        let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
-        let first = reader.next().await.unwrap().unwrap();
-        assert!(first.bytes().len() <= 31);
-        assert_eq!(first.bytes(), &bytes[..first.bytes().len()]);
-        if bytes.len() <= 31 {
-            assert_eq!(first.bytes(), bytes);
-        }
-        let mut actual = first.bytes().to_vec();
-        while let Some(batch) = reader.next().await.unwrap() {
-            assert!(batch.bytes().len() <= 31);
-            actual.extend_from_slice(batch.bytes());
-        }
-        assert_eq!(actual, bytes);
-        drop(reader);
-
-        // Logical Publication Remains Separate From Durable Query Visibility.
-        assert_eq!(f.storage.status().saved.sequence, 0);
-        let mut durable = f
-            .storage
-            .query(harmos_storage::Query {
-                at: f.storage.cursor_saved(),
-                source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
-                transforms: Vec::new(),
-                slice: harmos_storage::query::RowSlice::default(),
-            })
-            .await
-            .unwrap();
-        assert!(matches!(durable.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
-        assert!(durable.next().await.unwrap().is_none());
-        f.storage.flush().await.unwrap();
-        assert_eq!(f.storage.status().saved.sequence, reference.position.sequence);
-        drop(durable);
-        f.finish().await;
-    }
-}
+#[path = "files/opened_clones_keep_independent_read_offsets.rs"]
+mod opened_clones_keep_independent_read_offsets;
 
 #[tokio::test]
 async fn cancelled_create_cleans() {
@@ -176,21 +99,6 @@ async fn integrity_failure_unpublished() {
     assert_eq!(f.storage.status().accepted.sequence, 0);
     assert!(f.data.files.lock().unwrap().is_empty());
     assert!(f.data.staged.lock().unwrap().is_empty());
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn failed_chunk_retryable() {
-    let f = Fixture::new(config()).await;
-    let bytes = b"immutable bytes";
-    let reference = f.storage.write_file(metadata("read", bytes), (bytes).to_vec()).await.unwrap();
-    let mut reader = f.storage.read_file(whole(&reference)).await.unwrap();
-    f.data.control.corrupt_file.store(true, Ordering::SeqCst);
-    assert!(reader.next().await.is_err());
-    assert_eq!(reader.offset(), 0);
-    f.data.control.corrupt_file.store(false, Ordering::SeqCst);
-    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), bytes);
-    drop(reader);
     f.finish().await;
 }
 
@@ -381,27 +289,6 @@ async fn forged_reference_refused() {
     f.finish().await;
 }
 
-#[tokio::test]
-async fn reader_keeps_metadata() {
-    let f = Fixture::new(config()).await;
-    f.data.control.block_release.store(true, Ordering::SeqCst);
-    let file = f.storage.write_file(metadata("owned", b"abc"), (b"abc").to_vec()).await.unwrap();
-    let mut reader = f.storage.read_file(whole(&file)).await.unwrap();
-    f.storage.flush().await.unwrap();
-    assert_eq!(f.storage.status().pending_bytes, 0);
-    assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"abc");
-    assert!(reader.next().await.unwrap().is_none());
-    // The Exhausted Reader Schedules Backend Snapshot Release.
-    f.data.control.release_entered.notified().await;
-    // Completion Remains Inspectable While That Release Is Pending.
-    assert_eq!(reader.completion().unwrap().bytes, file.length);
-    drop(reader);
-    f.data.control.block_release.store(false, Ordering::SeqCst);
-    f.data.control.release_release.notify_one();
-    f.data.snapshots_released().await;
-    f.finish().await;
-}
-
 async fn wait_chunks(control: &super::backend::Control, count: usize) {
     loop {
         let changed = control.chunk_changed.notified();
@@ -417,6 +304,7 @@ async fn bounded_file_parallelism() {
     let mut policy = config();
     policy.request.max_active_file_operations = NonZeroUsize::new(2).unwrap();
     policy.response.batch_bytes = NonZeroUsize::new(3).unwrap();
+    policy.transfer.chunk_bytes = Some(3);
     let f = Fixture::new(policy).await;
     let mut producers = Vec::new();
     for id in 0..3 {
@@ -468,13 +356,14 @@ async fn pressure_preserves_owner() {
     policy.request.max_pending_write_bytes = NonZeroUsize::new(40_000).unwrap();
     policy.request.max_pending_write_batches = NonZeroUsize::MIN;
     policy.response.batch_bytes = NonZeroUsize::new(1024).unwrap();
+    policy.transfer.chunk_bytes = Some(1024);
     let f = Fixture::new(policy).await;
     let bytes = vec![42; 16_000];
     let pointer = bytes.as_ptr() as usize;
     let capacity = bytes.capacity();
     let mut file = f.storage.create_file(metadata("pressure", &bytes)).await.unwrap();
     f.data.control.block_write.store(true, Ordering::SeqCst);
-    f.storage.write_records(vec![record(&schema(), &Identifier::new("queued").unwrap(), &vec![7; 16_000])]).await.unwrap();
+    f.storage.append_records(vec![record(&schema(), &Identifier::new("queued").unwrap(), &vec![7; 16_000])]).await.unwrap();
     f.data.control.block_chunk.store(true, Ordering::SeqCst);
     let writing = tokio::spawn(async move {
         file.write_all(bytes).await.unwrap();
@@ -555,7 +444,9 @@ async fn close_drains_files() {
     let closing_storage = f.storage.clone();
     let closing = closing_storage.close();
     tokio::pin!(closing);
-    assert!(super::pending(closing.as_mut()).await);
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(closing.as_mut(), context).is_pending())).await
+    );
     assert!(f.storage.status().closing);
     assert!(f.data.control.open.load(Ordering::SeqCst));
     assert_eq!(f.data.control.chunk_active.lock().unwrap().values().sum::<usize>(), 2);
@@ -582,12 +473,15 @@ async fn file_bypasses_persistence() {
     f.data.control.write_entered.notified().await;
     file.write_all(b"abc".to_vec()).await.unwrap();
     assert_eq!(file.length(), 3);
-    assert_eq!(f.storage.cursor_saved().sequence, 0);
+    assert_eq!(f.storage.get_saved_position().sequence, 0);
     assert!(!flushing.is_finished());
     {
         let finishing = file.finish();
         tokio::pin!(finishing);
-        assert!(super::pending(finishing.as_mut()).await);
+        assert!(
+            std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(finishing.as_mut(), context).is_pending()))
+                .await
+        );
         assert!(f.data.control.finish_positions.lock().unwrap().is_empty());
         f.data.control.block_write.store(false, Ordering::SeqCst);
         f.data.control.write_release.notify_one();
@@ -597,52 +491,8 @@ async fn file_bypasses_persistence() {
     f.finish().await;
 }
 
-#[tokio::test]
-async fn file_projection_retains() {
-    let f = Fixture::new(config()).await;
-    let mut file = f.storage.create_file(metadata("projection", b"abc")).await.unwrap();
-    file.write_all(b"abc".to_vec()).await.unwrap();
-    let reference = file.finish().await.unwrap();
-    f.storage.flush().await.unwrap();
-    let session = f.storage.clone();
-    let mut reader = session.read_file(whole(&reference)).await.unwrap();
-    let batch = reader.next().await.unwrap().unwrap();
-    let pointer = batch.bytes().as_ptr();
-    let projected = batch.try_map(|batch| Ok::<_, Error>(batch.bytes)).unwrap();
-    assert_eq!(projected.as_ptr(), pointer);
-    drop(reader);
-    drop(session);
-    f.data.snapshots_released().await;
-    assert_eq!(projected.as_slice(), b"abc");
-    drop(projected);
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn file_slice_refuses() {
-    let f = Fixture::new(config()).await;
-    let mut file = f.storage.create_file(metadata("slice", b"abc")).await.unwrap();
-    file.write_all(b"abc".to_vec()).await.unwrap();
-    let reference = file.finish().await.unwrap();
-    f.storage.flush().await.unwrap();
-    let session = f.storage.clone();
-    let mut reader = session.read_file(whole(&reference)).await.unwrap();
-    let batch = reader.next().await.unwrap().unwrap();
-    let slice = batch.slice(1..3);
-    let called = std::cell::Cell::new(false);
-    let result = batch.try_map(|batch| {
-        called.set(true);
-        Ok::<_, Error>(batch.bytes)
-    });
-    assert!(result.is_err());
-    assert!(!called.get());
-    drop(reader);
-    drop(session);
-    f.data.snapshots_released().await;
-    assert_eq!(slice.bytes(), b"bc");
-    drop(slice);
-    f.finish().await;
-}
+#[path = "files/file_readers_retry_and_retain_metadata_slices_and_projections.rs"]
+mod file_readers_retry_and_retain_metadata_slices_and_projections;
 
 #[tokio::test]
 async fn opened_capture_retains_cancelled_copy() {
@@ -697,6 +547,7 @@ async fn opened_capture_keeps_source_identity() {
 async fn opened_deleted_capture() {
     let mut policy = config();
     policy.response.batch_bytes = NonZeroUsize::new(8).unwrap();
+    policy.transfer.chunk_bytes = Some(8);
     let directory = tempfile::tempdir().unwrap();
     let expected = b"retained opened bytes";
     for late_delete in [false, true] {
@@ -801,7 +652,7 @@ async fn opened_capture_verifies_retained_prefix() {
             assert_eq!(result.unwrap().length, source_bytes.len() as u64);
         } else {
             assert!(matches!(result, Err(Error::InvalidInput { .. })));
-            assert_eq!(f.storage.file_progress(&file).await.unwrap().length, 6);
+            assert_eq!(f.storage.get_file_production(&file).await.unwrap().length, 6);
             assert_eq!(capture.acknowledged(), 6);
             assert!(capture.finish().await.is_err());
         }
@@ -833,13 +684,13 @@ async fn opened_capture_synchronizes_one_original_production() {
     assert_eq!(capture.acknowledged(), 6);
     assert!(capture.synchronize(6).await.unwrap());
     assert_eq!(capture.acknowledged(), 6);
-    let progress = session.file_progress(&staged).await.unwrap();
+    let progress = session.get_file_production(&staged).await.unwrap();
     assert_eq!(progress.phase, FilePhase::Producing);
     assert_eq!(progress.length, 6);
     source.write_all(b"suffix").unwrap();
     assert!(capture.synchronize(12).await.unwrap());
     assert_eq!(capture.acknowledged(), 12);
-    assert_eq!(session.file_progress(&staged).await.unwrap().phase, FilePhase::Producing);
+    assert_eq!(session.get_file_production(&staged).await.unwrap().phase, FilePhase::Producing);
     let reference = capture.finish_at(12).await.unwrap();
     assert_eq!(reference.metadata.id, staged.id);
     assert_eq!(reference.length, 12);
@@ -921,6 +772,7 @@ async fn opened_capture_interrupts_only_accepted_cancelled_step() {
     use std::io::Write;
     let mut policy = config();
     policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
+    policy.transfer.chunk_bytes = Some(31);
     let f = Fixture::new(policy).await;
     let bytes: Vec<_> = (0..96).map(|value| value as u8).collect();
     let (_source_owner, mut source) = shareable_tempfile();
@@ -995,36 +847,6 @@ async fn opened_capture_prefix_conflict_survives_source_repair() {
         assert_eq!(reference.sha256, <[u8; 32]>::from(Sha256::digest(b"prefix")));
         drop(capture);
     }
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn opened_clones_keep_independent_read_offsets() {
-    use std::io::{Seek, SeekFrom, Write};
-    let f = Fixture::new(config()).await;
-    let expected: Vec<u8> = (0..256_000).map(|index| (index % 251) as u8).collect();
-    let (_source_owner, mut source) = shareable_tempfile();
-    source.write_all(&expected).unwrap();
-    let mut observer = source.try_clone().unwrap();
-    observer.seek(SeekFrom::Start(11)).unwrap();
-    let session = f.storage.clone();
-    let mut left = session.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 0, limit: Some(100_000) }).await.unwrap();
-    let mut right = session.read_opened_file(source, ByteRange { offset: 128_000, limit: Some(100_000) }).await.unwrap();
-    loop {
-        let (first, second) = tokio::join!(left.next(), right.next());
-        let (first, second) = (first.unwrap(), second.unwrap());
-        assert_eq!(observer.stream_position().unwrap(), 11);
-        let (Some(first), Some(second)) = (first, second) else {
-            break;
-        };
-        let left_offset = first.offset() as usize;
-        let right_offset = second.offset() as usize;
-        assert_eq!(first.bytes(), &expected[left_offset..left_offset + first.bytes().len()]);
-        assert_eq!(second.bytes(), &expected[right_offset..right_offset + second.bytes().len()]);
-    }
-    assert_eq!(left.completion().unwrap().bytes, 100_000);
-    assert_eq!(right.completion().unwrap().bytes, 100_000);
-    drop((left, right, session));
     f.finish().await;
 }
 
@@ -1337,5 +1159,3 @@ mod windows {
 
     /* === Tests === */
 }
-
-/* === Tests === */

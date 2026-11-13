@@ -9,10 +9,6 @@
 
 // Shared Application Lifecycle And Aggregate Setup Validation.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -36,10 +32,6 @@ const POLICY: harmos_runtime::OperationPolicy = harmos_runtime::OperationPolicy 
     retries: harmos_runtime::RetryPolicy::Never,
 };
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(Default)]
@@ -62,16 +54,46 @@ struct Config {
 
 struct App(Config);
 
-#[harmos_runtime::operation(harmos_path = ::harmos_runtime, resources = [Counter], id = "lifecycle.read", response = u64, policy = POLICY)]
+#[derive(::harmos_runtime::Message, Debug, Default)]
+#[harmos_path(::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
+#[request(response = u64)]
+#[derive(Clone)]
 struct Read;
 
-#[harmos_runtime::operation(harmos_path = ::harmos_runtime, resources = [Counter], id = "lifecycle.pending", response = (), policy = POLICY)]
+static READ_DESCRIPTION: ::harmos_runtime::operations::WireDeclaration =
+    ::harmos_runtime::operations::WireDeclaration::request::<Read>("lifecycle.read", POLICY);
+
+const READ_OPERATION: ::harmos_runtime::operations::OperationSpec<Read> =
+    ::harmos_runtime::operations::OperationSpec::<Read>::new(&READ_DESCRIPTION);
+
+#[derive(::harmos_runtime::Message, Debug, Default)]
+#[harmos_path(::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct Pending;
+
+static PENDING_DESCRIPTION: ::harmos_runtime::operations::WireDeclaration =
+    ::harmos_runtime::operations::WireDeclaration::request::<Pending>("lifecycle.pending", POLICY);
+
+const PENDING_OPERATION: ::harmos_runtime::operations::OperationSpec<Pending> =
+    ::harmos_runtime::operations::OperationSpec::<Pending>::new(&PENDING_DESCRIPTION);
 
 struct PendingGuard(Arc<Counter>);
 
-#[harmos_runtime::operation(harmos_path = ::harmos_runtime, resources = [u64, String], id = "lifecycle.missing", response = (), policy = POLICY)]
+#[derive(::harmos_runtime::Message, Debug, Default)]
+#[harmos_path(::harmos_runtime)]
+#[derive(::harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct Missing;
+
+static MISSING_DESCRIPTION: ::harmos_runtime::operations::WireDeclaration =
+    ::harmos_runtime::operations::WireDeclaration::request::<Missing>("lifecycle.missing", POLICY);
+
+const MISSING_OPERATION: ::harmos_runtime::operations::OperationSpec<Missing> =
+    ::harmos_runtime::operations::OperationSpec::<Missing>::new(&MISSING_DESCRIPTION);
 
 #[derive(Default)]
 struct PrepareProbe {
@@ -101,51 +123,33 @@ enum Phase {
     Cleanup,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Lanes {
-    Open,
-    Unknown,
+fn operations_catalog() -> harmos_runtime::operations::Catalog {
+    operations_catalog_batch().named(concat!(module_path!(), "::Operations"))
 }
 
-#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-enum Operations {
-    Read(Read),
-    Pending(Pending),
+fn operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(read_operation().expect("representable operation"));
+    batch = batch.entry(pending_operation().expect("representable operation"));
+    batch
 }
 
-#[harmos_runtime::catalog(harmos_path = ::harmos_runtime)]
-enum MissingOperations {
-    Missing(Missing),
+fn missing_operations_catalog() -> harmos_runtime::operations::Catalog {
+    missing_operations_catalog_batch().named(concat!(module_path!(), "::MissingOperations"))
 }
 
-/* === Traits === */
+fn missing_operations_catalog_batch() -> harmos_runtime::__private::Catalog {
+    let mut batch = harmos_runtime::__private::Catalog::new();
+    batch = batch.entry(missing_operation().expect("representable operation"));
+    batch
+}
 
 /* === Implementations === */
 
-impl Lane for Lanes {
-    fn catalog() -> LaneSet {
-        LaneSet::declared([("lifecycle.open", Capacity::serial())])
-    }
-    fn default_lane() -> Self {
-        Self::Open
-    }
-    fn name(&self) -> &'static str {
-        match self {
-            Self::Open => "lifecycle.open",
-            Self::Unknown => "lifecycle.unknown",
-        }
-    }
-    fn capacity(&self) -> Capacity {
-        Capacity::serial()
-    }
-}
-
 impl Application for Preparing {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Lifecycle for Preparing {
@@ -154,6 +158,7 @@ impl Lifecycle for Preparing {
     type Context = Startup<Self>;
 
     async fn prepare(config: Self::Config, setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
+        setup.settings().lanes(LaneSet::new([Lane::new("lifecycle.open", Capacity::serial())]).unwrap());
         *config.probe.cleanup.lock().unwrap() = Some(setup.settings().startup_cleanup());
         config.probe.entered.notify_one();
         if config.pending {
@@ -173,11 +178,9 @@ impl Lifecycle for Preparing {
 }
 
 impl Application for App {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Lifecycle for App {
@@ -186,14 +189,15 @@ impl Lifecycle for App {
     type Context = Startup<Self>;
 
     async fn prepare(config: Config, setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
+        setup.settings().lanes(LaneSet::new([Lane::new("lifecycle.open", Capacity::serial())]).unwrap());
         config.counter.events.lock().unwrap().push(Phase::Prepare);
         setup.resource::<Counter>(config.counter.clone());
         if config.invalid {
             setup.resource::<Counter>(config.counter.clone());
-            setup.operations::<MissingOperations>(Lanes::Unknown);
-            setup.operations::<MissingOperations>(Lanes::Open);
+            setup.catalog(missing_operations_catalog(), Lane::new("lifecycle.unknown", Capacity::serial()));
+            setup.catalog(missing_operations_catalog(), Lane::new("lifecycle.open", Capacity::serial()));
         } else {
-            setup.operations::<Operations>(Lanes::Open);
+            setup.catalog(operations_catalog(), Lane::new("lifecycle.open", Capacity::serial()));
         }
         Ok(Self(config))
     }
@@ -221,33 +225,59 @@ impl Lifecycle for App {
     }
 }
 
-impl harmos_runtime::Operation for Read {
-    type Error = std::convert::Infallible;
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u64>, Self::Error> {
-        let counter = context.resource::<Counter>();
-        counter.events.lock().unwrap().push(Phase::Serve);
-        Ok(counter.value.load(Ordering::SeqCst).into())
-    }
+async fn read_handler(
+    _request: Read, context: ::harmos_runtime::operations::FunctionContext<Read>,
+) -> Result<harmos_runtime::Response<u64>, std::convert::Infallible> {
+    let counter = context.resource::<Counter>().expect("declared resource is registered");
+    counter.events.lock().unwrap().push(Phase::Serve);
+    Ok(counter.value.load(Ordering::SeqCst).into())
 }
 
-impl harmos_runtime::Operation for Missing {
-    type Error = std::convert::Infallible;
-    async fn run(self, _: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        Ok(().into())
-    }
+fn read_operation() -> ::core::result::Result<::harmos_runtime::operations::OperationFactory, ::harmos_runtime::operations::ServingError> {
+    ::harmos_runtime::operations::OperationFactory::function(
+        READ_OPERATION,
+        const { &[::harmos_runtime::Resource::of::<Counter>()] },
+        read_handler,
+        |_| ::harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
-impl harmos_runtime::Operation for Pending {
-    type Error = std::convert::Infallible;
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<()>, Self::Error> {
-        let counter = context.resource::<Counter>();
-        counter.events.lock().unwrap().push(Phase::Serve);
-        let guard = PendingGuard(counter.clone());
-        counter.entered.notify_one();
-        std::future::pending::<()>().await;
-        drop(guard);
-        Ok(().into())
-    }
+async fn missing_handler(
+    _request: Missing, _: ::harmos_runtime::operations::FunctionContext<Missing>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    Ok(().into())
+}
+
+fn missing_operation() -> ::core::result::Result<::harmos_runtime::operations::OperationFactory, ::harmos_runtime::operations::ServingError>
+{
+    ::harmos_runtime::operations::OperationFactory::function(
+        MISSING_OPERATION,
+        const { &[::harmos_runtime::Resource::of::<u64>(), ::harmos_runtime::Resource::of::<String>()] },
+        missing_handler,
+        |_| ::harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+async fn pending_handler(
+    _request: Pending, context: ::harmos_runtime::operations::FunctionContext<Pending>,
+) -> Result<harmos_runtime::Response<()>, std::convert::Infallible> {
+    let counter = context.resource::<Counter>().expect("declared resource is registered");
+    counter.events.lock().unwrap().push(Phase::Serve);
+    let guard = PendingGuard(counter.clone());
+    counter.entered.notify_one();
+    std::future::pending::<()>().await;
+    drop(guard);
+    Ok(().into())
+}
+
+fn pending_operation() -> ::core::result::Result<::harmos_runtime::operations::OperationFactory, ::harmos_runtime::operations::ServingError>
+{
+    ::harmos_runtime::operations::OperationFactory::function(
+        PENDING_OPERATION,
+        const { &[::harmos_runtime::Resource::of::<Counter>()] },
+        pending_handler,
+        |_| ::harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl Drop for PendingGuard {
@@ -255,10 +285,6 @@ impl Drop for PendingGuard {
         self.0.events.lock().unwrap().push(Phase::Drain);
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 
@@ -284,7 +310,7 @@ async fn lifecycle_with_overrides() {
             stop_fails,
             cleanup_fails_once: false,
         };
-        let runtime = Runtime::<App>::launch_with((), config, |setup| {
+        let runtime = crate::support::app::launch::<App>((), config, |setup| {
             setup.resource::<Counter>(fake.clone());
         })
         .await
@@ -293,7 +319,7 @@ async fn lifecycle_with_overrides() {
         assert_eq!(*runtime.operation(Read).await.unwrap(), 41);
         let pending = runtime.operation(Pending).start().await.unwrap();
         fake.entered.notified().await;
-        let (first, second) = tokio::join!(runtime.shutdown(), runtime.shutdown());
+        let (first, second) = tokio::join!(crate::support::app::shutdown(&runtime), crate::support::app::shutdown(&runtime));
         assert_eq!(first.is_err(), stop_fails);
         assert_eq!(second.is_err(), stop_fails);
         assert!(pending.await.is_err());
@@ -360,9 +386,9 @@ async fn cleanup_retry_once() {
         ..Config::default()
     };
     let runtime = Runtime::<App>::launch((), config).await.unwrap();
-    assert!(runtime.shutdown().await.is_err());
-    runtime.shutdown().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
+    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(*counter.events.lock().unwrap(), [Phase::Prepare, Phase::Initialize, Phase::Stop, Phase::Cleanup, Phase::Cleanup]);
 }
 
@@ -376,7 +402,7 @@ async fn lifecycle_reports_failures() {
         ..Config::default()
     };
     let runtime = Runtime::<App>::launch((), config).await.unwrap();
-    let error = runtime.shutdown().await.unwrap_err();
+    let error = crate::support::app::shutdown(&runtime).await.unwrap_err();
     let first: &(dyn std::error::Error + 'static) = &error;
     let errors = std::iter::successors(Some(first), |source| source.source());
     let mut typed = errors.filter_map(|source| source.downcast_ref::<harmos_runtime::Error>());
@@ -387,8 +413,8 @@ async fn lifecycle_reports_failures() {
     assert!(matches!(stop.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application stop", .. }));
     assert!(matches!(cleanup.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application cleanup", .. }));
 
-    assert!(runtime.shutdown().await.is_err());
-    assert!(runtime.shutdown().await.is_err());
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
     assert_eq!(*counter.events.lock().unwrap(), [Phase::Prepare, Phase::Initialize, Phase::Stop, Phase::Cleanup, Phase::Cleanup]);
 }
 

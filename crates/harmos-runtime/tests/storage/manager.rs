@@ -13,10 +13,10 @@
 mod mutations;
 #[path = "manager/production.rs"]
 mod production;
+#[path = "manager/receipts.rs"]
+mod receipts;
 #[path = "manager/recovery.rs"]
 mod recovery;
-
-/* === Re-Exports === */
 
 /* === Imports === */
 
@@ -28,22 +28,6 @@ use std::time::Duration;
 use super::{Fixture, config};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::FileMetadata;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -303,7 +287,7 @@ async fn private_files_hidden() {
         id: Identifier::new("private").unwrap(),
     };
     assert!(f.storage.follow_production(&identity, 0).await.is_err());
-    assert!(f.storage.file_progress(&identity).await.is_err());
+    assert!(f.storage.get_file_production(&identity).await.is_err());
     private.abort().await.unwrap();
     f.finish().await;
 }

@@ -2,14 +2,15 @@
 
 [package]
 name = "harmos-domain"
-description = "Harmos domain model: identifiers, contracts, catalogs and storage identities."
+description = "Harmos domain model: stored schemas, identities, state recovery and storage contracts."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
-# The authoring attributes, on by default the way serde ships its derives. Every
+# The data derives, on by default the way serde ships its derives. Every
 # trait beneath them is an ordinary public contract, so a crate that turns this
 # off writes the implementations by hand and links no proc-macro chain at all.
 version = { workspace = true }
@@ -20,13 +21,14 @@ version = { workspace = true }
 
 [features]
 default = ["derive"]
-derive = ["dep:harmos-macros"]
+derive = ["dep:harmos-sdk-derive"]
 
 # === Dependencies === #
 
 [dependencies]
 # Local
-harmos-macros = { workspace = true, default-features = true, optional = true }
+harmos-protocol = { workspace = true }
+harmos-sdk-derive = { workspace = true, default-features = true, optional = true }
 
 # Git
 
@@ -36,11 +38,12 @@ thiserror = { workspace = true, default-features = true }
 # Logging
 
 # Utilities
-semver = { workspace = true, default-features = true }
 sha2 = { workspace = true }
 time = { workspace = true, default-features = true }
 
 # Serialization
+prost = { workspace = true }
+prost-reflect = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
@@ -50,7 +53,6 @@ serde_json = { workspace = true, default-features = true }
 # Filesystem
 
 # Parsing
-memchr = { workspace = true, default-features = true }
 
 # Concurrency
 
@@ -71,10 +73,9 @@ memchr = { workspace = true, default-features = true }
 # Downstream Crates Stay Path-Only So the Packaged Manifest Drops Them Instead of Forming a Publish Cycle
 [dev-dependencies]
 # Local
-harmos-macros = { path = "../harmos-macros" }
-harmos-operations = { path = "../harmos-operations", default-features = false }
-harmos-packaging = { path = "../harmos-packaging", features = ["generate-proto"] }
-harmos-sdk = { path = "../harmos-sdk", features = ["grpc"] }
+harmos-sdk-derive = { path = "../../sdk/rust/derive" }
+harmos-packaging = { path = "../../tools/packaging", features = ["generate-proto"] }
+harmos-operations = { path = "../harmos-operations", features = ["grpc"] }
 
 # Git
 

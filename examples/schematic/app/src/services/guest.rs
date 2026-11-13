@@ -19,10 +19,9 @@
 
 // Local Imports
 use crate::app::{Runtime, SchematicEditor};
-use crate::lanes::Lanes;
-use harmos::config::PluginSettings;
-use harmos::guest::{Host, Loaded};
-use schematic_operations::Operations;
+use harmos_runtime::config::PluginSettings;
+use harmos_runtime::guest::{Host, Loaded};
+use std::sync::Arc;
 
 /* === Constants === */
 
@@ -42,18 +41,42 @@ pub const NAME: &str = "schematic_tools";
 
 /* === Public Functions === */
 
-pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos::Result<()> {
+pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos_runtime::Result<()> {
     if loaded.declaration().id != NAME {
-        return Err(harmos::Error::InvalidInput {
+        return Err(harmos_runtime::Error::InvalidInput {
             field: "schematic tools artifact",
             reason: "the inspected component has a different owner",
         });
     }
-    runtime.plugin.register_guest::<Operations>(loaded, PluginSettings::default(), Lanes::Open).await?;
+    // Keep Operation Streaming in the Host
+    let resources = runtime.operations.context().resource::<schematic_operations::schematic::upload::AnalysisResources>()?;
+    let streams = runtime.streams.clone();
+    resources.progress.get_or_init(|| Arc::new(move |row| streams.publish(row)));
+    let registration = harmos_runtime::operations::Registration::new(harmos_runtime::operations::Lane::default())
+        .protobuf::<schematic_operations::AnalyzeSchematic>()?
+        .protobuf::<schematic_operations::AnalyzeUpload>()?
+        .protobuf::<schematic_operations::AnalyzeExchange>()?
+        .protobuf::<schematic_operations::transfer::Upload>()?
+        .protobuf::<schematic_operations::transfer::Download>()?
+        .protobuf::<schematic_operations::transfer::Put>()?
+        .protobuf::<schematic_operations::transfer::Take>()?;
+    runtime.register_batch(registration).await?;
+
+    runtime
+        .plugin
+        .register_guest(
+            loaded,
+            PluginSettings {
+                configuration: b"null".to_vec(),
+                ..PluginSettings::default()
+            },
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await?;
     runtime.plugin.initialize().await
 }
 
-pub fn load(runtime: &Runtime, component: &[u8]) -> Result<Loaded<SchematicEditor>, harmos::guest::Error> {
+pub fn load(runtime: &Runtime, component: &[u8]) -> Result<Loaded<SchematicEditor>, harmos_runtime::guest::Error> {
     let host = Host::new(runtime)?;
     host.load(component)
 }

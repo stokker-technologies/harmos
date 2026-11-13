@@ -21,14 +21,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::watch;
 // Local Imports
 use super::{RecordManager, Registry};
+use crate::guest::host::plugin::PluginScope;
 use crate::operations::{EncodedInvocation, Manager, PluginCallback};
-use crate::plugin::PluginScope;
 use crate::schema::Described;
 use crate::supervision::{Listener, ListenerDelivery};
-use crate::{
-    Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record, state::RecordProjection, state::Recorded,
-};
-use harmos_domain::listeners::{Context, Source};
+use crate::{Application, Error, Message, Result, state::CatalogCodec, state::Position, state::Record, state::Recorded};
+use harmos_operations::listeners::{Context, Source};
 
 /* === Constants === */
 
@@ -39,7 +37,9 @@ const REGISTRATIONS: usize = 64;
 
 /* === Type Aliases === */
 
-type Submit<A> = fn(&<A as Application>::Record, Context, &PluginCallback) -> Result<Option<EncodedInvocation>>;
+type Submit<A> = Arc<dyn Fn(&<A as Application>::Record, Context, &PluginCallback) -> Result<Option<EncodedInvocation>> + Send + Sync>;
+
+type Bytes<A> = Arc<dyn Fn(&<A as Application>::Record) -> usize + Send + Sync>;
 
 /* === Structs === */
 
@@ -54,7 +54,7 @@ struct Binding<A: Application> {
     ordinal: usize,
     callback: PluginCallback,
     submit: Submit<A>,
-    bytes: fn(&A::Record) -> usize,
+    bytes: Bytes<A>,
 }
 
 #[must_use = "retain the listener registration until shutdown positively settles"]
@@ -181,9 +181,8 @@ impl<A: Application> PluginListenerBindings<'_, A> {
     pub fn record<R>(&mut self) -> Result<()>
     where
         R: Record + Message + Described,
-        A::Record: RecordProjection<R>,
     {
-        let (id, version) = R::definition();
+        let (id, version) = R::ENTRY.definition();
         if !self.records.catalog.has_record(&id, version).map_err(|source| Error::RecordDeclaration { source })? {
             return Err(Error::NotRegistered {
                 domain: "native listener record",
@@ -219,8 +218,14 @@ impl<A: Application> PluginListenerBindings<'_, A> {
             self.entries.push(Binding {
                 ordinal,
                 callback: self.operations.capture_callback(self.scope, listener.callback())?,
-                submit: submit::<A, R>,
-                bytes: |record| record.project().map_or(0, R::encoded_size),
+                submit: {
+                    let registry = self.records.catalog.record_registry.clone();
+                    Arc::new(move |record, context, callback| submit::<A, R>(record, &registry, context, callback))
+                },
+                bytes: {
+                    let registry = self.records.catalog.record_registry.clone();
+                    Arc::new(move |record| registry.project::<R>(record).map_or(0, R::encoded_size))
+                },
             });
             selected = true;
         }
@@ -288,30 +293,31 @@ impl Listening {
 
 /* === Private Functions === */
 
-fn submit<A, R>(record: &A::Record, context: Context, callback: &PluginCallback) -> Result<Option<EncodedInvocation>>
+fn submit<A, R>(
+    record: &A::Record, registry: &crate::state::RecordRegistry<A::Record>, context: Context, callback: &PluginCallback,
+) -> Result<Option<EncodedInvocation>>
 where
     A: Application,
     R: Record + Message + Described,
-    A::Record: RecordProjection<R>,
 {
-    let Some(row) = record.project() else {
+    let Some(row) = registry.project::<R>(record) else {
         return Ok(None);
     };
-    let (id, version) = R::definition();
+    let (id, version) = R::ENTRY.definition();
     if record.identify() != (id, version) {
         return Err(Error::InvalidInput {
             field: "record listener projection",
             reason: "projection differs from the original native catalog member",
         });
     }
-    let bytes = harmos_domain::listeners::encoding_memory_bytes(context, row).map_err(|source| Error::OperationFailed {
+    let bytes = harmos_operations::listeners::encoding_memory_bytes(context, row).map_err(|source| Error::OperationFailed {
         operation: callback.contract().operation().id.to_string(),
         source: Arc::new(source),
     })?;
     let bytes = NonZeroUsize::new(bytes).ok_or(Error::ResourceExhausted { resource: "record callback encoding" })?;
     callback
         .submit_with(bytes, |budget| {
-            harmos_domain::listeners::encode_borrowed(context, row, budget).map_err(|source| Error::OperationFailed {
+            harmos_operations::listeners::encode_borrowed(context, row, budget).map_err(|source| Error::OperationFailed {
                 operation: callback.contract().operation().id.to_string(),
                 source: Arc::new(source),
             })

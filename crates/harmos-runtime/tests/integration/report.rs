@@ -15,8 +15,6 @@
 #[allow(dead_code, reason = "qualification uses isolated collectors instead of the system runner environment")]
 mod capture;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -34,12 +32,6 @@ use tracing_subscriber::layer::SubscriberExt;
 
 // Local Imports
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 #[derive(Clone, Default)]
@@ -48,7 +40,7 @@ struct Output(Arc<Mutex<Vec<u8>>>);
 struct Unwritable;
 
 #[cfg(feature = "grpc")]
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct CodecTrace {
     bytes: Vec<u8>,
 }
@@ -117,10 +109,6 @@ struct Annotation {
     unsigned: Option<u64>,
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
 impl Write for Output {
@@ -144,10 +132,6 @@ impl Write for Unwritable {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 /* === Tests === */
 
 #[cfg(feature = "grpc")]
@@ -161,9 +145,9 @@ fn codec_stage_lifetimes() {
     tracing::dispatcher::with_default(&dispatch, || {
         let value = CodecTrace { bytes: secret.to_vec() };
         let mut bytes = Vec::new();
-        harmos_sdk::grpc::encode(&value, &mut bytes).unwrap();
-        let input = harmos_sdk::grpc::DecodeInput::new(&bytes);
-        let prepared = harmos_sdk::grpc::prepare::<CodecTrace>(input).unwrap();
+        harmos_operations::execution::grpc::encode(&value, &mut bytes).unwrap();
+        let input = harmos_operations::execution::grpc::DecodeInput::new(&bytes);
+        let prepared = harmos_operations::execution::grpc::prepare::<CodecTrace>(input).unwrap();
         assert_eq!(prepared.decode().unwrap().bytes, secret);
     });
 

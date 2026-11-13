@@ -6,28 +6,26 @@
 #
 # ***
 
-
-"""Build The Native C++ Sidecar Prototype And Its Inert Metadata."""
+"""Build the C++ Plugin SDK and Its Pinned gRPC Dependencies."""
 
 # === Imports === #
 
 # Standard Library Imports
 import argparse
-import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
+import time
 from pathlib import Path
 
 # Third Party Imports
 
 # Local Imports
-from . import cargo
 from ..process import spawn_flags
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 
@@ -41,142 +39,96 @@ from ..process import spawn_flags
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build The Harmos C++ Prototype")
-    parser.add_argument("--test", action="store_true")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", choices=("dev", "release"), default="dev")
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--generate", action="store_true")
     options = parser.parse_args()
     root = Path.cwd()
-    environment = dict(os.environ, CARGO_BUILD_WARNINGS="deny")
-    selectors = ["--locked", "-p", "harmos-ffi", "--lib"]
+    from .resource_roots import generate
 
-    os.environ.update(environment)
-
-    # Compile The Rust ABI With Its Matching Compiler Preflight.
-    cargo.clippy(root, selectors, environment=environment)
-    directory = root / "target/cpp"
-    directory.mkdir(parents=True, exist_ok=True)
-    messages = directory / "compiler.json"
-    with messages.open("w", encoding="utf-8") as output:
-        subprocess.run(
-            ["cargo", "build", *selectors, "--message-format=json-render-diagnostics"],
-            cwd=root,
-            env=environment,
-            stdout=output,
-            check=True,
-            creationflags=spawn_flags(),
-        )
-    events = [json.loads(line) for line in messages.read_text(encoding="utf-8").splitlines()]
-    built = next(event for event in events if event.get("reason") == "compiler-artifact" and event["target"]["name"] == "harmos_ffi")
-    library = next(Path(path) for path in built["filenames"] if path.endswith((".lib", ".a")))
-    generated = next(event for event in events if event.get("reason") == "build-script-executed" and "harmos-ffi" in event["package_id"])
-    header = root / "crates/harmos-ffi/include/harmos.h"
-    header.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(Path(generated["out_dir"]) / "harmos.h", header)
-
-    # Locate The Native Compiler And Configure CMake.
+    generate(root)
+    directory = root / "target/cpp" / options.profile
+    configuration = "Debug" if options.profile == "dev" else "Release"
     configure = [
         "cmake",
         "-S",
         str(root / "sdk/cpp"),
         "-B",
-        str(directory / "build"),
-        f"-DHARMOS_FFI_LIBRARY={library}",
-        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        str(directory),
+        f"-DCMAKE_BUILD_TYPE={configuration}",
+        "-DHARMOS_BUILD_TESTS=ON",
     ]
-    generator = []
-    if sys.platform == "win32":
-        vswhere = Path(os.environ["ProgramFiles(x86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"
-        instance = subprocess.check_output(
-            [
-                str(vswhere),
-                "-latest",
-                "-products",
-                "*",
-                "-requires",
-                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-                "-property",
-                "installationPath",
-            ],
-            text=True,
-            creationflags=spawn_flags(),
-        ).strip()
-        generator = ["-G", "Visual Studio 17 2022", "-A", "x64", f"-DCMAKE_GENERATOR_INSTANCE={instance}"]
-    configure.extend(generator)
-    subprocess.run(configure, cwd=root, env=environment, check=True, creationflags=spawn_flags())
-    subprocess.run(
-        ["cmake", "--build", str(directory / "build"), "--config", "RelWithDebInfo", "--target", "harmos-bench", "--parallel", "2"],
-        cwd=root,
-        env=environment,
-        check=True,
-        creationflags=spawn_flags(),
+    environment = dict(os.environ)
+    # Git's Child Submodule Processes Need Long-Path Support in Windows Worktrees.
+    count = int(environment.get("GIT_CONFIG_COUNT", "0"))
+    environment["GIT_CONFIG_COUNT"] = str(count + 1)
+    environment[f"GIT_CONFIG_KEY_{count}"] = "core.longpaths"
+    environment[f"GIT_CONFIG_VALUE_{count}"] = "true"
+    if os.name == "nt":
+        configure += ["-G", "Visual Studio 17 2022", "-A", "x64"]
+
+    # Configure the SDK and Fetch Its Immutable Dependency Graph.
+    result = subprocess.run(
+        configure, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=spawn_flags()
     )
+    sys.stdout.write(result.stdout)
+    (directory / "configure.log").write_text(result.stdout, encoding="utf-8")
+    result.check_returncode()
 
-    # Retain The Linker Output And Stamp A Separate Host-Inspectable Executable.
-    executable = "harmos-bench.exe" if sys.platform == "win32" else "harmos-bench"
-    source = directory / "build" / "RelWithDebInfo" / executable if sys.platform == "win32" else directory / "build" / executable
-    if options.test:
-        # Verify The Installed Package With The Standalone Author Example.
-        prefix = directory / "install"
-        subprocess.run(
-            ["cmake", "--install", str(directory / "build"), "--config", "RelWithDebInfo", "--prefix", str(prefix)],
-            cwd=root,
-            env=environment,
-            check=True,
-            creationflags=spawn_flags(),
-        )
-        consumer = directory / "consumer"
-        configure = [
-            "cmake",
-            "-S",
-            str(root / "sdk/cpp/examples/bench"),
-            "-B",
-            str(consumer),
-            f"-DCMAKE_PREFIX_PATH={prefix}",
-            "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
-            *generator,
-        ]
-        subprocess.run(configure, cwd=root, env=environment, check=True, creationflags=spawn_flags())
-        subprocess.run(
-            ["cmake", "--build", str(consumer), "--config", "RelWithDebInfo", "--parallel", "2"],
-            cwd=root,
-            env=environment,
-            check=True,
-            creationflags=spawn_flags(),
-        )
-        source = consumer / "RelWithDebInfo" / executable if sys.platform == "win32" else consumer / executable
+    if options.check:
+        return
 
-    markers = subprocess.check_output([str(source), "--harmos-export-artifact-v1"], cwd=root, creationflags=spawn_flags())
-    destination = directory / executable
-    shutil.copy2(source, destination)
-    with destination.open("ab") as output:
-        output.write(markers)
-    print(f"C++ Sidecar: {destination}", flush=True)
+    if options.generate:
+        for path in (directory / "generated").rglob("*.pb.*"):
+            path.unlink()
+    targets = ("harmos_cpp_protocol",) if options.generate else ("harmos-cpp-conformance", "harmos-cpp-tests")
 
-    # Run Only The Explicit Native Story And ABI Panic Proof.
-    if options.test:
-        environment["HARMOS_CPP_SIDECAR"] = str(destination)
-        environment["STKR_TEST_REPORT_DIR"] = str(directory)
-        os.environ.update(environment)
-        status = cargo.focused(
-            root,
-            "test",
+    # Compile the Runtime and Code Generator with Bounded Parallelism.
+    log = directory / "build.log"
+    if log.exists():
+        attempt = len(list(directory.glob("build-*.log"))) + 1
+        shutil.copyfile(log, directory / f"build-{attempt}.log")
+    print(f"C++ Build Log: {log}", flush=True)
+    started = time.perf_counter()
+    with log.open("w", encoding="utf-8") as output:
+        result = subprocess.run(
             [
-                "--locked",
-                "-p",
-                "harmos-runtime",
-                "--features",
-                "cpp-prototype",
-                "--test",
-                "cpp",
-                "--",
-                "--exact",
-                "cpp_sidecar_walks",
-                "--nocapture",
+                "cmake",
+                "--build",
+                str(directory),
+                "--config",
+                configuration,
+                "--target",
+                *targets,
+                "--parallel",
+                "4",
             ],
+            env=environment,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            creationflags=spawn_flags(),
         )
-        if status:
-            raise SystemExit(status)
-        status = cargo.focused(root, "test", ["--locked", "-p", "harmos-ffi", "--tests", "--", "panic_is_contained_at_the_abi_boundary"])
-        raise SystemExit(status)
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    if result.returncode:
+        errors = [line for line in lines if ": error " in line or "fatal error" in line]
+        print("\n".join(errors[:20] + lines[-20:]))
+    else:
+        print("\n".join(lines[-5:]))
+    print(f"C++ Build: {time.perf_counter() - started:.1f} s; Complete Compiler Output: {log}", flush=True)
+    result.check_returncode()
+
+    if not options.generate:
+        # Ship the Complete SDK Source Package, Independent of This Checkout's Tests.
+        from .paths import output as build_output
+
+        destination = build_output(root, "build", options.profile) / "cpp"
+        destination.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(destination / "harmos-cpp.tar.gz", "w:gz") as package:
+            for name in ("CMakeLists.txt", "include", "src", "cmake"):
+                package.add(root / "sdk/cpp" / name, arcname=f"sdk/cpp/{name}")
+            package.add(root / "proto", arcname="proto")
+            package.add(root / "LICENSE", arcname="LICENSE")
 
 
 # === Private Functions === #

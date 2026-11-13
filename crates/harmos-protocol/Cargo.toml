@@ -1,0 +1,138 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "harmos-protocol"
+description = "Harmos v1 plugin protobuf messages and gRPC client and server."
+autotests = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# === Package Targets === #
+
+# === Features === #
+
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+
+# Git
+
+# Error Handling
+thiserror = { workspace = true }
+
+# Logging
+
+# Utilities
+sha2 = { workspace = true }
+
+# Serialization
+prost = { workspace = true, features = ["derive", "std"] }
+prost-types = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["alloc", "derive"] }
+prost-reflect = { workspace = true }
+
+# Configuration
+
+# Filesystem
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Local
+
+# Git
+
+# Error Handling
+
+# Logging
+
+# Utilities
+
+# Serialization
+prost-build = { workspace = true, features = ["format"] }
+protoc-bin-vendored = { workspace = true }
+
+# Configuration
+
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
+# Parsing
+
+# Concurrency
+
+# Async
+
+# Networking
+tonic-prost-build = { workspace = true, features = ["transport"] }
+
+# Storage
+
+# UI
+
+# Testing
+
+# === Target Dependencies === #
+
+# Guest Consumers Need Messages and Fingerprints Without Native Networking.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tonic = { workspace = true, features = ["codegen", "transport"] }
+tonic-prost = { workspace = true }
+
+
+# === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+[[example]]
+name = "generate"
+path = "examples/generate.rs"
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

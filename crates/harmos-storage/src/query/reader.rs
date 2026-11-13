@@ -39,13 +39,9 @@ use crate::storage::selection::Entry;
 use crate::storage::snapshot::Snapshot;
 use crate::storage::{FileReference, ObjectEntry, SchemaKey, StorageManager, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, MemorySize, Result};
-use harmos_domain::model::storage::ArrowIpc;
+use prost::Message;
 
 /* === Constants === */
-
-// Two Protobuf Keys (Five Bytes Each) and Two Length Varints (Ten Bytes Each),
-// Less The Postcard Variant And Length Bytes They Replace.
-const PROTOBUF_FRAMING: usize = 30;
 
 /* === Macros === */
 
@@ -65,7 +61,7 @@ pub struct QueryReader {
     context: crate::execution::Context,
     inner: Arc<Inner>,
     query: Query,
-    snapshot: Option<Snapshot>,
+    snapshot: Option<Arc<Snapshot>>,
     active: Option<OwnedSemaphorePermit>,
     schema: Option<StorageSchema>,
     objects: Option<NormalizedObjects>,
@@ -73,6 +69,7 @@ pub struct QueryReader {
     projection: Option<(Project, Arc<arrow_schema::Schema>)>,
     after: u64,
     rows: NonZeroUsize,
+    output: crate::StorageResponseSettings,
     source_done: bool,
     pending: Option<RecordBatch>,
     pending_offset: usize,
@@ -92,9 +89,17 @@ pub enum QueryArrow {
     Batch(ArrowBatch),
 }
 
+/// One Bounded Source/Output Step Of A Retained Query.
+pub enum QueryStep {
+    Output(QueryArrow),
+    Progress,
+    Complete,
+}
+
 enum Rows {
     Objects(Vec<ObjectEntry>),
     Records(Vec<StoredRecord>),
+    RecordViews(Vec<crate::RecordView>),
     Stream(Vec<StoredRow>),
     Schemas(Vec<StorageSchema>),
     Files(Vec<FileReference>),
@@ -132,19 +137,28 @@ impl MemorySize for Query {
 
 impl QueryArrow {
     // Bounds The Transport Value Before IPC Conversion.
+    // One Maximum Protobuf Field Key and Length Prefix Cover the IPC Bytes.
     pub fn output_memory_size(&self) -> usize {
         let capacity = match self {
             Self::Schema(schema) => schema.ipc_capacity(),
             Self::Batch(batch) => batch.ipc_capacity(),
         };
-        std::mem::size_of::<QueryOutput>().saturating_add(capacity)
+        std::mem::size_of::<Vec<u8>>().saturating_add(capacity).saturating_add(15)
     }
 
     #[tracing::instrument(name = "storage.query.reader.output", level = "trace", skip_all)]
     pub fn output(self) -> QueryOutput {
         match self {
-            Self::Schema(schema) => QueryOutput::Schema(ArrowIpc::from(schema)),
-            Self::Batch(batch) => QueryOutput::Batch(ArrowIpc::from(batch)),
+            Self::Schema(schema) => QueryOutput {
+                output: Some(harmos_protocol::storage::query_output::Output::Schema(
+                    harmos_domain::model::storage::ArrowIpc::from(schema).into_bytes(),
+                )),
+            },
+            Self::Batch(batch) => QueryOutput {
+                output: Some(harmos_protocol::storage::query_output::Output::Batch(
+                    harmos_domain::model::storage::ArrowIpc::from(batch).into_bytes(),
+                )),
+            },
         }
     }
 }
@@ -153,10 +167,15 @@ impl TryFrom<QueryOutput> for QueryArrow {
     type Error = Error;
 
     fn try_from(output: QueryOutput) -> Result<Self> {
-        Ok(match output {
-            QueryOutput::Schema(ipc) => Self::Schema(ArrowSchema::from_ipc(ipc.into_bytes())?),
-            QueryOutput::Batch(ipc) => Self::Batch(ArrowBatch::from_ipc(ipc.into_bytes())?),
-        })
+        Ok(
+            match output.output.ok_or(crate::Error::InvalidInput {
+                field: "query output",
+                reason: "missing output",
+            })? {
+                harmos_protocol::storage::query_output::Output::Schema(ipc) => Self::Schema(ArrowSchema::from_ipc(ipc)?),
+                harmos_protocol::storage::query_output::Output::Batch(ipc) => Self::Batch(ArrowBatch::from_ipc(ipc)?),
+            },
+        )
     }
 }
 
@@ -170,17 +189,29 @@ impl MemorySize for QueryArrow {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
         let result = async {
+            let snapshot = Arc::new(self.snapshot(&query.at).await?);
+            self.query_snapshot(query, snapshot).await
+        }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
+    }
+
+    /// Query An Already Retained Image Owned By This Manager.
+    pub async fn query_snapshot(&self, query: Query, snapshot: Arc<Snapshot>) -> Result<QueryReader> {
+        let result = async {
             query.validate()?;
-            self.inner.primary.history().check(&query.at.history)?;
-
+            if !Arc::ptr_eq(&self.inner, &snapshot.inner) || snapshot.at() != &query.at {
+                return Err(Error::InvalidInput {
+                    field: "storage snapshot",
+                    reason: "query must use its retained owner's exact cut",
+                });
+            }
             let active = query_slot(&self.inner).await?;
-
-            // Pin The Requested Image For The Whole Invocation.
-            let snapshot = self.snapshot(&query.at).await?;
             let after = match &query.source {
                 Source::Stream(selection) => selection.after,
                 _ => 0,
@@ -197,6 +228,7 @@ impl<C> StorageManager<C> {
                 projection: None,
                 after,
                 rows: SCAN_ROWS,
+                output: self.inner.settings.response,
                 source_done: false,
                 pending: None,
                 pending_offset: 0,
@@ -213,7 +245,28 @@ impl<C> StorageManager<C> {
 }
 
 impl QueryReader {
+    pub fn configure_page(&mut self, rows: NonZeroUsize, bytes: NonZeroUsize) {
+        self.context = crate::execution::Context::current();
+        self.output.batch_rows = rows.min(self.inner.settings.response.batch_rows);
+        self.output.batch_bytes = bytes.min(self.inner.settings.response.batch_bytes);
+    }
+
+    /// A Retained Page Plan Does Not Occupy Active Execution Between Calls.
+    pub fn suspend_page(&mut self) {
+        self.active = None;
+    }
+
     pub async fn next(&mut self) -> Result<Option<QueryArrow>> {
+        loop {
+            match self.step().await? {
+                QueryStep::Output(output) => return Ok(Some(output)),
+                QueryStep::Progress => {}
+                QueryStep::Complete => return Ok(None),
+            }
+        }
+    }
+
+    pub async fn step(&mut self) -> Result<QueryStep> {
         let context = self.context.clone();
         let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
         let future = async {
@@ -224,7 +277,7 @@ impl QueryReader {
                 });
             }
             self.inflight = true;
-            let result = self.advance().await;
+            let result = self.advance_step().await;
             self.inflight = false;
             if result.is_err() {
                 self.fail();
@@ -262,33 +315,33 @@ impl QueryReader {
     }
 
     #[tracing::instrument(name = "storage.query.reader.advance", level = "trace", skip_all)]
-    async fn advance(&mut self) -> Result<Option<QueryArrow>> {
+    async fn advance_step(&mut self) -> Result<QueryStep> {
         if self.exhausted {
-            return Ok(None);
+            return Ok(QueryStep::Complete);
+        }
+        if self.active.is_none() {
+            self.active = Some(query_slot(&self.inner).await?);
         }
         if self.plan.is_none() {
-            let schema = self.prepare().await?;
-            return Ok(Some(QueryArrow::Schema(schema)));
+            return Ok(QueryStep::Output(QueryArrow::Schema(self.prepare().await?)));
         }
-        loop {
-            if let Some(batch) = self.deliver().await? {
-                return Ok(Some(QueryArrow::Batch(batch)));
-            }
-            let plan = self.plan.as_ref().expect("prepared plan");
-            if plan.is_satisfied() {
-                self.source_done = true;
-            }
-            if !self.source_done {
-                self.next_page().await?;
-                continue;
-            }
-            self.snapshot = None;
-            if !self.finish().await? {
-                self.release();
-                self.exhausted = true;
-                return Ok(None);
-            }
+        if let Some(batch) = self.deliver().await? {
+            return Ok(QueryStep::Output(QueryArrow::Batch(batch)));
         }
+        if self.plan.as_ref().expect("prepared plan").is_satisfied() {
+            self.source_done = true;
+        }
+        if !self.source_done {
+            self.next_page().await?;
+            return Ok(QueryStep::Progress);
+        }
+        self.snapshot = None;
+        if self.finish().await? {
+            return Ok(QueryStep::Progress);
+        }
+        self.release();
+        self.exhausted = true;
+        Ok(QueryStep::Complete)
     }
 
     // Resolve Source Schemas, Validate The Plan And Fix The Output Schema.
@@ -326,7 +379,16 @@ impl QueryReader {
             let Transform::Project(project) = transforms.remove(0) else { unreachable!() };
             self.projection = Some((project, empty.schema()));
         }
-        let plan = Plan::new(empty.schema(), transforms, self.query.slice)?;
+        let mut slice = self.query.slice;
+        if slice.offset > 0
+            && transforms.iter().all(|transform| matches!(transform, Transform::Project(_)))
+            && let Source::Records(selection) = &self.query.source
+            && let Some(position) = snapshot.get_record_position(selection, slice.offset).await?
+        {
+            self.after = position;
+            slice.offset = 0;
+        }
+        let plan = Plan::new(empty.schema(), transforms, slice)?;
         let schema = ArrowSchema::try_new(plan.output_schema())?;
         self.plan = Some(plan);
         Ok(schema)
@@ -341,9 +403,13 @@ impl QueryReader {
     #[tracing::instrument(name = "storage.query.reader.page_attempt", level = "trace", skip_all)]
     async fn page_attempt(&mut self) -> Result<()> {
         let scan_bytes = self.inner.settings.scan_bytes();
+        let rows = self.plan.as_ref().and_then(Plan::source_limit).map_or(self.rows, |remaining| {
+            let remaining = usize::try_from(remaining).unwrap_or(usize::MAX);
+            NonZeroUsize::new(self.rows.get().min(remaining)).unwrap_or(NonZeroUsize::MIN)
+        });
         let page = ScanPage {
             after: self.after,
-            rows: self.rows,
+            rows,
             bytes: scan_bytes,
         };
 
@@ -351,7 +417,10 @@ impl QueryReader {
 
         let (rows, _) = match &self.query.source {
             Source::Objects(selection) => scan(snapshot, selection, page, Rows::Objects).await?,
-            Source::Records(selection) => scan(snapshot, selection, page, Rows::Records).await?,
+            Source::Records(selection) => match snapshot.record_views(selection, page).await? {
+                Some(views) => (Rows::RecordViews(views), 0),
+                None => scan(snapshot, selection, page, Rows::Records).await?,
+            },
             Source::Stream(selection) => scan(snapshot, selection, page, Rows::Stream).await?,
             Source::Schemas(selection) => scan(snapshot, selection, page, Rows::Schemas).await?,
             Source::Files(selection) => scan(snapshot, selection, page, Rows::Files).await?,
@@ -390,6 +459,13 @@ impl QueryReader {
 
     // A Dropped Caller Cancels Blocking Work Before Its Next Bounded Step.
     async fn work(&mut self, batch: Option<RecordBatch>) -> Result<Option<RecordBatch>> {
+        let plan = self.plan.as_mut().expect("prepared query plan");
+        if plan.is_inline() {
+            return match batch {
+                Some(batch) => plan.page(&batch, &mut || Ok(())),
+                None => plan.finish(&mut || Ok(())),
+            };
+        }
         let mut plan = self.plan.take().expect("prepared query plan");
         let cancelled = Arc::new(AtomicBool::new(false));
         let guard = CancelWork(Arc::clone(&cancelled));
@@ -424,17 +500,17 @@ impl QueryReader {
             self.pending_offset = 0;
             return Ok(None);
         }
-        let settings = self.inner.settings.response;
+        let settings = self.output;
         let mut rows = settings.batch_rows.get().min(batch.num_rows() - self.pending_offset);
         loop {
             let slice = batch.slice(self.pending_offset, rows);
             let output = ArrowBatch::try_new(slice)?;
 
             // The Wire Output Adds Its Envelope Around The Arrow Bytes Field.
-            let envelope = QueryOutput::Batch(ArrowIpc::new(output.ipc_bytes().to_vec()));
-            // Protobuf Frames This One-Variant Bytes Envelope with Two Keys and Two
-            // Length Prefixes Beyond The Postcard Bytes; Bound Both Encodings.
-            let encoded = crate::Message::encoded_size(&envelope).saturating_add(PROTOBUF_FRAMING);
+            let envelope = QueryOutput {
+                output: Some(harmos_protocol::storage::query_output::Output::Batch(output.ipc_bytes().to_vec())),
+            };
+            let encoded = envelope.encoded_len();
             drop(envelope);
             if encoded <= settings.batch_bytes.get() {
                 self.pending_offset += rows;
@@ -461,9 +537,16 @@ impl QueryReader {
             }
             (Source::Records(_), Some(Rows::Records(rows))) => match &self.projection {
                 Some((project, output)) => super::source::projected(schema.expect("record schema"), rows.iter(), project, output.clone()),
-                None => super::source::records(schema.expect("record schema"), rows),
+                None => super::source::records(schema.expect("record schema"), rows.iter()),
             },
-            (Source::Records(_), _) => super::source::records(schema.expect("record schema"), &[]),
+            (Source::Records(_), Some(Rows::RecordViews(rows))) => {
+                let records = rows.iter().map(crate::RecordView::record);
+                match &self.projection {
+                    Some((project, output)) => super::source::projected(schema.expect("record schema"), records, project, output.clone()),
+                    None => super::source::records(schema.expect("record schema"), records),
+                }
+            }
+            (Source::Records(_), _) => super::source::records(schema.expect("record schema"), std::iter::empty()),
             (Source::Stream(_), Some(Rows::Stream(rows))) => match &self.projection {
                 Some((project, output)) => {
                     let records = rows.iter().map(|row| &row.record);
@@ -485,11 +568,24 @@ impl Rows {
         let position = match self {
             Self::Objects(rows) => rows.last().map(Entry::position),
             Self::Records(rows) => rows.last().map(Entry::position),
+            Self::RecordViews(rows) => rows.last().map(|view| &view.record().position),
             Self::Stream(rows) => rows.last().map(Entry::position),
             Self::Schemas(rows) => rows.last().map(Entry::position),
             Self::Files(rows) => rows.last().map(Entry::position),
         };
         position.map(|position| position.sequence)
+    }
+}
+
+impl TryFrom<Query> for harmos_protocol::storage::Query {
+    type Error = Error;
+    fn try_from(value: Query) -> Result<Self> {
+        Ok(Self {
+            at: Some(value.at.into()),
+            source: Some(value.source.into()),
+            transforms: value.transforms.into_iter().map(TryInto::try_into).collect::<harmos_domain::Result<_>>()?,
+            slice: Some(value.slice.into()),
+        })
     }
 }
 

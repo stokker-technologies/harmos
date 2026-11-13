@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use serde::{Deserialize, Deserializer, Serializer};
 
 // Local Imports
-use harmos::{
+use harmos_runtime::{
     Application, DefinitionId, Error, runtime::Incompatible, state::Entry, state::Envelope, state::Kind, state::Position, state::Recorded,
     state::SystemFact, storage::JournalConsumer, storage::Payload, storage::Recovery, storage::Source,
 };
@@ -676,7 +676,7 @@ fn members(line: &str) -> io::Result<Vec<wire::Line<serde_json::Value>>> {
     }
     let group: Group<'_> = serde_json::from_str(line).map_err(io::Error::other)?;
     let count = group.frontier.checked_sub(group.first).and_then(|n| n.checked_add(1));
-    let Some(count) = count.filter(|count| *count > 0 && *count <= (harmos::state::Records::MAX_RECORDS + 1) as u64) else {
+    let Some(count) = count.filter(|count| *count > 0 && *count <= (harmos_runtime::state::Records::MAX_RECORDS + 1) as u64) else {
         return Err(io::Error::other("invalid logical commit bounds"));
     };
     if group.group != 1 || group.first == 0 {
@@ -748,7 +748,7 @@ fn decoded<A: Wire>(envelope: Envelope<serde_json::Value>) -> Result<Option<Enve
         }
     }
 
-    let prepared = harmos::state::Prepared {
+    let prepared = harmos_runtime::state::Prepared {
         id: envelope.id.clone(),
         version: envelope.version,
         payload: envelope.payload.clone(),
@@ -856,39 +856,39 @@ mod wire {
     /* === Implementations === */
 
     impl Kind {
-        pub(super) fn of(kind: harmos::state::Kind) -> Self {
+        pub(super) fn of(kind: harmos_runtime::state::Kind) -> Self {
             match kind {
-                harmos::state::Kind::Transaction => Self::Transaction,
-                harmos::state::Kind::Record => Self::Record,
+                harmos_runtime::state::Kind::Transaction => Self::Transaction,
+                harmos_runtime::state::Kind::Record => Self::Record,
             }
         }
 
-        pub(super) fn into_kind(self) -> harmos::state::Kind {
+        pub(super) fn into_kind(self) -> harmos_runtime::state::Kind {
             match self {
-                Self::Transaction => harmos::state::Kind::Transaction,
-                Self::Record => harmos::state::Kind::Record,
+                Self::Transaction => harmos_runtime::state::Kind::Transaction,
+                Self::Record => harmos_runtime::state::Kind::Record,
             }
         }
     }
 
     impl Link {
-        fn of(link: harmos::state::Link) -> Self {
+        fn of(link: harmos_runtime::state::Link) -> Self {
             match link {
-                harmos::state::Link::UndoOf(position) => Self::UndoOf(position.0),
-                harmos::state::Link::RedoOf(position) => Self::RedoOf(position.0),
+                harmos_runtime::state::Link::UndoOf(position) => Self::UndoOf(position.0),
+                harmos_runtime::state::Link::RedoOf(position) => Self::RedoOf(position.0),
             }
         }
 
-        fn into_link(self) -> harmos::state::Link {
+        fn into_link(self) -> harmos_runtime::state::Link {
             match self {
-                Self::UndoOf(position) => harmos::state::Link::UndoOf(harmos::state::Position(position)),
-                Self::RedoOf(position) => harmos::state::Link::RedoOf(harmos::state::Position(position)),
+                Self::UndoOf(position) => harmos_runtime::state::Link::UndoOf(harmos_runtime::state::Position(position)),
+                Self::RedoOf(position) => harmos_runtime::state::Link::RedoOf(harmos_runtime::state::Position(position)),
             }
         }
     }
 
     impl Stamp {
-        pub(super) fn witnessing(metadata: &harmos::state::Metadata) -> Self {
+        pub(super) fn witnessing(metadata: &harmos_runtime::state::Metadata) -> Self {
             let at_us = match metadata.at.duration_since(UNIX_EPOCH) {
                 Ok(since) => i64::try_from(since.as_micros()).unwrap_or(i64::MAX),
                 Err(before) => i64::try_from(before.duration().as_micros()).map_or(i64::MIN, |micros| -micros),
@@ -904,7 +904,7 @@ mod wire {
             }
         }
 
-        pub(super) fn witnessed(self) -> Result<harmos::state::Metadata, serde_json::Error> {
+        pub(super) fn witnessed(self) -> Result<harmos_runtime::state::Metadata, serde_json::Error> {
             use serde::de::Error;
 
             let at = if self.at_us >= 0 {
@@ -914,7 +914,7 @@ mod wire {
             }
             .ok_or_else(|| serde_json::Error::custom("at_us lies outside this platform's clock"))?;
 
-            let mut metadata = harmos::state::Metadata::deserialize(serde_json::json!({
+            let mut metadata = harmos_runtime::state::Metadata::deserialize(serde_json::json!({
                 "principal": null,
                 "correlation": 0,
                 "causation": null,
@@ -922,10 +922,11 @@ mod wire {
                 "link": null,
                 "at": { "secs_since_epoch": 0, "nanos_since_epoch": 0 },
             }))?;
-            metadata.principal = self.principal.map(harmos::state::PrincipalId::new);
-            metadata.correlation = harmos::state::CorrelationId(harmos::state::Position(self.correlation));
-            metadata.causation = self.causation.map(|causation| harmos::state::CausationId(harmos::state::Position(causation)));
-            metadata.request = self.request.map(harmos::state::RequestKey::new);
+            metadata.principal = self.principal.map(harmos_runtime::state::PrincipalId::new);
+            metadata.correlation = harmos_runtime::state::CorrelationId(harmos_runtime::state::Position(self.correlation));
+            metadata.causation =
+                self.causation.map(|causation| harmos_runtime::state::CausationId(harmos_runtime::state::Position(causation)));
+            metadata.request = self.request.map(harmos_runtime::state::RequestKey::new);
             metadata.link = self.link.map(Link::into_link);
             metadata.at = at;
 

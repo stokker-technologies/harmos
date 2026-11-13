@@ -26,7 +26,7 @@ use super::session::Session;
 use super::{Active, Error};
 use crate::{
     Application,
-    plugin::{DispatchError, PluginEndpoint},
+    guest::host::plugin::{DispatchError, PluginEndpoint},
 };
 
 /* === Constants === */
@@ -42,7 +42,7 @@ type Outcome = Result<(), Arc<dyn StdError + Send + Sync>>;
 pub struct Serving<A: Application> {
     instance: Option<PluginEndpoint>,
     session: Option<Session<A>>,
-    publications: Vec<Arc<crate::streams::PublicationLease>>,
+    publications: Vec<Arc<crate::streams::StreamWriter>>,
     revocation: Option<watch::Sender<bool>>,
     finalization: Option<Finalization<A>>,
 }
@@ -50,7 +50,7 @@ pub struct Serving<A: Application> {
 struct Cleanup<A: Application> {
     instance: Option<PluginEndpoint>,
     session: Option<Session<A>>,
-    publications: Vec<Arc<crate::streams::PublicationLease>>,
+    publications: Vec<Arc<crate::streams::StreamWriter>>,
     started: tokio::time::Instant,
     within: Duration,
 }
@@ -90,7 +90,7 @@ impl<A: Application> Active<A> {
 }
 
 impl<A: Application> Serving<A> {
-    pub fn scope(&self) -> Option<&crate::plugin::PluginScope> {
+    pub fn scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.instance.as_ref().and_then(PluginEndpoint::scope)
     }
 

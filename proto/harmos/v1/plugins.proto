@@ -1,0 +1,99 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1;
+
+import "harmos/v1/types.proto";
+import "harmos/v1/storage_types.proto";
+import "google/protobuf/timestamp.proto";
+
+// Client-facing management of hosted entries, distinct from Instance.
+service Plugins {
+  rpc Get(PluginsGetRequest) returns (PluginsGetResponse);
+  rpc List(PluginsListRequest) returns (PluginsListResponse);
+  rpc Watch(PluginsWatchRequest) returns (stream PluginsWatchResponse);
+  rpc Create(PluginsCreateRequest) returns (PluginsCreateResponse);
+  rpc Set(PluginsSetRequest) returns (PluginsSetResponse);
+  rpc Delete(PluginsDeleteRequest) returns (PluginsDeleteResponse);
+  rpc Restart(PluginsRestartRequest) returns (PluginsRestartResponse);
+}
+
+message PluginValue { bool enabled = 1; }
+message PluginDescription {
+  string id = 1;
+  string version = 2;
+  google.protobuf.Timestamp started_at = 3;
+  Catalog catalog = 4;
+  uint32 revision = 5;
+  string sdk = 6;
+  string sdk_version = 7;
+}
+message PluginRemote { string url = 1; }
+// Content names refer exclusively to published library upload content.
+message PluginManaged { harmos.storage.v1.FileReference content = 1; bytes sha256 = 2; }
+message PluginPlacement {
+  oneof kind {
+    PluginManaged managed = 1;
+    PluginRemote remote = 2;
+  }
+}
+enum PluginState {
+  PLUGIN_STATE_UNSPECIFIED = 0;
+  PLUGIN_STATE_CONNECTING = 1;
+  PLUGIN_STATE_READY = 2;
+  PLUGIN_STATE_UNAVAILABLE = 3;
+  PLUGIN_STATE_STOPPED = 4;
+  PLUGIN_STATE_STOPPING = 5;
+}
+message PluginProcess {
+  uint32 id = 1;
+  bytes executable_digest = 2;
+  google.protobuf.Timestamp started_at = 3;
+}
+message PluginEntry {
+  string name = 1;
+  PluginPlacement placement = 2;
+  PluginValue value = 3;
+  bytes revision = 4;
+  PluginState state = 5;
+  harmos.v1.Failure failure = 6;
+  PluginDescription description = 7;
+  bytes catalog_digest = 8;
+  PluginProcess process = 9;
+  uint64 activation = 10;
+}
+message PluginsGetRequest { string name = 1; harmos.v1.ReadCut at = 2; }
+message PluginsGetResponse { PluginEntry entry = 1; harmos.v1.ReadCut resolved_at = 2; }
+message PluginsListRequest { harmos.v1.ReadCut at = 1; }
+message PluginsListResponse {
+  repeated PluginEntry entries = 1;
+  harmos.v1.ReadCut resolved_at = 2;
+}
+message PluginsWatchRequest { string name = 1; harmos.v1.ReadCut at = 2; }
+message PluginSnapshot { repeated PluginEntry entries = 1; }
+message PluginChange {
+  oneof kind {
+    PluginEntry entry = 1;
+    string deleted = 2;
+  }
+}
+message PluginsWatchResponse {
+  harmos.v1.ReadCut resolved_at = 1;
+  oneof event {
+    PluginSnapshot snapshot = 2;
+    PluginChange change = 3;
+    string resync_required = 4;
+  }
+}
+message PluginsCreateRequest {
+  string request_id = 1;
+  string name = 2;
+  PluginPlacement placement = 3;
+  PluginValue value = 4;
+}
+message PluginsCreateResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
+message PluginsSetRequest { string name = 1; PluginValue value = 2; bytes expected_revision = 3; }
+message PluginsSetResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
+message PluginsDeleteRequest { string name = 1; bytes expected_revision = 2; }
+message PluginsDeleteResponse { harmos.v1.Receipt receipt = 1; }
+message PluginsRestartRequest { string name = 1; bytes expected_revision = 2; }
+message PluginsRestartResponse { PluginEntry entry = 1; }

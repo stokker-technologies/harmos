@@ -9,7 +9,7 @@ fingerprint from an owned graph. The codec validates payloads and estimates deco
 allocation; its prepared `NativeInstance` runs through normal admission, retries,
 cancellation and settlement. Plugin staging validates the frozen contribution
 catalog and retains its original generation. Runtime bindings currently use the
-canonical encoded carrier without a gRPC projection or stream endpoints.
+protobuf encoded carrier without a gRPC projection or stream endpoints.
 
 `submit_encoded_with(operation, payload, retry)` and
 `PluginCallback::submit_with_retry(bytes, encode, retry)` apply policy overrides to
@@ -18,6 +18,25 @@ authorization and attempt records remain authoritative. Embedded observer owners
 use `stage_plugin_observers(resources, scope, backends)` and
 `submit_resident_in(id, resources)` to retain plugin scope and resource identity;
 generation retirement stops these observers with the plugin.
+
+Built-in host operations use generated `harmos_protocol::{v1, context, storage}` messages
+directly. Their declarations and handlers stay together in `harmos-operations`; its
+former `runtime` feature is removed. Lifecycle requests/results are
+`harmos_protocol::v1::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
+`operations.call_protobuf::<harmos_operations::lifecycle::Get>(request)` for a
+native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
+The consumer configures `preparation_bytes` for encoded admission; the callee owns
+its timeout and cancellation policy. Status and cancellation expose only instances
+owned by the caller. Guest child controls use the SDK protobuf adapter and retain
+the original attempt capability.
+
+Bind an opaque invocation scope with `runtime.operations.with_scope("opaque-scope")`.
+The runtime's `harmos_runtime::Scope::as_str()` exposes it to native handlers and child
+calls inherit it. Plugin authors require a bound scope by calling `Context::scope()`
+in Rust, `ctx.scope()` in Python or C++, or `context.Scope()` in C#.
+An absent scope produces a refused failure with code `scope_required` and message
+"Invocation Scope Is Required: the caller must bind a scope". Harmos assigns no
+meaning to the scope and does not require it for operations that do not ask for it.
 
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
@@ -66,29 +85,86 @@ or equal hash with a different canonical row remains an admission error. Rename
 the stream and report a hash collision. A transport restart inside one committed
 activation may only renew its frozen inventory; reload the plugin to change it.
 
-Streams expose `ID`, `WINDOW` and `definition()`; `StreamSpec`, `StreamRow` and
-native `Stream<A>` have no authored `VERSION`. Typed native readers select the
+Streams expose `ID`, `WINDOW` and `definition()` through `StreamRow` and the guest
+`StreamSpec` projection, with no authored `VERSION`. Typed native readers select the
 current definition by identity and compiled row type. Low-level declarations use
 `Definition::declared::<Row>(id, schema, window)` and return a derived definition.
 Every stream definition owns a schema; `Definition::schema()` returns it directly.
 Publication inventories,
-listener sources and `host.publish` do not accept schema ordinals. Listener
+listener sources and `harmos.context.v1.Samples/Append` do not accept schema ordinals. Listener
 publication binding uses `(id, after)` and `frontier(id)`.
 
-`#[record]` and `#[transaction]` derive schema-only revisions through
+Register stream definitions as owned lists; no stream catalog enum or
+`Application::Streams` selector is required:
+
+```rust
+let streams = vec![Temperature::definition(), Pressure::definition()];
+setup.settings().register(streams);
+```
+
+Startup validates duplicate identities and empty windows. Typed readers and
+publishers resolve the registered identity and row type at runtime.
+
+The `Row` derive reads fields for row metadata, stored schema and supported native
+message codecs. Declare identity, retention and presentation with a stream value:
+
+```rust
+#[derive(harmos_runtime::Row, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+struct Temperature {
+    celsius: f64,
+}
+
+impl harmos_runtime::streams::StreamRow for Temperature {
+    const ENTRY: harmos_runtime::StreamEntry<Self> =
+        harmos_runtime::StreamEntry::new("thermal.samples", 8).label("Temperature");
+}
+```
+
+`StreamEntry::build()` checks the identity, window, schema and presentation before
+returning a definition. Guest streams use the SDK `Stream` builder with protobuf row messages.
+
+Lanes are values configured at application startup. The default lane is
+unbounded; additional lanes declare their admission capacity in an owned set:
+
+```rust
+let analysis = harmos_runtime::operations::Lane::new(
+    "analysis",
+    harmos_runtime::operations::Capacity::serial(),
+);
+let lanes = harmos_runtime::operations::LaneSet::new([analysis])?;
+setup.settings().lanes(lanes);
+setup.catalog(analysis_catalog(), analysis);
+```
+
+Building the set rejects duplicate or reserved names and zero capacity, naming
+the invalid lane. Registration and per-call lane selection use the same lane
+value; `Application` and operation managers carry no lane type parameter.
+
+Typed record and transaction entries compute schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
 `harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's
 first four bytes become a little-endian nonzero `u32`. Presentation labels,
-Rust module paths and graph indices do not participate. Generated `DEFINITION`
-identity tuples are removed: use `T::ID` and `T::definition()` through `Identified`.
-Manual `Identified` implementations declare only `const ID: &'static str` and
-provide `Described`; the default derives the revision. Typed stored objects use
+Rust module paths and graph indices do not participate. Entry values own stored identities and revisions; use `entry.definition()`.
+Record rows select an entry value, which owns their stable identity:
+
+```rust
+impl harmos_runtime::state::Record for ExportCompleted {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> =
+        harmos_runtime::state::RecordEntry::new("export.completed");
+}
+```
+
+The row derives `Described` and Serde traits. `RecordEntry::definition()` computes
+the stored revision, and `RecordEntry::restore(revision, payload)` refuses another
+shape. The native `Identified` implementation delegates to this entry; it does not
+repeat the identity. Manual `Identified` implementations for other stored objects
+declare only `const ID: &'static str` and provide `Described`; typed stored objects use
 the same rule, including `ValidatedSchematic`.
 `restore(revision, payload)` now accepts only the derived revision.
 
 Records, transactions and their nested Serde domain types declare their schema
-with `#[derive(harmos::Described)]`; an existing `#[message]`
-already supplies the schema. This schema-only derive retains the existing
+with `#[derive(harmos_runtime::Described)]`; `#[derive(harmos_runtime::Message)]`
+also supplies a schema for supported native message fields. This schema-only derive retains the existing
 Serde payload codec. It describes named and tuple structs, transparent newtypes,
 and externally, internally, adjacently tagged or untagged enums. Serialization
 names follow `rename`, `rename_all` and `rename_all_fields`, including directional
@@ -101,11 +177,57 @@ refused at compile time with the attribute and enclosing type. Such forms requir
 an explicit, accurate `Described` implementation. Serde wire metadata survives
 schema serialization and participates in the same canonical encoding used by
 revisions and fingerprints. Existing schemas without that metadata retain their
-canonical bytes. Record listeners declare `record = "identity", row = Type`
-without `version =`; binding checks identity and the declared row schema.
+canonical bytes. Listener values use `listeners::Entry::record::<Row>(id, record_id, callback)`
+or `Entry::stream::<Row>(id, stream_id, callback)`. The callback is a wire
+declaration with a `Delivery<Row>` request and unit response; building checks its
+policy, visibility and schema. Binding checks source identity and row schema and
+refuses a missing callback at startup. Listeners belong to the native host.
 System facts use `SystemFact::new(source, name, bytes)` for opaque bytes or
 `SystemFact::encode(source, name, &value)` for a described Serde payload. Their
 stored revision carrier remains necessary; callers no longer supply its value.
+
+Record registries own typed preparation, restoration and borrowed projection:
+
+```rust
+let records = harmos_runtime::state::RecordRegistry::new()
+    .entry(ExportCompleted::ENTRY, Facts::ExportCompleted, |fact| {
+        let Facts::ExportCompleted(value) = fact;
+        Some(value)
+    })
+    .build()?;
+setup.settings().register(records);
+```
+
+`Facts` is an ordinary application data union. `registry.project::<Row>(&fact)`
+returns a borrowed row only when the typed entry and matching payload are present.
+Restoration selects the registered stored identity and derived revision.
+Duplicate identity/revision pairs are refused when built or registered.
+
+Object catalogs also own their definitions. Obtain a checked typed handle before
+encoding or decoding; an absent entry is an error:
+
+```rust
+use harmos_runtime::storage::{ObjectCatalog, ObjectDefinition};
+
+let objects = ObjectCatalog::new()
+    .entry(ObjectDefinition::of::<ValidatedSchematic>())
+    .build()?;
+let schematic = objects.handle::<ValidatedSchematic>()?;
+let stored = schematic.encode(&document, max_payload_bytes)?;
+let restored = schematic.decode(&stored, max_payload_bytes)?;
+```
+
+`StorageManager::with_catalog(objects, backends, settings)` retains the owned
+catalog. The storage manager has no catalog type parameter.
+
+All surviving field-reading derives live in
+[`sdk/rust/derive`](../sdk/rust/derive/): SDK `Message` describes protobuf values;
+`StoredMessage`, re-exported as `harmos_runtime::Message`, describes native
+portable values and their Postcard codec, memory use and row metadata.
+`Described` describes stored Serde shapes without adding a payload codec, and
+`Row` reads row fields. Host data authors explicitly derive `Clone`, `Debug`, `Default`
+and any needed Serde traits. Plugin registration uses builder values; the SDK
+has no host dependency.
 
 Managed journal entries and snapshot definition inventories store derived
 revisions. Open refuses a stored host record or transaction whose definition differs,
@@ -170,11 +292,11 @@ target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
 `mise run build` builds the workspace and the example's CLI, sidecar and guest
-component once. Without a flag the CLI loads the sidecar beside it. Both plugins implement `ValidateSchematic`, `ProposeRoute`, and the streaming
-`AnalyzeSchematic`. The native sidecar additionally provides client-streaming
-`AnalyzeUpload` and bidirectional `AnalyzeExchange`, with typed progress
-publications. Its `ListDirectories` operation lists immediate subdirectories of
-an explicitly configured working directory. The guest omits native filesystem access.
+component once. Without a flag the CLI attaches the managed gRPC plugin beside it.
+Both modes offer validation, route proposals and streaming analysis. In native mode,
+the plugin serves unary advice and directory access while the host owns analysis,
+upload and exchange streams. The guest executes its shared operation catalog without
+native filesystem access.
 
 The [advanced follow-on](../examples/schematic/cli/src/advanced.rs) demonstrates
 bounded streaming, cancellation with settlement, and native directory access.
@@ -184,41 +306,35 @@ under `examples/schematic/` and is also the system fixture of the Harmos test su
 
 ## Cargo Features
 
-The default facade exposes portable models and authoring macros. Enable `runtime`
-for SDK execution on all targets, plus managed state, streams, storage and recovery on native targets. Other execution
-features imply `runtime`.
+The public Rust SDK is `harmos`, located at `sdk/rust`. Plugin and client
+applications import `harmos::prelude::*`; no host code is compiled by that dependency.
+Use `Plugin`, `Operation`, `Stream` and `Observer` builder values and finish a plugin
+with `serve()`. Messages derive protobuf descriptors with `#[derive(Message)]`.
 
-| Feature | Enables |
+Host embedders depend explicitly on `harmos-runtime`. Managed and remote
+`harmos.v1` placement is always available on native targets.
+
+| Runtime Feature | Enables |
 | --- | --- |
-| `runtime` | SDK lifecycle, registration and host runtime facilities. |
-| `plugin` | Shared plugin management, activation, routing, and reload. |
-| `sidecar` | Native process authoring and hosting with matching module attributes. |
-| `guest` | Wasm guest authoring and native sandbox hosting with matching module attributes. |
-| `grpc` | gRPC, reflection and TLS; settings select their use. Includes `generate-proto`. |
-| `generate-proto` | Protobuf descriptor projection used by runtime transport. |
-| `signal` | Signal-processing kernels. |
-| `signal-fft` | FFT support; includes `signal`. |
+| `plugin-guest` | Wasmtime guest hosting with `harmos.v1` lifecycle and child-control messages. |
+| `grpc` | External host gRPC listener, reflection and TLS; enabled by default. |
 | `simulation` | Deterministic runtime simulation. |
 
-Application-local attributes use `harmos::runtime::{operation, catalog}`; plugin-local
-attributes use the matching `sidecar` or `guest` module. Reusable operation libraries
-use root attributes and declare their own `runtime` feature wired to `harmos/runtime`.
-
-Applications and plugins depend on the `harmos` facade. Shared portable
-contracts are available without its runtime feature. `sidecar` and `guest`
-select matching authoring modules and attributes; guest builds use target-compatible
-SDK execution without the native host runtime. Operations use
-`harmos::{Operation, Context, Response}`: the operation is the request, and
-`async fn run(self, ctx: Context<'_, Self>) -> Result<Response<T>, Self::Error>`
-is its required method. Declare `resources` and `operations` on the operation;
-resolve them through `ctx.resource::<T>()` and `ctx.operation(request)`.
-`ctx.streams()` exposes derived endpoints. Use dotted IDs and `visibility = Public`
-or `Host` when needed; the default is `Private`. Applications and plugins share
-`Lifecycle` with async prepare, initialize, stop and cleanup. Plugin lifecycle
-contexts are `harmos::sidecar::Supervisor` or `harmos::guest::kit::Context`.
-Build tools use `harmos-packaging` for inert inspection and generation.
-`harmos-storage` owns the Arrow query and persistence engine plus signal kernels;
-`harmos-runtime` composes that engine with host lifecycle and managed state.
+`harmos-domain` is the native foundation: stored schemas and canonical revisions,
+identities, typed records and transactions, preparation/restoration and inverse pairing,
+journal positions, native stream row identity, and storage catalogs, selections and transforms.
+Lightweight application models can use it without Arrow, filesystem, async or host dependencies.
+`harmos-operations` owns operation declarations, typed dispatch and call context, streaming,
+policy admission and native failure codecs.
+Portable policy values live in `harmos-protocol`; listener activation stays in runtime.
+State entries and record registries are owned values. Native and guest plugin authors
+use the same SDK builders. Optional `harmos/wasm` adds component lifecycle and child controls.
+`harmos-storage` owns persistence and queries; `harmos-runtime` composes it with
+host lifecycle and managed state. Build tools use `harmos-packaging` from `tools/packaging`; it sits outside the core libraries.
+Runtime reads verified plugin bundles through `harmos_runtime::bundle`; construction uses
+`harmos_packaging::bundle::build`. Runtime has no normal dependency on packaging tooling.
+The reference host and plugin live in `tools/conformance`, preserving their executable names
+and release archive contents.
 
 ```toml
 [build-dependencies]
@@ -237,102 +353,58 @@ launching and Wasm componentization. Inert bundle inspection and schema generati
 do not enable Cargo discovery, file watching or subprocess supervision. Select
 `build-tools` for those authoring APIs; `sidecar` and `guest` imply it.
 
-```sh
-cargo run --locked -p cargo-harmos -- harmos sidecar build --manifest-path examples/schematic/Cargo.toml -p schematic-sidecar --json > sidecar-build.json
-cargo run --locked -p cargo-harmos -- harmos sidecar package --build-json sidecar-build.json --output target/packages --json
-cargo run --locked -p cargo-harmos -- harmos guest build --manifest-path examples/schematic/Cargo.toml -p schematic-guest --json
-cargo run --locked -p cargo-harmos -- harmos sidecar inspect examples/schematic/target/x86_64-unknown-linux-gnu/debug/schematic-sidecar --json
-```
+Applications own project creation and authoring commands. Use the reusable
+`harmos_packaging::Build`, `package`, `proto` and `python` APIs from those commands;
+Harmos's repository tasks build and package its examples through the same APIs.
 
-The inspection path above is Cargo's default Linux target directory for the
-separate Schematic workspace. On other platforms or with a custom target
-directory, use the artifact path reported in `sidecar-build.json`.
-
-### Tool Installation
-
-The [current release](https://github.com/stokker-technologies/harmos/releases/latest) provides
-`cargo-harmos-<version>-<Rust-target-triple>.tar.gz` on Unix and `.zip` on Windows.
-Each archive contains `cargo-harmos` (`cargo-harmos.exe` on Windows), LICENSE,
-README.md and generated CHANGELOG.md. Verify the archive against `SHA256SUMS`,
-extract it, and place the executable on `PATH`, preserving its executable bit on
-Unix. Run `cargo harmos --help` to check installation. Mise installation is
-verified against the archived binary before release completion. Harmos library
-crates are published on crates.io with generated CHANGELOG.md; the Cargo tool
-is distributed through release archives.
+### Example Installation
 
 CI packages retain `schematic-<version>-<platform>.zip` demo bundles for
 `linux-x86_64` and `windows-x86_64`. Extract the complete ZIP and run
 `schematic-cli` (`schematic-cli.exe` on Windows); `--guest` selects the bundled
 Wasm backend. Keep its `plugins/` directory beside the executable. Package
-checks run both backends from an isolated extraction. Examples, test reports and
-fixtures remain source or CI artifacts. Release downloads include generated
-`CHANGELOG.md` and `SHA256SUMS`; the internal upload inventory is not a download.
+checks run both backends from an isolated extraction. Examples and fixtures remain source or CI artifacts.
 
-`package` consumes the existing build receipt and verifies every artifact and
+Stable releases attach these downloads:
+
+- `harmos-proto-<version>.zip`: definitions under `harmos/v1/` and their behaviour specification.
+- `harmos-conformance-<version>-<platform>.zip|tar.gz`: reference host and reference plugin;
+  platform names are Rust target triples. Windows uses ZIP; Linux uses tar.gz.
+- `harmos-compliance-<version>.zip`: locked Cargo source SBOMs under `crates/<triple>/`,
+  the locked Python SDK SBOM under `python/any/`, and per-platform notices under `notices/`.
+- `release.json`: release notes, publication date and the `downloads` section. Each download
+  has a kind, OS, architecture, format, URL, size and SHA-256 digest.
+- `SHA256SUMS`: every attached payload and `release.json`; the checksum file omits itself.
+
+The download index omits itself and `SHA256SUMS` to avoid circular hashes. Registry
+packages and example bundles are not release attachments; the changelog is the release body.
+Nightly uses the same layout and adds `harmos-reports-<version>.zip` with available
+benchmark and coverage reports, plus fixed-name `benchmarks.json`. Each benchmark carries
+name, suite, unit, value, baseline value, revision and regression threshold. The final
+notes append coverage per language, benchmark regressions beyond their threshold, all
+suite results and the pipeline URL. Missing or failed reports do not prevent publication;
+the notes retain their suite outcomes. The internal upload inventory is not a download.
+
+`harmos_packaging::package` consumes the existing build receipt and verifies every artifact and
 schema byte stamp before bundling. It never runs Cargo. Each sidecar bundle
 records the registrations its executable prints for `CATALOG_EXPORT_FLAG`. Relocated archives use
-explicit `--relocate-from` and `--relocate-to` path mapping while preserving hashes.
+explicit `Build::relocate(from, to)` path mapping while preserving hashes.
 Library consumers can stamp existing outputs with `Artifact::read` and
 `Schema::read`, then construct a `Build` without another compiler invocation.
 
-Create a plugin from the maintained starter with an explicit source selection:
+`harmos_packaging::build` prepares selected native plugins or converts guest core
+modules into inspected components. Producer build scripts export known catalogs
+to their own `OUT_DIR/grpc/<catalog>/`; collected builds retain those exact paths.
+Native collection requires Rust's `llvm-tools` component. Shipping copies omit
+debug information, while original compiler outputs remain available for debugging.
+The 128 MiB bundle limit applies to shipping bytes.
 
-```sh
-target/debug/cargo-harmos harmos new sidecar target/my-plugin --harmos-path .
-# For a separately maintained project, select a published revision:
-cargo harmos new guest my-plugin --harmos-rev <full-published-sha>
-```
-
-The starters include their managed Python runner and repository task graph.
-Keep generated guidance and tooling current through the owning authoring tool.
-
-`cargo harmos sidecar build` prepares native plugins; `cargo harmos guest build`
-drives the selected Wasm build and converts guest core modules
-into inspected `.component.wasm` files beside the selected module, and reports
-exact artifact and schema paths. Native collection requires Rust's `llvm-tools`
-component. Collection removes debug information from shipping copies under `harmos/<producer>/`
-beside compiler outputs on every platform. Original compiler outputs and separate
-debug files remain available for debugging. The 128 MiB bundle limit applies to
-shipping bytes; compiler profiles are unchanged. Each backend's `dev` command watches sources and local
-Cargo dependencies, coalesces changes and rebuilds serially. Failed builds keep
-the last usable artifact until preparation succeeds. Generated output directories
-are excluded; Ctrl+C stops watching and settles the active Cargo process tree.
-`dev --json` emits `started`, `built` and `failed` records with attempt numbers.
-`inspect` reads metadata without executing the plugin;
-`--json` provides machine-readable output. Producer build scripts
-export known catalogs to their own `OUT_DIR/grpc/<catalog>/`; build output reports
-those exact directories. Schematic bundles use package `schematic.v1` and service
-`Schematic`. Schema generation does not start a gRPC server. Applications configure
-and start their runtime transport separately; dynamic plugins appear in runtime
-reflection when their operations become ready.
-
-The packaging crate's `generate-python` feature exposes
-`harmos_packaging::python::generate`. It emits a producer-owned `src/` Python
-package with standard protobuf messages, `.pyi` stubs, `py.typed`, canonical
-contracts and descriptors. Producer build scripts export contracts normally;
-explicit binding generation needs `protoc`, while installing the resulting
-wheel or sdist needs Python 3.13+ and its declared protobuf dependency.
-Reserved protobuf message members use a trailing underscore (`Clear → Clear_`)
-in static and dynamic classes. Original field tags, finite graph names and JSON
-names remain unchanged. Map graph fields through `DESCRIPTOR.fields_by_number[tag]`;
-collisions after escaping are rejected.
-
-```sh
-cargo harmos sidecar build -p schematic-sidecar --json > build.json
-cargo harmos bindings python --build-json build.json \
-  --producer schematic-sidecar --catalog operations \
-  --distribution schematic-bindings --module schematic_bindings \
-  --package-version 0.1.0 --description "Schematic Operation Bindings" \
-  --license Apache-2.0 --output generated/schematic-bindings
-python -m pip install ./generated/schematic-bindings
-```
-
-The generator selects that exact producer/catalog receipt, or accepts an exact
-`--export` directory. `--operation` narrows the export by operation identity;
-selected contracts without protobuf bindings and generated name collisions
-fail explicitly. It creates a new output directory and preserves existing
-outputs. Each package owns a private descriptor pool, so separate producers can
-reuse protobuf names without sharing message-class identity.
+`harmos_packaging::python::generate` consumes an exact exported catalog and
+application-owned package settings. Selected contracts without Protobuf bindings
+and generated name collisions fail explicitly. Each generated package owns a
+private descriptor pool, so producers can reuse Protobuf names without sharing
+message-class identity. Connections and operation registration remain with the
+application.
 
 Generated `Operation` descriptors expose identity, typed
 request/response and stream-item classes, RPC envelopes and path, and the
@@ -354,33 +426,36 @@ JSON schema decode memory with `StorageSchema::decoding_memory_bytes(encoded_byt
 before decoding; add their own entry bookkeeping and reject `None` on overflow.
 
 Native managed calls return `operations::Response<T>`, which dereferences to the
-original declared payload. Response clones and cache entries share its owner.
+original declared payload. Response clones share its owner.
 Stream producers use `output.send_owned(response).await?` to retain the same owner
 through queueing and encoding; ordinary stream payloads keep their existing `Send`
 contract. Protobuf payloads and RPC paths remain unchanged.
 
-Harmos serves no built-in operation by default. Place `builtins::Lifecycle` on a
-runtime lane with `setup.operations::<builtins::Lifecycle>(lane)` to provide the
-Status, Cancel and Watch operations (gRPC `/harmos.host.v1.Operations/Status`, `/Cancel`
+Harmos serves no built-in operation by default. Place `builtins::lifecycle_catalog()` on a
+runtime lane with `setup.catalog(builtins::lifecycle_catalog(), lane)` to provide the
+Status, Cancel and Watch operations (gRPC `/harmos.v1.Invocations/Get`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
 foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Hosts place `builtins::host::Host` on a chosen lane to serve
-`builtins::host::Catalog` (unary gRPC path
-`/harmos.host.v1.Host/Catalog` when `grpc` is enabled). `builtins::host::CatalogRequest` selects a
-`kind` (`Operations`, `Schemas`, `Streams` or `Objects`) and accepts optional
-`schema`, `after`, `rows` and `bytes`; defaults are 64 rows and 64 KiB, with
-maxima of 256 rows and 4 MiB. `CatalogPage::entries` is a UTF-8 JSON array of the
-kind's entries: operation metadata (original contracts, provider
-owners and generations, selected grants and current gRPC availability), stored
-schemas or stored identities. The `next` cursor continues a bounded page. Stored
-kinds need the storage manager and a `host.catalog` grant scoped `schemas:*`,
-`streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`); listing
-operations needs no grant. The operation listing applies original readiness and caller
-visibility/dependency rules; `conditional_access` means invocation still checks
+Register `harmos_operations::host_catalog()` by value on a chosen lane to serve the `List`
+declaration at `/harmos.v1.CatalogEntries/List`. Its generated request is
+`harmos_protocol::v1::CatalogEntriesListRequest`, with `kind` (`Operations`, `Schemas`, `Streams`
+or `Objects`) and optional `schema`. One response returns the complete authorized
+set without a page request, token or application byte bound. The carrier message
+ceiling is the only List response guard; an oversize failure names the action.
+`CatalogEntriesListResponse::operations`
+contains generated operation metadata, including descriptors, provider identity,
+generation, policy, selected grants and current gRPC availability.
+`CatalogEntriesListResponse::entries` retains the UTF-8 JSON array for stored schemas and
+identities.
+
+Stored kinds need the storage manager and a `harmos.v1.CatalogEntries/List` grant scoped
+`schemas:*`, `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`).
+Listing operations needs no grant. Discovery applies readiness, caller visibility
+and dependency rules; `conditional_access` means invocation still checks
 request-specific grants and middleware. Re-discover after provider reload or
 runtime restart; pages do not promise a frozen registry snapshot.
 
@@ -398,8 +473,8 @@ Discovery lists finite selected grants without inventing wildcards;
 invocation always checks the actual request. Application policy owns entitlements.
 Registration freezes at first external access, allowing earlier internal boot
 work. Internal host calls retain their authority; external calls and descendants
-retain their authenticated context and separate cache identity. Existing
-explicitly anonymous routes keep their behavior when no authorizer is configured.
+retain their authenticated context. Existing
+explicitly anonymous gRPC methods keep their behavior when no authorizer is configured.
 
 Detaching or shutting down a gRPC listener ends in-flight calls with `Unavailable`
 and closes its connections gracefully; connections that cannot drain, such as
@@ -419,6 +494,7 @@ Storage uses explicit request, response and filesystem settings, with no default
 
 ```rust
 let settings = StorageSettings {
+    transfer: Default::default(),
     request: StorageRequestSettings {
         max_pending_queries,
         max_active_queries,
@@ -466,27 +542,6 @@ The journal format is unchanged. Existing single-payload checkpoint files remain
 readable; their imported manifest has no separate logical position, so runtime recovery
 uses the position in the original payload and its journal-boundary validation.
 
-For filesystem persistence, use the shipped JSON backend:
-
-```rust
-let primary = JsonStorage::new(
-    JsonStorageSettings { root, max_entry_bytes },
-    history,
-);
-let backends = primary.into_backends(StorageStateSettings {
-    max_entry_bytes,
-    max_checkpoint_bytes,
-});
-let storage = StorageManager::new(backends, settings)?;
-```
-
-Import `StorageStateSettings` from `storage::state`. The root holds bounded JSONL
-segments in `data/`, staged and finished binary files, recovery metadata, and the
-existing state backend under `state/`. A root has one active backend owner.
-Choose the JSON entry bound to accommodate encoded metadata and payloads; JSON
-encoding can be larger than the original binary payload. This adapter is a
-simple persistence option, not a performance bound for other backends.
-
 Backend writes are independently durable typed calls: `write_schemas`,
 `write_objects`, `write_records`, `write_stream` and `write_files` consume
 `StorageBatch<T>`; file appends consume `FileChunk`. The manager owns ordering
@@ -508,8 +563,8 @@ page sizes and pending writes remain bounded by the configured request and respo
 settings. Consumers own budgets for their retained results and conversion scratch.
 
 File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
-`ReadFile` streams a selected byte range; `HashFile` returns its byte count and
-SHA-256. `CaptureFile` creates an independent durable stored file while hashing.
+`Storage.GetFileBytes` returns a bounded unary byte range; `Storage.GetFileHash` returns its byte count and
+SHA-256. `Storage.CaptureFile` creates an independent durable stored file while hashing.
 `CaptureConsistency::Stable` rejects detected source changes; it does not provide
 an atomic snapshot. `Bounded` copies the initially selected range. Local paths
 refer to the executing host and may be anywhere its process can access, including
@@ -544,12 +599,12 @@ cancellation; `retry_append` resends its original offset and bytes without
 cancelling production. Stable capture detects source
 changes but does not freeze concurrent writers into an atomic snapshot.
 
-`FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
+`Storage.WatchFileBytes` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
-distinct `FollowProduction` operation. Native file slices and shared read batches
+distinct `Storage.WatchFileProduction` operation. Native file slices and shared read batches
 retain their backing allocations until their final owner is released.
 
-`ListDirectory` and `WatchDirectory` share a `DirectorySelection` containing the
+`Storage.ListDirectoryEntries` and `Storage.WatchDirectoryEntries` share a `DirectorySelection` containing the
 root, recursion flag and ordered include/exclude rules. Patterns match
 case-sensitive slash-relative paths: `*` stays within one segment and `**` crosses
 segments. The last matching rule wins; unmatched paths are excluded. An excluded
@@ -567,7 +622,7 @@ yields native `QueryArrow` items whose shared Arrow buffers remain valid
 through clones and slices. The `storage_query` operation, declared in
 `harmos-operations`, carries the same items as Arrow IPC (`QueryOutput`), and the
 write operations take `DataBatch` values whose data is Arrow IPC; serve them with
-`harmos::builtin::storage_registration`.
+`harmos_runtime::builtin::storage_registration`.
 
 `ArrowSchema::from_ipc` and `ArrowBatch::from_ipc` consume encoded `Vec<u8>`
 buffers. `QueryArrow::output` and `TryFrom<QueryOutput>` consume their inputs;
@@ -575,7 +630,7 @@ uniquely owned encoded buffers move through these conversions. Retained aliases
 continue to share their existing allocations.
 
 ```rust
-let mut reader = storage.query(harmos::storage::Query { at, source, transforms, slice }).await?;
+let mut reader = storage.query(harmos_runtime::storage::Query { at, source, transforms, slice }).await?;
 while let Some(output) = reader.next().await? {
     // One QueryArrow::Schema, then QueryArrow::Batch values.
 }
@@ -628,7 +683,7 @@ copying records; its outer length is the page count. Borrow rows with
 `pages.iter().flat_map(|page| page.iter())`. `page.try_map(convert_owned)` and
 `left.try_map_with(right, combine_owned)` consume unique owners into new results;
 strong aliases refuse the move. The callback error implements
-`From<harmos::storage::Error>`. Consumers bound their own conversion allocations.
+`From<harmos_runtime::storage::Error>`. Consumers bound their own conversion allocations.
 
 Read directly through the storage manager with explicit cursors and versions.
 Drop a reader to release its active query slot. Retained pages remain valid after
@@ -645,8 +700,8 @@ Guest and sidecar bindings refuse process-local claims.
 `FileReadBatch::try_map` requires a unique owner. Direct Arrow projections decode
 only selected payload fields, and repeated reads can reuse immutable Arrow pages.
 
-`harmos::filesystem::input::read(path, limit)` bounds regular-file reads.
-`harmos::filesystem::publication` owns staged atomic installation, replacement,
+`harmos_runtime::filesystem::input::read(path, limit)` bounds regular-file reads.
+`harmos_runtime::filesystem::publication` owns staged atomic installation, replacement,
 removal and explicit durability confirmation across Unix and Windows.
 
 Keep write receipts with pending work and retry durability or delivery using
@@ -656,7 +711,7 @@ object encoding, decoding and catalog validation apply the same check.
 
 `storage::query::Accumulator` folds scalars over rows a caller already holds
 with the same semantics as query aggregates: exact rational `Sum`, `Mean` and
-`Median`, ordering for `Min`, `Max` and `Last`, and signal kernels for floating
+`Median`, ordering for `Min`, `Max` and `Last`, and private statistics for floating
 statistics. Exact order statistics keep numeric slots in memory up to the
 `StorageAccumulatorSettings::memory_bytes` budget, then spill to disk. The default
 is 64 KiB per accumulator; callers can supply their budget explicitly:
@@ -694,19 +749,24 @@ and registration. It never requests persistence or retries failures. Cancellatio
 drops only the waiter. Available newer durable progress is returned first;
 otherwise close, not-ready and persistence failures terminate the wait.
 `await_durable(&receipt)` remains the active completion wait for a known write.
-`FollowRecords`, `FollowStream` and `FollowObjects` deliver saved history after
-their `after` cursor, then newly accepted entries. File following uses the
-source/start contract above; staged producers use `FollowProduction`.
+`Storage.WatchRows` observes records, samples or object revisions from an issued
+durable boundary. It reports the opening cut, then exclusive committed events and
+progress through filtered data. Retention gaps require a fresh list and reopening;
+accepted native followers remain separate. See [Storage Interfaces](storage.md#durable-row-observation).
+File following uses the source/start contract above; staged producers use `Storage.WatchFileProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
 the retry window. The receipt ledger has a bounded entry count; reclaimable
 completed receipts are evicted oldest first. Pending mutations and admitted
 callers retain their completion across replay-window expiry; fresh expired
-requests remain refused. A valid retry of an evicted identity runs as a new mutation.
+requests remain refused. Eviction rotates the issuance window, so an evicted
+identity refuses rather than duplicating its original mutation.
 
-Typed stream, record and object writers acknowledge acceptance and durability
-separately for each atomic logical batch. A disconnected invocation may have
-committed earlier batches; callers must not blindly replay unacknowledged data.
+Bounded unary sample, record and object-revision Append calls acknowledge
+acceptance and durability separately. Resending the same identity and normalized
+batch returns its original receipt; changed or retired identities refuse. Admitted
+completion survives lost delivery, and durable completion includes replay-ledger
+persistence.
 Finished-file reads are separate from producing-file follow/resume operations.
 The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
 and a JSONL journal, bounded by the storage batch ceiling.
@@ -728,199 +788,78 @@ producer and clears the disconnected deadline. Finish, abort and storage shutdow
 still retire production; existing file-count and pending-write limits remain enforced.
 A viewer owns its subscription, while the original service owns production.
 
-One file owns each operation. Its definition division contains messages, the operation struct, policy, contract implementations and
-contract tests. The runtime division follows the definition's Tests section and contains its own complete skeleton, including runtime-only
-tests. Shared models remain in the product domain; resource libraries are optional execution dependencies.
+## Native Operation Values
+
+Keep a request shape, policy, wire description and plain handler together. A
+request derive reads the response and optional input/output types; the operation
+value owns identity, visibility, replay policy, callees and grants. Resources
+belong to the handler registration.
 
 ```rust
-/* === --- === Definition Module === --- === */
+use harmos_runtime::operations::{
+    Catalog, FailureKind, FunctionContext, InvocationError, Operation,
+    OperationSpec, Resource, ServingError, Visibility, WireDeclaration,
+};
+use harmos_runtime::Response;
 
-/* === Modules === */
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
+struct Reading { value: f64 }
 
+#[derive(harmos_runtime::Message, harmos_runtime::Request, Clone, Debug, Default)]
+#[request(response = Reading)]
+struct Read { channel: u32 }
 
-/* === Re-Exports === */
+static READ_DESCRIPTION: WireDeclaration =
+    WireDeclaration::request::<Read>("temperature.read", POLICY)
+        .visibility(Visibility::Public);
+const READ: OperationSpec<Read> = OperationSpec::new(&READ_DESCRIPTION);
 
-
-/* === Imports === */
-
-#[cfg(feature = "runtime")]
-use device::Device;
-
-/* === Constants === */
-
-const POLICY: harmos::OperationPolicy = crate::POLICY;
-
-/* === Macros === */
-
-
-/* === Type Aliases === */
-
-
-/* === Structs === */
-
-#[harmos::message]
-pub struct Reading { pub value: f64 }
-
-#[harmos::operation(id = "temperature.read", response = Reading, policy = POLICY,
-    visibility = Public, resources = [Device], replay = harmos::operations::ReplaySafety::Idempotent)]
-pub struct Read { pub channel: u32 }
-
-/* === Enums === */
-
-
-/* === Traits === */
-
-
-/* === Implementations === */
-
-
-/* === Public Functions === */
-
-
-/* === Private Functions === */
-
-
-/* === Tests === */
-
-
-/* === --- === Runtime Module === --- === */
-
-#[cfg(feature = "runtime")]
-mod runtime {
-    /* === Modules === */
-
-
-    /* === Re-Exports === */
-
-
-    /* === Imports === */
-
-    use super::*;
-    use harmos::{Context, Operation, Response};
-
-    /* === Constants === */
-
-
-    /* === Macros === */
-
-
-    /* === Type Aliases === */
-
-
-    /* === Structs === */
-
-
-    /* === Enums === */
-
-
-    /* === Traits === */
-
-
-    /* === Implementations === */
-
-    impl Operation for Read {
-        type Error = device::Error;
-
-        async fn run(self, ctx: Context<'_, Self>) -> Result<Response<Reading>, Self::Error> {
-            let device = ctx.resource::<Device>();
-            Ok(Reading { value: device.read(self.channel).await? }.into())
-        }
-    }
-
-    /* === Public Functions === */
-
-
-    /* === Private Functions === */
-
-
-    /* === Tests === */
+async fn read(request: Read, ctx: FunctionContext<Read>)
+    -> Result<Response<Reading>, InvocationError>
+{
+    let device = ctx.resource::<Device>()?;
+    let value = device.read(request.channel).await;
+    Ok(Reading { value }.into())
 }
+
+fn operations_catalog() -> Result<Catalog, ServingError> {
+    let operation = Operation::function(
+        READ, &[Resource::of::<Device>()], read, |_| FailureKind::Permanent,
+    )?;
+    Catalog::new().entry(operation).build()
+}
+
+// Inside Lifecycle::prepare, after opening the application's Device:
+setup.resource::<Device>(device.clone());
+setup.catalog(operations_catalog()?, lane);
 ```
 
-The operations crate uses `harmos` with `default-features = false` and
-`runtime = ["harmos/runtime", "dep:device"]`. A unit operation struct is a unit request. `response` defaults to `()` and
-`visibility` to `Private`; `Public` and `Host` are short visibility forms. The operation struct is the request message;
-its runtime implementation declares only `Error` and consuming `run` (plus optional error classification).
-Private operations cannot declare `grpc(...)`; use `Public` or `Host` for gRPC exposure.
-The macro rejects Private bindings at compile time, and runtime registration refuses them.
+`POLICY`, `Device` and `lane` are application values. See the
+[resource and nested-call story](../crates/harmos-runtime/tests/operations/resources.rs)
+for a complete registration and handler. `Catalog::extend(other)?` composes owned
+catalogs; `entry_named(factory, id)?` registers an explicit alias. Put platform
+`#[cfg]` attributes on ordinary modules and the corresponding builder statements.
+Private operations remain inside their declaring SDK process and are absent from catalogs. Protected operations are host/owner callable over the instance carrier. Only Public operations can bind a client-facing gRPC method; registration rejects incompatible metadata.
 
-For a platform-only operation, put `#[cfg(windows)]` on its `mod` declaration and its catalog variant. The catalog preserves
-variant attributes for both portable projections and runtime registration. Short built-ins may keep their gated implementation inline.
+Application lifecycle preparation owns resources and registers their concrete
+`Arc<T>` values. Runtime startup checks catalogs, resources and lanes before
+initialization. Test overrides still use `Runtime::launch_with` and replace
+resource lookups after application preparation. Owner cleanup closes acquired
+resources even when validation or initialization fails.
 
-```rust
-#[cfg(windows)]
-mod desktop;
+`ctx.resource::<T>()` is fallible. `ctx.operation(CALLEE, request)` checks the
+explicit callee value against `OperationSpec::calls(&CALLEES)`. Undeclared access
+fails when attempted and names the registered caller and resource or callee.
+Activation validates the complete resource and callee inventory, including
+visibility and fingerprints; no type-level membership proof is required.
 
-#[harmos::catalog]
-pub enum Operations {
-    Read(temperature::read::Read),
-    #[cfg(windows)]
-    Desktop(desktop::Inspect),
-}
+`#[request(input = Item, output = ResultRow)]` selects typed stream endpoints;
+`ctx.streams()` borrows them. Plain functions retain request cloning across retries,
+cooperative cancellation, endpoint settlement and declared error classification.
+The operation policy supplies defaults; per-call options override one invocation.
+The standalone Rust plugin SDK uses its protobuf `Message` derive and its own
+operation builders; generated native host declarations are described below.
 
-use harmos::operations::InvocationExt;
-
-impl harmos::Lifecycle for Product {
-    type Config = ProductSettings;
-    type Error = DeviceError;
-    type Context = harmos::Startup<Self>;
-
-    async fn prepare(config: Self::Config, setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
-        // Resources
-        let device = std::sync::Arc::new(Device::open(config.device).await?);
-        setup.resource::<Device>(device.clone());
-
-        // Lanes
-        setup.lane(Lane::Interactive, harmos::operations::LaneSettings { capacity: config.capacity });
-
-        // Operations
-        setup.operations::<Operations>(Lane::Interactive);
-        Ok(Self { device })
-    }
-
-    async fn cleanup(&mut self) -> Result<(), Self::Error> { self.device.close().await }
-}
-
-let retry = settings.retry;
-let runtime = harmos::Runtime::<Product>::launch(origin, settings).await?;
-let reading = runtime.operation(Read { channel: 3 }).retry(retry).lane(Lane::Interactive).await?;
-runtime.shutdown().await?;
-```
-
-Applications implement the shared `Lifecycle` and keep their resource owners in
-`Self`. `prepare` receives one mutable `Setup<Self>`; settings live behind
-`setup.settings()`, and all declared application lanes are available automatically.
-`launch` reports typed duplicate resources/catalogs, missing resources and unknown
-lanes together before initialize runs. Distinct instances of one Rust type need
-distinct newtypes. `Arc` insertion specifies the concrete type explicitly.
-Shutdown drains supervised work, then calls owner stop and cleanup; owner lifecycle
-hooks close devices and connections. Cleanup releases prepare's acquisitions even
-when validation prevents initialize, and still runs when stop fails. Put physical
-resource closure in cleanup so failed closure can retain its owner for retry.
-
-Tests use the same preparation and catalog path, replacing prepared allocations
-by type with `Runtime::launch_with(origin, settings, |setup| {
-setup.resource::<Device>(fake.clone()); })`. Overrides do not replace catalogs.
-Prepare still runs first: configure acquisition for the test environment. The
-lifecycle owner closes the resources it acquired; overrides change execution lookups.
-
-`ctx.call()` exposes portable call metadata. `ctx.resource::<T>()` returns `Arc<T>` infallibly for a type listed in `resources`.
-`operations = [other::Read]` permits `ctx.operation(other::Read { channel: 3 }).await`; catalogs aggregate these callees into
-plugin requirements. Explicit grants still belong to the plugin. There are three verification layers:
-
-- Compile: generated `Requires<T>` and `Invokes<T>` bounds reject undeclared resource and operation access.
-- Activation: the complete registration requires all resources and callee contracts. Cross-plugin calls require `Public`, or `Host`
-  for a host caller; missing targets and incompatible fingerprints are refused before execution.
-- Run: operation errors, deadlines and carrier faults remain fallible.
-
-`input = Item` and `output = Item` derive `StreamEndpoints`: `()` for unary calls, `StreamInput<Item>`, `StreamOutput<Item>`,
-or their pair. Borrow endpoints with `ctx.streams() -> &Self::StreamEndpoints`; input receives serialize through an asynchronous mutex.
-Every authoring surface returns the SDK `Invocation<H: OperationHost, O, E = ()>` from `ctx.operation(request)`.
-Await it to receive `Response<T>`, which dereferences to the value; `into_owned()` moves the payload out, cloning only when shared.
-`.start().await?` returns an owned instance, and `.endpoints(...)` supplies its declared endpoints. Builders are inert until awaited or started.
-Runtime `.lane(...)` is supplied by `operations::InvocationExt`; templates have no lane option. Use `operations.submit_at` for dynamic registrations.
-
-The operation macro owns the default policy. An option overrides only that call; a later call without options uses the declaration unchanged.
 Pass `.retry(settings.retry)` from settings, parameters or configuration. Retry overrides never change operation or attempt deadlines.
 Enabling call-site retry requires declared `Idempotent` or `Deduplicated` replay safety; unknown safety is refused before execution.
 Declaration defaults retain their existing semantics: transient failures may retry with unknown safety, while ambiguous failures require replay safety.
@@ -943,15 +882,55 @@ Timing surrounds the handler call, including asynchronous suspension and cancell
 It excludes queueing, admission, initialization, child draining, cleanup and middleware callbacks.
 Each retry takes fresh readings. The timestamp identifies the start; elapsed uses only the
 monotonic readings. Before the first invocation, `operations.set_attempt_clock(AttemptClock::new(clock))`
-can inject a clock returning `AttemptStartedAt`; the default reads the operation executor's
-monotonic clock and the system timestamp. This does not change deadline clocks or timers.
+can inject observation readings returning `AttemptStartedAt`; the default uses the host
+clock for both readings. This observation override does not change deadlines or timers.
 No attempt observation is emitted for admission refusals that never enter a handler.
+
+Each host owns one cloneable `harmos_runtime::clock::Clock`. Its `read()` returns a
+monotonic `instant` and a `date` derived from a fixed epoch plus elapsed time.
+Operation scopes expose `scope.clock()`; `sleep`, `sleep_until`, `timeout` and
+`timeout_at` use that same source. Record envelopes, default attempt observations,
+storage expiry and polling, lifecycle bounds and client-facing gRPC bounds share it.
+Storage binds to the host before its worker starts; an already running engine with a
+different clock is refused. `setup.settings().clock(clock)` selects a source during
+composition. `Clock::with_clock(source)` accepts a `clock::Source` owning readings
+and timer registration, so callers do not depend on its scheduler.
+
+`Clock::virtual_at(epoch)` returns the same clock type plus a `Controller`. The
+source owns a cancellable timer queue ordered by deadline and registration order;
+Tokio and transport keep running normally. `controller.read()` exposes both readings.
+`advance_by(duration)` visits due timers in order. `advance_until(bound, condition)`
+stops when the condition holds and otherwise returns an `AdvanceError` listing pending
+timer IDs and their deadlines at the virtual bound. Active external work can keep the
+clock frozen; the test runner's separate hang guard bounds that case.
+
+Register work before scheduling it with `let mut activity = clock.activity("operation");`
+and retain the guard through settlement. Calls, unanswered observer ticks and host disk,
+process or transport work each need a guard; concurrent branches need separate guards.
+Use `activity.wait(clock.sleep(duration)).await` only when that branch's sole outstanding
+work is the clock wait. A timeout guarding active work must retain active accounting.
+The wake restores activity before scheduling the continuation. Dropping a wait removes
+its timer and restores its guard; dropping the guard settles the work. These hooks must
+be installed by each invocation, publication and I/O owner: unregistered work is invisible
+to the controller. Device-driven streams remain active while awaiting external samples.
+
+`clock.interval(period)` schedules its first tick one period later, preserves fixed
+cadence and returns the tick's readings. Missed ticks are delivered in deadline order.
+Use `activity.wait(interval.tick()).await` between observer answers and retain active
+accounting while answering each tick. Zero periods are refused.
+
+Simulation uses this virtual source with its existing manual advancement interface,
+a Unix epoch and the same clock across reboot. Settling work drives queued timers;
+manual advancement visits each deadline precisely, without Tokio's millisecond rounding.
+Recovery, replay and inverse-law oracles retain their existing meaning. Filesystem and
+device timestamps remain source evidence. Directory watcher polling and Wasmtime epoch
+interruption remain physical mechanisms.
 
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
 Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:
-`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `host.operations.cancel`, `harmos.initialize`
-and `storage.append_file`. `codec = manual` preserves an explicitly authored message codec.
+`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `harmos.v1.Invocations/Cancel`, `harmos.initialize`
+and `storage.append_file`. A manual native message codec remains an ordinary trait implementation.
 
 Started operations return the same typed `Response<T>` from `join()` and
 `cancel().await`. `request_cancel()` sends only the signal. An implementation
@@ -965,31 +944,131 @@ and cleanup. Dropping a handle requests cancellation without retaining its resul
 ```rust
 let handle = runtime.operation(request).start().await?;
 let summary = handle.cancel().await?;
-// Inside Operation::run:
+// Inside the plain handler:
 ctx.cancelled().await;
 Ok(summary.into())
 ```
 
-For gRPC, every exported operation also has a bidirectional `Run<Method>` RPC.
-Its opening frame is `request` (tag 1), input rows are `item` (tag 2), and
-`cancel` (tag 3, an empty message) requests cooperative cancellation.
-`finish` (tag 4, an empty message) closes input while retaining cancellation
-control; Rust handles expose `finish_input().await`. Responses
-contain output `item` (tag 1) or final `response` (tag 2). Keep the response stream
-open through cancellation. An HTTP/2 abort abandons the result. Rust callers use
-`harmos::grpc::client::start::<Operation>(channel, request, transport_settings)`
-and the returned handle's `cancel().await` or `join().await`; both return the
-normal typed response or a gRPC status, including `Code::Cancelled`.
-The caller supplies transport and buffer settings; operation deadlines come
-from the server's operation policy. Generated Python descriptors include
-`run_grpc_path`, `run_request` and `run_response`, with `Invoker.start` and
-`OperationHandle.cancel` transport interfaces. Harmos emits protobuf contracts
-for external TypeScript generators and does not generate a TypeScript execution
-client. Ordinary RPC methods remain available alongside managed calls.
+Host applications can register Prost-generated request, response and stream messages directly
+with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Declaration>()`.
+Host lifecycle, clock and discovery declarations use the protocol crate's generated messages.
+Storage status, file mutation, read/capture/follow and directory operations also accept generated requests;
+use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for native streams.
+`Manager::download_protobuf` provides typed generated output items through `next` and a generated
+completion through `join`. Plugin-scoped callers use the same helper with their original scope.
+Supply the caller's preparation budget and stream limits in operation settings and submission.
+Storage kernels retain their native storage values and persisted encodings.
+`Manager::exchange_protobuf` sends generated input and receives generated receipts; call
+`finish_input` before draining the final receipts and joining. `Manager::upload_protobuf`
+finishes file input and returns the generated durable file reference. Scope-aware callers
+keep per-batch grant checks throughout an exchange.
+Schema registration uses the generated `SchemaGraph`: references index its definition table,
+scalar fields cannot reference definitions, and representation indices must be unique.
+The storage schema validator checks the graph before mutation admission.
+
+
+The declaration's `GRPC` is optional; Protected and Private native operations leave it `None`.
+Declare typed callees in `OPERATIONS` and invoke them through the execution context:
+
+```rust
+const GRPC: Option<Grpc> = Some(Grpc::new("example.host.v1", "Operations", "Run"));
+const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<Callee>()];
+// Inside the handler:
+let response = context.call_protobuf::<Callee>(request).await?;
+```
+
+Messages implement `prost_reflect::ReflectMessage` using their authoritative descriptor set.
+The declaration owns `ID`, `GRPC`, `POLICY`, `VISIBILITY`, `RESOURCES` and its handler; unary
+endpoints use `()`, input uses `ProtobufInput<T>`, output uses `ProtobufOutput<T>`, and a pair
+supports both directions. Handlers receive generated requests and return generated responses.
+See the [declaration example](../openspec/changes/grpc-plugins/design.md#generated-host-messages).
+Reflection preserves original protobuf names, field encodings and presence. Decoding-memory
+admission bounds generated allocations before Prost decoding. Built-ins and native example operations no longer use `Portable` projections.
+Portable projection machinery serves native stored message values.
+
+`operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
+Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
+typed native declarations. Assignment catalogs use the generated
+`harmos.v1.OperationAssignments` messages, with frozen identity validation.
+
+Guest commands, answers and child controls use authoritative `harmos.v1` protobuf
+messages. Built-in `storage.hash_file` and `harmos.context.v1.Samples/Append` calls use their generated
+contracts; no private guest payload mirrors are retained. Fingerprints, provider
+generations and host grants remain checked. Stored data encoding and schema
+revisions are unchanged.
+
+### Generated Rust Clients
+
+`harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
+The caller supplies storage transfer settings and the required
+`retained_bytes: NonZeroUsize` from application configuration. Wire and outgoing-byte
+limits use the generated 8 MiB message default; explicit ceilings must carry the
+configured transfer chunk plus framing. The default chunk remains 4 MiB. For example:
+
+```rust
+let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<std::num::NonZeroUsize>()?;
+let settings = harmos::ClientSettings::for_storage(transfer_settings, retained_bytes)?;
+let client = harmos::Client::new(channel, settings)?;
+```
+
+`retained_bytes` bounds descriptor-checked decoded allocations and SDK-owned queued values
+across client clones and calls. Repeated, map and nested values are accounted before Prost
+decoding. A claim ends when its bare value reaches the caller; the caller owns its memory
+thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
+budget or request smaller pages.
+`catalog` calls `CatalogEntries.List` once and receives the complete authorized catalog.
+There is no page request, token or application byte bound; carrier overflow names the action.
+Bind the selected `harmos_protocol::v1::OperationContract` to generated application messages:
+
+```rust
+use harmos::client::Method;
+use schematic_protocol::{ValidateSchematic, Validation};
+
+let method = Method::<ValidateSchematic, Validation>::new(contract)?;
+let response = client.call(&method, tonic::Request::new(request)).await?.into_inner();
+
+```
+
+`Method::new` checks the advertised fingerprint and the reachable generated descriptor graphs.
+Ordinary watches yield declared event messages until EOF and have no final result.
+For streams, bind every declared direction with `with_input::<Item>()` and
+`with_output::<Item>()` before starting. Managed calls expose `send`, `finish_input`,
+`next`, `request_cancel`, `cancel` and `join`; they retain the final generated result
+separately from output items. `take_input()` transfers the sole input writer to an
+independent task so uploads and downloads can progress concurrently; call its `finish()`
+after the last item. The receiving handle retains cancellation and final settlement.
+Cancellation observes the final response or gRPC status,
+including binary status details. Caller request metadata, extensions and timeout overrides
+travel with the opening request. The server continues to own operation deadlines and retries.
+Dropping a call abandons its result. No reconnect, replay or automatic retry is added.
+
+The [runnable Schematic client](../sdk/rust/examples/client.rs) discovers and calls a
+generated application contract without linking domain, storage, operations or runtime.
+Build it with `mise run build -- --package harmos --example client`; pass a running
+Schematic application's gRPC URL when launching `target/debug/examples/client`, with
+`HARMOS_CLIENT_RETAINED_BYTES` set to the application's decoded-memory budget in bytes.
+The dependency proof at `sdk/rust/tests/dependency_closure.py` traverses normal/build
+workspace dependencies and the client example's root development dependencies.
+
+Each operation has one canonical gRPC method. Get and List are unary; Watch observes
+changes. A declaration that promises a cooperative final result opts in with
+`Grpc::new(package, service, method).managed()`. Its bidirectional control stream
+replaces the ordinary method at the same name; no streaming twin is generated.
+Its opening frame is `request` (tag 1), input is `item` (tag 2), `cancel` (tag 3)
+requests cancellation, and `finish` (tag 4) closes input while preserving control.
+Output carries `item` (tag 1) or final `response` (tag 2). Keep observation open
+through cooperative cancellation; an HTTP/2 abort abandons the result.
+
+The Rust generic client uses `call` for unary methods, `watch` for ordinary server
+streams, and `start` only for declared managed methods. Generated application clients
+in Python, C# and C++ use their ordinary gRPC toolchains. Generated Python contract
+metadata carries `managed`, `grpc_path`, `rpc_request` and `rpc_response` for the
+single declared method. The library's native plugin semantics are shared across all
+four SDKs; its generic managed application client remains Rust-only.
 
 Portable request and response integer fields support `u32`, `u64`, `i32` and
 `i64` across in-process, sidecar, guest and gRPC carriers. `u16` is rejected by
-the message macro; represent ports with `u32` and validate their range in the
+the native `Message` derive; represent ports with `u32` and validate their range in the
 operation. `u8` is supported as byte buffers (`Vec<u8>`), not as a scalar field.
 `usize`, `isize`, narrower signed integers and 128-bit integers are unsupported.
 
@@ -1036,7 +1115,7 @@ resource context:
 
 ```rust
 runtime.services().register::<Poller>("poller", service_policy).await?;
-runtime.unregister(&harmos::QualifiedId::parse("host.poller")?).await?;
+runtime.unregister(&harmos_runtime::QualifiedId::parse("host.poller")?).await?;
 ```
 
 The host assigns provider owners. Local IDs use dotted lowercase segments; routing uses `owner.local_id` exactly once.
@@ -1058,95 +1137,110 @@ clones that same owner. Embedded, guest and native registration is inert. Explic
 before closing their operation/state infrastructure. The schematic example uses
 this owner for both plugin backends.
 
-```rust,ignore
-use harmos::config::{PluginRestartSettings, PluginSidecarSettings};
+### gRPC Plugin Placement
 
-let settings = PluginSidecarSettings {
-    plugin: harmos::config::PluginSettings {
-        restart: PluginRestartSettings {
-            retries: 2,
-            ..Default::default()
-        },
-        ..Default::default()
-    },
-    ..Default::default()
-};
-runtime.plugin.register_sidecar::<Operations>(executable, settings, lane).await?;
-runtime.plugin.initialize().await?;
+Use the [Plugin Manager](plugin-manager.md) for persistent entries, verified
+bundle installation and client management; the attachment API below owns each activation.
+
+From `harmos-runtime`, attach a `harmos.v1` endpoint with
+`runtime.attach_grpc(placement, settings).await`. The types live in
+`harmos_runtime::plugin::grpc`. `Placement::Managed(Managed { executable, arguments,
+environment })` starts an executable, hashes its bytes with SHA-256, reads its
+loopback readiness address and drains standard output. A supplied or inherited
+`HARMOS_ADDRESS` overrides that dial address. `Placement::Remote(url)` owns only
+the connection and reconnects independently after transport loss.
+
+Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window }`
+with positive durations and a nonzero retained-row budget per stream. Startup, reconnect and shutdown budgets use the host's clock.
+`Attached::status()` watches connection state and failures; `activation()` captures
+the current connection. An activation exposes its `description`, monotonic `number`,
+`previous_started_at`, optional `executable_digest` and managed `process_id`. Compare the current and
+previous `started_at` timestamps to distinguish a reconnect from a process restart.
+Retained activations fail after disconnect and never follow the next connection.
+
+Before admission the host verifies the catalog digest, resolves its declared
+message names, and verifies operation fingerprints using the shared
+[descriptor rule](../proto/harmos/v1/behaviour.md#schema-fingerprints). The Rust SDK,
+reference fixture and host use `harmos-protocol` for this computation. Inconsistent
+hashes or unresolved message names refuse admission before an activation becomes visible.
+
+The host opens one `Instance.Samples` call for each catalog stream at admission. Interval streams
+answer host-clock ticks; device streams publish without ticks. Each sample enters
+the existing stream storage consumer path in arrival order. Incoming protobuf rows
+are validated against their catalog type and converted to the host's canonical
+stored row encoding with its derived schema. Interval rows carry their tick time;
+device rows carry host arrival time in `published_unix_micros` and retain an optional
+device timestamp as `context.source_time` (seconds and nanos). Disconnect and stop
+close demand; reconnect opens fresh calls with sequence one. Lost samples are not replayed.
+
+An `interval_setting` names a fully qualified protobuf section field, such as
+`fixture.Settings.interval`, whose value is a positive `google.protobuf.Duration`.
+The host resolves it from `Catalog.sections`; it takes precedence over the declared
+interval. An absent or invalid setting refuses admission.
+
+Plugins declare requirements for the Public `harmos.v1.Time/Sleep` and
+`harmos.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
+Tests can configure `clock::Clock::virtual_at(epoch)` and drive its controller with
+`advance_until(bound, condition)`. An invocation or unanswered tick keeps virtual time
+still while work is in flight; only clock waits park that activity. Device streams
+remain active until demand closes. Transport uses its normal scheduler.
+
+`Attached::stop(reason).await` closes stream demand, calls Stop, closes the connection and, for a managed
+plugin, waits for successful process exit within the same grace budget. Host
+shutdown and dropping the attachment also request this cleanup. Remote endpoints
+remain serving. Cleanup errors remain available in attachment status and its stop
+result.
+
+### Guest Hosting
+
+Enable `harmos-runtime/plugin-guest` to host components and `harmos/wasm` in a
+guest crate. The SDK has no runtime, storage or operations dependency.
+
+```toml
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<tested-commit>", features = ["wasm"] }
 ```
 
-Sidecars start with a cleared environment. On Windows, Harmos passes through
-these parent variables when present: `SystemDrive`, `SystemRoot`, `windir`,
-`ProgramData`, `ALLUSERSPROFILE`, `ProgramFiles`, `ProgramFiles(x86)`,
-`ProgramW6432`, `CommonProgramFiles`, `CommonProgramFiles(x86)`,
-`CommonProgramW6432`, `PUBLIC`, `USERPROFILE`, `HOMEDRIVE`, `HOMEPATH`,
-`LOCALAPPDATA`, `APPDATA`, `USERNAME`, `USERDOMAIN`, `COMPUTERNAME`, `PATHEXT`,
-`ComSpec`, `NUMBER_OF_PROCESSORS`, `PROCESSOR_ARCHITECTURE`, and `OS`.
-`SystemRoot` falls back to the Windows system directory if missing or empty;
-`TMP` and `TEMP` use the host's temporary directory. On Unix, only a nonempty
-`TMPDIR` is inherited; `HOME`, `USER`, `LANG`, and `LC_*` remain cleared.
-`PATH` and arbitrary parent variables are cleared on both platforms.
-Use `Executable::variable` to supply additional variables or override inherited
-values, and `Executable::directory` to choose the child's working directory.
-
-Sidecar wire credits bound in-flight encoded frames. Each connection also owns
-one reusable writer scratch buffer bounded by the protocol frame ceiling,
-separate from those credits. Scalar-only writers coalesce small frames to avoid
-separate header and payload writes. Frame size helpers count envelopes without
-encoding them. Child-call admission includes the actual portable context;
-`Frame::child_payload_encoded_len` supports that calculation. The general
-request helper covers routed calls and children with empty portable context.
-Logical frame sizes exclude the four-byte packet prefix; wire credits include it.
-
-Automatic restarts default to zero. A configured allowance applies to each
-explicit activation cycle, including crashes after readiness; successful startup
-does not replenish it. Status retains the lifetime startup count, last failure
-class, retry deadline and cleanup state, including stopping while the original
-retirement owner is still settling. Invalid configuration/contracts are terminal. Explicit stop cancels restarts for the plugin and its dependents;
-failed cleanup prevents a fresh physical attempt of that generation and its dependents.
-An unrelated reload does not retry retained failed cleanup; explicit initialization
-or a reload selecting the failed owner retries it. Plugin restart never replays
-uncertain operation calls or streaming transfers. Guest `shutdown_timeout` bounds
-the complete stop wait, including SDK settlement, authored shutdown and physical
-finalization. A timeout retains the same invocation and cleanup owners; retrying
-stop resumes settlement without launching another plugin attempt. `reload(id)`
-restarts a frozen definition and its active dependents; `reload_sidecar`, `reload_guest` and
-`reload_embedded` accept replacement inputs through the same validation and
-retirement owner. Caller abandonment, explicit stop and runtime shutdown interrupt
-reload initialization and fence each new generation; cleanup retains ownership
-until settlement. A committed replacement remains the source for later explicit
-activation. `remove(id)` requires registered dependents to be removed first.
-
-Native retirement joins observers before SDK shutdown. An observer retains access
-to its own generation's operations while its stop is joining; ordinary callers
-remain fenced. A carrier already physically joined satisfies native shutdown,
-while authored cleanup failures remain failures. Unexpected exits while serving
-remain visible faults.
-
-Embedded operation contributions and host contributions register resource-free
-catalogs through `register::<Operations>(lane)`. Plugin scopes retain their
-host-assigned ownership and authority checks. Native and guest authors declare
-one constant slice:
-
 ```rust
-#[harmos::sidecar(id = "device_tools", requires = ())]
-impl harmos::Plugin for DevicePlugin {
-    const CATALOGS: &'static [harmos::Catalog] = &[Operations::CATALOG];
+use harmos::{Context, Operation, Plugin, Result, wasm::Registration};
+
+#[unsafe(no_mangle)]
+pub fn harmos_register() -> Registration {
+    Registration::new(
+        Plugin::new("example", "1.0.0")
+            .operation(Operation::new("example.echo", async |_: &Context, request: String| -> Result<String> {
+                Ok(request)
+            })),
+    )
+    .capacity(2)
+    .on_initialize(async |_: &Context, configuration: Vec<u8>| {
+        serde_json::from_slice::<()>(&configuration).map_err(|error| harmos::Error::Invalid(error.to_string()))?;
+        Ok(())
+    })
 }
 ```
 
-The same descriptors drive inert inventory and executable binding. The SDK
-owner collects resources/settings from shared Lifecycle prepare, installs constant
-catalogs and observer attachments, validates all errors, then initializes. Plugin
-setup has no operations method; authors never construct serving tables or resource
-stores. Encoded calls still require an explicit
-`operations::Settings::preparation_bytes` budget through setup settings.
+Registration builds inert metadata. Componentization stamps its protobuf catalog;
+loading validates that catalog, and activation verifies it against registration on
+the retained store before initialization. Registration must not perform authored
+resource initialization. Operation handlers use the native SDK's `Operation`,
+`Context::call` and protobuf messages. Plugin operations are unary; declared streams
+publish through `Context::publish` and the host stream manager.
 
-`PluginManager` remains the lower-level extension for applications supplying their own backend lifecycle.
-
-Operation metadata belongs on its owning struct in a vertical file; catalogs
-assemble those types. `harmos::prelude::*` provides a bounded set of common
-authoring imports. See the [crate manifest](../crates/harmos/Cargo.toml) for details.
+The adapter retains Prepare, Initialize, Attempt, Cancel and Finalize phases.
+`Context::submit` returns a child with `status`, `cancel`, `join`, `release` and
+`detach`; dropping it releases owned work. Submit and control require the original
+finite attempt capability. A retained generation context may call declared dependencies
+or publish while its generation remains active, but cannot submit or control children.
+The runtime owns loading, fuel, memory, deadlines and host authority. Consumers
+set resource-scoped `PluginSettings::grants` on declared requirements; a guest
+cannot grant itself access through its catalog. Stream-hosting
+consumers supply `PluginGuestSettings::stream_window`. The SDK does not depend on `harmos-operations`. Development guest workspaces optimize
+`harmos` and `harmos-protocol` at level 2 to keep descriptor validation within the
+existing fuel budget; release builds optimize these normally.
 
 ## Performance
 
@@ -1186,213 +1280,122 @@ Context propagation restores the owning subscriber during polling and cancellati
 Some asynchronous handoffs allocate a boxed future for this teardown guarantee;
 instrumentation overhead has not been benchmarked.
 
-Storage, sidecar hosts, Wasm guests and external gRPC commands have separate
-benchmark suites. Lower-level stream and framing suites retain their codec and
-transport measurements. The carrier suites enable the `benchmark` feature on the
-shipped Schematic sidecar and guest, sharing their transfer contracts and handlers.
-Each direction uses 256-record, 4096-sample or 1 MiB file batches, comparing unary
-calls against a stream. Generation and content verification are outside timing;
+Storage, Wasm guests and external gRPC commands have separate benchmark suites.
+The guest suite enables the `benchmark` feature on the shipped Schematic guest.
+Native gRPC plugins build without the retired framed-transport benchmark feature.
+Each direction uses 256-record, 4096-sample or 1 MiB file batches. Guest operations
+are unary. Generation and content verification are outside timing;
 completion includes the receiver acknowledgment. Records, files and samples run
 concurrently on one reused host/plugin per carrier, with isolated transfer IDs;
-unary and streamed variants remain sequential within each dataset. The fixture retains at most
-64 MiB of data, with four queued batches and a 4 MiB stream budget. File transfer
-cases measure crossing the carrier boundary; the storage suite measures persistence.
-The real carrier hash check runs outside timing; its storage worker is started
-only for that check and stopped before command and transfer measurements.
+The guest fixture retains at most 64 MiB of data. File transfer
+cases measure crossing the carrier boundary.
 
 | Suite | What It Measures |
 | --- | --- |
-| [Storage](../crates/harmos-runtime/benches/storage/main.rs) | Shipped JSON persistence: 30 MiB upload/download, 10,000 records and 1,000,000 samples with symmetric writes/reads, concurrent files and queries; local/stored read, hash, capture and follow; directory listing and change delivery. |
-| [Sidecar Host](../crates/harmos-runtime/benches/sidecar/system.rs) | Real native process: bidirectional 10,000-record, 30 MiB file and 1,000,000-sample transfers, comparing unary batches and streams; startup and command latency. |
-| [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: the same bidirectional unary/streamed transfer workloads, plus startup and command latency. |
+| [Storage Transforms](../crates/harmos-runtime/benches/storage/transforms.rs) | In-memory RMS, histogram and downsampling kernels over balanced three-phase samples. |
+| [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: bidirectional unary protobuf transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
-| [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work, batch summaries, codec costs, and native consumers using 64 KiB and 1 MiB payloads. |
-| [Plugin Transport](../crates/harmos-sidecar/benches/transport/main.rs) | Native transport throughput and latency, including 64-byte, 1 KiB, and 64 KiB bursts and a paced 10 MiB/s workload. |
+| [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work and codec costs. |
 
-Build matching executables and carrier fixtures with `mise run build:rust:bench`,
-then run `mise run bench`. Storage uses 1 MiB chunks, 4096-row input ceilings,
-128 MiB read memory and 64 MiB pending-write memory. Reads start from persisted
-data; setup writes and verification are excluded from read timings. These are
-warm filesystem measurements, not forced cold-cache reads.
-The filesystem cases use 30 MiB files; directory listing and initial watching
-use 1,000 entries. Hash/capture include their required hashing work. Directory
-change latency includes creating the file and receiving its notification.
+Build matching executables and carrier fixtures with `mise run build -- --artifact bench`,
+then run `mise run bench`.
 
 One million samples represent one second at 1 MHz without pacing ingestion.
-The paced transport rate is also an input, not a claimed throughput result.
 Published comparisons need the revision, hardware, payload, batching and carrier
-alongside native Criterion results. The JSON backend gives one concrete reference;
-it does not establish a worst-case bound for other adapters.
+alongside native Criterion results.
 
 Native Criterion HTML and raw measurements live under `.stkr/benchmarks/criterion/`,
 partitioned by compatibility identity and benchmark executable. The runner compares
 against the compatible `dev` baseline and reports missing baselines or regressions
 in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
+Client resource paths are descriptor-derived in all SDKs. C++ escapes reserved
+identifiers with a trailing underscore, such as `client.plugins.delete_`; C# nested
+status payloads use `Harmos.V1.StatusResources` while `client.Status` retains its wire hierarchy.
+
 ## Documentation
 
-- [Repository Tooling](tooling.md) — workstation builds and shared compiler cache.
+- [Plugin Management](plugin-manager.md) — persistent managed and remote entries, verified bundles, client operations and host adoption.
+- [Architecture](architecture.md) — invariants, their purposes, current implementation and guarding proofs.
+- [Repository Tooling](tooling.md) — workstation builds, shared compiler cache and `tools/config/` configuration.
+- [Contributing](CONTRIBUTING.md) — development setup and validation.
 - [Runnable Examples](examples.md) — application composition and plugin integration.
-- [C++ Sidecar Prototype](sidecar-cpp-prototype.md) — C++20 authoring over the shared Rust core through a C ABI, with build and demo commands.
+- [C++ Plugin SDK](tooling.md#c-plugin-sdk) — C++20 authoring with protobuf messages and gRPC plugin serving.
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
-- [Public Rust API](../crates/harmos/src/lib.rs) — the SDK facade and module documentation.
-- [Cargo Features](../crates/harmos/Cargo.toml) — select the facilities your application needs.
+- [Public Rust API](../sdk/rust/src/lib.rs) — the standalone protocol SDK.
+- [Cargo Features](../crates/harmos-runtime/Cargo.toml) — select the facilities your application needs.
+- [Storage Interfaces](storage.md) — saved Arrow reads, indexes, projections, conditional objects and the optional SQLite backend.
 - [Storage Adapter](../examples/schematic/storage/) — own your persistence format.
 
 
 ## Built-In Operation Ownership
 
-`crates/harmos-operations/src/{host,lifecycle,storage,streams}/` holds the 30
-built-in operations. Each operation file owns its request and response shapes,
-operation declaration and runtime-gated implementation. Shared portable values
-and lifecycle protocol schemas remain in `harmos-domain`. The facade exports
-these catalogs under `harmos::builtins`; `Builtins::catalog()` includes the two
-reserved plugin lifecycle controls.
+`harmos-operations` holds native host, lifecycle, storage and stream contracts and
+execution. `harmos-runtime` exposes them under `harmos_runtime::builtins`.
+Guest lifecycle messages belong to `harmos-protocol`; the optional adapter and
+component world live under `sdk/rust/src/wasm/` and `sdk/rust/wit/`.
 
-The operations crate enables all built-in execution with `runtime`, which includes
-`harmos-sdk` and `harmos-storage`. Carrier kits select its lightweight `lifecycle`
-feature for the two SDK plugin controls, without linking host storage into a
-Wasm component. It never depends on `harmos-runtime`. Runtime composition supplies SDK-owned
-instance, discovery, publication, lifecycle and grant-access handles through
-`ExecutionContext`, along with the erased storage engine. State owners retain
-authorization, generation fencing and resource lifecycle ownership.
-
-Artifact contract inventory emits one `contracts` fragment per provided or required
-operation, with `facility`, `owner` and an `entry` containing `direction` and
-`contract` (plus `grants` for requirements). A separate `lifecycle` entry carries
-the initialization/shutdown policies, including for an empty plugin. Each JSON
-fragment is limited to 64 KiB. Inspection merges entries into one resolved
-manifest, enforcing entry limits and duplicate rules across fragments; shared
-`preparation_bytes` and `preparation_work` budgets bound the aggregate metadata
-and schema resolution. Consumers pass their `SchemaSettings` through
-`Declaration::inspect_with_settings`, `Bundle::build_with_settings`,
-`Bundle::inspect_with_settings` and `Executable::at_with_settings`.
-Sidecar authors use `run_plugin_with_settings` or
-`serve_plugin_channels_with_settings` for the matching native self-inspection.
-The existing convenience methods retain Harmos defaults. Memory and work
-refusals report attempted usage and the allowed amount; bundle errors also name
-the package and executable. Aggregate provides/requires fragments are unsupported.
-
-Operation envelopes are v2 and carry optional call-site retry policy. Protocol,
-artifact, journal and schema formats remain v1. Only current shapes are supported;
-incompatible envelope versions are refused, with no historical converters or
-journal upgrades. Rebuild sidecars and guests against the same SDK.
+The native invocation and resource engine lives in
+`crates/harmos-operations/src/execution/`. Neither it nor the standalone `harmos`
+SDK depends on `harmos-runtime`. Guests use SDK builders and protobuf contracts;
+the runtime alone owns Wasmtime and sandbox authority.
 
 ## Transaction Reversibility
 
-Implement `harmos::state::Invertible<S>` with `type Inverse` and
-`fn inverse(&self, before: &S) -> Self::Inverse` for a reversible transaction.
-The catalog infers an undo barrier when that implementation is absent.
-`#[harmos::transaction(id = "ledger.deposit", inverse = Withdraw)]` optionally
-checks that the inverse declaration matches the implementation and its mutual pair.
-There is no explicit irreversibility marker.
+Keep `Transaction<S>` and `Invertible<S>` implementations beside their data.
+Declare each entry as reversible or as a barrier explicitly:
+
+```rust
+use harmos_runtime::state::{StateCatalog, TransactionEntry};
+
+let movement = TransactionEntry::<Schematic, MoveSymbol>::new("symbol.move")
+    .reversible::<MoveSymbol>();
+let placement = TransactionEntry::<Schematic, PlaceSymbol>::new("symbol.place")
+    .barrier();
+let changes = StateCatalog::new()
+    .transaction(movement, Transactions::MoveSymbol, |change| match change {
+        Transactions::MoveSymbol(value) => Some(value),
+        _ => None,
+    })
+    .transaction(placement, Transactions::PlaceSymbol, |change| match change {
+        Transactions::PlaceSymbol(value) => Some(value),
+        _ => None,
+    })
+    .build()?;
+setup.settings().register(changes);
+```
+
+Only listed variants are admitted. The complete Schematic registry is
+[`transactions_state_catalog`](../examples/schematic/app/src/transactions/mod.rs).
+A data union may implement ordinary `From`, `Transaction` and `CatalogCodec`
+dispatch; catalog membership and restoration belong to the value registry.
+Entry constants such as `MoveSymbol::ENTRY` are reusable values, not membership proofs.
+
+`StateCatalog::build()` and runtime startup reject duplicate identities or typed
+entries, undeclared reversibility, missing inverse entries and non-mutual pairs.
+`reversible::<I>()` requires the existing `Invertible<S, Inverse = I>` body.
+A self-inverse names its own type. Barriers use `.barrier()` even when another
+transaction in the same catalog is reversible.
+
+Preparation retains the accepted payload with its stable identity and
+schema-derived revision. Replay restores that payload and applies it without
+running admission checks again. Undo computes the inverse against the pre-state
+and admits it through the existing check/apply path. Snapshot consumers receive
+their restoration catalog by value; see the
+[snapshot adapter](../examples/schematic/storage/src/snapshot.rs).
 
 ## Plugin Source Layout
 
-Runtime-selected operation IDs bind an existing type through
-`operations::Registration::new(lane).operation::<Read>(id)?`, then
-`runtime.register_batch(batch).await?` or plugin `register_embedded_batch`.
-The operation type supplies its schema, policy, resources and handler; the chosen
-ID enters the fingerprint. Invoke it with `operations.submit_at::<Read>(id, request)`.
-Static catalog composition and ordinary collision refusal remain unchanged.
+A native plugin crate depends on `harmos`; its executable assembles builder values
+and calls `serve()`. Keep protobuf messages and operation contracts beside their
+handlers. A reusable contract crate can implement `Message` for generated types
+or use its derive. `use harmos::prelude::*;` supplies the authoring surface.
 
-The plugin owner `host` is admitted like any other owner. Its name confers no
-application authority or grant exemption. Qualified identity collisions remain
-refusals; application caller authority comes from the runtime context.
-
-Keep one `-sidecar` or `-guest` crate under `crates/`. Several plugins belong
-under `plugins/sidecars/<name>` and `plugins/guests/<name>`. Carrier crates use
-`publish = false`.
-
-Each operation has one portable definition in `operations/<op>/mod.rs`, with
-parallel `windows.rs` and `unix.rs` implementations declared there:
-
-```rust
-#[cfg(all(feature = "runtime", target_os = "windows"))]
-mod windows;
-#[cfg(all(feature = "runtime", unix))]
-mod unix;
-```
-
-Keep the request, response, identity and policy in that one definition. Gate
-module and re-export declarations only, never items or catalog variants. A
-plugin has one catalog, with no platform catalogs or backend traits. Its
-`Lifecycle::prepare(config, setup)` acquires resources through
-`setup.resource::<T>(value)`; `Plugin::CATALOGS` names the catalog's `CATALOG`.
-
-Rust's orphan rule prevents a runtime crate from implementing Harmos's
-`Operation` for a type declared in a separate domain crate. Keep the operation
-types and their implementations in an operations crate with a `runtime`
-feature; shared models remain in domain.
-
-Process observers require a positive declared initial cadence. The macro sets
-`Observer::INTERVAL`; an optional synchronous method overrides it once at
-activation from the producing plugin's execution resources:
-
-```rust,ignore
-#[harmos::observer(interval_ms = 1_000)]
-impl Poller {
-    // Optional: omit this method to use the declared 1,000 ms cadence.
-    fn interval(resources: &harmos::ExecutionContext) -> Result<Duration, Error> {
-        let settings = resources.resource::<Settings>()?;
-        Ok(settings.poll_interval)
-    }
-
-    async fn observe(&mut self, context: &ObserverContext<'_>) -> Result<(), Error> {
-        // Collect and publish through context.
-        Ok(())
-    }
-}
-```
-
-`interval_ms` is required, accepts a constant expression and must be at least
-1 ms, even when an override exists. Manual `Observer` implementations declare
-`const INTERVAL: Duration` and inherit the same fallback method. Streams have no
-cadence. Static observer inventory contains identity, activation, outputs and
-demand keys; it does not advertise the declared default as an effective interval.
-A zero runtime duration, resolution error or panic refuses activation before
-initialization. Initialization retries and sampling use the captured interval;
-changed resources apply on the next activation.
-
-Cadence evidence uses `harmos_sidecar::CadenceReport`:
-
-```rust,ignore
-CadenceReport {
-    observer: String,
-    activation: String,
-    interval: Duration,
-    scheduled_at: Duration,
-    started_at: Option<Duration>,
-    callback_duration: Duration,
-    skipped: bool,
-    refused: bool,
-}
-```
-
-Scheduled and actual start times are monotonic offsets from the activation's sampling
-origin, after initialization. A skipped slot has no actual start, zero callback duration
-and `refused = false`. A completed callback records its duration before reporting;
-errors and panics set `refused`. Late callbacks still run under the existing Tokio Skip
-policy; gaps between returned scheduled deadlines identify omitted slots. Skipped slots
-are reported when the next scheduled tick is observed. Cancellation of an unfinished
-callback produces no completion report. Existing refused/recovered log lines remain unchanged.
-
-`ObserverHost::report_cadence(&self, &CadenceReport)` defaults to no action. Attachments
-invoke that hook and send a `harmos.observer.cadence` push over the existing bounded
-transport. A full outgoing queue defers delivery in a task instead of suspending the
-observer; reporting adds no timer. Pending reports share the connection/runtime lifetime.
-Consumers order received evidence by activation and scheduled time. Direct/native instances
-opt in with `Instance::with_cadence_reporting`, which can call the same host hook.
-There are no additional timers or sidecar log lines.
-
-The receiver validates the report's schema-derived revision, invokes an optional
-`CadenceReporter` application resource and delivers `Notice::ObserverCadence` through
-`Supervised`'s existing notice callback. Register `CadenceReporter::for_host(host)` to
-forward remote reports to the same `ObserverHost` hook, or `CadenceReporter::new(callback)`
-for an application callback. The report is an additive push payload; other transport
-shapes and tags are unchanged. Group by observer and activation; differences between
-non-skipped actual starts give mean interval and maximum gap, while the maximum
-callback duration identifies the longest callback.
+Guests live in separate `-guest` crates and depend on `harmos` with `wasm`. Shared
+operation implementations can live in a protocol-only crate;
+shared models remain in a domain crate. Host applications depend on
+`harmos-runtime` and own state, storage adapters and placement settings.
+Plugin artifact crates declare `publish = false`.
 
 ## Reloadable gRPC Certificates
 
@@ -1410,3 +1413,18 @@ New connections authenticate with the replacement; TLS resumption is disabled on
 this path so every connection presents the current certificate. Existing TLS
 connections and RPC streams retain their negotiated state and continue untouched.
 The listener's bind address, admission, middleware and shutdown ownership do not change.
+
+## Saved Storage Queries
+
+The built-in storage catalog exposes bounded Arrow scans, ordered indexes, exact-frontier
+projections and atomic conditional object updates through generated SDK contracts. Compose the
+backend explicitly and retain/release saved cuts; see [Generated Storage Clients](storage.md#generated-storage-clients)
+for requests, grants, outcomes and the Schematic query-storage journey. The ordinary query,
+streamed write receipts, files and recovery interfaces remain available.
+
+## Access and Host Status
+
+The gRPC manager owns client access and the service manager owns host status.
+Supply a credential store, identity and optional health/diagnostics contributions;
+see [Access and Host Status](access-status.md) for composition, paging, redaction
+and ranged archive reads.

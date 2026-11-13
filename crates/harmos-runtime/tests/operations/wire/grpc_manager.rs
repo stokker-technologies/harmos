@@ -12,8 +12,6 @@
 #[path = "grpc_network.rs"]
 mod grpc_network;
 
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -35,12 +33,12 @@ use tonic::{
 };
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
+use harmos_runtime::Error;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::grpc::{Codec, DecodeSettings, EncodeSettings};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamSettings};
-use harmos_runtime::{Error, Runtime};
 
 /* === Constants === */
 
@@ -57,60 +55,120 @@ const REJECTION_DETAILS: &[u8] = &[
     18, 8, 10, 6, 97, 98, 115, 101, 110, 116,
 ];
 
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Principal(String);
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "grpc.guarded",
-    response = Reply,
-    policy = WHO_POLICY,
-    grant = |_: &GuardedDeclaration| Some(harmos_domain::plugin::Grant::of(GuardedDeclaration::ID, "reading")),
-    key = |_: &GuardedDeclaration| Some(harmos_runtime::operations::CacheKey::new(b"same-request".to_vec()).unwrap()),
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply)]
+#[derive(Clone)]
 struct GuardedDeclaration {}
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], id = "grpc.descendant",  response = Reply, policy = WHO_POLICY)]
+static GUARDED_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<GuardedDeclaration>("grpc.guarded", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const GUARDED_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<GuardedDeclaration> =
+    harmos_runtime::operations::OperationSpec::<GuardedDeclaration>::new(&GUARDED_DECLARATION_DESCRIPTION)
+        .grant(|_: &GuardedDeclaration| Some(harmos_operations::plugin::Grant::of(GUARDED_DECLARATION_OPERATION.entry().id, "reading")));
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply)]
+#[derive(Clone)]
 struct DescendantDeclaration {}
 
+static DESCENDANT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<DescendantDeclaration>("grpc.descendant", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const DESCENDANT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DescendantDeclaration> =
+    harmos_runtime::operations::OperationSpec::<DescendantDeclaration>::new(&DESCENDANT_DECLARATION_DESCRIPTION);
+
 struct ExternalAccess {
-    operations: std::sync::Weak<harmos_runtime::operations::OperationManager<Lanes>>,
+    operations: std::sync::Weak<harmos_runtime::operations::OperationManager>,
     mode: Arc<std::sync::atomic::AtomicUsize>,
 }
 struct Sessions;
-struct PendingAuthentication;
+struct PendingAuthentication(Arc<tokio::sync::Notify>);
 struct DiscoveryAccess;
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.who",  response = Reply, policy = WHO_POLICY)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply)]
+#[derive(Clone)]
 struct WhoDeclaration {}
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.download",
-    response = Reply,
-    output = Reply,
-    policy = WHO_POLICY
-)]
+static WHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<WhoDeclaration>("grpc.who", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const WHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<WhoDeclaration> =
+    harmos_runtime::operations::OperationSpec::<WhoDeclaration>::new(&WHO_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply, output = Reply)]
+#[derive(Clone)]
 struct DownloadDeclaration {}
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.upload",  response = Reply, input = Reply, policy = WHO_POLICY)]
+static DOWNLOAD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<DownloadDeclaration>("grpc.download", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const DOWNLOAD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DownloadDeclaration> =
+    harmos_runtime::operations::OperationSpec::<DownloadDeclaration>::new(&DOWNLOAD_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply, input = Reply)]
+#[derive(Clone)]
 struct UploadDeclaration {}
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.exchange",
-    response = Reply,
-    input = Reply,
-    output = Reply,
-    policy = WHO_POLICY
-)]
+static UPLOAD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<UploadDeclaration>("grpc.upload", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const UPLOAD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<UploadDeclaration> =
+    harmos_runtime::operations::OperationSpec::<UploadDeclaration>::new(&UPLOAD_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply, input = Reply, output = Reply)]
+#[derive(Clone)]
 struct ExchangeDeclaration {}
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.hold",  response = Reply, output = Reply, policy = WHO_POLICY)]
+static EXCHANGE_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ExchangeDeclaration>("grpc.exchange", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const EXCHANGE_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ExchangeDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ExchangeDeclaration>::new(&EXCHANGE_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply, output = Reply)]
+#[derive(Clone)]
 struct HoldDeclaration {}
 
-#[harmos_runtime::message]
+static HOLD_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<HoldDeclaration>("grpc.hold", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public);
+
+const HOLD_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<HoldDeclaration> =
+    harmos_runtime::operations::OperationSpec::<HoldDeclaration>::new(&HOLD_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Reply {
     actor: String,
 }
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Ask {}
 #[derive(Clone)]
 struct Endpoint {
@@ -133,8 +191,6 @@ struct Behavior {
     uploading: Option<Arc<tokio::sync::Notify>>,
     stopped: Option<Arc<tokio::sync::Semaphore>>,
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -237,7 +293,10 @@ impl Middleware for DiscoveryAccess {
 impl Authenticator for PendingAuthentication {
     type Principal = Principal;
     fn authenticate<'a>(&'a self, _: &'a Invocation) -> Authentication<'a, Principal> {
-        Box::pin(std::future::pending())
+        Box::pin(async move {
+            self.0.notify_one();
+            std::future::pending().await
+        })
     }
 }
 impl Middleware for Trace {
@@ -248,27 +307,36 @@ impl Middleware for Trace {
         self.0.lock().unwrap().push(observation.code);
     }
 }
-impl harmos_runtime::Operation for WhoDeclaration {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(false)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            Ok(Reply {
-                actor: context.context().require::<Principal>()?.0.clone(),
-            })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn who_declaration_handler(
+    _request: WhoDeclaration, ctx: harmos_runtime::operations::FunctionContext<WhoDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(false)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        Ok(Reply {
+            actor: context.context().require::<Principal>()?.0.clone(),
+        })
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn who_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        WHO_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        who_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
     fn authorize(
         &self, context: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
     ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
-        use harmos_domain::plugin::Grant;
+        use harmos_operations::plugin::Grant;
         use harmos_runtime::operations::authorization::{Authorization, Required};
         // Reentrant Read Proves The Callback Does Not Hold The Original Registry Lock.
         assert_eq!(self.operations.upgrade().unwrap().owner(provider.definition.id.as_str())?, *provider.owner);
@@ -279,18 +347,18 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "host.catalog" | "grpc.descendant" => (),
+            "harmos.v1.CatalogEntries/List" | "grpc.descendant" => (),
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
                         return Ok(Some(Authorization::Restricted(Required {
-                            contract: harmos_runtime::operations::WireDeclaration::of::<DescendantDeclaration>().contract().unwrap(),
+                            contract: DESCENDANT_DECLARATION_OPERATION.wire().contract().unwrap(),
                             grants,
                         })));
                     }
                     2 => panic!("authorizer panic fixture"),
                     3 => {
-                        let contract = harmos_runtime::operations::WireDeclaration::of::<DescendantDeclaration>().contract().unwrap();
+                        let contract = DESCENDANT_DECLARATION_OPERATION.wire().contract().unwrap();
                         return Ok(Some(Authorization::Full(contract)));
                     }
                     4 => return Ok(Some(Authorization::Full(provider.contract.clone()))),
@@ -311,35 +379,51 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
     }
 }
 
-impl harmos_runtime::operations::Operation for GuardedDeclaration {
-    type Error = Error;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let principal = context.context().get::<Principal>().map_or("anonymous", |value| value.0.as_str());
-            Ok(Reply {
-                actor: format!("{}:{principal}", if context.is_host_call() { "host" } else { "external" }),
-            })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn guarded_declaration_handler(
+    _request: GuardedDeclaration, context: harmos_runtime::operations::FunctionContext<GuardedDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        let principal = context.context().get::<Principal>().map_or("anonymous", |value| value.0.as_str());
+        Ok(Reply {
+            actor: format!("{}:{principal}", if context.is_host_call() { "host" } else { "external" }),
+        })
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
-impl harmos_runtime::operations::Operation for DescendantDeclaration {
-    type Error = Error;
 
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let response = context.operation::<GuardedDeclaration>(GuardedDeclaration {}).await?;
-            Ok(Reply { actor: response.actor.clone() })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+fn guarded_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        GUARDED_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        guarded_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+async fn descendant_declaration_handler(
+    _request: DescendantDeclaration, context: harmos_runtime::operations::FunctionContext<DescendantDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        let response = context.operation::<GuardedDeclaration>(GuardedDeclaration {}).await?;
+        Ok(Reply { actor: response.actor.clone() })
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn descendant_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        DESCENDANT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        descendant_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 impl NamedService for Endpoint {
@@ -417,84 +501,118 @@ impl Service<http::Request<Body>> for Endpoint {
     }
 }
 
-impl harmos_runtime::Operation for DownloadDeclaration {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(false)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let output = ctx.streams();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let actor = context.context().require::<Principal>()?.0.clone();
-            output.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
-            Ok(Reply { actor })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn download_declaration_handler(
+    _request: DownloadDeclaration, ctx: harmos_runtime::operations::FunctionContext<DownloadDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(false)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let output = ctx.streams();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        let actor = context.context().require::<Principal>()?.0.clone();
+        output.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
+        Ok(Reply { actor })
     }
-}
-impl harmos_runtime::Operation for UploadDeclaration {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(false)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let input = ctx.streams();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            if let Some(started) = &behavior.uploading {
-                started.notify_one();
-            }
-            while input.recv().await.is_some() {}
-            Ok(Reply {
-                actor: context.context().require::<Principal>()?.0.clone(),
-            })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-}
-impl harmos_runtime::Operation for ExchangeDeclaration {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(true)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let endpoints = ctx.streams();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let actor = context.context().require::<Principal>()?.0.clone();
-            while endpoints.0.recv().await.is_some() {
-                endpoints.1.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
-            }
-            Ok(Reply { actor })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-impl harmos_runtime::Operation for HoldDeclaration {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(false)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let output = ctx.streams();
-        let _guard = HoldingGuard(behavior);
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let actor = context.context().require::<Principal>()?.0.clone();
-            output.send_with(128, || Ok(Reply { actor })).await?;
-            std::future::pending().await
+fn download_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        DOWNLOAD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        download_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+async fn upload_declaration_handler(
+    _request: UploadDeclaration, ctx: harmos_runtime::operations::FunctionContext<UploadDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(false)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let input = ctx.streams();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        if let Some(started) = &behavior.uploading {
+            started.notify_one();
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        while input.recv().await.is_some() {}
+        Ok(Reply {
+            actor: context.context().require::<Principal>()?.0.clone(),
+        })
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-/* === Public Functions === */
+fn upload_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        UPLOAD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        upload_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+async fn exchange_declaration_handler(
+    _request: ExchangeDeclaration, ctx: harmos_runtime::operations::FunctionContext<ExchangeDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(true)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let endpoints = ctx.streams();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        let actor = context.context().require::<Principal>()?.0.clone();
+        while endpoints.0.recv().await.is_some() {
+            endpoints.1.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
+        }
+        Ok(Reply { actor })
+    }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn exchange_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        EXCHANGE_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        exchange_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+async fn hold_declaration_handler(
+    _request: HoldDeclaration, ctx: harmos_runtime::operations::FunctionContext<HoldDeclaration>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(false)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let output = ctx.streams();
+    let _guard = HoldingGuard(behavior);
+    let result: ::core::result::Result<Reply, Error> = async move {
+        let actor = context.context().require::<Principal>()?.0.clone();
+        output.send_with(128, || Ok(Reply { actor })).await?;
+        std::future::pending().await
+    }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn hold_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        HOLD_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        hold_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
 
 /* === Private Functions === */
 
@@ -580,69 +698,35 @@ async fn external_call(
     Ok(response.into_inner().actor.clone())
 }
 
-// One unary call to a built-in operation over its declared gRPC route.
-async fn builtin_call<Q, R>(channel: tonic::transport::Channel, path: &'static str, request: Q) -> Result<R, tonic::Status>
-where
-    Q: harmos_domain::Portable,
-    R: harmos_domain::Message + harmos_domain::schema::Described + harmos_runtime::MemorySize + Clone + Send + Sync + 'static,
-{
-    let mut client = tonic::client::Grpc::new(channel);
-    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-    let request = tonic::Request::new(harmos_runtime::operations::Response::new(request));
-    let (decode, encode) = limits();
-    let response: tonic::Response<harmos_runtime::operations::StreamItem<R>> = client
-        .unary(
-            request,
-            http::uri::PathAndQuery::from_static(path),
-            Codec::<harmos_runtime::grpc::Transcoded, R, harmos_runtime::operations::Response<Q>>::new(decode, encode)?,
-        )
-        .await?;
-    Ok((*response.into_inner()).clone())
-}
-
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_operations::host::{Catalog, CatalogKind, CatalogPage};
-    let mut client = tonic::client::Grpc::new(channel);
-    let mut entries = Vec::new();
-    let mut after = None;
-    // Bounded Pages Fit The Client's Decode Ceiling; The Catalog Ends With An Empty Cursor.
-    loop {
-        client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-        let page = Catalog {
-            kind: CatalogKind::Operations,
-            schema: None,
-            after: after.take(),
-            rows: None,
-            bytes: Some(2048),
-        };
-        let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(page));
-        if let Some(token) = token {
-            request.metadata_mut().insert("authorization", token.parse().unwrap());
-        }
-        let (decode, encode) = limits();
-        let response: tonic::Response<harmos_runtime::operations::StreamItem<CatalogPage>> = client
-            .unary(
-                request,
-                http::uri::PathAndQuery::from_static("/harmos.host.v1.Host/Catalog"),
-                Codec::<harmos_runtime::grpc::Transcoded, CatalogPage, harmos_runtime::operations::Response<Catalog>>::new(decode, encode)?,
-            )
-            .await?;
-        let page = response.into_inner();
-        entries.extend(serde_json::from_slice::<Vec<harmos_operations::host::DiscoveredOperation>>(&page.entries).unwrap());
-        match page.next.clone() {
-            Some(next) => after = Some(next),
-            None => return Ok(entries),
-        }
+    use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse, CatalogKind};
+    let settings = harmos_runtime::grpc::server::Settings::default();
+    let (decode, encode) = (settings.decode, settings.encode);
+    let mut client = tonic::client::Grpc::new(channel)
+        .max_decoding_message_size(decode.message_bytes.get())
+        .max_encoding_message_size(encode.message_bytes.get());
+    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
+    let catalog = CatalogEntriesListRequest {
+        kind: CatalogKind::Operations as i32,
+        schema: None,
+    };
+    let mut request = tonic::Request::new(catalog);
+    if let Some(token) = token {
+        request.metadata_mut().insert("authorization", token.parse().unwrap());
     }
+    let response: tonic::Response<CatalogEntriesListResponse> = client
+        .unary(request, http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
+        .await?;
+    Ok(response.into_inner().operations)
 }
 
 async fn failures<F: Future<Output = ()>>(
-    behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager<Lanes>) -> F,
+    behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager) -> F,
 ) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource(behavior);
     })
     .await
@@ -718,8 +802,6 @@ async fn failures<F: Future<Output = ()>>(
         Err(status) => status,
     };
     drop(attached);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     [unary, streaming, upload, exchange]
 }
-
-/* === Tests === */

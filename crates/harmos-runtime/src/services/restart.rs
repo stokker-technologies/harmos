@@ -108,25 +108,13 @@ pub(super) async fn run<A: Application>(
         cleanup.finalized.store(false, Ordering::Release);
         report.health(ServiceStatus::Starting);
         let (ready, mut readiness) = watch::channel(false);
-        let context = handles.context(
-            operations.clone(),
-            stopping.subscribe(),
-            ready,
-            #[cfg(feature = "plugin-sidecar")]
-            Arc::clone(&cleanup.lifecycle),
-        );
-        #[cfg(feature = "plugin-sidecar")]
-        let deactivation = context.deactivation.clone();
+        let context = handles.context(operations.clone(), stopping.subscribe(), ready);
+
         let attempt = crate::supervision::attempt(async { resident.run(context).await }, stopping.subscribe(), policy.stop_timeout);
         let answer = supervise(attempt, &mut readiness, &mut health, policy.restart, report, &stopping).await;
 
         // Clean Up Before Settling
-        #[cfg(feature = "plugin-sidecar")]
-        let restart = match deactivation.load(Ordering::Acquire) {
-            true => RestartPolicy::Never,
-            false => policy.restart,
-        };
-        #[cfg(not(feature = "plugin-sidecar"))]
+
         let restart = policy.restart;
         let exhausted = health.credit == 0 || matches!(restart, RestartPolicy::Never);
         conclude(&answer, exhausted, resident, cleanup, report, &stopping).await?;

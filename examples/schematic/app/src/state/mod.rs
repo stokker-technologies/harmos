@@ -31,27 +31,27 @@ use crate::error::SchematicError;
 
 /* === Structs === */
 
-#[derive(harmos::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct SymbolId(pub u64);
 
-#[derive(harmos::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct NetId(pub u64);
 
-#[derive(harmos::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
 }
 
-#[derive(harmos::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct PinRef {
     pub symbol: SymbolId,
     pub pin: u32,
 }
 
-#[derive(harmos::Described, Clone, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct NetName {
     pub base: String,
     pub member: Option<u32>,
@@ -81,7 +81,7 @@ pub struct Schematic {
 
 /* === Enums === */
 
-#[derive(harmos::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub enum Rotation {
     #[default]
     Zero,

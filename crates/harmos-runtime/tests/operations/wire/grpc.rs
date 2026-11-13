@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,14 +21,10 @@ use futures_util::StreamExt;
 use tokio::sync::Semaphore;
 
 // Local Imports
-use super::{Lanes, app::App};
+use super::app::App;
 use harmos_runtime::Runtime;
 use harmos_runtime::grpc::Event;
 use harmos_runtime::operations::RetryPolicy;
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -40,20 +32,29 @@ type Request = ProduceDeclaration;
 
 /* === Structs === */
 
-#[harmos_runtime::operation(resources = [Trace], id = "grpc.produce",
-    response = u32,
-    output = u32,
-    policy = harmos_runtime::OperationPolicy {
-        timeout: Duration::from_secs(5),
-        attempt_timeout: Duration::from_secs(5),
-        cancellation_timeout: std::time::Duration::ZERO,
-        retries: RetryPolicy::Never,
-    }
-)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = u32, output = u32)]
+#[derive(Clone)]
 struct ProduceDeclaration {
     count: u32,
     fail: bool,
 }
+
+static PRODUCE_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<ProduceDeclaration>(
+        "grpc.produce",
+        harmos_runtime::OperationPolicy {
+            timeout: Duration::from_secs(5),
+            attempt_timeout: Duration::from_secs(5),
+            cancellation_timeout: std::time::Duration::ZERO,
+            retries: RetryPolicy::Never,
+        },
+    );
+
+const PRODUCE_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ProduceDeclaration> =
+    harmos_runtime::operations::OperationSpec::<ProduceDeclaration>::new(&PRODUCE_DECLARATION_DESCRIPTION);
 
 struct Trace {
     attempting: Semaphore,
@@ -85,40 +86,45 @@ impl harmos_runtime::operations::middleware::Middleware for Observe {
     }
 }
 
-/* === Enums === */
-
-/* === Traits === */
-
 /* === Implementations === */
 
-impl harmos_runtime::Operation for ProduceDeclaration {
-    type Error = std::io::Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::Response<u32>, Self::Error> {
-        let trace = ctx.resource::<Trace>();
-        trace.constructed.fetch_add(1, Ordering::SeqCst);
-        let _guard = AttemptGuard { trace: trace.clone() };
-        let sender = ctx.streams();
-        for value in 0..self.count {
-            trace.attempting.add_permits(1);
-            sender
-                .send_with(4, || {
-                    trace.items_created.fetch_add(1, Ordering::SeqCst);
-                    Ok(value)
-                })
-                .await
-                .map_err(|_| std::io::Error::other("output abandoned"))?;
-        }
-        trace.finished.fetch_add(1, Ordering::SeqCst);
-        trace.finishing.add_permits(1);
-        if trace.fail_finish.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("finish failed"));
-        }
-        trace.release.acquire().await.unwrap().forget();
-        if self.fail {
-            return Err(std::io::Error::other("failed after items"));
-        }
-        Ok(self.count.into())
+async fn produce_declaration_handler(
+    request: ProduceDeclaration, ctx: harmos_runtime::operations::FunctionContext<ProduceDeclaration>,
+) -> Result<harmos_runtime::Response<u32>, std::io::Error> {
+    let trace = ctx.resource::<Trace>().expect("declared resource is registered");
+    trace.constructed.fetch_add(1, Ordering::SeqCst);
+    let _guard = AttemptGuard { trace: trace.clone() };
+    let sender = ctx.streams();
+    for value in 0..request.count {
+        trace.attempting.add_permits(1);
+        sender
+            .send_with(4, || {
+                trace.items_created.fetch_add(1, Ordering::SeqCst);
+                Ok(value)
+            })
+            .await
+            .map_err(|_| std::io::Error::other("output abandoned"))?;
     }
+    trace.finished.fetch_add(1, Ordering::SeqCst);
+    trace.finishing.add_permits(1);
+    if trace.fail_finish.load(Ordering::SeqCst) {
+        return Err(std::io::Error::other("finish failed"));
+    }
+    trace.release.acquire().await.unwrap().forget();
+    if request.fail {
+        return Err(std::io::Error::other("failed after items"));
+    }
+    Ok(request.count.into())
+}
+
+fn produce_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        PRODUCE_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Trace>()] },
+        produce_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 impl Drop for AttemptGuard {
     fn drop(&mut self) {
@@ -126,8 +132,6 @@ impl Drop for AttemptGuard {
         self.trace.stopped.add_permits(1);
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -143,8 +147,10 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
         finished: AtomicUsize::new(0),
         dropped: AtomicUsize::new(0),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<Trace>(trace.clone()).operations::<crate::operations::Single<ProduceDeclaration>>(Lanes::Serial);
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        setup
+            .resource::<Trace>(trace.clone())
+            .operation(produce_declaration_operation().expect("representable operation"), crate::support::SERIAL);
     })
     .await
     .unwrap();
@@ -198,7 +204,7 @@ async fn items_precede_settled() {
     assert!(stream.next().await.is_none());
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -216,7 +222,7 @@ async fn output_releases_backpressure() {
     assert!(matches!(stream.next().await.unwrap().unwrap(), Event::Completion(value) if *value == 3));
     assert!(stream.next().await.is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -228,7 +234,7 @@ async fn abandonment_drops_attempt() {
     let stream = harmos_runtime::grpc::stream(instance, receiver);
     trace.attempting.acquire().await.unwrap().forget();
     drop(stream);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -246,7 +252,7 @@ async fn items_remain_visible() {
     assert_eq!(item(stream.next().await.unwrap()), 1);
     assert!(stream.next().await.unwrap().is_err());
     assert!(stream.next().await.is_none());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -274,7 +280,7 @@ async fn failure_not_success() {
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     trace.fail_finish.store(false, Ordering::SeqCst);
     trace.release.add_permits(1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.finished.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
@@ -297,7 +303,7 @@ async fn deadline_settles_draining() {
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -326,7 +332,7 @@ async fn held_item_backpressures() {
     trace.release.add_permits(1);
     assert!(matches!(stream.next().await.unwrap().unwrap(), Event::Completion(value) if *value == 2));
     assert!(stream.next().await.is_none());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -347,7 +353,7 @@ async fn abandonment_cancels_operation() {
     assert_eq!(trace.items_created.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     trace.release.add_permits(1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(runtime.operations.status(id).is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
     assert_eq!(*held, 0);

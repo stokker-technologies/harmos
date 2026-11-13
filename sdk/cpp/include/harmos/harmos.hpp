@@ -7,19 +7,19 @@
  * ***
  */
 
-
 #pragma once
 
 /* === Imports === */
 
 // Standard Library Imports
-#include <chrono>
+#include <any>
 #include <cstdint>
+#include <functional>
+#include <future>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <string_view>
-#include <tuple>
 #include <typeindex>
 #include <type_traits>
 #include <unordered_map>
@@ -27,266 +27,288 @@
 #include <vector>
 
 // Third Party Imports
-#include <nlohmann/json.hpp>
-#include <nanoarrow/nanoarrow.hpp>
+#include <google/protobuf/message.h>
 
 // Local Imports
-#include <harmos.h>
-
+#include "harmos/v1/types.pb.h"
+#include "harmos/transfer.hpp"
+#include "harmos/context/v1/time.pb.h"
 
 /* === Macros === */
-
-#define HARMOS_MEMBER(T, name) ::harmos::field(#name, &T::name)
-#define HARMOS_FIELDS_1(T, a) HARMOS_MEMBER(T, a)
-#define HARMOS_FIELDS_2(T, a, b) HARMOS_FIELDS_1(T, a), HARMOS_MEMBER(T, b)
-#define HARMOS_FIELDS_3(T, a, b, c) HARMOS_FIELDS_2(T, a, b), HARMOS_MEMBER(T, c)
-#define HARMOS_FIELDS_4(T, a, b, c, d) HARMOS_FIELDS_3(T, a, b, c), HARMOS_MEMBER(T, d)
-#define HARMOS_FIELDS_5(T, a, b, c, d, e) HARMOS_FIELDS_4(T, a, b, c, d), HARMOS_MEMBER(T, e)
-#define HARMOS_FIELDS_6(T, a, b, c, d, e, f) HARMOS_FIELDS_5(T, a, b, c, d, e), HARMOS_MEMBER(T, f)
-#define HARMOS_FIELDS_7(T, a, b, c, d, e, f, g) HARMOS_FIELDS_6(T, a, b, c, d, e, f), HARMOS_MEMBER(T, g)
-#define HARMOS_FIELDS_8(T, a, b, c, d, e, f, g, h) HARMOS_FIELDS_7(T, a, b, c, d, e, f, g), HARMOS_MEMBER(T, h)
-#define HARMOS_SELECT(_1,_2,_3,_4,_5,_6,_7,_8,NAME,...) NAME
-#define HARMOS_FIELDS(T, ...) \
-    template<> struct harmos::Fields<T> { \
-        static constexpr auto members = std::tuple{HARMOS_SELECT(__VA_ARGS__, HARMOS_FIELDS_8, HARMOS_FIELDS_7, HARMOS_FIELDS_6, \
-            HARMOS_FIELDS_5, HARMOS_FIELDS_4, HARMOS_FIELDS_3, HARMOS_FIELDS_2, HARMOS_FIELDS_1)(T, __VA_ARGS__)}; \
-    };
-
 
 /* === Constants === */
 
 /* === Types === */
 
 namespace harmos {
-
-template<class T> struct Fields;
-
-template<class T, class M> struct Field {
-    const char* name;
-    M T::* member;
-};
-
-template<class T, class M>
-constexpr auto field(const char* name, M T::* member) { return Field<T, M>{name, member}; }
-
-struct Policy {
-    std::chrono::milliseconds timeout;
-    std::chrono::milliseconds attempt_timeout;
-    std::chrono::milliseconds cancellation_timeout{2000};
-};
-
-struct Stream {
-    const char* name;
-    std::size_t window;
-};
-
-struct Batch {
-    nanoarrow::UniqueSchema schema;
-    nanoarrow::UniqueArray array;
-};
-
-class Cancelled : public std::runtime_error {
-public:
-    Cancelled() : std::runtime_error("operation cancelled") {}
-};
+namespace wire = v1;
+class Context;
+template<class Q, class R> class Operation;
+template<class R> class Call;
+template<class R> class Watching;
+template<class R> class Stream;
+template<class R> class Observer;
 
 namespace detail {
-using Json = nlohmann::json;
-
-template<class T> concept Reflected = requires { Fields<T>::members; };
-template<class T> struct Optional : std::false_type {};
-template<class T> struct Optional<std::optional<T>> : std::true_type { using Value = T; };
-template<class T> struct Repeated : std::false_type {};
-template<class T, class A> struct Repeated<std::vector<T, A>> : std::true_type { using Value = T; };
-template<class T> inline constexpr bool bytes = std::is_same_v<T, std::vector<std::uint8_t>>;
-
-template<class T> Json encode(const T& value) {
-    if constexpr (Reflected<T>) {
-        auto result = Json::object();
-        std::apply([&](auto... fields) { ((result[fields.name] = encode(value.*fields.member)), ...); }, Fields<T>::members);
-        return result;
-    } else if constexpr (Optional<T>::value) {
-        return value ? encode(*value) : Json(nullptr);
-    } else if constexpr (Repeated<T>::value) {
-        auto result = Json::array();
-        for (const auto& item : value) result.push_back(encode(item));
-        return result;
-    } else { return Json(value); }
-}
-
-template<class T> T decode(const Json& value) {
-    if constexpr (Reflected<T>) {
-        T result{};
-        std::apply([&](auto... fields) {
-            ((result.*fields.member = decode<std::remove_cvref_t<decltype(result.*fields.member)>>(value.at(fields.name))), ...);
-        }, Fields<T>::members);
-        return result;
-    } else if constexpr (Optional<T>::value) {
-        return value.is_null() ? T{} : T{decode<typename Optional<T>::Value>(value)};
-    } else if constexpr (Repeated<T>::value) {
-        T result;
-        for (const auto& item : value) result.push_back(decode<typename Repeated<T>::Value>(item));
-        return result;
-    } else { return value.template get<T>(); }
-}
-
-class Schema {
-    Json definitions = Json::array({Json::array()});
-    std::unordered_map<std::type_index, std::size_t> registered;
-
-    template<class T> Json kind() {
-        if constexpr (std::is_same_v<T, bool>) return {{"type", "bool"}};
-        else if constexpr (std::is_same_v<T, std::int32_t>) return {{"type", "i32"}};
-        else if constexpr (std::is_same_v<T, std::int64_t>) return {{"type", "i64"}};
-        else if constexpr (std::is_same_v<T, std::uint32_t>) return {{"type", "u32"}};
-        else if constexpr (std::is_same_v<T, std::uint64_t>) return {{"type", "u64"}};
-        else if constexpr (std::is_same_v<T, float>) return {{"type", "f32"}};
-        else if constexpr (std::is_same_v<T, double>) return {{"type", "f64"}};
-        else if constexpr (std::is_same_v<T, std::string>) return {{"type", "string"}};
-        else if constexpr (bytes<T>) return {{"type", "bytes"}};
-        else { static_assert(Reflected<T>, "declare this type with HARMOS_FIELDS"); return {{"type", "message"}, {"definition", definition<T>()}}; }
-    }
-
-    template<class T, class M> Json member(Field<T, M> field) {
-        const char* cardinality = "required";
-        Json shape;
-        if constexpr (Optional<M>::value) { cardinality = "optional"; shape = kind<typename Optional<M>::Value>(); }
-        else if constexpr (Repeated<M>::value && !bytes<M>) { cardinality = "repeated"; shape = kind<typename Repeated<M>::Value>(); }
-        else shape = kind<M>();
-        const auto tag = hrm_schema_field_tag({reinterpret_cast<const std::uint8_t*>(field.name), std::char_traits<char>::length(field.name)});
-        if (tag == 0) throw std::invalid_argument("invalid field name");
-        return {{"name", field.name}, {"tag", tag}, {"kind", std::move(shape)}, {"cardinality", cardinality}};
-    }
-
-    template<class T> std::size_t definition() {
-        auto found = registered.find(typeid(T));
-        if (found != registered.end()) return found->second;
-        const auto index = definitions.size();
-        registered.emplace(typeid(T), index);
-        definitions.push_back(Json::array());
-        auto fields = Json::array();
-        std::apply([&](auto... entries) { (fields.push_back(member(entries)), ...); }, Fields<T>::members);
-        definitions[index] = std::move(fields);
-        return index;
-    }
-public:
-    template<class O> Json contract() {
-        const auto request = definition<O>();
-        const auto response = definition<typename O::Response>();
-        definitions[0] = Json::array({
-            {{"name", "request"}, {"tag", 1}, {"kind", {{"type", "message"}, {"definition", request}}}, {"cardinality", "required"}},
-            {{"name", "response"}, {"tag", 2}, {"kind", {{"type", "message"}, {"definition", response}}}, {"cardinality", "required"}},
-        });
-        return {{"root", 0}, {"definitions", std::move(definitions)}};
-    }
+std::string encode(const google::protobuf::Message& message);
+std::string sha256(const std::string& bytes);
+google::protobuf::FileDescriptorSet types(const google::protobuf::Descriptor* descriptor);
+void merge(google::protobuf::FileDescriptorSet& target, const google::protobuf::FileDescriptorSet& source);
+struct OperationDefinition {
+    wire::OperationContract contract;
+    bool watch = false;
+    google::protobuf::FileDescriptorSet types;
+    std::function<std::string(Context&, const std::string&)> handler;
 };
-
-struct Error {
-    HrmError value{};
-    ~Error() { hrm_error_free(&value); }
-    void check(int status) const {
-        if (status != 0) throw std::runtime_error(std::string(reinterpret_cast<const char*>(value.message.data), value.message.len));
-    }
+struct StreamDefinition {
+    wire::StreamDeclaration declaration;
+    google::protobuf::FileDescriptorSet types;
+    std::function<std::string(Context&)> observer;
+    std::function<void(Context&, std::function<void(std::string, std::optional<google::protobuf::Timestamp>)>)> producer;
 };
-struct Buffer {
-    HrmBuffer value{};
-    ~Buffer() { hrm_buffer_free(&value); }
+struct Invocation;
+struct Watch {
+    virtual ~Watch() = default;
+    virtual std::optional<std::string> next() = 0;
+    virtual void cancel() = 0;
 };
-inline HrmSlice slice(std::string_view text) { return {reinterpret_cast<const std::uint8_t*>(text.data()), text.size()}; }
-inline void callback_error(HrmError* error, std::string_view message) noexcept {
-    HrmError allocation{};
-    hrm_buffer_copy(slice(message), &error->message, &allocation);
-    error->code = 1;
-    hrm_error_free(&allocation);
 }
-} // namespace detail
-
 
 /* === Classes === */
 
-class Context {
-    HrmContext* context;
+class Failure : public std::runtime_error {
 public:
-    explicit Context(HrmContext* context) : context(context) {}
+    wire::Failure value;
+    explicit Failure(wire::Failure failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
+};
 
-    void check_cancelled() const {
-        if (hrm_context_cancelled(context) != 0) throw Cancelled{};
-    }
+class TransportError : public std::runtime_error {
+public:
+    int code;
+    TransportError(int status, const std::string& message) : std::runtime_error(message), code(status) {}
+};
 
-    void wait_cancelled() const {
-        detail::Error error;
-        error.check(hrm_context_wait_cancelled(context, &error.value));
-        check_cancelled();
-    }
+class Context {
+public:
+    std::string invocation;
+    const std::string& scope() const;
+    std::uint32_t attempt = 0;
+    std::uint64_t sequence = 0;
 
-    template<class O> typename O::Response operation(const O& request) {
-        const auto bytes = detail::encode(request).dump();
-        detail::Buffer response;
-        detail::Error error;
-        error.check(hrm_context_operation(context, O::id, detail::slice(bytes), &response.value, &error.value));
-        const auto value = detail::Json::parse(response.value.data, response.value.data + response.value.len);
-        return detail::decode<typename O::Response>(value);
-    }
+    explicit Context(std::shared_ptr<detail::Invocation> state);
+    template<class Q, class R> Call<R> call(const Operation<Q, R>& operation, const Q& request,
+                                           std::optional<wire::OperationPolicy> policy = {});
+    template<class Q, class R> Watching<R> watch(const Operation<Q, R>& operation, const Q& request, std::size_t max_item_bytes);
+    void sleep(const google::protobuf::Duration& duration);
+    google::protobuf::Timestamp now();
+    std::string cancelled();
+    template<class T> void set(T value) { resources_[typeid(T)] = std::move(value); }
+    template<class T> T& get() { return std::any_cast<T&>(resources_.at(typeid(T))); }
 
-    void publish(const char* stream, Batch& batch) {
-        detail::Error error;
-        error.check(hrm_context_publish_arrow(context, stream, batch.array.get(), batch.schema.get(), &error.value));
-    }
+private:
+    std::string scope_;
+    std::shared_ptr<detail::Invocation> state_;
+    std::unordered_map<std::type_index, std::any> resources_;
+    std::shared_future<std::string> send(wire::ChildRequest request);
+    std::shared_ptr<detail::Watch> open_watch(wire::ChildRequest request);
+    std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition& operation, const std::string& payload, std::optional<wire::OperationPolicy> policy);
 };
 
 class Plugin {
-    HrmPlugin* plugin;
-
-    template<class O> static int run(void*, HrmContext* native, HrmSlice input, HrmBuffer* output, HrmError* error) noexcept {
-        try {
-            auto request = detail::decode<O>(detail::Json::parse(input.data, input.data + input.len));
-            Context context{native};
-            const auto result = request.run(context);
-            const auto bytes = detail::encode(result).dump();
-            return hrm_buffer_copy(detail::slice(bytes), output, error);
-        } catch (const std::exception& failure) { detail::callback_error(error, failure.what()); }
-        catch (...) { detail::callback_error(error, "unknown C++ exception"); }
-        return 1;
-    }
 public:
-    explicit Plugin(const char* id, std::size_t capacity = 16) {
-        detail::Error error;
-        plugin = hrm_plugin_new(id, capacity, &error.value);
-        error.check(plugin ? 0 : 1);
+    Plugin(std::string id, std::string version);
+    template<class Q, class R> Plugin& operation(const Operation<Q, R>& operation) {
+        if (operation.definition.watch) throw std::invalid_argument("Register " + operation.definition.contract.id() + ": Plugin Operations Are Unary");
+        operations_.push_back(operation.definition);
+        return *this;
     }
-    ~Plugin() { hrm_plugin_free(plugin); }
-    Plugin(const Plugin&) = delete;
-    Plugin& operator=(const Plugin&) = delete;
-    Plugin(Plugin&& other) noexcept : plugin(std::exchange(other.plugin, nullptr)) {}
-    Plugin& operator=(Plugin&&) = delete;
+    template<class Q, class R> Plugin& requires_operation(const Operation<Q, R>& operation) {
+        if (operation.definition.contract.visibility() == wire::VISIBILITY_PRIVATE)
+            throw std::invalid_argument("Require " + operation.definition.contract.id() + ": Private Calls Are Local");
+        wire::Requirement requirement;
+        requirement.set_id(operation.definition.contract.id());
+        requirement.set_fingerprint(operation.definition.contract.fingerprint());
+        requirements_.emplace_back(std::move(requirement), operation.definition.types);
+        return *this;
+    }
+    template<class R> Plugin& stream(const Stream<R>& stream);
+    template<class R> Plugin& observer(const Observer<R>& observer);
+    template<class T> Plugin& message() {
+        detail::merge(messages_, detail::types(T::descriptor()));
+        return *this;
+    }
+    template<class T> Plugin& section(const T& value) {
+        wire::Section section;
+        section.set_type(T::descriptor()->full_name());
+        section.set_payload(detail::encode(value));
+        sections_.emplace_back(std::move(section), detail::types(T::descriptor()));
+        return *this;
+    }
+    Plugin& transfer(const ::harmos::storage::v1::StorageTransferSettings& settings) { transfer_ = settings; return *this; }
+    Plugin& on_stop(std::function<void()> cleanup);
+    wire::Catalog catalog() const;
+    // An Explicit Address Selects Remote Lifecycle; Empty Uses HARMOS_ADDRESS or Loopback.
+    void serve(std::string address = {}) const;
 
-    template<class O> void operation() {
-        const auto schema = detail::Schema{}.contract<O>().dump();
-        const auto policy = O::policy;
-        if (policy.timeout.count() <= 0 || policy.attempt_timeout.count() <= 0 || policy.cancellation_timeout.count() < 0)
-            throw std::invalid_argument("invalid operation policy");
-        HrmPolicy native{static_cast<std::uint64_t>(policy.timeout.count()), static_cast<std::uint64_t>(policy.attempt_timeout.count()),
-            static_cast<std::uint64_t>(policy.cancellation_timeout.count())};
-        detail::Error error;
-        error.check(hrm_plugin_operation(plugin, O::id, detail::slice(schema), native, &run<O>, nullptr, &error.value));
-        if constexpr (requires { O::streams; }) {
-            for (const auto& stream : O::streams) {
-                detail::Error error;
-                error.check(hrm_plugin_stream(plugin, stream.name, stream.window, &error.value));
-            }
-        }
-    }
-
-    int serve() {
-        detail::Error error;
-        error.check(hrm_plugin_serve(plugin, &error.value));
-        return 0;
-    }
+private:
+    google::protobuf::FileDescriptorSet messages_;
+    ::harmos::storage::v1::StorageTransferSettings transfer_;
+    std::string id_;
+    std::string version_;
+    std::vector<detail::OperationDefinition> operations_;
+    std::vector<detail::StreamDefinition> streams_;
+    std::vector<std::pair<wire::Requirement, google::protobuf::FileDescriptorSet>> requirements_;
+    std::vector<std::pair<wire::Section, google::protobuf::FileDescriptorSet>> sections_;
+    std::vector<std::function<void()>> cleanup_;
 };
-
-} // namespace harmos
-
 
 /* === Templates === */
 
+template<class T> T decode(const std::string& bytes) {
+    static_assert(std::is_base_of_v<google::protobuf::Message, T>);
+    T value;
+    if (!value.ParseFromString(bytes)) throw TransportError(3, "Invalid Protobuf Payload");
+    return value;
+}
+
+template<class R> class Call {
+public:
+    explicit Call(std::shared_future<std::string> result) : result_(std::move(result)) {}
+    R get() const { return decode<R>(result_.get()); }
+private:
+    std::shared_future<std::string> result_;
+};
+
+template<class Q, class R> class Operation {
+private:
+    friend class Plugin;
+    friend class Context;
+    detail::OperationDefinition definition;
+public:
+    explicit Operation(std::string id, wire::Visibility visibility, std::function<R(Context&, Q)> handler = {}) {
+        auto request = detail::types(Q::descriptor());
+        auto response = detail::types(R::descriptor());
+        auto& contract = definition.contract;
+        contract.set_id(id);
+        contract.set_request(Q::descriptor()->full_name());
+        contract.set_response(R::descriptor()->full_name());
+        contract.set_visibility(visibility);
+        contract.set_fingerprint(detail::sha256(id + std::string(1, '\0') + detail::encode(request) + detail::encode(response)));
+        definition.types = request;
+        detail::merge(definition.types, response);
+        if (handler) definition.handler = [handler](Context& ctx, const std::string& bytes) {
+            return detail::encode(handler(ctx, decode<Q>(bytes)));
+        };
+    }
+    Operation& visibility(wire::Visibility value) { definition.contract.set_visibility(value); return *this; }
+    Operation& watch() {
+        if (definition.watch) return *this;
+        definition.watch = true;
+        const auto response = detail::encode(detail::types(R::descriptor()));
+        const auto item = detail::sha256(definition.contract.id() + std::string(1, '\0') + response + response);
+        definition.contract.set_fingerprint(detail::sha256(std::string("harmos.protobuf.stream.v1\0", 26) + definition.contract.fingerprint() + std::string("\0\1", 2) + item));
+        return *this;
+    }
+    Operation& replay_safe() { definition.contract.set_replay_safe(true); return *this; }
+    Operation& policy(wire::OperationPolicy value) { *definition.contract.mutable_policy() = std::move(value); return *this; }
+    Operation& description(std::string value) { definition.contract.set_description(std::move(value)); return *this; }
+};
+
+template<class R> class Watching {
+public:
+    explicit Watching(std::shared_ptr<detail::Watch> state) : state_(std::move(state)) {}
+    Watching(const Watching&) = delete;
+    Watching& operator=(const Watching&) = delete;
+    Watching(Watching&&) = default;
+    ~Watching() { if (state_) state_->cancel(); }
+    std::optional<R> next() { auto value = state_->next(); return value ? std::optional<R>(decode<R>(*value)) : std::nullopt; }
+private:
+    std::shared_ptr<detail::Watch> state_;
+};
+
+template<class Q, class R> Watching<R> Context::watch(const Operation<Q, R>& operation, const Q& request, std::size_t max_item_bytes) {
+    if (!operation.definition.watch) throw std::invalid_argument("Watch " + operation.definition.contract.id() + ": Server-Streaming Contract Required");
+    wire::ChildRequest child;
+    child.set_operation(operation.definition.contract.id());
+    child.set_fingerprint(operation.definition.contract.fingerprint());
+    child.set_payload(detail::encode(request));
+    child.set_watch(true);
+    child.set_max_response_bytes(max_item_bytes);
+    return Watching<R>(open_watch(std::move(child)));
+}
+
+template<class Q, class R> Call<R> Context::call(const Operation<Q, R>& operation, const Q& request,
+                                               std::optional<wire::OperationPolicy> policy) {
+    if (operation.definition.watch) throw std::invalid_argument("Call " + operation.definition.contract.id() + ": Use Watch for a Streaming Contract");
+    const auto payload = detail::encode(request);
+    if (auto result = local(operation.definition, payload, policy)) return Call<R>(*result);
+    wire::ChildRequest child;
+    child.set_operation(operation.definition.contract.id());
+    child.set_fingerprint(operation.definition.contract.fingerprint());
+    child.set_payload(detail::encode(request));
+    if (policy) *child.mutable_policy() = std::move(*policy);
+    return Call<R>(send(std::move(child)));
+}
+
+template<class R> class Publisher {
+public:
+    using Send = std::function<void(std::string, std::optional<google::protobuf::Timestamp>)>;
+    explicit Publisher(Send send) : send_(std::move(send)) {}
+    void publish(const R& row, std::optional<google::protobuf::Timestamp> at = {}) const { send_(detail::encode(row), std::move(at)); }
+private:
+    Send send_;
+};
+
+template<class R> class Stream {
+private:
+    friend class Plugin;
+    friend class Observer<R>;
+    detail::StreamDefinition definition;
+public:
+    explicit Stream(std::string id) {
+        definition.declaration.set_id(std::move(id));
+        definition.declaration.set_row(R::descriptor()->full_name());
+        definition.types = detail::types(R::descriptor());
+    }
+    Stream& publish_on(std::function<void(Context&, Publisher<R>)> producer) {
+        definition.producer = [producer](Context& ctx, typename Publisher<R>::Send send) { producer(ctx, Publisher<R>(std::move(send))); };
+        return *this;
+    }
+    Stream& description(std::string value) { definition.declaration.set_description(std::move(value)); return *this; }
+};
+
+template<class R> class Observer {
+private:
+    friend class Plugin;
+    detail::StreamDefinition definition;
+public:
+    Observer(const Stream<R>& stream, std::function<R(Context&)> handler) : definition(stream.definition) {
+        definition.observer = [handler](Context& ctx) { return detail::encode(handler(ctx)); };
+    }
+    Observer& every(const google::protobuf::Duration& interval) { *definition.declaration.mutable_interval() = interval; return *this; }
+    Observer& interval_setting(std::string id) { definition.declaration.set_interval_setting(std::move(id)); return *this; }
+};
+
+template<class R> Plugin& Plugin::stream(const Stream<R>& stream) { streams_.push_back(stream.definition); return *this; }
+template<class R> Plugin& Plugin::observer(const Observer<R>& observer) {
+    for (auto& stream : streams_) {
+        if (stream.declaration.id() != observer.definition.declaration.id()) continue;
+        if (stream.observer || stream.producer || observer.definition.producer) throw std::invalid_argument("Duplicate Stream Producer");
+        const bool same_row = stream.declaration.row() == observer.definition.declaration.row();
+        const bool same_types = detail::encode(stream.types) == detail::encode(observer.definition.types);
+        if (!same_row || !same_types) throw std::invalid_argument("Observer Row Differs from Its Stream");
+        stream.observer = observer.definition.observer;
+        if (observer.definition.declaration.has_interval()) {
+            *stream.declaration.mutable_interval() = observer.definition.declaration.interval();
+        }
+        stream.declaration.set_interval_setting(observer.definition.declaration.interval_setting());
+        return *this;
+    }
+    throw std::invalid_argument("Observer Requires a Declared Stream");
+}
+
 /* === Public Declarations === */
+
+inline const Operation<context::v1::TimeSleepRequest, context::v1::TimeSleepResponse> SLEEP("harmos.context.v1.Time/Sleep", wire::VISIBILITY_PUBLIC);
+inline const Operation<context::v1::TimeGetRequest, context::v1::TimeGetResponse> GET_TIME("harmos.context.v1.Time/Get", wire::VISIBILITY_PUBLIC);
+}

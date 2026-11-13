@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,10 +19,7 @@ use tracing::{Instrument, Subscriber, instrument::WithSubscriber};
 use tracing_subscriber::{Layer, layer::Context as TraceContext, prelude::*, registry::LookupSpan};
 
 // Local Imports
-use super::{
-    Lanes,
-    support::{self, Bank, Fact, Noted},
-};
+use super::support::{self, Bank, Fact, Noted};
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Runtime, state::CausationId, state::Position};
 
@@ -38,10 +31,6 @@ const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
     cancellation_timeout: std::time::Duration::ZERO,
     retries: RetryPolicy::Never,
 };
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -61,29 +50,50 @@ struct TraceFields(BTreeMap<String, String>);
 
 /* === Enums === */
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = (), id = "causation.note",  policy = POLICY)]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct NoteContractDeclaration {
     label: String,
 }
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = (), id = "causation.descend",  policy = POLICY)]
+static NOTE_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<NoteContractDeclaration>("causation.note", POLICY);
+
+const NOTE_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<NoteContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<NoteContractDeclaration>::new(&NOTE_CONTRACT_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct DescendContractDeclaration {
     label: String,
 }
 
-#[harmos_runtime::operation(resources = [harmos_runtime::operations::HostContext], response = (), id = "causation.family",  policy = POLICY)]
+static DESCEND_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<DescendContractDeclaration>("causation.descend", POLICY);
+
+const DESCEND_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<DescendContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<DescendContractDeclaration>::new(&DESCEND_CONTRACT_DECLARATION_DESCRIPTION);
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = ())]
+#[derive(Clone)]
 struct FamilyContractDeclaration {
     cause: u64,
 }
 
-#[harmos_runtime::catalog]
-enum Operations {
-    NoteContractDeclaration(NoteContractDeclaration),
-    DescendContractDeclaration(DescendContractDeclaration),
-    FamilyContractDeclaration(FamilyContractDeclaration),
-}
+static FAMILY_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<FamilyContractDeclaration>("causation.family", POLICY);
 
-/* === Traits === */
+const FAMILY_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<FamilyContractDeclaration> =
+    harmos_runtime::operations::OperationSpec::<FamilyContractDeclaration>::new(&FAMILY_CONTRACT_DECLARATION_DESCRIPTION);
 
 /* === Implementations === */
 
@@ -133,68 +143,109 @@ where
     }
 }
 
-impl harmos_runtime::operations::Operation for NoteContractDeclaration {
-    type Error = Error;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            context.scope().records::<Bank>().publish(Noted(self.label.clone())).await?;
-            Ok(())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn note_contract_declaration_handler(
+    request: NoteContractDeclaration, context: harmos_runtime::operations::FunctionContext<NoteContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<()>, Error> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<(), Error> = async move {
+        context.scope().records::<Bank>().publish(Noted(request.label.clone())).await?;
+        Ok(())
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-impl harmos_runtime::operations::Operation for DescendContractDeclaration {
-    type Error = Error;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            context.scope().records::<Bank>().publish(Noted(self.label.clone())).await?;
-            context.submit::<NoteContractDeclaration>(NoteContractDeclaration { label: format!("{}-child", self.label) })?.await?;
-            Ok(())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
+fn note_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        NOTE_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        note_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
-impl harmos_runtime::operations::Operation for FamilyContractDeclaration {
-    type Error = Error;
-
-    async fn run(self, context: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
-        let host = context.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            context.scope().records::<Bank>().publish(Noted("parent".to_owned())).await?;
-            context.submit::<DescendContractDeclaration>(DescendContractDeclaration { label: "inherited".to_owned() })?.await?;
-            context
-                .submit_caused::<DescendContractDeclaration>(
-                    DescendContractDeclaration { label: "rerooted".to_owned() },
-                    Position(self.cause),
-                )?
-                .await?;
-            Ok(())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+async fn descend_contract_declaration_handler(
+    request: DescendContractDeclaration, context: harmos_runtime::operations::FunctionContext<DescendContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<()>, Error> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<(), Error> = async move {
+        context.scope().records::<Bank>().publish(Noted(request.label.clone())).await?;
+        context
+            .submit::<NoteContractDeclaration>(NoteContractDeclaration {
+                label: format!("{}-child", request.label),
+            })?
+            .await?;
+        Ok(())
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-/* === Public Functions === */
+fn descend_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        DESCEND_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        descend_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+async fn family_contract_declaration_handler(
+    request: FamilyContractDeclaration, context: harmos_runtime::operations::FunctionContext<FamilyContractDeclaration>,
+) -> Result<harmos_runtime::operations::Response<()>, Error> {
+    let host = context.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let result: ::core::result::Result<(), Error> = async move {
+        context.scope().records::<Bank>().publish(Noted("parent".to_owned())).await?;
+        context.submit::<DescendContractDeclaration>(DescendContractDeclaration { label: "inherited".to_owned() })?.await?;
+        context
+            .submit_caused::<DescendContractDeclaration>(
+                DescendContractDeclaration { label: "rerooted".to_owned() },
+                Position(request.cause),
+            )?
+            .await?;
+        Ok(())
+    }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn family_contract_declaration_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        FAMILY_CONTRACT_DECLARATION_OPERATION,
+        const { &[harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        family_contract_declaration_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
 
 /* === Private Functions === */
 
 async fn runtime() -> Runtime<Bank> {
     let runtime = super::runtime_with(|_| {}).await;
-    runtime.operations.register::<super::Single<FamilyContractDeclaration>>(Lanes::Serial).await.unwrap();
-    runtime.operations.register::<super::Single<DescendContractDeclaration>>(Lanes::Concurrent).await.unwrap();
-    runtime.operations.register::<super::Single<NoteContractDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(family_contract_declaration_operation().expect("representable operation"), crate::support::SERIAL)
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(descend_contract_declaration_operation().expect("representable operation"), crate::support::CONCURRENT)
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(
+            note_contract_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
     runtime
 }
 
@@ -219,7 +270,7 @@ async fn scoped_trace_handoffs() {
     }
     .with_subscriber(subscriber)
     .await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let records = capture.0.lock().unwrap();
     let root = records.iter().find(|record| record.name == "request").unwrap().id;
@@ -261,7 +312,7 @@ async fn filtered_trace_behaves() {
     .await;
     let records: Vec<_> = runtime.state.query::<Fact>(Position::ORIGIN).await.collect();
     assert_eq!(records.len(), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(capture.0.lock().unwrap().is_empty());
 }
 
@@ -321,7 +372,7 @@ async fn children_inherit_cause() {
     assert_eq!(noted.get("inherited-child"), Some(&root), "inheritance chains: a default-lane grandchild is in the same family");
     assert_eq!(noted.get("rerooted"), Some(&other), "a child that named its own cause re-roots itself");
     assert_eq!(noted.get("rerooted-child"), Some(&other), "and everything beneath it inherits the cause it re-rooted onto");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -350,5 +401,5 @@ async fn caused_submit_records() {
         "the recorded fact answers the position the submission named"
     );
     assert_eq!(noted[0].metadata.correlation.0, receipt.position);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }

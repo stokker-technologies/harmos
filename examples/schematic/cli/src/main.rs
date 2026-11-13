@@ -73,7 +73,7 @@ async fn main() -> ExitCode {
     let mut status = match dispatch(args).instrument(story).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("schematic: {}", harmos::failure::Report(&error));
+            eprintln!("schematic: {}", harmos_runtime::failure::Report(&error));
             ExitCode::FAILURE
         }
     };
@@ -116,7 +116,10 @@ fn capture() -> std::io::Result<Option<FlushGuard>> {
 
 fn instrumented(metadata: &tracing::Metadata<'_>) -> bool {
     if !metadata.is_span() {
-        return matches!(metadata.target(), "harmos::operations" | "harmos::state" | "harmos::carrier" | "harmos::grpc");
+        return matches!(
+            metadata.target(),
+            "harmos_runtime::operations" | "harmos_runtime::state" | "harmos_runtime::carrier" | "harmos_runtime::grpc"
+        );
     }
     let prefixes = ["operations.", "state.", "storage.", "streams.", "carrier.", "grpc.", "guest.", "sidecar.", "system.story"];
     prefixes.iter().any(|prefix| metadata.name().starts_with(prefix))

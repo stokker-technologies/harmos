@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1.status;
+option csharp_namespace = "Harmos.V1.StatusResources";
+import "harmos/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+message Event { uint64 sequence = 1; google.protobuf.Timestamp observed_at = 2; string level = 3; string target = 4; string message = 5; map<string,string> fields = 6; }
+message LogsListRequest { harmos.v1.Position at = 1; harmos.v1.PageRequest page = 2; }
+message LogsListResponse { repeated Event events = 1; harmos.v1.Position resolved_at = 2; string next_page_token = 3; }
+message LogsWatchRequest { harmos.v1.Position at = 1; uint64 max_bytes = 2; uint32 max_events = 3; }
+message LogsWatchResponse { repeated Event events = 1; harmos.v1.Position resolved_at = 2; }
+service Logs {
+ rpc List(LogsListRequest) returns (LogsListResponse);
+ rpc Watch(LogsWatchRequest) returns (stream LogsWatchResponse);
+}

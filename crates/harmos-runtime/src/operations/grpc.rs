@@ -23,7 +23,7 @@ use super::caller::Source;
 use super::manager::{Entry, Submission};
 use super::{CallContext, Manager, Running, StreamItem};
 use crate::Result;
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 
 /* === Constants === */
 
@@ -68,16 +68,18 @@ impl GrpcBinding {
         self.entry.contract.as_ref().expect("gRPC binding owns a contract")
     }
 
-    pub(crate) fn native_factory(&self) -> Result<harmos_sdk::operations::OperationFactory> {
-        self.entry.binding.downcast_ref::<harmos_sdk::operations::OperationFactory>().cloned().ok_or(crate::Error::InvalidInput {
-            field: "gRPC native binding",
-            reason: "native factory required",
-        })
+    pub(crate) fn native_factory(&self) -> Result<harmos_operations::execution::operations::OperationFactory> {
+        self.entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>().cloned().ok_or(
+            crate::Error::InvalidInput {
+                field: "gRPC native binding",
+                reason: "native factory required",
+            },
+        )
     }
 
     pub(crate) fn submit_native(
-        &self, payload: StreamItem<Vec<u8>>, limits: harmos_sdk::operations::WireStreamLimits,
-    ) -> Result<(super::EncodedInvocation, Option<harmos_sdk::operations::WireStreams>)> {
+        &self, payload: StreamItem<Vec<u8>>, limits: harmos_operations::execution::operations::WireStreamLimits,
+    ) -> Result<(super::EncodedInvocation, Option<harmos_operations::execution::operations::WireStreams>)> {
         let source = Source::Host.external()?;
         let origin = source.check()?;
         self.entry.available_to(&origin)?;
@@ -95,7 +97,7 @@ impl GrpcBinding {
         let invocation = super::wire::dispatch_prepared(
             &self.operations,
             Submission {
-                submitted: crate::supervision::executor::now(),
+                submitted: self.operations.clock().now(),
                 entry: self.entry.clone(),
                 cause: None,
                 preparation: None,
@@ -108,16 +110,14 @@ impl GrpcBinding {
         Ok((invocation, streams))
     }
 
-    pub(crate) fn submit<O: OperationDeclaration, P: Send + 'static>(
-        &self, request: StreamItem<O::Request>, endpoints: P,
-    ) -> Result<Running<O>> {
+    pub(crate) fn submit<O: RequestShape, P: Send + 'static>(&self, request: StreamItem<O::Request>, endpoints: P) -> Result<Running<O>> {
         self.operations.admit_entry::<O, P>(
             (super::binding::Request::charged(request)?, endpoints),
             None,
             &[],
             &Source::Host.external()?,
             Submission {
-                submitted: crate::supervision::executor::now(),
+                submitted: self.operations.clock().now(),
                 entry: self.entry.clone(),
                 cause: None,
                 preparation: None,

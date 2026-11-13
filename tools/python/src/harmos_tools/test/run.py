@@ -28,7 +28,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
-from ..build import paths, storage
+from ..build import paths
 from ..process import spawn_flags
 from . import archive, nextest, policy, pytest, report, vitest
 
@@ -133,7 +133,6 @@ def coverage(
 
         # Instrumented Run
         if language == "rust":
-            storage.preflight(directory)
             binaries = archive.binaries(directory, profile)
             names = sorted(set(binaries.values()))
             expression, rest = nextest.selection(category, extra, names)
@@ -220,6 +219,12 @@ def bench(
         rows, status = _bench_python(directory, category, project, refresh, measure, extra, identity)
     else:
         raise policy.TestError("benchmarks run for rust and python")
+    from ..release import reports
+    from ..release import policy as release_policy
+
+    revision = os.environ.get("GITHUB_SHA") or os.environ.get("CI_COMMIT_SHA") or archive.revision(directory) or "unknown"
+    measurements = reports.measurements(rows, f"{category}-{language}", revision, rules.bench_regression_percent)
+    release_policy.write_json(directory / report.BENCHMARKS / f"benchmarks-{category}-{language}.json", measurements)
     if not rows:
         raise policy.TestError(f"no {category} {language} benchmark produced results")
 
@@ -477,7 +482,7 @@ def _bench_rust(
 ) -> tuple[list[tuple[str, float, float | None]], int]:
     messages = paths.output(directory, "build", "bench") / "bench/compiler.json"
     if not messages.is_file():
-        raise policy.TestError("missing benchmark compiler metadata; run build:rust:bench first")
+        raise policy.TestError("missing benchmark compiler metadata; run mise run build -- --artifact bench first")
     archive.fixtures(directory, "bench", [messages.relative_to(directory).as_posix()])
     compatibility = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     rows = []
@@ -487,6 +492,9 @@ def _bench_rust(
         target = message.get("target", {})
         name = target.get("name", "")
         artifact = message.get("reason") == "compiler-artifact" and "bench" in target.get("kind", []) and message.get("executable")
+        # Storage Workloads Have A Dedicated Native Nightly Job.
+        if name in {"integration-multi-day", "integration-durable-lag"}:
+            continue
         if not artifact or not (name == category or name.startswith(category + "-")):
             continue
         manifest = Path(message["manifest_path"])

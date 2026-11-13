@@ -55,10 +55,10 @@ pub(super) enum Kind {
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.staging.mutations.resume_file_once", level = "debug", skip_all)]
     pub async fn resume_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileProducer> {
-        self.inner.primary.history().check(&token.history)?;
+        self.inner.primary.get_history().check(&token.history)?;
         let next = token.generation.checked_add(1).ok_or_else(size_error)?;
         let fingerprint = fingerprint("storage.resume_file:v1", token);
         self.mutate_file(mutation, fingerprint, |state| {
@@ -84,7 +84,7 @@ impl<C> StorageManager<C> {
     async fn mutate_file(
         &self, mutation: &MutationId, fingerprint: [u8; 32], mut admit: impl FnMut(&mut State) -> Result<bool>,
     ) -> Result<MutationValue> {
-        if !self.inner.primary.supports_mutation_receipts() {
+        if !self.inner.primary.capabilities().mutation_receipts {
             return Err(invalid("backend does not support mutation receipts"));
         }
         let mut retry = true;

@@ -49,12 +49,6 @@ pub struct IdentityError {
 #[serde(transparent)]
 pub struct DefinitionId(String);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Requirement {
-    pub id: String,
-    pub version: semver::VersionReq,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -175,41 +169,6 @@ pub const fn artifact_subset(id: &str) -> bool {
     true
 }
 
-pub const fn qualified_len(owner: &str, name: &str) -> usize {
-    owner.len() + 1 + name.len()
-}
-
-pub const fn qualify<const N: usize>(owner: &str, name: &str) -> [u8; N] {
-    assert!(N == qualified_len(owner, name));
-    let mut output = [0; N];
-    let mut cursor = 0;
-    let owner = owner.as_bytes();
-    let mut index = 0;
-    while index < owner.len() {
-        output[cursor] = owner[index];
-        cursor += 1;
-        index += 1;
-    }
-    output[cursor] = b'.';
-    cursor += 1;
-    let name = name.as_bytes();
-    let mut index = 0;
-    while index < name.len() {
-        output[cursor] = name[index];
-        cursor += 1;
-        index += 1;
-    }
-
-    output
-}
-
-pub const fn qualified(bytes: &'static [u8]) -> &'static str {
-    match core::str::from_utf8(bytes) {
-        Ok(id) => id,
-        Err(_) => panic!("a qualified id is built from two portable names"),
-    }
-}
-
 pub const fn stream_subset(name: &str) -> bool {
     let bytes = name.as_bytes();
     let mut start = 0;
@@ -281,29 +240,6 @@ mod tests {
         for (owner, valid) in cases {
             assert_eq!(super::segment(&owner), valid, "owner {owner:?}");
             assert_eq!(QualifiedId::qualify(&owner, "storage.read_file").is_ok(), valid, "qualified {owner:?}");
-            for facility in ["guest", "sidecar"] {
-                assert_eq!(crate::inventory::contracts::valid_identity(facility, &owner), valid, "{facility} {owner:?}");
-                let publications = crate::inventory::publications::Manifest {
-                    facility: facility.to_owned(),
-                    owner: owner.clone(),
-                    streams: Vec::new(),
-                };
-                assert_eq!(
-                    crate::inventory::publications::select(vec![publications], facility, &owner).is_ok(),
-                    valid,
-                    "publications {owner:?}"
-                );
-                let observers = crate::inventory::observers::Manifest {
-                    facility: facility.to_owned(),
-                    owner: owner.clone(),
-                    observers: Vec::new(),
-                };
-                assert_eq!(
-                    crate::inventory::observers::select_manifest(vec![observers], facility, &owner, &[]).is_ok(),
-                    valid,
-                    "observers {owner:?}"
-                );
-            }
             if !owner.contains('.') {
                 assert_eq!(super::stream_subset(&format!("{owner}.sample")), valid, "stream {owner:?}");
             }

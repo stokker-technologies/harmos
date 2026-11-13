@@ -22,6 +22,8 @@ import subprocess
 import sys
 import tomllib
 import urllib.parse
+import zipfile
+from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
 
@@ -34,7 +36,7 @@ from .. import temporary
 from ..package import run as packages
 from ..package.changelog import notes
 from ..test import archive
-from . import layout, pins, policy, registry, screenshots, version
+from . import layout, pins, policy, registry, reports, screenshots, version
 
 # Type Checking Imports
 
@@ -48,7 +50,7 @@ STATE = "published.json"
 # Staged downloads live under <target>/; SHA256SUMS and the publication state span targets and live under any/.
 ASSETS = "target/release-assets"
 SHARED = "any"
-# Both Registry Identities Belong To The Protected Native Release Workflow.
+# Registry Publication Stays In The Protected Native Release Workflow.
 RELEASE_WORKFLOW = "release.yml"
 VERBS = [
     "prepare",
@@ -97,42 +99,13 @@ def native_target(settings: dict) -> str:
     return selected
 
 
-def assets(directory: Path, settings: dict, selected: str, tag: str, profile: str | None = None, *, signed: bool = False) -> list[dict]:
-    """The Declared Release Downloads Of One Target, From Its Existing Package Of The Profile."""
+def assets(directory: Path, settings: dict, selected: str, tag: str, profile: str | None = None) -> list[dict]:
+    """Resolve The Platform's Reference Host Archive From Its Existing Package."""
     profile = policy.profile() if profile is None else profile
-    result = []
-    tools = [{**item, "kind": "tool"} for item in packages.packaged(directory, profile, selected)]
-    declared = settings.get("assets", []) + tools
-    for definition in declared:
-        profiles = definition.get("profiles", ["dev", "release"])
-        if (
-            not isinstance(profiles, list)
-            or not profiles
-            or any(profile not in ("dev", "release") for profile in profiles)
-            or len(set(profiles)) != len(profiles)
-        ):
-            raise policy.ToolError("release.assets.profiles must be a nonempty array of distinct dev or release values")
-        signed_only = definition.get("signed_only", False)
-        if not isinstance(signed_only, bool):
-            raise policy.ToolError("release.assets.signed_only must be a boolean")
-        if definition.get("target") != selected or profile not in profiles:
-            continue
-        if signed_only and not signed:
-            continue
-        relative = definition["path"].format(profile=profile, target=selected, product=settings["product"], version=tag[1:])
-        source = policy.inside(directory, relative)
-        if source.name == "latest.json" and not signed:
-            continue
-        name = layout.asset_name(directory, settings, definition, selected, tag, source)
-        if name is None:
-            continue
-        reserved = {SUMS, STATE, "CHANGELOG.md", "plugins.json", "upload.json", ".", ".."}
-        if Path(name).name != name or name in reserved or "\\" in name or any(ord(character) < 32 for character in name):
-            raise policy.ToolError(f"invalid release asset name: {name}")
-        if not source.is_file() or source.is_symlink():
-            raise policy.ToolError(f"missing regular release asset: {source}")
-        result.append({"name": name, "path": relative, "target": selected})
-    return result
+    name = layout.conformance_name(directory, settings, selected, tag[1:])
+    relative = f"target/package/{profile}/{selected}/rust/{name}"
+    packages.regular(directory, relative)
+    return [{"name": name, "path": relative, "target": selected}]
 
 
 def stage(
@@ -142,52 +115,84 @@ def stage(
     targets: list[str],
     profile: str | None = None,
     *,
-    signed: bool = False,
     source_revision: str | None = None,
     release_notes: str | None = None,
+    channel: str = "stable",
 ) -> list[dict]:
-    """Copy Each Target's Release Downloads Into Its target/release-assets/<target>/ And Their SHA256SUMS Into any/."""
+    """Replace Release Staging With The Exact Channel Inventory From Existing Packages."""
+    if channel not in {"stable", "nightly"}:
+        raise policy.ToolError("release channel must be stable or nightly")
+    if not targets:
+        raise policy.ToolError("release staging requires at least one packaged target")
     profile = policy.profile() if profile is None else profile
     root = _root(directory)
-    # Only the staged targets and the shared checksums are replaced; another target's staging stays untouched.
+    if root.is_symlink() or root.exists() and not root.is_dir():
+        raise policy.ToolError(f"release staging requires a regular directory: {root}")
+    # Validate Directory Shapes Before Removing Any Owned Staging.
     for owned in [*targets, SHARED]:
         destination = policy.inside(root, owned)
-        if destination == root or destination.is_symlink():
-            raise policy.ToolError("unsafe release staging target")
+        if destination == root or destination.is_symlink() or destination.exists() and not destination.is_dir():
+            raise policy.ToolError(f"release staging requires a regular directory: {destination}")
+    for owned in [*targets, SHARED]:
+        destination = policy.inside(root, owned)
         if destination.exists():
             shutil.rmtree(destination)
+        destination.mkdir(parents=True)
+    shared = root / SHARED
     files = []
-    plugins = layout.plugins(directory, settings, tag, targets, profile)
     for selected in targets:
-        # Only the native target's executables can run here; other targets arrive verified by their Package jobs.
-        if selected == _native():
-            packages.verify(directory, profile, selected)
-        (root / selected).mkdir(parents=True)
-        declared = assets(directory, settings, selected, tag, profile, signed=signed)
-        for asset in declared:
-            # Downloads publish side by side, so a name must be unique across every target.
-            if any(item["name"].casefold() == asset["name"].casefold() for item in files):
-                raise policy.ToolError(f"release download names collide across targets: {asset['name']}")
-            destination = policy.inside(root / selected, asset["name"])
-            shutil.copyfile(policy.inside(directory, asset["path"]), destination)
+        for asset in assets(directory, settings, selected, tag, profile):
+            destination = root / selected / asset["name"]
+            shutil.copyfile(packages.regular(directory, asset["path"]), destination)
             files.append(_describe(root, destination))
-    (root / SHARED).mkdir(parents=True)
-    for destination in layout.plugin_archives(directory, root, plugins):
-        if any(item["name"].casefold() == destination.name.casefold() for item in files):
-            raise policy.ToolError(f"release download names collide across targets: {destination.name}")
-        files.append(_describe(root, destination))
-    changelog = root / SHARED / "CHANGELOG.md"
     content = notes(directory, tag) if release_notes is None else release_notes
     if source_revision is not None:
         content += f"\nSource Commit: {source_revision}\n"
-    changelog.write_text(content, encoding="utf-8", newline="\n")
-    files.append(_describe(root, changelog))
-    if plugins:
-        feed = root / SHARED / "plugins.json"
-        policy.write_json(feed, layout.plugin_feed(settings, tag, plugins))
-        files.append(_describe(root, feed))
-    (root / SHARED / SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
-    files.append(_describe(root, root / SHARED / SUMS))
+    protocol = shared / f"harmos-proto-{tag[1:]}.zip"
+    source = directory / "proto"
+    definitions = sorted(source.rglob("*.proto"))
+    if not definitions:
+        raise policy.ToolError("protocol archive requires definitions")
+    behaviour = packages.regular(directory, "proto/harmos/v1/behaviour.md")
+    with zipfile.ZipFile(protocol, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in [*definitions, behaviour]:
+            original = packages.regular(source, path.relative_to(source).as_posix())
+            archive.write(original, original.relative_to(source).as_posix())
+    files.append(_describe(root, protocol))
+    compliance = shared / f"harmos-compliance-{tag[1:]}.zip"
+    with zipfile.ZipFile(compliance, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for selected in targets:
+            source = directory / "target/package" / profile / selected / "compliance"
+            if not source.is_dir() or source.is_symlink():
+                raise policy.ToolError(f"missing regular compliance directory: {source}")
+            abi = layout.triple(directory, settings, selected)
+            for name in ("NOTICE", "THIRD-PARTY-NOTICES", f"crates/{abi}/workspace.cdx.json", "python/any/sdk.cdx.json"):
+                original = packages.regular(source, name)
+                # Preserve Each Target's Notices; Python's Locked Inventory Is Shared.
+                if name.startswith("python/") and selected != targets[0]:
+                    first = directory / "target/package" / profile / targets[0] / "compliance" / name
+                    if original.read_bytes() != first.read_bytes():
+                        raise policy.ToolError("Python compliance inventories differ across targets")
+                    continue
+                member = f"notices/{selected}/{name}" if "/" not in name else name
+                archive.write(original, member)
+    files.append(_describe(root, compliance))
+    if channel == "nightly":
+        for destination in reports.stage(directory, shared, tag[1:]):
+            files.append(_describe(root, destination))
+    manifest = layout.downloads(
+        settings,
+        version=tag[1:],
+        channel=channel,
+        tag=tag if channel == "stable" else channel,
+        published=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        files=files,
+        sums="".join(f"{item['sha256']}  {item['name']}\n" for item in files),
+    )
+    policy.write_json(shared / "release.json", {"notes": content, "pub_date": manifest["pub_date"], "downloads": manifest})
+    files.append(_describe(root, shared / "release.json"))
+    (shared / SUMS).write_text("".join(f"{item['sha256']}  {item['name']}\n" for item in files), encoding="utf-8")
+    files.append(_describe(root, shared / SUMS))
     layout.upload_manifest(directory, root, files)
     return files
 
@@ -196,8 +201,8 @@ def planned_version(directory: Path, current: str) -> str:
     """The Current Version Before Its First Tag, Else git-cliff's Configured Automatic Version."""
     if not policy.execute(directory, ["git", "tag", "--list", "v" + current], capture=True).strip():
         return current
-    # Breaking changes bump the minor and everything else the patch while the version is 0.x, as the cliff.toml [bump] declares.
-    command = ["git-cliff", "--bumped-version"]
+    # Breaking changes bump the minor and everything else the patch while the version is 0.x, as tools/config/cliff.toml [bump] declares.
+    command = ["git-cliff", "--config", "tools/config/cliff.toml", "--bumped-version"]
     planned = policy.execute(directory, command, capture=True).strip().removeprefix("v")
     if planned == current:
         since = policy.execute(directory, ["git", "log", "--format=%h %s", f"v{current}..HEAD"], capture=True).strip()
@@ -299,6 +304,7 @@ def dry(
     source_revision: str | None = None,
     release_notes: str | None = None,
     targets: list[str] | None = None,
+    channel: str = "stable",
 ) -> None:
     """Stage The Active Profile's Packages Like A Release And Run The Native Downloads From Them, Offline."""
     tag = release_tag(directory)
@@ -313,14 +319,29 @@ def dry(
         raise policy.ToolError(f"{profile} packages are missing for release targets: {', '.join(missing)}")
     if missing:
         print(f"note: no local {profile} packages for {', '.join(missing)}; CI stages every release target")
-    stage(directory, settings, tag, present, profile=profile, source_revision=source_revision, release_notes=release_notes)
+    stage(directory, settings, tag, present, profile=profile, source_revision=source_revision, release_notes=release_notes, channel=channel)
     files = layout.uploads(directory, staged=True)
     _checksums(root / SHARED / SUMS, {item["name"]: item for item in files})
     native = _native()
     if native in present:
         # The staged bytes themselves run, from an isolated directory, exactly as a user's download would.
-        packages.verify(directory, profile, native, root / native)
+        verify_conformance(directory, settings, profile, native, root)
     print(f"staged {len(files) - 1} download(s) and {SUMS} for {', '.join(present) or 'no target'} in {root.relative_to(directory)}")
+
+
+def verify_conformance(directory: Path, settings: dict, profile: str, target: str, root: Path) -> None:
+    """Run The Downloaded Reference Host With Its Sibling Reference Plugin."""
+    name = layout.conformance_name(directory, settings, target, release_tag(directory)[1:])
+    source = root / target / name
+    if not source.is_file():
+        source = root / name
+    suffix = ".exe" if "-windows-" in layout.triple(directory, settings, target) else ""
+    with temporary.directory() as install:
+        for binary in ("harmos-conformance", "harmos-conformance-plugin"):
+            destination = install / (binary + suffix)
+            destination.write_bytes(packages.binary_bytes(source, destination.name))
+            destination.chmod(0o755)
+        policy.execute(install, [str(install / ("harmos-conformance" + suffix)), "--help"])
 
 
 def publish(directory: Path, settings: dict) -> None:
@@ -335,7 +356,7 @@ def publish(directory: Path, settings: dict) -> None:
     if not targets:
         raise policy.ToolError("release.targets must declare the required OS/architecture targets")
     root = _root(directory)
-    stage(directory, settings, tag, targets, signed=True)
+    stage(directory, settings, tag, targets)
     files = layout.uploads(directory, staged=True)
     state = {"sha": sha, "tag": tag, "name": tag, "files": {}}
     if settings["provider"] == "github":
@@ -434,7 +455,7 @@ def verify(directory: Path, settings: dict) -> None:
         _checksums(root / SUMS, inventory)
         registry.verify_signatures(directory, settings, root, list(inventory))
         native = native_target(settings)
-        packages.installed(directory, {**settings, "tag": tag}, root, native)
+        verify_conformance(directory, settings, "release", native, root)
     policy.write_json(directory / "target/state/release-publication.json", {"sha": sha, "tag": tag, "verified": True})
 
 
@@ -579,9 +600,9 @@ def run(directory: Path, verb: str, *, target: str | None = None, profile: str |
         "verify": verify,
         "guard": lambda directory, settings: registry.require_tag(directory, release_tag(directory)),
         "assets": lambda directory, settings: print(
-            json.dumps(assets(directory, settings, native_target(settings), release_tag(directory), signed=True), indent=2)
+            json.dumps(assets(directory, settings, native_target(settings), release_tag(directory)), indent=2)
         ),
-        "stage": lambda directory, settings: stage(directory, settings, release_tag(directory), settings["targets"], signed=True),
+        "stage": lambda directory, settings: stage(directory, settings, release_tag(directory), settings["targets"]),
     }
     operations[verb](directory, settings)
 

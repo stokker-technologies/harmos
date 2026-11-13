@@ -76,10 +76,30 @@ impl Reflection {
 
     fn snapshot(&self) -> Result<DescriptorPool, Status> {
         let methods = self.operations.grpc_methods();
-        let artifacts = harmos_packaging::proto::Artifacts::new(methods.iter().map(|method| &method.contract))
-            .map_err(|_| Status::internal("operation descriptor snapshot failed"))?;
-        let mut pool =
-            DescriptorPool::decode(artifacts.descriptors()).map_err(|_| Status::internal("operation descriptors are invalid"))?;
+        let mut groups = std::collections::BTreeMap::<_, Vec<_>>::new();
+        for method in &methods {
+            if let Some(binding) = method.contract.grpc() {
+                groups
+                    .entry((binding.package.to_string(), binding.service.to_string()))
+                    .or_default()
+                    .push((binding.method.as_ref(), &method.contract));
+            }
+        }
+        let mut files = std::collections::BTreeMap::new();
+        for ((package, service), methods) in groups {
+            let service =
+                super::descriptor(&package, &service, &methods).map_err(|_| Status::internal("operation descriptor snapshot failed"))?;
+            for file in service.parent_pool().files() {
+                let file = file.file_descriptor_proto().clone();
+                if let Some(previous) = files.insert(file.name.clone(), file.clone())
+                    && previous != file
+                {
+                    return Err(Status::internal("conflicting operation descriptors"));
+                }
+            }
+        }
+        let mut pool = DescriptorPool::from_file_descriptor_set(prost_types::FileDescriptorSet { file: files.into_values().collect() })
+            .map_err(|_| Status::internal("operation descriptors are invalid"))?;
         pool.decode_file_descriptor_set(pb::FILE_DESCRIPTOR_SET).map_err(|_| Status::internal("reflection descriptors are invalid"))?;
         Ok(pool)
     }

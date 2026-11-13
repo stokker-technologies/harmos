@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,22 +20,6 @@ use harmos_storage::*;
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -80,16 +60,18 @@ async fn dropped_write_retained() {
 
     // A Controlled Backend Gate Separates Acceptance From Durability.
     data.control.block_write.store(true, Ordering::SeqCst);
-    let accepted = storage.write_records(vec![record(&first)]).await.unwrap();
+    let accepted = storage.append_records(vec![record(&first)]).await.unwrap();
     let flushing = {
         let storage = storage.clone();
         tokio::spawn(async move { storage.flush().await })
     };
     data.control.write_entered.notified().await;
-    assert_eq!(storage.cursor_saved().sequence, 0);
+    assert_eq!(storage.get_saved_position().sequence, 0);
     let batch = [record(&second)];
-    let mut waiting = Box::pin(storage.write_records((batch).to_vec()));
-    assert!(super::pending(waiting.as_mut()).await);
+    let mut waiting = Box::pin(storage.append_records((batch).to_vec()));
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(waiting.as_mut(), context).is_pending())).await
+    );
     drop(waiting);
     // Dropping The Future Must Not Retract The Already Accepted Batch.
     assert_eq!(storage.cursor_accepted(), accepted);
@@ -104,18 +86,14 @@ async fn dropped_write_retained() {
 
 #[tokio::test]
 async fn cancelled_query_releases() {
-    let directory = tempfile::tempdir().unwrap();
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::MIN;
     settings.request.max_pending_write_batches = NonZeroUsize::MIN;
-    let data = JsonStorage::new(
-        JsonStorageSettings {
-            root: directory.path().to_path_buf(),
-            max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-        },
-        history(),
-    );
-    let backends = data.into_backends(super::fixture::state_settings());
+    let data = std::sync::Arc::new(super::backend::Data::new(history()));
+    let backends = StorageBackends {
+        primary: data,
+        state: std::sync::Arc::new(Recovery::new(history())),
+    };
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     super::fixture::start(&storage).await;
     let accepted = storage.cursor_accepted();
@@ -128,7 +106,9 @@ async fn cancelled_query_releases() {
     };
     let first_reader = storage.query(query()).await.unwrap();
     let mut waiting = Box::pin(storage.query(query()));
-    assert!(super::pending(waiting.as_mut()).await);
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(waiting.as_mut(), context).is_pending())).await
+    );
     drop(waiting);
     drop(first_reader);
     let mut following = storage.query(query()).await.unwrap();

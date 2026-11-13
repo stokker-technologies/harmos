@@ -4,27 +4,27 @@ inputs:
   platform:
     description: Platform
     required: true
-    default: ""
+    default: ''
   caches:
     description: Caches
     required: false
-    default: "{}"
+    default: '{}'
   bootstrap:
     description: Bootstrap
     required: false
-    default: "[]"
+    default: '[]'
   tools:
     description: Tools
     required: false
-    default: ""
+    default: ''
   cache-backend:
     description: Cache-backend
     required: false
-    default: ""
+    default: ''
   cache-mode:
     description: Cache-mode
     required: false
-    default: ""
+    default: ''
 outputs:
   bench_baselines-path:
     description: Resolved bench_baselines path
@@ -103,15 +103,15 @@ runs:
   steps:
   - shell: python
     run: |-
-      import os, runpy
-      runpy.run_path(os.path.join(os.environ['GITHUB_ACTION_PATH'], 'run.py'), run_name='__main__')
+      import runpy
+      runpy.run_path('tools/python/src/harmos_tools/ci/bootstrap.py', run_name='__main__')
     id: native
     env:
       SETUP_PLATFORM: ${{ inputs.platform }}
       CACHE_PLAN: ${{ inputs.caches }}
       SETUP_BOOTSTRAP: ${{ inputs.bootstrap }}
-      COMPILER_CACHE_BACKEND: ${{ inputs.cache-backend }}
-      COMPILER_CACHE_MODE: ${{ inputs.cache-mode }}
+      COMPILER_CACHE_BACKEND: ${{ inputs.cache-backend || env.COMPILER_CACHE_BACKEND }}
+      COMPILER_CACHE_MODE: ${{ inputs.cache-mode || env.COMPILER_CACHE_MODE }}
   - id: bench_baselines
     name: Cache / bench-baselines
     if: steps.native.outputs.bench_baselines-path != ''
@@ -162,9 +162,15 @@ runs:
       restore-keys: ${{ steps.native.outputs.uv-restore-keys }}
   - uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8
     env:
-      RUSTC_WRAPPER: ""
+      RUSTC_WRAPPER: ''
     with:
       install: true
       install_args: ${{ inputs.tools }}
       cache: false
       mise_dir: ${{ env.MISE_DATA_DIR }}
+  - name: Prepare Locked Python Environment
+    shell: bash
+    run: mise run prepare --
+    env:
+      CI_INPUT_ARCHIVES: '[]'
+      CI_OUTPUT_ARCHIVES: '[]'

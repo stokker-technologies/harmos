@@ -87,7 +87,12 @@ impl<A: Application> RecordManager<A> {
         let record = record.into();
         let preparation =
             Arc::clone(&self.preparing).acquire_owned().await.expect("record preparation admission remains owned by the original state");
-        let prepared = Prepared::typed_record(&record).map_err(Error::Preparation)?;
+        let prepared =
+            self.catalog.record_registry.prepare(&record).map_err(Error::Preparation)?.ok_or_else(|| Error::RecordDeclaration {
+                source: crate::state::DecodeError::UnknownDefinition {
+                    id: crate::state::CatalogCodec::identify(&record).0,
+                },
+            })?;
         let declared = self.catalog.has_record(&prepared.id, prepared.version).map_err(|source| Error::RecordDeclaration { source })?;
         if !declared {
             return Err(Error::RecordDeclaration {

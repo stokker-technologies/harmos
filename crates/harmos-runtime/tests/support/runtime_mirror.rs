@@ -8,10 +8,6 @@
  */
 
 #![allow(dead_code)]
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,10 +18,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 // Local Imports
 use harmos_runtime::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -38,10 +30,6 @@ pub(crate) struct Mirror {
     seen: Arc<std::sync::Mutex<Vec<Position>>>,
     ceiling: Option<Position>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -82,9 +70,3 @@ impl<A: Application> JournalConsumer<A> for Mirror {
         reached
     }
 }
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */

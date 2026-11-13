@@ -31,7 +31,7 @@ use super::envelope::{delimited, delimited_admitted};
 use super::{DecodeSettings, Decoder, Event};
 use crate::{MemorySize, MessageError, operations::StreamItem};
 use harmos_domain::Portable;
-use harmos_sdk::grpc::DecodeInput;
+use harmos_operations::execution::grpc::DecodeInput;
 
 /* === Constants === */
 
@@ -100,14 +100,14 @@ impl EncodeSettings {
 
 impl<T: Portable> Wire<T> for Transcoded {
     fn encode(value: &T, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
-        harmos_sdk::grpc::encode(value, bytes)
+        harmos_operations::execution::grpc::encode(value, bytes)
     }
 
     fn encode_admitted(
         value: &T, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>,
     ) -> Result<(), Status> {
         let mut refusal = None;
-        let result = harmos_sdk::grpc::encode_admitted(value, bytes, limit, &mut |required| {
+        let result = harmos_operations::execution::grpc::encode_admitted(value, bytes, limit, &mut |required| {
             admit(required).map_err(|error| {
                 refusal = Some(error);
                 MessageError::borrowed("gRPC encoding admission refused")
@@ -117,13 +117,16 @@ impl<T: Portable> Wire<T> for Transcoded {
             return Err(error);
         }
         result.map_err(|error| match error {
-            harmos_sdk::grpc::EncodeError::Message(error) => Status::internal(error.to_string()),
-            harmos_sdk::grpc::EncodeError::Limit { .. } => Status::resource_exhausted("gRPC encoded message exceeds wire ceiling"),
+            harmos_operations::execution::grpc::EncodeError::Message(error) => Status::internal(error.to_string()),
+            harmos_operations::execution::grpc::EncodeError::Limit { .. } => {
+                Status::resource_exhausted("gRPC encoded message exceeds wire ceiling")
+            }
         })
     }
 
     fn decode_admitted<C>(input: DecodeInput<'_>, admit: impl FnOnce(usize) -> Result<C, Status>) -> Result<(T, C), Status> {
-        let prepared = harmos_sdk::grpc::prepare::<T>(input).map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let prepared =
+            harmos_operations::execution::grpc::prepare::<T>(input).map_err(|error| Status::invalid_argument(error.to_string()))?;
         let claim = admit(prepared.memory())?;
         let value = prepared.decode().map_err(|error| Status::invalid_argument(error.to_string()))?;
         Ok((value, claim))
@@ -131,6 +134,16 @@ impl<T: Portable> Wire<T> for Transcoded {
 }
 
 impl<W: Wire<T>, T: Send + Sync + 'static> Encode<W> for crate::operations::Response<T> {
+    fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
+        W::encode(self, bytes)
+    }
+
+    fn write_admitted(&self, bytes: &mut Vec<u8>, limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), Status>) -> Result<(), Status> {
+        W::encode_admitted(self, bytes, limit, admit)
+    }
+}
+
+impl<W: Wire<T>, T: Send + Sync + 'static> Encode<W> for StreamItem<T> {
     fn write(&self, bytes: &mut Vec<u8>) -> Result<(), MessageError> {
         W::encode(self, bytes)
     }
@@ -332,7 +345,8 @@ mod tests {
     use super::*;
     use crate::operations::Response;
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug, Default)]
+    #[harmos_path(::harmos_domain)]
     struct Row {
         bytes: Vec<u8>,
     }

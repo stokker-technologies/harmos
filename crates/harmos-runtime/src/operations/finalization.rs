@@ -37,6 +37,7 @@ pub(super) struct Retained {
     pub(super) owner: Box<dyn Finalizer>,
     pub(super) _permit: Option<OwnedSemaphorePermit>,
     pub(super) _admission: LaneAdmission,
+    pub(super) _activity: crate::clock::Activity,
 }
 
 /* === Enums === */

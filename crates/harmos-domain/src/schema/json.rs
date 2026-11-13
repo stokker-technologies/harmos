@@ -261,16 +261,18 @@ fn memory_kind(schema: &Schema, kind: Kind, reader: &mut Reader<'_>) -> Result<u
 #[cfg(all(test, feature = "derive"))]
 mod tests {
     use super::*;
+    use crate::Message;
     use crate::schema::Described;
-    use crate::{Message, message};
     use serde_json::json;
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug, Default)]
+    #[harmos_path(crate)]
     struct Child {
         enabled: bool,
     }
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug)]
+    #[harmos_path(crate)]
     struct Row {
         counter: u64,
         voltage: Option<f64>,
@@ -279,13 +281,19 @@ mod tests {
         data: Vec<u8>,
     }
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug, Default)]
+    #[harmos_path(crate)]
     struct Unit {}
 
-    #[message(harmos_path = crate)]
+    #[derive(Message, Clone, Debug)]
+    #[harmos_path(crate)]
+    #[derive(Default)]
     enum Choice {
+        #[default]
         Empty,
-        Reading { value: i32 },
+        Reading {
+            value: i32,
+        },
     }
 
     #[test]

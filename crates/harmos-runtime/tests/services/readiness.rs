@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -20,32 +16,16 @@ use std::time::Duration;
 // Third Party Imports
 use tokio::sync::{Notify, mpsc};
 // Local Imports
+use super::Ledger;
 use super::{Bank, assembly, service_status, support};
-use super::{Ledger, Runtime};
 use harmos_runtime::{services::ServiceContext, services::ServiceExit, services::ServiceStatus};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
 #[tokio::test]
 async fn late_ready_ignored() {
     let entered = Arc::new(Notify::new());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("initializing", {
             let entered = entered.clone();
@@ -64,7 +44,7 @@ async fn late_ready_ignored() {
     .unwrap();
     entered.notified().await;
     let services = runtime.operations.clone();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(
         services.resident(&harmos_runtime::operations::resident::Key::root("initializing")).and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
@@ -75,7 +55,7 @@ async fn late_ready_ignored() {
 async fn readiness_follows_initialization() {
     let entered = Arc::new(Notify::new());
     let initialized = Arc::new(Notify::new());
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("gated", {
             let entered = entered.clone();
@@ -113,7 +93,7 @@ async fn readiness_follows_initialization() {
         })
         .await
         .unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -121,7 +101,7 @@ async fn initialization_preserves_credit() {
     let entered = Arc::new(Notify::new());
     let fail = Arc::new(Notify::new());
     let attempts = Arc::new(AtomicUsize::new(0));
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service_with(
             "unready",
@@ -181,7 +161,7 @@ async fn initialization_preserves_credit() {
     }) if history == ["not initialized", "not initialized"])
     );
     assert_eq!(attempts.load(SeqCst), 2);
-    assert!(matches!(runtime.shutdown().await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
+    assert!(matches!(crate::support::app::shutdown(&runtime).await, Err(harmos_runtime::Error::TaskFailed { domain: "service", .. })));
 }
 
 #[tokio::test(start_paused = true)]
@@ -192,7 +172,7 @@ async fn retirement_fences_readiness() {
     let probed = Arc::new(Notify::new());
     let initialized = Arc::new(Notify::new());
     let attempts = Arc::new(AtomicUsize::new(0));
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("replacement", {
             let entered = entered.clone();
@@ -251,12 +231,12 @@ async fn retirement_fences_readiness() {
         .await
         .unwrap();
     drop(old);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn activated_service_starting() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -271,7 +251,7 @@ async fn activated_service_starting() {
                 id: "tenant".into(),
                 policy: harmos_runtime::services::POLICY,
             },
-            |_: Arc<harmos_sdk::ExecutionContext>| {
+            |_: Arc<harmos_operations::execution::ExecutionContext>| {
                 |context: harmos_runtime::services::ServiceContext<Bank>| async move {
                     let mut context = context;
                     context.ready();
@@ -298,12 +278,12 @@ async fn activated_service_starting() {
     // there is no moment on the way to running when the tenant is missing.
     service_status(statuses.clone(), "tenant", |status| matches!(status, ServiceStatus::Running { .. })).await;
     assert!(statuses.borrow().contains_key(&harmos_runtime::operations::resident::Key::root("tenant")));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn context_publishes_streams() {
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().register(support::streams());
         setup.settings().service("source", |context: harmos_runtime::services::ServiceContext<Bank>| async move {
@@ -317,7 +297,5 @@ async fn context_publishes_streams() {
     let rows: Vec<_> = runtime.streams.query::<support::Pulse>(..).await.expect("the service's row remains in the window").collect();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].value.sample, 7);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

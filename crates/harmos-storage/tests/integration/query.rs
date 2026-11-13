@@ -9,10 +9,6 @@
 
 // Reproduce Small Capture Order Statistics
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,24 +21,6 @@ use harmos_storage::query::{
     scalar::{Agg, ScalarValue},
 };
 use harmos_storage::{Aggregate, Error, StorageAccumulatorSettings};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 

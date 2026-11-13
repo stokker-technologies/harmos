@@ -6,6 +6,7 @@ description = "Harmos runtime: managed state, undo, recovery, background work an
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 autotests = false
 
@@ -14,16 +15,9 @@ version = { workspace = true }
 # === Package Targets === #
 
 [[bin]]
-name = "harmos-stream-consumer-fixture"
-path = "tests/fixtures/stream_consumer.rs"
-required-features = ["plugin-sidecar"]
-test = false
-bench = false
-
-[[bin]]
 name = "harmos-grpc-benchmark-fixture"
 path = "tests/fixtures/benchmark_grpc.rs"
-required-features = ["grpc"]
+required-features = ["benchmark-fixtures"]
 test = false
 bench = false
 
@@ -31,41 +25,33 @@ bench = false
 
 # Core Runtime and Authoring Are Always Available
 [features]
-default = []
-# Explicitly Selected Native SDK Prototype Story; Excluded From Shipping Builds.
-cpp-prototype = ["plugin-sidecar"]
-plugin = ["dep:petgraph", "dep:semver", "semver/serde", "dep:harmos-packaging"]
-plugin-sidecar = ["plugin", "dep:harmos-sidecar", "harmos-sidecar/kit", "harmos-sidecar/derive", "tokio/io-util", "tokio/process"]
-plugin-guest = ["plugin", "dep:harmos-guest", "harmos-guest/kit", "harmos-guest/derive", "dep:wasmtime"]
+default = ["grpc"]
+# Benchmark Servers Are Not Inputs to Product or Test Builds.
+benchmark-fixtures = ["grpc"]
+# Focused Storage Transfer Measurements Use the Reusable Test Workload Only.
+storage-benchmarks = ["grpc", "harmos-storage/testing"]
+plugin-guest = ["dep:wasmtime"]
 grpc = [
-  "harmos-sdk/grpc",
-  "generate-proto",
+  "dep:heck",
+  "harmos-operations/grpc",
   "dep:tonic-reflection",
   "dep:http-body",
   "dep:bytes",
-  "dep:tonic",
-  "dep:prost-reflect",
   "tonic/tls-ring",
   "dep:rustls",
+  "dep:rcgen",
   "dep:tokio-rustls",
 ]
-# Protobuf Descriptor Projection For The Runtime Transport.
-generate-proto = ["dep:harmos-packaging", "harmos-packaging/generate-proto"]
-# Hands Out The Signal Kernels; Core Reductions Use Them Regardless.
-signal = []
-signal-fft = ["signal", "harmos-storage/fft"]
-simulation = ["tokio/test-util"]
+simulation = []
 
 # === Dependencies === #
 
 [dependencies]
 # Local
 harmos-domain = { workspace = true, features = ["derive"] }
-harmos-guest = { workspace = true, optional = true }
-harmos-macros = { workspace = true, default-features = true }
-harmos-operations = { workspace = true, features = ["runtime"] }
-harmos-packaging = { workspace = true, optional = true }
-harmos-sdk = { workspace = true, features = ["streaming"] }
+harmos-sdk-derive = { workspace = true, default-features = true }
+harmos-operations = { workspace = true, features = ["lifecycle", "streaming", "grpc"] }
+harmos-protocol = { workspace = true }
 harmos-storage = { workspace = true }
 
 # Git
@@ -75,23 +61,27 @@ thiserror = { workspace = true, default-features = true }
 
 # Logging
 tracing = { workspace = true, default-features = true }
+tracing-subscriber = { workspace = true }
 
 # Utilities
+heck = { workspace = true, optional = true }
 bytes = { workspace = true, optional = true }
 # Retry Windows Use Native Entropy Or Web Crypto On Browser WebAssembly.
 getrandom = { workspace = true, features = ["std", "wasm_js"] }
-petgraph = { workspace = true, default-features = true, optional = true }
-semver = { workspace = true, default-features = true, optional = true }
+semver = { workspace = true, default-features = true, features = ["serde"] }
 sha2 = { workspace = true, default-features = true }
 
 # Serialization
-prost-reflect = { workspace = true, optional = true, features = ["serde"] }
+prost = { workspace = true }
+prost-reflect = { workspace = true, features = ["serde"] }
+prost-types = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
 
 # Configuration
 
 # Filesystem
+tar = { workspace = true }
 tempfile = { workspace = true, default-features = true }
 
 # Parsing
@@ -101,14 +91,17 @@ tempfile = { workspace = true, default-features = true }
 # Async
 futures-core = { workspace = true, default-features = true }
 futures-util = { workspace = true }
-tokio = { workspace = true, default-features = true, features = ["rt", "sync", "time", "macros"] }
+tokio = { workspace = true, default-features = true, features = ["rt", "sync", "time", "macros", "fs", "io-util", "net", "process"] }
 
 # Networking
 http-body = { workspace = true, optional = true }
+hyper-util = { workspace = true }
+rcgen = { workspace = true, features = ["pem", "ring"], optional = true }
 rustls = { workspace = true, features = ["ring", "std"], optional = true }
 tokio-rustls = { workspace = true, features = ["ring"], optional = true }
-tonic = { workspace = true, default-features = true, optional = true }
+tonic = { workspace = true, default-features = true }
 tonic-reflection = { workspace = true, features = ["server"], optional = true }
+tower = { workspace = true }
 
 # Storage
 
@@ -118,14 +111,18 @@ tonic-reflection = { workspace = true, features = ["server"], optional = true }
 
 # === Build Dependencies === #
 
+
 # === Dev Dependencies === #
 
 [dev-dependencies]
+prost-build = { workspace = true }
+protoc-bin-vendored = { workspace = true }
 # Local
-harmos-packaging = { path = "../harmos-packaging", default-features = false, features = ["generate-proto", "guest"] }
-harmos-sdk = { path = "../harmos-sdk", default-features = false, features = ["grpc"] }
+harmos = { workspace = true, features = ["wasm"] }
+harmos-packaging = { path = "../../tools/packaging", default-features = false, features = ["generate-proto", "guest"] }
+harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
-schematic-operations = { path = "../../examples/schematic/operations" }
+schematic-operations = { path = "../../examples/schematic/operations", features = ["runtime"] }
 
 # Git
 
@@ -168,6 +165,7 @@ tokio = { workspace = true, default-features = true, features = [
 
 # Networking
 http-body-util = { workspace = true }
+tonic-prost = { workspace = true }
 
 # Storage
 
@@ -212,7 +210,6 @@ windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem", "Win32
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Local
-harmos-sidecar = { workspace = true, optional = true }
 
 # Git
 
@@ -256,15 +253,17 @@ name = "acceptance"
 path = "tests/acceptance/main.rs"
 
 [[test]]
-name = "cpp"
-path = "tests/system/cpp/main.rs"
-required-features = ["cpp-prototype"]
-
-[[test]]
 name = "system"
 path = "tests/system/main.rs"
 
 # === Bench Targets === #
+
+[[bench]]
+name = "integration-file-transfer"
+path = "benches/file_transfer/main.rs"
+harness = false
+required-features = ["storage-benchmarks"]
+
 
 [[bench]]
 name = "integration-runtime"
@@ -277,7 +276,7 @@ path = "benches/operations/main.rs"
 harness = false
 
 [[bench]]
-name = "integration-storage"
+name = "unit-storage-transforms"
 path = "benches/storage/main.rs"
 harness = false
 
@@ -285,18 +284,6 @@ harness = false
 name = "integration-streams"
 path = "benches/streams/main.rs"
 harness = false
-
-[[bench]]
-name = "integration-sidecar"
-path = "benches/sidecar/main.rs"
-harness = false
-required-features = ["plugin-sidecar"]
-
-[[bench]]
-name = "system-sidecar-host"
-path = "benches/sidecar/system.rs"
-harness = false
-required-features = ["plugin-sidecar"]
 
 [[bench]]
 name = "system-guest"

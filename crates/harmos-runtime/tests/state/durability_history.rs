@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,22 +17,6 @@ use support::{Bank, Change, Ledger, alice, booted, deposit};
 use super::support;
 use harmos_runtime::{Error, Runtime, state::Focus, state::Origin, state::Position};
 use support::journal::{Journal, Store};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -65,7 +45,7 @@ async fn state_matches_replay() {
     assert_eq!(at_undo.value.balance, 4);
     assert_eq!(at_undo.position, undone.position);
     drop(journal);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let replayed = booted(Ledger::default(), |setup| {
         setup.settings().recover(Journal::<Bank>::open(&copy));
@@ -118,7 +98,7 @@ async fn source_query_equals() {
         runtime.state.query::<Change>(Position::ORIGIN).await.collect::<Result<_, _>>().expect("the source serves the evicted prefix");
 
     assert_eq!(entries, expected);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -146,7 +126,7 @@ async fn refusals_distinguish_origin() {
     );
     let exact = runtime.state.state().at(anchor, Position(2)).await.expect("the caller's exact anchor needs no source");
     assert_eq!(exact.value.balance, 3);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -160,7 +140,7 @@ async fn inspector_recovers_read() {
         let receipt = runtime.state.commit(deposit(amount)).await.expect("accepted");
         runtime.state.wait_until_stored(receipt.position).await;
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let inspector = Runtime::<Bank>::inspect(Origin::initial(Ledger::default()), Journal::<Bank>::open(&copy))
         .await
@@ -176,5 +156,3 @@ async fn inspector_recovers_read() {
     assert_eq!(inspector.state.applied(), Position(2));
     assert_eq!(inspector.state.stored(), Position(2));
 }
-
-/* === Tests === */

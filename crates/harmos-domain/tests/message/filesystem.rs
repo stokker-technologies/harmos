@@ -21,7 +21,6 @@ use std::path::PathBuf;
 // Local Imports
 use harmos_domain::model::storage::*;
 use harmos_domain::{MemorySize, Message};
-use harmos_operations::storage::{CaptureFile, FollowFile, FollowProduction, HashFile, ListDirectory, ReadFile, WatchDirectory};
 
 /* === Constants === */
 
@@ -45,53 +44,14 @@ fn roundtrip<T: Message + MemorySize + harmos_domain::schema::Described + Partia
     let bytes = value.encode();
     assert_eq!(T::decode(&bytes).unwrap(), value);
     let mut protobuf = Vec::new();
-    harmos_sdk::grpc::encode(&value, &mut protobuf).unwrap();
-    let prepared = harmos_sdk::grpc::prepare::<T>(harmos_sdk::grpc::DecodeInput::new(&protobuf)).unwrap();
+    harmos_operations::execution::grpc::encode(&value, &mut protobuf).unwrap();
+    let prepared =
+        harmos_operations::execution::grpc::prepare::<T>(harmos_operations::execution::grpc::DecodeInput::new(&protobuf)).unwrap();
     assert!(prepared.memory() >= value.memory_size());
     assert_eq!(prepared.decode().unwrap(), value);
 }
 
 /* === Tests === */
-
-#[test]
-fn directory_contract_roundtrips() {
-    let selection = DirectorySelection {
-        root: PathBuf::from("data/measurements"),
-        recursive: true,
-        rules: vec![
-            DirectoryRule {
-                pattern: "**/*.bin".into(),
-                include: true,
-            },
-            DirectoryRule {
-                pattern: "private/**".into(),
-                include: false,
-            },
-        ],
-    };
-    roundtrip(ListDirectory { selection: selection.clone() });
-    roundtrip(WatchDirectory { selection, include_existing: true });
-    let entry = DirectoryEntry {
-        path: "measurements/run.bin".into(),
-        directory: false,
-        length: 8192,
-    };
-    for event in [
-        DirectoryEvent::Existing(entry.clone()),
-        DirectoryEvent::Created(entry.clone()),
-        DirectoryEvent::Modified(entry),
-        DirectoryEvent::InitialScanComplete,
-        DirectoryEvent::Removed { path: "old.bin".into() },
-        DirectoryEvent::Renamed {
-            from: "old.bin".into(),
-            to: "new.bin".into(),
-        },
-        DirectoryEvent::RescanRequired,
-    ] {
-        roundtrip(event);
-    }
-    roundtrip(DirectoryCompletion { entries: 1000 });
-}
 
 #[test]
 fn file_contract_roundtrips() {
@@ -115,28 +75,9 @@ fn file_contract_roundtrips() {
     let range = ByteRange { offset: 1, limit: Some(2) };
     for source in [FileSource::Stored(file), FileSource::Local(PathBuf::from("measurements/échantillon.bin"))] {
         roundtrip(source.clone());
-        roundtrip(ReadFile { source: source.clone(), range });
-        roundtrip(HashFile { source: source.clone(), range });
-        for consistency in [CaptureConsistency::Bounded, CaptureConsistency::Stable] {
-            roundtrip(CaptureFile {
-                source: source.clone(),
-                range,
-                metadata: metadata.clone(),
-                consistency,
-            });
-        }
-        for start in [FollowStart::Beginning, FollowStart::End, FollowStart::At(2)] {
-            roundtrip(FollowFile { source: source.clone(), start });
-        }
+        roundtrip(range);
     }
-    roundtrip(FollowProduction {
-        file: StagedFile { history, id: metadata.id },
-        offset: 2,
-    });
     roundtrip(FileHash { bytes_read: 12345, sha256: [0xa5; 32] });
-    roundtrip(FileEvent::Data(FileBatch { offset: 1000, bytes: vec![1, 2, 3] }));
-    roundtrip(FileEvent::Truncated { length: 2 });
-    roundtrip(FileEvent::Replaced);
     let mut short = FileHash { bytes_read: 1, sha256: [0; 32] }.encode();
     short[1] = 31;
     short.pop();
@@ -151,7 +92,8 @@ fn path_transport_rejects() {
     let source = FileSource::Local(path);
     assert!(FileSource::decode(&source.encode()).is_err());
     let mut protobuf = Vec::new();
-    harmos_sdk::grpc::encode(&source, &mut protobuf).unwrap();
-    let prepared = harmos_sdk::grpc::prepare::<FileSource>(harmos_sdk::grpc::DecodeInput::new(&protobuf)).unwrap();
+    harmos_operations::execution::grpc::encode(&source, &mut protobuf).unwrap();
+    let prepared =
+        harmos_operations::execution::grpc::prepare::<FileSource>(harmos_operations::execution::grpc::DecodeInput::new(&protobuf)).unwrap();
     assert!(prepared.decode().is_err());
 }

@@ -26,21 +26,10 @@ pub mod sort;
 
 // Local Imports
 use crate::MemorySize;
-use crate::model::storage::codec::{Many, Nested, Text, product, variants};
 
 /* === Constants === */
 
 /* === Macros === */
-
-product!(FieldPath { fields: Many<Text> => 1 });
-variants!(Transform {
-    0, 1, "filter": Self::Filter(value) => { value: Nested<filter::Filter> => 1 } => Self::Filter(value);
-    1, 2, "project": Self::Project(value) => { value: Nested<project::Project> => 1 } => Self::Project(value);
-    2, 3, "aggregate": Self::Aggregate(value) => { value: Nested<aggregate::Aggregate> => 1 } => Self::Aggregate(value);
-    3, 4, "histogram": Self::Histogram(value) => { value: Nested<histogram::Histogram> => 1 } => Self::Histogram(value);
-    4, 5, "downsample": Self::Downsample(value) => { value: Nested<downsample::Downsample> => 1 } => Self::Downsample(value);
-    5, 6, "sort": Self::Sort(value) => { value: Nested<sort::Sort> => 1 } => Self::Sort(value);
-});
 
 /* === Type Aliases === */
 
@@ -49,6 +38,18 @@ variants!(Transform {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldPath {
     pub fields: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TimeBucketPlan {
+    pub origin_ns: i64,
+    pub width_ns: std::num::NonZeroU64,
+    pub time: String,
+    pub value: String,
+    pub identity: String,
+    pub group: Vec<String>,
+    pub max_samples: std::num::NonZeroUsize,
+    pub max_bytes: std::num::NonZeroUsize,
 }
 
 /* === Enums === */
@@ -61,6 +62,7 @@ pub enum Transform {
     Histogram(histogram::Histogram),
     Downsample(downsample::Downsample),
     Sort(sort::Sort),
+    TimeBuckets(TimeBucketPlan),
 }
 
 /* === Traits === */
@@ -94,7 +96,18 @@ impl MemorySize for Transform {
                 Self::Histogram(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
                 Self::Downsample(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
                 Self::Sort(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::TimeBuckets(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
             }
+    }
+}
+
+impl MemorySize for TimeBucketPlan {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.time.capacity()
+            + self.value.capacity()
+            + self.identity.capacity()
+            + self.group.memory_size().saturating_sub(std::mem::size_of_val(&self.group))
     }
 }
 

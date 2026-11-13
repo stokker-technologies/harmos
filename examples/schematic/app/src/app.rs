@@ -24,12 +24,12 @@ use std::sync::Arc;
 use crate::config::{LaunchConfig, Settings};
 use crate::document::Document;
 use crate::error::Error;
-use crate::records::Records;
+use crate::records::{Records, records_registry};
 use crate::state::Schematic;
 use crate::storage;
-use crate::streams::Streams;
-use crate::transactions::Transactions;
-use harmos::prelude::*;
+use crate::streams;
+use crate::transactions::{Transactions, transactions_state_catalog};
+use harmos_runtime::prelude::*;
 
 /* === Constants === */
 
@@ -37,16 +37,16 @@ use harmos::prelude::*;
 
 /* === Type Aliases === */
 
-pub type Origin = harmos::state::Origin<Schematic>;
+pub type Origin = harmos_runtime::state::Origin<Schematic>;
 
-pub type Runtime = harmos::Runtime<SchematicEditor>;
+pub type Runtime = harmos_runtime::Runtime<SchematicEditor>;
 
-pub type StateManager = harmos::state::StateManager<SchematicEditor>;
+pub type StateManager = harmos_runtime::state::StateManager<SchematicEditor>;
 
-pub type StreamManager = harmos::streams::StreamManager<SchematicEditor>;
+pub type StreamManager = harmos_runtime::streams::StreamManager<SchematicEditor>;
 
 #[cfg(feature = "simulation")]
-pub type Simulated = harmos::simulation::SimulatedRuntime<SchematicEditor>;
+pub type Simulated = harmos_runtime::simulation::SimulatedRuntime<SchematicEditor>;
 
 /* === Structs === */
 
@@ -63,9 +63,9 @@ pub struct SchematicEditor {
 impl Lifecycle for SchematicEditor {
     type Config = Option<LaunchConfig>;
     type Error = std::io::Error;
-    type Context = harmos::Startup<Self>;
+    type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(config: Self::Config, setup: &mut harmos::Setup<Self>) -> Result<Self, Self::Error> {
+    async fn prepare(config: Self::Config, setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
         let checkpoint = if let Some(config) = config {
             let recovery = config.document.recovering()?;
             let checkpoint = Arc::new(recovery.sidecars());
@@ -76,13 +76,18 @@ impl Lifecycle for SchematicEditor {
             None
         };
 
-        let settings = harmos::operations::Settings {
+        let settings = harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
             ..Default::default()
         };
-        setup.settings().operation_settings(settings);
+        setup
+            .settings()
+            .operation_settings(settings)
+            .lanes(harmos_runtime::operations::LaneSet::new([crate::lanes::ANALYSIS]).map_err(std::io::Error::other)?);
 
-        setup.settings().register(Transactions::catalog()).register(Records::catalog()).register(Streams::catalog());
+        setup.settings().register(transactions_state_catalog()).register(records_registry()).register(streams::stream_definitions());
+        setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::new(Default::default()));
+        setup.resource::<schematic_operations::transfer::Store>(Arc::new(Default::default()));
         Ok(Self { checkpoint })
     }
 
@@ -96,8 +101,6 @@ impl Application for SchematicEditor {
     type State = Schematic;
     type Transaction = Transactions;
     type Record = Records;
-    type Streams = Streams;
-    type Lanes = crate::lanes::Lanes;
 }
 
 /* === Public Functions === */
@@ -119,7 +122,7 @@ pub async fn launch(document: Document, config: &Settings) -> Result<Runtime, Er
 
 #[cfg(feature = "simulation")]
 #[tracing::instrument(level = "debug", skip_all, fields(seed))]
-pub fn simulate(origin: impl Into<Origin>, seed: u64) -> Result<Simulated, harmos::StartupError> {
+pub fn simulate(origin: impl Into<Origin>, seed: u64) -> Result<Simulated, harmos_runtime::StartupError> {
     Runtime::simulate(origin, None, seed)
 }
 

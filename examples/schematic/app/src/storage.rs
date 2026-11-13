@@ -24,7 +24,7 @@ use std::io;
 use crate::app::SchematicEditor;
 use crate::config::Settings;
 use crate::streams::NetVoltage;
-use harmos::Setup;
+use harmos_runtime::Setup;
 use schematic_storage::{Jsonl, JsonlStreams};
 
 /* === Constants === */

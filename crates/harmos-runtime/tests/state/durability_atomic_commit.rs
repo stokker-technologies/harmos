@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -27,10 +23,6 @@ use harmos_runtime::{
     state::RequestKey, state::Transaction,
 };
 
-/* === Constants === */
-
-/* === Macros === */
-
 /* === Type Aliases === */
 
 type Refusal = &'static str;
@@ -43,7 +35,6 @@ struct State {
     applications: usize,
 }
 
-#[harmos_runtime::record(id = "atomic.observed")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Observed {
     before: i64,
@@ -51,19 +42,15 @@ struct Observed {
     ordinal: usize,
 }
 
-#[harmos_runtime::record(id = "atomic.foreign")]
 #[derive(harmos_runtime::Described, Serialize, Deserialize)]
 struct Foreign;
 
-#[harmos_runtime::record(id = "harmos:sidecar/my_sidecar_2/result")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Reserved;
 
-#[harmos_runtime::record(id = "atomic.broken")]
 #[derive(harmos_runtime::Described, Deserialize)]
 struct Broken;
 
-#[harmos_runtime::transaction(id = "atomic.add",  inverse = Self,)]
 #[derive(harmos_runtime::Described, Clone, Debug, Deserialize)]
 struct Add {
     amount: i64,
@@ -73,32 +60,138 @@ struct Add {
     #[serde(skip)]
     encodings: Arc<AtomicUsize>,
 }
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<State, Self> =
+        harmos_runtime::state::TransactionEntry::new("atomic.add").reversible::<Self>();
+}
 
 struct Model;
 
-#[harmos_runtime::record(id = "atomic.large")]
 #[derive(harmos_runtime::Described, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Large(String);
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = State, error = Refusal)]
 #[derive(Clone, Debug)]
 enum Changes {
     Add(Add),
 }
+impl From<Add> for Changes {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<State> for Changes {
+    type Error = Refusal;
+    fn check(&self, state: &State) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut State) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &State, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Changes {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn changes_state_catalog() -> harmos_runtime::state::StateCatalog<State, Changes> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Changes::Add, |value| {
+        let Changes::Add(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Facts {
     Observed(Observed),
     Large(Large),
     Reserved(Reserved),
 }
-
-/* === Traits === */
+impl From<Observed> for Facts {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl From<Large> for Facts {
+    fn from(value: Large) -> Self {
+        Self::Large(value)
+    }
+}
+impl From<Reserved> for Facts {
+    fn from(value: Reserved) -> Self {
+        Self::Reserved(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Facts {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+            Self::Large(_) => <Large as harmos_runtime::state::Record>::ENTRY.definition(),
+            Self::Reserved(_) => <Reserved as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+            Self::Large(value) => serde::Serialize::serialize(value, serializer),
+            Self::Reserved(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn facts_registry() -> harmos_runtime::state::RecordRegistry<Facts> {
+    harmos_runtime::state::RecordRegistry::new()
+        .entry(<Observed as harmos_runtime::state::Record>::ENTRY, Facts::Observed, |value| match value {
+            Facts::Observed(value) => Some(value),
+            _ => None,
+        })
+        .entry(<Large as harmos_runtime::state::Record>::ENTRY, Facts::Large, |value| match value {
+            Facts::Large(value) => Some(value),
+            _ => None,
+        })
+        .entry(<Reserved as harmos_runtime::state::Record>::ENTRY, Facts::Reserved, |value| match value {
+            Facts::Reserved(value) => Some(value),
+            _ => None,
+        })
+}
 
 /* === Implementations === */
+
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.observed");
+}
+
+impl harmos_runtime::state::Record for Foreign {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.foreign");
+}
+
+impl harmos_runtime::state::Record for Reserved {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("harmos:sidecar/my_sidecar_2/result");
+}
+
+impl harmos_runtime::state::Record for Broken {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.broken");
+}
+
+impl harmos_runtime::state::Record for Large {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("atomic.large");
+}
 
 impl Serialize for Broken {
     fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
@@ -182,11 +275,6 @@ impl harmos_runtime::state::Invertible<State> for Add {
     }
 }
 
-#[harmos_runtime::lanes]
-pub enum ModelLanes {
-    #[default]
-    Open,
-}
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -198,25 +286,23 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl Application for Model {
-    type Lanes = ModelLanes;
     type State = State;
     type Transaction = Changes;
     type Record = Facts;
-    type Streams = ();
 }
 
 impl Wire for Model {
     fn identify(v: &Recorded<Self>) -> (harmos_runtime::DefinitionId, u32) {
         match v {
-            Recorded::Transaction(v) => v.identify(),
-            Recorded::Record(v) => v.identify(),
+            Recorded::Transaction(v) => harmos_runtime::state::CatalogCodec::identify(&**v),
+            Recorded::Record(v) => harmos_runtime::state::CatalogCodec::identify(v),
             Recorded::System(v) => v.identify(),
         }
     }
     fn encode<S: serde::Serializer>(v: &Recorded<Self>, s: S) -> Result<S::Ok, S::Error> {
         match v {
-            Recorded::Transaction(v) => v.encode_with(s),
-            Recorded::Record(v) => v.encode_with(s),
+            Recorded::Transaction(v) => harmos_runtime::state::CatalogCodec::encode(&**v, s),
+            Recorded::Record(v) => harmos_runtime::state::CatalogCodec::encode(v, s),
             Recorded::System(_) => unreachable!(),
         }
     }
@@ -225,24 +311,24 @@ impl Wire for Model {
     ) -> Result<Option<harmos_runtime::storage::Payload<Self>>, D::Error> {
         Ok(match kind {
             harmos_runtime::state::Kind::Transaction => {
-                Changes::restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
+                changes_state_catalog().restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
                     prepared: None,
                     id: id.clone(),
                     version,
                     value: Recorded::Transaction(harmos_runtime::operations::Response::new(value)),
                 })
             }
-            harmos_runtime::state::Kind::Record => Facts::restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
-                prepared: None,
-                id: id.clone(),
-                version,
-                value: Recorded::Record(value),
-            }),
+            harmos_runtime::state::Kind::Record => {
+                facts_registry().restore(id, version, payload)?.map(|value| harmos_runtime::storage::Payload {
+                    prepared: None,
+                    id: id.clone(),
+                    version,
+                    value: Recorded::Record(value),
+                })
+            }
         })
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -256,9 +342,9 @@ fn add(amount: i64, count: usize, mode: u8) -> Add {
 }
 
 async fn boot(copy: &Store, tail: usize) -> Runtime<Model> {
-    Runtime::<Model>::launch_with(State::default(), (), |setup| {
-        setup.settings().register(Changes::catalog());
-        setup.settings().register(Facts::catalog());
+    crate::support::app::launch::<Model>(State::default(), (), |setup| {
+        setup.settings().register(changes_state_catalog());
+        setup.settings().register(facts_registry());
         setup.settings().recover(Journal::<Model>::open(copy));
         setup.settings().tail(tail);
     })
@@ -280,7 +366,7 @@ async fn preparation_failure_inert() {
         runtime.state.commit(add(1, Records::MAX_RECORDS + 1, 0)).await,
         Err(Error::Preparation(harmos_runtime::state::PreparationError::Limit))
     ));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(copy.lines().is_empty());
 }
 
@@ -301,11 +387,11 @@ async fn restart_preserves_members() {
     assert_eq!(facts[0].position, Position(2));
     assert_eq!(facts[0].value, Facts::Observed(Observed { before: 0, amount: 7, ordinal: 0 }));
     assert!(matches!(runtime.state.state().at(Origin::initial(State::default()), Position(1)).await, Err(Error::IncompleteCommit)));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let restarted = boot(&copy, 1).await;
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (7, 1));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 2);
-    restarted.shutdown().await.unwrap();
+    crate::support::app::shutdown(&restarted).await.unwrap();
     assert_eq!(copy.lines().len(), 1);
 }
 
@@ -324,11 +410,11 @@ async fn reversals_emit_records() {
     assert_eq!(changes[1].metadata.link, Some(harmos_runtime::state::Link::UndoOf(initial.position)));
     assert_eq!(journal.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     drop(journal);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let restarted = boot(&copy, 1).await;
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 3);
-    restarted.shutdown().await.unwrap();
+    crate::support::app::shutdown(&restarted).await.unwrap();
 }
 
 #[tokio::test]
@@ -338,7 +424,7 @@ async fn facts_share_group() {
     let receipt = runtime.state.commit(add(5, 1, 10)).await.unwrap();
     assert_eq!((receipt.position, receipt.frontier), (Position(1), Position(3)));
     runtime.state.wait_until_stored(receipt.frontier).await;
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let runtime = boot(&copy, 1).await;
     let facts = runtime.state.query::<harmos_runtime::state::SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(facts.len(), 1);
@@ -356,7 +442,7 @@ async fn facts_share_group() {
     assert_eq!(typed.len(), 1);
     assert_eq!(typed[0].position, Position(3));
     assert_eq!(runtime.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (5, 1));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -373,7 +459,7 @@ async fn mixed_frontier_recovers() {
     assert!(matches!(entries[0].value, Recorded::Transaction(_)));
     assert!(matches!(entries[1].value, Recorded::System(_)));
     assert!(matches!(entries[2].value, Recorded::Record(_)));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let inspector = Runtime::<Model>::inspect(State::default(), Journal::<Model>::open(&copy)).await.unwrap();
     let read =
         inspector.state.query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier).await.collect::<Result<Vec<_>, _>>().unwrap();
@@ -396,8 +482,8 @@ async fn contract_refuses_apply() {
         }
     }
     let captures = Arc::new(AtomicUsize::new(0));
-    let runtime = Runtime::<Model>::launch_with(State::default(), (), |setup| {
-        setup.settings().register(Changes::catalog());
+    let runtime = crate::support::app::launch::<Model>(State::default(), (), |setup| {
+        setup.settings().register(changes_state_catalog());
         setup.settings().require_capture(
             harmos_runtime::state::CaptureLimits {
                 pending_bytes: 4096,
@@ -414,8 +500,6 @@ async fn contract_refuses_apply() {
     let state = runtime.state.state().read(|state| (state.balance, state.applications)).await.unwrap();
     assert_eq!(state.value, (0, 0));
     assert_eq!(state.position, Position::ORIGIN);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(captures.load(Ordering::SeqCst), 0);
 }
-
-/* === Tests === */

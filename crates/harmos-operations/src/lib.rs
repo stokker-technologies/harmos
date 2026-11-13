@@ -9,26 +9,61 @@
 
 /* === Modules === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod access;
+mod answer;
+pub mod catalog;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod clock;
+pub mod config;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod error;
+pub mod execution;
+pub mod failure;
 pub mod host;
+pub mod inventory;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub mod lifecycle;
+pub mod listeners;
+pub mod model;
+pub mod observers;
+pub mod operations;
+pub mod plugin;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod plugins;
+mod refusal;
+mod registration;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod status;
 pub mod storage;
 pub mod streams;
 
 /* === Re-Exports === */
 
-#[cfg(feature = "runtime")]
+pub use config::{ConfigError, decode_config, encode_config, validate_config};
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use error::Error;
+pub use failure::Failure;
 pub use harmos_domain::*;
-pub use harmos_macros::{catalog, operation};
+pub use harmos_protocol::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
+pub use harmos_protocol::service::{RestartPolicy, ServicePolicy};
+pub use harmos_sdk_derive::Request;
+pub use inventory::{StreamDeclaration, publications::StreamSpec};
+pub use operations::{OperationDefinition, OperationSpec, RequestShape};
+pub use refusal::{FAILED, RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
+pub use registration::Requirement;
+pub use registration::{CATALOG_EXPORT_FLAG, Registrar, Registration, RegistrationError};
 
 #[cfg(feature = "lifecycle")]
-pub use harmos_sdk::{Context, Dependent, Executable, ExecutionContext, Operation, Resource, ResourceError, Response};
-pub use host::Host;
-pub use lifecycle::Lifecycle;
-pub use storage::Storage;
-pub use streams::Streams;
+pub use crate::execution::{Context, ExecutionContext, Operation, Resource, ResourceError, Response};
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use host::host_catalog;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use lifecycle::lifecycle_catalog;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use storage::storage_catalog;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use streams::streams_catalog;
 
 /* === Imports === */
 
@@ -36,41 +71,22 @@ pub use streams::Streams;
 
 // Third Party Imports
 extern crate self as harmos;
+extern crate self as harmos_operations;
 
 // Local Imports
-#[cfg(feature = "runtime")]
-use harmos_sdk::__private::RegistrationBatch;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+use crate::execution::__private::Catalog;
 
 /* === Constants === */
-
-#[cfg(feature = "runtime")]
-static BUILTIN_DECLARATIONS: [catalog::Node<operations::WireDeclaration>; 6] = [
-    catalog::Node::Nested(Host::CATALOG.declarations),
-    catalog::Node::Nested(Lifecycle::CATALOG.declarations),
-    catalog::Node::Nested(Storage::CATALOG.declarations),
-    catalog::Node::Nested(Streams::CATALOG.declarations),
-    catalog::Node::Leaf(operations::WireDeclaration::of::<lifecycle::Initialize>()),
-    catalog::Node::Leaf(operations::WireDeclaration::of::<lifecycle::Shutdown>()),
-];
-
-#[cfg(feature = "runtime")]
-static BUILTIN_CALLEES: [catalog::Node<&'static [operations::WireDeclaration]>; 4] = [
-    catalog::Node::Nested(Host::CATALOG.callees),
-    catalog::Node::Nested(Lifecycle::CATALOG.callees),
-    catalog::Node::Nested(Storage::CATALOG.callees),
-    catalog::Node::Nested(Streams::CATALOG.callees),
-];
 
 /* === Macros === */
 
 /* === Type Aliases === */
 
-#[cfg(feature = "runtime")]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub type Result<T> = std::result::Result<T, Error>;
 
 /* === Structs === */
-
-pub struct Builtins;
 
 /* === Enums === */
 
@@ -78,76 +94,23 @@ pub struct Builtins;
 
 /* === Implementations === */
 
-impl Builtins {
-    pub fn catalog() -> Vec<harmos_domain::OperationDefinition> {
-        let mut definitions = Host::catalog();
-        definitions.extend(Lifecycle::catalog());
-        definitions.extend(Storage::catalog());
-        definitions.extend(Streams::catalog());
-        definitions.push(lifecycle::Initialize::definition());
-        definitions.push(lifecycle::Shutdown::definition());
-        definitions
-    }
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub fn builtins_catalog() -> crate::execution::operations::Catalog {
+    builtins_catalog_batch().named("harmos.builtins")
 }
 
-#[cfg(feature = "runtime")]
-impl harmos_sdk::operations::OperationCatalog for Builtins {
-    const CATALOG: harmos_sdk::operations::Catalog =
-        harmos_sdk::operations::Catalog::of::<Self>("harmos.builtins", &BUILTIN_DECLARATIONS, &BUILTIN_CALLEES);
-
-    fn batch() -> RegistrationBatch {
-        let mut batch = Host::batch();
-        batch.operations.extend(Lifecycle::batch().operations);
-        batch.operations.extend(Storage::batch().operations);
-        batch.operations.extend(Streams::batch().operations);
-        batch.operations.extend(RegistrationBatch::new().operation::<lifecycle::Initialize>().operations);
-        batch.operations.extend(RegistrationBatch::new().operation::<lifecycle::Shutdown>().operations);
-        batch
-    }
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub fn builtins_catalog_batch() -> Catalog {
+    let mut batch = host_catalog();
+    batch.operations.extend(lifecycle_catalog().operations);
+    batch.operations.extend(storage_catalog().operations);
+    batch.operations.extend(streams_catalog().operations);
+    batch
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-pub mod operations {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    pub use harmos_domain::operations::*;
-
-    #[cfg(feature = "lifecycle")]
-    pub use harmos_sdk::operations::{Catalog, Executable, OperationCatalog};
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
-}
 
 #[doc(hidden)]
 pub mod __private {
@@ -155,10 +118,19 @@ pub mod __private {
 
     /* === Re-Exports === */
 
+    pub use crate::answer::Answer;
+    pub trait CarrierContext {
+        const FACILITY: &'static str;
+    }
+    pub use crate::inventory as PluginInventory;
+    pub use crate::plugin;
+    pub use crate::plugin::{Grant as PluginGrant, Requirement as PluginRequirement, Requirements as PluginRequirements};
+    pub use crate::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
     pub use harmos_domain::__private::*;
+    pub use harmos_domain::config::SchemaSettings;
 
     #[cfg(feature = "lifecycle")]
-    pub use harmos_sdk::__private::RegistrationBatch;
+    pub use crate::execution::__private::Catalog;
 
     /* === Imports === */
 
@@ -190,25 +162,3 @@ pub mod __private {
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn builtin_inventory() {
-        let definitions = crate::Builtins::catalog();
-        let ids: std::collections::BTreeSet<_> = definitions.iter().map(|definition| definition.id.as_str()).collect();
-        assert_eq!(definitions.len(), 30);
-        assert_eq!(ids.len(), definitions.len());
-        let mut dependencies = definitions.into_iter();
-        assert!(dependencies.all(|definition| definition.fingerprint.0 != [0; 32]));
-    }
-
-    #[test]
-    fn reserved_lifecycle_fingerprints() {
-        use crate::lifecycle::{Action, Descriptor, Initialize, POLICY, Shutdown};
-        for (action, definition) in [(Action::Initialize, Initialize::definition()), (Action::Shutdown, Shutdown::definition())] {
-            let descriptor = Descriptor::new(action, POLICY).unwrap();
-            assert_eq!(descriptor.contract().operation(), &definition);
-        }
-    }
-}

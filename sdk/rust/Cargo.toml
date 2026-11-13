@@ -1,0 +1,128 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Package === #
+
+[package]
+name = "harmos"
+description = "Rust plugin authoring and generated-contract clients for Harmos."
+autotests = false
+autobins = false
+exclude = ["src/bin/**"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# === Package Targets === #
+
+[[example]]
+name = "client"
+
+# === Features === #
+
+[features]
+default = []
+wasm = ["dep:wit-bindgen"]
+
+# === Dependencies === #
+
+[dependencies]
+# Local
+harmos-protocol = { workspace = true }
+harmos-sdk-derive = { workspace = true }
+
+# Error Handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+bytes = { workspace = true }
+semver = { workspace = true }
+
+# Serialization
+prost = { workspace = true, features = ["derive", "std"] }
+prost-reflect = { workspace = true }
+prost-types = { workspace = true, features = ["std"] }
+
+# Async
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+
+# Networking
+tonic = { workspace = true, features = ["codegen"] }
+
+wit-bindgen = { workspace = true, default-features = true, features = ["async-spawn", "inter-task-wakeup"], optional = true }
+
+# === Build Dependencies === #
+
+# === Dev Dependencies === #
+
+[dev-dependencies]
+# Local
+harmos-protocol = { workspace = true }
+schematic-protocol = { path = "../../examples/schematic/protocol" }
+
+# Serialization
+tonic-prost = { workspace = true }
+serde_json = { workspace = true, features = ["std"] }
+
+# Utilities
+sha2 = { workspace = true, default-features = true }
+wasmtime = { workspace = true }
+wit-component = { workspace = true, default-features = true }
+
+# Filesystem
+tempfile = { workspace = true }
+
+# Async
+tokio = { workspace = true, features = ["process", "io-util"] }
+
+# === Target Dependencies === #
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Async
+tokio = { workspace = true, features = ["net"] }
+
+# Networking
+tonic = { workspace = true, features = ["router", "transport"] }
+
+
+# === Test Targets === #
+
+[[test]]
+name = "system"
+path = "tests/wasm/main.rs"
+required-features = ["wasm"]
+
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+# === Bench Targets === #
+
+# === Example Targets === #
+
+# === Workspace Lints === #
+
+# === Lints === #
+
+[lints]
+workspace = true
+
+# === Profiles === #
+
+# === Patches === #
+
+# === Other === #

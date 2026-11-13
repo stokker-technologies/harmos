@@ -9,11 +9,14 @@
 
 /* === Modules === */
 
-mod publish;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod append;
 
 /* === Re-Exports === */
 
-pub use publish::{FollowingRow, Publish};
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub use append::Append;
+pub use harmos_protocol::v1::FollowingRow;
 
 /* === Imports === */
 
@@ -33,9 +36,16 @@ pub use publish::{FollowingRow, Publish};
 
 /* === Enums === */
 
-#[harmos::catalog(harmos_path = crate)]
-pub enum Streams {
-    Publish(Publish),
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub fn streams_catalog() -> crate::execution::operations::Catalog {
+    streams_catalog_batch().named("harmos.streams")
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub fn streams_catalog_batch() -> crate::execution::__private::Catalog {
+    let mut batch = crate::execution::__private::Catalog::new();
+    batch.operations.push(crate::execution::operations::OperationFactory::protobuf::<Append>().expect("Append declaration"));
+    batch
 }
 
 /* === Traits === */
@@ -44,31 +54,24 @@ pub enum Streams {
 
 /* === Public Functions === */
 
-// Publishes one row on a declared stream through the host's `host.publish` operation.
-#[cfg(feature = "lifecycle")]
-pub fn publish_on<H, S>(host: &H, row: &S::Row) -> impl std::future::Future<Output = std::result::Result<(), H::Error>> + Send
+// Append Through the Native Declaration With the Caller's Authority.
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub async fn publish_on<H, S>(host: &H, row: &S::Row) -> Result<(), H::Error>
 where
-    H: harmos_sdk::operations::OperationHost,
-    S: harmos_domain::StreamSpec,
+    H: crate::execution::operations::ProtobufHost,
+    S: harmos_operations::StreamSpec,
     S::Row: harmos_domain::Message,
 {
-    use harmos_domain::Message;
-    let published = host.resolve::<Publish, ()>(
-        Publish {
-            stream: S::ID.to_owned(),
-            sequence: None,
-            published_unix_micros: None,
-            context: None,
-            payload: row.encode(),
-            following: Vec::new(),
-        },
-        None,
-        (),
-    );
-    async move {
-        published.await?;
-        Ok(())
-    }
+    host.call_protobuf::<Append>(harmos_protocol::context::SamplesAppendRequest {
+        stream: S::ID.to_owned(),
+        sequence: None,
+        published_at: None,
+        context: None,
+        payload: harmos_domain::Message::encode(row),
+        following: Vec::new(),
+    })
+    .await?;
+    Ok(())
 }
 
 /* === Private Functions === */

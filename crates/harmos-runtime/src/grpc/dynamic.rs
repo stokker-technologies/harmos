@@ -24,7 +24,7 @@ use tonic::Status;
 use tonic::codec::{BufferSettings, DecodeBuf, EncodeBuf};
 // Local Imports
 use crate::operations::Contract;
-use harmos_sdk::grpc::{DecodeInput, Validator as ProtobufValidator, prost};
+use harmos_operations::execution::grpc::{DecodeInput, Validator as ProtobufValidator, prost};
 use prost::Message;
 
 /* === Constants === */
@@ -61,6 +61,7 @@ pub struct Decoder {
 struct Binding {
     path: String,
     method: MethodDescriptor,
+    managed: bool,
     request: MessageDescriptor,
     response: MessageDescriptor,
     input: Option<MessageDescriptor>,
@@ -99,22 +100,35 @@ impl Operation {
         let service =
             super::descriptor(&grpc.package, &grpc.service, &[(&grpc.method, contract)]).map_err(|error| invalid(error.to_string()))?;
         let method = service.methods().next().ok_or_else(|| invalid("missing operation method"))?;
-        let request = direction(method.input(), "request", contract.input().is_some())?;
-        let response = direction(method.output(), "response", contract.output().is_some())?;
+        let request = direction(method.input(), "request", grpc.managed || contract.input().is_some())?;
+        let response = direction(method.output(), "response", grpc.managed)?;
         let input = contract.input().map(|_| direction(method.input(), "item", true)).transpose()?;
-        let output = contract.output().map(|_| direction(method.output(), "item", true)).transpose()?;
-        let validators =
-            ProtobufValidator::from_schema(contract.schema(), &Default::default()).map_err(|error| invalid(error.to_string()))?;
-        let request_validator = validators.at(contract.request().index()).map_err(|error| invalid(error.to_string()))?;
-        let response_validator = validators.at(contract.response().index()).map_err(|error| invalid(error.to_string()))?;
-        let input_validator =
-            contract.input().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?;
-        let output_validator =
-            contract.output().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?;
+        let output = contract.output().map(|_| direction(method.output(), "item", grpc.managed)).transpose()?;
+        let (request_validator, response_validator, input_validator, output_validator) = if contract.protobuf().is_some() {
+            let validator = |descriptor| {
+                ProtobufValidator::from_descriptor(descriptor, &Default::default()).map_err(|error| invalid(error.to_string()))
+            };
+            (
+                validator(request.clone())?,
+                validator(response.clone())?,
+                input.clone().map(validator).transpose()?,
+                output.clone().map(validator).transpose()?,
+            )
+        } else {
+            let validators =
+                ProtobufValidator::from_schema(contract.schema(), &Default::default()).map_err(|error| invalid(error.to_string()))?;
+            (
+                validators.at(contract.request().index()).map_err(|error| invalid(error.to_string()))?,
+                validators.at(contract.response().index()).map_err(|error| invalid(error.to_string()))?,
+                contract.input().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?,
+                contract.output().map(|view| validators.at(view.index())).transpose().map_err(|error| invalid(error.to_string()))?,
+            )
+        };
         Ok(Self {
             binding: Arc::new(Binding {
                 path: grpc.path(),
                 method,
+                managed: grpc.managed,
                 request,
                 response,
                 input,
@@ -213,6 +227,17 @@ impl Binding {
     #[tracing::instrument(target = "harmos::grpc", name = "grpc.dynamic.decode", level = "trace", skip_all, fields(wire_bytes = bytes.len()))]
     fn decode(&self, bytes: &[u8]) -> Result<Event, Status> {
         self.check(bytes.len())?;
+        if !self.managed
+            && let Some(output) = &self.output
+        {
+            self.output_validator
+                .as_ref()
+                .expect("declared output validator")
+                .validate(bytes)
+                .map_err(|error| invalid(error.to_string()))?;
+            let message = DynamicMessage::decode(output.clone(), bytes).map_err(|error| invalid(error.to_string()))?;
+            return self.json(&message).map(Event::Item);
+        }
         if let Some(output_validator) = &self.output_validator {
             // Validate Each Wire Fragment Before The Reflection Decoder Allocates It.
             DecodeInput::new(bytes)

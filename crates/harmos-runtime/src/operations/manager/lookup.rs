@@ -35,6 +35,41 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
+    pub(in crate::operations) fn typed_entry<O: crate::operations::RequestShape, P: Send + 'static>(
+        &self, origin: &Origin, owner: Option<&str>,
+    ) -> Result<Arc<Entry>> {
+        let candidates = {
+            let state = self.registry.state.lock().expect("operation registry lock is healthy");
+            if state.closing || !self.instances.is_accepting() {
+                return Err(Error::Closing { domain: "operations" });
+            }
+            state
+                .entries
+                .values()
+                .flat_map(|providers| providers.values())
+                .filter(|entry| {
+                    let selected = owner.is_none_or(|owner| entry.owner.as_str() == owner);
+                    let native = entry
+                        .binding
+                        .downcast_ref::<harmos_operations::execution::operations::OperationFactory>()
+                        .is_some_and(|operation| operation.accepts_native_request::<O>());
+                    selected && (native || entry.binding.is::<super::super::binding::Typed<O, P>>())
+                })
+                .map(|entry| entry.id().to_owned())
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        if candidates.len() != 1 {
+            return Err(Error::NotRegistered {
+                domain: "unambiguous operation request",
+                name: std::any::type_name::<O>().to_owned(),
+            });
+        }
+        let id = candidates.first().expect("one checked request");
+        match owner {
+            Some(owner) => self.capture_provider(id, Some(owner)),
+            None => self.entry_as(id, origin),
+        }
+    }
     pub(in crate::operations) fn capture_routed(&self, id: &str, owner: &str, origin: &Origin) -> Result<Arc<Entry>> {
         if origin.has_lifecycle_loan() {
             let state = self.registry.state.lock().expect("operation registry lock is healthy");
@@ -50,7 +85,7 @@ impl Manager {
     }
 
     pub(in crate::operations) fn entry_as(&self, id: &str, _origin: &Origin) -> Result<Arc<Entry>> {
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some(scope) = &_origin.scope {
             if let Some(required) = Identifier::new(id)
                 .ok()
@@ -83,7 +118,7 @@ impl Manager {
         self.entry(id)
     }
 
-    #[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
     pub(in crate::operations) fn encode_assignments(&self, scope: &PluginScope, allowance: usize) -> Result<Vec<u8>> {
         let exhausted = || Error::ResourceExhausted { resource: "SDK encoding memory" };
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
@@ -108,10 +143,10 @@ impl Manager {
                 })
             }
         };
-        let mut peak = std::mem::size_of::<Vec<harmos_sdk::operations::AssignedOperation>>() + 20;
+        let mut peak = std::mem::size_of::<Vec<harmos_operations::execution::operations::AssignedOperation>>() + 20;
         for contract in contracts() {
             let entry = select(contract)?;
-            if entry.contract.as_ref() != Some(contract) {
+            if !entry.contract.as_ref().is_some_and(|actual| actual.compatible(contract)) {
                 return Err(Error::InvalidInput {
                     field: "operation assignment",
                     reason: "provider differs from the frozen contract",
@@ -121,7 +156,7 @@ impl Manager {
                 entry.owner.as_str().len().checked_add(entry.id().len()).and_then(|length| length.checked_add(1)).ok_or_else(exhausted)?;
             let encoded = name.checked_add(52).and_then(|length| length.checked_mul(2)).ok_or_else(exhausted)?;
             peak = peak
-                .checked_add(std::mem::size_of::<harmos_sdk::operations::AssignedOperation>())
+                .checked_add(std::mem::size_of::<harmos_operations::execution::operations::AssignedOperation>() + 32)
                 .and_then(|length| length.checked_add(name))
                 .and_then(|length| length.checked_add(encoded))
                 .ok_or_else(exhausted)?;
@@ -135,17 +170,15 @@ impl Manager {
         let assignments = contracts()
             .map(|contract| {
                 let entry = select(contract)?;
-                Ok(harmos_sdk::operations::AssignedOperation {
+                Ok(harmos_operations::execution::operations::AssignedOperation {
                     operation: format!("{}.{}", entry.owner, entry.id()),
-                    fingerprint: entry.definition.fingerprint.0,
+                    fingerprint: contract.operation().fingerprint.0.to_vec(),
                     generation: entry.generation.value(),
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        harmos_sdk::operations::AssignedOperation::encode(&assignments).map_err(|source| Error::OperationFailed {
-            operation: "SDK assignments".into(),
-            source: Arc::new(source),
-        })
+        use prost::Message;
+        Ok(harmos_protocol::v1::OperationAssignments { operations: assignments }.encode_to_vec())
     }
 
     // Capture Does Not Grant Readiness; Submission Rechecks The Exact Entry.
@@ -160,7 +193,7 @@ impl Manager {
         }
         let entry = Some(state.select(id, owner)?)
             .filter(|entry| {
-                #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+                #[cfg(feature = "plugin-guest")]
                 if entry.sdk.is_some() {
                     return false;
                 }

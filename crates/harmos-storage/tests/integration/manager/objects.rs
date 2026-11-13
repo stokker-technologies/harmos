@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 use super::backend::storage_settings;
@@ -23,39 +19,30 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::backend::{Data, Recovery, history};
 use harmos_domain::{Identified, Identifier, Message};
-use harmos_storage::{ObjectCatalog, ObjectRetention, StorageBackends, StorageManager, StoredObject};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
+use harmos_storage::{ObjectRetention, StorageBackends, StorageManager, StoredObject};
 
 /* === Structs === */
 
-#[harmos_domain::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_domain::Message, Debug, Default, Clone, PartialEq)]
 struct Document {
     id: String,
     status: String,
 }
 
-#[harmos_domain::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_domain::Message, Debug, Default, Clone, PartialEq)]
 struct DifferentDocument {
     id: String,
     status: String,
     annotation: u32,
 }
 
-#[harmos_domain::message]
+#[derive(harmos_domain::Message, Clone, Debug, Default)]
 struct Duplicate {
     id: String,
     status: String,
 }
 
-#[harmos_domain::message]
-#[derive(Clone, PartialEq)]
+#[derive(harmos_domain::Message, Debug, Default, Clone, PartialEq)]
 struct Counter {
     id: u64,
     value: u64,
@@ -63,30 +50,21 @@ struct Counter {
 
 /* === Enums === */
 
-#[harmos_domain::catalog]
-enum NumericObjects {
-    Counter(Counter),
+fn numeric_objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new().entry(harmos_domain::model::storage::ObjectDefinition::of::<Counter>())
 }
 
-#[harmos_domain::catalog]
-enum Objects {
-    Current(Document),
-    Different(DifferentDocument),
+fn objects_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new()
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Document>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<DifferentDocument>())
 }
 
-#[harmos_domain::catalog]
-enum RenamedVariants {
-    NothingToDoWithWireNames(Document),
-    Different(DifferentDocument),
+fn ambiguous_catalog() -> harmos_domain::model::storage::ObjectCatalog {
+    harmos_domain::model::storage::ObjectCatalog::new()
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Document>())
+        .entry(harmos_domain::model::storage::ObjectDefinition::of::<Duplicate>())
 }
-
-#[harmos_domain::catalog]
-enum Ambiguous {
-    First(Document),
-    Second(Duplicate),
-}
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -142,8 +120,6 @@ impl StoredObject for Counter {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 fn limit() -> NonZeroUsize {
@@ -159,8 +135,9 @@ fn document(status: &str) -> Document {
 
 #[tokio::test]
 async fn numeric_keys_roundtrip() {
-    let primary = Arc::new(Data::<NumericObjects>::with_catalog(history()));
-    let storage = StorageManager::<NumericObjects>::new(
+    let primary = Arc::new(Data::with_catalog(numeric_objects_catalog(), history()));
+    let storage = StorageManager::with_catalog(
+        numeric_objects_catalog(),
         StorageBackends {
             primary,
             state: Arc::new(Recovery::new(history())),
@@ -172,95 +149,22 @@ async fn numeric_keys_roundtrip() {
     let object = Counter { id: 42, value: 7 };
     let admitted = storage.write_object(&object).await.unwrap();
     storage.flush_until(&admitted.position).await.unwrap();
-    let found = storage.read_object::<Counter>(&42, harmos_storage::ObjectVersion::Exact(admitted.version.clone())).await.unwrap().unwrap();
+    let found = storage.get_object::<Counter>(&42, harmos_storage::ObjectVersion::Exact(admitted.version.clone())).await.unwrap().unwrap();
     assert_eq!(found.value, object);
     assert_eq!(found.version, admitted.version);
-    assert!(storage.read_object::<Counter>(&43, harmos_storage::ObjectVersion::Latest,).await.unwrap().is_none());
+    assert!(storage.get_object::<Counter>(&43, harmos_storage::ObjectVersion::Latest,).await.unwrap().is_none());
     storage.close().await.unwrap();
 }
 
-#[test]
-fn catalog_projects_schema() {
-    Objects::validate().unwrap();
-    <() as ObjectCatalog>::validate().unwrap();
-    assert!(<() as ObjectCatalog>::definitions().as_ref().is_empty());
-    let definitions = Objects::definitions();
-    assert_eq!(
-        definitions.as_ref().iter().map(|d| d.schema().unwrap().version.get()).collect::<Vec<_>>(),
-        [Document::definition().1, DifferentDocument::definition().1]
-    );
-    assert!((definitions.as_ref()[0].declaration().fields)().iter().any(|field| field.name == "status"));
-    assert!(Ambiguous::validate().is_err());
-}
-
-#[test]
-fn updates_keep_identity() {
-    let first = Objects::encode(&document("running"), limit()).unwrap();
-    let second = Objects::encode(&document("finished"), limit()).unwrap();
-    assert_eq!(first.schema, second.schema);
-    assert_eq!(first.item, second.item);
-    assert_ne!(first.payload, second.payload);
-    assert_eq!(Objects::decode::<Document>(&second, limit()).unwrap(), document("finished"));
-    assert_eq!(RenamedVariants::encode(&document("finished"), limit()).unwrap(), second);
-    Objects::validate_value(&second, limit()).unwrap();
-}
-
-#[test]
-fn decode_requires_matching_shape() {
-    let old = DifferentDocument {
-        id: "document-1".into(),
-        status: "archived".into(),
-        annotation: 7,
-    };
-    let value = Objects::encode(&old, limit()).unwrap();
-    Objects::validate_value(&value, limit()).unwrap();
-    assert_eq!(Objects::decode::<DifferentDocument>(&value, limit()).unwrap(), old);
-    assert!(Objects::decode::<Document>(&value, limit()).is_err());
-    let mut unknown = value;
-    unknown.schema.version = std::num::NonZeroU32::new(unknown.schema.version.get().wrapping_add(1).max(1)).unwrap();
-    assert!(Objects::validate_value(&unknown, limit()).is_err());
-}
-
-#[test]
-fn forged_values_refused() {
-    let original = Objects::encode(&document("running"), limit()).unwrap();
-    for case in 0..4 {
-        let mut value = original.clone();
-        match case {
-            0 => value.item = harmos_storage::ObjectKey::new("other", NonZeroUsize::new(4096).unwrap()).unwrap(),
-            1 => value.schema.id = Identifier::new("other").unwrap(),
-            2 => value.payload = vec![0xff],
-            _ => value.payload = document("finished").encode(),
-        }
-        if case == 3 {
-            // A value update with the same logical identity is valid.
-            Objects::validate_value(&value, limit()).unwrap();
-        } else {
-            assert!(Objects::validate_value(&value, limit()).is_err());
-            assert!(Objects::decode::<Document>(&value, limit()).is_err());
-        }
-    }
-    let invalid = Document { id: String::new(), status: "new".into() };
-    assert!(Objects::encode(&invalid, limit()).is_err());
-}
-
-#[test]
-fn payload_limit_bounds() {
-    let source = document(&"x".repeat(100));
-    let exact = NonZeroUsize::new(source.encoded_size()).unwrap();
-    let small = NonZeroUsize::new(source.encoded_size() - 1).unwrap();
-    assert!(Objects::encode(&source, small).is_err());
-    let value = Objects::encode(&source, exact).unwrap();
-    assert!(Objects::decode::<Document>(&value, small).is_err());
-    assert!(Objects::validate_value(&value, small).is_err());
-    assert_eq!(Objects::decode::<Document>(&value, exact).unwrap(), source);
-}
+#[path = "objects/object_codec_preserves_identity_and_refuses_forged_values.rs"]
+mod object_codec_preserves_identity_and_refuses_forged_values;
 
 #[test]
 fn ambiguous_catalog_refused() {
-    let primary = Arc::new(Data::<Ambiguous>::with_catalog(history()));
+    let primary = Arc::new(Data::with_catalog(ambiguous_catalog(), history()));
     let recovery = Arc::new(Recovery::new(history()));
-    let result = StorageManager::<Ambiguous>::new(
+    let result = StorageManager::with_catalog(
+        ambiguous_catalog(),
         StorageBackends {
             primary: primary.clone(),
             state: recovery.clone(),
@@ -275,5 +179,3 @@ fn ambiguous_catalog_refused() {
     assert!(!primary.control.open.load(Ordering::SeqCst));
     assert!(!recovery.control.open.load(Ordering::SeqCst));
 }
-
-/* === Tests === */

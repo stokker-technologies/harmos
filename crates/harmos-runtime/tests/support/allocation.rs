@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -25,7 +21,7 @@ use std::time::{Duration, Instant};
 
 // Local Imports
 use feeds::{Narrow, Waveform, Wide};
-use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::Stream};
+use harmos_runtime::{Application, Runtime, state::At, state::Never, streams::Item, streams::StreamRow};
 
 /* === Constants === */
 
@@ -50,32 +46,11 @@ thread_local! {
         static ALLOCATIONS: Cell<u64> = const { Cell::new(0) };
 }
 
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Probe;
 
 struct Counting;
-
-/* === Enums === */
-
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Serial,
-
-    #[lane(concurrent(2))]
-    Concurrent,
-
-    #[lane(unbounded)]
-    Unbounded,
-}
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -90,11 +65,9 @@ impl harmos_runtime::Lifecycle for Probe {
 }
 
 impl Application for Probe {
-    type Lanes = Lanes;
     type State = ();
     type Transaction = Never;
     type Record = ();
-    type Streams = feeds::Bank;
 }
 
 // The one unsafe block this crate's tests carry: a pass-through allocator is
@@ -154,7 +127,7 @@ pub async fn streams_r004_publish_cost_is_independent_of_the_window_size() {
         Wide::WINDOW,
     );
 
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 pub async fn streams_ac006_concurrent_waveform_measurement() {
@@ -245,12 +218,12 @@ pub async fn streams_ac006_concurrent_waveform_measurement() {
         Wide::WINDOW,
     );
 
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 /* === Private Functions === */
 
-fn measured<S: Stream<Probe>>(runtime: &Runtime<Probe>, row: fn(u64) -> S, count: u64) -> u64 {
+fn measured<S: StreamRow>(runtime: &Runtime<Probe>, row: fn(u64) -> S, count: u64) -> u64 {
     ALLOCATIONS.with(|allocations| allocations.set(0));
     MEASURING.with(|measuring| measuring.set(true));
     for value in 0..count {
@@ -270,8 +243,8 @@ fn count_allocation() {
 }
 
 async fn measured_runtime() -> Runtime<Probe> {
-    Runtime::<Probe>::launch_with((), (), |setup| {
-        setup.settings().register(feeds::Bank::catalog());
+    crate::support::app::launch::<Probe>((), (), |setup| {
+        setup.settings().register(feeds::stream_definitions());
     })
     .await
     .expect("a memory-only boot recovers nothing")
@@ -303,24 +276,13 @@ mod feeds {
 
     /* === Structs === */
 
-    #[harmos_runtime::stream(description = "A row published into a small ring.", id = "narrow", window = 128)]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Narrow(pub u64);
 
-    #[harmos_runtime::stream(
-        description = "The same row shape published into a ring five hundred times as large.",
-        id = "wide",
-        window = 65_536
-    )]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Wide(pub u64);
 
-    #[harmos_runtime::stream(
-        description = "One waveform row whose own source clock is application-declared payload.",
-        id = "waveform",
-        window = 65_536
-    )]
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Default, PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
     pub struct Waveform {
         pub captured_at_ns: u64,
         pub sample: i16,
@@ -328,22 +290,38 @@ mod feeds {
 
     /* === Enums === */
 
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Narrow(Narrow),
-        Wide(Wide),
-        Waveform(Waveform),
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
 
+    impl harmos_runtime::streams::StreamRow for Narrow {
+        const ENTRY: harmos_runtime::StreamEntry<Self> =
+            harmos_runtime::StreamEntry::new("narrow", 128).label("Narrow").description("A row published into a small ring.");
+    }
+
+    impl harmos_runtime::streams::StreamRow for Wide {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("wide", 65_536)
+            .label("Wide")
+            .description("The same row shape published into a ring five hundred times as large.");
+    }
+
+    impl harmos_runtime::streams::StreamRow for Waveform {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("waveform", 65_536)
+            .label("Waveform")
+            .description("One waveform row whose own source clock is application-declared payload.");
+    }
+
     /* === Public Functions === */
+
+    pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+        vec![
+            <Narrow as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+            <Wide as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+            <Waveform as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+        ]
+    }
 
     /* === Private Functions === */
 
     /* === Tests === */
 }
-
-/* === Tests === */

@@ -7,122 +7,46 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-use super::POLICY;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::codec::{Nested, product};
-use harmos_domain::model::storage::{MutationId, StagedFile};
-use harmos_domain::operations::ReplaySafety;
-
-#[cfg(feature = "runtime")]
-use harmos_storage::{ErasedCatalog, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-product!(DeleteFile {
-    mutation: Nested<MutationId> => 1,
-    file: Nested<StagedFile> => 2,
-});
-
-/* === Type Aliases === */
+use crate::execution::operations::{ExecutionContext, ProtobufOperation, Resource, ServingError};
+use harmos_operations::operations::{FailureKind, ReplaySafety};
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
-// Delete A Staged File, Exactly Once Per Mutation.
-#[harmos::operation(harmos_path = crate, resources = [StorageManager<ErasedCatalog>], codec = manual,
-    id = "storage.delete_file",
-    response = StagedFile,
-    policy = POLICY,
-    visibility = Host,
-    replay = ReplaySafety::Idempotent)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DeleteFile {
-    pub mutation: MutationId,
-    pub file: StagedFile,
-}
-
-/* === Enums === */
-
-/* === Traits === */
+pub struct DeleteFile;
 
 /* === Implementations === */
 
-impl MemorySize for DeleteFile {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.mutation.memory_size().saturating_sub(std::mem::size_of_val(&self.mutation)))
-            .saturating_add(self.file.memory_size().saturating_sub(std::mem::size_of_val(&self.file)))
-    }
-}
+impl ProtobufOperation for DeleteFile {
+    type Request = harmos_protocol::storage::StorageDeleteFileRequest;
+    type Response = harmos_protocol::storage::StorageDeleteFileResponse;
+    type Endpoints = ();
+    const ID: &'static str = "storage.delete_file";
+    const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Protected;
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-#[cfg(feature = "runtime")]
-mod execution {
-    /* === Modules === */
-
-    /* === Re-Exports === */
-
-    /* === Imports === */
-
-    // Standard Library Imports
-
-    // Third Party Imports
-
-    // Local Imports
-    use crate::{Error, Result};
-    use harmos_sdk::operations::Operation;
-    use harmos_storage::StagedFile;
-
-    /* === Constants === */
-
-    /* === Macros === */
-
-    /* === Type Aliases === */
-
-    /* === Structs === */
-
-    /* === Enums === */
-
-    /* === Traits === */
-
-    /* === Implementations === */
-
-    impl Operation for super::DeleteFile {
-        type Error = Error;
-
-        async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<harmos_sdk::operations::Response<StagedFile>> {
-            let storage = context.resource::<harmos_storage::StorageManager<harmos_storage::ErasedCatalog>>();
-
-            let result: ::core::result::Result<StagedFile, Self::Error> =
-                async move { storage.delete_file_once(&self.mutation, &self.file).await.map_err(Into::into) }.await;
-            result.map(::core::convert::Into::into)
+    async fn run(context: ExecutionContext, request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
+        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+        let result: crate::Result<Self::Response> = async {
+            let mutation: harmos_storage::MutationId =
+                request.mutation.ok_or(crate::Error::InvalidInput { field: "mutation", reason: "required" })?.try_into()?;
+            let file: harmos_storage::StagedFile =
+                request.file.ok_or(crate::Error::InvalidInput { field: "file", reason: "required" })?.try_into()?;
+            let file = storage.delete_file_once(&mutation, &file).await?;
+            Ok(Self::Response {
+                file: Some(file.into()),
+                receipt: Some(super::transfers::receipt(&mutation.into(), None)),
+            })
         }
-
-        fn classify(error: &Error) -> harmos_sdk::operations::FailureKind {
-            crate::storage::classify(error)
-        }
+        .await;
+        result.map_err(super::native::failure)
     }
 
-    /* === Public Functions === */
-
-    /* === Private Functions === */
-
-    /* === Tests === */
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
 }
-
-/* === Tests === */

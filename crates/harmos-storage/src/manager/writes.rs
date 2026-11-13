@@ -34,38 +34,21 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.manager.writes.write_schema", level = "debug", skip_all)]
     pub async fn write_schema(&self, key: SchemaKey, schema: impl Into<Arc<crate::schema::graph::Schema>>) -> Result<StorageCursor> {
-        self.admit_schema(key, schema.into(), None).await
+        self.admit_schema(key, schema.into()).await
     }
 
     #[tracing::instrument(name = "storage.manager.writes.admit_schema", level = "debug", skip_all)]
-    pub(crate) async fn admit_schema(
-        &self, key: SchemaKey, schema: Arc<crate::schema::graph::Schema>, mutation: Option<&crate::storage::MutationId>,
-    ) -> Result<StorageCursor> {
-        let mutation = mutation.map(|id| crate::admissions::schema_mutation(id, &key, &schema)).transpose()?;
-        // Replay Completed Admission Before Later I/O Errors.
-        // Admission Rechecks The Same Ledger After Every Suspension.
-        if let Some(mutation) = mutation {
-            let state = self.inner.state.lock().unwrap();
-            if state.status.closing {
-                return Err(Error::Closing { domain: "storage" });
-            }
-            if !state.ready || !state.status.running {
-                return Err(Error::NotReady { domain: "storage" });
-            }
-            if let ReceiptState::Complete(value) = state.receipts.lookup(mutation.id, &mutation.fingerprint, None)? {
-                return value.cursor();
-            }
-        }
+    pub(crate) async fn admit_schema(&self, key: SchemaKey, schema: Arc<crate::schema::graph::Schema>) -> Result<StorageCursor> {
         schema.prepare(&harmos_domain::config::SchemaSettings::default()).map_err(|_| Error::InvalidInput {
             field: "storage schema",
             reason: "invalid message fields",
         })?;
         let bytes = StorageSchema::new(self.position(u64::MAX), key.clone(), schema.clone()).encoded_bytes()?;
         let sequence = self
-            .admit_mutation(Domain::Data, bytes, 1, mutation, false, |sequence| {
+            .admit_mutation(Domain::Data, bytes, 1, None, false, |sequence| {
                 Ok(Operation::Schema(StorageBatch::new(vec![StorageSchema::new(self.position(sequence), key, schema)])))
             })
             .await?;
@@ -109,8 +92,8 @@ impl<C> StorageManager<C> {
         Ok(rows)
     }
 
-    #[tracing::instrument(name = "storage.manager.writes.write_records", level = "debug", skip_all)]
-    pub async fn write_records(&self, records: Vec<RecordInput>) -> Result<StorageCursor> {
+    #[tracing::instrument(name = "storage.manager.writes.append_records", level = "debug", skip_all)]
+    pub async fn append_records(&self, records: Vec<RecordInput>) -> Result<StorageCursor> {
         self.admit_records(records, None).await
     }
 
@@ -120,7 +103,7 @@ impl<C> StorageManager<C> {
             return Ok(self.status().accepted);
         }
         let bytes = records.iter().try_fold(0usize, |bytes, record| {
-            bytes.checked_add(record.encoded_bytes(self.inner.primary.history())?).ok_or(Error::InvalidInput {
+            bytes.checked_add(record.encoded_bytes(self.inner.primary.get_history())?).ok_or(Error::InvalidInput {
                 field: "storage admission",
                 reason: "size overflow",
             })
@@ -135,8 +118,8 @@ impl<C> StorageManager<C> {
         Ok(self.position(sequence))
     }
 
-    #[tracing::instrument(name = "storage.manager.writes.write_stream", level = "debug", skip_all)]
-    pub async fn write_stream(&self, rows: Vec<StreamInput>) -> Result<StorageCursor> {
+    #[tracing::instrument(name = "storage.manager.writes.append_samples", level = "debug", skip_all)]
+    pub async fn append_samples(&self, rows: Vec<StreamInput>) -> Result<StorageCursor> {
         self.admit_stream(rows, None).await
     }
 
@@ -147,7 +130,7 @@ impl<C> StorageManager<C> {
         }
         let bytes = rows.iter().try_fold(0usize, |bytes, row| {
             bytes
-                .checked_add(row.record.encoded_bytes(self.inner.primary.history())?)
+                .checked_add(row.record.encoded_bytes(self.inner.primary.get_history())?)
                 .and_then(|bytes| bytes.checked_add(std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>()))
                 .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
                 .ok_or(Error::InvalidInput {

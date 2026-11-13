@@ -9,10 +9,6 @@
 
 // Directory Selection, Retained Read Ownership and Native Subscription Stories
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,22 +19,6 @@ use std::time::Duration;
 use super::manager::fixture::{Fixture, config};
 use harmos_domain::model::storage::{DirectoryEntry, DirectoryEvent, DirectoryRule, DirectorySelection};
 use harmos_storage::{DirectoryWatcher, ReadBatch};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -139,7 +119,7 @@ async fn subscribed_before_scan() {
         let event = watcher.next().await.unwrap().unwrap();
         match &*event {
             DirectoryEvent::Existing(entry) => existing.push(entry.path.clone()),
-            DirectoryEvent::InitialScanComplete => break,
+            DirectoryEvent::InitialScanComplete(_) => break,
             other => panic!("initial scan ordering: {other:?}"),
         }
     }
@@ -148,7 +128,7 @@ async fn subscribed_before_scan() {
     std::fs::write(root.path().join("created"), b"modified").unwrap();
     matching(&mut watcher, |event| matches!(event, DirectoryEvent::Modified(entry) if entry.path == "created")).await;
     std::fs::remove_file(root.path().join("created")).unwrap();
-    matching(&mut watcher, |event| matches!(event, DirectoryEvent::Removed { path } if path == "created")).await;
+    matching(&mut watcher, |event| matches!(event, DirectoryEvent::Removed(path) if path == "created")).await;
     drop(watcher);
     fixture.finish().await;
 }
@@ -173,10 +153,12 @@ async fn close_wakes_watch() {
     let root = tempfile::tempdir().unwrap();
     let fixture = Fixture::new(config()).await;
     let mut watcher = fixture.storage.watch_directory(selection(root.path()), false).await.unwrap();
-    assert!(matches!(&*watcher.next().await.unwrap().unwrap(), DirectoryEvent::InitialScanComplete));
+    assert!(matches!(&*watcher.next().await.unwrap().unwrap(), DirectoryEvent::InitialScanComplete(_)));
 
     let mut pending = Box::pin(watcher.next());
-    assert!(super::manager::fixture::pending(pending.as_mut()).await);
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(pending.as_mut(), context).is_pending())).await
+    );
     fixture.storage.close().await.unwrap();
     assert!(tokio::time::timeout(Duration::from_secs(10), &mut pending).await.unwrap().unwrap().is_none());
     drop(pending);

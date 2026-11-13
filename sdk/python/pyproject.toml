@@ -1,0 +1,45 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+[project]
+name = "harmos-sdk"
+version = "0.1.14"
+description = "Harmos plugin authoring and host clients"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+dependencies = ["grpcio>=1.85.1", "protobuf>=7.35.1,<8"]
+
+[dependency-groups]
+dev = ["harmos-tools", "types-protobuf==7.35.1.20260906"]
+
+[tool.uv.sources]
+# Integration tests reuse repository host discovery and process handling.
+harmos-tools = { path = "../../tools/python", editable = true }
+
+[build-system]
+requires = ["hatchling==1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/harmos"]
+
+[tool.ruff]
+target-version = "py313"
+# Match the repository's shared formatter width.
+line-length = 140
+# protoc owns these files byte for byte.
+extend-exclude = ["*_pb2.py", "*_pb2.pyi", "*_pb2_grpc.py"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "UP", "B"]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+exclude = ["src/harmos/**/v1/*_pb2*", "src/harmos/v1/*_pb2*", "tests/fixtures/client/**/*_pb2*"]

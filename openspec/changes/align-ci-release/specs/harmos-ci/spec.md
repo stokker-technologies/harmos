@@ -1,13 +1,12 @@
 ## ADDED Requirements
 
 ### Requirement: Project-Owned CI
-Harmos SHALL own CI workflows, actions and tooling. Hub baselines SHALL overwrite
-CI only through explicit rendering. Hosted runners and existing caches SHALL remain.
+Harmos SHALL own CI workflows, actions and tooling. Shared tooling SHALL NOT render or overwrite project CI. Hosted runners and existing caches SHALL remain.
 
 #### Scenario: Development Push
 - WHEN dev CI plans a source change
 - THEN checks and Product and Tests compilation run on both platforms without packages, suites or release dry validation
-- AND PRs retain selected suites and nightly retains the complete workload
+- AND PRs run every applicable job and nightly retains the complete workload
 - AND merges to dev remain ungated
 
 ### Requirement: Release Evidence

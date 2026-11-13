@@ -35,8 +35,8 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub(in crate::operations) fn scope_entries(&self, scope: &crate::plugin::PluginScope) -> Vec<Arc<Entry>> {
+    #[cfg(feature = "plugin-guest")]
+    pub(in crate::operations) fn scope_entries(&self, scope: &crate::guest::host::plugin::PluginScope) -> Vec<Arc<Entry>> {
         let state = self.registry.state.lock().expect("operation registry lock is healthy");
         state
             .entries
@@ -57,13 +57,13 @@ impl Manager {
             let state = self.registry.state.lock().expect("operation registry lock is healthy");
             Arc::clone(state.select(id, owner)?)
         };
-        #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+        #[cfg(feature = "plugin-guest")]
         if let Some(scope) = &entry.plugin {
             // Notify the staging gate before revocation, outside registry guards.
             scope.unbind_operations();
         }
-        let retired = {
-            let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
+        {
+            let state = self.registry.state.lock().expect("operation registry lock is healthy");
             if !state.owned(id, entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, &entry)) {
                 return Err(Error::NotRegistered { domain: "operation", name: id.to_owned() });
             }
@@ -73,11 +73,8 @@ impl Manager {
             for control in _pending.values() {
                 control.request_cancel();
             }
-            let retired = state.remove_cache(|cached| !cached.target.upgrade().is_some_and(|target| !Arc::ptr_eq(&target, &entry)));
             drop(_pending);
-            retired
         };
-        drop(retired);
         settle(&entry).await?;
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         if state.owned(id, entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, &entry)) {
@@ -86,10 +83,10 @@ impl Manager {
         Ok(())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(in crate::operations) fn fence(&self, entries: &[Arc<Entry>], abandoned: bool) {
-        let retired = {
-            let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
+        {
+            let _state = self.registry.state.lock().expect("operation registry lock is healthy");
             for entry in entries {
                 let _pending = entry.pending.lock().expect("operation settlement lock is healthy");
                 // A by-name unregister retains its reservation for retry even
@@ -103,19 +100,15 @@ impl Manager {
                 });
                 entry.active.store(false, Ordering::Release);
             }
-            state.remove_cache(|cached| {
-                cached.target.upgrade().is_some_and(|target| entries.iter().any(|entry| Arc::ptr_eq(&target, entry)))
-            })
         };
-        drop(retired);
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(in crate::operations) fn remove_settled(&self, entries: &[Arc<Entry>]) {
         self.release_settled(entries, true);
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     fn release_settled(&self, entries: &[Arc<Entry>], preserve_explicit: bool) {
         let mut state = self.registry.state.lock().expect("operation registry lock is healthy");
         for entry in entries {
@@ -129,14 +122,14 @@ impl Manager {
         // The caller owns every entry until after this guard is released.
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(in crate::operations) async fn settle_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         self.settle_owned_entries(entries).await?;
         self.release_settled(entries, false);
         Ok(())
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(in crate::operations) async fn settle_owned_entries(&self, entries: &[Arc<Entry>]) -> Result<()> {
         for entry in entries {
             settle(entry).await?;

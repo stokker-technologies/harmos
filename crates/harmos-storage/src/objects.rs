@@ -14,16 +14,18 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::io::{self, Write};
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 // Third Party Imports
+use sha2::{Digest, Sha256};
 // Local Imports
 use super::manager::{Domain, Operation};
 use super::{
-    ObjectCatalog, ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, StorageManager,
-    StorageSchema, StoredObject,
+    ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, StorageManager, StorageSchema,
+    StoredObject,
 };
 use crate::Result;
-use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
 
@@ -35,8 +37,8 @@ use harmos_domain::model::storage::object_key;
 
 /* === Structs === */
 
-pub struct ObjectGroup<'a, C> {
-    manager: &'a StorageManager<C>,
+pub struct ObjectGroup<'a> {
+    manager: &'a StorageManager,
     first: u64,
     count: usize,
     allowance: usize,
@@ -46,34 +48,170 @@ pub struct ObjectGroup<'a, C> {
     receipts: Vec<ObjectReceipt>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ObjectExchange {
+    pub expected: Option<ObjectVersionToken>,
+    pub schema: StorageSchema,
+    pub value: ObjectEntry,
+}
+
+struct Fingerprint(Sha256);
+
 /* === Enums === */
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CompareExchange {
+    Applied(ObjectReceipt),
+    Conflict { current: Option<ObjectVersionToken> },
+}
 
 /* === Traits === */
 
 /* === Implementations === */
 
-impl<C: ObjectCatalog> ObjectGroup<'_, C> {
-    pub fn write<T: StoredObject>(&mut self, value: &T) -> Result<()>
-    where
-        C: Contains<T>,
-    {
-        if self.objects.len() == self.count {
-            return Err(invalid("object group contains too many objects"));
+impl ObjectExchange {
+    pub fn validate(&self) -> Result<()> {
+        self.value.version.check_position(&self.value.position)?;
+        self.value.position.history.check(&self.schema.position.history)?;
+        if self.schema.position.sequence == 0
+            || self.schema.position.sequence.checked_add(1) != Some(self.value.position.sequence)
+            || self.schema.key != self.value.value.schema
+        {
+            return Err(invalid("conditional schema and object must own consecutive matching positions"));
         }
-        let settings = harmos_domain::config::SchemaSettings::default();
-        let graph =
-            crate::schema::graph::Schema::from_declaration(T::DEFINITION, &settings).map_err(|_| invalid("invalid object schema"))?;
-        let schema = object_schema::<T>()?;
-        let item = object_key(value.key(), self.manager.inner.settings.max_batch_bytes())?;
-        let payload = value.encode();
-        if payload.len() != value.encoded_size() {
-            return Err(invalid("object codec length differs"));
+        if let Some(expected) = &self.expected {
+            self.value.position.history.check(expected.history())?;
         }
-        self.append(ObjectValue { schema, item, payload }, graph)
+        Ok(())
+    }
+    pub fn fingerprint(&self) -> Result<[u8; 32]> {
+        let mut writer = Fingerprint(Sha256::new());
+        writer.0.update(b"storage.object.exchange:v1\0");
+        serde_json::to_writer(&mut writer, self)
+            .map_err(|source| crate::Error::backend("fingerprint conditional object", crate::BackendFailure::Permanent, source))?;
+        Ok(writer.0.finalize().into())
     }
 }
 
-impl<C> ObjectGroup<'_, C> {
+impl Write for Fingerprint {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl ObjectGroup<'_> {
+    pub fn write<T: StoredObject>(&mut self, value: &T) -> Result<()> {
+        if self.objects.len() == self.count {
+            return Err(invalid("object group contains too many objects"));
+        }
+        let (value, graph) = prepare(self.manager, value)?;
+        self.append(value, graph)
+    }
+}
+
+impl StorageManager {
+    pub async fn compare_exchange<T: StoredObject>(&self, expected: Option<ObjectVersionToken>, value: &T) -> Result<CompareExchange> {
+        self.admit_exchange(None, expected, value).await
+    }
+    pub async fn compare_exchange_once<T: StoredObject>(
+        &self, mutation: &crate::MutationId, expected: Option<ObjectVersionToken>, value: &T,
+    ) -> Result<CompareExchange> {
+        self.admit_exchange(Some(mutation), expected, value).await
+    }
+    pub async fn delete_object_receipts(&self, through: &crate::StorageCursor) -> Result<()> {
+        self.flush_until(through).await?;
+        self.inner.bounded("primary.delete_object_receipts", self.inner.primary.delete_object_receipts(through)).await
+    }
+
+    async fn admit_exchange<T: StoredObject>(
+        &self, mutation: Option<&crate::MutationId>, expected: Option<ObjectVersionToken>, value: &T,
+    ) -> Result<CompareExchange> {
+        let (value, graph) = prepare(self, value)?;
+        self.admit_exchange_value(mutation, expected, value, graph).await
+    }
+
+    pub async fn compare_exchange_value_once(
+        &self, mutation: &crate::MutationId, expected: Option<ObjectVersionToken>, value: ObjectValue, graph: crate::schema::graph::Schema,
+    ) -> Result<CompareExchange> {
+        self.inner.catalog.validate_value(&value, self.inner.settings.max_batch_bytes())?;
+        let definition = self.inner.catalog.definition(&value.schema)?;
+        let declared = definition.graph(&harmos_domain::config::SchemaSettings::default())?;
+        if graph != declared {
+            return Err(invalid("conditional object schema differs from its catalog"));
+        }
+        self.admit_exchange_value(Some(mutation), expected, value, graph).await
+    }
+
+    async fn admit_exchange_value(
+        &self, mutation: Option<&crate::MutationId>, expected: Option<ObjectVersionToken>, value: ObjectValue,
+        graph: crate::schema::graph::Schema,
+    ) -> Result<CompareExchange> {
+        if !self.inner.primary.capabilities().conditional_objects {
+            return Err(crate::Error::backend(
+                "conditional objects",
+                crate::BackendFailure::Unsupported,
+                io::Error::new(io::ErrorKind::Unsupported, "backend has no atomic conditional object primitive"),
+            ));
+        }
+        let _writer = self.inner.object_writes.lock().await;
+        let graph = Arc::new(graph);
+        if let Some(expected) = &expected {
+            self.inner.primary.get_history().check(expected.history())?;
+        }
+        let fingerprint = if mutation.is_some() {
+            let mut writer = Fingerprint(Sha256::new());
+            writer.0.update(b"storage.compare_exchange:v1\0");
+            serde_json::to_writer(&mut writer, &(&expected, &value))
+                .map_err(|source| crate::Error::backend("fingerprint conditional admission", crate::BackendFailure::Permanent, source))?;
+            Some(writer.0.finalize().into())
+        } else {
+            None
+        };
+        let mutation = mutation.zip(fingerprint).map(|(id, fingerprint)| super::admissions::Mutation { id, fingerprint });
+        let mut prepared = Some((value, graph));
+        let mut request = None;
+        let sequence = self
+            .admit_mutation(Domain::Data, self.object_admission_bytes().get(), 2, mutation, false, |first| {
+                let (value, graph) = prepared.take().expect("one admission build");
+                let position = self.position(first + 1);
+                let exchange = Arc::new(ObjectExchange {
+                    expected: expected.clone(),
+                    schema: StorageSchema::new(self.position(first), value.schema.clone(), graph),
+                    value: ObjectEntry {
+                        version: ObjectVersionToken::new(position.clone()),
+                        position,
+                        value,
+                    },
+                });
+                request = Some(exchange.clone());
+                Ok(Operation::Conditional(exchange))
+            })
+            .await?;
+        let through = self.position(sequence);
+        self.flush_until(&through).await?;
+        let request = if let Some(request) = request {
+            request
+        } else {
+            let (value, graph) = prepared.take().expect("replayed admission keeps its input");
+            Arc::new(ObjectExchange {
+                expected,
+                schema: StorageSchema::new(self.position(sequence - 1), value.schema.clone(), graph),
+                value: ObjectEntry {
+                    version: ObjectVersionToken::new(through.clone()),
+                    position: through,
+                    value,
+                },
+            })
+        };
+        self.inner.bounded("primary.set_object", self.inner.primary.set_object(&request)).await
+    }
+}
+
+impl ObjectGroup<'_> {
     pub fn remaining_bytes(&self) -> usize {
         self.allowance - self.used
     }
@@ -82,7 +220,7 @@ impl<C> ObjectGroup<'_, C> {
         if self.objects.len() == self.count {
             return Err(invalid("object group contains too many objects"));
         }
-        let definition = (self.manager.inner.object_definition)(&value.schema)?;
+        let definition = self.manager.inner.catalog.definition(&value.schema)?;
         let settings = harmos_domain::config::SchemaSettings::default();
         let graph = definition.graph(&settings)?;
         definition.validate_admitted(&value, self.manager.inner.settings.max_batch_bytes(), settings.preparation_bytes.get())?;
@@ -114,32 +252,49 @@ impl<C> ObjectGroup<'_, C> {
     }
 }
 
-impl<C: ObjectCatalog> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.objects.write_object", level = "debug", skip_all)]
-    pub async fn write_object<T: StoredObject>(&self, value: &T) -> Result<ObjectReceipt>
-    where
-        C: Contains<T>,
-    {
+    pub async fn write_object<T: StoredObject>(&self, value: &T) -> Result<ObjectReceipt> {
+        self.inner.catalog.handle::<T>()?;
         let receipts = self.write_object_group(self.object_admission_bytes(), NonZeroUsize::MIN, |group| group.write(value)).await?;
         Ok(receipts.into_iter().next().unwrap())
     }
 
+    pub async fn append_object_values_once(&self, mutation: &crate::MutationId, values: Vec<ObjectValue>) -> Result<crate::StorageCursor> {
+        let count = NonZeroUsize::new(values.len()).ok_or_else(|| invalid("AppendObjectRevisions requires a nonempty batch"))?;
+        let mut hash = Fingerprint(Sha256::new());
+        hash.0.update(b"storage.append_object_revisions:v1\0");
+        serde_json::to_writer(&mut hash, &values)
+            .map_err(|source| crate::Error::backend("fingerprint AppendObjectRevisions", crate::BackendFailure::Permanent, source))?;
+        let mutation = super::admissions::Mutation {
+            id: mutation,
+            fingerprint: hash.0.finalize().into(),
+        };
+        let receipts = self
+            .admit_object_group(self.object_admission_bytes(), count, Some(mutation), |group| {
+                for value in values {
+                    group.write_value(value)?;
+                }
+                Ok(())
+            })
+            .await?;
+        Ok(receipts.last().expect("nonempty object group").position.clone())
+    }
+
     #[tracing::instrument(name = "storage.objects.write_object_group", level = "debug", skip_all)]
     pub async fn write_object_group(
-        &self, max_bytes: NonZeroUsize, count: NonZeroUsize, build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
+        &self, max_bytes: NonZeroUsize, count: NonZeroUsize, build: impl FnOnce(&mut ObjectGroup<'_>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         self.admit_object_group(max_bytes, count, None, build).await
     }
 }
 
-impl<C: ObjectCatalog> StorageManager<C> {
-    #[tracing::instrument(name = "storage.manager.read_object", level = "debug", skip_all)]
-    pub async fn read_object<T: StoredObject>(
+impl StorageManager {
+    #[tracing::instrument(name = "storage.manager.get_object", level = "debug", skip_all)]
+    pub async fn get_object<T: StoredObject>(
         &self, key: &T::Key, version: ObjectVersion,
-    ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>>
-    where
-        C: Contains<T>,
-    {
+    ) -> Result<Option<crate::ReadBatch<ObjectRevision<T>>>> {
+        self.inner.catalog.handle::<T>()?;
         let schema = object_schema::<T>()?;
         let budget = self.inner.settings.scan_bytes();
         let point = ObjectPoint {
@@ -147,7 +302,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
             item: object_key(key, budget)?,
             version,
         };
-        let saved = self.cursor_saved();
+        let saved = self.get_saved_position();
         if let ObjectVersion::Exact(version) = &point.version {
             version.history().check(&saved.history)?;
             if version.revision().get() > saved.sequence {
@@ -156,7 +311,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
         }
 
         let snapshot = self.snapshot(&saved).await?;
-        let Some(object) = snapshot.read_object(&point).await? else {
+        let Some(object) = snapshot.get_object(&point).await? else {
             return Ok(None);
         };
         if matches!(&point.version, ObjectVersion::Exact(version) if version != &object.version) {
@@ -172,7 +327,7 @@ impl<C: ObjectCatalog> StorageManager<C> {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     pub(super) fn object_admission_bytes(&self) -> NonZeroUsize {
         NonZeroUsize::new(
             self.inner.settings.max_batch_bytes().get().saturating_mul(4).min(self.inner.settings.request.max_pending_write_bytes.get()),
@@ -183,7 +338,7 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.objects.admit_object_group", level = "debug", skip_all)]
     pub(super) async fn admit_object_group(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
-        build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
+        build: impl FnOnce(&mut ObjectGroup<'_>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         let _writer = tracing::Instrument::instrument(self.inner.object_writes.lock(), tracing::trace_span!("storage.lock.wait")).await;
         self.admit_object_group_locked(max_bytes, count, mutation, build).await
@@ -192,7 +347,7 @@ impl<C> StorageManager<C> {
     #[tracing::instrument(name = "storage.objects.admit_object_group_locked", level = "debug", skip_all)]
     pub(super) async fn admit_object_group_locked(
         &self, max_bytes: NonZeroUsize, count: NonZeroUsize, mutation: Option<super::admissions::Mutation<'_>>,
-        build: impl FnOnce(&mut ObjectGroup<'_, C>) -> Result<()> + Send,
+        build: impl FnOnce(&mut ObjectGroup<'_>) -> Result<()> + Send,
     ) -> Result<Vec<ObjectReceipt>> {
         let positions = count.get().checked_mul(2).ok_or_else(|| invalid("object group count overflow"))?;
         let mut receipts = None;
@@ -241,6 +396,21 @@ impl<C> StorageManager<C> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn prepare<T: StoredObject>(manager: &StorageManager, value: &T) -> Result<(ObjectValue, crate::schema::graph::Schema)> {
+    manager.inner.catalog.handle::<T>()?;
+    let graph = crate::schema::graph::Schema::from_declaration(T::DEFINITION, &harmos_domain::config::SchemaSettings::default())
+        .map_err(|_| invalid("invalid object schema"))?;
+    let schema = object_schema::<T>()?;
+    let item = object_key(value.key(), manager.inner.settings.max_batch_bytes())?;
+    let payload = value.encode();
+    if payload.len() != value.encoded_size() {
+        return Err(invalid("object codec length differs"));
+    }
+    let value = ObjectValue { schema, item, payload };
+    manager.inner.catalog.validate_value(&value, manager.inner.settings.max_batch_bytes())?;
+    Ok((value, graph))
+}
 
 pub(super) fn invalid(reason: &'static str) -> crate::Error {
     harmos_domain::model::storage::invalid(reason).into()

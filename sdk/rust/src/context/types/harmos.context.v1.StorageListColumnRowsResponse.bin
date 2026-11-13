@@ -1,0 +1,31 @@
+
+Ç
+harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.protoharmos/v1/types.proto"ç
+StorageListColumnRowsResponse*
+page (2.harmos.storage.v1.ArrowPage'
+resolved_at (2.harmos.v1.ReadCut
+next_page_token (	bproto3
+Œ
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"{
+	ArrowPage
+ipc (
+complete (
+scanned (
+
+bytes_read (
+columns_read (	
+payload_rows (bproto3
+≠
+harmos/v1/types.proto	harmos.v1"'
+History
+store (	
+epoch (	"A
+Position#
+history (2.harmos.v1.History
+sequence ("a
+ReadCut&
+	positions (2.harmos.v1.Position.
+	revisions (2.harmos.v1.ResourceRevision"2
+ResourceRevision
+name (	
+revision (bproto3

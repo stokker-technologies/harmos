@@ -33,16 +33,18 @@ pub use voltage::NetVoltage;
 
 /* === Enums === */
 
-#[harmos::streams]
-pub enum Streams {
-    NetVoltage(NetVoltage),
-}
-
 /* === Traits === */
 
 /* === Implementations === */
 
 /* === Public Functions === */
+
+pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+    vec![
+        <NetVoltage as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+        <schematic_domain::model::schematic::progress::AnalysisProgress as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+    ]
+}
 
 /* === Private Functions === */
 

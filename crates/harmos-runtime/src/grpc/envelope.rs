@@ -22,7 +22,7 @@ use super::codec::{Encode, Transcoded, Wire};
 use crate::{MemorySize, MessageError};
 use harmos_domain::__private::decoding_add;
 use harmos_domain::Portable;
-use harmos_sdk::grpc::{DecodeInput, prost};
+use harmos_operations::execution::grpc::{DecodeInput, prost};
 
 /* === Constants === */
 
@@ -160,7 +160,7 @@ impl Encode<Transcoded> for PreparedFrame {
 /* === Public Functions === */
 
 // Prepares The Complete Opening Frame Of A Typed Input Stream Once.
-pub fn prepare_input_request<O: crate::operations::OperationDeclaration>(
+pub fn prepare_input_request<O: crate::operations::RequestShape>(
     request: &O::Request, limit: usize,
 ) -> Result<PreparedFrame, tonic::Status> {
     prepare(1, request, limit)
@@ -171,25 +171,25 @@ pub fn prepare_input_request<O: crate::operations::OperationDeclaration>(
 // Standalone Preparation Uses The Frame Limit Without Claiming An Aggregate Budget.
 // Callers With Native Claims Can Encode Through The Admitted Wire Hook And Supply
 // The Retained Byte Owner Through PreparedFrame::from_owner.
-pub fn prepare_input_item<O: crate::operations::OperationDeclaration>(
+pub fn prepare_input_item<O: crate::operations::RequestShape>(
     item: &<O::Input as crate::operations::Direction>::Item, limit: usize,
 ) -> Result<PreparedFrame, tonic::Status> {
     prepare(2, item, limit)
 }
 
 // Finds A Declared Input Item's Bytes Allowance Including Its Native Envelope.
-pub fn input_payload_limit<O: crate::operations::OperationDeclaration>(
+pub fn input_payload_limit<O: crate::operations::RequestShape>(
     template: &<O::Input as crate::operations::Direction>::Item, path: &[&str], maximum_payload: usize, frame_limit: usize,
 ) -> Result<usize, MessageError> {
     input_payload_limit_admitted::<O>(template, path, maximum_payload, frame_limit, &mut |_| Ok(()))
 }
 
 // Uses Existing Caller Admission For A Declared Input Item's Allowance Template.
-pub fn input_payload_limit_admitted<O: crate::operations::OperationDeclaration>(
+pub fn input_payload_limit_admitted<O: crate::operations::RequestShape>(
     template: &<O::Input as crate::operations::Direction>::Item, path: &[&str], maximum_payload: usize, frame_limit: usize,
     admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
-    harmos_sdk::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(2, frame_limit), admit)
+    harmos_operations::execution::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(2, frame_limit), admit)
 }
 
 // Finds An Output Item's Bytes Allowance Including Its Native Envelope.
@@ -203,7 +203,7 @@ pub fn output_payload_limit<T: Portable>(
 pub fn output_payload_limit_admitted<T: Portable>(
     template: &T, path: &[&str], maximum_payload: usize, frame_limit: usize, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
-    harmos_sdk::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(1, frame_limit), admit)
+    harmos_operations::execution::grpc::bytes_field_limit_admitted(template, path, maximum_payload, payload_limit(1, frame_limit), admit)
 }
 
 // Counts The Complete Output Item Frame Without Allocating Its Wire Buffer.
@@ -215,7 +215,7 @@ pub fn output_item_len<T: Portable>(item: &T) -> Result<usize, MessageError> {
 pub fn output_item_len_admitted<T: Portable>(
     item: &T, admit: &mut dyn FnMut(usize) -> Result<(), MessageError>,
 ) -> Result<usize, MessageError> {
-    let payload = harmos_sdk::grpc::encoded_len_admitted(item, admit)?;
+    let payload = harmos_operations::execution::grpc::encoded_len_admitted(item, admit)?;
     let (_, prefix) = header(1, payload);
     decoding_add(payload, prefix)
 }
@@ -298,7 +298,8 @@ mod tests {
     use super::*;
     use std::{borrow::Borrow, sync::Arc};
 
-    #[harmos_domain::message(harmos_path = ::harmos_domain)]
+    #[derive(harmos_domain::Message, Clone, Debug, Default)]
+    #[harmos_path(::harmos_domain)]
     struct Chunk {
         offset: u64,
         data: Vec<u8>,

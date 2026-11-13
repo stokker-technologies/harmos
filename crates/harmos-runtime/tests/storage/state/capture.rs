@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,10 +22,6 @@ use crate::storage::{Data, Recovery, config, history, record, schema};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope, state::Position};
 
-/* === Constants === */
-
-/* === Macros === */
-
 /* === Type Aliases === */
 
 type Refusal = std::convert::Infallible;
@@ -38,13 +30,15 @@ type Refusal = std::convert::Infallible;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "capture.advance")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Advance {
     panic: bool,
 }
+impl Advance {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<u64, Self> =
+        harmos_runtime::state::TransactionEntry::new("capture.advance").barrier();
+}
 
-#[harmos_runtime::record(id = "capture.observed")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Observed {
     before: u64,
@@ -70,27 +64,86 @@ struct Store {
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = u64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
     Advance(Advance),
 }
+impl From<Advance> for Transactions {
+    fn from(value: Advance) -> Self {
+        Self::Advance(value)
+    }
+}
+impl harmos_runtime::state::Transaction<u64> for Transactions {
+    type Error = Refusal;
+    fn check(&self, state: &u64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut u64) {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &u64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Advance(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Transactions {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Advance(_) => Advance::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Advance(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn transactions_state_catalog() -> harmos_runtime::state::StateCatalog<u64, Transactions> {
+    harmos_runtime::state::StateCatalog::new().transaction(Advance::ENTRY, Transactions::Advance, |value| {
+        let Transactions::Advance(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Records {
     Observed(Observed),
 }
-
-/* === Traits === */
+impl From<Observed> for Records {
+    fn from(value: Observed) -> Self {
+        Self::Observed(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Observed(_) => <Observed as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Observed(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Observed as harmos_runtime::state::Record>::ENTRY, Records::Observed, |value| {
+        let Records::Observed(value) = value;
+        Some(value)
+    })
+}
 
 /* === Implementations === */
 
-#[harmos_runtime::lanes]
-pub enum ModelLanes {
-    #[default]
-    Open,
+impl harmos_runtime::state::Record for Observed {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("capture.observed");
 }
+
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -102,11 +155,9 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl harmos_runtime::Application for Model {
-    type Lanes = ModelLanes;
     type State = u64;
     type Transaction = Transactions;
     type Record = Records;
-    type Streams = ();
 }
 
 impl harmos_runtime::state::Transaction<u64> for Advance {
@@ -190,12 +241,12 @@ impl Store {
         .unwrap()
     }
     async fn boot(&self, storage: &StorageManager, capture: ReadLimits, duplicate: bool) -> Runtime<Model> {
-        Runtime::<Model>::launch_with(0, (), |setup| {
+        crate::support::app::launch::<Model>(0, (), |setup| {
             setup
                 .settings()
                 .storage(storage)
-                .register(Transactions::catalog())
-                .register(Records::catalog())
+                .register(transactions_state_catalog())
+                .register(records_registry())
                 .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(1, 64 * 1024),
                     capture,
@@ -222,8 +273,6 @@ impl Store {
         storage.flush().await.unwrap();
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -262,7 +311,7 @@ async fn capture_never_replays() {
     assert_eq!(entry.position, Position(2));
     assert_eq!(entry.metadata.commit, Some((Position(1), Position(2))));
     assert_eq!(entry.payload["before"], 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let storage = store.manager(config());
     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
@@ -273,7 +322,7 @@ async fn capture_never_replays() {
     assert_eq!(read(&store).await.len(), 5);
     storage.flush().await.unwrap();
     assert_eq!(read(&store).await.len(), 6);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -289,7 +338,7 @@ async fn capture_overflow_refuses() {
         assert_eq!(storage.status().recovery_accepted.sequence, 0);
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(storage.status().pending_batches, 0);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -316,7 +365,7 @@ async fn capture_awaits_capacity() {
     store.data.control.write_release.notify_one();
     next.await.unwrap();
     assert_eq!(store.calls.load(Ordering::SeqCst), 2);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -332,7 +381,7 @@ async fn panic_releases_reservation() {
     assert_eq!(storage.status().pending_bytes, 0);
     assert_eq!(storage.status().pending_batches, 0);
     assert!(store.data.records.lock().unwrap().is_empty());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -343,8 +392,8 @@ async fn primary_stop_retries() {
     store.ready(&storage).await;
     runtime.state.commit(Advance { panic: false }).await.unwrap();
     store.data.control.flush_failures.store(1, Ordering::SeqCst);
-    assert!(runtime.shutdown().await.is_err());
-    runtime.shutdown().await.unwrap();
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
     assert_eq!(store.data.records.lock().unwrap().len(), 1);
     assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
@@ -355,7 +404,7 @@ async fn primary_stop_retries() {
 #[tokio::test]
 async fn capture_requires_managed() {
     assert!(
-        Runtime::<Model>::launch_with(0, (), |setup| {
+        crate::support::app::launch::<Model>(0, (), |setup| {
             setup.settings().store_records(Projection {
                 calls: Arc::new(AtomicUsize::new(0)),
                 duplicate: false,
@@ -379,7 +428,7 @@ async fn undersized_queue_refuses() {
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert_eq!(storage.status().accepted.sequence, 1);
     assert_eq!(storage.status().recovery_accepted.sequence, 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -395,7 +444,7 @@ async fn primary_failure_halts() {
     assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 1);
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
     assert_eq!(storage.status().recovery_saved.sequence, 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.data.records.lock().unwrap().len(), 1);
     assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
 }
@@ -407,12 +456,12 @@ async fn reconciliation_saves_capture() {
     let observed = Arc::new(tokio::sync::Notify::new());
     let notify = observed.clone();
     let check = storage.clone();
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
         setup
             .settings()
             .storage(&storage)
-            .register(Transactions::catalog())
-            .register(Records::catalog())
+            .register(transactions_state_catalog())
+            .register(records_registry())
             .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(1, 64 * 1024),
                 capture: limits(4, 16 * 1024),
@@ -454,7 +503,7 @@ async fn reconciliation_saves_capture() {
     storage.flush().await.unwrap();
     assert_eq!(read(&store).await.len(), 1);
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -486,7 +535,7 @@ async fn capture_coalesces_writes() {
         assert!(sizes.iter().all(|size| *size <= 64));
         assert!(control.writes.lock().unwrap().windows(2).all(|pair| pair[0] < pair[1]));
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -523,7 +572,7 @@ async fn recovery_failure_retries() {
     assert_eq!(storage.status().pending_bytes, 0);
     let writes = store.data.control.write_sizes.lock().unwrap().clone();
     assert_eq!(writes.iter().filter(|size| **size == 20).count(), 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -550,7 +599,7 @@ async fn flush_skips_recovery() {
     storage.flush_recovery().await.unwrap();
     assert_eq!(runtime.state.stored(), Position(40));
     assert_eq!(storage.status().pending_bytes, 0);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -567,10 +616,10 @@ async fn capture_reserves_actual() {
     }
     assert_eq!(store.calls.load(Ordering::SeqCst), 4);
     assert_eq!(storage.cursor_accepted().sequence, 5);
-    assert_eq!(storage.cursor_saved().sequence, 1);
+    assert_eq!(storage.get_saved_position().sequence, 1);
     assert!(storage.status().pending_bytes < 32 * 1024);
     assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 4);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -581,12 +630,12 @@ async fn partial_projection_refused() {
         let mut policy = config();
         policy.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
         let storage = store.manager(policy);
-        let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
+        let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
             setup
                 .settings()
                 .storage(&storage)
-                .register(Transactions::catalog())
-                .register(Records::catalog())
+                .register(transactions_state_catalog())
+                .register(records_registry())
                 .managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(1, 64 * 1024),
                     capture: limits(8, 4 * 1024 * 1024),
@@ -606,7 +655,7 @@ async fn partial_projection_refused() {
         if cancel {
             store.data.control.block_write.store(true, Ordering::SeqCst);
             let item = Identifier::new("already-accepted").unwrap();
-            storage.write_records(vec![record(&schema(), &item, &vec![0; 50 * 1024])]).await.unwrap();
+            storage.append_records(vec![record(&schema(), &item, &vec![0; 50 * 1024])]).await.unwrap();
         }
         let accepted = storage.cursor_accepted();
         assert!(runtime.state.commit(Advance { panic: false }).await.is_err());
@@ -620,7 +669,7 @@ async fn partial_projection_refused() {
         storage.flush().await.unwrap();
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(storage.status().pending_batches, 0);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -628,7 +677,7 @@ async fn partial_projection_refused() {
 async fn registration_stores_schema() {
     use harmos_runtime::schema::{Described, Validator};
 
-    #[harmos_runtime::message]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default)]
     struct Message {
         value: String,
     }
@@ -668,7 +717,7 @@ async fn registration_stores_schema() {
     storage.flush().await.unwrap();
     let mut reader = storage
         .query(harmos_runtime::storage::Query {
-            at: storage.cursor_saved(),
+            at: storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Schemas(harmos_runtime::storage::query::SchemaSelection {
                 schema: Some(key.clone()),
             }),
@@ -692,7 +741,5 @@ async fn registration_stores_schema() {
     drop(definition);
     Validator::from_schema(&stored[0], &harmos_runtime::config::SchemaSettings::default()).unwrap().validate(&payload).unwrap();
     drop(reader);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

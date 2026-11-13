@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,26 +18,12 @@ use super::support;
 use harmos_runtime::state::{Kind, Position};
 use support::journal::{Journal, Snapshot, Store, frame};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 struct Saved {
     at: Position,
     state: Ledger,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -120,8 +102,7 @@ async fn redelivery_forwards_stored() {
     // produces — so any re-encoding, of the payload or of the frame, fails
     // the byte comparison below.
     let original = r#"[{"kind":"Transaction","position":9,"id":"ledger.bonus","version":1,"metadata":{"principal":null,"correlation":9,"causation":null,"request":null,"link":null,"at":{"secs_since_epoch":0,"nanos_since_epoch":0}},"payload":{ "amount":3 }}]"#;
-    let original = original
-        .replace("\"version\":1", &format!("\"version\":{}", <super::support::Bonus as harmos_runtime::Identified>::definition().1));
+    let original = original.replace("\"version\":1", &format!("\"version\":{}", super::support::Bonus::ENTRY.definition().1));
     // A Matching Record Is Forwarded Without Re-encoding Its Frame.
     let recorded = frame(
         10,
@@ -148,7 +129,7 @@ async fn redelivery_forwards_stored() {
 
     assert_eq!(ledger(&recovered).await.balance, 13, "the current bonus applies once");
     assert_eq!(recovered.state.applied(), Position(10), "the matching record retains its position");
-    recovered.shutdown().await.unwrap();
+    crate::support::app::shutdown(&recovered).await.unwrap();
 
     let written = mirror.lines();
 
@@ -231,6 +212,7 @@ async fn tail_restores_state() {
 
     let live = booted(Ledger::default(), |builder| {
         builder.settings().recover(Journal::<Bank>::open(&copy)).snapshot(Snapshot::<Bank>::folding(
+            support::change_state_catalog(),
             Ledger::default(),
             Position::ORIGIN,
             {
@@ -275,7 +257,5 @@ async fn seeded(copy: &Store) {
         runtime.state.commit(deposit(amount * 2)).await.expect("accepted");
         runtime.state.commit(withdraw(amount)).await.expect("accepted");
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
-
-/* === Tests === */

@@ -1,0 +1,67 @@
+# Tasks
+
+## 1. Interface Design
+
+- [x] 1.1 Owner authorizes parallel work: Harmos host gRPC surfaces at a7583836 are complete; consumer wave pending; lock inventory for storage backend/object/query contracts, protocol mappings, operations, examples, backends, tests, benchmarks and storage guidance.
+- [x] 1.2 Settle the proposed scan/index plan and page types, ordering, snapshot lifetime, capability negotiation, bounded fallback, cancellation and error semantics in design.md.
+- [x] 1.3 Settle projection registration/versioning, readable frontier, source-commit coupling, crash replay, invalidation/rebuild and old-snapshot behaviour in design.md.
+- [x] 1.4 Settle time-bucket boundaries, retained statistics/positions, corrections, late replacement, revision and changed-key retention semantics in design.md.
+- [x] 1.5 Settle conditional-update token scope, absent-object semantics, object-safe backend primitive, conflict receipts, durability and atomic index effects in design.md.
+- [x] 1.6 Lock the durable SQLite/Arrow reference backend module/feature, dependencies and capability obligations; retain the file recovery backend and bounded test backend as distinct owners.
+- [x] 1.7 Before implementation, lock reproducible before/after workloads and numerical regression budgets; capture the baseline with deterministic multi-day data and millions of samples (Windows single-traversal baseline and proposed ceilings recorded in design.md; repeated/native Linux proof remains in 3.x).
+
+## 2. Implementation and Targeted Proof
+
+- [x] 2.1 Add native Arrow scan interfaces and bounded executor fallback; prove column/predicate/time pruning, snapshot/page parity and cancellation without row reconstruction on the native path.
+- [x] 2.2 Add index declarations/maintenance and ordered seek reads; prove stable ties, restart/token invalidation, snapshot cuts and explicit missing-index behaviour.
+- [x] 2.3 Add durable projection registration/reads and inspectable frontiers; prove crash replay, idempotence, advancement, lag and rebuild/invalidation semantics.
+- [x] 2.4 Add Transform::TimeBuckets and projection revision/changed-key support; prove late correction/replacement, saved-cut stability and equivalence with generic execution.
+- [x] 2.5 Add typed compare_exchange and atomic backend implementation; prove conflicting writers, create-if-absent, receipt replay and durability outcomes.
+- [x] 2.6 Implement all five capabilities in the durable reference and deterministic test backends; migrate existing implementers and operation/protocol consumers without product-specific APIs.
+  - [x] Storage backend portion: all five capabilities in durable/test adapters, public manager/snapshot resources, exact retention gaps and files/receipt recovery proof.
+  - [x] Protocol and native mappings: generated_code_matches_proto and malformed_plans_refuse_before_backend_access.
+  - [x] Operations/runtime: saved_queries_and_conditional_updates_cross_the_protocol covers all five capabilities, unsupported refusal, replay, saved cuts and source-changing rebuilds.
+  - [x] Verify retained wire-page buffer limits, including IPC schema and continuation metadata, through the runtime and example journeys.
+  - [x] Rust/Python/C#/C++ SDK generated storage surfaces and existing plugin conformance; retain protocol-only SDK dependencies.
+  - [x] Example SDK adoption: saved_preview_survives_atomic_replacement composes SQLite beside JSONL and proves saved reads and atomic outcomes.
+- [x] 2.7 Update affected README/storage guides, examples and backend obligations; verify dependency direction and preservation of existing files, recovery and mutation receipts.
+
+  - [x] Storage documentation portion: native API guide, README claims, tooling commands and retained recovery/file obligations.
+  - [x] Example composition, generated-client usage, source grants, bounds, failures and README claims match the adopted interface.
+
+  - [x] Prepare an ordered per-file consumer adoption inventory with inspected ownership and dependency blockers under Consumer Adoption; do not overwrite dirty shared protocol generation outputs.
+
+## 3. Benchmark Proof
+
+- [x] 3.9.1 Record the owner's 2026-11-13 proposed Nightly budget scheme in design.md and docs/tooling.md: absolute reporting, paired relative comparison, instruction counts, track-only hosted measurements and append-only/twenty-run history. First hosted confirmation and automation remain pending; publication is ungated.
+- [ ] 3.10 Measure and optimize the row-path scan of two million rows separately from the proposed Nightly scheme: 10.5 s measured; proposed target 0.5–2 s. No implementation in the 2026-11-13 recording step.
+- [ ] 3.11 Measure and optimize the indexed page separately from the proposed Nightly scheme: 110–120 ms measured; proposed target 2–15 ms. No implementation in the 2026-11-13 recording step.
+- [ ] 3.12 Measure and optimize index construction for two million entries separately from the proposed Nightly scheme: 79 s measured; proposed target 2–10 s. No implementation in the 2026-11-13 recording step.
+- [ ] 3.13 Measure and optimize late bucket replacement separately from the proposed Nightly scheme: 39 s measured; proposed target under 1 s. No implementation in the 2026-11-13 recording step.
+
+- [x] 3.4 Profile and repair late bucket replacement in `crates/harmos-storage/**`; persist incremental identity/bucket state, preserve exact saved cuts and replay, and prove affected-bucket work deterministically.
+- [x] 3.5 Profile and repair two-million-entry index construction; preserve atomic publication and cancellation, and prove bounded decoding/preparation work.
+- [x] 3.6 Profile and repair first/next/deep index pages; preserve ordering ties, reverse seeks and snapshot cuts, and prove seek plus bounded sequential work.
+- [x] 3.7 Profile and repair the generic row full/first/next scan; eliminate history rescans/copies and prove bounded page work.
+- [x] 3.8 Add true time-window and numeric-predicate cases to the shared storage workload and `tools/python/**` Nightly adapter, reporting source rows and bytes examined; record unchanged-workload before/after measurements in design.md and update `docs/storage.md`.
+- [x] 3.9 Run focused storage correctness stories and benchmark producer proof, then the required format, Rust, Python, repository checks and test-artifact build; commit only owned paths locally without pushing.
+
+- [x] 3.1 Measure native columnar, indexed seek, projection advancement/replay, late buckets and conditional-update contention against the baseline on Windows; verify results outside timed sections. Resolve deep-seek prefix scanning without changing budgets; native Linux remains in 3.2.
+- [ ] 3.2 Record throughput, page latency, allocations/peak memory, bytes read, durability and cancellation/stop costs on Windows and Linux; preserve raw artifacts and resolve regressions.
+  - [x] Windows: record measured times, throughput, Rust allocations/incremental heap, process peak memory, encoded column bytes, WAL/FULL commit costs, replay, cancellation refusal and owner stop/restart; preserve raw samples and unchanged budgets.
+  - [ ] Linux: execute the identical native workload and retain its measurements; hosted Nightly execution remains pending.
+
+- [x] 3.3 Wire backend-independent storage case names/units into Nightly benchmarks.json on native Linux and Windows; expose the identical workload as public storage bench support and retain only the boundary-crossing case in ordinary checks. Source and focused producer proof pass; hosted execution/publication awaits integration and authorization.
+
+## 4. Final Validation and Delivery
+
+- [ ] 4.1 After source closure and targeted proof, run the required native platform checks and hosted validation when delivery is authorized; report actual failures and pending proof.
+  - [x] Windows: format, Rust/Python/repository checks and Tests artifact compilation pass; no full Rust test lane was run.
+  - [ ] Native Linux and hosted validation remain pending integration.
+- [ ] 4.2 Publish an authorized usable Harmos revision for Dokime's storage-interface change and verify its pin; leave Dokime extraction and its product benchmarks in that consumer change.
+
+## Workflow Follow-Up
+
+- Dokime's separate `storage-interface` consumes these extensions before extracting `dokime-storage`, retains product semantics and named disk-I/O exceptions, and proves before/after performance with multi-day data, restart, late replacement, finalization and report workloads.
+
+- [x] Consumer adoption follows protocol → operations → runtime → SDKs → examples → guides; retain ordinary bounded query fallback and streamed batch writes.

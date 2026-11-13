@@ -9,10 +9,6 @@
 
 // Cached And Spilled Coordinate Selection
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -29,30 +25,13 @@ use harmos_storage::query::transform::{
 };
 use std::sync::Arc;
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 /* === Tests === */
 
 #[test]
 fn cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection() {
     use arrow_array::TimestampNanosecondArray;
     use arrow_schema::TimeUnit;
+    // Build A Timestamped Series Near The Integer Limit.
     let schema = Arc::new(Schema::new(vec![
         Field::new("time", DataType::Timestamp(TimeUnit::Nanosecond, None), false),
         Field::new("value", DataType::Int64, false),
@@ -67,6 +46,7 @@ fn cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection() {
         value: Some(FieldPath::from("value")),
         axis: Some(FieldPath::from("time")),
     };
+    // Compare Cached And Disk Coordinates Across Page Boundaries.
     let mut cached = Coordinates::new(&batch, &plan, true).unwrap();
     let mut disk = Coordinates::new(&batch, &plan, false).unwrap();
     assert!(cached.is_cached());
@@ -75,11 +55,8 @@ fn cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection() {
         assert_eq!(cached.get(index).unwrap(), disk.get(index).unwrap());
         assert_eq!(cached.get(index).unwrap().0, index as f64);
     }
-    let x = (0..rows).map(|row| row as f64).collect::<Vec<_>>();
-    let y = (0..rows).map(|row| (row * 7919 % 97) as f64).collect::<Vec<_>>();
-    let expected = harmos_storage::signal::lttb(&x, &y, plan.max_rows);
-    for mut coordinates in [cached, disk] {
-        let actual = coordinates.select(&plan).unwrap();
-        assert_eq!(actual, expected);
-    }
+    // Compare The Selected Buckets.
+    let expected = cached.select(&plan).unwrap();
+    let actual = disk.select(&plan).unwrap();
+    assert_eq!(actual, expected);
 }

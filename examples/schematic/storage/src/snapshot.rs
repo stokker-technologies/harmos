@@ -19,7 +19,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use harmos::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
+use harmos_runtime::{Application, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
 /* === Constants === */
 
@@ -32,6 +32,7 @@ type Sink<A> = Box<dyn FnMut(&<A as Application>::State, Position) -> io::Result
 /* === Structs === */
 
 pub struct Snapshot<A: Application> {
+    catalog: harmos_runtime::state::StateCatalog<A::State, A::Transaction>,
     replica: A::State,
     taken: Position,
     durable: Position,
@@ -49,8 +50,12 @@ pub struct Snapshot<A: Application> {
 /* === Implementations === */
 
 impl<A: Application> Snapshot<A> {
-    pub fn folding(origin: A::State, at: Position, write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static) -> Self {
+    pub fn folding(
+        catalog: harmos_runtime::state::StateCatalog<A::State, A::Transaction>, origin: A::State, at: Position,
+        write: impl FnMut(&A::State, Position) -> io::Result<()> + Send + 'static,
+    ) -> Self {
         Self {
+            catalog,
             replica: origin,
             taken: at,
             durable: at,
@@ -78,9 +83,9 @@ impl<A: Application> JournalConsumer<A> for Snapshot<A> {
             return self.durable;
         }
         for entry in &entries {
-            if let Recorded::Transaction(change) = &entry.value {
+            if let Recorded::Transaction(_) = &entry.value {
                 if let Some(prepared) = &entry.prepared {
-                    if harmos::state::TransactionCatalog::replay(&**change, prepared, &mut self.replica).is_err() {
+                    if self.catalog.replay(prepared, &mut self.replica).is_err() {
                         self.halted = true;
                         return self.durable;
                     }

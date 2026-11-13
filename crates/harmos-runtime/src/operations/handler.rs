@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_domain::operations::instance::Id as OperationInstanceId;
+pub use harmos_operations::operations::instance::Id as OperationInstanceId;
 
 /* === Imports === */
 
@@ -30,7 +30,7 @@ use tokio::sync::oneshot;
 use super::Manager;
 use super::admission::Admission;
 use super::caller::{Origin, Source};
-use crate::operations::OperationDeclaration;
+use crate::operations::RequestShape;
 use crate::{Error, Result, operations::Scope, state::Position};
 
 /* === Constants === */
@@ -52,7 +52,8 @@ pub struct OperationGeneration(u64);
 // (an observer or service activation) holds one lease on its shared instance:
 // dropping it releases that lease and the last release stops the instance.
 #[must_use = "dropping an unsettled operation instance requests its cancellation"]
-pub struct Running<O: OperationDeclaration> {
+pub struct Running<O: RequestShape> {
+    pub(crate) operation: String,
     pub(crate) id: OperationInstanceId,
     pub(super) generation: OperationGeneration,
     pub(crate) outcome: Outcome<O::Response>,
@@ -82,9 +83,6 @@ pub struct Context<'a> {
     pub(super) request_claims: Option<super::RequestClaims>,
     pub(super) source: Source,
     pub(super) origin: Origin,
-
-    #[cfg(feature = "plugin-sidecar")]
-    pub(super) retirement: bool,
 }
 
 #[derive(Clone)]
@@ -98,9 +96,6 @@ pub struct HostContext {
     admission: Admission,
     source: Source,
     origin: Origin,
-
-    #[cfg(feature = "plugin-sidecar")]
-    retirement: bool,
 }
 
 /* === Enums === */
@@ -123,7 +118,10 @@ impl OperationGeneration {
     }
 }
 
-impl<O: OperationDeclaration> Running<O> {
+impl<O: RequestShape> Running<O> {
+    pub fn operation(&self) -> &str {
+        &self.operation
+    }
     pub fn id(&self) -> OperationInstanceId {
         self.id
     }
@@ -220,7 +218,7 @@ impl<O: OperationDeclaration> Running<O> {
     }
 }
 
-impl<O: OperationDeclaration> Running<O> {
+impl<O: RequestShape> Running<O> {
     // Encoded invocations keep their own contract: dropping one never
     // cancels, so the typed instance they await must not cancel either.
     pub(super) fn unguarded(mut self) -> Self {
@@ -229,7 +227,7 @@ impl<O: OperationDeclaration> Running<O> {
     }
 }
 
-impl<O: OperationDeclaration> Future for Running<O> {
+impl<O: RequestShape> Future for Running<O> {
     type Output = Result<crate::operations::Response<O::Response>>;
     fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
         let instance = self.get_mut();
@@ -249,7 +247,7 @@ impl<O: OperationDeclaration> Future for Running<O> {
     }
 }
 
-impl<O: OperationDeclaration> Drop for Running<O> {
+impl<O: RequestShape> Drop for Running<O> {
     fn drop(&mut self) {
         // A resident lease releases itself when dropped.
         if matches!(self.outcome, Outcome::Request(_)) && !self.released && !self.control.is_settled() {
@@ -258,9 +256,9 @@ impl<O: OperationDeclaration> Drop for Running<O> {
     }
 }
 
-impl<O> harmos_sdk::operations::Instance<O> for Running<O>
+impl<O> harmos_operations::execution::operations::Instance<O> for Running<O>
 where
-    O: OperationDeclaration,
+    O: RequestShape,
 {
     type Error = Error;
 
@@ -268,7 +266,7 @@ where
         self.id
     }
 
-    fn status(&self) -> impl Future<Output = Result<harmos_domain::operations::instance::Status>> + Send {
+    fn status(&self) -> impl Future<Output = Result<harmos_operations::operations::instance::Status>> + Send {
         std::future::ready(Ok(self.control.status().portable()))
     }
 
@@ -298,8 +296,6 @@ impl Context<'_> {
             admission: self.admission.clone(),
             source: self.source.clone(),
             origin: self.origin.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            retirement: self.retirement,
         }
     }
 
@@ -338,7 +334,7 @@ impl Context<'_> {
     }
 
     // Revalidate the Caller Before Every Streamed Destination
-    pub(crate) fn admit_stream_grant(&self, grant: &harmos_domain::plugin::Grant) -> Result<()> {
+    pub(crate) fn admit_stream_grant(&self, grant: &harmos_operations::plugin::Grant) -> Result<()> {
         self.source.check()?;
         match &self.origin.grants {
             Some(authority) => authority.admit(Some(grant)),
@@ -348,8 +344,8 @@ impl Context<'_> {
     }
 
     // Refuse a provider-prepared grant the admitted caller does not hold.
-    #[cfg(any(all(feature = "plugin-guest", not(target_arch = "wasm32")), feature = "plugin-sidecar"))]
-    pub(super) fn admit_grant(&self, grant: Option<&harmos_domain::plugin::Grant>) -> Result<()> {
+    #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
+    pub(super) fn admit_grant(&self, grant: Option<&harmos_operations::plugin::Grant>) -> Result<()> {
         match (&self.origin.grants, grant) {
             (Some(authority), grant) => authority.admit(grant),
             (None, None) => Ok(()),
@@ -357,23 +353,23 @@ impl Context<'_> {
         }
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub fn caller_scope(&self) -> Option<&crate::plugin::PluginScope> {
+    #[cfg(feature = "plugin-guest")]
+    pub fn caller_scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.origin.scope.as_ref()
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    pub(crate) fn retains_publication(&self, scope: &crate::plugin::PluginScope) -> bool {
+    #[cfg(feature = "plugin-guest")]
+    pub(crate) fn retains_publication(&self, scope: &crate::guest::host::plugin::PluginScope) -> bool {
         self.source.check().is_ok_and(|origin| {
             (origin.has_lifecycle_loan() || origin.resident) && origin.scope.as_ref().is_some_and(|caller| caller.same_activation(scope))
         })
     }
 
-    pub fn submit_at<O: OperationDeclaration>(&self, id: &str, request: O::Request) -> Result<Running<O>> {
+    pub fn submit_at<O: RequestShape>(&self, id: &str, request: O::Request) -> Result<Running<O>> {
         self.operations.admit_at::<O, ()>(id, (request.into(), ()), Some(&self.scope), self.admission.held(), &self.source, None)
     }
 
-    pub fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+    pub fn submit<O: RequestShape>(&self, request: O::Request) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, None)
     }
 
@@ -381,7 +377,7 @@ impl Context<'_> {
         self.request_claims.as_ref()
     }
 
-    pub fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+    pub fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>(
             (super::binding::Request::owned(request, claims), ()),
             &self.scope,
@@ -391,11 +387,11 @@ impl Context<'_> {
         )
     }
 
-    pub fn submit_endpoints<O: OperationDeclaration, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
+    pub fn submit_endpoints<O: RequestShape, P: Send + 'static>(&self, request: O::Request, endpoints: P) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>((request.into(), endpoints), &self.scope, &self.admission, &self.source, None)
     }
 
-    pub fn submit_charged<O: OperationDeclaration, P: Send + 'static>(
+    pub fn submit_charged<O: RequestShape, P: Send + 'static>(
         &self, request: super::StreamItem<O::Request>, endpoints: P,
     ) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, P>(
@@ -407,12 +403,12 @@ impl Context<'_> {
         )
     }
 
-    pub fn submit_caused<O: OperationDeclaration>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
+    pub fn submit_caused<O: RequestShape>(&self, request: O::Request, cause: Position) -> Result<Running<O>> {
         self.operations.submit_scoped::<O, ()>((request.into(), ()), &self.scope, &self.admission, &self.source, Some(cause))
     }
 
-    pub fn operation<O: OperationDeclaration>(&self, request: O::Request) -> harmos_sdk::operations::Invocation<HostContext, O> {
-        harmos_sdk::operations::Invocation::new(self.owned(), request)
+    pub fn operation<O: RequestShape>(&self, request: O::Request) -> harmos_operations::execution::operations::Invocation<HostContext, O> {
+        harmos_operations::execution::operations::Invocation::new(self.owned(), request)
     }
 }
 
@@ -433,20 +429,18 @@ impl HostContext {
             admission: self.admission.clone(),
             source: self.source.clone(),
             origin: self.origin.clone(),
-            #[cfg(feature = "plugin-sidecar")]
-            retirement: self.retirement,
         }
     }
 }
 
-impl harmos_sdk::operations::OperationHost for HostContext {
-    async fn invoke<O: OperationDeclaration, E: super::EndpointSet>(
+impl harmos_operations::execution::operations::OperationHost for HostContext {
+    async fn invoke<O: RequestShape, E: super::EndpointSet>(
         &self, request: O::Request, retry: Option<super::RetryPolicy>, endpoints: E,
     ) -> Result<Running<O>> {
-        harmos_sdk::operations::OperationHost::invoke::<O, E>(&self.borrow(), request, retry, endpoints).await
+        harmos_operations::execution::operations::OperationHost::invoke::<O, E>(&self.borrow(), request, retry, endpoints).await
     }
 
-    fn publish_on<S: harmos_domain::StreamSpec>(
+    fn publish_on<S: harmos_operations::StreamSpec>(
         &self, row: &S::Row,
     ) -> impl std::future::Future<Output = std::result::Result<(), Self::Error>> + Send
     where
@@ -456,7 +450,7 @@ impl harmos_sdk::operations::OperationHost for HostContext {
     }
 
     type Error = Error;
-    type Instance<O: OperationDeclaration> = Running<O>;
+    type Instance<O: RequestShape> = Running<O>;
 
     fn context(&self) -> &super::CallContext {
         self.operations.call_context()
@@ -469,11 +463,11 @@ impl harmos_sdk::operations::OperationHost for HostContext {
         Ok(child)
     }
 
-    async fn submit<O: OperationDeclaration>(&self, request: O::Request) -> Result<Running<O>> {
+    async fn submit<O: RequestShape>(&self, request: O::Request) -> Result<Running<O>> {
         self.borrow().submit::<O>(request)
     }
 
-    async fn submit_owned<O: OperationDeclaration>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
+    async fn submit_owned<O: RequestShape>(&self, request: O::Request, claims: super::RequestClaims) -> Result<Running<O>> {
         self.borrow().submit_owned::<O>(request, claims)
     }
 }
@@ -490,67 +484,98 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
 
 /* === Tests === */
 
-impl harmos_sdk::operations::instances::Instances for HostContext {
-    fn owned(&self, id: OperationInstanceId) -> Option<Arc<dyn harmos_sdk::operations::instances::InstanceControl>> {
-        self.borrow().owned_instance(id).map(|instance| instance as Arc<dyn harmos_sdk::operations::instances::InstanceControl>)
+impl harmos_operations::execution::operations::instances::Instances for HostContext {
+    fn invoke(
+        &self, request: harmos_protocol::v1::InvocationsInvokeRequest,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::result::Result<Vec<u8>, harmos_operations::execution::ServingError>> + Send + '_>,
+    > {
+        Box::pin(async move {
+            use prost::Message;
+            let operation = request.operation.clone();
+            self.borrow().invoke_client(request).await.map_err(|source| {
+                use harmos_protocol::v1::Classification;
+                let failure = match source.failure() {
+                    Some(failure) => harmos_protocol::v1::Failure::from(&failure.clone().without_diagnostics()),
+                    None => harmos_protocol::v1::Failure {
+                        classification: if matches!(&source, Error::OperationUnauthorized { .. } | Error::InvalidInput { .. }) {
+                            Classification::Refused as i32
+                        } else {
+                            Classification::Permanent as i32
+                        },
+                        code: "invoke_failed".into(),
+                        message: match &source {
+                            Error::OperationUnauthorized { .. } | Error::InvalidInput { .. } => source.to_string(),
+                            _ => "Operation Failed".into(),
+                        },
+                        action: "Check the Operation and Its Visibility".into(),
+                        operation: operation.clone(),
+                        plugin: "host".into(),
+                        ..Default::default()
+                    },
+                };
+                let code = match failure.classification() {
+                    Classification::Refused => tonic::Code::PermissionDenied,
+                    Classification::Transient => tonic::Code::Unavailable,
+                    Classification::Cancelled => tonic::Code::Cancelled,
+                    Classification::TimedOut => tonic::Code::DeadlineExceeded,
+                    _ => tonic::Code::Internal,
+                };
+                let mut status =
+                    tonic::Status::with_details(code, format!("Invoke {operation}: {}", failure.message), failure.encode_to_vec().into());
+                status.set_source(Arc::new(source));
+                harmos_operations::execution::ServingError::Native(Arc::new(status))
+            })
+        })
+    }
+
+    fn owned(&self, id: OperationInstanceId) -> Option<Arc<dyn harmos_operations::execution::operations::instances::InstanceControl>> {
+        self.borrow()
+            .owned_instance(id)
+            .map(|instance| instance as Arc<dyn harmos_operations::execution::operations::instances::InstanceControl>)
     }
 }
-impl harmos_sdk::operations::instances::InstanceControl for crate::supervision::instance::Instance {
-    fn status(&self) -> harmos_domain::operations::instance::Status {
+impl harmos_operations::execution::operations::instances::InstanceControl for crate::supervision::instance::Instance {
+    fn status(&self) -> harmos_operations::operations::instance::Status {
         self.status().portable()
     }
     fn request_cancel(&self) {
         self.request_cancel();
     }
-    fn subscribe(&self) -> Box<dyn harmos_sdk::operations::instances::InstanceChanges> {
+    fn subscribe(&self) -> Box<dyn harmos_operations::execution::operations::instances::InstanceChanges> {
         Box::new(InstanceChanges(self.settlement()))
     }
 }
 struct InstanceChanges(tokio::sync::watch::Receiver<super::OperationStatus>);
-impl harmos_sdk::operations::instances::InstanceChanges for InstanceChanges {
-    fn current(&mut self) -> harmos_domain::operations::instance::Status {
+impl harmos_operations::execution::operations::instances::InstanceChanges for InstanceChanges {
+    fn current(&mut self) -> harmos_operations::operations::instance::Status {
         self.0.borrow_and_update().portable()
     }
-    fn changed(&mut self) -> harmos_sdk::operations::instances::Changed<'_> {
+    fn changed(&mut self) -> harmos_operations::execution::operations::instances::Changed<'_> {
         Box::pin(async { self.0.changed().await.is_ok() })
     }
 }
 
-impl harmos_sdk::operations::access::Discovery for HostContext {
+impl harmos_operations::execution::operations::access::Discovery for HostContext {
     fn discover(
-        &self, after: Option<&str>, rows: usize, bytes: usize,
-    ) -> std::result::Result<harmos_sdk::operations::access::DiscoveryPage, harmos_sdk::operations::access::AccessError> {
+        &self,
+    ) -> std::result::Result<harmos_protocol::v1::CatalogEntriesListResponse, harmos_operations::execution::operations::access::AccessError>
+    {
         let context = self.borrow();
-        let request = harmos_operations::host::Catalog {
-            kind: harmos_operations::host::CatalogKind::Operations,
-            schema: None,
-            after: after.map(str::to_owned),
-            rows: Some(rows),
-            bytes: Some(bytes),
-        };
-        let page = context.operations.discover(&context.source, &request)?;
-        Ok((page.entries, page.next))
+        Ok(context.operations.discover(&context.source)?)
     }
 }
-impl harmos_sdk::operations::access::GrantAuthority for HostContext {
-    fn admit(&self, grant: &harmos_domain::plugin::Grant) -> std::result::Result<(), harmos_sdk::operations::access::AccessError> {
+impl harmos_operations::execution::operations::access::GrantAuthority for HostContext {
+    fn admit(
+        &self, grant: &harmos_operations::plugin::Grant,
+    ) -> std::result::Result<(), harmos_operations::execution::operations::access::AccessError> {
         self.borrow().admit_stream_grant(grant).map_err(Into::into)
     }
 }
 
-#[cfg(feature = "plugin-sidecar")]
-impl harmos_sdk::operations::publication::PublicationHost for HostContext {
-    fn publish<'a>(
-        &'a self, _: harmos_sdk::operations::CallContext, publication: harmos_sdk::operations::publication::Publication<'a>,
-    ) -> harmos_sdk::operations::publication::Published<'a> {
-        Box::pin(async move {
-            let context = self.borrow();
-            let scope = context.caller_scope().ok_or(Error::<std::convert::Infallible>::InvalidInput {
-                field: "native publication",
-                reason: "the original plugin caller is required",
-            })?;
-            let endpoint = scope.native().ok_or(Error::<std::convert::Infallible>::NotReady { domain: "native publication endpoint" })?;
-            endpoint.publish(scope, publication, &context).await.map_err(Into::into)
-        })
+impl harmos_operations::execution::operations::ProtobufHost for HostContext {
+    type Error = Error;
+    async fn call_protobuf<O: super::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        harmos_operations::execution::operations::ProtobufHost::call_protobuf::<O>(&self.borrow(), request).await
     }
 }

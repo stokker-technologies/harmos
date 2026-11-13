@@ -1,0 +1,22 @@
+syntax = "proto3";
+package harmos.conformance.v1;
+import "google/protobuf/duration.proto";
+
+message Value { bytes value = 1; }
+message PayloadOnly { bytes value = 1; }
+
+// Additional Schema and Setting Fixtures; Value Remains Unchanged.
+message Zebra { Value value = 1; }
+message Graph {
+  option deprecated = false;
+  message Nested {
+    optional int32 count = 1;
+    Graph next = 2;
+  }
+  repeated Nested items = 1;
+  Zebra tail = 2;
+  Graph next = 3;
+  google.protobuf.Duration interval = 4;
+  Status status = 5;
+}
+enum Status { STATUS_UNSPECIFIED = 0; STATUS_READY = 1; }

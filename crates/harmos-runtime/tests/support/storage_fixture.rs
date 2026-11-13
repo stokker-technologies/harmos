@@ -10,7 +10,12 @@
 #![allow(dead_code, unused_imports)]
 /* === Modules === */
 
+#[path = "../../../harmos-storage/tests/support/fixture.rs"]
+mod shared;
+
 /* === Re-Exports === */
+
+pub(crate) use shared::{config, record, schema, state_settings, write};
 
 /* === Imports === */
 
@@ -29,96 +34,63 @@ pub(crate) use harmos_runtime::storage::*;
 pub(crate) use harmos_runtime::{BackendFailure, Error, Identifier, Runtime};
 pub(crate) use support::{Bank, Ledger, catalog};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
 pub(crate) struct Fixture {
     pub(crate) runtime: Runtime<Bank>,
-    pub(crate) storage: StorageManager,
-    pub(crate) data: Arc<Data>,
-    pub(crate) recovery: Arc<Recovery>,
+    storage_fixture: shared::Fixture<StorageManager>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
 impl Fixture {
+    pub(crate) fn from_parts(runtime: Runtime<Bank>, storage: StorageManager, data: Arc<Data>, recovery: Arc<Recovery>) -> Self {
+        Self {
+            runtime,
+            storage_fixture: shared::Fixture { storage, data, recovery },
+        }
+    }
+
     pub(crate) async fn new(config: StorageSettings) -> Self {
-        let data = Arc::new(Data::new(history()));
-        let recovery = Arc::new(Recovery::new(history()));
-        let storage = StorageManager::new(
-            StorageBackends {
-                primary: data.clone(),
-                state: recovery.clone(),
-            },
-            config,
-        )
-        .unwrap();
-        let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
-            setup.resource(std::ops::Deref::deref(&storage).erased());
+        let storage_fixture = shared::Fixture::build_with(config, |backends, config| StorageManager::new(backends, config).unwrap());
+        let storage = &storage_fixture.storage;
+        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+            setup.resource(std::ops::Deref::deref(storage).clone());
+            setup.resource(harmos_operations::storage::SavedSnapshots::new(storage.query_capacity()));
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: Some(
+                    harmos_protocol::transfer::default_message_bytes().checked_mul(std::num::NonZeroUsize::new(6).unwrap()).unwrap(),
+                ),
+                ..Default::default()
+            });
             setup.settings().register(catalog());
         })
         .await
         .unwrap();
         storage.start(&runtime).await.unwrap();
-        Self { runtime, storage, data, recovery }
+        Self { runtime, storage_fixture }
     }
 
     pub(crate) async fn finish(self) {
         self.storage.close().await.unwrap();
-        assert!(self.runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("harmos-storage")).is_none());
-        self.runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&self.runtime).await.unwrap();
+    }
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = shared::Fixture<StorageManager>;
+    fn deref(&self) -> &Self::Target {
+        &self.storage_fixture
     }
 }
 
 /* === Public Functions === */
 
-pub(crate) fn state_settings() -> harmos_runtime::storage::state::StorageStateSettings {
-    harmos_runtime::storage::state::StorageStateSettings {
-        max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-        max_checkpoint_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-    }
-}
-
-/* === Private Functions === */
-
-pub(crate) fn config() -> StorageSettings {
-    storage_settings()
-}
-
-pub(crate) fn schema() -> SchemaKey {
-    SchemaKey {
-        payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
-        id: Identifier::new("reading").unwrap(),
-        version: NonZeroU32::new(1).unwrap(),
-    }
-}
-
-pub(crate) fn record<'a>(schema: &'a SchemaKey, item: &'a Identifier, payload: &'a [u8]) -> RecordInput {
-    RecordInput {
-        schema: schema.clone(),
-        scope: None,
-        item: item.clone(),
-        source: None,
-        source_time: None,
-        payload: (payload).to_vec(),
-    }
-}
-
-pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
-    use harmos_operations::storage::Query;
+pub(crate) async fn saved_records(storage: &StorageManager, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_runtime::storage::Query {
-            at: storage.cursor_saved(),
+            at: storage.get_saved_position(),
             source: Source::Records(RecordSelection {
                 schema: schema.clone(),
                 scope: None,
@@ -145,13 +117,3 @@ pub(crate) async fn saved_records<C>(storage: &StorageManager<C>, schema: &Schem
     }
     records
 }
-
-pub(crate) async fn pending<F: std::future::Future + ?Sized>(mut future: std::pin::Pin<&mut F>) -> bool {
-    std::future::poll_fn(|context| std::task::Poll::Ready(future.as_mut().poll(context).is_pending())).await
-}
-
-pub(crate) async fn write<C>(storage: &StorageManager<C>, id: &str) -> StorageCursor {
-    storage.write_records(vec![record(&schema(), &Identifier::new(id).unwrap(), &[1, 2, 3])]).await.unwrap()
-}
-
-/* === Tests === */

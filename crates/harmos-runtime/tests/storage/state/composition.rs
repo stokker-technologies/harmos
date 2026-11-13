@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -19,25 +15,18 @@
 
 // Local Imports
 use harmos_runtime::storage::{FileMetadata, FileReference, ObjectVersionToken, StorageCursor, StoreHistory};
-use harmos_runtime::{Identifier, Message, message, schema::Described};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
+use harmos_runtime::{Identifier, Message, schema::Described};
 
 /* === Structs === */
 
-#[message]
-#[derive(PartialEq)]
+#[derive(Message, Clone, Debug, PartialEq)]
 struct Revision {
     cursor: StorageCursor,
     version: ObjectVersionToken,
     file: FileReference,
 }
 
-#[message]
+#[derive(Message, Clone, Debug, Default)]
 struct Seal {
     cursor: Option<StorageCursor>,
     version: Option<ObjectVersionToken>,
@@ -46,18 +35,11 @@ struct Seal {
 
 /* === Enums === */
 
-#[message]
-#[derive(PartialEq)]
+#[derive(Message, Clone, Debug, PartialEq)]
 enum Source {
     Stored { cursor: StorageCursor },
     Empty,
 }
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

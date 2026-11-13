@@ -34,7 +34,7 @@ use super::*;
 
 /* === Implementations === */
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     // Acquire Backends Before Giving One Worker To The Host's Supervisor.
     #[tracing::instrument(name = "storage.manager.lifecycle.start_with", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn start_with(&self, owner: Arc<()>, spawn: impl FnOnce(Worker) -> Result<Box<dyn WorkerOwner>>) -> Result<()> {
@@ -62,7 +62,7 @@ impl<C> StorageManager<C> {
             if state.status.closing {
                 return Err(Error::Closing { domain: "storage" });
             }
-            let worker = spawn(Worker(self.erased()))?;
+            let worker = spawn(Worker(self.clone()))?;
             state.ready = true;
             state.status.running = true;
             drop(state);
@@ -99,8 +99,8 @@ impl<C> StorageManager<C> {
         }
         if !lifecycle.primary_open {
             lifecycle.primary_touched = true;
-            let saved = self.inner.bounded("primary.open", self.inner.primary.open()).await?;
-            self.inner.primary.history().check(&saved.history)?;
+            let saved = self.inner.bounded("primary.create_session", self.inner.primary.create_session()).await?;
+            self.inner.primary.get_history().check(&saved.history)?;
             let mut state = self.inner.state.lock().unwrap();
             state.status.accepted = saved.clone();
             state.status.saved = saved;
@@ -118,8 +118,8 @@ impl<C> StorageManager<C> {
         }
         if !lifecycle.recovery_open {
             lifecycle.recovery_touched = true;
-            let saved = self.inner.bounded("recovery.open", self.inner.recovery.open()).await?;
-            self.inner.recovery.history().check(&saved.history)?;
+            let saved = self.inner.bounded("recovery.create_recovery_session", self.inner.recovery.create_recovery_session()).await?;
+            self.inner.recovery.get_history().check(&saved.history)?;
             let mut state = self.inner.state.lock().unwrap();
             state.status.recovery_accepted = saved.clone();
             state.status.recovery_saved = saved;
@@ -133,7 +133,7 @@ impl<C> StorageManager<C> {
         Ok(())
     }
 
-    pub fn same_instance<D>(&self, other: &StorageManager<D>) -> bool {
+    pub fn same_instance(&self, other: &StorageManager) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
     }
 
@@ -160,7 +160,7 @@ impl<C> StorageManager<C> {
         self.inner.state.lock().unwrap().status.accepted.clone()
     }
 
-    pub fn cursor_saved(&self) -> StorageCursor {
+    pub fn get_saved_position(&self) -> StorageCursor {
         self.inner.state.lock().unwrap().status.saved.clone()
     }
 

@@ -41,8 +41,8 @@ static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 
 /* === Structs === */
 
-pub(super) struct Snapshot {
-    inner: Arc<Inner>,
+pub struct Snapshot {
+    pub(super) inner: Arc<Inner>,
     id: u64,
     backend: BackendSnapshot,
 }
@@ -73,11 +73,11 @@ impl Drop for SnapshotState {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
-    pub(super) async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
+    pub async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
         let result = async {
-            self.inner.primary.history().check(&at.history)?;
+            self.inner.primary.get_history().check(&at.history)?;
             let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
             {
                 let mut state = self.inner.state.lock().unwrap();
@@ -154,6 +154,91 @@ impl<C> StorageManager<C> {
 }
 
 impl Snapshot {
+    pub fn is_available(&self) -> bool {
+        self.check().is_ok()
+    }
+
+    pub fn at(&self) -> &StorageCursor {
+        &self.backend.at
+    }
+
+    pub async fn list_column_rows(
+        &self, read: &crate::query::columnar::ArrowScan, cancel: &crate::query::columnar::Cancellation,
+    ) -> Result<crate::query::columnar::ArrowPage> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let future = crate::query::columnar::list_column_rows(self.inner.primary.as_ref(), &self.backend, read, cancel);
+        let page = self.inner.bounded("primary.list_column_rows", Box::pin(future)).await?;
+        self.check()?;
+        Ok(page)
+    }
+
+    pub async fn list_index_entries(
+        &self, read: &crate::query::index::IndexRead, cancel: &crate::query::columnar::Cancellation,
+    ) -> Result<crate::query::index::IndexPage> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let future = crate::query::index::list_index_entries(self.inner.primary.as_ref(), &self.backend, read, cancel);
+        let page = self.inner.bounded("primary.list_index_entries", Box::pin(future)).await?;
+        self.check()?;
+        Ok(page)
+    }
+
+    pub async fn advance_projection(
+        &self, name: &crate::Identifier, expected_revision: Option<u64>, work: super::ReadLimits,
+        cancel: &crate::query::columnar::Cancellation,
+    ) -> Result<u64> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let revision =
+            crate::query::projection::advance_projection(self.inner.primary.as_ref(), &self.backend, name, expected_revision, work, cancel)
+                .await?;
+        self.check()?;
+        Ok(revision)
+    }
+
+    pub(super) async fn get_record_position(&self, selection: &super::query::RecordSelection, offset: u64) -> Result<Option<u64>> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let position = self
+            .inner
+            .bounded("primary.get_record_position", self.inner.primary.get_record_position(&self.backend, selection, offset))
+            .await?;
+        self.check()?;
+        if position.is_some_and(|position| position > self.backend.at.sequence) {
+            return Err(invalid("backend seek is outside the saved cut"));
+        }
+        Ok(position)
+    }
+
+    pub(super) async fn record_views(
+        &self, selection: &super::query::RecordSelection, page: ScanPage,
+    ) -> Result<Option<Vec<crate::RecordView>>> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let views =
+            self.inner.bounded("primary.list_record_views", self.inner.primary.list_record_views(&self.backend, selection, page)).await?;
+        self.check()?;
+        let Some(views) = views else {
+            return Ok(None);
+        };
+        let mut previous = page.after;
+        let mut bytes = 0usize;
+        for view in &views {
+            let record = view.record();
+            self.backend.at.history.check(&record.position.history)?;
+            if record.position.sequence <= previous || record.position.sequence > self.backend.at.sequence || !record.matches(selection) {
+                return Err(invalid("backend returned an entry outside the ordered selection"));
+            }
+            previous = record.position.sequence;
+            bytes = bytes.saturating_add(view.encoded_bytes());
+        }
+        if views.len() > page.rows.get() || (views.len() > 1 && bytes > page.bytes.get()) {
+            return Err(invalid("backend page exceeds its row or byte bound"));
+        }
+        Ok(Some(views))
+    }
+
     #[tracing::instrument(name = "storage.snapshot.scan", level = "trace", skip_all, fields(snapshot = self.id, after = page.after, rows = page.rows.get(), bytes = page.bytes.get()))]
     pub(super) async fn scan<T: Entry>(&self, selection: &T::Selection, page: ScanPage) -> Result<(Vec<T>, usize)> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
@@ -177,11 +262,27 @@ impl Snapshot {
         Ok((entries, bytes))
     }
 
-    #[tracing::instrument(name = "storage.snapshot.read_object", level = "trace", skip_all)]
-    pub(super) async fn read_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
+    pub async fn get_schema(&self, key: &crate::SchemaKey) -> Result<Option<crate::StorageSchema>> {
+        let selection = crate::query::SchemaSelection { schema: Some(key.clone()) };
+        let mut page = ScanPage {
+            after: 0,
+            rows: self.inner.settings.response.batch_rows,
+            bytes: self.inner.settings.response.batch_bytes,
+        };
+        let mut latest = None;
+        loop {
+            let (entries, _) = self.scan::<crate::StorageSchema>(&selection, page).await?;
+            let Some(last) = entries.into_iter().last() else { return Ok(latest) };
+            page.after = last.position.sequence;
+            latest = Some(last);
+        }
+    }
+
+    #[tracing::instrument(name = "storage.snapshot.get_object", level = "trace", skip_all)]
+    pub async fn get_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let object = self.inner.bounded("primary.read_object", self.inner.primary.read_object(&self.backend, point)).await?;
+        let object = self.inner.bounded("primary.get_object", self.inner.primary.get_object(&self.backend, point)).await?;
         self.check()?;
         if let Some(object) = &object {
             object.version.check_position(&object.position)?;
@@ -200,7 +301,8 @@ impl Snapshot {
     pub(super) async fn read_file(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let bytes = self.inner.bounded("primary.read_file", self.inner.primary.read_file(&self.backend, file, offset, max_bytes)).await?;
+        let bytes =
+            self.inner.bounded("primary.get_file_bytes", self.inner.primary.get_file_bytes(&self.backend, file, offset, max_bytes)).await?;
         self.check()?;
         Ok(bytes)
     }

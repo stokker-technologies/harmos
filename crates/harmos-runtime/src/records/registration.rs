@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use crate::schema::{Validator, graph::Schema};
-use crate::storage::{ErasedCatalog, SchemaKey, StorageManager};
+use crate::storage::{SchemaKey, StorageManager};
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */
@@ -46,11 +46,11 @@ pub struct Definition {
 }
 
 pub(crate) struct Registry {
-    pub(super) storage: Option<StorageManager<ErasedCatalog>>,
+    pub(super) storage: Option<StorageManager>,
     pub(super) settings: Arc<crate::config::SchemaSettings>,
     state: Mutex<State>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) listeners: Mutex<BTreeMap<String, Arc<super::listeners::Listening>>>,
 }
 
@@ -109,12 +109,12 @@ impl Definition {
 }
 
 impl Registry {
-    pub(crate) fn new(storage: Option<StorageManager<ErasedCatalog>>, settings: Arc<crate::config::SchemaSettings>) -> Self {
+    pub(crate) fn new(storage: Option<StorageManager>, settings: Arc<crate::config::SchemaSettings>) -> Self {
         Self {
             storage,
             settings,
             state: Mutex::new(State::default()),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             listeners: Mutex::new(BTreeMap::new()),
         }
     }

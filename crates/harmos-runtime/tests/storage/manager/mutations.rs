@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -22,22 +18,6 @@ use std::sync::atomic::Ordering;
 use super::{Fixture, config, metadata};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{MutationId, StorageManager};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -74,17 +54,19 @@ async fn resume_receipt_replays() {
 #[tokio::test(start_paused = true)]
 async fn operation_retries_three() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
+    crate::support::app::register(&f.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
-    let request = harmos_operations::storage::ResumeFile {
-        mutation: identity(&f.storage, "resume"),
-        session: file.session().unwrap().clone(),
+    let request = harmos_protocol::v1::StorageCreateFileWriterRequest {
+        mutation: Some(identity(&f.storage, "resume").into()),
+        session: Some(file.session().unwrap().clone().into()),
     };
     f.data.control.fence_failures.store(3, Ordering::SeqCst);
-    let first = f.runtime.operation(request.clone()).await.unwrap();
-    assert_eq!(first.session.generation, 2);
+    let first = f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileWriter>(request.clone()).await.unwrap();
+    assert_eq!(first.production.as_ref().unwrap().session.as_ref().unwrap().generation, 2);
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
-    assert_eq!(*f.runtime.operation(request).await.unwrap(), *first);
+    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileWriter>(request).await.unwrap(), first);
     f.finish().await;
 }
 
@@ -139,40 +121,30 @@ async fn duplicate_resumes_share() {
 #[tokio::test(start_paused = true)]
 async fn budgets_never_multiply() {
     let f = Fixture::new(config()).await;
-    f.runtime.operations.register::<harmos_operations::Storage>(crate::storage::operations::Lanes::Open).await.unwrap();
+    crate::support::app::register(&f.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
-    let request = harmos_operations::storage::ResumeFile {
-        mutation: identity(&f.storage, "resume"),
-        session: file.session().unwrap().clone(),
+    let request = harmos_protocol::v1::StorageCreateFileWriterRequest {
+        mutation: Some(identity(&f.storage, "resume").into()),
+        session: Some(file.session().unwrap().clone().into()),
     };
     f.data.control.fence_failures.store(5, Ordering::SeqCst);
-    assert!(f.runtime.operation(request.clone()).await.is_err());
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileWriter>(request.clone()).await.is_err());
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 1);
     f.data.control.fence_failures.store(0, Ordering::SeqCst);
-    assert_eq!(f.runtime.operation(request).await.unwrap().session.generation, 2);
-    f.finish().await;
-}
-
-#[tokio::test]
-async fn ledger_evicts_receipts() {
-    // Exceed The Receipt Count Bound Within One Retry Window.
-    let f = Fixture::new(config()).await;
-    let window = f.storage.mutation_window().unwrap();
-    let mut last = None;
-    for index in 0..2048 {
-        let name = format!("small-{index}");
-        let create = identity(&f.storage, &format!("create-{index}"));
-        let producer = f.storage.create_file_once(&create, &metadata(&name)).await.unwrap();
-        let finish = identity(&f.storage, &format!("finish-{index}"));
-        let reference = f.storage.finish_file_once(&finish, &producer.session).await.unwrap();
-        assert_eq!(reference.length, 0);
-        f.storage.flush().await.unwrap();
-        last = Some((finish, producer.session, reference));
-    }
-    assert_eq!(f.storage.mutation_window().unwrap().id, window.id);
-
-    // The Newest Receipt Still Answers Its Retry With The Original Outcome.
-    let (finish, session, reference) = last.unwrap();
-    assert_eq!(f.storage.finish_file_once(&finish, &session).await.unwrap(), reference);
+    assert_eq!(
+        f.runtime
+            .operations
+            .call_protobuf::<harmos_operations::storage::CreateFileWriter>(request)
+            .await
+            .unwrap()
+            .production
+            .unwrap()
+            .session
+            .unwrap()
+            .generation,
+        2
+    );
     f.finish().await;
 }

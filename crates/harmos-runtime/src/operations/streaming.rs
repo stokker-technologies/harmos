@@ -11,7 +11,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_sdk::operations::streaming::{StreamInput, StreamItem, StreamSettings};
+pub use harmos_operations::execution::operations::streaming::{StreamInput, StreamItem, StreamSettings};
 
 /* === Imports === */
 
@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Third Party Imports
 // Local Imports
 use crate::{Error, Result};
-use harmos_sdk::operations::streaming as portable;
+use harmos_operations::execution::operations::streaming as portable;
 
 /* === Constants === */
 

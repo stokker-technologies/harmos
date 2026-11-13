@@ -10,12 +10,12 @@
 /* === Modules === */
 
 mod admission;
-mod cache;
 mod construction;
 mod entry;
 mod grants;
 mod inspection;
 mod lookup;
+mod plugin_grpc;
 mod registration;
 mod registry;
 mod retirement;
@@ -29,13 +29,17 @@ mod residents;
 
 /* === Re-Exports === */
 
+pub(crate) use plugin_grpc::Admission as GrpcAdmission;
+
 /* === Imports === */
 
 // Standard Library Imports
 use std::any::Any;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
+#[cfg(feature = "grpc")]
+use std::sync::Weak;
 use std::sync::{
-    Arc, Mutex, Weak,
+    Arc, Mutex,
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 // Third Party Imports
@@ -43,33 +47,27 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 // Local Imports
 use super::admission::{Admission, Lanes};
 use super::binding::Typed;
-use super::caller::{Identity, Origin, Source};
+use super::caller::{Origin, Source};
 use super::{OperationGeneration, OperationInstanceId, Running};
 
 use super::instances::Instances;
-use crate::operations::{CacheKey, OperationDeclaration, OperationDefinition};
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-use crate::plugin::PluginScope;
-use crate::supervision::executor;
+#[cfg(feature = "plugin-guest")]
+use crate::guest::host::plugin::PluginScope;
+use crate::operations::{OperationDefinition, RequestShape};
 use crate::supervision::instance::Instance;
 use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, state::Position};
 
 /* === Constants === */
 
-const DEFAULT_CACHE_CAPACITY: usize = 64;
-
 /* === Macros === */
 
 /* === Type Aliases === */
 
-type CachedResponse = harmos_sdk::__private::ErasedResponse;
-
 /* === Structs === */
 
 #[derive(Clone)]
-pub struct OperationManager<L: Lane> {
+pub struct OperationManager {
     inner: Manager,
-    lane: std::marker::PhantomData<fn() -> L>,
 }
 
 #[derive(Clone)]
@@ -83,25 +81,31 @@ pub struct Manager {
     pub(crate) resident: super::resident::Registry,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone)]
 pub(crate) struct WeakOperationManager {
     schema_settings: std::sync::Weak<crate::config::SchemaSettings>,
-    registry: Weak<Registry>,
-    instances: Weak<Instances>,
-    lanes: Weak<Lanes>,
-    preparation: Option<Weak<Semaphore>>,
-    context: Weak<std::sync::OnceLock<super::CallContext>>,
+    registry: std::sync::Weak<Registry>,
+    instances: std::sync::Weak<Instances>,
+    lanes: std::sync::Weak<Lanes>,
+    preparation: Option<std::sync::Weak<Semaphore>>,
+    context: std::sync::Weak<std::sync::OnceLock<super::CallContext>>,
     resident: super::resident::WeakRegistry,
 }
 
 pub(crate) struct Registry {
+    pub(crate) access: Arc<harmos_operations::access::AccessAccess>,
+    pub(crate) status: Arc<harmos_operations::status::StatusAccess>,
+    pub(crate) status_owner: std::sync::Mutex<Option<Arc<crate::services::status::Status>>>,
+    pub(crate) status_started: prost_types::Timestamp,
     pub(crate) service_runner: crate::services::ServiceRunner,
+    #[cfg(feature = "grpc")]
+    pub(crate) values: std::sync::RwLock<Option<Arc<dyn super::values::Resolver>>>,
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) struct GenerationCommit<'a> {
     _state: std::sync::MutexGuard<'a, State>,
 }
@@ -110,21 +114,18 @@ struct State {
     closing: bool,
     entries: BTreeMap<String, BTreeMap<String, Arc<Entry>>>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     staging: Vec<std::sync::Weak<PluginScope>>,
 
     #[cfg(feature = "grpc")]
-    grpc: BTreeMap<String, Weak<Entry>>,
+    grpc: BTreeMap<String, std::sync::Weak<Entry>>,
 
     #[cfg(feature = "grpc")]
     grpc_services: std::collections::BTreeSet<String>,
-
-    cache: VecDeque<Cached>,
-    cache_capacity: usize,
 }
 
 pub(super) struct Entry {
-    pub(super) carrier: harmos_sdk::__private::ResourceSet,
+    pub(super) carrier: harmos_operations::execution::__private::ResourceSet,
     owner: Identifier,
     definition: OperationDefinition,
     pub(super) contract: Option<crate::operations::Contract>,
@@ -136,27 +137,18 @@ pub(super) struct Entry {
     lane: &'static str,
 
     // A resident control runs until cancelled, even while its plugin retires.
-    #[cfg(feature = "plugin-sidecar")]
-    resident: bool,
-
     active: AtomicBool,
     publication: Arc<AtomicBool>,
     retirement: AtomicU8,
     pending: Mutex<BTreeMap<OperationInstanceId, Arc<Instance>>>,
     pub(in crate::operations) binding: Arc<dyn Any + Send + Sync>,
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(super) native_binding: Option<Arc<dyn Any + Send + Sync>>,
-
     pub(super) wire: Option<super::wire::Dispatch>,
 
-    #[cfg(feature = "plugin-sidecar")]
-    pub(super) native: Option<Arc<super::native::Binding>>,
-
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     plugin: Option<PluginScope>,
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(super) sdk: Option<harmos_operations::lifecycle::Action>,
 }
 
@@ -176,18 +168,11 @@ pub(super) struct GrantAuthority {
     operation: String,
 
     // A cross-owner plugin caller and its declared requirement for this operation.
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-    plugin: Option<(String, Option<harmos_domain::inventory::contracts::Required>)>,
+    #[cfg(feature = "plugin-guest")]
+    plugin: Option<(String, Option<harmos_operations::inventory::contracts::Required>)>,
 
     // External Authority Never Replaces A Plugin Caller's Own Requirement.
     external: Option<crate::operations::authorization::Authorization>,
-}
-
-struct Cached {
-    target: Weak<Entry>,
-    key: CacheKey,
-    identity: Identity,
-    response: CachedResponse,
 }
 
 /* === Enums === */
@@ -205,26 +190,40 @@ enum Retirement {
 /* === Implementations === */
 
 impl Manager {
-    pub(crate) fn resources(&self) -> &harmos_sdk::__private::ResourceSet {
+    pub(crate) fn clock(&self) -> &crate::clock::Clock {
+        &self.instances.clock
+    }
+
+    pub(crate) fn transfer_message_bytes(&self) -> std::num::NonZeroUsize {
+        self.resources()
+            .resource::<harmos_storage::StorageManager>()
+            .map_or_else(|_| harmos_protocol::transfer::default_message_bytes(), |storage| storage.settings().transfer_message_bytes())
+    }
+
+    pub(crate) fn resources(&self) -> &harmos_operations::execution::__private::ResourceSet {
         &self.instances.resources
     }
 
-    pub(super) fn resources_for(&self, entry: &Entry) -> harmos_sdk::__private::ResourceSet {
-        harmos_sdk::ExecutionContext::new(entry.carrier.clone(), super::CallContext::default())
+    pub(super) fn resources_for(&self, entry: &Entry) -> harmos_operations::execution::__private::ResourceSet {
+        let mut resources = harmos_operations::execution::ExecutionContext::new(entry.carrier.clone(), super::CallContext::default())
             .with_resources(self.resources().clone())
             .resources()
-            .clone()
+            .clone();
+        resources.replace(self.registry.access.clone());
+        resources.replace(self.registry.status.clone());
+        resources.replace(Arc::new(harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone())))));
+        resources
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 impl std::fmt::Debug for WeakOperationManager {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.debug_struct("WeakOperationManager").finish_non_exhaustive()
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 impl WeakOperationManager {
     pub(crate) fn upgrade(&self) -> Option<Manager> {
         Some(Manager {
@@ -242,7 +241,7 @@ impl WeakOperationManager {
     }
 }
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 impl Manager {
     pub(crate) fn downgrade(&self) -> WeakOperationManager {
         WeakOperationManager {
@@ -257,21 +256,30 @@ impl Manager {
     }
 }
 
-impl<L: Lane> OperationManager<L> {
+impl OperationManager {
+    pub fn clock(&self) -> &crate::clock::Clock {
+        self.inner.clock()
+    }
+
     pub(crate) fn new(inner: Manager) -> Self {
-        Self { inner, lane: std::marker::PhantomData }
+        Self { inner }
     }
 
     pub(crate) fn execution(&self) -> Manager {
         self.inner.clone()
     }
 
-    pub async fn register<C: harmos_sdk::operations::OperationCatalog>(&self, lane: L) -> Result<()> {
-        use crate::operations::RegistrationExt;
-        self.register_batch(C::batch().lane(lane)).await
+    pub async fn register_operation(
+        &self, operation: crate::operations::OperationFactory, lane: crate::operations::Lane,
+    ) -> ::core::result::Result<(), crate::Error> {
+        self.register_batch(crate::operations::Registration::new(lane).entry(operation)).await
     }
 
-    pub async fn register_batch(&self, registration: crate::operations::Registration<L>) -> Result<()> {
+    pub async fn register_catalog(&self, catalog: crate::operations::Catalog, lane: crate::operations::Lane) -> Result<()> {
+        self.register_batch(crate::operations::Registration::catalog(catalog, lane)?).await
+    }
+
+    pub async fn register_batch(&self, registration: crate::operations::Registration) -> Result<()> {
         self.inner.register_native(registration)
     }
 
@@ -284,7 +292,7 @@ impl<L: Lane> OperationManager<L> {
     }
 }
 
-impl<L: Lane> std::ops::Deref for OperationManager<L> {
+impl std::ops::Deref for OperationManager {
     type Target = Manager;
     fn deref(&self) -> &Self::Target {
         &self.inner
@@ -295,8 +303,10 @@ impl<L: Lane> std::ops::Deref for OperationManager<L> {
 
 /* === Private Functions === */
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-fn grant_allowed(required: Option<&harmos_domain::inventory::contracts::Required>, grant: Option<&harmos_domain::plugin::Grant>) -> bool {
+#[cfg(feature = "plugin-guest")]
+fn grant_allowed(
+    required: Option<&harmos_operations::inventory::contracts::Required>, grant: Option<&harmos_operations::plugin::Grant>,
+) -> bool {
     match grant {
         None => true,
         Some(grant) => required.is_some_and(|required| required.grants(grant)),

@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{Net, NetId, NetName, PinRef, Schematic};
-use harmos::state::Transaction;
+use harmos_runtime::state::Transaction;
 
 /* === Constants === */
 
@@ -32,12 +32,15 @@ use harmos::state::Transaction;
 
 /* === Structs === */
 
-#[harmos::transaction(id = "net.connect")]
-#[derive(harmos::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct ConnectPins {
     pub net: NetId,
     pub name: NetName,
     pub pins: BTreeSet<PinRef>,
+}
+impl ConnectPins {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("net.connect").barrier();
 }
 
 /* === Enums === */

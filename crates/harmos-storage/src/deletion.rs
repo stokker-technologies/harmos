@@ -20,7 +20,6 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use super::config::MAX_MUTATIONS;
 use super::manager::{Inner, State, Target};
 use super::receipts::ReceiptState;
 use super::{MutationId, MutationReceipt, MutationValue, StagedFile, StorageManager};
@@ -59,12 +58,12 @@ impl Drop for DeleteWork {
     }
 }
 
-impl<C> StorageManager<C> {
+impl StorageManager {
     #[tracing::instrument(name = "storage.deletion.delete_file_once", level = "debug", skip_all, fields(outcome = "cancelled"))]
     pub async fn delete_file_once(&self, mutation: &MutationId, file: &StagedFile) -> Result<StagedFile> {
         let result = async {
-            self.inner.primary.history().check(&file.history)?;
-            if !self.inner.primary.supports_mutation_receipts() || !self.inner.primary.supports_file_deletion() {
+            self.inner.primary.get_history().check(&file.history)?;
+            if !self.inner.primary.capabilities().mutation_receipts || !self.inner.primary.capabilities().file_deletion {
                 return Err(invalid("backend must support durable deletion"));
             }
             let fingerprint = fingerprint(file);
@@ -118,7 +117,7 @@ impl<C> StorageManager<C> {
                             if state.deleting(&file.id) {
                                 return Err(invalid("another deletion owns this file"));
                             }
-                            if state.deletions.len() >= MAX_MUTATIONS.get() {
+                            if state.deletions.len() >= self.inner.settings.request.max_mutation_receipts.get() {
                                 return Err(exhausted());
                             }
                             let outcome = MutationValue::Deleted(file.clone());
@@ -237,7 +236,7 @@ impl DeleteWork {
     #[tracing::instrument(name = "storage.deletion.perform", level = "debug", skip_all)]
     pub(super) async fn perform(&self, inner: &Arc<Inner>) -> Result<()> {
         inner.bounded("primary.delete_file", inner.primary.delete_file(&self.file)).await?;
-        inner.bounded("primary.save_mutations", inner.primary.save_mutations(self.receipt.clone())).await?;
+        inner.bounded("primary.append_mutation_receipts", inner.primary.append_mutation_receipts(self.receipt.clone())).await?;
         tracing::info!(file = %self.file.id, mutation = %self.receipt.as_slice()[0].mutation.key, reason = "explicit deletion", "file deleted");
         Ok(())
     }

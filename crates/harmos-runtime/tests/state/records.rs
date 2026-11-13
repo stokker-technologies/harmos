@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -20,15 +16,8 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use harmos_runtime::{Error, Runtime, state::DecodeError, state::Position, state::PrincipalId, state::Recorded};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
-#[harmos_runtime::record(id = "manager.note")]
 #[derive(harmos_runtime::Described, Clone, Debug, Serialize, Deserialize)]
 struct Noted(String);
 
@@ -36,21 +25,40 @@ struct Model;
 
 /* === Enums === */
 
-#[harmos_runtime::records]
 #[derive(Clone, Debug)]
 enum Records {
     Noted(Noted),
 }
-
-/* === Traits === */
+impl From<Noted> for Records {
+    fn from(value: Noted) -> Self {
+        Self::Noted(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Noted(_) => <Noted as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Noted(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Noted as harmos_runtime::state::Record>::ENTRY, Records::Noted, |value| {
+        let Records::Noted(value) = value;
+        Some(value)
+    })
+}
 
 /* === Implementations === */
 
-#[harmos_runtime::lanes]
-pub enum ModelLanes {
-    #[default]
-    Open,
+impl harmos_runtime::state::Record for Noted {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("manager.note");
 }
+
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -62,14 +70,10 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl harmos_runtime::Application for Model {
-    type Lanes = ModelLanes;
     type State = ();
     type Transaction = harmos_runtime::state::Never;
     type Record = Records;
-    type Streams = ();
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -82,13 +86,13 @@ async fn undeclared_record_refused() {
         if id.as_str() == "manager.note"
     ));
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn producers_share_order() {
-    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-        setup.settings().register(Records::catalog());
+    let runtime = crate::support::app::launch::<Model>((), (), |setup| {
+        setup.settings().register(records_registry());
     })
     .await
     .unwrap();
@@ -101,7 +105,7 @@ async fn producers_share_order() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[1].metadata.principal, Some(PrincipalId::new("editor")));
     assert_eq!(entries[1].metadata.causation, Some(harmos_runtime::state::CausationId(first.position)));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -111,7 +115,7 @@ async fn discovery_shares_producer() {
     use std::num::NonZeroU32;
     use std::sync::Arc;
 
-    #[harmos_runtime::message]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default)]
     struct Message {
         value: String,
     }
@@ -186,7 +190,7 @@ async fn discovery_shares_producer() {
     assert_eq!(producer.definitions().len(), 1);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     drop(producer);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 /* === Tests === */
@@ -196,7 +200,7 @@ async fn record_registration_uses_runtime_schema_settings() {
     use harmos_runtime::schema::Described;
     use std::num::{NonZeroU32, NonZeroUsize};
 
-    #[harmos_runtime::message]
+    #[derive(harmos_runtime::Message, Clone, Debug, Default)]
     struct ConfiguredRow {
         value: String,
     }
@@ -213,7 +217,7 @@ async fn record_registration_uses_runtime_schema_settings() {
         if !accepted {
             settings.preparation_bytes = NonZeroUsize::new(1).unwrap();
         }
-        let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::support::app::launch::<Model>((), (), |setup| {
             setup.settings().schema_settings(settings);
         })
         .await
@@ -221,6 +225,6 @@ async fn record_registration_uses_runtime_schema_settings() {
         let result = runtime.records.register("configured", key.clone(), graph.clone()).await;
         assert_eq!(result.is_ok(), accepted);
         assert_eq!(runtime.records.definition(&key).is_some(), accepted);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }

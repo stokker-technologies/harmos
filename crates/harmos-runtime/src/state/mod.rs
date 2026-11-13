@@ -27,14 +27,14 @@ pub use crate::error::Error;
 pub use capture::{CaptureError, CaptureLimits, JournalCapture};
 pub use entry::{At, CausationId, CorrelationId, Entry, Link, Metadata, Position, PrincipalId, Receipt, RequestKey, Timestamp};
 pub use envelope::{DefinitionId, Envelope, FactSource, Kind, Recorded, SystemFact};
-pub use harmos_domain::state::{RecordDefinitions, TransactionDefinitions};
+pub use harmos_domain::state::{StateCatalog, TransactionEntry};
 pub use history::{Focus, Origin, Reversals};
 pub use managed::ManagedState;
 pub use manager::StateManager;
 pub(crate) use manager::{Context, Feed, TrackedState};
-pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordCatalog, RecordProjection, Records};
+pub use record::{CatalogCodec, PreparationError, Prepared, Record, RecordEntry, RecordRegistry, Records};
 pub use snapshot::SnapshotPolicy;
-pub use transaction::{DecodeError, Invertible, Never, Transaction, TransactionCatalog};
+pub use transaction::{DecodeError, Invertible, Never, Transaction};
 
 // The proof traits generated authoring code reaches through `__private`: they
 
@@ -43,7 +43,6 @@ pub use transaction::{DecodeError, Invertible, Never, Transaction, TransactionCa
 // checked to be a member of the catalog that will commit it. Public because an
 
 // application's generated code names them, hidden because nothing else may.
-pub use transaction::{Catalogued, Mutual, Paired};
 
 // What boot needs of the journal's insides and nothing more: the fold replay
 // rebuilds, the hook it re-derives inverses through, and the version table it

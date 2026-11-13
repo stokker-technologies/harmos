@@ -9,10 +9,6 @@
 
 // Exercise Network Authentication, Streaming And Listener Shutdown.
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,51 +17,27 @@
 
 // Local Imports
 use super::*;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
+use harmos_runtime::Runtime;
 
 /* === Tests === */
 
 #[tokio::test]
 async fn filesystem_hash_roundtrip() {
-    use harmos_runtime::storage::{ByteRange, FileHash, FileSource, JsonStorage, JsonStorageSettings, StorageManager};
+    use harmos_runtime::storage::StorageManager;
     use sha2::{Digest, Sha256};
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.bin");
     let bytes = b"host filesystem across grpc";
     std::fs::write(&path, bytes).unwrap();
     let settings = crate::storage::fixture::config();
-    let primary = JsonStorage::new(
-        JsonStorageSettings {
-            root: directory.path().join("storage"),
-            max_entry_bytes: settings.request.max_pending_write_bytes,
-        },
-        crate::storage::fixture::history(),
-    );
-    let backends = primary.into_backends(harmos_runtime::storage::state::StorageStateSettings {
-        max_entry_bytes: settings.request.max_pending_write_bytes,
-        max_checkpoint_bytes: settings.request.max_pending_write_bytes,
-    });
+    let backends = harmos_runtime::storage::StorageBackends {
+        primary: Arc::new(crate::storage::fixture::Data::new(crate::storage::fixture::history())),
+        state: Arc::new(crate::storage::fixture::Recovery::new(crate::storage::fixture::history())),
+    };
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.settings().storage(&storage);
-        setup.operations::<harmos_operations::Storage>(Lanes::Open);
+        setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -73,60 +45,96 @@ async fn filesystem_hash_roundtrip() {
     let attached = runtime.grpc().attach(super::settings()).await.unwrap();
     let address = format!("http://{}", attached.local_addr());
     let channel = tonic::transport::Endpoint::from_shared(address).unwrap().connect().await.unwrap();
-    let request = harmos_operations::storage::HashFile {
-        source: FileSource::Local(path),
-        range: ByteRange { offset: 5, limit: Some(10) },
+    let request = harmos_protocol::v1::StorageGetFileHashRequest {
+        source: Some(harmos_protocol::storage::FileSource {
+            source: Some(harmos_protocol::storage::file_source::Source::Local(path.to_str().unwrap().into())),
+        }),
+        range: Some(harmos_protocol::storage::ByteRange { offset: 5, limit: Some(10) }),
+        at: None,
     };
-    let answer = builtin_call::<harmos_operations::storage::HashFile, FileHash>(channel, "/harmos.storage.v1.Storage/HashFile", request)
-        .await
-        .unwrap();
+    let answer = generated_call::<harmos_protocol::v1::StorageGetFileHashRequest, harmos_protocol::v1::StorageGetFileHashResponse>(
+        channel,
+        "/harmos.v1.Storage/GetFileHash",
+        request,
+    )
+    .await
+    .unwrap();
+    let answer = answer.hash.unwrap();
     assert_eq!(answer.bytes_read, 10);
     assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     drop(attached);
     storage.close().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn builtin_grpc_roundtrip() {
-    use harmos_operations::lifecycle::{Cancel, InstanceState, Status};
+    use harmos_operations::lifecycle::{Cancel, Get};
 
-    #[harmos_runtime::operation(resources = [tokio::sync::Notify], response = (),
-                        id = "grpc.parked",
-                        policy = harmos_runtime::OperationPolicy {
-                            timeout: Duration::from_secs(5),
-                            attempt_timeout: Duration::from_secs(5),
-                            cancellation_timeout: std::time::Duration::ZERO,
-                            retries: RetryPolicy::Never,
-                        },
-                    )]
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = ())]
+    #[derive(Clone)]
     struct ParkedContract {}
-    impl harmos_runtime::Operation for ParkedContract {
-        type Error = Error;
 
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Error> {
-            let release = ctx.resource::<tokio::sync::Notify>();
-            release.notified().await;
-            Ok(().into())
-        }
+    static PARKED_CONTRACT_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<ParkedContract>(
+            "grpc.parked",
+            harmos_runtime::OperationPolicy {
+                timeout: Duration::from_secs(5),
+                attempt_timeout: Duration::from_secs(5),
+                cancellation_timeout: std::time::Duration::ZERO,
+                retries: RetryPolicy::Never,
+            },
+        );
+
+    const PARKED_CONTRACT_OPERATION: harmos_runtime::operations::OperationSpec<ParkedContract> =
+        harmos_runtime::operations::OperationSpec::<ParkedContract>::new(&PARKED_CONTRACT_DESCRIPTION);
+    async fn parked_contract_handler(
+        _request: ParkedContract, ctx: harmos_runtime::operations::FunctionContext<ParkedContract>,
+    ) -> Result<harmos_runtime::operations::Response<()>, Error> {
+        let release = ctx.resource::<tokio::sync::Notify>().expect("declared resource is registered");
+        release.notified().await;
+        Ok(().into())
+    }
+
+    fn parked_contract_operation()
+    -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+        harmos_runtime::operations::OperationFactory::function(
+            PARKED_CONTRACT_OPERATION,
+            const { &[harmos_runtime::Resource::of::<tokio::sync::Notify>()] },
+            parked_contract_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
     }
 
     let release = Arc::new(tokio::sync::Notify::new());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<tokio::sync::Notify>(release.clone());
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
+            ..Default::default()
+        });
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<ParkedContract>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::Lifecycle>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(parked_contract_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    crate::support::app::register(&runtime, harmos_operations::lifecycle_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let paths = runtime
         .operations
         .grpc_methods()
         .into_iter()
         .filter_map(|method| method.contract.grpc().map(|grpc| grpc.path()))
         .collect::<Vec<_>>();
-    assert!(paths.contains(&"/harmos.host.v1.Operations/Status".to_owned()));
-    assert!(paths.contains(&"/harmos.host.v1.Operations/Cancel".to_owned()));
+    assert!(paths.contains(&"/harmos.v1.Invocations/Get".to_owned()));
+    assert!(paths.contains(&"/harmos.v1.Invocations/Cancel".to_owned()));
 
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
@@ -134,38 +142,63 @@ async fn builtin_grpc_roundtrip() {
     let id = parked.id();
 
     // An External Caller Neither Sees nor Cancels a Host Instance
-    let status = builtin_call::<Status, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Status", Status::of(id)).await;
+    let status = generated_call::<harmos_protocol::v1::InvocationsGetRequest, harmos_protocol::v1::InvocationsGetResponse>(
+        channel.clone(),
+        "/harmos.v1.Invocations/Get",
+        Get::of(id),
+    )
+    .await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let cancel = builtin_call::<Cancel, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Cancel", Cancel::of(unknown)).await;
+    let cancel = generated_call::<harmos_protocol::v1::InvocationsCancelRequest, harmos_protocol::v1::InvocationsCancelResponse>(
+        channel.clone(),
+        "/harmos.v1.Invocations/Cancel",
+        Cancel::of(unknown),
+    )
+    .await;
     assert!(cancel.is_err());
-    let foreign = builtin_call::<Cancel, InstanceState>(channel.clone(), "/harmos.host.v1.Operations/Cancel", Cancel::of(id)).await;
+    let foreign = generated_call::<harmos_protocol::v1::InvocationsCancelRequest, harmos_protocol::v1::InvocationsCancelResponse>(
+        channel.clone(),
+        "/harmos.v1.Invocations/Cancel",
+        Cancel::of(id),
+    )
+    .await;
     assert_eq!(foreign.unwrap_err().code(), cancel.unwrap_err().code());
     assert!(!parked.status().cancellation_requested());
 
     // The Submitting Host Reads and Cancels Its Own Instance
-    let owned = runtime.operation(Status::of(id)).await.unwrap();
-    assert_eq!(owned.phase, "running");
-    let cancelled = runtime.operation(Cancel::of(id)).await.unwrap();
-    assert!(cancelled.cancellation_requested);
+    let owned = runtime.operations.call_protobuf::<Get>(Get::of(id)).await.unwrap();
+    assert_eq!(owned.invocation.unwrap().phase, "running");
+    let cancelled = runtime.operations.call_protobuf::<Cancel>(Cancel::of(id)).await.unwrap();
+    assert!(cancelled.invocation.unwrap().cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_domain::plugin::Grant;
-    use harmos_storage::{ErasedCatalog, StorageManager};
+    use harmos_storage::StorageManager;
 
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<Option<Arc<StorageManager<ErasedCatalog>>>>(None);
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        setup.resource::<Option<Arc<StorageManager>>>(None);
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<DescendantDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<harmos_operations::Host>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(
+            descendant_declaration_operation().expect("representable operation"),
+            harmos_runtime::operations::Lane::default(),
+        )
+        .await
+        .unwrap();
+    crate::support::app::register(&runtime, harmos_operations::host_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     // Internal Boot Work Does Not Freeze The Later Listener Policy.
     assert_eq!(runtime.operation(GuardedDeclaration {}).await.unwrap().actor, "host:anonymous");
     let mode = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -187,10 +220,16 @@ async fn external_authority_parity() {
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_catalog(channel.clone(), None).await.unwrap_err().code(), tonic::Code::Unauthenticated);
     let alice = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    let guarded = alice.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
-    assert_eq!(guarded.grants, [Grant::of("grpc.guarded", "reading")]);
+    let guarded = alice.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
+    assert_eq!(
+        guarded.grants,
+        [harmos_protocol::v1::Grant {
+            operation: "grpc.guarded".into(),
+            scope: Some("reading".into())
+        }]
+    );
     let bob = external_catalog(channel.clone(), Some("Bearer bob")).await.unwrap();
-    assert!(bob.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    assert!(bob.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert_eq!(
         external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
@@ -207,7 +246,6 @@ async fn external_authority_parity() {
     );
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
-    runtime.operations.clear_cache();
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal("bob".into())).unwrap();
     assert_eq!(
@@ -217,11 +255,13 @@ async fn external_authority_parity() {
     assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
     mode.store(1, std::sync::atomic::Ordering::Release);
     assert!(
-        external_catalog(channel.clone(), Some("Bearer alice"))
-            .await
+        external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap().iter().all(|entry| entry
+            .contract
+            .as_ref()
             .unwrap()
-            .iter()
-            .all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded")
+            .id
+            .as_str()
+            != "grpc.guarded")
     );
     assert_eq!(
         external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
@@ -234,23 +274,27 @@ async fn external_authority_parity() {
     );
     mode.store(3, std::sync::atomic::Ordering::Release);
     let incompatible = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
-    assert!(incompatible.iter().all(|entry| entry.contract.operation().id.as_str() != "grpc.guarded"));
+    assert!(incompatible.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
     let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err();
     assert_eq!(denied.code(), tonic::Code::PermissionDenied, "full control must validate the live contract");
     mode.store(4, std::sync::atomic::Ordering::Release);
     let full = external_catalog(channel.clone(), Some("Bearer limited")).await.unwrap();
-    let guarded = full.iter().find(|entry| entry.contract.operation().id.as_str() == "grpc.guarded").unwrap();
+    let guarded = full.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
     assert!(guarded.grants.is_empty(), "full control does not invent finite scopes");
     assert!(guarded.conditional_access);
     assert_eq!(external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap(), "external:limited");
     mode.store(0, std::sync::atomic::Ordering::Release);
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
     assert!(runtime.operations.register_authorizer(policy).is_err());
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     // Existing Explicit Anonymous Routes Have No New Registration Requirement.
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime
         .grpc()
         .register_service(Endpoint {
@@ -260,9 +304,13 @@ async fn external_authority_parity() {
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap(), "external:anonymous");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<GuardedDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let operations = Arc::new(runtime.operations.clone());
     runtime
         .operations
@@ -280,7 +328,7 @@ async fn external_authority_parity() {
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap_err().code(), tonic::Code::PermissionDenied);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -310,7 +358,7 @@ async fn empty_manager_attaches() {
     same.address = address;
     let rebound = runtime.grpc().attach(same).await.unwrap();
     assert_eq!(rebound.local_addr(), address);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     assert!(runtime.grpc().attach(settings()).await.is_err());
 }
@@ -318,12 +366,16 @@ async fn empty_manager_attaches() {
 #[tokio::test]
 async fn independent_listeners() {
     use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(who_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -401,15 +453,22 @@ async fn independent_listeners() {
 
 #[tokio::test]
 async fn stalled_listener_settles() {
-    use harmos_runtime::grpc::OutputEnvelope;
     let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(hold_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(who_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -436,10 +495,7 @@ async fn stalled_listener_settles() {
             .server_streaming(
                 request,
                 http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                    decode, encode,
-                )
-                .unwrap(),
+                Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
             )
             .await
             .unwrap()
@@ -466,21 +522,29 @@ async fn stalled_listener_settles() {
         assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
         replacement.detach().await.unwrap();
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn shutdown_streams_unavailable() {
-    use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
+    use harmos_runtime::grpc::InputEnvelope;
     let uploading = Arc::new(tokio::sync::Notify::new());
     let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::holding_and_uploading(stopped.clone(), uploading.clone()));
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<HoldDeclaration>>(Lanes::Open).await.unwrap();
-    runtime.operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(hold_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    runtime
+        .operations
+        .register_operation(upload_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -499,10 +563,7 @@ async fn shutdown_streams_unavailable() {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                decode, encode,
-            )
-            .unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap()
@@ -542,16 +603,37 @@ async fn shutdown_streams_unavailable() {
     assert_eq!(streamed.code(), tonic::Code::Unavailable, "{streamed:?}");
     assert_eq!(uploaded.code(), tonic::Code::Unavailable, "{uploaded:?}");
     drop(attached);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn status_propagation() {
     let statuses = failures(Behavior::reject(), |operations| async move {
-        operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+        operations
+            .register_operation(who_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
+        operations
+            .register_operation(
+                download_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
+        operations
+            .register_operation(
+                upload_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
+        operations
+            .register_operation(
+                exchange_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
     })
     .await;
     for status in statuses {
@@ -562,10 +644,31 @@ async fn status_propagation() {
         assert_eq!(status.metadata().get_bin("x-fixture-context-bin").unwrap().to_bytes().unwrap().as_ref(), &[0, 255, 1]);
     }
     let statuses = failures(Behavior::crash(), |operations| async move {
-        operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
-        operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+        operations
+            .register_operation(who_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
+        operations
+            .register_operation(
+                download_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
+        operations
+            .register_operation(
+                upload_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
+        operations
+            .register_operation(
+                exchange_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
     })
     .await;
     for status in statuses {
@@ -576,13 +679,17 @@ async fn status_propagation() {
 
 #[tokio::test]
 async fn runtime_stops_listener() {
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
     .unwrap();
     assert!(runtime.grpc().local_addr().is_none());
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(who_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
@@ -601,75 +708,138 @@ async fn runtime_stops_listener() {
     assert_eq!(alice.unwrap(), "alice");
     assert_eq!(bob.unwrap(), "bob");
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::Unauthenticated, tonic::Code::Ok, tonic::Code::Ok]);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     assert!(call(channel, Some("Bearer alice")).await.is_err());
 }
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.download", response = Reply, output = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Download"))]
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply, output = Reply)]
+#[derive(Clone)]
 struct NativeDownload {}
-impl harmos_runtime::Operation for NativeDownload {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(false)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let output = ctx.streams();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let actor = context.context().require::<Principal>()?.0.clone();
-            output.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
-            Ok(Reply { actor })
-        }
-        .await;
-        result.map(::core::convert::Into::into)
+
+static NATIVE_DOWNLOAD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<NativeDownload>("grpc.download", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Download"));
+
+const NATIVE_DOWNLOAD_OPERATION: harmos_runtime::operations::OperationSpec<NativeDownload> =
+    harmos_runtime::operations::OperationSpec::<NativeDownload>::new(&NATIVE_DOWNLOAD_DESCRIPTION);
+async fn native_download_handler(
+    _request: NativeDownload, ctx: harmos_runtime::operations::FunctionContext<NativeDownload>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(false)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let output = ctx.streams();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        let actor = context.context().require::<Principal>()?.0.clone();
+        output.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
+        Ok(Reply { actor })
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.upload", response = Reply, input = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Upload"))]
+fn native_download_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        NATIVE_DOWNLOAD_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        native_download_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply, input = Reply)]
+#[derive(Clone)]
 struct NativeUpload {}
-impl harmos_runtime::Operation for NativeUpload {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(false)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let input = ctx.streams();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            if let Some(started) = &behavior.uploading {
-                started.notify_one();
-            }
-            while input.recv().await.is_some() {}
-            Ok(Reply {
-                actor: context.context().require::<Principal>()?.0.clone(),
-            })
+
+static NATIVE_UPLOAD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<NativeUpload>("grpc.upload", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Upload"));
+
+const NATIVE_UPLOAD_OPERATION: harmos_runtime::operations::OperationSpec<NativeUpload> =
+    harmos_runtime::operations::OperationSpec::<NativeUpload>::new(&NATIVE_UPLOAD_DESCRIPTION);
+async fn native_upload_handler(
+    _request: NativeUpload, ctx: harmos_runtime::operations::FunctionContext<NativeUpload>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(false)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let input = ctx.streams();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        if let Some(started) = &behavior.uploading {
+            started.notify_one();
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        while input.recv().await.is_some() {}
+        Ok(Reply {
+            actor: context.context().require::<Principal>()?.0.clone(),
+        })
     }
+    .await;
+    result.map(::core::convert::Into::into)
 }
 
-#[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.exchange", response = Reply, input = Reply, output = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Exchange"))]
+fn native_upload_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        NATIVE_UPLOAD_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        native_upload_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
+}
+
+#[derive(harmos_runtime::Message, Debug, Default)]
+#[harmos_path(harmos_runtime)]
+#[derive(harmos_runtime::Request)]
+#[request(response = Reply, input = Reply, output = Reply)]
+#[derive(Clone)]
 struct NativeExchange {}
-impl harmos_runtime::Operation for NativeExchange {
-    type Error = Error;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-        let behavior = ctx.resource::<Behavior>();
-        behavior.check(true)?;
-        let host = ctx.resource::<harmos_runtime::operations::HostContext>();
-        let context = host.borrow();
-        let endpoints = ctx.streams();
-        let result: ::core::result::Result<Reply, Self::Error> = async move {
-            let actor = context.context().require::<Principal>()?.0.clone();
-            while endpoints.0.recv().await.is_some() {
-                endpoints.1.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
-            }
-            Ok(Reply { actor })
+
+static NATIVE_EXCHANGE_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+    harmos_runtime::operations::WireDeclaration::request::<NativeExchange>("grpc.exchange", WHO_POLICY)
+        .visibility(harmos_runtime::operations::Visibility::Public)
+        .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Exchange"));
+
+const NATIVE_EXCHANGE_OPERATION: harmos_runtime::operations::OperationSpec<NativeExchange> =
+    harmos_runtime::operations::OperationSpec::<NativeExchange>::new(&NATIVE_EXCHANGE_DESCRIPTION);
+async fn native_exchange_handler(
+    _request: NativeExchange, ctx: harmos_runtime::operations::FunctionContext<NativeExchange>,
+) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+    let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
+    behavior.check(true)?;
+    let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
+    let context = host.borrow();
+    let endpoints = ctx.streams();
+    let result: ::core::result::Result<Reply, Error> = async move {
+        let actor = context.context().require::<Principal>()?.0.clone();
+        while endpoints.0.recv().await.is_some() {
+            endpoints.1.send_with(128, || Ok(Reply { actor: actor.clone() })).await?;
         }
-        .await;
-        result.map(::core::convert::Into::into)
+        Ok(Reply { actor })
     }
+    .await;
+    result.map(::core::convert::Into::into)
+}
+
+fn native_exchange_operation()
+-> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+    harmos_runtime::operations::OperationFactory::function(
+        NATIVE_EXCHANGE_OPERATION,
+        const { &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()] },
+        native_exchange_handler,
+        |_| harmos_runtime::operations::FailureKind::Permanent,
+    )
 }
 
 #[tokio::test]
@@ -683,21 +853,54 @@ async fn native_batch_streaming_preserves_principals() {
 }
 
 async fn streaming_principals(native: bool) {
-    use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
+    use harmos_runtime::grpc::InputEnvelope;
     let behavior = Arc::new(Behavior::uploading(Arc::new(tokio::sync::Notify::new())));
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(behavior.clone());
     })
     .await
     .unwrap();
     if native {
-        runtime.operations.register::<crate::operations::Single<NativeDownload>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<NativeUpload>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<NativeExchange>>(Lanes::Open).await.unwrap();
+        runtime
+            .operations
+            .register_operation(native_download_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register_operation(native_upload_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register_operation(native_exchange_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
     } else {
-        runtime.operations.register::<crate::operations::Single<DownloadDeclaration>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<UploadDeclaration>>(Lanes::Open).await.unwrap();
-        runtime.operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+        runtime
+            .operations
+            .register_operation(
+                download_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register_operation(
+                upload_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
+        runtime
+            .operations
+            .register_operation(
+                exchange_declaration_operation().expect("representable operation"),
+                harmos_runtime::operations::Lane::default(),
+            )
+            .await
+            .unwrap();
     }
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
@@ -722,16 +925,12 @@ async fn streaming_principals(native: bool) {
         .server_streaming(
             request,
             http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                decode, encode,
-            )
-            .unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap();
     let mut stream = response.into_inner();
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Response(Reply { actor }) if actor == "alice"));
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "alice"));
     assert!(stream.message().await.unwrap().is_none());
     for exchange in [false, true] {
         client.ready().await.unwrap();
@@ -746,18 +945,15 @@ async fn streaming_principals(native: bool) {
                 .streaming(
                     request,
                     http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
-                    Codec::<
-                        harmos_runtime::grpc::Transcoded,
-                        OutputEnvelope<Reply, Reply>,
-                        harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>,
-                    >::new(decode, encode)
+                    Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
+                        decode, encode,
+                    )
                     .unwrap(),
                 )
                 .await
                 .unwrap();
             let mut stream = response.into_inner();
-            assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "bob"));
-            assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Response(Reply { actor }) if actor == "bob"));
+            assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "bob"));
             assert!(stream.message().await.unwrap().is_none());
         } else {
             let response = client
@@ -775,19 +971,23 @@ async fn streaming_principals(native: bool) {
         }
     }
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::Ok; 3]);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn configured_tls_serves() {
     use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(who_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -814,24 +1014,36 @@ async fn configured_tls_serves() {
         .await
         .unwrap();
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn observes_cancel_deadline() {
-    use harmos_runtime::grpc::OutputEnvelope;
-    #[harmos_runtime::operation(resources = [Behavior, harmos_runtime::operations::HostContext], id = "grpc.hold", response = Reply, output = Reply, policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Identity", method = "Hold"))]
-    struct NativeHold {}
-    impl harmos_runtime::Operation for NativeHold {
-        type Error = Error;
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
-            let behavior = ctx.resource::<Behavior>();
+    tokio::time::timeout(Duration::from_secs(10), async {
+        #[derive(harmos_runtime::Message, Debug, Default)]
+        #[harmos_path(harmos_runtime)]
+        #[derive(harmos_runtime::Request)]
+        #[request(response = Reply, output = Reply)]
+        #[derive(Clone)]
+        struct NativeHold {}
+
+        static NATIVE_HOLD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+            harmos_runtime::operations::WireDeclaration::request::<NativeHold>("grpc.hold", WHO_POLICY)
+                .visibility(harmos_runtime::operations::Visibility::Public)
+                .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Hold"));
+
+        const NATIVE_HOLD_OPERATION: harmos_runtime::operations::OperationSpec<NativeHold> =
+            harmos_runtime::operations::OperationSpec::<NativeHold>::new(&NATIVE_HOLD_DESCRIPTION);
+        async fn native_hold_handler(
+            _request: NativeHold, ctx: harmos_runtime::operations::FunctionContext<NativeHold>,
+        ) -> harmos_runtime::Result<harmos_runtime::operations::Response<Reply>> {
+            let behavior = ctx.resource::<Behavior>().expect("declared resource is registered");
             behavior.check(false)?;
-            let host = ctx.resource::<harmos_runtime::operations::HostContext>();
+            let host = ctx.resource::<harmos_runtime::operations::HostContext>().expect("declared resource is registered");
             let context = host.borrow();
             let output = ctx.streams();
             let _guard = HoldingGuard(behavior);
-            let result: ::core::result::Result<Reply, Self::Error> = async move {
+            let result: ::core::result::Result<Reply, Error> = async move {
                 let actor = context.context().require::<Principal>()?.0.clone();
                 output.send_with(128, || Ok(Reply { actor })).await?;
                 std::future::pending().await
@@ -839,63 +1051,95 @@ async fn observes_cancel_deadline() {
             .await;
             result.map(::core::convert::Into::into)
         }
-    }
 
-    for expired in [false, true] {
-        let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-        let runtime = Runtime::<App>::launch_with((), (), |setup| {
-            setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
-        })
-        .await
-        .unwrap();
-        runtime.operations.register::<crate::operations::Single<NativeHold>>(Lanes::Open).await.unwrap();
-        let trace = Arc::new(Mutex::new(Vec::new()));
-        runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
-        runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
-        let mut settings = settings();
-        if expired {
-            settings.request_timeout = Duration::from_secs(1);
-        }
-        let attached = runtime.grpc().attach(settings).await.unwrap();
-        let address = attached.local_addr();
-        let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
-        let mut client = tonic::client::Grpc::new(channel);
-        client.ready().await.unwrap();
-        let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Ask {}));
-        request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
-        let (decode, encode) = limits();
-        let response = client
-            .server_streaming(
-                request,
-                http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
-                Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
-                    decode, encode,
-                )
-                .unwrap(),
+        fn native_hold_operation()
+        -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError> {
+            harmos_runtime::operations::OperationFactory::function(
+                NATIVE_HOLD_OPERATION,
+                const {
+                    &[harmos_runtime::Resource::of::<Behavior>(), harmos_runtime::Resource::of::<harmos_runtime::operations::HostContext>()]
+                },
+                native_hold_handler,
+                |_| harmos_runtime::operations::FailureKind::Permanent,
             )
+        }
+
+        for expired in [false, true] {
+            let clock = crate::support::clock::Controlled::new();
+            let stopped = Arc::new(tokio::sync::Semaphore::new(0));
+            let runtime = crate::support::app::launch::<App>((), (), |setup| {
+                setup.settings().clock(clock.source());
+                setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
+            })
             .await
             .unwrap();
-        let mut stream = response.into_inner();
-        assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
-        assert!(trace.lock().unwrap().is_empty());
-        if expired {
-            let status = stream.message().await.err().expect("stream deadline must fail");
-            assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
-            assert!(status.message().contains("grpc.hold"), "{status}");
+            runtime
+                .operations
+                .register_operation(native_hold_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+                .await
+                .unwrap();
+            let trace = Arc::new(Mutex::new(Vec::new()));
+            runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
+            runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
+            let mut settings = settings();
+            if expired {
+                settings.request_timeout = Duration::from_secs(1);
+            }
+
+            let attached = runtime.grpc().attach(settings).await.unwrap();
+            let address = attached.local_addr();
+            let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
+            let mut client = tonic::client::Grpc::new(channel);
+            client.ready().await.unwrap();
+            let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Ask {}));
+            request.metadata_mut().insert("authorization", "Bearer alice".parse().unwrap());
+            let (decode, encode) = limits();
+            let response = client
+                .server_streaming(
+                    request,
+                    http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+                    Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let mut stream = response.into_inner();
+
+            assert!(stream.message().await.unwrap().is_some());
+            assert!(trace.lock().unwrap().is_empty());
+
+            if expired {
+                // Streaming Uses Its Operation Idle Budget After Authentication.
+                clock.advance(WHO_POLICY.timeout);
+                let status = stream.message().await.err().expect("stream deadline must fail");
+                assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
+                assert!(status.message().contains("grpc.hold"), "{status}");
+            }
+
+            drop(stream);
+
+            (stopped.acquire()).await.unwrap().forget();
+            assert_eq!(*trace.lock().unwrap(), [if expired { tonic::Code::DeadlineExceeded } else { tonic::Code::Cancelled }]);
+
+            crate::support::app::shutdown(&runtime).await.unwrap();
         }
-        drop(stream);
-        (stopped.acquire()).await.unwrap().forget();
-        assert_eq!(*trace.lock().unwrap(), [if expired { tonic::Code::DeadlineExceeded } else { tonic::Code::Cancelled }]);
-        runtime.shutdown().await.unwrap();
-    }
+    })
+    .await
+    .expect("listener story hang guard");
 }
 
 #[tokio::test]
 async fn authentication_bounded_operation() {
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let clock = crate::support::clock::Controlled::new();
+    let authenticating = Arc::new(tokio::sync::Notify::new());
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        setup.settings().clock(clock.source());
+    })
+    .await
+    .unwrap();
     let trace = Arc::new(Mutex::new(Vec::new()));
     runtime.grpc().register_middleware(Arc::new(Trace(trace.clone()))).unwrap();
-    runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(PendingAuthentication)))).unwrap();
+    runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(PendingAuthentication(authenticating.clone()))))).unwrap();
     // No Handler Is Registered: Authentication Must Terminate Before Dispatch.
     runtime
         .grpc()
@@ -908,10 +1152,14 @@ async fn authentication_bounded_operation() {
     let attached = runtime.grpc().attach(settings).await.unwrap();
     let address = attached.local_addr();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
-    let result = (call(channel, Some("Bearer alice"))).await;
+    let calling = call(channel, Some("Bearer alice"));
+    tokio::pin!(calling);
+    assert!(crate::support::events::until(calling.as_mut(), authenticating.notified()).await.is_ok());
+    clock.advance(Duration::from_millis(50));
+    let result = calling.await;
     assert_eq!(result.unwrap_err().code(), tonic::Code::DeadlineExceeded);
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::DeadlineExceeded]);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -920,12 +1168,16 @@ async fn access_never_grant() {
         ServerReflectionRequest, server_reflection_client::ServerReflectionClient, server_reflection_request::MessageRequest,
         server_reflection_response::MessageResponse,
     };
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<WhoDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(who_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime.grpc().register_middleware(Arc::new(DiscoveryAccess)).unwrap();
     runtime
@@ -958,23 +1210,27 @@ async fn access_never_grant() {
     assert!(response.message().await.unwrap().is_none());
     assert_eq!(call(channel.clone(), Some("Bearer bob")).await.unwrap_err().code(), tonic::Code::PermissionDenied);
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn reload_certificate_preserves_stream() {
-    use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope, ServerCertificate};
+    use harmos_runtime::grpc::{InputEnvelope, ServerCertificate};
     use harmos_runtime::operations::Response;
     use rustls::pki_types::ServerName;
     let first = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let second = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let certificate = ServerCertificate::from_pem(first.cert.pem().as_bytes(), first.signing_key.serialize_pem().as_bytes()).unwrap();
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
     .unwrap();
-    runtime.operations.register::<crate::operations::Single<ExchangeDeclaration>>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_operation(exchange_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     runtime.grpc().register_middleware(Arc::new(Authenticate::new(Arc::new(Sessions)))).unwrap();
     runtime
         .grpc()
@@ -1004,12 +1260,10 @@ async fn reload_certificate_preserves_stream() {
     let mut client = tonic::client::Grpc::new(channel);
     client.ready().await.unwrap();
     let (decode, encode) = limits();
-    let codec =
-        Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, Response<InputEnvelope<Ask, Reply>>>::new(decode, encode)
-            .unwrap();
+    let codec = Codec::<harmos_runtime::grpc::Transcoded, Reply, Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap();
     let mut stream =
         client.streaming(request, http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"), codec).await.unwrap().into_inner();
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "alice"));
 
     // Invalid And Mismatched Material Never Replaces The Active Identity.
     assert!(certificate.reload(b"invalid", b"invalid").is_err());
@@ -1039,39 +1293,59 @@ async fn reload_certificate_preserves_stream() {
 
     certificate.reload(second.cert.pem().as_bytes(), second.signing_key.serialize_pem().as_bytes()).unwrap();
     sender.send(Response::new(InputEnvelope::Item(Reply { actor: "after".into() }))).await.unwrap();
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Item(Reply { actor }) if actor == "alice"));
+    assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "alice"));
     let socket = tokio::net::TcpStream::connect(address).await.unwrap();
     let connection = connector.connect(ServerName::try_from("localhost").unwrap(), socket).await.unwrap();
     assert_eq!(connection.get_ref().1.peer_certificates().unwrap()[0], *second.cert.der());
     drop(connection);
     drop(sender);
-    assert!(matches!(&*stream.message().await.unwrap().unwrap(), OutputEnvelope::Response(Reply { actor }) if actor == "alice"));
     assert!(stream.message().await.unwrap().is_none());
     drop(stream);
     attached.detach().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn native_stream_progress_outlives_listener_and_operation_totals() {
-    use harmos_runtime::grpc::OutputEnvelope;
-    #[harmos_runtime::operation(resources = [tokio::sync::Semaphore], id = "grpc.progress", response = u32, output = u32,
-        policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Deadlines", method = "Progress"))]
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = u32, output = u32)]
+    #[derive(Clone)]
     struct Progress {}
-    impl harmos_runtime::Operation for Progress {
-        type Error = Error;
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
-            ctx.streams().send_with(4, || Ok(0)).await?;
-            for value in 1..=4 {
-                ctx.resource::<tokio::sync::Semaphore>().acquire().await.unwrap().forget();
-                ctx.streams().send_with(4, || Ok(value)).await?;
-            }
-            Ok(4.into())
+
+    static PROGRESS_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<Progress>("grpc.progress", WHO_POLICY)
+            .visibility(harmos_runtime::operations::Visibility::Public)
+            .grpc(harmos_runtime::operations::Grpc::new("fixture", "Deadlines", "Progress"));
+
+    const PROGRESS_OPERATION: harmos_runtime::operations::OperationSpec<Progress> =
+        harmos_runtime::operations::OperationSpec::<Progress>::new(&PROGRESS_DESCRIPTION);
+    async fn progress_handler(
+        _request: Progress, ctx: harmos_runtime::operations::FunctionContext<Progress>,
+    ) -> harmos_runtime::Result<harmos_runtime::Response<u32>> {
+        ctx.streams().send_with(4, || Ok(0)).await?;
+        for value in 1..=4 {
+            ctx.resource::<tokio::sync::Semaphore>().expect("declared resource is registered").acquire().await.unwrap().forget();
+            ctx.streams().send_with(4, || Ok(value)).await?;
         }
+        Ok(4.into())
+    }
+
+    fn progress_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError>
+    {
+        harmos_runtime::operations::OperationFactory::function(
+            PROGRESS_OPERATION,
+            const { &[harmos_runtime::Resource::of::<tokio::sync::Semaphore>()] },
+            progress_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
     }
     let next = Arc::new(tokio::sync::Semaphore::new(0));
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<tokio::sync::Semaphore>(next.clone()).operations::<crate::operations::Single<Progress>>(Lanes::Open);
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        setup
+            .resource::<tokio::sync::Semaphore>(next.clone())
+            .operation(progress_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -1086,15 +1360,12 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(Progress {})),
             http::uri::PathAndQuery::from_static("/fixture.Deadlines/Progress"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<u32, u32>, harmos_runtime::operations::Response<Progress>>::new(
-                decode, encode,
-            )
-            .unwrap(),
+            Codec::<harmos_runtime::grpc::Transcoded, u32, harmos_runtime::operations::Response<Progress>>::new(decode, encode).unwrap(),
         )
         .await
         .unwrap()
         .into_inner();
-    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(0)));
+    assert_eq!(*output.message().await.unwrap().unwrap(), 0);
     tokio::time::pause();
     // Keep Socket Delivery From Auto-Advancing The Paused Clock.
     let awake = tokio::spawn(async {
@@ -1105,35 +1376,55 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
     for value in 1..=4 {
         tokio::time::advance(Duration::from_millis(1500)).await;
         next.add_permits(1);
-        assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(item) if *item == value));
+        assert_eq!(*output.message().await.unwrap().unwrap(), value);
     }
-    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Response(4)));
     assert!(output.message().await.unwrap().is_none());
     awake.abort();
     let _ = awake.await;
     tokio::time::resume();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn settled_stream_drain_keeps_idle_deadline() {
-    use harmos_runtime::grpc::OutputEnvelope;
-    #[harmos_runtime::operation(resources = [tokio::sync::Notify], id = "grpc.buffered", response = (), output = Vec<u8>,
-        policy = WHO_POLICY, visibility = Public, grpc(package = "fixture", service = "Deadlines", method = "Buffered"))]
+    #[derive(harmos_runtime::Message, Debug, Default)]
+    #[harmos_path(harmos_runtime)]
+    #[derive(harmos_runtime::Request)]
+    #[request(response = (), output = Vec<u8>)]
+    #[derive(Clone)]
     struct Buffered {}
-    impl harmos_runtime::Operation for Buffered {
-        type Error = Error;
-        async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
-            for _ in 0..32 {
-                ctx.streams().send_with(128 * 1024 + 64, || Ok(vec![7; 128 * 1024])).await?;
-            }
-            ctx.resource::<tokio::sync::Notify>().notify_one();
-            Ok(().into())
+
+    static BUFFERED_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
+        harmos_runtime::operations::WireDeclaration::request::<Buffered>("grpc.buffered", WHO_POLICY)
+            .visibility(harmos_runtime::operations::Visibility::Public)
+            .grpc(harmos_runtime::operations::Grpc::new("fixture", "Deadlines", "Buffered"));
+
+    const BUFFERED_OPERATION: harmos_runtime::operations::OperationSpec<Buffered> =
+        harmos_runtime::operations::OperationSpec::<Buffered>::new(&BUFFERED_DESCRIPTION);
+    async fn buffered_handler(
+        _request: Buffered, ctx: harmos_runtime::operations::FunctionContext<Buffered>,
+    ) -> harmos_runtime::Result<harmos_runtime::Response<()>> {
+        for _ in 0..32 {
+            ctx.streams().send_with(128 * 1024 + 64, || Ok(vec![7; 128 * 1024])).await?;
         }
+        ctx.resource::<tokio::sync::Notify>().expect("declared resource is registered").notify_one();
+        Ok(().into())
+    }
+
+    fn buffered_operation() -> ::core::result::Result<harmos_runtime::operations::OperationFactory, harmos_runtime::operations::ServingError>
+    {
+        harmos_runtime::operations::OperationFactory::function(
+            BUFFERED_OPERATION,
+            const { &[harmos_runtime::Resource::of::<tokio::sync::Notify>()] },
+            buffered_handler,
+            |_| harmos_runtime::operations::FailureKind::Permanent,
+        )
     }
     let finished = Arc::new(tokio::sync::Notify::new());
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<tokio::sync::Notify>(finished.clone()).operations::<crate::operations::Single<Buffered>>(Lanes::Open);
+    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        setup
+            .resource::<tokio::sync::Notify>(finished.clone())
+            .operation(buffered_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
     })
     .await
     .unwrap();
@@ -1160,7 +1451,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(Buffered {})),
             http::uri::PathAndQuery::from_static("/fixture.Deadlines/Buffered"),
-            Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Vec<u8>, ()>, harmos_runtime::operations::Response<Buffered>>::new(
+            Codec::<harmos_runtime::grpc::Transcoded, Vec<u8>, harmos_runtime::operations::Response<Buffered>>::new(
                 DecodeSettings {
                     message_bytes: capacity,
                     retained_bytes: capacity,
@@ -1176,7 +1467,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
         .unwrap()
         .into_inner();
     finished.notified().await;
-    assert!(matches!(&*output.message().await.unwrap().unwrap(), OutputEnvelope::Item(_)));
+    assert!(output.message().await.unwrap().is_some());
     tokio::time::pause();
     let awake = tokio::spawn(async {
         loop {
@@ -1196,5 +1487,18 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     awake.abort();
     let _ = awake.await;
     tokio::time::resume();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
+}
+
+async fn generated_call<Q, R>(channel: tonic::transport::Channel, path: &'static str, request: Q) -> Result<R, tonic::Status>
+where
+    Q: prost::Message + Default + Send + Sync + 'static,
+    R: prost::Message + Default + Send + Sync + 'static,
+{
+    let mut client = tonic::client::Grpc::new(channel);
+    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
+    client
+        .unary(tonic::Request::new(request), http::uri::PathAndQuery::from_static(path), tonic_prost::ProstCodec::default())
+        .await
+        .map(tonic::Response::into_inner)
 }

@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::error::SchematicError;
 use crate::state::{Point, Schematic, SymbolId};
-use harmos::{state::Invertible, state::Transaction};
+use harmos_runtime::{state::Invertible, state::Transaction};
 
 /* === Constants === */
 
@@ -31,11 +31,14 @@ use harmos::{state::Invertible, state::Transaction};
 
 /* === Structs === */
 
-#[harmos::transaction(id = "symbol.move",  inverse = Self)]
-#[derive(harmos::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct MoveSymbol {
     pub symbol: SymbolId,
     pub to: Point,
+}
+impl MoveSymbol {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<Schematic, Self> =
+        harmos_runtime::state::TransactionEntry::new("symbol.move").reversible::<Self>();
 }
 
 /* === Enums === */

@@ -11,7 +11,11 @@
 
 /* === Modules === */
 
-mod app;
+pub mod app;
+#[path = "../../../harmos-storage/tests/support/clock.rs"]
+pub mod clock;
+#[path = "../../../harmos-storage/tests/support/events.rs"]
+pub mod events;
 pub mod fixtures;
 
 /* === Re-Exports === */
@@ -19,7 +23,7 @@ pub mod fixtures;
 #[allow(unused_imports, reason = "each integration-test binary compiles only the fixture slice it needs")]
 pub use self::{
     app::{booted, runtime, runtime_from, streaming},
-    feeds::{Capture, Probe, Pulse, Reading, Run},
+    feeds::{Pulse, Reading},
 };
 
 /* === Imports === */
@@ -42,6 +46,13 @@ use harmos_runtime::{
 
 /* === Constants === */
 
+pub const SERIAL: harmos_runtime::operations::Lane =
+    harmos_runtime::operations::Lane::new("Serial", harmos_runtime::operations::Capacity::serial());
+pub const CONCURRENT: harmos_runtime::operations::Lane =
+    harmos_runtime::operations::Lane::new("Concurrent", harmos_runtime::operations::Capacity::concurrent(2));
+pub const UNBOUNDED: harmos_runtime::operations::Lane =
+    harmos_runtime::operations::Lane::new("Unbounded", harmos_runtime::operations::Capacity::unbounded());
+
 pub const HOUSE: Account = Account(0);
 pub const VAULT: Account = Account(1);
 pub static DEPOSIT: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.deposit", revision::<Deposit>()));
@@ -49,8 +60,6 @@ pub static WITHDRAW: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Trans
 pub static FREEZE: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.freeze", revision::<()>()));
 pub static EXPLODE: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Transaction, "ledger.explode", revision::<()>()));
 pub static NOTED: LazyLock<(Kind, &str, u32)> = LazyLock::new(|| (Kind::Record, "ledger.noted", revision::<Noted>()));
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
@@ -101,21 +110,6 @@ pub struct Copied {
 
 /* === Enums === */
 
-#[harmos_runtime::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Serial,
-
-    #[lane(concurrent(2))]
-    Concurrent,
-
-    #[lane(unbounded)]
-    Unbounded,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {
     NotPositive,
@@ -143,8 +137,6 @@ pub enum Change {
 pub enum Fact {
     Noted(Noted),
 }
-
-/* === Traits === */
 
 /* === Implementations === */
 
@@ -186,17 +178,19 @@ impl harmos_runtime::Lifecycle for Bank {
     type Error = std::convert::Infallible;
     type Context = harmos_runtime::Startup<Self>;
 
-    async fn prepare(_: (), _: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+        setup.settings().lanes(
+            harmos_runtime::operations::LaneSet::new([crate::support::SERIAL, crate::support::CONCURRENT, crate::support::UNBOUNDED])
+                .unwrap(),
+        );
         Ok(Self)
     }
 }
 
 impl Application for Bank {
-    type Lanes = Lanes;
     type State = Ledger;
     type Transaction = Change;
     type Record = Fact;
-    type Streams = feeds::Bank;
 }
 
 impl Registration<Bank> for Definitions {
@@ -221,9 +215,11 @@ impl Registration<Bank> for Definitions {
         }
 
         Catalog::Transactions {
+            states: None,
+            records: Some(fact_registry()),
             definitions: self.0,
-            decode,
-            inverses: Some(inverses),
+            decode: std::sync::Arc::new(decode),
+            inverses: Some(std::sync::Arc::new(inverses)),
         }
     }
 }
@@ -427,17 +423,6 @@ impl harmos_runtime::state::CatalogCodec for Fact {
     }
 }
 
-impl harmos_runtime::state::RecordCatalog for Fact {
-    fn restore(id: &harmos_runtime::DefinitionId, version: u32, payload: &serde_json::Value) -> Result<Option<Self>, serde_json::Error> {
-        if id.as_str() != "ledger.noted" || version != NOTED.2 {
-            return Ok(None);
-        }
-        serde::Deserialize::deserialize(payload).map(|v| Some(Self::Noted(v)))
-    }
-}
-
-impl harmos_runtime::state::TransactionCatalog<Ledger> for Change {}
-
 /* === Public Functions === */
 
 fn revision<T: harmos_runtime::schema::Described>() -> u32 {
@@ -475,20 +460,11 @@ pub fn account(change: &Change) -> Option<Account> {
 }
 
 pub fn streams() -> Vec<Definition> {
-    feeds::Bank::catalog()
+    feeds::stream_definitions()
 }
 
 pub fn pulse(sample: u64) -> Pulse {
     Pulse { sample }
-}
-
-pub fn capture(run: u64, probe: u64, ordinal: u64, value: i64) -> Capture {
-    Capture {
-        run: Run(run),
-        probe: Probe(probe),
-        ordinal,
-        value,
-    }
 }
 
 pub async fn balance(runtime: &Runtime<Bank>, account: Account) -> i64 {
@@ -597,73 +573,42 @@ mod feeds {
 
     /* === Structs === */
 
-    #[harmos_runtime::stream(
-        description = "A waveform-shaped sample row: the bank's high-rate feed.\nThe window is deliberately small so eviction is cheap to provoke.",
-        id = "pulse",
-        window = 8
-    )]
-    #[harmos_runtime::message]
-    #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Pulse {
         pub sample: u64,
     }
 
-    #[harmos_runtime::stream(
-        description = "A second, slower feed, so per-stream claims have a counterexample.",
-        id = "reading",
-        window = 4
-    )]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(harmos_runtime::Row, Default, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
     pub struct Reading {
-        pub value: i64,
-    }
-
-    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Run(pub u64);
-
-    #[derive(harmos_runtime::Described, Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub struct Probe(pub u64);
-
-    #[harmos_runtime::stream(description = "A tracked capture row carrying both declared coordinates.\nThe track is two components deep, which is what a run of many probes is: one probe of one run, or everything one run published, and both are selections of the same declaration.",
-        id = "capture",
-        window = 4,
-        track = (run, probe),
-        axis = ordinal
-    )]
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    pub struct Capture {
-        pub run: Run,
-        pub probe: Probe,
-        pub ordinal: u64,
         pub value: i64,
     }
 
     /* === Enums === */
 
-    #[harmos_runtime::streams]
-    pub enum Bank {
-        Pulse(Pulse),
-        Reading(Reading),
-        Capture(Capture),
-    }
-
     /* === Traits === */
 
     /* === Implementations === */
 
-    impl harmos_runtime::streams::Track for Run {
-        fn label(&self) -> String {
-            format!("run_{}", self.0)
-        }
+    impl harmos_runtime::streams::StreamRow for Pulse {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("pulse", 8).label("Pulse").description(
+            "A waveform-shaped sample row: the bank's high-rate feed.\nThe window is deliberately small so eviction is cheap to provoke.",
+        );
     }
 
-    impl harmos_runtime::streams::Track for Probe {
-        fn label(&self) -> String {
-            format!("probe_{}", self.0)
-        }
+    impl harmos_runtime::streams::StreamRow for Reading {
+        const ENTRY: harmos_runtime::StreamEntry<Self> = harmos_runtime::StreamEntry::new("reading", 4)
+            .label("Reading")
+            .description("A second, slower feed, so per-stream claims have a counterexample.");
     }
 
     /* === Public Functions === */
+
+    pub fn stream_definitions() -> Vec<harmos_runtime::streams::Definition> {
+        vec![
+            <Pulse as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+            <Reading as harmos_runtime::streams::StreamRow>::ENTRY.build().unwrap(),
+        ]
+    }
 
     /* === Private Functions === */
 
@@ -671,3 +616,14 @@ mod feeds {
 }
 
 /* === Tests === */
+
+pub fn fact_registry() -> harmos_runtime::state::RecordRegistry<Fact> {
+    harmos_runtime::state::RecordRegistry::new().entry(
+        harmos_runtime::state::RecordEntry::<Noted>::new("ledger.noted"),
+        Fact::Noted,
+        |value| {
+            let Fact::Noted(value) = value;
+            Some(value)
+        },
+    )
+}

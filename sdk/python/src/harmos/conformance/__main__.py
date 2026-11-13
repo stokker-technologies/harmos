@@ -1,0 +1,64 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+"""Serve the Fixed Conformance Catalog at an Explicit Remote Address."""
+
+# === Imports === #
+
+import argparse
+import asyncio
+import sys
+
+from harmos import GET_TIME, SLEEP, Plugin
+import harmos.conformance as conformance
+from .fixture import ClockFixture
+
+# === Public Exports === #
+
+# === Constants === #
+
+# === Types === #
+
+# === Classes === #
+
+# === Public Functions === #
+
+# === Private Functions === #
+
+
+async def _main() -> None:
+    if sys.argv[1:2] == ["--install-itself"]:
+        from .install_itself import run
+
+        await run(sys.argv[2:])
+        return
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--address", required=True)
+    parser.add_argument("--clock-only", action="store_true", help="Serve Only the Host Clock Journey")
+    parser.add_argument("--shutdown-on-stdin", action="store_true", help="Close When the Process Owner Closes Standard Input")
+    options = parser.parse_args()
+    selected = (
+        Plugin(ClockFixture(), id="conformance", version="1.0.0", requires=[SLEEP, GET_TIME])
+        if options.clock_only
+        else conformance.plugin()
+    )
+    endpoint = await selected.start(options.address)
+    print(f"harmos listening {endpoint.address}", flush=True)
+    try:
+        if options.shutdown_on_stdin:
+            await asyncio.to_thread(sys.stdin.buffer.read)
+        else:
+            await endpoint.server.wait_for_termination()
+    finally:
+        await endpoint.close()
+
+
+# === Entry Point === #
+
+if __name__ == "__main__":
+    asyncio.run(_main())

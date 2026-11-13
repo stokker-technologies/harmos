@@ -9,14 +9,10 @@
 
 // Automatic Plugin Stream Revisions Across Reload And Durable Restart
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 // Third Party Imports
@@ -24,31 +20,27 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 
 // Local Imports
 use crate::support::{Bank, Ledger};
-use harmos_runtime::plugin::{
+use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
 use harmos_runtime::storage::{Cursor, PayloadEncoding, RecordInput, SchemaKey, StorageManager, StreamInput};
-use harmos_runtime::streams::{PluginStream, PublicationLease, PublicationRow, StreamManager, StreamRegistration};
+use harmos_runtime::streams::{PublicationRow, PublishedStream, StreamManager, StreamRegistration, StreamWriter};
 use harmos_runtime::{Error, Message, Result, Runtime};
-
-/* === Constants === */
-
-/* === Macros === */
 
 /* === Type Aliases === */
 
-type Backends = PluginBackend<Resources, Resources, Resources>;
+type Backends = PluginBackend<Resources, Resources>;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Number {
     value: u64,
 }
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Text {
     value: String,
 }
@@ -62,21 +54,17 @@ struct Resources {
 
 struct Host {
     streams: StreamManager<Bank>,
-    operations: harmos_runtime::operations::OperationManager<crate::support::Lanes>,
-    lease: Option<Arc<PublicationLease>>,
+    operations: harmos_runtime::operations::OperationManager,
+    lease: Option<Arc<StreamWriter>>,
     fail: bool,
     before: Option<u32>,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
 impl PluginLifecycle for Host {
     type Guest = Resources;
-    type Sidecar = Resources;
+
     type Embedded = Resources;
 
     fn prepare(&mut self, _: &PluginDefinition) -> Result<Backends> {
@@ -127,8 +115,6 @@ impl PluginLifecycle for Host {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 fn candidate(text: bool, label: &str) -> PluginDefinitions {
@@ -137,7 +123,7 @@ fn candidate(text: bool, label: &str) -> PluginDefinitions {
     } else {
         <Number as harmos_runtime::schema::Described>::DEFINITION
     };
-    let stream = harmos_domain::StreamDeclaration {
+    let stream = harmos_operations::StreamDeclaration {
         id: "revision.samples".into(),
         metadata: harmos_runtime::Metadata::new(harmos_runtime::Identifier::new("revision.samples").unwrap(), label, None),
         row_metadata: Vec::new(),
@@ -161,7 +147,7 @@ fn candidate(text: bool, label: &str) -> PluginDefinitions {
     .unwrap()
 }
 
-async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources, Resources>, Host) {
+async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources>, Host) {
     let runtime = crate::support::booted(Ledger::default(), |_| {}).await;
     let host = Host {
         streams: runtime.streams.clone(),
@@ -170,10 +156,10 @@ async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources
         fail: false,
         before: None,
     };
-    (runtime, PluginManager::new(candidate(text, "Samples")).unwrap(), host)
+    (runtime, PluginManager::new(candidate(text, "InstanceSamplesResponse")).unwrap(), host)
 }
 
-fn current(host: &Host) -> PluginStream {
+fn current(host: &Host) -> PublishedStream {
     host.streams.current_publication("revision.samples").unwrap()
 }
 
@@ -187,7 +173,7 @@ async fn capture(storage: &StorageManager, feed: &mut harmos_runtime::streams::S
     };
     storage.write_schema(key.clone(), definition.schema().clone()).await.unwrap();
     storage
-        .write_stream(vec![StreamInput {
+        .append_samples(vec![StreamInput {
             record: RecordInput {
                 schema: key.clone(),
                 scope: None,
@@ -214,7 +200,7 @@ async fn changed_row_commits_a_new_current_revision() {
     let old = current(&host);
     let old_revision = old.definition().version();
     host.before = Some(old_revision);
-    manager.reload(candidate(true, "Text Samples"), &mut host).await.unwrap();
+    manager.reload(candidate(true, "Text InstanceSamplesResponse"), &mut host).await.unwrap();
     let new = current(&host);
     assert_ne!(new.definition().version(), old_revision);
     assert_eq!(
@@ -236,7 +222,7 @@ async fn changed_row_commits_a_new_current_revision() {
     manager.reload(candidate(false, "Numbers Again"), &mut host).await.unwrap();
     assert_eq!(current(&host).definition().version(), old_revision);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -256,7 +242,7 @@ async fn failed_reload_keeps_old_revision_current() {
     let rows = current(&host).query(..).await.unwrap().collect::<Vec<_>>();
     assert_eq!(Number::decode(&rows.last().unwrap().value.payload).unwrap().value, 9);
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -265,29 +251,24 @@ async fn label_only_reload_preserves_revision() {
     manager.initialize(&mut host).await.unwrap();
     let old = current(&host);
     host.before = Some(old.definition().version());
-    manager.reload(candidate(false, "Renamed Samples"), &mut host).await.unwrap();
+    manager.reload(candidate(false, "Renamed InstanceSamplesResponse"), &mut host).await.unwrap();
     assert_eq!(current(&host).definition().version(), old.definition().version());
     assert_ne!(current(&host).definition().metadata(), old.definition().metadata());
     manager.shutdown(&mut host).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
-    let root = tempfile::tempdir().unwrap();
+    let data = Arc::new(crate::storage::fixture::Data::new(crate::storage::fixture::history()));
     let mut keys = Vec::new();
     for text in [false, true] {
         let (runtime, mut manager, mut host) = setup(text).await;
-        let backend = harmos_storage::JsonStorage::new(
-            harmos_storage::JsonStorageSettings {
-                root: root.path().to_owned(),
-                max_entry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
-            },
-            crate::storage::fixture::history(),
-        );
-        let storage =
-            StorageManager::new(backend.into_backends(crate::storage::fixture::state_settings()), crate::storage::fixture::config())
-                .unwrap();
+        let backends = harmos_storage::StorageBackends {
+            primary: data.clone(),
+            state: Arc::new(crate::storage::fixture::Recovery::new(crate::storage::fixture::history())),
+        };
+        let storage = StorageManager::new(backends, crate::storage::fixture::config()).unwrap();
         storage.start(&runtime).await.unwrap();
         let mut feed = host.streams.follow(Cursor::ORIGIN);
         manager.initialize(&mut host).await.unwrap();
@@ -296,7 +277,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         for (index, key) in keys.iter().enumerate() {
             let mut reader = storage
                 .query(harmos_runtime::storage::Query {
-                    at: storage.cursor_saved(),
+                    at: storage.get_saved_position(),
                     source: Source::Stream(StreamSelection {
                         schema: key.clone(),
                         scope: None,
@@ -330,7 +311,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         manager.shutdown(&mut host).await.unwrap();
         drop(feed);
         storage.close().await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     assert_ne!(keys[0], keys[1]);
 }

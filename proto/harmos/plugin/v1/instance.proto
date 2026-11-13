@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.plugin.v1;
+import "harmos/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+service Instance {
+  // Identity, start time and catalog. Called once per connection, first.
+  rpc Get(InstanceGetRequest) returns (InstanceGetResponse);
+
+  // One invocation of one operation. The host opens the call with a harmos.v1.Request.
+  // While it runs, the plugin may send harmos.v1.ChildRequest frames and the host
+  // answers each with a harmos.v1.ChildResponse. The plugin ends the call with a
+  // harmos.v1.Response. The host may send harmos.v1.Cancel at any time.
+  rpc Invoke(stream InstanceInvokeRequest) returns (stream InstanceInvokeResponse);
+
+  // One declared stream. The host opens the call with a harmos.v1.SamplesSelection;
+  // opening it is the demand for the stream and closing it ends the demand.
+  // For a stream with an interval the host then sends one harmos.v1.Tick per interval
+  // and the plugin answers each with one sample.
+  rpc Samples(stream InstanceSamplesRequest) returns (stream InstanceSamplesResponse);
+
+  // Sent before the host shuts down or removes the plugin. The plugin runs
+  // its stop and cleanup hooks and then replies. A managed plugin exits
+  // afterwards; a remote plugin keeps running.
+  rpc Stop(InstanceStopRequest) returns (InstanceStopResponse);
+}
+
+message InstanceGetRequest {
+  // Highest revision of harmos.v1 the host implements. Starts at 1 and grows
+  // with each additive release.
+  uint32 revision = 1;
+  // Name and version of the host application, for logs.
+  string host = 2;
+  string host_version = 3;
+}
+
+message InstanceGetResponse {
+  // Stable plugin identifier, lowercase with dots or underscores.
+  string id = 1;
+  // Semantic version of the plugin.
+  string version = 2;
+  // Captured once when the process started. A changed value on reconnect
+  // means the process restarted.
+  google.protobuf.Timestamp started_at = 3;
+  harmos.v1.Catalog catalog = 4;
+  // Highest revision of harmos.v1 the plugin implements.
+  uint32 revision = 5;
+  // Name and version of the SDK that built the plugin, for logs.
+  string sdk = 6;
+  string sdk_version = 7;
+  uint64 message_bytes = 8;
+}
+
+message InstanceStopRequest {
+  string reason = 1;
+}
+
+message InstanceStopResponse {}
+
+message InstanceInvokeRequest {
+  oneof frame {
+    harmos.v1.Request request = 1;
+    harmos.v1.ChildResponse child = 2;
+    harmos.v1.Cancel cancel = 3;
+  }
+}
+
+message InstanceInvokeResponse {
+  oneof frame {
+    harmos.v1.ChildRequest child = 1;
+    harmos.v1.ChildCancel child_cancel = 2;
+    harmos.v1.Response response = 3;
+    harmos.v1.ChildDemand child_demand = 4;
+  }
+}
+
+message InstanceSamplesRequest {
+  oneof frame {
+    // First frame.
+    harmos.v1.SamplesSelection open = 1;
+    harmos.v1.Tick tick = 2;
+  }
+}
+
+message InstanceSamplesResponse {
+  repeated harmos.v1.Sample samples = 1;
+}

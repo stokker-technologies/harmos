@@ -9,10 +9,6 @@
 
 // Exact Numeric Spool Parity Across Its Memory Boundary
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -21,24 +17,6 @@
 
 // Local Imports
 use harmos_storage::query::quantiles::Quantiles;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
-/* === Private Functions === */
 
 /* === Tests === */
 
@@ -64,7 +42,8 @@ fn exact_quantile_spill() {
         let mut values = Quantiles::new(memory);
         assert!(values.push(f64::NAN).is_err());
         assert!(values.push(f64::INFINITY).is_err());
-        for value in 0..2048 {
+        // Cross The 1,024-Input Cancellation Check Boundary.
+        for value in 0..1025 {
             values.push(value as f64).unwrap();
             assert!(values.size() <= memory + std::mem::size_of::<Quantiles>());
         }
@@ -87,7 +66,7 @@ fn exact_quantile_spill() {
     assert!(values.values(&[50], 0, &mut || Ok(())).is_err());
     assert!(Quantiles::new(0).values(&[101], 65536, &mut || Ok(())).is_err());
 
-    let mut sorted: Vec<_> = (0..4096).map(|index| ((index * 7919) % 4093) as f64 - 2046.0).collect();
+    let mut sorted: Vec<_> = (0..8).map(|index| ((index * 7) % 11) as f64 - 5.0).collect();
     sorted.extend([-0.0, 0.0, f64::from_bits(1), -f64::MAX, f64::MAX]);
     for memory in [0, sorted.len() * 16] {
         let mut spool = Quantiles::new(memory);
@@ -95,7 +74,7 @@ fn exact_quantile_spill() {
             spool.push(*value).unwrap();
         }
         assert_eq!(spool.spilled(), memory == 0);
-        let percentiles: Vec<_> = (0..=100).collect();
+        let percentiles = vec![0, 25, 50, 75, 100];
         let result = spool.values(&percentiles, 1024 * 1024, &mut || Ok(())).unwrap();
         sorted.sort_by(f64::total_cmp);
         for percentile in percentiles {

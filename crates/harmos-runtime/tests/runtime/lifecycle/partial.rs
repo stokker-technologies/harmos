@@ -9,10 +9,6 @@
 
 // Retain Every Partial Startup Owner Through Cleanup Retry
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -23,17 +19,10 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Notify;
 
 // Local Imports
-use crate::runtime::probe::Editor;
 use crate::storage::fixture::{Data, Recovery, StorageBackends, StorageManager, config, history};
 use harmos_runtime::runtime::{BootstrapCleanup, BootstrapStatus};
 use harmos_runtime::services::ServiceContext;
 use harmos_runtime::{Application, Lifecycle, Runtime, Setup, Startup, StartupError};
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
@@ -70,24 +59,18 @@ enum Failure {
     Stop,
 }
 
-/* === Traits === */
-
 /* === Implementations === */
 
 impl Application for App {
-    type Lanes = <Editor as Application>::Lanes;
     type State = State;
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Application for InitializingApp {
-    type Lanes = <Editor as Application>::Lanes;
     type State = State;
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
-    type Streams = ();
 }
 
 impl Lifecycle for InitializingApp {
@@ -167,10 +150,6 @@ impl Drop for State {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
 /* === Tests === */
 
 #[tokio::test]
@@ -186,7 +165,7 @@ async fn partial_cleanup_retry() {
         config(),
     )
     .unwrap();
-    let error = Runtime::<App>::launch_with(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
+    let error = crate::support::app::launch::<App>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
         setup.settings().storage(&storage);
     })
     .await
@@ -225,7 +204,7 @@ async fn logical_failure_settles() {
         config(),
     )
     .unwrap();
-    let error = Runtime::<InitializingApp>::launch_with(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
+    let error = crate::support::app::launch::<InitializingApp>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
         setup.settings().storage(&storage);
     })
     .await

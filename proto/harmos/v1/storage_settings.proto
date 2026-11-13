@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto2";
+package harmos.storage.v1;
+
+// One Storage Setting Shared by Host and SDK Defaults.
+message StorageTransferSettings {
+  optional uint64 chunk_bytes = 1 [default = 4194304];
+}
+
+// One Declared Transport Default for All Generated SDKs and Host Carriers.
+message MessageSettings {
+  optional uint64 message_bytes = 1 [default = 8388608];
+}
+
+// Space for Default Session, Receipt, Cut and Carrier Framing.
+enum TransferFraming {
+  TRANSFER_FRAMING_UNSPECIFIED = 0;
+  TRANSFER_FRAMING_BYTES = 512;
+}

@@ -14,22 +14,17 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::marker::PhantomData;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 // Third Party Imports
 use tokio::sync::mpsc;
 // Local Imports
 use super::Context;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use crate::catalog::{Catalog, Member, Visitor};
 use crate::guest::Error as GuestError;
 use crate::guest::host::session::Endpoint;
-use crate::operations::{Declarations, FailureKind, OperationDeclaration, OperationDefinition, WireAnswer, WireCommand};
-use crate::{Error, Identifier, Message, operations::Lane};
-use harmos_sdk::operations::Carrier;
+use crate::operations::{FailureKind, OperationDefinition, WireAnswer, WireCommand};
+use crate::{Error, Identifier, operations::Lane};
+use harmos_operations::execution::operations::Carrier;
 
 /* === Constants === */
 
@@ -51,16 +46,6 @@ struct ComponentState {
     fingerprint: [u8; 32],
 }
 
-pub struct ComponentOperation<O: OperationDeclaration, E = ()> {
-    component: Arc<Component>,
-    state: Option<ComponentState>,
-    epoch: u64,
-    transferred: AtomicBool,
-    _operation: PhantomData<fn() -> (O, E)>,
-}
-
-pub struct ComponentBindings;
-
 struct SdkOperation {
     binding: Arc<SdkBinding>,
     state: Option<ComponentState>,
@@ -76,16 +61,12 @@ struct SdkBinding {
 enum Phase {
     Initialize,
     Attempt,
-    Stream(u64),
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ComponentError {
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::ResourceError),
-
-    #[error(transparent)]
-    Stream(#[from] super::RemoteStreamError),
+    Dependency(#[from] harmos_operations::execution::ResourceError),
 
     #[error("the selected guest generation is unavailable")]
     Unavailable,
@@ -97,7 +78,7 @@ pub enum ComponentError {
     Catalog { operation: &'static str },
 
     #[error(transparent)]
-    Declaration(#[from] harmos_domain::Error),
+    Declaration(#[from] harmos_operations::operations::Error),
 
     #[error("guest operation transport failed")]
     Transport(#[from] GuestError),
@@ -107,14 +88,14 @@ pub enum ComponentError {
 
     // The guest refused the request while preparing it.
     #[error(transparent)]
-    Preparation(harmos_domain::Failure),
+    Preparation(harmos_operations::Failure),
 
     #[error("guest operation request is not granted")]
     Unauthorized(#[source] crate::Error),
 
     // The guest handler failed; its failure crosses unchanged.
     #[error(transparent)]
-    Remote(harmos_domain::Failure),
+    Remote(harmos_operations::Failure),
 }
 
 /* === Traits === */
@@ -126,10 +107,9 @@ impl ComponentError {
         classify(self)
     }
 
-    pub(crate) fn failure(&self) -> Option<&harmos_domain::Failure> {
+    pub(crate) fn failure(&self) -> Option<&harmos_operations::Failure> {
         match self {
             Self::Preparation(failure) | Self::Remote(failure) => Some(failure),
-            Self::Stream(source) => source.failure(),
             _ => None,
         }
     }
@@ -139,16 +119,8 @@ impl ComponentError {
         match self {
             Self::Preparation(failure) => Self::Preparation(failure.in_operation(operation)),
             Self::Remote(failure) => Self::Remote(failure.in_operation(operation)),
-            Self::Stream(source) => Self::Stream(source.in_operation(operation)),
             error => error,
         }
-    }
-}
-
-impl super::StreamPeer for Component {
-    type Error = ComponentError;
-    async fn stream_phase(&self, command: WireCommand) -> std::result::Result<WireAnswer, Self::Error> {
-        self.endpoint.phase(command, None).await.map_err(ComponentError::from)
     }
 }
 
@@ -156,128 +128,30 @@ impl Component {
     pub(crate) fn new(endpoint: Arc<Endpoint>) -> Self {
         Self { endpoint }
     }
-}
-
-impl<O, E> Carrier for ComponentOperation<O, E>
-where
-    O: OperationDeclaration,
-    E: super::StreamEndpoints,
-{
-    type Declaration = O;
-    type Error = ComponentError;
-    type StreamEndpoints = E;
-
-    #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
-        let component = context.resource::<Component>()?;
-        Ok(Self {
-            component,
-            state: None,
-            epoch: 0,
-            transferred: AtomicBool::new(false),
-            _operation: PhantomData,
-        })
-    }
-
-    #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
-    async fn attempt(
-        &mut self, context: harmos_sdk::ExecutionContext, request: &mut O::Request, endpoints: &mut Self::StreamEndpoints,
-    ) -> Result<crate::operations::Response<O::Response>, ComponentError> {
-        let host = context.resource::<super::HostContext>()?;
-        let context = host.borrow();
-        let result: ::core::result::Result<O::Response, Self::Error> = async move {
-            if self.state.is_none() {
-                let component = &self.component;
-
-                if !component.endpoint.accepts() {
-                    return Err(ComponentError::Unavailable);
-                }
-                let definition = OperationDefinition::of::<O>()?;
-                if !component.endpoint.definitions().contains(&definition) {
-                    return Err(ComponentError::Catalog { operation: O::ID });
-                }
-                let state = ComponentState {
-                    initialized: false,
-                    payload: Some(crate::Message::encode(request)),
-                    invocation: None,
-                    operation: definition.id,
-                    fingerprint: definition.fingerprint.0,
-                };
-
-                self.state = Some(state);
-            }
-            let state = self.state.as_mut().expect("original remote state");
-            if !state.initialized {
-                self.component.initialize_encoded(state, &context).await?;
-                state.initialized = true;
-            }
-
-            let answer = if E::item_types() == (None, None) {
-                self.component.phase_encoded(state, &context, Phase::Attempt).await?
-            } else {
-                self.epoch = self.epoch.checked_add(1).ok_or(super::RemoteStreamError::Protocol("stream attempt counter exhausted"))?;
-                let running = self.component.phase_encoded(state, &context, Phase::Stream(self.epoch));
-                super::remote::attempt(
-                    &*self.component,
-                    endpoints,
-                    state.invocation.expect("original prepared invocation"),
-                    self.epoch,
-                    &self.transferred,
-                    running,
-                )
-                .await?
-            };
-            let payload = ready(answer)?;
-            O::Response::decode(payload.as_slice()).map_err(ComponentError::Payload)
-        }
-        .await;
-        result.map(::core::convert::Into::into).map_err(|error| error.in_operation(O::ID))
-    }
-
-    async fn cleanup(&mut self) -> Result<(), ComponentError> {
-        let Some(state) = self.state.as_mut() else {
-            return Ok(());
-        };
-
-        self.component.finalize_encoded(state).await.map_err(|error| error.in_operation(O::ID))
-    }
-
-    fn transferred(&self) -> bool {
-        self.transferred.load(Ordering::Acquire)
-    }
-
-    fn classify(error: &ComponentError) -> FailureKind {
-        classify(error)
-    }
-}
-
-impl Visitor for ComponentBindings {
-    type Entry = super::Binding<Component>;
-}
-
-impl<O> Member<O> for ComponentBindings
-where
-    O: crate::operations::OperationDeclaration,
-{
-    const ENTRY: super::Binding<Component> = super::Binding { register: register::<O> };
-}
-
-impl super::Bindings<'_> {
-    pub fn register_component_catalog<C>(&mut self, lane: impl Lane, component: Arc<Component>) -> crate::Result<()>
-    where
-        C: Catalog<Declarations> + Catalog<ComponentBindings>,
-    {
-        let scope = self.scope.ok_or(Error::InvalidInput {
-            field: "component operation scope",
-            reason: "component inventory requires stage_plugin",
+    pub(crate) fn register(&self, bindings: &mut super::Bindings<'_>, lane: Lane) -> crate::Result<()> {
+        let scope = self.scope().ok_or(ComponentError::Unavailable).map_err(|source| Error::OperationFailed {
+            operation: "guest registration".into(),
+            source: Arc::new(source),
         })?;
-        if !component.scope().is_some_and(|selected| selected.same_activation(scope)) {
-            return Err(Error::InvalidInput {
-                field: "component operation scope",
-                reason: "component endpoint belongs to a different plugin generation",
+        for contract in scope.wire_contracts() {
+            let binding = Arc::new(SdkBinding {
+                component: Arc::new(Self { endpoint: Arc::clone(&self.endpoint) }),
+                definition: contract.operation().clone(),
             });
+            let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
+            dependencies.insert(binding)?;
+            let mut entry = bindings.operations.bind_native::<super::sdk::Encoded, SdkOperation>(
+                scope.owner(),
+                lane.name(),
+                dependencies,
+                contract.operation().clone(),
+                Some(sdk_dispatch),
+                Some(scope.clone()),
+            )?;
+            Arc::get_mut(&mut entry).expect("unpublished guest entry").contract = Some(contract.clone());
+            bindings.entries.push(entry);
         }
-        self.project::<C, ComponentBindings, Component>(lane, component)
+        Ok(())
     }
 }
 
@@ -309,12 +183,8 @@ impl Component {
                 answer => answer,
             };
             // The guest decoded the request; refuse it before any attempt runs.
-            let payload = ready(answer)?;
-            let grant = harmos_sdk::operations::decode_prepared_grant(&payload).map_err(|error| GuestError::Malformed {
-                method: "operate".to_owned(),
-                message: format!("prepared grant is malformed: {error}"),
-            })?;
-            context.admit_grant(grant.as_ref()).map_err(ComponentError::Unauthorized)?;
+            acknowledged(answer)?;
+            context.admit_grant(None).map_err(ComponentError::Unauthorized)?;
         }
         let answer = self.phase_encoded(state, context, Phase::Initialize).await?;
         match answer {
@@ -323,7 +193,7 @@ impl Component {
         }
     }
 
-    #[tracing::instrument(target = "harmos::carrier", name = "carrier.phase_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation, phase = match &phase { Phase::Initialize => "initialize", Phase::Attempt => "attempt", Phase::Stream(_) => "stream_attempt" }))]
+    #[tracing::instrument(target = "harmos::carrier", name = "carrier.phase_encoded", level = "debug", skip_all, fields(invocation = tracing::field::Empty, operation = %state.operation, phase = match &phase { Phase::Initialize => "initialize", Phase::Attempt => "attempt" }))]
     async fn phase_encoded<'ctx>(
         &self, state: &ComponentState, context: &Context<'ctx>, phase: Phase,
     ) -> Result<WireAnswer, ComponentError> {
@@ -339,12 +209,6 @@ impl Component {
         };
         let command = match phase {
             Phase::Initialize => WireCommand::Initialize { invocation, context: token },
-            Phase::Stream(epoch) => WireCommand::StreamAttempt {
-                invocation,
-                epoch,
-                context: token,
-                values: context.context().portable(),
-            },
             Phase::Attempt => WireCommand::Attempt {
                 invocation,
                 context: token,
@@ -364,7 +228,7 @@ impl Component {
                 }
                 Some(request) = incoming.recv() => {
                     if request.answer.is_closed() { continue; }
-                    let child = context.submit_encoded_at(&request.operation, (request.fingerprint, request.generation), request.payload, request.submitted, request.values, request.retry);
+                    let child = context.submit_encoded_at(&request.operation, (request.fingerprint, request.generation), request.payload, request.submitted, request.values, request.policy);
                     // A Cancelled Admission Reply Still Cancels Its Admitted Child
                     if let Err(Ok(child)) = request.answer.send(child) { child.request_cancel(); }
                 }
@@ -399,11 +263,11 @@ impl Component {
 }
 
 impl Component {
-    pub fn scope(&self) -> Option<&crate::plugin::PluginScope> {
+    pub fn scope(&self) -> Option<&crate::guest::host::plugin::PluginScope> {
         self.endpoint.scope()
     }
 
-    pub fn stage_sdk(&self, operations: &super::Manager, lane: impl Lane) -> crate::Result<super::PluginSdkRegistration> {
+    pub fn stage_sdk(&self, operations: &super::Manager, lane: Lane) -> crate::Result<super::PluginSdkRegistration> {
         let scope = self.scope().ok_or(Error::InvalidInput {
             field: "SDK lifecycle",
             reason: "guest endpoint has no original plugin generation",
@@ -425,7 +289,7 @@ impl Component {
                     scope.owner(),
                     lane.name(),
                     {
-                        let mut dependencies = harmos_sdk::__private::ResourceSet::new();
+                        let mut dependencies = harmos_operations::execution::__private::ResourceSet::new();
                         dependencies.insert(handler)?;
                         dependencies
                     },
@@ -441,7 +305,7 @@ impl Component {
             field: "SDK lifecycle",
             reason: "expected exactly two entries",
         })?;
-        super::PluginSdkRegistration::new(operations.clone(), scope, entries, crate::plugin::PluginKind::Guest)
+        super::PluginSdkRegistration::new(operations.clone(), scope, entries, crate::guest::host::plugin::PluginKind::Guest)
     }
 }
 
@@ -451,29 +315,31 @@ impl Carrier for SdkOperation {
     type StreamEndpoints = ();
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.initialize", level = "debug", skip_all)]
-    async fn bind(context: harmos_sdk::ExecutionContext) -> Result<Self, ComponentError> {
+    async fn bind(context: harmos_operations::execution::ExecutionContext) -> Result<Self, ComponentError> {
         let binding = context.resource::<SdkBinding>()?;
         Ok(Self { binding, state: None })
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.run", level = "debug", skip_all)]
     async fn attempt(
-        &mut self, context: harmos_sdk::ExecutionContext, payload: &mut super::sdk::Encoded, _endpoints: &mut Self::StreamEndpoints,
+        &mut self, context: harmos_operations::execution::ExecutionContext, payload: &mut super::sdk::Encoded,
+        _endpoints: &mut Self::StreamEndpoints,
     ) -> Result<crate::operations::Response<Vec<u8>>, ComponentError> {
         let host = context.resource::<super::HostContext>()?;
         let context = host.borrow();
-        let result: ::core::result::Result<Vec<u8>, Self::Error> = async {
+        let result: ::core::result::Result<Vec<u8>, Self::Error> = crate::clock::waiting(async {
             if self.state.is_none() {
                 let binding = &self.binding;
 
                 if !binding.component.endpoint.accepts() {
                     return Err(ComponentError::Unavailable);
                 }
-                let matches = binding
-                    .component
-                    .scope()
-                    .and_then(|scope| scope.lifecycle())
-                    .is_some_and(|pair| pair.iter().any(|descriptor| descriptor.contract().operation() == &binding.definition));
+                let matches = binding.component.endpoint.definitions().contains(&binding.definition)
+                    || binding
+                        .component
+                        .scope()
+                        .and_then(|scope| scope.lifecycle())
+                        .is_some_and(|pair| pair.iter().any(|descriptor| descriptor.contract().operation() == &binding.definition));
                 if !matches {
                     return Err(ComponentError::Catalog { operation: "SDK lifecycle" });
                 }
@@ -495,7 +361,7 @@ impl Carrier for SdkOperation {
 
             let answer = self.binding.component.phase_encoded(state, &context, Phase::Attempt).await?;
             ready(answer)
-        }
+        })
         .await;
         let operation = self.binding.definition.id.as_str();
         result.map(::core::convert::Into::into).map_err(|error| error.in_operation(operation))
@@ -507,7 +373,7 @@ impl Carrier for SdkOperation {
         };
 
         let operation = self.binding.definition.id.as_str();
-        self.binding.component.finalize_encoded(state).await.map_err(|error| error.in_operation(operation))
+        crate::clock::waiting(self.binding.component.finalize_encoded(state)).await.map_err(|error| error.in_operation(operation))
     }
 
     fn classify(error: &ComponentError) -> FailureKind {
@@ -519,31 +385,18 @@ impl Carrier for SdkOperation {
 
 /* === Private Functions === */
 
-fn register<O>(bindings: &mut super::Bindings<'_>, lane: &'static str, component: Arc<Component>) -> crate::Result<()>
-where
-    O: crate::operations::OperationDeclaration,
-{
-    use crate::operations::Direction;
-    type In<O> = super::StreamInput<<<O as crate::operations::OperationDeclaration>::Input as Direction>::Item>;
-    type Out<O> = super::StreamOutput<<<O as crate::operations::OperationDeclaration>::Output as Direction>::Item>;
-    let mut dependencies = harmos_sdk::__private::ResourceSet::new();
-    dependencies.insert(component)?;
-    match (<O::Input as Direction>::STREAMED, <O::Output as Direction>::STREAMED) {
-        (false, false) => bindings.stage_implementation::<O, ComponentOperation<O, ()>>(lane, dependencies),
-        (true, false) => bindings.stage_implementation::<O, ComponentOperation<O, In<O>>>(lane, dependencies),
-        (false, true) => bindings.stage_implementation::<O, ComponentOperation<O, Out<O>>>(lane, dependencies),
-        (true, true) => bindings.stage_implementation::<O, ComponentOperation<O, (In<O>, Out<O>)>>(lane, dependencies),
-    }
-}
-
 fn sdk_dispatch(
     operations: &super::Manager, mut submission: super::manager::Submission, source: super::caller::Source,
     parent: Option<super::wire::Parent<'_>>, input: super::wire::EncodedInput,
 ) -> crate::Result<super::EncodedInvocation> {
-    submission.preparation = input.preparation;
+    submission.preparation = match input.preparation {
+        Some(preparation) => Some(preparation),
+        None => Some(operations.claim_preparation(std::num::NonZeroUsize::new(input.payload.capacity().max(1)).unwrap())?),
+    };
     let (scope, ancestors) = parent.map_or((None, &[][..]), |parent| (Some(parent.scope), parent.ancestors));
     let mut request = super::binding::Request::from(super::sdk::Encoded(input.payload));
-    request.retry = input.retry;
+    request.retry = input.retry.or(input.policy.map(|policy| policy.retries));
+    request.policy = input.policy;
     let invocation = operations.admit_entry::<super::sdk::Encoded, ()>((request, ()), scope, ancestors, &source, submission)?;
     let id = invocation.id();
     let generation = invocation.generation();
@@ -553,22 +406,14 @@ fn sdk_dispatch(
         let payload = invocation.await?;
         payload.try_unwrap().map_err(|_| Error::InvalidInput {
             field: "SDK response",
-            reason: "uncached SDK response unexpectedly shared",
+            reason: "SDK response unexpectedly shared",
         })
     });
-    Ok(super::EncodedInvocation {
-        id,
-        generation,
-        outcome,
-        control,
-        #[cfg(feature = "plugin-sidecar")]
-        observer_stop: None,
-    })
+    Ok(super::EncodedInvocation { id, generation, outcome, control })
 }
 
 fn classify(error: &ComponentError) -> FailureKind {
     match error {
-        ComponentError::Stream(source) => source.classification(),
         ComponentError::Remote(failure) => failure.code(),
         ComponentError::Unauthorized(_) => FailureKind::Unauthorized,
         ComponentError::Preparation(failure) => match failure.code() {
@@ -588,11 +433,6 @@ fn ready(answer: WireAnswer) -> Result<Vec<u8>, ComponentError> {
     match answer {
         WireAnswer::Ready { payload } => Ok(payload),
         WireAnswer::Failed { failure } => Err(ComponentError::Remote(failure)),
-        WireAnswer::Stream { .. } => Err(GuestError::Malformed {
-            method: "operate".to_owned(),
-            message: "unexpected stream response to unary phase".to_owned(),
-        }
-        .into()),
     }
 }
 

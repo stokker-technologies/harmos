@@ -9,10 +9,6 @@
 
 // Typed Historical Reads, Public Scalar Folds and Concurrent Snapshot Reads
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,33 +20,18 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 use super::backend::{Data, Recovery, history, storage_settings};
-use super::waveforms::{self, Experiment, Objects, Sample};
+use super::waveforms::{self, Experiment, Sample, objects_catalog};
 use harmos_storage::Error;
 use harmos_storage::Query;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
 use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager, StorageSettings};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 /* === Private Functions === */
 
-async fn manager(settings: StorageSettings) -> (StorageManager<Objects>, Arc<Data<Objects>>) {
-    let data = Arc::new(Data::<Objects>::with_catalog(history()));
-    let storage = StorageManager::<Objects>::new(
+async fn manager(settings: StorageSettings) -> (StorageManager, Arc<Data>) {
+    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+    let storage = StorageManager::with_catalog(
+        objects_catalog(),
         StorageBackends {
             primary: data.clone(),
             state: Arc::new(Recovery::new(history())),
@@ -68,7 +49,7 @@ fn paged() -> StorageSettings {
     settings
 }
 
-async fn write(storage: &StorageManager<Objects>, id: &str, label: &str) -> ObjectReceipt {
+async fn write(storage: &StorageManager, id: &str, label: &str) -> ObjectReceipt {
     let receipt = storage.write_object(&Experiment { id: id.into(), label: label.into() }).await.unwrap();
     storage.flush_until(&receipt.position).await.unwrap();
     receipt
@@ -84,8 +65,8 @@ fn samples() -> RecordSelection {
     }
 }
 
-async fn labels(storage: &StorageManager<Objects>, read: ObjectRead<'_, Experiment>) -> Vec<(String, ObjectReceipt)> {
-    let pages = storage.read_objects(read).await.unwrap().collect().await.unwrap();
+async fn labels(storage: &StorageManager, read: ObjectRead<'_, Experiment>) -> Vec<(String, ObjectReceipt)> {
+    let pages = storage.list_object_revisions(read).await.unwrap().collect().await.unwrap();
     pages
         .iter()
         .flat_map(|page| page.iter())
@@ -107,11 +88,11 @@ async fn typed_objects_page() {
     let first = write(&storage, "a", "one").await;
     let second = write(&storage, "a", "two").await;
     let third = write(&storage, "b", "three").await;
-    let at = storage.cursor_saved();
+    let at = storage.get_saved_position();
     let read = |key, versions| ObjectRead::<Experiment> { at: at.clone(), key, versions };
 
     // Pages Follow The Response Row Bound In Storage Order.
-    let mut reader = storage.read_objects(read(None, ObjectVersions::Revisions)).await.unwrap();
+    let mut reader = storage.list_object_revisions(read(None, ObjectVersions::Revisions)).await.unwrap();
     let mut pages = Vec::new();
     let mut revisions = Vec::new();
     while let Some(page) = reader.next().await.unwrap() {
@@ -153,16 +134,16 @@ async fn typed_records_page() {
     storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
     let inputs = waveforms::inputs(&waveforms::samples(1));
     let records = inputs.iter().take(9).map(|input| input.record.clone()).collect::<Vec<_>>();
-    storage.write_records((records).to_vec()).await.unwrap();
+    storage.append_records((records).to_vec()).await.unwrap();
     storage.flush().await.unwrap();
     let expected = waveforms::samples(1).into_iter().take(9).collect::<Vec<_>>();
     let read = |after| RecordRead {
-        at: storage.cursor_saved(),
+        at: storage.get_saved_position(),
         selection: samples(),
         after,
     };
 
-    let mut reader = storage.read_records::<Sample>(read(0)).await.unwrap();
+    let mut reader = storage.list_records::<Sample>(read(0)).await.unwrap();
     let mut pages = Vec::new();
     let mut stored = Vec::new();
     while let Some(page) = reader.next().await.unwrap() {
@@ -178,10 +159,10 @@ async fn typed_records_page() {
     }
 
     // Resuming After A Position Skips Everything Already Read.
-    let resumed = storage.read_records::<Sample>(read(stored[3].position.sequence)).await.unwrap().collect().await.unwrap();
+    let resumed = storage.list_records::<Sample>(read(stored[3].position.sequence)).await.unwrap().collect().await.unwrap();
     assert_eq!(resumed.iter().flat_map(|page| page.iter()).map(|record| record.payload.clone()).collect::<Vec<_>>(), expected[4..]);
     let phase: Vec<_> = storage
-        .read_records::<Sample>(read(0))
+        .list_records::<Sample>(read(0))
         .await
         .unwrap()
         .collect()
@@ -201,11 +182,11 @@ async fn typed_owner_retained() {
     let (storage, data) = manager(paged()).await;
     storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
     let inputs = waveforms::inputs(&waveforms::samples(1));
-    storage.write_records(vec![inputs[0].record.clone()]).await.unwrap();
+    storage.append_records(vec![inputs[0].record.clone()]).await.unwrap();
     storage.flush().await.unwrap();
     let mut reader = storage
-        .read_records::<Sample>(RecordRead {
-            at: storage.cursor_saved(),
+        .list_records::<Sample>(RecordRead {
+            at: storage.get_saved_position(),
             selection: samples(),
             after: 0,
         })
@@ -230,9 +211,9 @@ async fn typed_owner_retained() {
 async fn unwritten_schema_empty() {
     let (storage, _) = manager(paged()).await;
     write(&storage, "a", "one").await;
-    let at = storage.cursor_saved();
+    let at = storage.get_saved_position();
     let mut reader = storage
-        .read_records::<Sample>(RecordRead {
+        .list_records::<Sample>(RecordRead {
             at: at.clone(),
             selection: samples(),
             after: 0,
@@ -259,11 +240,11 @@ async fn unwritten_schema_empty() {
     storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();
     storage.flush().await.unwrap();
     let read = ObjectRead::<Experiment> {
-        at: storage.cursor_saved(),
+        at: storage.get_saved_position(),
         key: None,
         versions: ObjectVersions::Revisions,
     };
-    let mut reader = storage.read_objects(read).await.unwrap();
+    let mut reader = storage.list_object_revisions(read).await.unwrap();
     assert!(reader.next().await.unwrap().is_none());
     drop(reader);
 }
@@ -273,7 +254,7 @@ async fn snapshot_reads_concurrent() {
     let (storage, data) = manager(storage_settings()).await;
     write(&storage, "a", "one").await;
     let key = "a".to_owned();
-    let read = || storage.read_object::<Experiment>(&key, ObjectVersion::Latest);
+    let read = || storage.get_object::<Experiment>(&key, ObjectVersion::Latest);
     data.control.block_read.store(true, Ordering::SeqCst);
     let mut first = Box::pin(read());
     tokio::select! {
@@ -291,7 +272,9 @@ async fn snapshot_reads_concurrent() {
 
     // Closing Still Waits For Every In-Flight Read Before Releasing The Backend.
     let mut closing = Box::pin(storage.close());
-    assert!(super::pending(closing.as_mut()).await);
+    assert!(
+        std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(closing.as_mut(), context).is_pending())).await
+    );
     assert_eq!(data.control.closes.load(Ordering::SeqCst), 0);
     data.control.block_read.store(false, Ordering::SeqCst);
     data.control.read_release.notify_waiters();
@@ -316,8 +299,8 @@ async fn collection_retains() {
     let session = storage.clone();
     let mut collection = harmos_storage::ReadBatch::new(Vec::<harmos_storage::ReadBatch<Vec<String>>>::new());
     let mut reader = session
-        .read_objects::<Experiment>(ObjectRead {
-            at: storage.cursor_saved(),
+        .list_object_revisions::<Experiment>(ObjectRead {
+            at: storage.get_saved_position(),
             key: None,
             versions: ObjectVersions::Latest,
         })
@@ -357,13 +340,13 @@ async fn standalone_reader_queues() {
     let (storage, data) = manager(settings).await;
     write(&storage, "a", "one").await;
     let read = || ObjectRead::<Experiment> {
-        at: storage.cursor_saved(),
+        at: storage.get_saved_position(),
         key: None,
         versions: ObjectVersions::Latest,
     };
-    let first = storage.read_objects(read()).await.unwrap();
-    let mut second = Box::pin(storage.read_objects(read()));
-    assert!(super::fixture::pending(second.as_mut()).await);
+    let first = storage.list_object_revisions(read()).await.unwrap();
+    let mut second = Box::pin(storage.list_object_revisions(read()));
+    assert!(std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(second.as_mut(), context).is_pending())).await);
     drop(first);
     let mut second = second.await.unwrap();
     assert_eq!(second.next().await.unwrap().unwrap()[0].value.label, "one");

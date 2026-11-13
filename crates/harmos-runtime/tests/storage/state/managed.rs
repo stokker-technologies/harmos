@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -26,10 +22,6 @@ use crate::storage::{Bank, Data, Ledger, Recovery, Runtime, StorageBackends, Sto
 use harmos_runtime::storage::{ReadLimits, StorageSettings};
 use harmos_runtime::{state::Focus, state::Position, state::PrincipalId, state::RequestKey};
 
-/* === Constants === */
-
-/* === Macros === */
-
 /* === Type Aliases === */
 
 type Refusal = &'static str;
@@ -38,13 +30,15 @@ type Refusal = &'static str;
 
 struct Model;
 
-#[harmos_runtime::transaction(id = "managed.add")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Add {
     amount: i64,
 }
+impl Add {
+    pub const ENTRY: harmos_runtime::state::TransactionEntry<i64, Self> =
+        harmos_runtime::state::TransactionEntry::new("managed.add").barrier();
+}
 
-#[harmos_runtime::record(id = "managed.seen")]
 #[derive(harmos_runtime::Described, Clone, serde::Serialize, serde::Deserialize)]
 struct Seen {
     before: i64,
@@ -57,27 +51,86 @@ struct Store {
 
 /* === Enums === */
 
-#[harmos_runtime::transactions(state = i64, error = Refusal)]
 #[derive(Clone)]
 enum Transactions {
     Add(Add),
 }
+impl From<Add> for Transactions {
+    fn from(value: Add) -> Self {
+        Self::Add(value)
+    }
+}
+impl harmos_runtime::state::Transaction<i64> for Transactions {
+    type Error = Refusal;
+    fn check(&self, state: &i64) -> std::result::Result<(), Self::Error> {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::check(value, state),
+        }
+    }
+    fn apply(&self, state: &mut i64) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::apply(value, state),
+        }
+    }
+    fn records(&self, state: &i64, records: &mut harmos_runtime::state::Records) {
+        match self {
+            Self::Add(value) => harmos_runtime::state::Transaction::records(value, state, records),
+        }
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Transactions {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Add(_) => Add::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Add(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn transactions_state_catalog() -> harmos_runtime::state::StateCatalog<i64, Transactions> {
+    harmos_runtime::state::StateCatalog::new().transaction(Add::ENTRY, Transactions::Add, |value| {
+        let Transactions::Add(value) = value;
+        Some(value)
+    })
+}
 
-#[harmos_runtime::records]
 #[derive(Clone)]
 enum Records {
     Seen(Seen),
 }
-
-/* === Traits === */
+impl From<Seen> for Records {
+    fn from(value: Seen) -> Self {
+        Self::Seen(value)
+    }
+}
+impl harmos_runtime::state::CatalogCodec for Records {
+    fn identify(&self) -> (harmos_runtime::DefinitionId, u32) {
+        match self {
+            Self::Seen(_) => <Seen as harmos_runtime::state::Record>::ENTRY.definition(),
+        }
+    }
+    fn encode<S: serde::Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            Self::Seen(value) => serde::Serialize::serialize(value, serializer),
+        }
+    }
+}
+fn records_registry() -> harmos_runtime::state::RecordRegistry<Records> {
+    harmos_runtime::state::RecordRegistry::new().entry(<Seen as harmos_runtime::state::Record>::ENTRY, Records::Seen, |value| {
+        let Records::Seen(value) = value;
+        Some(value)
+    })
+}
 
 /* === Implementations === */
 
-#[harmos_runtime::lanes]
-pub enum ModelLanes {
-    #[default]
-    Open,
+impl harmos_runtime::state::Record for Seen {
+    const ENTRY: harmos_runtime::state::RecordEntry<Self> = harmos_runtime::state::RecordEntry::new("managed.seen");
 }
+
 impl harmos_runtime::Lifecycle for Model {
     type Config = ();
     type Error = std::convert::Infallible;
@@ -89,11 +142,9 @@ impl harmos_runtime::Lifecycle for Model {
 }
 
 impl harmos_runtime::Application for Model {
-    type Lanes = ModelLanes;
     type State = i64;
     type Transaction = Transactions;
     type Record = Records;
-    type Streams = ();
 }
 
 impl harmos_runtime::state::Transaction<i64> for Add {
@@ -133,7 +184,7 @@ impl Store {
         .unwrap()
     }
     async fn boot(&self, storage: &StorageManager) -> Runtime<Bank> {
-        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -145,8 +196,6 @@ impl Store {
         .unwrap()
     }
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -174,7 +223,7 @@ async fn replay_restores_state() {
     assert_eq!(runtime.state.stored(), Position::ORIGIN);
     storage.flush_recovery().await.unwrap();
     assert_eq!(runtime.state.stored(), Position(6));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
@@ -186,7 +235,7 @@ async fn replay_restores_state() {
     let journal = runtime.state.as_principal(PrincipalId::new("editor"));
     journal.undo(PrincipalId::new("editor"), Focus::all()).await.unwrap();
     assert_eq!(balance(&runtime).await, 12);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
@@ -194,7 +243,7 @@ async fn replay_restores_state() {
     let journal = runtime.state.as_principal(PrincipalId::new("editor"));
     journal.redo(PrincipalId::new("editor"), Focus::all()).await.unwrap();
     assert_eq!(balance(&runtime).await, 15);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -218,7 +267,7 @@ async fn commit_awaits_capacity() {
     store.recovery.control.write_release.notify_one();
     next.await.unwrap().unwrap();
     assert_eq!(balance(&runtime).await, 9);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -227,7 +276,7 @@ async fn oversized_group_refused() {
     let storage = store.manager(config());
     let mut tiny = limits();
     tiny.bytes = NonZeroUsize::new(4096).unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: tiny,
             capture: tiny,
@@ -244,7 +293,7 @@ async fn oversized_group_refused() {
     assert!(runtime.state.capture_status().is_ok());
     runtime.state.commit(deposit(2)).await.unwrap();
     assert_eq!(balance(&runtime).await, 2);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -254,15 +303,15 @@ async fn state_stop_retries() {
     let runtime = store.boot(&storage).await;
     runtime.state.commit(deposit(8)).await.unwrap();
     store.recovery.control.flush_failures.store(1, Ordering::SeqCst);
-    assert!(runtime.shutdown().await.is_err());
+    assert!(crate::support::app::shutdown(&runtime).await.is_err());
     assert_eq!(storage.status().recovery_accepted.sequence, 1);
     assert_eq!(storage.status().recovery_saved.sequence, 0);
     assert!(store.recovery.control.open.load(Ordering::SeqCst));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     assert_eq!(balance(&runtime).await, 8);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -273,11 +322,11 @@ async fn recovery_history_admission() {
         let runtime = store.boot(&storage).await;
         runtime.state.commit(deposit(1)).await.unwrap();
         runtime.state.commit(deposit(2)).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
         let original = store.recovery.entries.lock().unwrap().remove(&1).unwrap();
         let storage = store.manager(config());
         assert!(
-            Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
                 setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(),
                     capture: limits(),
@@ -296,14 +345,14 @@ async fn recovery_history_admission() {
         let storage = store.manager(config());
         let runtime = store.boot(&storage).await;
         assert_eq!(balance(&runtime).await, 3);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let store = Store::new();
         let storage = store.manager(config());
         let runtime = store.boot(&storage).await;
         runtime.state.commit(deposit(1)).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
         let original = store.recovery.entries.lock().unwrap()[&1].payload.clone();
         for field in ["position", "id", "commit"] {
             let mut group: serde_json::Value = serde_json::from_slice(&original).unwrap();
@@ -316,7 +365,7 @@ async fn recovery_history_admission() {
             store.recovery.entries.lock().unwrap().get_mut(&1).unwrap().payload = serde_json::to_vec(&group).unwrap();
             let storage = store.manager(config());
             assert!(
-                Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+                crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
                     setup.settings().storage(&storage).register(catalog()).managed_storage(
                         harmos_runtime::config::ManagedStorageSettings {
                             replay: limits(),
@@ -337,7 +386,7 @@ async fn recovery_history_admission() {
         let storage = store.manager(config());
         let runtime = store.boot(&storage).await;
         assert_eq!(balance(&runtime).await, 1);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     {
         let store = Store::new();
@@ -346,7 +395,7 @@ async fn recovery_history_admission() {
         for key in ["one", "two"] {
             runtime.state.commit_keyed(RequestKey::new(key), deposit(1)).await.unwrap();
         }
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
         let original = store.recovery.entries.lock().unwrap()[&2].payload.clone();
         {
             let mut entries = store.recovery.entries.lock().unwrap();
@@ -357,7 +406,7 @@ async fn recovery_history_admission() {
         }
         let storage = store.manager(config());
         assert!(
-            Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
                 setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(),
                     capture: limits(),
@@ -376,14 +425,14 @@ async fn recovery_history_admission() {
         let storage = store.manager(config());
         let runtime = store.boot(&storage).await;
         assert_eq!(balance(&runtime).await, 2);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
 #[tokio::test]
 async fn managed_requires_storage() {
     assert!(
-        Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -401,11 +450,11 @@ async fn owner_refuses_raw() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
-    assert!(storage.write_recovery(vec![b"foreign".to_vec()]).await.is_err());
+    assert!(storage.append_recovery_entries(vec![b"foreign".to_vec()]).await.is_err());
     assert!(
         storage
-            .write_snapshot(harmos_runtime::storage::state::RecoverySnapshot {
-                required_data: storage.cursor_saved(),
+            .set_recovery_snapshot(harmos_runtime::storage::state::RecoverySnapshot {
+                required_data: storage.get_saved_position(),
                 through: storage.status().recovery_accepted,
                 payload: harmos_storage::state::SnapshotPayload::from_bytes(
                     &[],
@@ -417,7 +466,7 @@ async fn owner_refuses_raw() {
             .await
             .is_err()
     );
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -430,7 +479,7 @@ async fn periodic_save_advances() {
     assert_eq!(runtime.state.stored(), receipt.frontier);
     assert_eq!(storage.status().saved.sequence, 0);
     assert_eq!(storage.status().recovery_saved.sequence, 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -439,12 +488,12 @@ async fn cancelled_replay_releases() {
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     runtime.state.commit(deposit(1)).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     store.recovery.control.block_read.store(true, Ordering::SeqCst);
     let storage = store.manager(config());
     let cleanup = CleanupCapture::default();
     {
-        let opening = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+        let opening = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
@@ -479,11 +528,11 @@ async fn save_failure_halts() {
     assert!(runtime.state.commit(deposit(9)).await.is_err());
     assert!(runtime.state.capture_status().is_err());
     assert_eq!(storage.status().recovery_accepted.sequence, 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     assert_eq!(balance(&runtime).await, 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -524,7 +573,7 @@ async fn file_finish_interleaves() {
     mutations.await.unwrap();
     data.await.unwrap();
     assert_eq!(balance(&runtime).await, 20);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(storage.status().saved.sequence, 21);
     assert_eq!(storage.status().recovery_saved.sequence, 20);
     assert_eq!(store.data.records.lock().unwrap().len(), 20);
@@ -532,7 +581,7 @@ async fn file_finish_interleaves() {
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
     assert_eq!(balance(&runtime).await, 20);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -545,7 +594,7 @@ async fn keyed_receipt_survives() {
     for _ in 0..5 {
         runtime.state.commit(deposit(1)).await.unwrap();
     }
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     for _ in 0..2 {
         let storage = store.manager(config());
@@ -555,7 +604,7 @@ async fn keyed_receipt_survives() {
         assert_eq!(balance(&runtime).await, 12);
         assert_eq!(runtime.state.applied(), Position(6));
         assert_eq!(storage.status().recovery_accepted.sequence, 6);
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
     }
 }
 
@@ -565,8 +614,8 @@ async fn keyed_group_retained() {
     let storage = store.manager(config());
 
     let key = RequestKey::new("group");
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().storage(&storage).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
+        setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -580,11 +629,11 @@ async fn keyed_group_retained() {
     let receipt = runtime.state.caused_by(Position(41)).commit_keyed(key.clone(), Add { amount: 3 }).await.unwrap();
     assert_eq!(receipt.position, Position(1));
     assert_eq!(receipt.frontier, Position(3));
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 
     let storage = store.manager(config());
-    let runtime = Runtime::<Model>::launch_with(0, (), |setup| {
-        setup.settings().storage(&storage).register(Transactions::catalog()).register(Records::catalog()).managed_storage(
+    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
+        setup.settings().storage(&storage).register(transactions_state_catalog()).register(records_registry()).managed_storage(
             harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -600,7 +649,7 @@ async fn keyed_group_retained() {
     assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 3);
     assert_eq!(runtime.state.applied(), receipt.frontier);
     assert_eq!(storage.status().recovery_accepted.sequence, 1);
-    runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -609,10 +658,8 @@ async fn commits_skip_save() {
         let store = Store::new();
         let storage = store.manager(config());
         let runtime = store.boot(&storage).await;
-        tokio::task::yield_now().await;
 
         let receipt = runtime.state.commit(deposit(7)).await.unwrap();
-        tokio::task::yield_now().await;
         assert_eq!(balance(&runtime).await, 7);
         assert_eq!(runtime.state.applied(), receipt.frontier);
         assert_eq!(runtime.state.stored(), Position::ORIGIN);
@@ -624,12 +671,10 @@ async fn commits_skip_save() {
             storage.flush_recovery().await.unwrap();
             runtime.state.wait_until_stored(receipt.frontier).await;
         }
-        runtime.shutdown().await.unwrap();
+        crate::support::app::shutdown(&runtime).await.unwrap();
 
         assert_eq!(*store.recovery.control.write_sizes.lock().unwrap(), [1]);
         assert_eq!(storage.status().recovery_saved.sequence, 1);
         assert_eq!(storage.status().pending_bytes, 0);
     }
 }
-
-/* === Tests === */

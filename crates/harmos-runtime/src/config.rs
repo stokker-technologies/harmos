@@ -21,7 +21,7 @@ pub use harmos_domain::config::*;
 #[cfg(feature = "plugin-guest")]
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
-#[cfg(any(feature = "grpc", feature = "plugin"))]
+#[cfg(any(feature = "grpc", feature = "plugin-guest"))]
 use std::time::Duration;
 
 // Third Party Imports
@@ -92,19 +92,20 @@ pub struct OperationSettings {
     pub preparation_bytes: Option<NonZeroUsize>,
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone, Debug)]
 pub struct PluginSettings {
     pub configuration: Vec<u8>,
-    pub requires: Vec<harmos_domain::Requirement>,
+    pub requires: Vec<harmos_operations::Requirement>,
     pub host_operations: Vec<crate::Identifier>,
+    pub grants: Vec<harmos_operations::plugin::Grant>,
     pub initialization_timeout: Duration,
     pub shutdown_timeout: Duration,
     pub encoding_memory_bytes: NonZeroUsize,
     pub restart: PluginRestartSettings,
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PluginRestartSettings {
     // Automatic Restarts Allowed Per Explicit Activation Cycle.
@@ -113,16 +114,10 @@ pub struct PluginRestartSettings {
     pub backoff_cap: Duration,
 }
 
-#[cfg(feature = "plugin-sidecar")]
-#[derive(Clone, Debug)]
-pub struct PluginSidecarSettings {
-    pub plugin: PluginSettings,
-    pub calls: NonZeroUsize,
-}
-
 #[cfg(feature = "plugin-guest")]
 #[derive(Clone, Copy, Debug)]
 pub struct PluginGuestSettings {
+    pub stream_window: Option<NonZeroUsize>,
     pub component_bytes: NonZeroUsize,
     pub memory_bytes: NonZeroUsize,
     pub fuel: NonZeroU64,
@@ -138,7 +133,7 @@ pub struct PluginGuestSettings {
 
 /* === Implementations === */
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl Default for PluginRestartSettings {
     fn default() -> Self {
         Self {
@@ -149,12 +144,12 @@ impl Default for PluginRestartSettings {
     }
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl PluginRestartSettings {
     pub fn validate(&self) -> Result<()> {
         if self.backoff_base.is_zero()
             || self.backoff_cap < self.backoff_base
-            || std::time::Instant::now().checked_add(self.backoff_cap).is_none()
+            || crate::clock::current().now().checked_add(self.backoff_cap).is_none()
         {
             return Err(Error::InvalidInput {
                 field: "plugin restart backoff",
@@ -165,23 +160,14 @@ impl PluginRestartSettings {
     }
 }
 
-#[cfg(feature = "plugin-sidecar")]
-impl Default for PluginSidecarSettings {
-    fn default() -> Self {
-        Self {
-            plugin: PluginSettings::default(),
-            calls: NonZeroUsize::new(4).unwrap(),
-        }
-    }
-}
-
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl Default for PluginSettings {
     fn default() -> Self {
         Self {
             configuration: b"null".to_vec(),
             requires: Vec::new(),
             host_operations: Vec::new(),
+            grants: Vec::new(),
             initialization_timeout: Duration::from_secs(5),
             shutdown_timeout: Duration::from_secs(30),
             encoding_memory_bytes: NonZeroUsize::new(4096).unwrap(),
@@ -190,12 +176,12 @@ impl Default for PluginSettings {
     }
 }
 
-#[cfg(feature = "plugin")]
+#[cfg(feature = "plugin-guest")]
 impl PluginSettings {
     pub fn validate(&self) -> Result<()> {
         self.restart.validate()?;
         for timeout in [self.initialization_timeout, self.shutdown_timeout] {
-            if timeout.is_zero() || std::time::Instant::now().checked_add(timeout).is_none() {
+            if timeout.is_zero() || crate::clock::current().now().checked_add(timeout).is_none() {
                 return Err(Error::InvalidInput {
                     field: "plugin lifecycle timeout",
                     reason: "must be positive and representable",
@@ -217,6 +203,7 @@ impl PluginSettings {
 impl Default for PluginGuestSettings {
     fn default() -> Self {
         Self {
+            stream_window: None,
             component_bytes: NonZeroUsize::new(64 * 1024 * 1024).unwrap(),
             memory_bytes: NonZeroUsize::new(64 * 1024 * 1024).unwrap(),
             fuel: NonZeroU64::new(10_000_000).unwrap(),
@@ -230,8 +217,9 @@ impl Default for PluginGuestSettings {
 #[cfg(feature = "grpc")]
 impl Default for GrpcServerSettings {
     fn default() -> Self {
-        let bytes = std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap();
-        let message = std::num::NonZeroUsize::new(4 * 1024 * 1024).unwrap();
+        let message = harmos_protocol::transfer::default_message_bytes();
+        // Wire Bytes, Conservative Protobuf Allocation and the Retained Attempt Clone.
+        let bytes = message.checked_mul(std::num::NonZeroUsize::new(6).unwrap()).expect("representable default decoded transfer budget");
         let items = std::num::NonZeroUsize::new(16).unwrap();
         Self {
             calls: std::num::NonZeroUsize::new(64).unwrap(),

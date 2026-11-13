@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1.access;
+message CertificatesCreateRequest {}
+message CertificatesCreateResponse { string certificate_pem = 1; }
+service Certificates { rpc Create(CertificatesCreateRequest) returns (CertificatesCreateResponse); }

@@ -20,7 +20,7 @@ mod fixture;
 #[cfg(feature = "plugin-guest")]
 mod guest;
 
-#[cfg(all(feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 mod guest_contract;
 
 #[path = "../support/report.rs"]
@@ -28,38 +28,8 @@ mod report;
 mod runtime;
 mod schematic;
 
-#[cfg(feature = "plugin-sidecar")]
-mod sidecar;
-
 #[path = "../support/mod.rs"]
 mod support;
-
-/* === Re-Exports === */
-
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-extern crate harmos_runtime as harmos;
-
-// Local Imports
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
@@ -68,8 +38,6 @@ mod operations {
     /* === Modules === */
 
     /* === Re-Exports === */
-
-    pub(crate) use super::support::Lanes;
 
     /* === Imports === */
 
@@ -99,5 +67,3 @@ mod operations {
 
     /* === Tests === */
 }
-
-/* === Tests === */

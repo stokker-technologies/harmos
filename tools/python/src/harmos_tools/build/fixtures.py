@@ -25,7 +25,6 @@ from pathlib import Path
 
 # Local Imports
 from .. import temporary
-from . import storage
 
 # Type Checking Imports
 
@@ -37,8 +36,8 @@ ROOT = Path(__file__).resolve().parents[5]
 TARGET = ROOT / "target"
 GENERATED = TARGET / "generated"
 SCHEMATIC = ROOT / "examples/schematic/Cargo.toml"
-GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "crates/harmos-guest/tests/fixtures/sandbox/Cargo.toml"}
-LIBRARIES = ("harmos", "harmos_sdk", "harmos_sidecar", "harmos_macros", "serde")
+GUESTS = {"schematic-guest": SCHEMATIC, "harmos-sandbox-guest": ROOT / "sdk/rust/tests/fixtures/sandbox/Cargo.toml"}
+LIBRARIES = ("harmos", "harmos_runtime", "harmos_operations", "harmos_sdk_derive", "serde")
 
 # === Types === #
 
@@ -50,8 +49,19 @@ LIBRARIES = ("harmos", "harmos_sdk", "harmos_sidecar", "harmos_macros", "serde")
 # === Private Functions === #
 
 
+def driver(profile: str, scratch: Path) -> Path:
+    captured = capture(
+        "fixture-driver",
+        ROOT,
+        profile,
+        ["-p", "harmos-packaging", "--example", "fixture-driver", "--features", "sidecar,guest,generate-python"],
+        scratch,
+    )
+    return executable(messages(captured), "fixture-driver")
+
+
 def capture(name: str, directory: Path, profile: str, extra: list[str], scratch: Path) -> dict:
-    """Compile One Cargo Selection And Record The Collection Input `cargo harmos` Requires."""
+    """Compile One Cargo Selection And Record Stamped Collection Inputs."""
     destination = scratch / "captures" / name / profile
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
@@ -83,8 +93,7 @@ def capture(name: str, directory: Path, profile: str, extra: list[str], scratch:
         )
     messages = destination / "messages.json"
     arguments = ["--manifest-path", str(directory / "Cargo.toml"), "--locked", "--profile", profile, *extra]
-    storage.preflight(ROOT)
-    command = ["cargo", "build", *arguments, "--message-format=json"]
+    command = ["cargo", "build", "--timings", *arguments, "--message-format=json"]
     with messages.open("w", encoding="utf-8") as output:
         completed = subprocess.run(
             command,
@@ -139,40 +148,45 @@ def collect(tool: Path, manifest: Path, package: str, backend: str, profile: str
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
     result = destination / "build.json"
-    command = [
-        str(tool),
-        "harmos",
-        backend,
-        "build",
-        "--manifest-path",
-        str(manifest),
-        "-p",
-        package,
-        "--profile",
-        profile,
-        "--target",
-        capture["target"],
-        "--from-cargo-json",
-        capture["messages"]["path"],
-        "--metadata-json",
-        capture["metadata"]["path"],
-        "--archive-json",
-        capture["receipt"],
-        "--json",
-    ]
-    with result.open("w", encoding="utf-8") as output:
-        completed = subprocess.run(
-            command,
-            cwd=ROOT,
-            stdout=output,
-            check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
-    if completed.returncode:
-        raise RuntimeError(f"cargo harmos could not collect {package}")
-    return json.loads(result.read_text(encoding="utf-8")), result
+    request = {
+        "action": "collect",
+        "manifest": str(manifest),
+        "package": package,
+        "backend": backend,
+        "profile": profile,
+        "target": capture["target"],
+        "messages": capture["messages"]["path"],
+        "metadata": capture["metadata"]["path"],
+        "receipt": capture["receipt"],
+    }
+    output = subprocess.check_output(
+        [str(tool)],
+        input=json.dumps(request),
+        text=True,
+        cwd=ROOT,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        stderr=sys.stderr,
+    )
+    build = json.loads(output)
+    if package == "schematic-sidecar":
+        # Client Bindings Describe the Host Endpoint, Including Its Native Streams.
+        metadata = json.loads(Path(capture["metadata"]["path"]).read_text(encoding="utf-8"))
+        producers = {item["id"] for item in metadata["packages"] if item["name"] == "schematic-cli"}
+        for event in messages(capture):
+            if event.get("reason") != "build-script-executed" or event.get("package_id") not in producers:
+                continue
+            root = Path(event["out_dir"]) / "grpc"
+            for directory in sorted(root.iterdir()):
+                manifest = directory / "manifest.txt"
+                names = [*manifest.read_text(encoding="utf-8").splitlines(), "manifest.txt"]
+                files = {name: digest(directory / name) for name in names}
+                for name, expected in files.items():
+                    verify(expected, capture["generated"].get(str(directory / name)), "host schema differs from captured bytes")
+                build["schemas"].append(
+                    {"producer": "schematic-cli", "catalog": directory.name, "directory": str(directory), "files": files}
+                )
+    result.write_text(json.dumps(build), encoding="utf-8")
+    return build, result
 
 
 def offline_inputs(destination: Path) -> Path:
@@ -193,10 +207,10 @@ def offline_inputs(destination: Path) -> Path:
         stdin=sys.stdin,
         stderr=sys.stderr,
     )
-    projects = [ROOT / "tools/python", *(ROOT / f"crates/cargo-harmos/templates/{kind}/tools/python" for kind in ("sidecar", "guest"))]
+    projects = [ROOT / "tools/python"]
     requirements = []
-    for index, project in enumerate(projects):
-        selected = destination / ("requirements.txt" if index == 0 else f"starter-{project.parents[1].name}.txt")
+    for project in projects:
+        selected = destination / ("requirements.txt")
         _requirements(project, selected)
         requirements.append(selected)
     bundled = importlib.resources.files("ensurepip").joinpath("_bundled")
@@ -255,49 +269,28 @@ def _requirements(project: Path, destination: Path) -> None:
 
 
 def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
-    """Generate The Schematic Sidecar's Python Client, Which `check:python:generated` Checks."""
+    """Generate the Schematic Host's Python Client From Its Captured Contracts."""
     metadata = json.loads(build.read_text(encoding="utf-8"))
-    catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-sidecar"}
+    catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-cli"}
     if len(catalogs) != 1:
-        raise RuntimeError(f"expected one schematic-sidecar catalog, found {sorted(catalogs)}")
+        raise RuntimeError(f"expected one schematic-cli catalog, found {sorted(catalogs)}")
 
+    tool.chmod(tool.stat().st_mode | stat.S_IXUSR)
     protoc.chmod(protoc.stat().st_mode | stat.S_IXUSR)
     output = GENERATED / "python"
     shutil.rmtree(output, ignore_errors=True)
 
-    command = [
-        str(tool),
-        "harmos",
-        "bindings",
-        "python",
-        "--build-json",
-        str(build),
-        "--producer",
-        "schematic-sidecar",
-        "--catalog",
-        catalogs.pop(),
-        "--output",
-        str(output),
-        "--distribution",
-        "schematic-client",
-        "--module",
-        "schematic_client",
-        "--package-version",
-        "0.0.0",
-        "--description",
-        "Schematic Sidecar Client",
-        "--license",
-        "Apache-2.0",
-        "--protoc",
-        str(protoc),
-    ]
+    catalog = catalogs.pop()
+    schema = next(schema for schema in metadata["schemas"] if schema["producer"] == "schematic-cli" and schema["catalog"] == catalog)
+    request = {"action": "python", "export": schema["directory"], "output": str(output), "protoc": str(protoc)}
     subprocess.run(
-        command,
+        [str(tool)],
+        input=json.dumps(request),
+        text=True,
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         check=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        stdin=sys.stdin,
         stderr=sys.stderr,
     )
     generated = sorted(output.rglob("*"))
@@ -376,7 +369,7 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
     """Transfer exact compiler-emitted libraries needed by the authoring refusal stories.
 
     Prefer the build whose features include every other's. Equal-feature host and
-    shipping builds resolve against the authoritative shipping Harmos profile.
+    shipping builds resolve against the shipping Harmos profile and type identities.
     """
     found: dict[str, dict[str, tuple[set[str], dict]]] = {name: {} for name in LIBRARIES}
     destination = fixtures / "libraries"
@@ -389,9 +382,13 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
     for name, library, features, profile in filter(None, staged):
         found[name][library] = features, profile
 
-    shipping = _widest(found["harmos"])
-    profile = found["harmos"][shipping][1] if shipping is not None else None
+    shipping = _widest(found["harmos_runtime"])
+    profile = found["harmos_runtime"][shipping][1] if shipping is not None else None
     selected = {name: _widest(builds, profile) for name, builds in found.items()}
+    if shipping is not None:
+        for name in ("serde", "harmos_operations"):
+            if selected[name] is None:
+                selected[name] = _compatible_library(name, found[name], fixtures / shipping, destination)
     ambiguous = {name: sorted(found[name]) for name, path in selected.items() if path is None}
     if ambiguous:
         raise RuntimeError(f"compiler libraries are missing or ambiguous: {ambiguous}")
@@ -414,7 +411,7 @@ def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple
     name = message["target"]["name"]
     if name not in LIBRARIES:
         return None
-    suffix = (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_macros" else ".rlib"
+    suffix = (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so") if name == "harmos_sdk_derive" else ".rlib"
     if source.suffix != suffix:
         return None
     return name, destination.relative_to(fixtures).as_posix(), set(message["features"]), message["profile"]
@@ -427,6 +424,54 @@ def _widest(builds: dict[str, tuple[set[str], dict]], profile: dict | None = Non
     if len(widest) > 1 and profile is not None:
         widest = [path for path in widest if builds[path][1] == profile]
     return widest[0] if len(widest) == 1 else None
+
+
+def _compatible_library(name: str, builds: dict[str, tuple[set[str], dict]], harmos: Path, libraries: Path) -> str | None:
+    """Resolve Equal-Feature Host/Target Builds Against The Shipping Type Identity."""
+    required = set().union(*(features for features, _ in builds.values()))
+    compatible = []
+    sources = {
+        "serde": (
+            "#[derive(serde::Serialize)] pub struct Selection;\n"
+            "pub fn check() {\n"
+            "    fn accepts<T: harmos::__private::serde::Serialize>() {}\n"
+            "    accepts::<Selection>();\n"
+            "}\n"
+        ),
+        "harmos_operations": (
+            "pub fn check(value: harmos_operations::execution::operations::ExecutionContext)\n"
+            "    -> harmos::operations::ExecutionContext { value }\n"
+        ),
+    }
+    with temporary.directory() as scratch:
+        source = scratch / "library_selection.rs"
+        source.write_text(sources[name], encoding="utf-8")
+        for path, (features, _) in builds.items():
+            if not required <= features:
+                continue
+            result = subprocess.run(
+                [
+                    "rustc",
+                    "--edition=2024",
+                    "--crate-type=lib",
+                    "--emit=metadata",
+                    str(source),
+                    "-o",
+                    str(scratch / "selection.rmeta"),
+                    "-L",
+                    f"dependency={libraries}",
+                    "--extern",
+                    f"harmos={harmos}",
+                    "--extern",
+                    f"{name}={libraries.parent / path}",
+                ],
+                capture_output=True,
+                text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if result.returncode == 0:
+                compatible.append(path)
+    return compatible[0] if len(compatible) == 1 else None
 
 
 # === Entry Point === #

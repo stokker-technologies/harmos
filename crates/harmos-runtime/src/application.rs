@@ -38,19 +38,15 @@ pub struct Startup<A: Application> {
 /* === Traits === */
 
 pub trait Application: Lifecycle<Context = Startup<Self>> + Sync {
-    type Lanes: crate::operations::Lane;
-
     type State: Send + Sync + 'static;
 
     type Transaction: crate::state::Transaction<Self::State, Error: Send + Sync + 'static>
-        + crate::state::TransactionCatalog<Self::State>
+        + crate::state::CatalogCodec
         + Send
         + Sync
         + 'static;
 
-    type Record: crate::state::RecordCatalog + Send + Sync + 'static;
-
-    type Streams: Send + Sync + 'static;
+    type Record: crate::state::CatalogCodec + Send + Sync + 'static;
 }
 
 /* === Implementations === */
@@ -61,7 +57,7 @@ impl<A: Application> Clone for Startup<A> {
     }
 }
 
-impl<A: Application> harmos_sdk::lifecycle::Context for Startup<A> {
+impl<A: Application> harmos_operations::execution::lifecycle::Context for Startup<A> {
     type Configuration = crate::runtime::Builder<A>;
 }
 

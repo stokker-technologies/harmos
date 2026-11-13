@@ -7,6 +7,7 @@ autotests = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 # The authoring attributes, on by default the way serde ships its derives. Every
@@ -20,14 +21,15 @@ version = { workspace = true }
 
 [features]
 default = []
-fft = []
-testing = []
+testing = ["harmos-domain/derive"]
+sqlite = ["dep:rusqlite"]
 
 # === Dependencies === #
 
 [dependencies]
 # Local
 harmos-domain = { workspace = true }
+harmos-protocol = { workspace = true }
 
 # Git
 
@@ -52,6 +54,7 @@ arrow-select = { workspace = true }
 base64 = { workspace = true }
 flatbuffers = { workspace = true }
 postcard = { workspace = true }
+prost = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
 
@@ -74,6 +77,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 # Networking
 
 # Storage
+rusqlite = { workspace = true, optional = true }
 
 # UI
 
@@ -86,7 +90,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 [dev-dependencies]
 # Local
 harmos-domain = { path = "../harmos-domain", default-features = false, features = ["derive"] }
-harmos-storage = { path = ".", features = ["testing"] }
+harmos-storage = { path = ".", features = ["testing", "sqlite"] }
 
 # Git
 
@@ -160,6 +164,16 @@ name = "integration"
 path = "tests/integration/main.rs"
 
 # === Bench Targets === #
+
+[[bench]]
+name = "integration-durable-lag"
+path = "benches/durable_lag/main.rs"
+harness = false
+
+[[bench]]
+name = "integration-multi-day"
+path = "benches/multi_day/main.rs"
+harness = false
 
 [[bench]]
 name = "unit-payload-decode"

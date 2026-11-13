@@ -31,11 +31,14 @@ use std::convert::Infallible;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error<E = Infallible> {
+    #[error("invalid lane `{name}`: {reason}")]
+    InvalidLane { name: &'static str, reason: &'static str },
+
     #[error("snapshot entry is {bytes} bytes; segment limit is {limit} bytes")]
     SnapshotEntry { bytes: usize, limit: usize },
 
     #[error(transparent)]
-    Dependency(#[from] harmos_sdk::ResourceError),
+    Dependency(#[from] harmos_operations::execution::ResourceError),
 
     #[error("runtime shutdown budget expired during {phase}; cleanup remains owned")]
     ShutdownTimeout { phase: &'static str },
@@ -78,11 +81,11 @@ pub enum Error<E = Infallible> {
     #[error("operation child lane `{child}` would cycle with held lane `{parent}`")]
     OperationLaneCycle { parent: &'static str, child: &'static str },
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     #[error("operation caller is unavailable: {source}")]
     OperationCaller {
         #[source]
-        source: crate::plugin::DispatchError,
+        source: crate::guest::host::plugin::DispatchError,
     },
 
     #[error("caller `{caller}` may not invoke operation `{operation}` on `{owner}`")]
@@ -99,14 +102,20 @@ pub enum Error<E = Infallible> {
     #[error("operation `{operation}` panicked")]
     OperationPanicked { operation: String },
 
-    #[error("operation declaration is invalid: {source}")]
-    OperationDeclaration {
+    #[error("native foundation is invalid: {source}")]
+    Foundation {
         #[source]
         source: harmos_domain::Error,
     },
 
+    #[error("operation declaration is invalid: {source}")]
+    OperationDeclaration {
+        #[source]
+        source: harmos_operations::operations::Error,
+    },
+
     #[error(transparent)]
-    OperationInvocation(#[from] harmos_sdk::operations::InvocationError),
+    OperationInvocation(#[from] harmos_operations::execution::operations::InvocationError),
 
     // Prints its own line; the cause is the source, read through `failure()`.
     #[error("operation `{operation}` failed")]
@@ -132,11 +141,11 @@ pub enum Error<E = Infallible> {
         source: std::sync::Arc<Error>,
     },
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     #[error("plugin lifecycle failed: {source}")]
     PluginLifecycle {
         #[source]
-        source: Box<crate::plugin::PluginFailure>,
+        source: Box<crate::guest::host::plugin::PluginFailure>,
     },
 
     #[error("{domain} task failed: {source}")]
@@ -243,6 +252,10 @@ impl<E> From<harmos_storage::Error> for Error<E> {
         match error {
             Storage::OperationFailed { operation, source } => Self::OperationFailed { operation, source },
             Storage::NotReady { domain } => Self::NotReady { domain },
+            Storage::IndexNotFound { name } => Self::NotRegistered {
+                domain: "storage index",
+                name: name.to_string(),
+            },
             Storage::Persistence { source } => Self::Persistence {
                 source: std::sync::Arc::new(std::sync::Arc::try_unwrap(source).map(Error::from).unwrap_or_else(|source| {
                     Error::backend("storage persistence", source.backend_failure().unwrap_or(BackendFailure::Permanent), source)
@@ -266,15 +279,19 @@ impl<E> From<harmos_domain::Error> for Error<E> {
             harmos_domain::Error::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
             harmos_domain::Error::DifferentHistory => Self::DifferentHistory,
             harmos_domain::Error::Corrupt { operation, source } => Self::backend(operation, BackendFailure::Corrupt, source),
-            source => Self::OperationDeclaration { source },
+            source => Self::Foundation { source },
         }
     }
 }
 
-impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
-    fn from(error: harmos_domain::operations::ContextError) -> Self {
-        use harmos_domain::operations::ContextError;
+impl<E> From<harmos_operations::operations::ContextError> for Error<E> {
+    fn from(error: harmos_operations::operations::ContextError) -> Self {
+        use harmos_operations::operations::ContextError;
         match error {
+            harmos_operations::operations::ContextError::EmptyScope => Self::InvalidInput {
+                field: "invocation scope",
+                reason: "Bind Invocation Scope: scope must be nonempty",
+            },
             ContextError::Duplicate { name } => Self::AlreadyRegistered { domain: "call context", name },
             ContextError::Missing { name } => Self::NotRegistered { domain: "call context", name },
             ContextError::Decode { .. } => Self::InvalidInput {
@@ -292,7 +309,7 @@ impl<E> From<harmos_domain::operations::ContextError> for Error<E> {
 impl<E> Error<E> {
     // The structured failure this error carries from a plugin, with its cause
     // written once at the origin and the operation frame the host added.
-    pub fn failure(&self) -> Option<&harmos_domain::Failure> {
+    pub fn failure(&self) -> Option<&harmos_operations::Failure> {
         match self {
             Self::ApplicationLifecycle { stop, cleanup } => stop.failure().or_else(|| cleanup.failure()),
             Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => carried(source.as_ref()),
@@ -300,7 +317,7 @@ impl<E> Error<E> {
             Self::OperationFinalization { outcome, source, .. } => outcome.as_deref().and_then(Error::failure).or_else(|| source.failure()),
             Self::OperationSettlement { source } => source.failure(),
             Self::OperationInvocation(source) => carried(source),
-            #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+            #[cfg(feature = "plugin-guest")]
             Self::PluginLifecycle { source } => carried(source.as_ref()),
             _ => None,
         }
@@ -321,20 +338,17 @@ impl<E> Error<E> {
 
 // The first failure along a source chain, read through the carrier that
 // transported it where that carrier hides it behind a transparent line.
-fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harmos_domain::Failure> {
+fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harmos_operations::Failure> {
     std::iter::successors(Some(source), |link| link.source()).find_map(|link| {
         if let Some(error) = link.downcast_ref::<Error>() {
             return error.failure();
         }
-        #[cfg(feature = "plugin-sidecar")]
-        if let Some(error) = link.downcast_ref::<crate::operations::NativeError>() {
-            return error.failure();
-        }
+
         #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
         if let Some(error) = link.downcast_ref::<crate::operations::ComponentError>() {
             return error.failure();
         }
-        harmos_domain::Failure::find(link)
+        harmos_operations::Failure::find(link)
     })
 }
 

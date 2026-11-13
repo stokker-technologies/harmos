@@ -7,50 +7,31 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
 // Third Party Imports
-use serde::{Deserialize, Serialize};
+use harmos::{Context, Message, Operation, Plugin, Visibility};
 use tokio::sync::Notify;
 
 // Local Imports
-use harmos_domain::listeners::{Context as DeliveryContext, Delivery};
-use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
-use harmos_runtime::sidecar::{Refusal, Supervisor};
-
-/* === Constants === */
-
-const POLICY: OperationPolicy = harmos_runtime::OperationPolicy {
-    timeout: Duration::from_secs(120),
-    attempt_timeout: Duration::from_secs(120),
-    cancellation_timeout: std::time::Duration::ZERO,
-    retries: RetryPolicy::Never,
-};
-
-/* === Macros === */
-
-/* === Type Aliases === */
 
 /* === Structs === */
 
-#[harmos_runtime::stream(id = "consumption.payload", window = 16)]
-#[harmos_runtime::message]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Message)]
 pub struct Payload {
     pub sequence: u64,
     pub bytes: Vec<u8>,
 }
 
-#[harmos_runtime::message]
+#[derive(Message)]
+pub struct Progress {
+    pub expected: u64,
+}
+
+#[derive(Message)]
 pub struct Acknowledged {
     pub process_id: u32,
     pub rows: u64,
@@ -58,154 +39,41 @@ pub struct Acknowledged {
 }
 
 #[derive(Default)]
-pub struct State {
-    rows: AtomicU64,
-    bytes: AtomicU64,
+struct State {
+    totals: Mutex<(u64, u64)>,
     changed: Notify,
-}
-
-pub struct Receiver {
-    state: Arc<State>,
-}
-
-#[harmos_runtime::operation(resources = [State], id = "consumption.progress",
-    policy = POLICY,
-    response = Acknowledged,
-)]
-pub struct ProgressDeclaration {
-    pub expected: u64,
-}
-
-#[harmos_runtime::operation(codec = manual, resources = [State], id = "consumption.consume", response = (),
-    policy = POLICY, visibility = Public)]
-#[derive(Clone)]
-pub struct Consumption(Delivery<Listener>);
-
-impl harmos_runtime::Message for Consumption {
-    const CODEC: &'static str = <Delivery<Listener> as harmos_runtime::Message>::CODEC;
-    fn encode(&self) -> Vec<u8> {
-        harmos_runtime::Message::encode(&self.0)
-    }
-    fn encoded_size(&self) -> usize {
-        harmos_runtime::Message::encoded_size(&self.0)
-    }
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
-        <Delivery<Listener> as harmos_runtime::Message>::decoding_memory(bytes)
-    }
-    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        <Delivery<Listener> as harmos_runtime::Message>::decode(bytes).map(Self)
-    }
-}
-impl harmos_runtime::MemorySize for Consumption {
-    fn memory_size(&self) -> usize {
-        harmos_runtime::MemorySize::memory_size(&self.0)
-    }
-}
-impl harmos_runtime::schema::Described for Consumption {
-    const NAME: &'static str = <Delivery<Listener> as harmos_runtime::schema::Described>::NAME;
-    const FIELDS: &'static [harmos_runtime::schema::Field] = <Delivery<Listener> as harmos_runtime::schema::Described>::FIELDS;
-    const MARKER: &'static [u8] = <Delivery<Listener> as harmos_runtime::schema::Described>::MARKER;
-    const DEFINITION: harmos_runtime::schema::declaration::Definition =
-        <Delivery<Listener> as harmos_runtime::schema::Described>::DEFINITION;
-}
-
-#[harmos_runtime::listener(
-    id = "consumption.listener",
-    stream = Payload,
-    callback = "consumption.consume",
-    policy = POLICY
-)]
-pub struct Listener;
-
-/* === Enums === */
-
-#[harmos_runtime::catalog]
-pub enum Callbacks {
-    Consume(Consumption),
-    ProgressDeclaration(ProgressDeclaration),
-}
-
-#[harmos_domain::catalog]
-pub enum Listeners {
-    Listener(Listener),
-}
-
-/* === Traits === */
-
-/* === Implementations === */
-
-impl harmos_operations::lifecycle::Policy for Receiver {
-    const INITIALIZATION_POLICY: OperationPolicy = POLICY;
-    const SHUTDOWN_POLICY: OperationPolicy = POLICY;
-}
-
-impl harmos_runtime::Lifecycle for Receiver {
-    type Config = ();
-    type Context = Supervisor;
-    type Error = Refusal;
-
-    async fn prepare(_: (), setup: &mut harmos_sdk::Setup<Self>) -> std::result::Result<Self, Refusal> {
-        let plugin = Self { state: Arc::new(State::default()) };
-        setup.resource::<State>(plugin.state.clone());
-        Ok(plugin)
-    }
-}
-
-#[harmos_macros::plugin(harmos_path = ::harmos_runtime, description = "Consumes Host Stream Rows And Acknowledges Verified Payload Bytes.", id = "consumption", requires = (), listeners = Listeners)]
-impl harmos_runtime::Plugin for Receiver {
-    const CATALOGS: &'static [harmos_sdk::operations::Catalog] = &[Callbacks::CATALOG];
-}
-
-impl harmos_runtime::Operation for Consumption {
-    type Error = Refusal;
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<()>, Refusal> {
-        let state = ctx.resource::<State>();
-        let row = self.0;
-        let result: ::core::result::Result<(), Self::Error> = async move {
-            if !matches!(row.context(), DeliveryContext::Stream { .. }) {
-                return Err(Refusal::of("expected stream delivery"));
-            }
-            let row = row.row();
-            let expected = state.rows.load(Ordering::SeqCst);
-            if row.sequence != expected || !row.bytes.iter().all(|byte| *byte == (expected % 251) as u8) {
-                return Err(Refusal::of("payload loss, reordering or corruption"));
-            }
-            state.bytes.fetch_add(row.bytes.len() as u64, Ordering::SeqCst);
-            state.rows.store(expected + 1, Ordering::SeqCst);
-            state.changed.notify_waiters();
-            Ok(())
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
-}
-
-impl harmos_runtime::Operation for ProgressDeclaration {
-    type Error = Refusal;
-
-    async fn run(self, ctx: harmos_runtime::Context<'_, Self>) -> Result<harmos_runtime::operations::Response<Acknowledged>, Refusal> {
-        let state = ctx.resource::<State>();
-        let result: ::core::result::Result<Acknowledged, Self::Error> = async move {
-            loop {
-                let changed = state.changed.notified();
-                let rows = state.rows.load(Ordering::SeqCst);
-                if rows >= self.expected {
-                    return Ok(Acknowledged {
-                        process_id: std::process::id(),
-                        rows,
-                        bytes: state.bytes.load(Ordering::SeqCst),
-                    });
-                }
-                changed.await;
-            }
-        }
-        .await;
-        result.map(::core::convert::Into::into)
-    }
 }
 
 /* === Public Functions === */
 
-/* === Private Functions === */
-
-/* === Tests === */
+pub fn plugin() -> Plugin {
+    let state = Arc::new(State::default());
+    let receiver = state.clone();
+    let consume = Operation::new("consumption.consume", async move |_: &Context, row: Payload| {
+        let mut totals = receiver.totals.lock().unwrap();
+        if row.sequence != totals.0 || !row.bytes.iter().all(|byte| *byte == (totals.0 % 251) as u8) {
+            return Err(std::io::Error::other("Payload Loss, Reordering or Corruption").into());
+        }
+        totals.0 += 1;
+        totals.1 += row.bytes.len() as u64;
+        receiver.changed.notify_waiters();
+        Ok(())
+    })
+    .visibility(Visibility::Public);
+    let progress = Operation::new("consumption.progress", async move |_: &Context, request: Progress| {
+        loop {
+            let changed = state.changed.notified();
+            let (rows, bytes) = *state.totals.lock().unwrap();
+            if rows >= request.expected {
+                return Ok(Acknowledged {
+                    process_id: std::process::id(),
+                    rows,
+                    bytes,
+                });
+            }
+            changed.await;
+        }
+    })
+    .visibility(Visibility::Public);
+    Plugin::new("consumption", env!("CARGO_PKG_VERSION")).operation(consume).operation(progress)
+}

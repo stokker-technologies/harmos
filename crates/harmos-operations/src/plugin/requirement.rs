@@ -1,0 +1,219 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::borrow::Cow;
+// Third Party Imports
+use serde::{Deserialize, Serialize};
+// Local Imports
+use crate::catalog::Visitor;
+use crate::operations::WireDeclaration;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+// Permission to call one operation. An operation whose request names a channel,
+// stream or source resolves it to `scope`; any other operation is granted by
+// its id alone, which holding its requirement already confers.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct Grant {
+    pub operation: Cow<'static, str>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Cow<'static, str>>,
+}
+
+pub struct Requirement {
+    pub declaration: WireDeclaration,
+    pub grants: &'static [Grant],
+}
+
+pub struct Requirements;
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+impl Requirement {
+    pub const fn new(declaration: WireDeclaration, grants: &'static [Grant]) -> Self {
+        Self { declaration, grants }
+    }
+}
+
+impl Grant {
+    pub fn of(operation: impl Into<Cow<'static, str>>, scope: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            operation: operation.into(),
+            scope: Some(scope.into()),
+        }
+    }
+
+    pub fn operation(&self) -> &str {
+        &self.operation
+    }
+
+    pub fn scope(&self) -> Option<&str> {
+        self.scope.as_deref()
+    }
+}
+
+impl Visitor for Requirements {
+    type Entry = Requirement;
+}
+
+/* === Public Functions === */
+
+pub const fn catalog_requirements<const N: usize>(
+    declarations: &'static [crate::catalog::Node<WireDeclaration>],
+) -> [crate::catalog::Node<Requirement>; N] {
+    let mut required = [const { crate::catalog::Node::Nested(&[]) }; N];
+    let mut cursor = 0;
+    append_requirements(declarations, &mut required, &mut cursor);
+    assert!(cursor == N, "requirement description count differs");
+    required
+}
+
+// Upper Bound Includes Duplicates; Unused Nodes Are Empty Nested Projections.
+pub const fn callee_count(nodes: &[crate::catalog::Node<&'static [WireDeclaration]>]) -> usize {
+    let mut count = 0;
+    let mut index = 0;
+    while index < nodes.len() {
+        count += match &nodes[index] {
+            crate::catalog::Node::Leaf(entries) => entries.len(),
+            crate::catalog::Node::Nested(entries) => callee_count(entries),
+        };
+        index += 1;
+    }
+    count
+}
+
+pub const fn aggregate<const N: usize>(
+    explicit: &'static [crate::catalog::Node<Requirement>], provided: &[crate::catalog::Node<WireDeclaration>],
+    callees: &[crate::catalog::Node<&'static [WireDeclaration]>],
+) -> [crate::catalog::Node<Requirement>; N] {
+    let mut output = [const { crate::catalog::Node::Nested(&[]) }; N];
+    std::mem::forget(std::mem::replace(&mut output[0], crate::catalog::Node::Nested(explicit)));
+    let mut cursor = 1;
+    append_callees(callees, provided, &mut output, &mut cursor);
+    output
+}
+
+/* === Private Functions === */
+
+const fn append_requirements<const N: usize>(
+    declarations: &'static [crate::catalog::Node<WireDeclaration>], required: &mut [crate::catalog::Node<Requirement>; N],
+    cursor: &mut usize,
+) {
+    let mut index = 0;
+    while index < declarations.len() {
+        match &declarations[index] {
+            crate::catalog::Node::Nested(nested) => append_requirements(nested, required, cursor),
+            crate::catalog::Node::Leaf(declaration) => {
+                let previous =
+                    std::mem::replace(&mut required[*cursor], crate::catalog::Node::Leaf(Requirement::new(declaration.copied(), &[])));
+                std::mem::forget(previous);
+                *cursor += 1;
+            }
+        }
+        index += 1;
+    }
+}
+
+const fn same(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+const fn provided(nodes: &[crate::catalog::Node<WireDeclaration>], id: &str) -> bool {
+    let mut index = 0;
+    while index < nodes.len() {
+        let found = match &nodes[index] {
+            crate::catalog::Node::Leaf(entry) => same(entry.operation.id, id),
+            crate::catalog::Node::Nested(entries) => provided(entries, id),
+        };
+        if found {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn required(nodes: &[crate::catalog::Node<Requirement>], id: &str) -> bool {
+    let mut index = 0;
+    while index < nodes.len() {
+        let found = match &nodes[index] {
+            crate::catalog::Node::Leaf(entry) => same(entry.declaration.operation.id, id),
+            crate::catalog::Node::Nested(entries) => required(entries, id),
+        };
+        if found {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+const fn append_callees(
+    nodes: &[crate::catalog::Node<&'static [WireDeclaration]>], providers: &[crate::catalog::Node<WireDeclaration>],
+    output: &mut [crate::catalog::Node<Requirement>], cursor: &mut usize,
+) {
+    let mut index = 0;
+    while index < nodes.len() {
+        match &nodes[index] {
+            crate::catalog::Node::Nested(entries) => append_callees(entries, providers, output, cursor),
+            crate::catalog::Node::Leaf(entries) => {
+                let mut member = 0;
+                while member < entries.len() {
+                    let declaration = &entries[member];
+                    let id = declaration.operation.id;
+                    if !provided(providers, id) && !required(output, id) {
+                        std::mem::forget(std::mem::replace(
+                            &mut output[*cursor],
+                            crate::catalog::Node::Leaf(Requirement {
+                                declaration: declaration.copied(),
+                                grants: &[],
+                            }),
+                        ));
+                        *cursor += 1;
+                    }
+                    member += 1;
+                }
+            }
+        }
+        index += 1;
+    }
+}
+
+/* === Tests === */

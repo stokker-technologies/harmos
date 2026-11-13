@@ -14,18 +14,15 @@ mod authored;
 pub mod authorization;
 mod binding;
 mod caller;
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
-mod catalog;
+mod clock;
 pub(crate) mod context;
 mod surface;
 
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub(crate) mod children;
 
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod component;
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-mod encoded;
 mod execution;
 mod finalization;
 #[cfg(feature = "grpc")]
@@ -42,85 +39,82 @@ pub(crate) mod scope;
 mod session;
 mod streaming;
 
-#[cfg(feature = "plugin-sidecar")]
-mod native;
 mod registration;
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
-mod remote;
 
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+#[cfg(feature = "grpc")]
+mod protobuf;
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod sdk;
+#[cfg(feature = "grpc")]
+pub mod values;
 mod wire;
 
 /* === Re-Exports === */
 
+#[cfg(feature = "plugin-guest")]
+pub(crate) use crate::guest::host::envelope::{
+    WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand,
+};
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub use caller::Caller;
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
-pub use catalog::Binding;
 pub use context::ContextMut;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcBinding;
 #[cfg(feature = "grpc")]
 pub use grpc::GrpcMethod;
-pub use harmos_sdk::__private::{ErasedResponse, PreparedNative, ResourceSet, ServiceFuture};
-pub use harmos_sdk::operations::Invocation;
-pub use harmos_sdk::operations::NativeInstance;
-pub use harmos_sdk::operations::{
-    Backoff, CHILD_METHOD, CacheKey, CacheKeyError, CallValue, Callees, Catalog, Codec, ContextError, ContextValue, Contract,
-    ContractError, Contracts, Declarations, Dependent, Direction, Entry, Executable, FailureKind, Grpc, InvocationError, Invokes, Jitter,
-    MAX_CACHE_KEY_BYTES, NoStream, Operation, OperationCatalog, OperationDeclaration, OperationDefinition, OperationPolicy, PORTABLE_BYTES,
-    PORTABLE_VALUES, PolicyError, ReplaySafety, Requires, Resource, RestartPolicy, RetryPolicy, ServingError, StartupIssue, StartupReport,
-    Stream, Visibility, WIRE_METHOD, WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand,
-    WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, item_types,
+pub use harmos_operations::execution::__private::{ErasedResponse, PreparedNative, ResourceSet, ServiceFuture};
+pub use harmos_operations::execution::operations::Invocation;
+pub use harmos_operations::execution::operations::{
+    Backoff, CallValue, Callees, Catalog, CatalogDescription, Codec, ContextError, ContextValue, Contract, ContractError, Contracts,
+    Declarations, Direction, Entry, FailureKind, Grpc, InvocationError, Jitter, NoStream, Operation, OperationDefinition, OperationPolicy,
+    PORTABLE_BYTES, PORTABLE_VALUES, PolicyError, ReplaySafety, RequestShape, Resource, RestartPolicy, RetryPolicy, ServingError,
+    StartupIssue, StartupReport, Stream, Visibility, WireDeclaration, WireEndpoints, WireStreamLimits, WireStreams, item_types,
 };
-pub use harmos_sdk::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
+pub use harmos_operations::execution::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
+pub use harmos_operations::execution::operations::{ExecutionContext, FunctionContext, NativeInstance, OperationFactory, OperationSpec};
+#[cfg(feature = "grpc")]
+pub use harmos_operations::execution::operations::{
+    ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
+};
 pub use lane::{Capacity, Lane, LaneSet, LaneSettings};
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
-pub use remote::{RemoteStreamError, StreamEndpoints, StreamPeer};
 pub use scope::Scope;
 pub use surface::{InvocationExt, RuntimeOperationHost};
 
 pub use crate::config::OperationSettings as Settings;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-pub use component::{Component, ComponentBindings, ComponentError, ComponentOperation};
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
-pub use encoded::EncodedBinding;
+pub use component::{Component, ComponentError};
 pub use handler::{Context, HostContext, OperationGeneration, OperationInstanceId, Running};
-pub use harmos_domain::observers;
-pub use harmos_sdk::operations::StreamError;
-pub use harmos_sdk::operations::{EndpointSet, InputEndpoint, OutputEndpoint};
+pub use harmos_operations::execution::operations::StreamError;
+pub use harmos_operations::execution::operations::{EndpointSet, InputEndpoint, OutputEndpoint};
+pub use harmos_operations::observers;
 pub(crate) use manager::Manager;
 pub use manager::OperationManager;
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) use manager::WeakOperationManager;
+pub use protobuf::{ProtobufDownload, ProtobufExchange, ProtobufUpload};
 pub use session::{Completion, Download, Exchange, Session, SessionInput, SessionOutput, Upload};
 pub use streaming::{StreamInput, StreamItem, StreamOutput, StreamPermit, StreamSettings, stream};
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub(crate) use manager::Registry;
 
-#[cfg(feature = "plugin-sidecar")]
-pub use native::{Native, NativeBindings, NativeError, NativeOperation};
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub use registration::Bindings;
 pub(crate) use registration::CatalogBinding;
 pub use registration::Registration;
 pub(crate) use registration::RegistrationExt;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub use registration::PluginRegistration;
 
-#[cfg(any(feature = "plugin-sidecar", all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
+pub(crate) use manager::GrpcAdmission;
+#[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 pub use sdk::PluginSdkRegistration;
 pub use wire::EncodedInvocation;
 
-#[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+#[cfg(feature = "plugin-guest")]
 pub use wire::PluginCallback;
-
-#[cfg(feature = "plugin-sidecar")]
-pub(crate) use wire::PluginControl;
 
 /* === Imports === */
 

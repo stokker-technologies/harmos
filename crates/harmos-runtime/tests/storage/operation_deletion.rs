@@ -7,10 +7,6 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,22 +20,6 @@ use super::{Fixture, config};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FileMetadata, MutationId, StagedFile, StorageBackend};
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
-/* === Structs === */
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
-
 /* === Private Functions === */
 
 fn metadata(id: &str) -> FileMetadata {
@@ -52,8 +32,13 @@ fn metadata(id: &str) -> FileMetadata {
     }
 }
 
-fn request(f: &Fixture, id: &str) -> harmos_operations::storage::DeleteFile {
-    harmos_operations::storage::DeleteFile {
+struct Deletion {
+    mutation: MutationId,
+    file: StagedFile,
+}
+
+fn request(f: &Fixture, id: &str) -> Deletion {
+    Deletion {
         mutation: MutationId {
             window: f.storage.mutation_window().unwrap().id,
             key: Identifier::new("delete").unwrap(),
@@ -84,7 +69,7 @@ async fn delete_removes_file() {
     let mut query = f
         .storage
         .query(harmos_runtime::storage::Query {
-            at: f.storage.cursor_saved(),
+            at: f.storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
                 scope: None,
                 item: None,
@@ -99,7 +84,7 @@ async fn delete_removes_file() {
     drop(query);
     assert!(f.data.files.lock().unwrap().is_empty());
     assert!(f.data.blobs.lock().unwrap().is_empty());
-    assert!(f.data.create_file(&metadata("terminal")).await.is_err());
+    assert!(f.data.create_file_staging(&metadata("terminal")).await.is_err());
     let other = StagedFile {
         id: Identifier::new("other").unwrap(),
         ..request.file.clone()
@@ -122,7 +107,7 @@ async fn delete_abandoned_missing() {
     request.mutation.key = Identifier::new("missing").unwrap();
     request.file.id = Identifier::new("missing").unwrap();
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
-    assert!(f.data.create_file(&metadata("missing")).await.is_err());
+    assert!(f.data.create_file_staging(&metadata("missing")).await.is_err());
     f.finish().await;
 }
 
@@ -159,7 +144,9 @@ async fn deletion_preserves_other() {
     let mut pinned = f.storage.read_file(whole(&removed)).await.unwrap();
     let request = request(&f, "removed-last");
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
-    assert!(pinned.next().await.is_err());
+    // The Pinned Snapshot Retains Bytes After Deletion; Fresh Reads Refuse Them.
+    assert_eq!(pinned.next().await.unwrap().unwrap().bytes(), b"gone");
+    assert!(pinned.next().await.unwrap().is_none());
     assert!(f.storage.read_file(whole(&removed)).await.is_err());
     let mut reader = f.storage.read_file(whole(&kept)).await.unwrap();
     assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"kept");
@@ -177,7 +164,7 @@ async fn deleted_checkpoint_refused() {
     producer.abort().await.unwrap();
     let request = request(&f, "checkpoint");
     f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap();
-    f.data.save_production(harmos_runtime::storage::StorageBatch::new(vec![checkpoint])).await.unwrap();
+    f.data.set_file_production_checkpoints(harmos_runtime::storage::StorageBatch::new(vec![checkpoint])).await.unwrap();
     assert!(f.data.saved_productions.lock().unwrap().is_empty());
     assert!(f.data.staged.lock().unwrap().is_empty());
     f.finish().await;
@@ -210,7 +197,5 @@ async fn close_settles_deletion() {
     closing.await.unwrap();
     assert!(f.data.mutation_receipts.lock().unwrap().contains_key(&request.mutation));
     assert!(f.data.blobs.lock().unwrap().is_empty());
-    f.runtime.shutdown().await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
 }
-
-/* === Tests === */

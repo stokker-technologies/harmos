@@ -21,6 +21,9 @@
 
 /* === Constants === */
 
+pub const ANALYSIS: harmos_runtime::operations::Lane =
+    harmos_runtime::operations::Lane::new("Analysis", harmos_runtime::operations::Capacity::serial());
+
 /* === Macros === */
 
 /* === Type Aliases === */
@@ -28,15 +31,6 @@
 /* === Structs === */
 
 /* === Enums === */
-
-#[harmos::lanes]
-pub enum Lanes {
-    #[default]
-    Open,
-
-    #[lane(serial)]
-    Analysis,
-}
 
 /* === Traits === */
 

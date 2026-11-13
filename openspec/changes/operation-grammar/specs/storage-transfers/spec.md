@@ -1,0 +1,134 @@
+# Storage Transfers Delta
+
+## ADDED Requirements
+
+### Requirement: Face-Local Transfer Contracts
+
+The mapped storage contracts SHALL apply independently to `harmos.context.v1.Storage` child
+calls and `harmos.v1.Storage` client methods where design.md maps the capability
+to both faces. Each face SHALL own its request/response and authorization; shared
+handlers SHALL preserve the same storage guarantees. Native-only hooks SHALL stay native.
+
+#### Scenario: Storage Call by Audience
+
+- **WHEN** a client or an authorized plugin uses a capability mapped to both Storage faces
+- **THEN** the client calls harmos.v1.Storage and the plugin uses harmos.context.v1.Storage through its context child calls, with separate wrappers and authorization and the same storage guarantees
+
+### Requirement: Shared Resumable Unary Transfers
+
+Clients and plugins SHALL share the library StorageManager's unary resumable
+sessions and ranged content reads through separate context and client Storage declarations, sharing handlers. Uploads SHALL Create, Append
+ordered bytes at offsets, Get status, Publish or Delete to abandon. Configuration
+SHALL bound chunks/ranges. Products SHALL compose Storage directly and retain
+object metadata, removing duplicate upload engines. Plugin operations SHALL
+remain logically unary within their carriers.
+
+#### Scenario: Client and Plugin Upload
+
+- **WHEN** a client and an authorized plugin upload content
+- **THEN** the client calls harmos.v1.Storage on the host endpoint and the plugin makes harmos.context.v1.Storage child calls through its context, with separate wrappers and authorization but the same bounded unary chunk, receipt and integrity rules
+- **AND** no second Content/Uploads service or generic transfer implementation is introduced
+
+#### Scenario: Unsupported Provider
+
+- **WHEN** a selected provider does not support resumable sessions
+- **THEN** upload fails explicitly instead of selecting a streaming fallback
+
+### Requirement: Resumable Fenced Chunk Admission
+
+Session status SHALL expose accepted and durable progress. Resume SHALL fence the
+old writer. A chunk SHALL bind session, writer, offset, data and mutation identity.
+Identical bytes replayed at an accepted offset SHALL succeed; different bytes at
+that offset SHALL conflict even if a new request identity is supplied.
+Noncontiguous new offsets and stale writers SHALL refuse without corrupting the
+retained prefix.
+
+#### Scenario: Lost Reply and Resume
+
+- **WHEN** a writer loses a chunk reply, reads status and resumes under a new writer generation
+- **THEN** retained progress permits continuation, the previous writer is fenced and identical replay cannot duplicate bytes
+
+#### Scenario: Conflicting Offset
+
+- **WHEN** a chunk supplies different bytes at an already accepted offset
+- **THEN** it conflicts regardless of request identity and the original retained bytes remain unchanged
+
+### Requirement: Explicit Upload Terminal Outcomes
+
+PublishFileProduction SHALL validate expected length and digest before making
+content visible and returning a durable immutable reference. DeleteFileProduction
+SHALL abandon the unpublished session without publishing it. DeleteFile SHALL
+remain the separate action for published content; retained-reader reclamation is
+an open question to settle at its implementation task. Observation loss SHALL NOT
+publish or delete a session. Grant checks SHALL apply to every session action.
+
+#### Scenario: Integrity Mismatch
+
+- **WHEN** PublishFileProduction receives a length or digest inconsistent with uploaded content
+- **THEN** it refuses without exposing content or returning a successful immutable reference
+
+#### Scenario: Successful Publication
+
+- **WHEN** publication validates content and required persistence completes
+- **THEN** content becomes visible and its reference and durable receipt match its length and digest
+
+#### Scenario: Abandon After Disconnect
+
+- **WHEN** an observer disconnects and a later authorized caller deletes the unpublished session
+- **THEN** disconnect did not publish or delete it and deletion abandons it without publication
+
+### Requirement: Bounded Resumable Unary Downloads
+
+GetFileBytes SHALL accept offset, maximum bytes and optional at, returning a
+bounded byte range, total content length, content digest and resolved_at. Clients
+and plugins SHALL repeat their own face's unary Get to continue or resume. There SHALL
+be no streaming download operation or automatically generated twin.
+
+#### Scenario: Interrupted Download
+
+- **WHEN** a caller resumes with an offset into the same retained content selection
+- **THEN** Get returns the next bounded range and the same total length and digest
+
+#### Scenario: Configured Range Bound
+
+- **WHEN** a caller requests a range larger than the configured maximum
+- **THEN** the operation enforces that maximum and never returns an unbounded payload
+
+### Requirement: Nightly Transfer Throughput Verification
+
+As amended by the owner on 2026-11-13, streaming upload/download declarations,
+handlers, bindings, SDK surfaces and benchmark cases SHALL be deleted. The Nightly
+benchmark set SHALL measure
+large-file upload and download throughput with `integration/file_transfer` for
+client and plugin carriers, recording bytes, chunk/range configuration and
+throughput. This SHALL be a benchmark measurement, never a test assertion.
+
+#### Scenario: Transfer Removal Review
+
+- **WHEN** Nightly runs the transfer benchmark
+- **THEN** it reports unary upload/download throughput for both faces at the configured chunk size, without a timing assertion or streaming case
+
+### Requirement: One Storage-Owned Transfer Default
+
+Amended by the owner on 2026-11-13: `StorageSettings.transfer` SHALL own generated
+`StorageTransferSettings.chunk_bytes`, whose sole default is 4 MiB. Append sizes
+and omitted ranged-read sizes on both faces SHALL use it. Every SDK-created client
+connection, listener, plugin carrier and Wasm guest SHALL use the separate generated
+`MessageSettings.message_bytes` default of 8 MiB, declared once. The minimum
+ceiling SHALL remain the configured chunk plus protocol framing. Invalid or insufficient ceilings SHALL
+refuse construction/startup with an error naming the action and setting.
+
+#### Scenario: Default Chunk Across Carriers
+
+- **WHEN** a default client or plugin appends a full default chunk or reads with maximum bytes omitted
+- **THEN** the unary message passes every configured carrier and reads return at most the shared storage chunk size
+
+#### Scenario: Incompatible Ceiling
+
+- **WHEN** a listener, SDK connection, plugin or guest ceiling cannot carry its storage chunk plus framing
+- **THEN** startup refuses naming the configuring action, storage chunk setting and conflicting ceiling
+
+#### Scenario: Messages Larger Than a Transfer Chunk
+
+- **WHEN** a caller sends a non-transfer message larger than the default chunk but within the default message ceiling
+- **THEN** all four default SDK carriers accept and return the complete message without changing the storage chunk size

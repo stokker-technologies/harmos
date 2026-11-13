@@ -13,17 +13,10 @@
 
 /* === Imports === */
 
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-#[cfg(feature = "runtime")]
-use harmos_sdk::operations::instances::InstanceAccess;
-
-#[cfg(feature = "runtime")]
-use crate::{Error, Operation, Response};
-use harmos_domain::operations::instance::Id;
+use crate::Error;
+use crate::execution::operations::instances::InstanceAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_operations::operations::instance::Id;
 
 /* === Constants === */
 
@@ -33,19 +26,7 @@ use harmos_domain::operations::instance::Id;
 
 /* === Structs === */
 
-#[harmos::operation(
-    harmos_path = crate,
-    resources = [InstanceAccess],
-    id = "host.operations.cancel",
-    response = super::InstanceState,
-    policy = super::POLICY,
-    visibility = Public,
-    grpc(package = "harmos.host.v1", service = "Operations", method = "Cancel"),
-)]
-#[derive(Clone, Default, PartialEq)]
-pub struct Cancel {
-    pub instance: u64,
-}
+pub struct Cancel;
 
 /* === Enums === */
 
@@ -53,22 +34,42 @@ pub struct Cancel {
 
 /* === Implementations === */
 
-impl Cancel {
-    pub fn of(instance: Id) -> Self {
-        Self { instance: instance.value() }
+impl ProtobufOperation for Cancel {
+    type Request = harmos_protocol::v1::InvocationsCancelRequest;
+    type Response = harmos_protocol::v1::InvocationsCancelResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.Invocations/Cancel";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Invocations", "Cancel"));
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
+
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let access = context.resource::<InstanceAccess>().map_err(|_| ServingError::Catalog)?;
+        let instance = access
+            .0
+            .owned(Id::new(request.instance))
+            .ok_or_else(|| ServingError::Native(std::sync::Arc::new(Error::UnknownInstance(request.instance))))?;
+        let _ = output;
+        if instance.status().phase != harmos_operations::operations::instance::Phase::Running {
+            return Err(ServingError::Native(std::sync::Arc::new(Error::InvalidInput {
+                field: "Cancel",
+                reason: "only running invocations can be cancelled",
+            })));
+        }
+        instance.request_cancel();
+        Ok(harmos_protocol::v1::InvocationsCancelResponse {
+            invocation: Some(super::state(instance.status())),
+        })
     }
 }
 
-#[cfg(feature = "runtime")]
-impl Operation for Cancel {
-    type Error = Error;
-
-    async fn run(self, context: harmos_sdk::Context<'_, Self>) -> Result<Response<super::InstanceState>, Error> {
-        let access = context.resource::<harmos_sdk::operations::instances::InstanceAccess>();
-
-        let instance = access.0.owned(Id::new(self.instance)).ok_or(Error::UnknownInstance(self.instance))?;
-        instance.request_cancel();
-        Ok(super::InstanceState::from(instance.status()).into())
+impl Cancel {
+    pub fn of(instance: Id) -> harmos_protocol::v1::InvocationsCancelRequest {
+        harmos_protocol::v1::InvocationsCancelRequest {
+            instance: instance.value(),
+            reason: String::new(),
+        }
     }
 }
 

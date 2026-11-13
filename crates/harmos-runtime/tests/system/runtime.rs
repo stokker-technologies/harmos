@@ -9,10 +9,6 @@
 
 // The Host Alone: Boot, Serve Its Catalog, Persist Records, Shut Down
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,41 +20,26 @@ use arrow_array::{Array, Int64Array, StringArray, StructArray};
 use super::fixture::{
     Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema, state_settings,
 };
-use super::operations::Lanes;
+use super::fixture::{Data, StorageBackends};
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
-use harmos_runtime::storage::{JsonStorage, JsonStorageSettings};
-use std::num::NonZeroUsize;
-
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
+use std::sync::Arc;
 
 /* === Structs === */
 
-#[harmos_runtime::message]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Reading {
     value: i64,
 }
-
-/* === Enums === */
-
-/* === Traits === */
-
-/* === Implementations === */
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 
 // Every Saved Record of One Schema as (Item, Value), Through the Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
     let query = harmos_runtime::storage::Query {
-        at: storage.cursor_saved(),
+        at: storage.get_saved_position(),
         source: Source::Records(RecordSelection {
             schema: schema.clone(),
             scope: None,
@@ -104,12 +85,11 @@ async fn runtime_baseline_walks() {
     let _report = crate::report::system();
     // Boot the Host over a Journal on Disk
     let root = tempfile::tempdir().unwrap();
-    let settings = JsonStorageSettings {
-        root: root.path().to_path_buf(),
-        max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+    let data = Arc::new(Data::new(history()));
+    let backends = StorageBackends {
+        primary: data.clone(),
+        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(root.path().join("state"), history(), state_settings())),
     };
-    let data = JsonStorage::new(settings.clone(), history());
-    let backends = data.into_backends(state_settings());
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
@@ -122,7 +102,11 @@ async fn runtime_baseline_walks() {
 
     // Read the Catalog Before and After Serving Storage
     assert!(!served(&runtime).iter().any(|id| id.starts_with("storage_")), "nothing is served before the host registers it");
-    runtime.operations.register::<harmos_operations::storage::Storage>(Lanes::Open).await.unwrap();
+    runtime
+        .operations
+        .register_catalog(harmos_operations::storage::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
     let catalogue = served(&runtime);
     for required in ["storage.query", "storage.write_records", "storage.read_file"] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
@@ -138,9 +122,9 @@ async fn runtime_baseline_walks() {
     let low = Message::encode(&Reading { value: -3 });
     let high = Message::encode(&Reading { value: 8 });
     let records = [record(&schema, &first, &low), record(&schema, &second, &high)];
-    let written = storage.write_records((records).to_vec()).await.unwrap();
+    let written = storage.append_records((records).to_vec()).await.unwrap();
     storage.flush().await.unwrap();
-    assert!(storage.cursor_saved().sequence >= written.sequence);
+    assert!(storage.get_saved_position().sequence >= written.sequence);
     let expected = saved(&storage, &schema).await;
     assert_eq!(expected, [("first".to_owned(), -3), ("second".to_owned(), 8)]);
 
@@ -149,8 +133,11 @@ async fn runtime_baseline_walks() {
     assert!(!storage.status().running);
     assert!(storage.status().closed);
 
-    // Reopening The Shipped Backends Proves Shutdown Released Their Ownership.
-    let backends = JsonStorage::new(settings, history()).into_backends(state_settings());
+    // Reopening The Backends Proves Shutdown Released Their Ownership.
+    let backends = StorageBackends {
+        primary: data,
+        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(root.path().join("state"), history(), state_settings())),
+    };
     let reopened: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());

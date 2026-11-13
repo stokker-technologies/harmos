@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.context.v1;
+import "harmos/v1/types.proto";
+
+service CatalogEntries {
+  rpc List(CatalogEntriesListRequest) returns (CatalogEntriesListResponse);
+}
+
+message CatalogEntriesListRequest {
+  harmos.v1.CatalogKind kind = 1;
+  optional string schema = 2;
+}
+
+message CatalogEntriesListResponse {
+  bytes entries = 1;
+  repeated harmos.v1.DiscoveredOperation operations = 3;
+  harmos.v1.ReadCut resolved_at = 4;
+}

@@ -1,0 +1,291 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.v1;
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+message History { string store = 1; string epoch = 2; }
+
+message Position { History history = 1; uint64 sequence = 2; }
+
+message ResourceRevision { string name = 1; bytes revision = 2; }
+
+message ReadCut {
+  repeated Position positions = 1;
+  repeated ResourceRevision revisions = 2;
+}
+
+message PageRequest {
+  uint32 page_size = 1;
+  uint64 max_bytes = 2;
+  string page_token = 3;
+}
+
+message Receipt {
+  string request_id = 1;
+  Position accepted_at = 2;
+  Position durable_at = 3;
+  bool completed = 4;
+}
+
+message Catalog {
+  // Operations the plugin serves.
+  repeated OperationContract operations = 1;
+  // Operations it calls on the host or on other plugins.
+  repeated Requirement requires = 2;
+  // Streams it can publish.
+  repeated StreamDeclaration streams = 3;
+  // Product contributions, opaque to Harmos.
+  repeated Section sections = 4;
+  // SHA-256 over the serialized fields 1 to 4 and 6, in field order.
+  bytes digest = 5;
+  // Definitions of every message named in this catalog.
+  google.protobuf.FileDescriptorSet types = 6;
+}
+
+message OperationContract {
+  // Unique among the host and all connected plugins, for example
+  // "thermal.set".
+  string id = 1;
+  // Fully qualified message names found in Catalog.types.
+  string request = 2;
+  string response = 3;
+  Visibility visibility = 4;
+  OperationPolicy policy = 5;
+  // SHA-256 over the id and the request and response definitions.
+  bytes fingerprint = 6;
+  string description = 7;
+  // Only explicitly replay-safe operations may retry transient failures.
+  bool replay_safe = 8;
+}
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  // Process-local only; invalid in any wire catalog.
+  VISIBILITY_PRIVATE = 1;
+  // Everyone connected: other plugins and the host's clients.
+  VISIBILITY_PUBLIC = 2;
+  // The declaring plugin and its host, through the carrier only.
+  VISIBILITY_PROTECTED = 3;
+}
+
+message OperationPolicy {
+  // Bound on the whole invocation including retries.
+  google.protobuf.Duration timeout = 1;
+  // Bound on one attempt.
+  google.protobuf.Duration attempt_timeout = 2;
+  // Grace after Cancel before the host abandons the attempt.
+  google.protobuf.Duration cancellation_timeout = 3;
+  // Absent means one attempt. Delays use the host's clock.
+  RetryPolicy retries = 4;
+}
+
+message RetryPolicy {
+  uint64 total_attempts = 1; // Includes the first attempt; must be positive.
+  google.protobuf.Duration initial = 2;
+  google.protobuf.Duration maximum = 3; // Presence selects exponential backoff.
+  bool deterministic_jitter = 4;
+}
+
+message Requirement {
+  // Identifier of the operation the plugin calls.
+  string id = 1;
+  // Fingerprint the plugin was built against.
+  bytes fingerprint = 2;
+}
+
+message StreamDeclaration {
+  string id = 1;
+  // Fully qualified message name of one row, found in Catalog.types.
+  string row = 2;
+  string description = 3;
+  // Set for a stream sampled on the host's clock. Unset means the plugin
+  // sends samples when its device produces them.
+  google.protobuf.Duration interval = 4;
+  // Identifier of a plugin setting that gives the interval instead, if any.
+  string interval_setting = 5;
+}
+
+message Section {
+  // Fully qualified message name of the payload, for example
+  // "application.v1.Contributions". At most one section per name.
+  string type = 1;
+  bytes payload = 2;
+}
+
+message Request {
+  string operation = 1;
+  // Serialized request message of the operation.
+  bytes payload = 2;
+  // Unique per invocation, for logs and correlation.
+  string invocation = 3;
+  // 1 for the first attempt.
+  uint32 attempt = 4;
+  // Opaque to Harmos. The product names what the invocation belongs to.
+  string scope = 5;
+}
+
+message Cancel {
+  string reason = 1;
+}
+
+message Response {
+  oneof result {
+    // Serialized response message of the operation.
+    bytes payload = 1;
+    Failure failure = 2;
+  }
+}
+
+message ChildRequest {
+  // Chosen by the plugin, unique within this Invoke call.
+  uint64 call = 1;
+  string operation = 2;
+  bytes payload = 3;
+  // Fingerprint the plugin was built against.
+  bytes fingerprint = 4;
+  // Optional override of the callee's policy for this call.
+  OperationPolicy policy = 5;
+  // Explicit server-streaming child; each item requires one ChildDemand.
+  bool watch = 6;
+  // Consumer-owned maximum encoded item size; required for Watch.
+  uint64 max_response_bytes = 7;
+  // Policy guard timers do not make the executing handler idle.
+  bool background = 8;
+}
+
+message ChildDemand { uint64 call = 1; }
+
+message ChildCancel {
+  uint64 call = 1;
+}
+
+message ChildResponse {
+  uint64 call = 1;
+  oneof result {
+    bytes payload = 2;
+    Failure failure = 3;
+    bytes item = 4;
+  }
+}
+
+message Failure {
+  Classification classification = 1;
+  // Stable machine-readable code, for example "provider_absent".
+  string code = 2;
+  // What happened.
+  string message = 3;
+  // What the user can do about it.
+  string action = 4;
+  // Operation and plugin where it happened.
+  string operation = 5;
+  string plugin = 6;
+  // Failure of a child call that led to this one.
+  Failure cause = 7;
+  // Extra named facts.
+  map<string, string> details = 8;
+  // Stack or source chain for support. Never shown as the message.
+  string diagnostics = 9;
+}
+
+enum Classification {
+  CLASSIFICATION_UNSPECIFIED = 0;
+  // Retrying will not help.
+  CLASSIFICATION_PERMANENT = 1;
+  // Another attempt may succeed.
+  CLASSIFICATION_TRANSIENT = 2;
+  CLASSIFICATION_CANCELLED = 3;
+  CLASSIFICATION_TIMED_OUT = 4;
+  // Not admitted: visibility, fingerprint mismatch or absent provider.
+  CLASSIFICATION_REFUSED = 5;
+}
+
+message Tick {
+  // Host time of the tick. The answering sample carries it.
+  google.protobuf.Timestamp at = 1;
+}
+
+message SamplesSelection {
+  string stream = 1;
+  // Opaque to Harmos. The product names what the stream belongs to.
+  string scope = 2;
+}
+
+message Sample {
+  // For an interval stream, the time of the Tick this sample answers. For
+  // other streams, the device's own time if it supplies one; when unset
+  // the host stamps the sample on arrival.
+  google.protobuf.Timestamp at = 1;
+  // Serialized row message of the stream.
+  bytes row = 2;
+  // Counts samples on this call from 1, so the host can see a gap.
+  uint64 sequence = 3;
+}
+
+message AssignedOperation {
+  string operation = 1;
+  bytes fingerprint = 2;
+  uint64 generation = 3;
+}
+
+message OperationAssignments {
+  repeated AssignedOperation operations = 1;
+}
+
+message InstanceState {
+  string phase = 1;
+  string outcome = 2;
+  bool cancellation_requested = 3;
+  uint32 attempt = 4;
+}
+
+enum CatalogKind {
+  CATALOG_KIND_OPERATIONS = 0;
+  CATALOG_KIND_SCHEMAS = 1;
+  CATALOG_KIND_STREAMS = 2;
+  CATALOG_KIND_OBJECTS = 3;
+}
+
+message Protobuf {
+  bytes descriptors = 1;
+  string request = 2;
+  string response = 3;
+  optional string input = 4;
+  optional string output = 5;
+}
+
+message Grpc { string package = 1; string service = 2; string method = 3; bool managed = 4; }
+
+message Grant { string operation = 1; optional string scope = 2; }
+
+message DiscoveredContract {
+  string id = 1;
+  string description = 2;
+  Visibility visibility = 3;
+  OperationPolicy policy = 4;
+  // True only for an explicitly replay-safe declaration.
+  bool replay_safe = 5;
+  bytes fingerprint = 6;
+  // Absent for native-only declarations with no public protobuf binding.
+  Protobuf protobuf = 7;
+  Grpc grpc = 8;
+}
+
+message DiscoveredOperation {
+  string owner = 1;
+  uint64 generation = 2;
+  DiscoveredContract contract = 3;
+  repeated Grant grants = 4;
+  bool conditional_access = 5;
+  bool grpc_available = 6;
+}
+
+message FollowingRow {
+  bytes payload = 1;
+  google.protobuf.Duration published_delta = 2;
+}
+
+// A Catalog Section Declares Values, Never Their Contents or Their Storage.
+message SettingsDeclarations { repeated SettingDeclaration values = 1; }
+message SettingDeclaration { string name = 1; string type = 2; }

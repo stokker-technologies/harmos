@@ -41,7 +41,8 @@ pub struct Scope<'a> {
 
 #[derive(Clone)]
 pub(crate) struct ScopeCore {
-    cancellation: harmos_sdk::operations::Cancellation,
+    clock: crate::clock::Clock,
+    cancellation: harmos_operations::execution::operations::Cancellation,
     instances: Arc<Instances>,
     parent: Weak<Instance>,
     admission: Admission,
@@ -66,7 +67,7 @@ pub(crate) struct Child {
 /* === Implementations === */
 
 impl<'a> Scope<'a> {
-    pub fn cancellation(&self) -> &harmos_sdk::operations::Cancellation {
+    pub fn cancellation(&self) -> &harmos_operations::execution::operations::Cancellation {
         &self.core.cancellation
     }
 
@@ -78,7 +79,7 @@ impl<'a> Scope<'a> {
         Self { core }
     }
 
-    #[cfg(any(feature = "plugin", feature = "plugin-guest", feature = "plugin-sidecar"))]
+    #[cfg(feature = "plugin-guest")]
     pub(crate) fn original_control(&self) -> Weak<Instance> {
         self.core.parent.clone()
     }
@@ -110,15 +111,19 @@ impl<'a> Scope<'a> {
         Ok(preparation.inherit(self.core.cause))
     }
 
+    pub fn clock(&self) -> &crate::clock::Clock {
+        &self.core.clock
+    }
+
     pub fn now(&self) -> tokio::time::Instant {
-        crate::supervision::executor::now()
+        self.core.instances.clock.now()
     }
 
     pub fn records<A: crate::Application>(&self) -> crate::records::RecordManager<A> {
         crate::records::RecordManager::new(self.state::<A>())
     }
 
-    pub fn storage<A: crate::Application>(&self) -> Option<&'a crate::storage::StorageManager<crate::storage::ErasedCatalog>> {
+    pub fn storage<A: crate::Application>(&self) -> Option<&'a crate::storage::StorageManager> {
         self.core.instances.handles_of::<A>().storage.get()
     }
 
@@ -142,12 +147,13 @@ impl std::fmt::Debug for Scope<'_> {
 }
 
 impl ScopeCore {
-    pub(super) fn cancellation(&self) -> &harmos_sdk::operations::Cancellation {
+    pub(super) fn cancellation(&self) -> &harmos_operations::execution::operations::Cancellation {
         &self.cancellation
     }
 
     pub(crate) fn new(instances: Arc<Instances>, admission: Admission, cause: Option<Position>, parent: Weak<Instance>) -> Self {
         Self {
+            clock: instances.clock.clone().with_wait_scope(crate::clock::waiting_scope),
             cancellation: Default::default(),
             instances,
             parent,

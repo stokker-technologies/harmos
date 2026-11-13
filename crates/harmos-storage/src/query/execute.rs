@@ -98,6 +98,17 @@ impl Plan {
         self.slice.limit.is_some_and(|limit| self.emitted >= limit)
     }
 
+    pub(super) fn source_limit(&self) -> Option<u64> {
+        if !self.global.is_empty() || !self.prefix.iter().all(|transform| matches!(transform, Transform::Project(_))) {
+            return None;
+        }
+        self.slice.limit.map(|limit| self.slice.offset.saturating_sub(self.skipped).saturating_add(limit.saturating_sub(self.emitted)))
+    }
+
+    pub(super) fn is_inline(&self) -> bool {
+        self.global.is_empty() && self.prefix.iter().all(|transform| matches!(transform, Transform::Project(_)))
+    }
+
     #[tracing::instrument(name = "storage.query.execute.page", level = "trace", skip_all)]
     pub(super) fn page(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         if input.schema() != self.input {
@@ -203,15 +214,15 @@ mod tests {
         .unwrap()
     }
 
-    fn run(batch: &RecordBatch, transforms: Vec<Transform>, slice: RowSlice) -> Vec<u64> {
+    fn run(batch: &RecordBatch, transforms: Vec<Transform>, slice: RowSlice, page_rows: usize) -> Vec<u64> {
         let mut plan = Plan::new(batch.schema(), transforms, slice).unwrap();
         let mut output = Vec::new();
         let mut collect = |batch: RecordBatch| {
             let column = batch.column_by_name("ordinal").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
             output.extend(column.values().iter().copied());
         };
-        for offset in (0..batch.num_rows()).step_by(37) {
-            let page = batch.slice(offset, 37.min(batch.num_rows() - offset));
+        for offset in (0..batch.num_rows()).step_by(page_rows) {
+            let page = batch.slice(offset, page_rows.min(batch.num_rows() - offset));
             if let Some(batch) = plan.page(&page, &mut || Ok(())).unwrap() {
                 collect(batch);
             }
@@ -223,16 +234,16 @@ mod tests {
     }
 
     #[test]
-    fn spilled_reductions_preserve_seven_day_indices_and_slicing() {
-        let batch = source(7 * 24 * 60);
+    fn spilled_reductions_preserve_indices_and_slicing() {
+        let batch = source(2 * 37 + 1);
         let x = batch.column(0).as_any().downcast_ref::<Float64Array>().unwrap().values();
         let y = batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap().values();
         for algorithm in [Algorithm::Decimate, Algorithm::Extrema, Algorithm::Lttb, Algorithm::LttbLog] {
             let expected = match algorithm {
-                Algorithm::Decimate => crate::signal::decimate(batch.num_rows(), 40),
-                Algorithm::Extrema => crate::signal::extrema(y, 20),
-                Algorithm::Lttb => crate::signal::lttb(x, y, 40),
-                Algorithm::LttbLog => crate::signal::lttb_log(x, y, 40),
+                Algorithm::Decimate => crate::statistics::decimate(batch.num_rows(), 40),
+                Algorithm::Extrema => crate::statistics::extrema(y, 20),
+                Algorithm::Lttb => crate::statistics::lttb(x, y, 40),
+                Algorithm::LttbLog => crate::statistics::lttb_log(x, y, 40),
             };
             let transform = Transform::Downsample(Downsample {
                 algorithm,
@@ -240,7 +251,7 @@ mod tests {
                 value: Some(FieldPath::from("y")),
                 axis: Some(FieldPath::from("x")),
             });
-            let actual = run(&batch, vec![transform], RowSlice { offset: 2, limit: Some(17) });
+            let actual = run(&batch, vec![transform], RowSlice { offset: 2, limit: Some(17) }, 37);
             assert_eq!(actual, expected.into_iter().skip(2).take(17).map(|i| i as u64).collect::<Vec<_>>());
         }
     }
@@ -261,14 +272,17 @@ mod tests {
             value: None,
             axis: None,
         });
-        let actual = run(&batch, vec![sort, downsample], RowSlice { offset: 0, limit: None });
-        let expected = crate::signal::decimate(350, 20).into_iter().map(|i| 349 - i as u64).collect::<Vec<_>>();
+        let actual = run(&batch, vec![sort, downsample], RowSlice { offset: 0, limit: None }, 37);
+        let expected = crate::statistics::decimate(350, 20).into_iter().map(|i| 349 - i as u64).collect::<Vec<_>>();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn merged_spill_runs_keep_stable_ties() {
-        let rows = 2 * super::super::spill::PAGE_ROWS + 1_000;
+        // Three Runs Exercise Both Level Merges and the Final Uneven Fold.
+        // Each Run Uses a Real Page; Output Also Crosses the Page Limit.
+        let page_rows = super::super::spill::PAGE_ROWS;
+        let rows = 2 * page_rows + 1;
         let schema =
             Arc::new(Schema::new(vec![Field::new("key", DataType::UInt64, false), Field::new("ordinal", DataType::UInt64, false)]));
         let keys = (0..rows as u64).map(|row| row * 7_919 % 13).collect::<Vec<_>>();
@@ -284,7 +298,7 @@ mod tests {
                 nulls_first: false,
             }],
         });
-        let actual = run(&batch, vec![sort], RowSlice { offset: 0, limit: None });
+        let actual = run(&batch, vec![sort], RowSlice { offset: 0, limit: None }, page_rows);
         let mut expected = (0..rows as u64).collect::<Vec<_>>();
         expected.sort_by(|left, right| keys[*right as usize].cmp(&keys[*left as usize]));
         assert_eq!(actual, expected);

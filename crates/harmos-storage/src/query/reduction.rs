@@ -129,6 +129,17 @@ impl Selection {
 
 pub(super) fn transform(input: Spool, plan: &Transform, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
     match plan {
+        Transform::TimeBuckets(plan) => {
+            let mut accumulator = super::time_buckets::Accumulator::new(plan, input.schema.clone())?;
+            for batch in input.reader()? {
+                check()?;
+                accumulator.push(&batch.map_err(|_| invalid("bucket spill decoding failed"))?, check)?;
+            }
+            let batch = accumulator.finish(check)?;
+            let mut output = Builder::new(batch.schema())?;
+            output.push(&batch, check)?;
+            output.finish()
+        }
         Transform::Sort(plan) => super::ordering::sort(input, plan, check),
         Transform::Downsample(plan) => downsample(input, plan, check),
         Transform::Aggregate(plan) => aggregate(input, plan, check),
@@ -165,7 +176,8 @@ pub(super) fn downsample(input: Spool, plan: &Downsample, check: &mut impl FnMut
         last: None,
     };
     if matches!(plan.algorithm, Algorithm::Decimate) {
-        for index in crate::signal::decimate_indices(input.rows, plan.max_rows) {
+        let stride = (input.rows as f64 / plan.max_rows as f64).ceil() as usize;
+        for index in (0..input.rows).step_by(stride.max(1)) {
             check()?;
             selected.push(index)?;
         }

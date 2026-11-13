@@ -24,9 +24,9 @@ use std::mem::size_of;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use super::graph::{self, Error, Schema};
+use super::marker::{digits, number, quoted, quoted_len, write};
 use super::{Cardinality, MAX_NAME_BYTES};
 use crate::config::SchemaSettings;
-use crate::inventory::{digits, number, quoted, quoted_len, write};
 
 /* === Constants === */
 

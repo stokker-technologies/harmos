@@ -18,35 +18,12 @@
 // Third Party Imports
 
 // Local Imports
-use super::{ArrowIpc, SchemaKey, StorageCursor};
+use super::{ArrowIpc, SchemaKey};
 use crate::{Identifier, MemorySize};
 
 /* === Constants === */
 
 /* === Macros === */
-
-crate::model::storage::codec::product!(DataBatch {
-    sequence: crate::model::storage::codec::Unsigned => 1,
-    destination: crate::model::storage::codec::Id => 2,
-    schema: crate::model::storage::codec::Nested<SchemaKey> => 3,
-    data: crate::model::storage::codec::Nested<ArrowIpc> => 4,
-});
-crate::model::storage::codec::product!(BatchReceipt {
-    sequence: crate::model::storage::codec::Unsigned => 1,
-    cursor: crate::model::storage::codec::Nested<StorageCursor> => 2,
-});
-crate::model::storage::codec::product!(WriteCompletion {
-    batches: crate::model::storage::codec::Unsigned => 1,
-    cursor: crate::model::storage::codec::Nested<StorageCursor> => 2,
-});
-crate::model::storage::codec::variants!(WriteReceipt {
-    0, 1, "accepted": Self::Accepted(receipt) => {
-        receipt: crate::model::storage::codec::Nested<BatchReceipt> => 1,
-    } => Self::Accepted(receipt);
-    1, 2, "durable": Self::Durable(receipt) => {
-        receipt: crate::model::storage::codec::Nested<BatchReceipt> => 1,
-    } => Self::Durable(receipt);
-});
 
 /* === Type Aliases === */
 
@@ -60,25 +37,7 @@ pub struct DataBatch {
     pub data: ArrowIpc,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BatchReceipt {
-    pub sequence: u64,
-    pub cursor: StorageCursor,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WriteCompletion {
-    pub batches: u64,
-    pub cursor: StorageCursor,
-}
-
 /* === Enums === */
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WriteReceipt {
-    Accepted(BatchReceipt),
-    Durable(BatchReceipt),
-}
 
 /* === Traits === */
 
@@ -93,27 +52,27 @@ impl MemorySize for DataBatch {
     }
 }
 
-impl MemorySize for BatchReceipt {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.cursor.memory_size().saturating_sub(std::mem::size_of_val(&self.cursor)))
+impl From<DataBatch> for harmos_protocol::storage::DataBatch {
+    fn from(value: DataBatch) -> Self {
+        Self {
+            sequence: value.sequence,
+            destination: value.destination.to_string(),
+            schema: Some(value.schema.into()),
+            ipc: value.data.into_bytes(),
+        }
     }
 }
-
-impl MemorySize for WriteReceipt {
-    fn memory_size(&self) -> usize {
-        let receipt = match self {
-            Self::Accepted(receipt) | Self::Durable(receipt) => receipt,
-        };
-        std::mem::size_of::<Self>().saturating_add(receipt.memory_size().saturating_sub(std::mem::size_of::<BatchReceipt>()))
+impl TryFrom<harmos_protocol::storage::DataBatch> for DataBatch {
+    type Error = crate::Error;
+    fn try_from(value: harmos_protocol::storage::DataBatch) -> crate::Result<Self> {
+        Ok(Self {
+            sequence: value.sequence,
+            destination: Identifier::new(value.destination)?,
+            schema: value.schema.ok_or(crate::Error::InvalidInput { field: "schema", reason: "required" })?.try_into()?,
+            data: ArrowIpc::new(value.ipc),
+        })
     }
 }
-
-impl MemorySize for WriteCompletion {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.cursor.memory_size().saturating_sub(std::mem::size_of_val(&self.cursor)))
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

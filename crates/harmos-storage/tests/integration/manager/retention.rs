@@ -7,14 +7,10 @@
  * ***
  */
 
-/* === Modules === */
-
-/* === Re-Exports === */
-
 /* === Imports === */
 
 use super::backend::{Data, Recovery, history, storage_settings};
-use super::waveforms::{Experiment, Objects};
+use super::waveforms::{Experiment, objects_catalog};
 use harmos_storage::Identifier;
 use harmos_storage::Query;
 use harmos_storage::query::transform::{
@@ -33,43 +29,33 @@ use std::sync::atomic::Ordering;
 
 // Local Imports
 
-/* === Constants === */
-
-/* === Macros === */
-
-/* === Type Aliases === */
-
 /* === Structs === */
 
-// Journaled Storage Holding Two Durable Revisions Of One Object.
+// Fixture Storage Holding Two Durable Revisions Of One Object.
 struct Revisions {
-    storage: StorageManager<Objects>,
+    storage: StorageManager,
     first: Experiment,
     first_receipt: ObjectReceipt,
     second_receipt: ObjectReceipt,
     earlier: StorageCursor,
     durable: StorageCursor,
     schema: SchemaKey,
-    _directory: tempfile::TempDir,
 }
-
-/* === Enums === */
-
-/* === Traits === */
 
 /* === Implementations === */
 
 impl Revisions {
     async fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let data = JsonStorage::new(
-            JsonStorageSettings {
-                root: directory.path().to_path_buf(),
-                max_entry_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+        let data = std::sync::Arc::new(super::backend::Data::with_catalog(objects_catalog(), history()));
+        let storage = StorageManager::with_catalog(
+            objects_catalog(),
+            StorageBackends {
+                primary: data,
+                state: std::sync::Arc::new(Recovery::new(history())),
             },
-            history(),
-        );
-        let storage = StorageManager::<Objects>::new(data.into_backends(super::fixture::state_settings()), storage_settings()).unwrap();
+            storage_settings(),
+        )
+        .unwrap();
         super::fixture::start(&storage).await;
 
         // Two Revisions Of One Object Are Durable At Distinct Cursors.
@@ -87,9 +73,8 @@ impl Revisions {
             .await
             .unwrap();
         let durable = storage.flush().await.unwrap();
-        let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
+        let encoded = objects_catalog().encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
         Self {
-            _directory: directory,
             storage,
             first,
             first_receipt,
@@ -105,12 +90,10 @@ impl Revisions {
     }
 }
 
-/* === Public Functions === */
-
 /* === Private Functions === */
 
-async fn labels<C>(
-    storage: &StorageManager<C>, at: &StorageCursor, schema: &SchemaKey, versions: ObjectVersions,
+async fn labels(
+    storage: &StorageManager, at: &StorageCursor, schema: &SchemaKey, versions: ObjectVersions,
 ) -> harmos_storage::Result<Vec<String>> {
     let mut reader = storage
         .query(Query {
@@ -145,12 +128,12 @@ async fn labels<C>(
 #[tokio::test]
 async fn snapshots_progress_during_persistence() {
     // Save the Revision Whose Reads Must Remain Independent of a Later Write.
-    let data = Arc::new(Data::<Objects>::with_catalog(history()));
+    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
         state: Arc::new(Recovery::new(history())),
     };
-    let storage = StorageManager::<Objects>::new(backends, storage_settings()).unwrap();
+    let storage = StorageManager::with_catalog(objects_catalog(), backends, storage_settings()).unwrap();
     super::fixture::start(&storage).await;
     let first = Experiment {
         id: "first".into(),
@@ -172,7 +155,7 @@ async fn snapshots_progress_during_persistence() {
         tokio::spawn(async move { storage.flush_until(&pending.position).await })
     };
     data.control.write_entered.notified().await;
-    let read = storage.read_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
+    let read = storage.get_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
     assert_eq!(read.value, first);
     data.snapshots_released().await;
     assert!(!flushing.is_finished());
@@ -193,10 +176,10 @@ async fn snapshots_progress_during_persistence() {
     data.control.block_finish.store(true, Ordering::SeqCst);
     let finishing = tokio::spawn(async move { file.finish().await });
     data.control.finish_entered.notified().await;
-    let read = storage.read_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
+    let read = storage.get_object::<Experiment>(&first.id, ObjectVersion::Exact(receipt.version.clone())).await.unwrap().unwrap();
     assert_eq!(read.value, first);
     data.snapshots_released().await;
-    assert_eq!(storage.cursor_saved(), durable);
+    assert_eq!(storage.get_saved_position(), durable);
     data.control.block_finish.store(false, Ordering::SeqCst);
     data.control.finish_release.notify_one();
     let reference = finishing.await.unwrap().unwrap();
@@ -207,11 +190,11 @@ async fn snapshots_progress_during_persistence() {
     let reading = {
         let storage = storage.clone();
         let id = first.id.clone();
-        tokio::spawn(async move { storage.read_object::<Experiment>(&id, ObjectVersion::Exact(receipt.version)).await })
+        tokio::spawn(async move { storage.get_object::<Experiment>(&id, ObjectVersion::Exact(receipt.version)).await })
     };
     data.control.view_entered.notified().await;
-    let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
-    storage.release_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
+    let encoded = objects_catalog().encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
+    storage.delete_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
     let third = Experiment {
         id: first.id.clone(),
         label: "replacement".into(),
@@ -236,9 +219,9 @@ async fn reads_pin_cursor() {
     assert_eq!(latest(&r.durable).await.unwrap(), ["second"]);
     assert_eq!(labels(&r.storage, &r.durable, &r.schema, ObjectVersions::Revisions).await.unwrap(), ["first", "second"]);
     let exact =
-        r.storage.read_object::<Experiment>(&r.first.id, ObjectVersion::Exact(r.first_receipt.version.clone())).await.unwrap().unwrap();
+        r.storage.get_object::<Experiment>(&r.first.id, ObjectVersion::Exact(r.first_receipt.version.clone())).await.unwrap().unwrap();
     assert_eq!(exact.value, r.first);
-    let current = r.storage.read_object::<Experiment>(&r.first.id, ObjectVersion::Latest).await.unwrap().unwrap();
+    let current = r.storage.get_object::<Experiment>(&r.first.id, ObjectVersion::Latest).await.unwrap().unwrap();
     assert_eq!(current.version, r.second_receipt.version);
 
     // A Cursor From Another History Is Refused Before Any Output.
@@ -251,12 +234,12 @@ async fn reads_pin_cursor() {
 #[tokio::test]
 async fn release_reclaims_history() {
     // A Controlled Result Gate Separates Reclamation From Its Acknowledgement.
-    let data = Arc::new(Data::<Objects>::with_catalog(history()));
+    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
         state: Arc::new(Recovery::new(history())),
     };
-    let storage = StorageManager::<Objects>::new(backends, storage_settings()).unwrap();
+    let storage = StorageManager::with_catalog(objects_catalog(), backends, storage_settings()).unwrap();
     super::fixture::start(&storage).await;
     let first = Experiment {
         id: "experiment".into(),
@@ -272,11 +255,11 @@ async fn release_reclaims_history() {
         .await
         .unwrap();
     let durable = storage.flush().await.unwrap();
-    let encoded = Objects::encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
+    let encoded = objects_catalog().encode(&first, NonZeroUsize::new(16 * 1024).unwrap()).unwrap();
 
     assert_eq!(data.objects.lock().unwrap().len(), 2);
     data.control.block_prune_result.store(true, Ordering::SeqCst);
-    storage.release_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
+    storage.delete_object_history(&encoded.schema, &encoded.item, &durable).await.unwrap();
     data.control.prune_result_entered.notified().await;
     assert_eq!(data.objects.lock().unwrap().len(), 1);
     data.control.block_prune_result.store(false, Ordering::SeqCst);

@@ -3,3 +3,6 @@
 # compilation census reads its own source text: an assertion that spans a line
 # break stops matching the file it audits.
 * text=auto eol=lf
+
+# Descriptor sets are binary even when their protobuf encoding contains no NUL bytes.
+*.bin binary

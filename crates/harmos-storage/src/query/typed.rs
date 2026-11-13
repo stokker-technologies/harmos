@@ -30,11 +30,8 @@ use crate::storage::backend::ScanPage;
 use crate::storage::manager::Inner;
 use crate::storage::selection::Entry;
 use crate::storage::snapshot::Snapshot;
-use crate::storage::{
-    ObjectCatalog, ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StorageManager, StoredObject, StoredRecord, StoredRow,
-};
+use crate::storage::{ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StorageManager, StoredObject, StoredRecord, StoredRow};
 use crate::{BackendFailure, Error, MemorySize, Message, ReadBatch, Result};
-use harmos_domain::catalog::Contains;
 use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
 use harmos_domain::model::storage::object_key;
 
@@ -98,12 +95,10 @@ struct Pages<E: Entry> {
 
 /* === Implementations === */
 
-impl<C: ObjectCatalog> StorageManager<C> {
-    #[tracing::instrument(name = "storage.manager.read_objects", level = "trace", skip_all)]
-    pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>>
-    where
-        C: Contains<T>,
-    {
+impl StorageManager {
+    #[tracing::instrument(name = "storage.manager.list_object_revisions", level = "trace", skip_all)]
+    pub async fn list_object_revisions<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>> {
+        self.inner.catalog.handle::<T>()?;
         let schema = object_schema::<T>()?;
         let key = read.key.map(|key| object_key(key, self.inner.settings.scan_bytes())).transpose()?;
         let selection = ObjectSelection {
@@ -116,9 +111,9 @@ impl<C: ObjectCatalog> StorageManager<C> {
     }
 }
 
-impl<C> StorageManager<C> {
-    #[tracing::instrument(name = "storage.manager.read_records", level = "trace", skip_all)]
-    pub async fn read_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
+impl StorageManager {
+    #[tracing::instrument(name = "storage.manager.list_records", level = "trace", skip_all)]
+    pub async fn list_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
 
         let mut pages = Pages::open(self, read.at, read.selection).await?;
@@ -127,8 +122,8 @@ impl<C> StorageManager<C> {
     }
 }
 
-impl<C> StorageManager<C> {
-    pub async fn read_stream(&self, read: StreamRead) -> Result<StreamReader> {
+impl StorageManager {
+    pub async fn list_samples(&self, read: StreamRead) -> Result<StreamReader> {
         super::Source::Stream(read.selection.clone()).validate()?;
 
         let after = read.selection.after;
@@ -204,7 +199,7 @@ where
     E::Selection: MemorySize,
 {
     #[tracing::instrument(name = "storage.query.typed.open", level = "trace", skip_all)]
-    async fn open<C>(manager: &StorageManager<C>, at: StorageCursor, selection: E::Selection) -> Result<Self> {
+    async fn open(manager: &StorageManager, at: StorageCursor, selection: E::Selection) -> Result<Self> {
         let inner = &manager.inner;
         let active = query_slot(inner).await?;
         let snapshot = manager.snapshot(&at).await?;

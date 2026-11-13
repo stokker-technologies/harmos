@@ -33,6 +33,12 @@ pub(crate) const RESIDENT: &str = "harmos.resident";
 /* === Structs === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Lane {
+    name: &'static str,
+    capacity: Capacity,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Capacity {
     width: usize,
 }
@@ -42,7 +48,7 @@ pub struct LaneSettings {
     pub capacity: Capacity,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LaneSet {
     entries: Vec<(&'static str, Capacity)>,
 }
@@ -62,14 +68,34 @@ pub(crate) struct Lanes {
 
 /* === Traits === */
 
-pub trait Lane: Copy + Eq + Send + Sync + 'static {
-    fn catalog() -> LaneSet;
-    fn default_lane() -> Self;
-    fn name(&self) -> &'static str;
-    fn capacity(&self) -> Capacity;
+/* === Implementations === */
+
+impl Lane {
+    pub const fn new(name: &'static str, capacity: Capacity) -> Self {
+        Self { name, capacity }
+    }
+    pub const fn name(self) -> &'static str {
+        self.name
+    }
+    pub const fn capacity(self) -> Capacity {
+        self.capacity
+    }
 }
 
-/* === Implementations === */
+impl Default for Lane {
+    fn default() -> Self {
+        Self::new("Open", Capacity::unbounded())
+    }
+}
+
+impl Default for LaneSet {
+    fn default() -> Self {
+        let lane = Lane::default();
+        Self {
+            entries: vec![(lane.name(), lane.capacity())],
+        }
+    }
+}
 
 impl Capacity {
     pub const fn serial() -> Self {
@@ -90,8 +116,30 @@ impl Capacity {
 }
 
 impl LaneSet {
-    pub fn declared(entries: impl IntoIterator<Item = (&'static str, Capacity)>) -> Self {
-        Self { entries: entries.into_iter().collect() }
+    pub fn new(lanes: impl IntoIterator<Item = Lane>) -> crate::Result<Self> {
+        let mut set = Self::default();
+        for lane in lanes {
+            if lane.name.is_empty() || lane.name.chars().any(char::is_control) || lane.name == RESIDENT {
+                return Err(crate::Error::InvalidLane {
+                    name: lane.name,
+                    reason: "names must be nonempty, contain no control characters, and not be reserved",
+                });
+            }
+            if lane.capacity.width() == 0 {
+                return Err(crate::Error::InvalidLane {
+                    name: lane.name,
+                    reason: "must admit at least one job",
+                });
+            }
+            if set.contains(lane.name) {
+                return Err(crate::Error::InvalidLane {
+                    name: lane.name,
+                    reason: "declared more than once",
+                });
+            }
+            set.entries.push((lane.name, lane.capacity));
+        }
+        Ok(set)
     }
 
     pub(crate) fn entries(self) -> Vec<(&'static str, Capacity)> {

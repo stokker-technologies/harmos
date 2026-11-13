@@ -47,8 +47,16 @@ static NEXT_FILE: AtomicU64 = AtomicU64::new(1);
 
 /* === Structs === */
 
+#[derive(Clone, Debug)]
+pub struct FileProductionStatus {
+    pub progress: FileProgress,
+    pub writer_generation: Option<u64>,
+    pub accepted_length: u64,
+    pub durable_length: u64,
+}
+
 pub struct StorageFile {
-    manager: StorageManager<super::manager::ErasedCatalog>,
+    manager: StorageManager,
     id: u64,
     progress: Arc<Mutex<Progress>>,
     session: Option<FileSession>,
@@ -56,7 +64,7 @@ pub struct StorageFile {
 }
 
 struct CancelProduction {
-    manager: StorageManager<super::manager::ErasedCatalog>,
+    manager: StorageManager,
     id: u64,
     armed: bool,
     generation: Option<u64>,
@@ -84,6 +92,7 @@ pub(super) struct FileState {
     progress: Arc<Mutex<Progress>>,
     hash: Sha256,
     length: u64,
+    durable_length: u64,
     ticket: u64,
     command: Option<Command>,
     abandoned: bool,
@@ -99,6 +108,7 @@ enum Command {
     Create,
     Resume { expected: u64, next: u64 },
     Write(crate::FileChunk),
+    Replay { offset: u64, bytes: crate::FileChunk },
     Finish { target: Option<Target>, sha256: [u8; 32] },
     Abort,
 }
@@ -114,6 +124,7 @@ pub(super) enum FileAction {
     Create { id: u64, metadata: Arc<FileMetadata>, staging: StagedFile, resumable: bool },
     Resume { id: u64, staging: StagedFile, expected: u64, next: u64 },
     Write { id: u64, staging: StagedFile, offset: u64, bytes: crate::FileChunk },
+    Replay { id: u64, staging: StagedFile, offset: u64, bytes: crate::FileChunk },
     Finish { id: u64, staging: StagedFile, metadata: Arc<FileMetadata>, target: Target, length: u64, sha256: [u8; 32] },
     Abandon { id: u64, staging: StagedFile, extra: Option<StagedFile> },
     Abort { id: u64, staging: StagedFile, extra: Option<StagedFile> },
@@ -124,6 +135,7 @@ pub(super) enum FileCompleted {
     Created,
     Resumed(u64),
     Written,
+    Replayed(bool),
     Finished(Box<FileReference>),
     Aborted,
 }
@@ -135,6 +147,40 @@ pub(super) enum FileCompleted {
 impl FileAction {
     pub(crate) fn independent(&self) -> bool {
         !matches!(self, Self::Finish { .. } | Self::Refuse { .. })
+    }
+}
+
+impl StorageManager {
+    /// Status Is Read From the Production Owner, Without Creating a Writer.
+    pub async fn get_file_production_status(&self, file: &StagedFile) -> Result<FileProductionStatus> {
+        self.inner.primary.get_history().check(&file.history)?;
+        {
+            let state = self.inner.state.lock().unwrap();
+            if state.status.closing || !state.ready {
+                return Err(closed());
+            }
+            if let Some(active) = state.files.values().find(|active| active.staging == *file) {
+                let progress = active.production(file).expect("selected production")?;
+                let generation = active.session.as_ref().map(|session| session.generation);
+                let pending = match &active.command {
+                    Some(Command::Write(bytes)) => bytes.len() as u64,
+                    _ => 0,
+                };
+                return Ok(FileProductionStatus {
+                    progress,
+                    writer_generation: generation,
+                    accepted_length: progress.length + pending,
+                    durable_length: active.durable_length,
+                });
+            }
+        }
+        let progress = self.get_file_production(file).await?;
+        Ok(FileProductionStatus {
+            progress,
+            writer_generation: None,
+            accepted_length: progress.length,
+            durable_length: if progress.phase == FilePhase::Finished { progress.length } else { 0 },
+        })
     }
 }
 
