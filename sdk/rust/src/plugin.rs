@@ -162,11 +162,13 @@ impl Plugin {
             if contract.visibility == v1::Visibility::Private as i32 {
                 continue;
             }
+            harmos_protocol::schema::plugin_operation_identity(&contract.id).map_err(|error| Error::Invalid(error.to_string()))?;
             catalog.operations.push(contract);
             merge_types(&mut types, operation.types.clone())?;
         }
         let mut requires = HashSet::new();
         for requirement in &self.requirements {
+            harmos_protocol::schema::operation_identity(&requirement.id).map_err(|error| Error::Invalid(error.to_string()))?;
             if self
                 .operations
                 .iter()

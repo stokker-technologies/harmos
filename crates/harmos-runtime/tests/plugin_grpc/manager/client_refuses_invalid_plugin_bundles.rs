@@ -47,7 +47,7 @@ async fn client_refuses_invalid_plugin_bundles() {
     let error = host.manager.create(support::managed("missing", content, true)).await.unwrap_err();
     assert_eq!(error.0.code, "executable_missing");
     assert!(!error.0.action.is_empty());
-    assert!(host.runtime.operations.definition("conformance.echo").is_err());
+    assert!(host.runtime.operations.definition("conformance.step.0").is_err());
     assert!(host.client.list(support::page()).await.unwrap().into_inner().entries.is_empty());
     assert!(!root.path().join("plugins").exists());
 

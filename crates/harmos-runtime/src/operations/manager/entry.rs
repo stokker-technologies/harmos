@@ -35,12 +35,40 @@ use super::*;
 /* === Implementations === */
 
 impl Entry {
+    pub(super) fn client_visible(&self) -> bool {
+        use harmos_protocol::schema::{OperationFace, operation_identity};
+        let face = operation_identity(self.id());
+        let instance = matches!(face, Ok(OperationFace::Plugin)) && self.id().contains('/') && self.host_provided();
+        self.definition.visibility == crate::operations::Visibility::Public
+            && matches!(face, Ok(OperationFace::Client) | Ok(OperationFace::Plugin) if !instance)
+    }
+
+    pub(super) fn context_visible(&self) -> bool {
+        use harmos_protocol::schema::{OperationFace, operation_identity};
+        let face = operation_identity(self.id());
+        let instance = matches!(face, Ok(OperationFace::Plugin)) && self.id().contains('/') && self.host_provided();
+        matches!(face, Ok(OperationFace::Context) | Ok(OperationFace::Plugin) if !instance)
+            && !self
+                .contract
+                .as_ref()
+                .and_then(|contract| contract.grpc())
+                .is_some_and(|grpc| grpc.package == "harmos.v1" || grpc.package.starts_with("harmos.v1."))
+    }
+
     // Move a resident control onto the unbounded resident lane.
 
     // A resident control and its children outlive the committed plugin's
     // admission until the host cancels them.
     pub(in crate::operations) fn retires_late(&self) -> bool {
         false
+    }
+
+    fn host_provided(&self) -> bool {
+        #[cfg(feature = "plugin-guest")]
+        if self.plugin.is_some() {
+            return false;
+        }
+        self.binding.is::<harmos_operations::execution::operations::OperationFactory>()
     }
 
     pub(in crate::operations) fn declared(&self) -> &OperationDefinition {
@@ -155,9 +183,7 @@ impl Entry {
 
     pub(in crate::operations) fn authorize(&self, _origin: &Origin) -> Result<()> {
         #[cfg(feature = "grpc")]
-        if matches!(_origin.identity, super::super::caller::Identity::External(_))
-            && (self.definition.visibility != crate::operations::Visibility::Public || self.id().starts_with("harmos.context.v1."))
-        {
+        if matches!(_origin.identity, super::super::caller::Identity::External(_)) && !self.client_visible() {
             return Err(Error::OperationUnauthorized {
                 caller: "external".to_owned(),
                 owner: self.owner.to_string(),
@@ -166,13 +192,7 @@ impl Entry {
         }
         #[cfg(feature = "plugin-guest")]
         if let Some(caller) = &_origin.scope {
-            if self.sdk.is_some()
-                || self
-                    .contract
-                    .as_ref()
-                    .and_then(|contract| contract.grpc())
-                    .is_some_and(|grpc| grpc.package == "harmos.v1" || grpc.package.starts_with("harmos.v1."))
-            {
+            if self.sdk.is_some() || !self.context_visible() {
                 return Err(Error::OperationUnauthorized {
                     caller: caller.owner().to_owned(),
                     owner: self.owner.to_string(),

@@ -37,7 +37,7 @@ HOST_FAIL = Operation("conformance.host.fail", Value, Value, visibility=wire.VIS
 PEER_PUBLIC = Operation("conformance.peer.public", Value, Value, visibility=wire.VISIBILITY_PUBLIC)
 PEER_PROTECTED = Operation("conformance.peer.protected", Value, Value, visibility=wire.VISIBILITY_PROTECTED)
 PEER_LOCAL = Operation("conformance.peer.local", Value, Value, visibility=wire.VISIBILITY_PROTECTED)
-OWN_PROTECTED = Operation("conformance.protected", Value, Value, visibility=wire.VISIBILITY_PROTECTED)
+OWN_PROTECTED = Operation("example.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=wire.VISIBILITY_PROTECTED)
 HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=wire.VISIBILITY_PUBLIC)
 
 # === Types === #
@@ -80,7 +80,7 @@ class Fixture:
         }.get(request.value)
         return await context.call(LOCAL, request, policy=policy)
 
-    @operation("conformance.echo", request=Value, response=Value, visibility=wire.VISIBILITY_PUBLIC)
+    @operation("conformance.step.0", request=Value, response=Value, visibility=wire.VISIBILITY_PUBLIC)
     async def echo(self, ctx: Context, request: Value) -> Value:
         self.echoes += 1
         if request.value == b"scope":
@@ -155,11 +155,11 @@ class Fixture:
         after = await ctx.now()
         return Value(value=(after.seconds - before.seconds).to_bytes(8, "little", signed=True))
 
-    @operation("conformance.protected", request=Value, response=Value, visibility=wire.VISIBILITY_PROTECTED)
+    @operation("example.plugin.v1.Lifecycle/Initialize", request=Value, response=Value, visibility=wire.VISIBILITY_PROTECTED)
     async def protected(self, ctx: Context, request: Value) -> Value:
         return request
 
-    @operation("conformance.resources", request=Value, response=Value, visibility=wire.VISIBILITY_PUBLIC, replay_safe=True)
+    @operation("example.plugin.v1.Steps/Execute", request=Value, response=Value, visibility=wire.VISIBILITY_PUBLIC, replay_safe=True)
     async def resources(self, ctx: Context, request: Value) -> Value:
         ctx.set(request)
         await ctx.call(HOST_ECHO, request)

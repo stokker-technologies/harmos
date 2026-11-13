@@ -96,7 +96,8 @@ pub(crate) static COMPUTE_DESCRIPTION: harmos_runtime::operations::WireDeclarati
                 },
             },
         },
-    );
+    )
+    .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
 
 pub(crate) const COMPUTE_OPERATION: harmos_runtime::operations::OperationSpec<Compute> =
     harmos_runtime::operations::OperationSpec::<Compute>::new(&COMPUTE_DESCRIPTION);

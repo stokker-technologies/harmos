@@ -16,6 +16,13 @@ both directions of plugin/host invocation. A face is never a substitute for visi
 
 ## Invariants
 
+Wire operation admission uses the protocol-owned validator in
+`crates/harmos-protocol/src/schema.rs`, independently of native dotted identities.
+The [wire identity contract](../openspec/changes/operation-grammar/design.md#wire-operation-identity-admission)
+covers numeric template bindings and application-owned face packages. Catalog admission,
+guest admission and host protobuf declarations share it; visibility, descriptor fingerprints
+and caller-face authorization remain independent checks.
+
 1. **Three Audience Faces.** The plugin protocol is served by one running plugin
    instance and called only by its host; context is served by the host to a plugin
    during an invocation; the client API is served by the host to clients. The host

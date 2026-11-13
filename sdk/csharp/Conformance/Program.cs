@@ -17,7 +17,7 @@ internal sealed class ConformancePlugin
   private readonly Operation<Value, Value> peerPublic = new("conformance.peer.public", Visibility.Public);
   private readonly Operation<Value, Value> peerProtected = new("conformance.peer.protected", Visibility.Protected);
   private readonly Operation<Value, Value> peerLocal = new("conformance.peer.local", Visibility.Protected);
-  private readonly Operation<Value, Value> ownProtected = new("conformance.protected", Visibility.Protected);
+  private readonly Operation<Value, Value> ownProtected = new("example.plugin.v1.Lifecycle/Initialize", Visibility.Protected);
   private readonly Operation<Value, Value> hostWatch = new("conformance.host.watch", Visibility.Public, watch: true);
   private readonly Operation<Value, Value> local = new("conformance.local", Visibility.Private, replaySafe: true);
   private readonly Operation<Value, Value> hostEcho = new("conformance.host.echo", Visibility.Public);
@@ -29,7 +29,7 @@ internal sealed class ConformancePlugin
       .Message<Harmos.Conformance.V1.PayloadOnly>()
       .Operation(local, Local)
       .Operation(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall)
-      .Operation(new Operation<Value, Value>("conformance.echo", Visibility.Public), Echo)
+      .Operation(new Operation<Value, Value>("conformance.step.0", Visibility.Public), Echo)
       .Operation(new Operation<Value, Value>("conformance.children", Visibility.Public), Children)
       .Operation(new Operation<Value, Value>("conformance.cancel", Visibility.Public), Cancel)
       .Operation(new Operation<Value, Value>("conformance.failure", Visibility.Public), Failure)
@@ -42,8 +42,8 @@ internal sealed class ConformancePlugin
       .Operation(new Operation<Graph, Value>("conformance.projected", Visibility.Public),
           (context, request) => Task.FromResult(request.Tail?.Value ?? new Value()))
       .Operation(new Operation<Value, Value>("conformance.clock", Visibility.Public), ClockCall)
-      .Operation(new Operation<Value, Value>("conformance.protected", Visibility.Protected), Echo)
-      .Operation(new Operation<Value, Value>("conformance.resources", Visibility.Public, replaySafe: true), Resources)
+      .Operation(new Operation<Value, Value>("example.plugin.v1.Lifecycle/Initialize", Visibility.Protected), Echo)
+      .Operation(new Operation<Value, Value>("example.plugin.v1.Steps/Execute", Visibility.Public, replaySafe: true), Resources)
       .Operation(new Operation<Value, Value>("conformance.cancel_reason", Visibility.Public), CancelReason)
       .Operation(new Operation<Value, Value>("conformance.watch", Visibility.Public), Watch)
       .Operation(new Operation<Value, Value>("conformance.peer_call", Visibility.Public), PeerCall)

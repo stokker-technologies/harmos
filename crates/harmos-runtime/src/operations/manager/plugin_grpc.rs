@@ -187,7 +187,7 @@ impl Manager {
 impl crate::operations::Context<'_> {
     pub(crate) async fn invoke_client(&self, request: v1::InvocationsInvokeRequest) -> Result<Vec<u8>> {
         let entry = self.operations.capture_entry(&request.operation)?;
-        if entry.definition.visibility != Visibility::Public || request.operation.starts_with("harmos.context.v1.") {
+        if !entry.client_visible() {
             return Err(Error::OperationUnauthorized {
                 caller: "client".into(),
                 owner: entry.owner.to_string(),
@@ -223,12 +223,7 @@ impl crate::operations::Context<'_> {
         if entry.owner.as_str() != owner && entry.definition.visibility != Visibility::Public {
             return Err(denied());
         }
-        if entry
-            .contract
-            .as_ref()
-            .and_then(|contract| contract.grpc())
-            .is_some_and(|grpc| grpc.package == "harmos.v1" || grpc.package.starts_with("harmos.v1."))
-        {
+        if !entry.context_visible() {
             return Err(denied());
         }
         let required = requires.iter().find(|required| required.id == child.operation).ok_or_else(denied)?;

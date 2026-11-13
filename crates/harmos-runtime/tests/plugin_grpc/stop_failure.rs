@@ -40,7 +40,7 @@ async fn failed_cleanup_closes_only_its_plugin_and_preserves_the_failure() {
 
     // Other Plugins And Host Operations Still Run
     let input = super::invoke_support::payload(b"peer survives");
-    assert_eq!(host.runtime.operations.call_encoded("fixture.public", input.clone()).await.unwrap(), input);
+    assert_eq!(host.runtime.operations.call_encoded("example.plugin.v1.Steps/Execute", input.clone()).await.unwrap(), input);
     let response = host
         .runtime
         .operations

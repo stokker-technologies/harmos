@@ -12,6 +12,7 @@
 /* === Modules === */
 
 mod active_call;
+mod application_faces;
 mod cancellation;
 mod catalog_admission;
 mod child_calls;
@@ -32,6 +33,7 @@ mod host_values_failure;
 mod independent_streams;
 mod interval_stream;
 mod invoke_support;
+mod malformed_identity;
 mod malformed_payload;
 mod managed_environment;
 mod managed_lifecycle;
@@ -47,3 +49,4 @@ mod scope;
 mod stop_failure;
 mod stream_reconnect;
 mod support;
+mod wire_identities;

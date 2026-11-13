@@ -219,9 +219,7 @@ impl Catalog {
     pub fn build(self) -> Result<Self, ServingError> {
         let mut names = std::collections::BTreeSet::new();
         for operation in &self.operations {
-            if !operation.builtin {
-                operation.definition.validate().map_err(ServingError::Declaration)?;
-            }
+            operation.validate_definition()?;
             if !names.insert(operation.definition.id.clone()) {
                 return Err(ServingError::Declaration(crate::operations::Error::DuplicateOperation {
                     id: operation.definition.id.to_string(),
@@ -483,9 +481,7 @@ impl OperationFactory {
     }
 
     pub fn validate(&self) -> Result<(), ServingError> {
-        if !self.builtin {
-            self.definition.validate().map_err(ServingError::from)?;
-        }
+        self.validate_definition()?;
         let declared = match &self.registered_id {
             Some(id) => (self.named)(id.as_str())?,
             None => (self.declared)(),
@@ -495,6 +491,14 @@ impl OperationFactory {
         }
         if !(self.endpoints_valid)() {
             return Err(ServingError::EndpointTypes);
+        }
+        Ok(())
+    }
+
+    fn validate_definition(&self) -> Result<(), ServingError> {
+        let protobuf = self.contract().is_ok_and(|contract| contract.protobuf().is_some());
+        if !self.builtin && !protobuf {
+            self.definition.validate().map_err(ServingError::from)?;
         }
         Ok(())
     }

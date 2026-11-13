@@ -75,8 +75,15 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
     let activation = plugin.activation().unwrap();
 
     // Public Operations Are Invoked Through the Host Registry.
-    let operation =
-        activation.description.catalog.as_ref().unwrap().operations.iter().find(|operation| operation.id == "fixture.public").unwrap();
+    let operation = activation
+        .description
+        .catalog
+        .as_ref()
+        .unwrap()
+        .operations
+        .iter()
+        .find(|operation| operation.id == "example.plugin.v1.Steps/Execute")
+        .unwrap();
     let input = payload(b"client request");
     let response = client
         .invoke(harmos_protocol::v1::InvocationsInvokeRequest {
@@ -90,8 +97,15 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
     assert_eq!(response.payload, input);
 
     // Neither a Matching Fingerprint nor the Client Carrier Broadens Protected Visibility.
-    let operation =
-        activation.description.catalog.as_ref().unwrap().operations.iter().find(|operation| operation.id == "fixture.protected").unwrap();
+    let operation = activation
+        .description
+        .catalog
+        .as_ref()
+        .unwrap()
+        .operations
+        .iter()
+        .find(|operation| operation.id == "example.plugin.v1.Lifecycle/Initialize")
+        .unwrap();
     let error = client
         .invoke(harmos_protocol::v1::InvocationsInvokeRequest {
             operation: operation.id.clone(),
@@ -100,7 +114,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         })
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("fixture.protected"));
+    assert!(error.to_string().contains("example.plugin.v1.Lifecycle/Initialize"));
     // The Same Client Cannot Reach a Protected Host Built-In.
     let error = client
         .invoke(harmos_protocol::v1::InvocationsInvokeRequest {

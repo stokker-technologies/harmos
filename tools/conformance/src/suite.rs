@@ -66,6 +66,7 @@ pub const CASES: &[&str] = &[
     "Local Private Attempt Deadline",
     "Local Private Cooperative Cancellation",
     "Host-Mediated Peer Visibility",
+    "Wire Operation Identities",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -249,6 +250,36 @@ async fn publish_status(
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
+        30 => {
+            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Declare: Missing Catalog".into()))?;
+            for operation in &catalog.operations {
+                harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| Error::Invalid(error.to_string()))?;
+            }
+            for (id, visibility) in [
+                ("conformance.step.0", v1::Visibility::Public),
+                ("example.plugin.v1.Lifecycle/Initialize", v1::Visibility::Protected),
+                ("example.plugin.v1.Steps/Execute", v1::Visibility::Public),
+            ] {
+                let operation = catalog
+                    .operations
+                    .iter()
+                    .find(|operation| operation.id == id)
+                    .ok_or_else(|| Error::Invalid(format!("Declare {id}: Missing Operation")))?;
+                require(operation.visibility == visibility as i32, "Declare: Wire Operation Visibility Differs")?;
+                let payload = fixture::payload(b"wire identity");
+                let (send, mut input) = invoke(&mut client, id, payload.clone()).await?;
+                if id == "example.plugin.v1.Steps/Execute" {
+                    child(&mut input, 1, "conformance.host.echo", &payload).await?;
+                    send_child(&send, 1, child_response::Result::Payload(payload.clone())).await?;
+                }
+                require(terminal(&mut input).await? == response::Result::Payload(payload), "Invoke: Wire Identity Result Differs")?;
+            }
+            for id in ["example..step.0", "example.plugin.v1.Steps/", "harmos.plugin.v1.Instance/Invoke"] {
+                let error =
+                    harmos_protocol::schema::plugin_operation_identity(id).expect_err("Register: Invalid Wire Identity Was Admitted");
+                require(error.to_string().contains(id), "Register: Identity Refusal Lost Its Action")?;
+            }
+        }
         1 => {
             require(
                 description.id == "conformance"
@@ -283,14 +314,14 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         3 => {
             for value in [vec![], vec![0, 255, 1, 128]] {
                 let payload = fixture::payload(&value);
-                let (send, mut input) = invoke(&mut client, "conformance.echo", payload.clone()).await?;
+                let (send, mut input) = invoke(&mut client, "conformance.step.0", payload.clone()).await?;
                 drop(send);
                 require(terminal(&mut input).await? == response::Result::Payload(payload), "Echo Changed Protobuf Payload")?;
             }
 
             // The Author Opts Into Scope Checking; Ordinary Calls Stay Unscoped.
             for scope in ["scope/α", "scope/β", ""] {
-                let mut frame = request("conformance.echo", fixture::payload(b"scope"));
+                let mut frame = request("conformance.step.0", fixture::payload(b"scope"));
                 let Some(instance_invoke_request::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
                 request.scope = scope.into();
                 let mut input = client.invoke(stream::iter([frame])).await?.into_inner();
@@ -306,7 +337,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     require(result == response::Result::Payload(fixture::payload(scope.as_bytes())), "Scope Did Not Reach Handler")?;
                 }
             }
-            let mut frame = request("conformance.echo", fixture::payload(b"unscoped"));
+            let mut frame = request("conformance.step.0", fixture::payload(b"unscoped"));
             let Some(instance_invoke_request::Frame::Request(request)) = frame.frame.as_mut() else { unreachable!() };
             request.scope.clear();
             let mut input = client.invoke(stream::iter([frame])).await?.into_inner();
@@ -332,7 +363,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 Code::InvalidArgument,
             )
             .await?;
-            let frames = [request("conformance.cancel", fixture::payload(b"")), request("conformance.echo", fixture::payload(b""))];
+            let frames = [request("conformance.cancel", fixture::payload(b"")), request("conformance.step.0", fixture::payload(b""))];
             let mut input = client.invoke(stream::iter(frames)).await?.into_inner();
             child(&mut input, 1, "conformance.host.pending", &fixture::payload(b"")).await?;
             require(input.message().await.err().is_some_and(|status| status.code() == Code::InvalidArgument), "Repeated Request Accepted")?;
@@ -418,7 +449,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         9 => {
             invoke_status(client.invoke(stream::iter([request("conformance.absent", fixture::payload(b""))])).await, Code::NotFound)
                 .await?;
-            let mut frame = request("conformance.echo", vec![255]);
+            let mut frame = request("conformance.step.0", vec![255]);
             invoke_status(client.invoke(stream::iter([frame.clone()])).await, Code::InvalidArgument).await?;
             if let Some(instance_invoke_request::Frame::Request(request)) = &mut frame.frame {
                 request.payload = fixture::payload(b"");
@@ -437,7 +468,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         11 => {
             let (first, mut first_input) = open(&mut client, "conformance.ticks").await?;
             let (second, mut second_input) = open(&mut client, "conformance.ticks").await?;
-            let (_send, mut input) = invoke(&mut client, "conformance.echo", fixture::payload(b"independent")).await?;
+            let (_send, mut input) = invoke(&mut client, "conformance.step.0", fixture::payload(b"independent")).await?;
             require(
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"independent")),
                 "Idle Stream Blocked Invoke",
@@ -472,7 +503,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let (send, input) = open(&mut client, "conformance.ticks").await?;
             drop(input);
             drop(send);
-            let (_send, mut input) = invoke(&mut client, "conformance.echo", fixture::payload(b"after close")).await?;
+            let (_send, mut input) = invoke(&mut client, "conformance.step.0", fixture::payload(b"after close")).await?;
             require(
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"after close")),
                 "Closed Demand Broke Connection",
@@ -638,9 +669,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         21 => {
             let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
             for (id, visibility, replay_safe) in [
-                ("conformance.protected", v1::Visibility::Protected, false),
-                ("conformance.resources", v1::Visibility::Public, true),
-                ("conformance.echo", v1::Visibility::Public, false),
+                ("example.plugin.v1.Lifecycle/Initialize", v1::Visibility::Protected, false),
+                ("example.plugin.v1.Steps/Execute", v1::Visibility::Public, true),
+                ("conformance.step.0", v1::Visibility::Public, false),
             ] {
                 let operation = catalog
                     .operations
@@ -657,9 +688,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Interleave Calls Across Two Independent Invocation Resource Stores.
             let first_payload = fixture::payload(b"first");
             let second_payload = fixture::payload(b"second");
-            let (first_send, mut first) = invoke(&mut client, "conformance.resources", first_payload.clone()).await?;
+            let (first_send, mut first) = invoke(&mut client, "example.plugin.v1.Steps/Execute", first_payload.clone()).await?;
             child(&mut first, 1, "conformance.host.echo", &first_payload).await?;
-            let (second_send, mut second) = invoke(&mut client, "conformance.resources", second_payload.clone()).await?;
+            let (second_send, mut second) = invoke(&mut client, "example.plugin.v1.Steps/Execute", second_payload.clone()).await?;
             child(&mut second, 1, "conformance.host.echo", &second_payload).await?;
             send_child(&second_send, 1, child_response::Result::Payload(second_payload.clone())).await?;
             require(terminal(&mut second).await? == response::Result::Payload(second_payload), "Second Invocation Resource Differs")?;
@@ -712,7 +743,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         29 => {
             for (mode, operation) in [
                 (b"public".as_slice(), "conformance.peer.public"),
-                (b"self", "conformance.protected"),
+                (b"self", "example.plugin.v1.Lifecycle/Initialize"),
                 (b"protected", "conformance.peer.protected"),
                 (b"local", "conformance.peer.local"),
             ] {

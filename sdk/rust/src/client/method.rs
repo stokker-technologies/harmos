@@ -70,6 +70,7 @@ impl<Q, R, I, O> Clone for Method<Q, R, I, O> {
 impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
     /// Bind Generated Types To An Authoritative Discovered Or Application Contract.
     pub fn new(contract: host::DiscoveredContract) -> Result<Self, Status> {
+        schema::operation_identity(&contract.id).map_err(invalid)?;
         if contract.visibility != host::Visibility::Public as i32 {
             return Err(Status::permission_denied(format!("Bind {}: Public Visibility Required", contract.id)));
         }
@@ -81,10 +82,14 @@ impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
             return Err(Status::invalid_argument("operation fingerprint differs from descriptors"));
         }
         let grpc = contract.grpc.as_ref().ok_or_else(|| Status::invalid_argument("operation has no gRPC mapping"))?;
-        if !grpc.package.split('.').all(identifier) || !identifier(&grpc.service) || !identifier(&grpc.method) {
-            return Err(Status::invalid_argument("invalid gRPC mapping"));
+        if grpc.service.contains('.') {
+            return Err(Status::invalid_argument(format!("Bind {}: Invalid gRPC Service", contract.id)));
         }
-        let path = format!("/{}.{}/{}", grpc.package, grpc.service, grpc.method).parse().map_err(invalid)?;
+        let method = format!("{}.{}/{}", grpc.package, grpc.service, grpc.method);
+        if schema::operation_identity(&method).map_err(invalid)? != schema::OperationFace::Client {
+            return Err(Status::permission_denied(format!("Bind {method}: Client Face Required")));
+        }
+        let path = format!("/{method}").parse().map_err(invalid)?;
         Ok(Self {
             contract: Arc::new(contract),
             path,
@@ -154,12 +159,6 @@ fn verify<T: ReflectMessage + Default>(name: &str, contract: &host::Protobuf) ->
         return Err(Status::invalid_argument("generated message schema differs from operation contract"));
     }
     Ok(())
-}
-
-fn identifier(name: &str) -> bool {
-    let mut bytes = name.bytes();
-    bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 fn invalid(error: impl std::fmt::Display) -> Status {

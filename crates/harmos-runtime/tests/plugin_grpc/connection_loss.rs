@@ -44,7 +44,7 @@ async fn dropped_connection_fails_only_its_in_flight_calls() {
 
     // Other Plugins And Host Operations Remain Available
     let input = payload(b"public");
-    assert_eq!(host.runtime.operations.call_encoded("fixture.public", input.clone()).await.unwrap(), input);
+    assert_eq!(host.runtime.operations.call_encoded("example.plugin.v1.Steps/Execute", input.clone()).await.unwrap(), input);
     let response = host.runtime.operations.submit::<Host>(Host { value: b"host".to_vec() }).unwrap().await.unwrap();
     assert_eq!(response.value, b"host");
     // A Replacement Connection Registers Fresh Operations

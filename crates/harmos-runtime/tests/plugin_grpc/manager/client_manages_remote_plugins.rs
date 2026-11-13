@@ -98,7 +98,7 @@ async fn client_manages_remote_plugins() {
 
     // Invoke Through the Existing Scoped Host Dispatcher
     let operations = host.runtime.operations.with_scope("opaque-unit").unwrap();
-    let response = operations.call_encoded("conformance.echo", payload(b"scope")).await.unwrap();
+    let response = operations.call_encoded("conformance.step.0", payload(b"scope")).await.unwrap();
     assert_eq!(response, payload(b"opaque-unit"));
 
     // Disable Using the Whole Writable Value and Refuse Its Stale Revision
@@ -115,7 +115,7 @@ async fn client_manages_remote_plugins() {
         .entry
         .unwrap();
     assert_eq!(disabled.state, wire::PluginState::Stopped as i32);
-    assert!(host.runtime.operations.call_encoded("conformance.echo", payload(b"disabled")).await.is_err());
+    assert!(host.runtime.operations.call_encoded("conformance.step.0", payload(b"disabled")).await.is_err());
     assert!(
         host.client
             .set(wire::PluginsSetRequest {
@@ -207,7 +207,7 @@ async fn client_manages_remote_plugins() {
         .unwrap();
     assert!(host.client.list(support::page()).await.unwrap().into_inner().entries.is_empty());
     assert!(peer.is_running());
-    assert!(host.runtime.operations.definition("conformance.echo").is_err());
+    assert!(host.runtime.operations.definition("conformance.step.0").is_err());
     drop(watch);
     host.close().await;
     peer.close().await;

@@ -90,7 +90,7 @@ macro_rules! peer_request {
 peer_request!(PeerPublic, "conformance.peer.public");
 peer_request!(PeerProtected, "conformance.peer.protected");
 peer_request!(PeerLocal, "conformance.peer.local");
-peer_request!(OwnProtected, "conformance.protected");
+peer_request!(OwnProtected, "example.plugin.v1.Lifecycle/Initialize");
 
 /* === Enums === */
 
@@ -169,7 +169,7 @@ fn main() -> Result<()> {
         .message::<PayloadOnly>()
         .operation(Operation::new("conformance.local", local).visibility(Visibility::Private).replay_safe())
         .operation(Operation::new("conformance.local_call", local_call).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.echo", echo).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.step.0", echo).visibility(Visibility::Public))
         .operation(Operation::new("conformance.children", children).visibility(Visibility::Public))
         .operation(Operation::new("conformance.cancel", cancel).visibility(Visibility::Public))
         .operation(Operation::new("conformance.failure", failure).visibility(Visibility::Public))
@@ -179,8 +179,8 @@ fn main() -> Result<()> {
         .operation(Operation::new("conformance.nested", nested).visibility(Visibility::Public))
         .operation(Operation::new("conformance.projected", projected).visibility(Visibility::Public))
         .operation(Operation::new("conformance.clock", clock).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.protected", echo).visibility(harmos_protocol::v1::Visibility::Protected))
-        .operation(Operation::new("conformance.resources", resources).visibility(Visibility::Public).replay_safe())
+        .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos_protocol::v1::Visibility::Protected))
+        .operation(Operation::new("example.plugin.v1.Steps/Execute", resources).visibility(Visibility::Public).replay_safe())
         .operation(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))
         .operation(Operation::new("conformance.watch", watch).visibility(Visibility::Public))
         .operation(Operation::new("conformance.peer_call", peer_call).visibility(Visibility::Public))

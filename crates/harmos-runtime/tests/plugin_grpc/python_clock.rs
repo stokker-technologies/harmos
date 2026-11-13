@@ -25,7 +25,7 @@ async fn python_plugin_sleep_and_now_share_the_virtual_host_clock() {
 
     // Invoke Python Through The Host With Its Full Stream Inventory Active
     let payload = super::invoke_support::payload(b"python");
-    let reply = host.runtime.operations.submit_encoded("conformance.echo", payload.clone()).unwrap().await.unwrap();
+    let reply = host.runtime.operations.submit_encoded("conformance.step.0", payload.clone()).unwrap().await.unwrap();
     assert_eq!(reply, payload);
     // A Valid Private Handler Is Local to the SDK and Never Admitted by the Host.
     assert!(

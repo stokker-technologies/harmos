@@ -49,9 +49,7 @@ pub(super) fn verify(catalog: &v1::Catalog) -> Result<(), Error> {
         .map_err(|error| Error::Invalid(format!("Invalid Catalog Definitions: {error}")))?;
     let mut operations = BTreeSet::new();
     for operation in &catalog.operations {
-        if harmos_operations::reserved(&operation.id) {
-            return Err(Error::Invalid(format!("Register {}: Host Namespace Is Reserved", operation.id)));
-        }
+        schema::plugin_operation_identity(&operation.id).map_err(|error| Error::Invalid(error.to_string()))?;
         if operation.id.is_empty() || !operations.insert(&operation.id) {
             return Err(Error::Invalid(format!("Duplicate or Empty Operation: {}", operation.id)));
         }
@@ -92,6 +90,7 @@ pub(super) fn verify(catalog: &v1::Catalog) -> Result<(), Error> {
     }
     let mut requires = BTreeSet::new();
     for requirement in &catalog.requires {
+        schema::operation_identity(&requirement.id).map_err(|error| Error::Invalid(error.to_string()))?;
         if requirement.id.is_empty() || !requires.insert(&requirement.id) || requirement.fingerprint.len() != 32 {
             return Err(Error::Invalid(format!("Invalid Requirement: {}", requirement.id)));
         }

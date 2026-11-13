@@ -301,6 +301,7 @@ impl Contract {
     pub fn from_protobuf(
         operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
+        harmos_protocol::schema::operation_identity(operation.id.as_str()).map_err(|error| ContractError::Protobuf(error.to_string()))?;
         if operation.id.as_str().starts_with("harmos.context.v1.") {
             use prost::Message;
             use prost_reflect::ReflectMessage;
@@ -365,7 +366,7 @@ impl Contract {
             }
             operation.policy.validate().map_err(crate::operations::Error::from)?;
         } else {
-            operation.validate()?;
+            operation.policy.validate().map_err(crate::operations::Error::from)?;
         }
         Self::generated(operation, protobuf, binding, settings)
     }
@@ -555,7 +556,16 @@ impl Contract {
 
     pub fn with_id(mut self, id: impl Into<String>) -> Result<Self, ContractError> {
         self.operation.id = harmos_domain::Identifier::new(id.into()).map_err(crate::operations::Error::from)?;
-        self.operation.validate()?;
+        if self.protobuf.is_some() {
+            if crate::reserved(self.operation.id.as_str()) {
+                return Err(crate::operations::Error::ReservedOperation { id: self.operation.id.to_string() }.into());
+            }
+            harmos_protocol::schema::operation_identity(self.operation.id.as_str())
+                .map_err(|error| ContractError::Protobuf(error.to_string()))?;
+            self.operation.policy.validate().map_err(crate::operations::Error::from)?;
+        } else {
+            self.operation.validate()?;
+        }
         self.fingerprint = self.computed_fingerprint()?;
         self.operation.fingerprint = self.fingerprint;
         Ok(self)
@@ -641,6 +651,29 @@ impl TryFrom<DecodedContract> for Contract {
     type Error = ContractError;
 
     fn try_from(decoded: DecodedContract) -> Result<Self, Self::Error> {
+        if decoded.operation.id.as_str() == crate::observers::CONTROL_OPERATION.entry().id
+            || matches!(decoded.operation.id.as_str(), "harmos.initialize" | "harmos.shutdown")
+        {
+            // Read Only Exact SDK Metadata; Ordinary Declaration Admission Still Rejects These Names.
+            use crate::model::operations::lifecycle::{Action, Descriptor};
+            let refused = || crate::operations::Error::ReservedOperation { id: decoded.operation.id.to_string() }.into();
+            let expected = match decoded.operation.id.as_str() {
+                id if id == crate::observers::CONTROL_OPERATION.entry().id => crate::observers::contract()?,
+                "harmos.initialize" => {
+                    Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone()
+                }
+                "harmos.shutdown" => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
+                _ => return Err(refused()),
+            };
+            let identity_matches =
+                decoded.operation == expected.operation && decoded.fingerprint == expected.fingerprint && decoded.codec == expected.codec;
+            let schema_matches =
+                decoded.schema == expected.schema && decoded.grpc == expected.grpc && decoded.protobuf == expected.protobuf;
+            if !identity_matches || !schema_matches {
+                return Err(refused());
+            }
+            return Ok(expected);
+        }
         if let Some(protobuf) = decoded.protobuf {
             let expected = if matches!(decoded.operation.id.as_str(), "harmos.v1.Time/Sleep" | "harmos.v1.Time/Get") {
                 let clock = Self::clock(
@@ -668,22 +701,7 @@ impl TryFrom<DecodedContract> for Contract {
             return Self::new(decoded.operation, decoded.fingerprint, decoded.codec, decoded.schema)?.with_grpc(decoded.grpc);
         }
 
-        // Read Only Exact SDK Metadata; Ordinary Declaration Admission Still Rejects These Names.
-        use crate::model::operations::lifecycle::{Action, Descriptor};
-        let refused = || crate::operations::Error::ReservedOperation { id: decoded.operation.id.to_string() }.into();
-        let expected = match decoded.operation.id.as_str() {
-            id if id == crate::observers::CONTROL_OPERATION.entry().id => crate::observers::contract()?,
-            "harmos.initialize" => Descriptor::new(Action::Initialize, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
-            "harmos.shutdown" => Descriptor::new(Action::Shutdown, decoded.operation.policy).map_err(|_| refused())?.contract().clone(),
-            _ => return Err(refused()),
-        };
-        let identity_matches =
-            decoded.operation == expected.operation && decoded.fingerprint == expected.fingerprint && decoded.codec == expected.codec;
-        let schema_matches = decoded.schema == expected.schema && decoded.grpc == expected.grpc;
-        if !identity_matches || !schema_matches {
-            return Err(refused());
-        }
-        Ok(expected)
+        Err(crate::operations::Error::ReservedOperation { id: decoded.operation.id.to_string() }.into())
     }
 }
 
@@ -728,6 +746,41 @@ mod tests {
     use crate::operations::{Backoff, Jitter, RetryPolicy};
     use serde_json::json;
 
+    #[test]
+    fn application_wire_contracts_keep_native_identity_and_fingerprint_checks() {
+        let template = Contract::clock(false, lifecycle::POLICY, &SchemaSettings::default()).unwrap();
+        for id in [
+            "example.step.0",
+            "example.plugin.v1.Lifecycle/Initialize",
+            "example.context.v1.Prompts/Create",
+            "example.v1.jobs.Progress/Get",
+        ] {
+            let mut operation = template.operation().clone();
+            operation.id = harmos_domain::Identifier::new(id).unwrap();
+            operation.visibility = super::super::Visibility::Protected;
+            assert!(operation.validate().is_err(), "native identity unexpectedly accepted {id}");
+            let contract =
+                Contract::from_protobuf(operation, template.protobuf().unwrap().clone(), None, &SchemaSettings::default()).unwrap();
+            let encoded = serde_json::to_value(&contract).unwrap();
+            assert_eq!(serde_json::from_value::<Contract>(encoded.clone()).unwrap(), contract);
+            let renamed = contract.clone().with_id("example.criterion.0").unwrap();
+            assert_eq!(renamed.operation().id.as_str(), "example.criterion.0");
+            assert_eq!(renamed.fingerprint(), template.protobuf().unwrap().fingerprint("example.criterion.0").unwrap());
+            assert!(contract.with_id("harmos.plugin.v1.Instance/Invoke").is_err());
+            let mut forged = encoded;
+            forged["fingerprint"] = json!("00".repeat(32));
+            assert!(serde_json::from_value::<Contract>(forged).is_err(), "forged fingerprint accepted for {id}");
+        }
+        for id in ["example..step.0", "example.plugin.v1.Steps/", "example.plugin.v1.Steps/Execute/Again"] {
+            let mut operation = template.operation().clone();
+            operation.id = harmos_domain::Identifier::new(id).unwrap();
+            let error =
+                Contract::from_protobuf(operation, template.protobuf().unwrap().clone(), None, &SchemaSettings::default()).unwrap_err();
+            assert!(error.to_string().contains(id));
+            assert!(error.to_string().contains("Declare"));
+        }
+    }
+
     fn sdk_contracts() -> [Contract; 3] {
         let policy = super::super::OperationPolicy {
             timeout: std::time::Duration::from_secs(17),
@@ -769,6 +822,13 @@ mod tests {
                 let mut forged = encoded.clone();
                 *forged.pointer_mut(pointer).unwrap() = replacement;
                 assert!(serde_json::from_value::<Contract>(forged).is_err(), "{pointer}");
+            }
+            if let Some(protobuf) = original.protobuf() {
+                let mut forged = encoded.clone();
+                let mut protobuf = protobuf.clone();
+                protobuf.descriptors.clear();
+                forged["protobuf"] = serde_json::to_value(protobuf).unwrap();
+                assert!(serde_json::from_value::<Contract>(forged).is_err());
             }
             let mut exposed = encoded;
             exposed["grpc"] = json!({"package": "forged.v1", "service": "Exposed", "method": "Invoke"});

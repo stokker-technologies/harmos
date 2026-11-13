@@ -55,11 +55,13 @@ impl Grpc {
     }
 
     pub fn validate(&self) -> Result<(), super::ContractError> {
+        let id = format!("{}.{}/{}", self.package, self.service, self.method);
+        harmos_protocol::schema::operation_identity(&id).map_err(|_| super::ContractError::Grpc)?;
         if self.package.is_empty()
             || self.package.len() > 255
-            || !self.package.split('.').all(identifier)
-            || !identifier(&self.service)
-            || !identifier(&self.method)
+            || self.service.len() > 255
+            || self.service.contains('.')
+            || self.method.len() > 255
             || self.package.starts_with("grpc.")
             || self.package.contains(".context.v")
             || self.package.contains(".plugin.v")
@@ -83,12 +85,5 @@ impl Grpc {
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn identifier(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    value.len() <= 255
-        && bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-}
 
 /* === Tests === */

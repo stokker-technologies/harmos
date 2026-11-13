@@ -28,7 +28,7 @@ use harmos_protocol::v1::*;
 
 /* === Constants === */
 
-pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure", "policy"];
+pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy"];
 pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.context.v1.Time/Sleep", "harmos.context.v1.Time/Get"];
 
 pub const ROW: &str = "harmos.conformance.v1.Value";
@@ -132,7 +132,7 @@ pub fn catalog() -> Catalog {
         "conformance.peer.public",
         "conformance.peer.protected",
         "conformance.peer.local",
-        "conformance.protected",
+        "example.plugin.v1.Lifecycle/Initialize",
     ]
     .into_iter()
     .map(|id| Requirement {
@@ -190,8 +190,8 @@ pub fn catalog() -> Catalog {
         ..Default::default()
     });
     for (id, visibility, replay_safe) in [
-        ("conformance.protected", Visibility::Protected, false),
-        ("conformance.resources", Visibility::Public, true),
+        ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected, false),
+        ("example.plugin.v1.Steps/Execute", Visibility::Public, true),
         ("conformance.cancel_reason", Visibility::Public, false),
         ("conformance.watch", Visibility::Public, false),
         ("conformance.peer_call", Visibility::Public, false),

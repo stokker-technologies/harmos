@@ -39,11 +39,62 @@ pub struct Error(String);
 
 /* === Enums === */
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OperationFace {
+    Plugin,
+    Context,
+    Client,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
 
 /* === Public Functions === */
+
+/// Validate a Wire Operation Identity and Resolve Its Audience Face.
+pub fn operation_identity(id: &str) -> Result<OperationFace, Error> {
+    let invalid = || Error(format!("Declare {id}: Invalid Wire Operation Identity"));
+    let Some((service, method)) = id.split_once('/') else {
+        if id.split('.').all(|segment| !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')) {
+            return Ok(OperationFace::Plugin);
+        }
+        return Err(invalid());
+    };
+    let (package, service) = service.rsplit_once('.').ok_or_else(invalid)?;
+    let identifier = |value: &str| {
+        let mut bytes = value.bytes();
+        bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+            && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    };
+    if !package.split('.').all(identifier) || !identifier(service) || !identifier(method) {
+        return Err(invalid());
+    }
+    let segments: Vec<_> = package.split('.').collect();
+    let mut face = OperationFace::Client;
+    for pair in segments.windows(2) {
+        let version =
+            pair[1].strip_prefix('v').is_some_and(|version| !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit()));
+        if version && matches!(pair[0], "plugin" | "context") {
+            if face != OperationFace::Client {
+                return Err(invalid());
+            }
+            face = if pair[0] == "plugin" { OperationFace::Plugin } else { OperationFace::Context };
+        }
+    }
+    Ok(face)
+}
+
+/// Admit Only Plugin-Face Identities Outside the Library Namespace.
+pub fn plugin_operation_identity(id: &str) -> Result<(), Error> {
+    if operation_identity(id)? != OperationFace::Plugin {
+        return Err(Error(format!("Register {id}: Serve Operations on the Plugin Face")));
+    }
+    if id.starts_with("harmos.") || id.starts_with("harmos_") {
+        return Err(Error(format!("Register {id}: Host Namespace Is Reserved")));
+    }
+    Ok(())
+}
 
 /// Hash an operation's reachable request and response descriptors, independently
 /// of unrelated declarations in the catalog. See the v1 behaviour contract.
@@ -271,3 +322,52 @@ fn normalize_message(message: &mut DescriptorProto) {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wire_identities_resolve_faces_without_native_segment_restrictions() {
+        for (id, face) in [
+            ("example.step.0", OperationFace::Plugin),
+            ("example.criterion.12", OperationFace::Plugin),
+            ("example.plugin.v1.Lifecycle/Initialize", OperationFace::Plugin),
+            ("example.plugin.v2.steps.Progress/Get", OperationFace::Plugin),
+            ("example.context.v1.Prompts/Create", OperationFace::Context),
+            ("example.context.v1.jobs.Progress/Watch", OperationFace::Context),
+            ("example.v1.Steps/Execute", OperationFace::Client),
+            ("example.v1.jobs.Progress/Get", OperationFace::Client),
+            ("example.context.values.Prompts/Create", OperationFace::Client),
+            ("_example.v1._Service/_Method", OperationFace::Client),
+        ] {
+            assert_eq!(operation_identity(id).unwrap(), face, "{id}");
+            assert_eq!(plugin_operation_identity(id).is_ok(), face == OperationFace::Plugin, "{id}");
+        }
+        for id in [
+            "",
+            ".example",
+            "example.",
+            "example..step.0",
+            "example step",
+            "example.-step",
+            "example.écho",
+            "Steps/Execute",
+            ".Steps/Execute",
+            "example.plugin.v1.Steps/",
+            "example.plugin.v1./Execute",
+            "example.plugin.v1.Steps/Execute/Again",
+            "example.0.Steps/Execute",
+            "example.v1.Steps/0",
+            "example.plugin.v1.context.v1.Steps/Execute",
+        ] {
+            let error = operation_identity(id).unwrap_err().to_string();
+            assert!(error.contains("Declare"), "{error}");
+            assert!(error.contains(id), "{error}");
+        }
+        for id in ["harmos.plugin.v1.Instance/Invoke", "harmos.context.v1.Time/Get", "harmos.v1.Time/Get", "harmos_forged.step.0"] {
+            assert!(operation_identity(id).is_ok());
+            assert!(plugin_operation_identity(id).unwrap_err().to_string().contains(id));
+        }
+    }
+}

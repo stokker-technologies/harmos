@@ -154,6 +154,30 @@ impl OperationRequest for ClientTime {
     const ID: &'static str = "harmos.v1.Time/Get";
 }
 
+#[derive(harmos::Message)]
+#[harmos(package = "harmos.context.v1", file = "harmos/context/v1/time.proto", name = "TimeGetRequest")]
+struct ApplicationContext {}
+impl OperationRequest for ApplicationContext {
+    type Response = harmos::clock::TimeGetResponse;
+    const ID: &'static str = "example.context.v1.Prompts/Create";
+}
+
+#[derive(harmos::Message)]
+#[harmos(package = "harmos.context.v1", file = "harmos/context/v1/time.proto", name = "TimeGetRequest")]
+struct ApplicationClient {}
+impl OperationRequest for ApplicationClient {
+    type Response = harmos::clock::TimeGetResponse;
+    const ID: &'static str = "example.v1.Steps/Execute";
+}
+
+#[derive(harmos::Message)]
+#[harmos(package = "harmos.context.v1", file = "harmos/context/v1/time.proto", name = "TimeGetRequest")]
+struct ApplicationInstance {}
+impl OperationRequest for ApplicationInstance {
+    type Response = harmos::clock::TimeGetResponse;
+    const ID: &'static str = "example.plugin.v1.Control/Execute";
+}
+
 impl OperationRequest for HostInput {
     type Response = HostOutput;
     const ID: &'static str = "fixture.host";
@@ -168,7 +192,7 @@ impl Message for PublicInput {
 }
 impl OperationRequest for PublicInput {
     type Response = Value;
-    const ID: &'static str = "fixture.public";
+    const ID: &'static str = "example.plugin.v1.Steps/Execute";
 }
 impl Message for ProtectedInput {
     fn name() -> String {
@@ -180,7 +204,7 @@ impl Message for ProtectedInput {
 }
 impl OperationRequest for ProtectedInput {
     type Response = Value;
-    const ID: &'static str = "fixture.protected";
+    const ID: &'static str = "example.plugin.v1.Lifecycle/Initialize";
 }
 impl Message for MissingInput {
     fn name() -> String {
@@ -296,7 +320,8 @@ fn main() -> Result<()> {
             .requires::<PublicInput>()
             .operation(Operation::new("fixture.scoped", scoped).visibility(harmos_protocol::v1::Visibility::Protected))
     } else if mode == "scoped-provider" {
-        Plugin::new("provider", "1.0.0").operation(Operation::new("fixture.public", scope_identity).visibility(Visibility::Public))
+        Plugin::new("provider", "1.0.0")
+            .operation(Operation::new("example.plugin.v1.Steps/Execute", scope_identity).visibility(Visibility::Public))
     } else if mode == "values" {
         Plugin::new("values", "1.0.0")
             .requires::<harmos_protocol::context::HostValuesGetRequest>()
@@ -315,6 +340,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.watch", watch_invocation).visibility(Visibility::Protected))
     } else if mode == "provider" {
         Plugin::new("provider", "1.0.0")
+            .operation(Operation::new("fixture.step.0", echo).visibility(Visibility::Public))
             .requires::<HostInput>()
             .requires::<ProtectedInput>()
             .operation(Operation::new("fixture.self", protected_self).visibility(Visibility::Protected))
@@ -322,10 +348,13 @@ fn main() -> Result<()> {
                 cancellation_timeout: Some(prost_types::Duration { seconds: 30, nanos: 0 }),
                 ..Default::default()
             }))
-            .operation(Operation::new("fixture.public", echo).visibility(Visibility::Public))
-            .operation(Operation::new("fixture.protected", echo).visibility(harmos_protocol::v1::Visibility::Protected))
+            .operation(Operation::new("example.plugin.v1.Steps/Execute", echo).visibility(Visibility::Public))
+            .operation(
+                Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos_protocol::v1::Visibility::Protected),
+            )
     } else if mode == "incompatible" {
-        Plugin::new("incompatible", "1.0.0").operation(Operation::new("fixture.public", empty).visibility(Visibility::Public))
+        Plugin::new("incompatible", "1.0.0")
+            .operation(Operation::new("example.plugin.v1.Steps/Execute", empty).visibility(Visibility::Public))
     } else if mode == "duplicate" {
         Plugin::new("duplicate", "1.0.0")
             .operation(Operation::new("fixture.echo", echo).visibility(harmos_protocol::v1::Visibility::Protected))
@@ -334,6 +363,9 @@ fn main() -> Result<()> {
             .requires::<HostInput>()
             .requires::<HostControl>()
             .requires::<ClientTime>()
+            .requires::<ApplicationContext>()
+            .requires::<ApplicationClient>()
+            .requires::<ApplicationInstance>()
             .requires::<harmos::clock::TimeSleepRequest>()
             .requires::<harmos::clock::TimeGetRequest>()
             .requires::<PublicInput>()
@@ -448,6 +480,20 @@ async fn forward(context: &Context, input: Value) -> Result<Value> {
     }
     if input.value == b"control" {
         context.call(HostControl {}).await?;
+        return Ok(input);
+    }
+    if input.value == b"application-context" {
+        let response = context.call(ApplicationContext {}).await?;
+        return Ok(Value {
+            value: response.now.unwrap().seconds.to_le_bytes().to_vec(),
+        });
+    }
+    if input.value == b"application-client" {
+        context.call(ApplicationClient {}).await?;
+        return Ok(input);
+    }
+    if input.value == b"application-instance" {
+        context.call(ApplicationInstance {}).await?;
         return Ok(input);
     }
     match input.value.first() {

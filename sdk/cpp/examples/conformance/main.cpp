@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
                 if (request.value() == "retry") { policy.emplace(); auto* retry = policy->mutable_retries(); retry->set_total_attempts(2); retry->mutable_initial()->set_seconds(1); retry->mutable_maximum()->set_seconds(4); retry->set_deterministic_jitter(true); }
                 return ctx.call(local, request, policy).get();
             }));
-        plugin.operation(Operation("conformance.echo", harmos::wire::VISIBILITY_PUBLIC, [](Context& ctx, Value request) { return request.value() == "scope" ? value(ctx.scope()) : request; })
+        plugin.operation(Operation("conformance.step.0", harmos::wire::VISIBILITY_PUBLIC, [](Context& ctx, Value request) { return request.value() == "scope" ? value(ctx.scope()) : request; })
                 .visibility(harmos::wire::VISIBILITY_PUBLIC))
             .operation(Operation("conformance.children", harmos::wire::VISIBILITY_PUBLIC, [echo](Context& ctx, Value) {
                 auto first = ctx.call(echo, value(std::string(1, '\1')));
@@ -142,8 +142,8 @@ int main(int argc, char** argv) {
             return value(bytes);
         }).visibility(harmos::wire::VISIBILITY_PUBLIC));
 
-        plugin.operation(Operation("conformance.protected", harmos::wire::VISIBILITY_PROTECTED, [](Context&, Value request) { return request; }));
-        plugin.operation(Operation("conformance.resources", harmos::wire::VISIBILITY_PUBLIC, [echo](Context& ctx, Value request) {
+        plugin.operation(Operation("example.plugin.v1.Lifecycle/Initialize", harmos::wire::VISIBILITY_PROTECTED, [](Context&, Value request) { return request; }));
+        plugin.operation(Operation("example.plugin.v1.Steps/Execute", harmos::wire::VISIBILITY_PUBLIC, [echo](Context& ctx, Value request) {
             ctx.set(request);
             ctx.call(echo, request).get();
             return ctx.get<Value>();
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
         const Operation peer_public("conformance.peer.public", harmos::wire::VISIBILITY_PUBLIC);
         const Operation peer_protected("conformance.peer.protected", harmos::wire::VISIBILITY_PROTECTED);
         const Operation peer_local("conformance.peer.local", harmos::wire::VISIBILITY_PROTECTED);
-        const Operation own_protected("conformance.protected", harmos::wire::VISIBILITY_PROTECTED);
+        const Operation own_protected("example.plugin.v1.Lifecycle/Initialize", harmos::wire::VISIBILITY_PROTECTED);
         plugin.operation(Operation("conformance.peer_call", harmos::wire::VISIBILITY_PUBLIC,
             [peer_public, peer_protected, peer_local, own_protected](Context& context, Value request) {
                 if (request.value() == "self") return context.call(own_protected, request).get();

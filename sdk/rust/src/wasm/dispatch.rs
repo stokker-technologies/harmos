@@ -354,6 +354,7 @@ fn validate_assignments(assignments: &host::OperationAssignments) -> Result<()> 
     for entry in &assignments.operations {
         let local =
             entry.operation.split_once('.').map(|(_, local)| local).ok_or_else(|| invalid("Assigned Operation Is Not Qualified"))?;
+        harmos_protocol::schema::operation_identity(local).map_err(|error| invalid(error.to_string()))?;
         if entry.generation == 0 || entry.fingerprint.len() != 32 || !locals.insert(local) {
             return Err(invalid("Invalid or Duplicate Guest Assignment"));
         }

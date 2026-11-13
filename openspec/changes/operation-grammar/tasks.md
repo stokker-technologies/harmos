@@ -138,6 +138,12 @@ combined source closure and hosted validation are not claimed here.
 - [ ] 6.2 Under later delivery authorization, prove the combined library through configured hosted CI/Nightly on native Windows and Linux, including SDK/conformance, restart, cancellation, paging, unary transfers and both benchmarks; report exact revisions/results/pending verification.
 - [ ] 6.3 Reconcile library services (including nested), operations, gRPC methods, method wrappers and full descriptor payload counts with the locked inventory; verify owner acceptance and leave unperformed proof pending.
 
+## 7. Wire Identity Admission Repair
+
+- [x] 7.1 Restore protocol-owned wire identity validation independently from native dotted names; retain descriptor/fingerprint, visibility, audience and template-provider checks. Own `crates/harmos-protocol/src/schema.rs`, operations protobuf/gRPC contracts, factory registration and assignments, runtime gRPC/guest admission and dispatch, and Rust SDK catalog/client/guest validation.
+- [x] 7.2 Prove numeric SDK catalog admission/invocation, canonical Protected host lifecycle access and peer/client refusal, Public peer/client invocation, application face declarations and malformed/reserved refusals. Own runtime plugin stories, operations contract/assignment tests, the shared computation fixture's replay declaration, `sdk/rust/src/bin/invoke-fixture.rs`, all four conformance fixtures and `tools/conformance/`. Preserve exact SDK lifecycle metadata roundtrip and forgery refusal.
+- [ ] 7.3 Update the identity design and architecture contracts; review README impact. Run format, Rust/Python/repository checks, protocol drift, named stories, four-SDK conformance, manager/access/status, guest System, Tests build and offline locked metadata on the clean committed head; commit locally without pushing.
+
 ## 8. Plugin Manager
 
 - [x] 8.1 Record the owner-authorized manager contract, public shapes, ownership, decisions and requirement scenarios before implementation.

@@ -81,6 +81,7 @@ impl Declaration {
         let mut ids = std::collections::BTreeSet::new();
         let mut provides = Vec::new();
         for operation in &catalog.operations {
+            harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| invalid(error.to_string()))?;
             if !ids.insert(&operation.id) {
                 return Err(invalid("Duplicate Guest Operation".into()));
             }

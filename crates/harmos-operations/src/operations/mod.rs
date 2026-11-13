@@ -165,6 +165,7 @@ mod tests {
 
     #[test]
     fn grpc_visibility_contracts() {
+        assert!(Grpc::new("example.v1", "Steps.Nested", "Execute").validate().is_err());
         let binding = Grpc::new("visibility.v1", "Operations", "Call");
         for visibility in [Visibility::Private, Visibility::Protected, Visibility::Public] {
             let mut declaration = PUBLISHED_OPERATION.wire();

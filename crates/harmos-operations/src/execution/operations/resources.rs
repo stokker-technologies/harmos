@@ -134,8 +134,11 @@ impl OperationAssignments {
         let entries = assignments.operations;
         let mut locals = std::collections::BTreeSet::new();
         for entry in &entries {
-            harmos_domain::QualifiedId::parse(&entry.operation).map_err(|_| super::ServingError::Catalog)?;
-            let (_, local) = entry.operation.split_once('.').ok_or(super::ServingError::Catalog)?;
+            let (owner, local) = entry.operation.split_once('.').ok_or(super::ServingError::Catalog)?;
+            if !harmos_domain::identity::segment(owner) {
+                return Err(super::ServingError::Catalog);
+            }
+            harmos_protocol::schema::operation_identity(local).map_err(|_| super::ServingError::Catalog)?;
             if entry.generation == 0 || entry.fingerprint.len() != 32 || !locals.insert(local) {
                 return Err(super::ServingError::Catalog);
             }
@@ -232,10 +235,28 @@ mod tests {
                 .install(&harmos_protocol::v1::OperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())
                 .is_err()
         );
-        let mut invalid = decoded;
+        let mut invalid = decoded.clone();
         invalid.operations[0].fingerprint.pop();
         assert!(OperationAssignments::default().install(&invalid.encode_to_vec()).is_err());
         assert!(OperationAssignments::default().install(&[0xff]).is_err());
+        for operation in ["host.example.step.0", "provider.example.plugin.v1.Steps/Execute"] {
+            let mut numeric = decoded.operations[0].clone();
+            numeric.operation = operation.into();
+            let assignments = harmos_protocol::v1::OperationAssignments { operations: vec![numeric] };
+            OperationAssignments::default().install(&assignments.encode_to_vec()).unwrap();
+        }
+        for operation in ["host.example..step.0", "host.example.plugin.v1.Steps/"] {
+            let mut malformed = decoded.operations[0].clone();
+            malformed.operation = operation.into();
+            let assignments = harmos_protocol::v1::OperationAssignments { operations: vec![malformed] };
+            assert!(OperationAssignments::default().install(&assignments.encode_to_vec()).is_err());
+        }
+        let operations = ["first.example.step.0", "second.example.step.0"].map(|operation| AssignedOperation {
+            operation: operation.into(),
+            ..decoded.operations[0].clone()
+        });
+        let assignments = harmos_protocol::v1::OperationAssignments { operations: operations.into() };
+        assert!(OperationAssignments::default().install(&assignments.encode_to_vec()).is_err());
     }
 
     #[test]

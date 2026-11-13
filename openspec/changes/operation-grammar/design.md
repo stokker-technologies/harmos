@@ -24,6 +24,32 @@ recovery responsibilities. Do not add a second scheduler, silently migrate store
 encodings or promise arbitrary historical presentation. Keep the library protocol,
 SDKs and conformance checks self-sufficient without product vocabulary.
 
+## Wire Operation Identity Admission
+
+Wire identities are either nonempty dot-separated ASCII alphanumeric/underscore segments
+(numeric segments included), or `package.Service/Method`, whose package segments, service
+and method are protobuf identifiers (`[A-Za-z_][A-Za-z0-9_]*`), with exactly one slash and
+a nonempty package. A versioned `plugin.vN` or `context.vN` package segment pair selects
+that face (including nested packages); other packages select the client face. Multiple
+audience markers are refused. This separates transport names from native dotted names
+while preserving template-local numeric bindings and protobuf method identities.
+
+`crates/harmos-protocol/src/schema.rs` owns validation and face classification; native
+`OperationDefinition::validate` retains its existing local identity policy. Plugin catalogs
+use the same validator with plugin-face and reserved-library admission checks. Requirements
+may reference another face, but dispatch refuses client-only methods to plugins and context
+or instance methods to clients; Public catalog operations remain host-mediated exceptions
+carried by Instance.Invoke. Application-owned context declarations need no client binding.
+Descriptors, fingerprints, explicit visibility and template-local provider selection remain
+independent admission checks.
+
+Provider assignments validate the native owner separately and their local wire identity
+with the same parser; assignments stay frozen and unique by local identity.
+
+The audience/visibility integration added retained protobuf metadata to admitted plugin
+entries. That correctly enabled client dispatch and policy checks, but reused native dotted
+validation for their wire IDs. Restore wire validation without removing the retained metadata.
+
 ## Shared Grammar and Vocabulary
 
 The following shared text uses the supplied decisions and both reports' Shared
