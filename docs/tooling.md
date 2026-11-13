@@ -677,3 +677,9 @@ mise run generate -- --sdk cpp
 Storage protobuf generation refreshes messages, service stubs and reflection together. Rust
 contracts are exposed as `harmos::storage`; the other SDKs generate storage clients from the
 same `proto/harmos/v1/storage.proto`. See [Generated Storage Clients](storage.md#generated-storage-clients).
+
+Shared SDK client inputs live in `sdk/tests/fixtures/client/proto/application/v1/`.
+Each SDK composes those roots with the real library Status and nested Diagnostics
+resources. `sdk/tests/fixtures/client/resources.json` is the generated composed
+table read by Python's `ClientRoot.test_library_and_product_services_share_parents_and_keep_watch_cardinality`
+and `CallerContext.test_one_call_preserves_metadata_deadline_override_and_cancellation`.

@@ -17,7 +17,7 @@ from pathlib import Path
 import grpc
 
 from harmos import Client
-from tests.support.client_protocol import jobs, plugins, progress, settings
+from tests.support.client_protocol import diagnostics, jobs, progress, status
 
 # Third Party Imports
 
@@ -39,8 +39,6 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
         server = grpc.aio.server()
         # The Native Service Names Are the Dispatch Authority for the Generated Root.
         methods = [
-            ("library.v1.Plugins", "Get", plugins.PluginsGetRequest, plugins.PluginsGetResponse),
-            ("library.v1.plugins.Settings", "Get", settings.SettingsGetRequest, settings.SettingsGetResponse),
             ("application.v1.Jobs", "Start", jobs.JobsStartRequest, jobs.JobsStartResponse),
         ]
         for service, method, request, response in methods:
@@ -60,6 +58,22 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
                     ),
                 )
             )
+
+        async def get_status(request, context):
+            response = status.StatusGetResponse()
+            response.status.identity.application_name = "selection"
+            return response
+
+        async def get_diagnostics(request, context):
+            return diagnostics.DiagnosticsGetResponse(name=request.name)
+
+        for service, request, response, handler in [
+            ("harmos.v1.Status", status.StatusGetRequest, status.StatusGetResponse, get_status),
+            ("harmos.v1.status.Diagnostics", diagnostics.DiagnosticsGetRequest, diagnostics.DiagnosticsGetResponse, get_diagnostics),
+        ]:
+            server.add_generic_rpc_handlers((grpc.method_handlers_generic_handler(service, {
+                "Get": grpc.unary_unary_rpc_method_handler(handler, request_deserializer=request.FromString, response_serializer=response.SerializeToString)
+            }),))
 
         async def watch(request, context):
             yield progress.ProgressWatchResponse(value="opened:" + request.value)
@@ -83,10 +97,10 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
         await server.start()
         try:
             async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
-                table = json.loads((Path(__file__).resolve().parents[3] / "fixtures/client/resources.json").read_text())
+                table = json.loads((Path(__file__).resolve().parents[3] / "tests/fixtures/client/resources.json").read_text())
                 client = Client(channel, table)
-                self.assertEqual((await client.plugins.get(plugins.PluginsGetRequest(value="selection"))).value, "selection")
-                self.assertEqual((await client.plugins.settings.get(settings.SettingsGetRequest(value="selection"))).value, "selection")
+                self.assertEqual((await client.status.get(status.StatusGetRequest())).status.identity.application_name, "selection")
+                self.assertEqual((await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection")
                 self.assertEqual((await client.jobs.start(jobs.JobsStartRequest(value="selection"))).value, "selection")
                 self.assertEqual(
                     [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],

@@ -113,8 +113,6 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     }
     codegen::generate_client_fixture(&compiler, &includes, output.path())?;
     for name in [
-        "library.v1.rs",
-        "library.v1.plugins.rs",
         "application.v1.rs",
         "application.v1.jobs.rs",
         "client-descriptors.bin",

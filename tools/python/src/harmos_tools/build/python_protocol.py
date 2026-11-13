@@ -74,7 +74,7 @@ def generate(output: Path) -> None:
 
 
 def generate_client_fixture(output: Path) -> None:
-    proto = ROOT / "sdk/fixtures/client/proto"
+    proto = ROOT / "sdk/tests/fixtures/client/proto"
     inputs = sorted(path.relative_to(proto).as_posix() for path in proto.rglob("*.proto"))
     output.mkdir(parents=True, exist_ok=True)
     subprocess.run(

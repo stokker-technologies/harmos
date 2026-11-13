@@ -25,3 +25,5 @@ Compiled C# fixtures still require the pinned .NET runtime: setup activates `DOT
 ## Locked Test Migration
 
 The 2026-11-13 owner decision uses Catch2 v3 with its main and CMake discovery, preserving all five existing journeys and assertions. Shared client input belongs in `sdk/tests/fixtures/client/`; only the two application protocols remain invented, composed with the real library client. Conformance input belongs in `sdk/tests/fixtures/conformance/proto/`, unchanged in content and package, and its generated code belongs only to test/conformance targets. This expands source ownership to every affected protocol generator, SDK consumer and guide; the existing implementing marker remains unchanged. Local commits only; no push or lifecycle transition.
+
+The composed fixture uses real Status/Diagnostics roots plus application Jobs/Progress. Keep `resources.json`: the two Python client journeys load that generated table, including collision and wrong-face rejection.

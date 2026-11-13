@@ -27,7 +27,7 @@ public sealed class ClientCallContext
     await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await pending);
     await transport.Cancelled.Task;
     // The Following Resource Call Keeps Its Own Default Options.
-    using var following = client.Plugins.Get(new Library.V1.PluginsGetRequest());
+    using var following = client.Status.Get(new Harmos.V1.StatusGetRequest());
     await following.ResponseAsync;
     Assert.Null(transport.Options.Deadline);
     Assert.Null(transport.Options.Headers);

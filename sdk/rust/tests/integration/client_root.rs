@@ -42,18 +42,26 @@ struct Endpoint;
 /* === Implementations === */
 
 #[tonic::async_trait]
-impl v1::plugins_server::Plugins for Endpoint {
-    async fn get(&self, request: Request<v1::PluginsGetRequest>) -> Result<Response<v1::PluginsGetResponse>, Status> {
-        Ok(Response::new(v1::PluginsGetResponse {
-            value: format!("plugins:{}", request.into_inner().value),
+impl harmos_protocol::v1::status_server::Status for Endpoint {
+    async fn get(&self, _: Request<harmos_protocol::v1::StatusGetRequest>) -> Result<Response<harmos_protocol::v1::StatusGetResponse>, Status> {
+        Ok(Response::new(harmos_protocol::v1::StatusGetResponse {
+            status: Some(harmos_protocol::v1::HostStatus {
+                identity: Some(harmos_protocol::v1::HostIdentity { application_name: "status:selection".into(), ..Default::default() }),
+                ..Default::default()
+            }),
+            ..Default::default()
         }))
+    }
+    type WatchStream = Pin<Box<dyn futures_core::Stream<Item = Result<harmos_protocol::v1::StatusWatchResponse, Status>> + Send>>;
+    async fn watch(&self, _: Request<harmos_protocol::v1::StatusWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
+        Ok(Response::new(Box::pin(futures_util::stream::empty())))
     }
 }
 #[tonic::async_trait]
-impl v1::plugins::settings_server::Settings for Endpoint {
-    async fn get(&self, request: Request<v1::plugins::SettingsGetRequest>) -> Result<Response<v1::plugins::SettingsGetResponse>, Status> {
-        Ok(Response::new(v1::plugins::SettingsGetResponse {
-            value: format!("settings:{}", request.into_inner().value),
+impl harmos_protocol::v1::status::diagnostics_server::Diagnostics for Endpoint {
+    async fn get(&self, request: Request<harmos_protocol::v1::status::DiagnosticsGetRequest>) -> Result<Response<harmos_protocol::v1::status::DiagnosticsGetResponse>, Status> {
+        Ok(Response::new(harmos_protocol::v1::status::DiagnosticsGetResponse {
+            name: format!("diagnostics:{}", request.into_inner().name), ..Default::default()
         }))
     }
 }
@@ -92,8 +100,8 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let serving = tokio::spawn(
         tonic::transport::Server::builder()
-            .add_service(v1::plugins_server::PluginsServer::new(Endpoint))
-            .add_service(v1::plugins::settings_server::SettingsServer::new(Endpoint))
+            .add_service(harmos_protocol::v1::status_server::StatusServer::new(Endpoint))
+            .add_service(harmos_protocol::v1::status::diagnostics_server::DiagnosticsServer::new(Endpoint))
             .add_service(v1::jobs_server::JobsServer::new(Endpoint))
             .add_service(v1::jobs::progress_server::ProgressServer::new(Endpoint))
             .serve_with_incoming_shutdown(incoming, async {
@@ -115,19 +123,12 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     assert!(matches!(Client::new(channel.clone(), incompatible), Err(error) if error.code() == tonic::Code::InvalidArgument));
     let client = Root::new(Client::new(channel, settings).unwrap().transport_handle());
     assert_eq!(
-        client.plugins.get(Request::new(v1::PluginsGetRequest { value: "selection".into() })).await.unwrap().into_inner().value,
-        "plugins:selection"
+        client.status.get(Request::new(harmos_protocol::v1::StatusGetRequest {})).await.unwrap().into_inner().status.unwrap().identity.unwrap().application_name,
+        "status:selection"
     );
     assert_eq!(
-        client
-            .plugins
-            .settings
-            .get(Request::new(v1::plugins::SettingsGetRequest { value: "selection".into() }))
-            .await
-            .unwrap()
-            .into_inner()
-            .value,
-        "settings:selection"
+        client.status.diagnostics.get(Request::new(harmos_protocol::v1::status::DiagnosticsGetRequest { name: "selection".into(), ..Default::default() })).await.unwrap().into_inner().name,
+        "diagnostics:selection"
     );
     assert_eq!(
         client.jobs.start(Request::new(v1::JobsStartRequest { value: "selection".into() })).await.unwrap().into_inner().value,

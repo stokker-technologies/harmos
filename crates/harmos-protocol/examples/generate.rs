@@ -83,8 +83,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/tests/fixtures/client");
     std::fs::create_dir_all(&destination)?;
     for name in [
-        "library.v1.rs",
-        "library.v1.plugins.rs",
         "application.v1.rs",
         "application.v1.jobs.rs",
         "client-descriptors.bin",

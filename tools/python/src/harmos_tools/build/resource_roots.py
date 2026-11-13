@@ -107,8 +107,8 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     cpp(root, clients, namespace=namespace)
     fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
     if fixture.is_file():
-        fixture_methods = table(FileDescriptorSet.FromString(fixture.read_bytes()))
-        (root / "sdk/fixtures/client/resources.json").write_text(
+        fixture_methods = clients + table(FileDescriptorSet.FromString(fixture.read_bytes()))
+        (root / "sdk/tests/fixtures/client/resources.json").write_text(
             json.dumps(fixture_methods, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
         for folder in ["sdk/csharp/Tests/Generated"]:
@@ -370,7 +370,9 @@ def main() -> None:
     root = Path(__file__).resolve().parents[5]
     if options.cpp_fixture:
         fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
-        cpp(root, table(FileDescriptorSet.FromString(fixture.read_bytes())), namespace="fixture", target=options.cpp_fixture)
+        library = root / "crates/harmos-protocol/src/descriptors.bin"
+        methods = table(FileDescriptorSet.FromString(library.read_bytes())) + table(FileDescriptorSet.FromString(fixture.read_bytes()))
+        cpp(root, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.cpp_fixture)
     elif options.descriptors:
         if options.output is None:
             parser.error("composed client descriptors require --output")

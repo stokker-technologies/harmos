@@ -21,13 +21,8 @@ mod support {
 }
 
 extern crate self as application_protocol;
-extern crate self as library_protocol;
 pub mod v1 {
-    include!("../fixtures/client/library.v1.rs");
     include!("../fixtures/client/application.v1.rs");
-    pub mod plugins {
-        include!("../fixtures/client/library.v1.plugins.rs");
-    }
     pub mod jobs {
         include!("../fixtures/client/application.v1.jobs.rs");
     }
