@@ -67,6 +67,7 @@ pub const CASES: &[&str] = &[
     "Local Private Cooperative Cancellation",
     "Host-Mediated Peer Visibility",
     "Wire Operation Identities",
+    "Message Ceiling Independent of Transfer Chunks",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -115,7 +116,8 @@ pub async fn run(address: &str, managed: bool) -> Result<Vec<Case>> {
 /* === Private Functions === */
 
 async fn connect(address: &str) -> Result<(Client, harmos_protocol::plugin::InstanceGetResponse)> {
-    let mut client = Client::connect(address.to_owned()).await?;
+    let maximum = harmos_protocol::transfer::default_message_bytes().get();
+    let mut client = Client::connect(address.to_owned()).await?.max_decoding_message_size(maximum).max_encoding_message_size(maximum);
     let description = describe(&mut client).await?;
     Ok((client, description))
 }
@@ -250,6 +252,13 @@ async fn publish_status(
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
+        31 => {
+            // Echo a Message Larger Than the Storage Chunk Through the Default Carrier.
+            let chunk = harmos_protocol::storage::StorageTransferSettings::default().chunk_bytes() as usize;
+            let payload = fixture::payload(&vec![0x5a; chunk + harmos_protocol::storage::TransferFraming::Bytes as usize]);
+            let (_send, mut input) = invoke(&mut client, "conformance.step.0", payload.clone()).await?;
+            require(terminal(&mut input).await? == response::Result::Payload(payload), "Invoke Large Echo: Payload Differs")?;
+        }
         30 => {
             let catalog = description.catalog.ok_or_else(|| Error::Invalid("Declare: Missing Catalog".into()))?;
             for operation in &catalog.operations {

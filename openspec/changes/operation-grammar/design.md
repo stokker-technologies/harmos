@@ -1731,18 +1731,44 @@ Transfers remain unary. `StorageSettings.transfer` holds the shared generated
 `harmos.storage.v1.StorageTransferSettings`; its sole setting is `chunk_bytes`, defaulting
 to 4 MiB for both AppendFileBytes and GetFileBytes. A proto2 field default records
 that value once for all generated languages. `TransferFraming.Bytes` is the protocol
-framing allowance, not a second consumer chunk setting. The complete carrier ceiling
-is chunk bytes plus framing; row-page sizing remains independent. The default
+framing allowance, not a second consumer chunk setting. The owner separately raised
+the default message ceiling to 8 MiB on 2026-11-13. Generated
+`harmos.storage.v1.MessageSettings.message_bytes` declares it once; all four SDKs,
+the listener, plugin carrier and Wasm adapter read that generated default.
+`required_message_bytes` computes the chunk-plus-framing minimum independently;
+row-page sizing remains independent. The default
 listener decoded-retention budget is six framed messages, accommodating its existing
 conservative allocation accounting, original request and attempt clone without
 changing that accounting. Consumers retain ownership of aggregate admission budgets.
 
 Default listeners, SDK connections, plugin carriers and the Wasm command adapter
-use that derived ceiling. An explicitly configured ceiling below it refuses at
+use the separate message default. A ceiling below the chunk-plus-framing minimum refuses at
 construction/startup naming `StorageSettings.transfer.chunk_bytes` and the conflicting
 setting. SDK-created connections own their transport settings; externally injected
 channels/invokers retain their caller's transport ownership. Large default-chunk echo
 journeys and unary storage journeys cover real message framing rather than constants.
+
+### SDK and Application Content Completion
+
+The owner authorizes four local building commits under the existing combined marker.
+The inventory and proof are tracked as C.1–C.5 in tasks.md; no lifecycle or delivery
+command is part of this work. The README entry points remain accurate for the message
+default; affected configuration details live in the architecture and storage guides.
+
+The conformance fixture becomes a public SDK definition, with a thin executable
+caller and packaged generated fixture messages. Each language's isolated package
+journey must construct it using only the installed SDK and run the reference host.
+The generated C++ resource methods take `grpc::ClientContext&` supplied by the caller;
+Watch readers borrow that same caller-owned context until the reader finishes.
+The matching Rust request, Python call options and C# CallOptions retain per-call
+metadata, deadlines and cancellation. No per-operation forwarding code is authored.
+
+Application content will register with the storage read owner through one shared
+content-source trait: resolve an immutable reference under the inherited opaque
+authorization scope to length, SHA-256 and an explicitly expiring bounded lease,
+then read ranges through that lease. The same trait replaces diagnostics' range
+callback and the bundle reader's independent content trait. The host application
+retains its bytes and metadata; library saved references retain their existing path.
 
 Delete native ReadFile/WriteFile operation declarations and handlers, their two proto
 requests and generated bindings, their streaming-only stories and fixture branches,

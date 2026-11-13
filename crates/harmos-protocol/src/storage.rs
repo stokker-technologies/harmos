@@ -1476,6 +1476,13 @@ pub struct StorageTransferSettings {
     #[prost(uint64, optional, tag = "1", default = "4194304")]
     pub chunk_bytes: ::core::option::Option<u64>,
 }
+/// One Declared Transport Default for All Generated SDKs and Host Carriers.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct MessageSettings {
+    #[prost(uint64, optional, tag = "1", default = "8388608")]
+    pub message_bytes: ::core::option::Option<u64>,
+}
 /// Space for Default Session, Receipt, Cut and Carrier Framing.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

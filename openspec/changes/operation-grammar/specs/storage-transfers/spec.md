@@ -113,8 +113,9 @@ throughput. This SHALL be a benchmark measurement, never a test assertion.
 Amended by the owner on 2026-11-13: `StorageSettings.transfer` SHALL own generated
 `StorageTransferSettings.chunk_bytes`, whose sole default is 4 MiB. Append sizes
 and omitted ranged-read sizes on both faces SHALL use it. Every SDK-created client
-connection, listener, plugin carrier and Wasm guest SHALL derive its message ceiling
-from that setting plus protocol framing. Invalid or insufficient ceilings SHALL
+connection, listener, plugin carrier and Wasm guest SHALL use the separate generated
+`MessageSettings.message_bytes` default of 8 MiB, declared once. The minimum
+ceiling SHALL remain the configured chunk plus protocol framing. Invalid or insufficient ceilings SHALL
 refuse construction/startup with an error naming the action and setting.
 
 #### Scenario: Default Chunk Across Carriers
@@ -126,3 +127,8 @@ refuse construction/startup with an error naming the action and setting.
 
 - **WHEN** a listener, SDK connection, plugin or guest ceiling cannot carry its storage chunk plus framing
 - **THEN** startup refuses naming the configuring action, storage chunk setting and conflicting ceiling
+
+#### Scenario: Messages Larger Than a Transfer Chunk
+
+- **WHEN** a caller sends a non-transfer message larger than the default chunk but within the default message ceiling
+- **THEN** all four default SDK carriers accept and return the complete message without changing the storage chunk size

@@ -24,15 +24,17 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n harmos/v1/storage_settings.proto\x12\x11harmos.storage.v1\"7\n\x17StorageTransferSettings\x12\x1c\n\x0b\x63hunk_bytes\x18\x01 \x01(\x04:\x07\x34\x31\x39\x34\x33\x30\x34*P\n\x0fTransferFraming\x12 \n\x1cTRANSFER_FRAMING_UNSPECIFIED\x10\x00\x12\x1b\n\x16TRANSFER_FRAMING_BYTES\x10\x80\x04')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n harmos/v1/storage_settings.proto\x12\x11harmos.storage.v1\"7\n\x17StorageTransferSettings\x12\x1c\n\x0b\x63hunk_bytes\x18\x01 \x01(\x04:\x07\x34\x31\x39\x34\x33\x30\x34\"1\n\x0fMessageSettings\x12\x1e\n\rmessage_bytes\x18\x01 \x01(\x04:\x07\x38\x33\x38\x38\x36\x30\x38*P\n\x0fTransferFraming\x12 \n\x1cTRANSFER_FRAMING_UNSPECIFIED\x10\x00\x12\x1b\n\x16TRANSFER_FRAMING_BYTES\x10\x80\x04')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.v1.storage_settings_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_TRANSFERFRAMING']._serialized_start=112
-  _globals['_TRANSFERFRAMING']._serialized_end=192
+  _globals['_TRANSFERFRAMING']._serialized_start=163
+  _globals['_TRANSFERFRAMING']._serialized_end=243
   _globals['_STORAGETRANSFERSETTINGS']._serialized_start=55
   _globals['_STORAGETRANSFERSETTINGS']._serialized_end=110
+  _globals['_MESSAGESETTINGS']._serialized_start=112
+  _globals['_MESSAGESETTINGS']._serialized_end=161
 # @@protoc_insertion_point(module_scope)

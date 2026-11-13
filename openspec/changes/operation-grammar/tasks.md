@@ -253,3 +253,18 @@ Nightly and A.6 is closed.
 - [x] O.5 Complete final proof and local commits; keep every decision in a separate local building commit and do not push.
 - [x] O.5.1 Run format, Rust/Python/repository checks, protocol drift, four-SDK conformance, the named self-install/storage/manager/access/status/wire identity stories, guest System selections and the final Tests artifact; repair findings. Expose the existing focused fixture selection through the public build task.
 - [x] O.5.2 Verify locked offline Cargo metadata on the committed clean head with Cargo.lock unchanged.
+
+## SDK and Application Content Completion
+
+- [x] C.1 Declare one generated 8 MiB message default, retain the 4 MiB chunk and explicit ceiling validation; migrate protocol, runtime listener/carriers/guest, four SDKs, transfer guide and requirement delta. Proof: `resume_fence_publish_and_range_across_faces`, Rust/Python SDK `managed_plugin_passes_every_rule` / `test_remote_plugin_passes_every_rule` including the large-message case, Wasm SDK check and C# build.
+- [ ] C.2 Ship the importable conformance plugin and its generated bindings in each published SDK; move definitions out of executable entry points, migrate callers/guides and prove isolated published-package conformance in four languages. Commit this part.
+- [ ] C.3 Generate caller-owned per-call context for every C++ root method and Watch; audit Rust/Python/C# equivalents, add four-language metadata/deadline/cancellation journeys and migrate all generated consumers. Commit this part.
+- [ ] C.4 Add one storage-owned content-source/expiring-lease contract, scope-preserving application registration and shared ranged reads; migrate diagnostics and bundle readers without duplicate persistence ownership. Prove client/plugin application ranges, digest, expiry/refusal and existing saved reads. Commit this part.
+- [ ] C.5 On the combined final head run format, Rust/Python/repository checks, protocol/SDK drift, four-SDK conformance, named new/storage/manager/access/status/wire stories, guest System and Tests build; repair all findings. Verify clean committed locked/offline metadata without changing Cargo.lock. Do not push or run lifecycle commands.
+
+Owned inventory for C.1–C.4: `proto/`, `crates/harmos-protocol`, storage content/manager/read
+contracts, operations Storage.GetFileBytes, runtime storage/diagnostics/plugin content and
+their stories, `sdk/{rust,python,csharp,cpp}`, descriptor/root and package generators under
+`tools/`, conformance fixtures/runner, affected examples, README and topic guides, and this
+change's design/tasks/requirement deltas. One writer owns this whole inventory. Dependency
+order is C.1, C.2, C.3, C.4, followed by C.5; each part closes with its named focused proof.

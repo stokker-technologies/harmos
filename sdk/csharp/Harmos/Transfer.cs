@@ -11,7 +11,8 @@ public static class Transfer
     if (settings.ChunkBytes == 0 || settings.ChunkBytes > int.MaxValue - framing)
       throw new ArgumentException("Configure Transfer: StorageSettings.transfer.chunk_bytes exceeds transport capacity");
     var required = checked((int)(settings.ChunkBytes + framing));
-    if (ceiling < required) throw new ArgumentException("Configure Transfer: message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing");
-    return ceiling ?? required;
+    var maximum = ceiling ?? checked((int)new global::Harmos.Storage.V1.MessageSettings().MessageBytes);
+    if (maximum < required) throw new ArgumentException("Configure Transfer: message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing");
+    return maximum;
   }
 }

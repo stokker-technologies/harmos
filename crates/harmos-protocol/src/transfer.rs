@@ -39,13 +39,18 @@ use crate::storage::{StorageTransferSettings, TransferFraming};
 
 /* === Public Functions === */
 
-pub fn message_bytes(settings: &StorageTransferSettings) -> Option<NonZeroUsize> {
+pub fn required_message_bytes(settings: &StorageTransferSettings) -> Option<NonZeroUsize> {
     let chunk = usize::try_from(settings.chunk_bytes()).ok().and_then(NonZeroUsize::new)?;
     chunk.checked_add(TransferFraming::Bytes as usize)
 }
 
 pub fn default_message_bytes() -> NonZeroUsize {
-    message_bytes(&StorageTransferSettings::default()).expect("representable default transfer settings")
+    NonZeroUsize::new(crate::storage::MessageSettings::default().message_bytes() as usize).expect("positive default message ceiling")
+}
+
+pub fn message_bytes(settings: &StorageTransferSettings) -> Option<NonZeroUsize> {
+    let ceiling = default_message_bytes();
+    (required_message_bytes(settings)? <= ceiling).then_some(ceiling)
 }
 
 /* === Private Functions === */

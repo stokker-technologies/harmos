@@ -635,8 +635,9 @@ configuration bounds oversized ranges. Native embedders can call
 `StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Transfers remain unary, as amended by the owner on 2026-11-13.
 `StorageSettings.transfer` owns generated `StorageTransferSettings.chunk_bytes`,
 defaulting to 4 MiB for both appends and ranged reads. SDK-created connections,
-listeners, plugin carriers and Wasm guests derive message ceilings from this value
-plus protocol framing. Incompatible ceilings refuse startup naming the setting.
+listeners, plugin carriers and Wasm guests use the separate generated
+`MessageSettings.message_bytes` default of 8 MiB. They validate that the ceiling
+carries the chunk plus protocol framing. Incompatible ceilings refuse startup naming the setting.
 
 ## File-Transfer Benchmark
 

@@ -139,8 +139,10 @@ impl GrpcManager {
         extra_middleware: Vec<Arc<dyn Middleware>>,
     ) -> Result<Attached> {
         settings.validate(self.operations.clock())?;
-        if self.operations.resources().resource::<harmos_storage::StorageManager>().is_ok() {
-            let required = self.operations.transfer_message_bytes().get();
+        if let Ok(storage) = self.operations.resources().resource::<harmos_storage::StorageManager>() {
+            let required = harmos_protocol::transfer::required_message_bytes(&storage.settings().transfer)
+                .expect("validated StorageSettings.transfer.chunk_bytes")
+                .get();
             for (field, bytes) in [
                 ("GrpcSettings.operations.decode.message_bytes", settings.operations.decode.message_bytes.get()),
                 ("GrpcSettings.operations.encode.message_bytes", settings.operations.encode.message_bytes.get()),

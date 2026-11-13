@@ -197,7 +197,11 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| Error::Invalid(error.to_string()))?;
     let message_bytes = harmos_protocol::transfer::message_bytes(&plugin.transfer)
         .filter(|bytes| bytes.get() <= u32::MAX as usize)
-        .ok_or_else(|| Error::Invalid("Start Plugin: StorageSettings.transfer.chunk_bytes exceeds transport capacity".into()))?
+        .ok_or_else(|| {
+            Error::Invalid(
+                "Start Plugin: MessageSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into(),
+            )
+        })?
         .get();
     let address = std::env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
     let listener = TcpListener::bind(address).await?;

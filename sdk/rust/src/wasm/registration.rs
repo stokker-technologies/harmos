@@ -129,7 +129,12 @@ impl Registration {
             requirements,
             message_bytes: harmos_protocol::transfer::message_bytes(&self.plugin.transfer)
                 .filter(|bytes| bytes.get() <= u32::MAX as usize)
-                .ok_or_else(|| Error::Invalid("Register Guest: StorageSettings.transfer.chunk_bytes exceeds transport capacity".into()))?
+                .ok_or_else(|| {
+                    Error::Invalid(
+                        "Register Guest: MessageSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing"
+                            .into(),
+                    )
+                })?
                 .get() as u64,
         })
     }

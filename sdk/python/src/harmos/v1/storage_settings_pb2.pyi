@@ -17,3 +17,9 @@ class StorageTransferSettings(_message.Message):
     CHUNK_BYTES_FIELD_NUMBER: _ClassVar[int]
     chunk_bytes: int
     def __init__(self, chunk_bytes: _Optional[int] = ...) -> None: ...
+
+class MessageSettings(_message.Message):
+    __slots__ = ("message_bytes",)
+    MESSAGE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    message_bytes: int
+    def __init__(self, message_bytes: _Optional[int] = ...) -> None: ...

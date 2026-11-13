@@ -110,9 +110,12 @@ pub struct Running<R, I, O> {
 
 impl ClientSettings {
     pub fn for_storage(transfer: harmos_protocol::storage::StorageTransferSettings, retained_bytes: NonZeroUsize) -> Result<Self, Status> {
-        let message_bytes = harmos_protocol::transfer::message_bytes(&transfer)
-            .filter(|bytes| bytes.get() <= u32::MAX as usize)
-            .ok_or_else(|| Status::invalid_argument("Configure Client: StorageSettings.transfer.chunk_bytes exceeds transport capacity"))?;
+        let message_bytes =
+            harmos_protocol::transfer::message_bytes(&transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
+                Status::invalid_argument(
+                    "Configure Client: MessageSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing",
+                )
+            })?;
         Ok(Self {
             transfer,
             retained_bytes,
@@ -125,7 +128,7 @@ impl ClientSettings {
 
 impl Client {
     pub fn new(channel: Channel, settings: ClientSettings) -> Result<Self, Status> {
-        if harmos_protocol::transfer::message_bytes(&settings.transfer).is_none_or(|required| settings.message_bytes < required) {
+        if harmos_protocol::transfer::required_message_bytes(&settings.transfer).is_none_or(|required| settings.message_bytes < required) {
             return Err(Status::invalid_argument(
                 "Configure Client: ClientSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing",
             ));

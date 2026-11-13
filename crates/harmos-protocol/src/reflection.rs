@@ -920,6 +920,11 @@ impl ReflectMessage for crate::storage::StorageTransferSettings {
         pool().get_message_by_name("harmos.storage.v1.StorageTransferSettings").expect("generated message")
     }
 }
+impl ReflectMessage for crate::storage::MessageSettings {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.MessageSettings").expect("generated message")
+    }
+}
 impl ReflectMessage for crate::v1::History {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.v1.History").expect("generated message")
