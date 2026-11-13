@@ -1,7 +1,7 @@
 # runtime-defined-operations Specification
 
 ## Purpose
-TBD - created by archiving change runtime-defined-operations. Update Purpose after archive.
+Support generation-scoped runtime-owned encoded operation bindings, safe per-call retry overrides and activation-scoped observers.
 
 ## Requirements
 

@@ -1,7 +1,7 @@
 # native-sdk-abi Specification
 
 ## Purpose
-TBD - created by archiving change native-sdk-abi. Update Purpose after archive.
+Translate C++ plugin declarations through the Rust core and define native ABI settlement and derived stream revisions.
 
 ## Requirements
 
