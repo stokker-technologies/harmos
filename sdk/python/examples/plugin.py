@@ -16,7 +16,7 @@ import asyncio
 from google.protobuf.wrappers_pb2 import BytesValue
 
 from harmos import Context, Plugin, operation
-from harmos.v1.types_pb2 import VISIBILITY_PUBLIC
+from harmos.v1.operation_pb2 import VISIBILITY_PUBLIC
 
 # === Public Exports === #
 

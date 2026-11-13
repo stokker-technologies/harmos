@@ -21,11 +21,12 @@ from google.protobuf.wrappers_pb2 import BytesValue
 from harmos_tools.process import spawn_flags
 
 from examples.client import run
+from harmos._wire.client.v1 import operations_pb2 as catalog
+from harmos._wire.client.v1 import status_pb2 as status
 from harmos.plugin.v1 import instance_pb2 as carrier
 from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos.v1 import catalog_entries_pb2 as catalog
-from harmos.v1 import status_pb2 as status
-from harmos.v1 import types_pb2 as wire
+from harmos.v1.operation_pb2 import DiscoveredOperation
+from harmos.v1.position_pb2 import Position
 from tests.support import calls
 
 # === Public Exports === #
@@ -45,11 +46,8 @@ class Examples(unittest.IsolatedAsyncioTestCase):
         server = grpc.aio.server()
         identity = status.HostIdentity(host_id="fixture")
 
-        async def discover(
-            request: catalog.CatalogEntriesListRequest, context: grpc.aio.ServicerContext
-        ) -> catalog.CatalogEntriesListResponse:
-            self.assertEqual(request.kind, wire.CATALOG_KIND_OPERATIONS)
-            return catalog.CatalogEntriesListResponse(operations=[wire.DiscoveredOperation(owner="fixture", grpc_available=True)])
+        async def discover(request: catalog.OperationsListRequest, context: grpc.aio.ServicerContext) -> catalog.OperationsListResponse:
+            return catalog.OperationsListResponse(operations=[DiscoveredOperation(owner="fixture", grpc_available=True)])
 
         async def get(request: status.StatusGetRequest, context: grpc.aio.ServicerContext) -> status.StatusGetResponse:
             return status.StatusGetResponse(status=status.HostStatus(identity=identity))
@@ -57,7 +55,7 @@ class Examples(unittest.IsolatedAsyncioTestCase):
         async def watch(request: status.StatusWatchRequest, context: grpc.aio.ServicerContext) -> AsyncIterator[status.StatusWatchResponse]:
             requested.set()
             try:
-                yield status.StatusWatchResponse(status=status.HostStatus(identity=identity), resolved_at=wire.Position(sequence=1))
+                yield status.StatusWatchResponse(status=status.HostStatus(identity=identity), resolved_at=Position(sequence=1))
                 await asyncio.Event().wait()
             finally:
                 closed.set()
@@ -65,17 +63,17 @@ class Examples(unittest.IsolatedAsyncioTestCase):
         server.add_generic_rpc_handlers(
             (
                 grpc.method_handlers_generic_handler(
-                    "harmos.v1.CatalogEntries",
+                    "harmos.client.v1.Operations",
                     {
                         "List": grpc.unary_unary_rpc_method_handler(
                             discover,
-                            request_deserializer=catalog.CatalogEntriesListRequest.FromString,
-                            response_serializer=catalog.CatalogEntriesListResponse.SerializeToString,
+                            request_deserializer=catalog.OperationsListRequest.FromString,
+                            response_serializer=catalog.OperationsListResponse.SerializeToString,
                         )
                     },
                 ),
                 grpc.method_handlers_generic_handler(
-                    "harmos.v1.Status",
+                    "harmos.client.v1.Status",
                     {
                         "Get": grpc.unary_unary_rpc_method_handler(
                             get,

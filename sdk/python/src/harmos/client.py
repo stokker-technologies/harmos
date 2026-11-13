@@ -16,7 +16,7 @@ import grpc
 
 from .generated.client import ClientRoot
 from .transfer import message_bytes
-from .v1.storage_settings_pb2 import StorageTransferSettings
+from .v1.transfer_pb2 import StorageTransferSettings
 
 # === Public Exports === #
 

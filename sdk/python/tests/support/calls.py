@@ -18,9 +18,10 @@ from google.protobuf.message import Message
 
 from harmos.plugin.v1 import instance_pb2 as carrier
 from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
 
 # Local Imports
-from harmos.v1 import types_pb2 as wire
+
 
 # Type Checking Imports
 
@@ -41,7 +42,7 @@ async def invoke(
     call = client.Invoke()
     await call.write(
         carrier.InstanceInvokeRequest(
-            request=wire.Request(operation=operation, payload=request.SerializeToString(), invocation="story", attempt=1)
+            request=Request(operation=operation, payload=request.SerializeToString(), invocation="story", attempt=1)
         )
     )
     return call
@@ -49,10 +50,10 @@ async def invoke(
 
 async def reply(
     call: grpc.aio.StreamStreamCall[carrier.InstanceInvokeRequest, carrier.InstanceInvokeResponse],
-    child: wire.ChildRequest,
+    child: ChildRequest,
     response: Message,
 ) -> None:
-    await call.write(carrier.InstanceInvokeRequest(child=wire.ChildResponse(call=child.call, payload=response.SerializeToString())))
+    await call.write(carrier.InstanceInvokeRequest(child=ChildResponse(call=child.call, payload=response.SerializeToString())))
 
 
 # === Private Functions === #

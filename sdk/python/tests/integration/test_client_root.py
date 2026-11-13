@@ -81,8 +81,8 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
             return diagnostics.DiagnosticsGetResponse(name=request.name)
 
         for service, request, response, handler in [
-            ("harmos.v1.Status", status.StatusGetRequest, status.StatusGetResponse, get_status),
-            ("harmos.v1.status.Diagnostics", diagnostics.DiagnosticsGetRequest, diagnostics.DiagnosticsGetResponse, get_diagnostics),
+            ("harmos.client.v1.Status", status.StatusGetRequest, status.StatusGetResponse, get_status),
+            ("harmos.client.v1.status.Diagnostics", diagnostics.DiagnosticsGetRequest, diagnostics.DiagnosticsGetResponse, get_diagnostics),
         ]:
             server.add_generic_rpc_handlers(
                 (

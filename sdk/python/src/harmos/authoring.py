@@ -27,14 +27,18 @@ from google.protobuf.message import DecodeError, Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from harmos.plugin.v1 import instance_pb2 as carrier
+from harmos.v1.description_pb2 import Catalog
+from harmos.v1.invocation_pb2 import Request, Response
+from harmos.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
+from harmos.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
+from harmos.v1.stream_pb2 import Sample
 
 from .contracts import Operation, Stream, message_types
 
 # Local Imports
 from .invocation import Context, Failure, Handler, ProtocolError, Publisher, validate_timestamp
 from .transfer import message_bytes
-from .v1 import types_pb2 as wire
-from .v1.storage_settings_pb2 import StorageTransferSettings
+from .v1.transfer_pb2 import StorageTransferSettings
 
 # Type Checking Imports
 
@@ -63,6 +67,7 @@ class Plugin:
         version: str,
         requires: Sequence[Operation] = (),
         sections: Sequence[Message] = (),
+        settings: Sequence[SettingDeclaration] = (),
         messages: Sequence[type[Message]] = (),
         transfer: StorageTransferSettings | None = None,
     ) -> None:
@@ -71,6 +76,7 @@ class Plugin:
         self.version = version
         self.requires = tuple(requires)
         self.sections = tuple(sections)
+        self.settings = tuple(settings)
         self.messages = tuple(messages)
         self.transfer = StorageTransferSettings()
         if transfer is not None:
@@ -100,28 +106,28 @@ class Plugin:
                 cleanup.append(cast(Cleanup, getattr(self.instance, name)))
         return operations, streams, cleanup
 
-    def catalog(self) -> wire.Catalog:
+    def catalog(self) -> Catalog:
         if not re.fullmatch(r"[a-z0-9._]+", self.id):
             raise ValueError("Plugin Identity Must Be Lowercase with Dots or Underscores")
         core = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
         prerelease = r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
         if not re.fullmatch(core + rf"(?:-{prerelease}(?:\.{prerelease})*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", self.version):
             raise ValueError("Invalid Plugin Version")
-        catalog = wire.Catalog()
+        catalog = Catalog()
         files: dict[str, FileDescriptorProto] = {}
         _merge(files, *self.messages)
         operations, streams, _ = self._registrations()
         for definition, _ in operations:
             if definition.watch:
                 raise ValueError(f"Register {definition.id}: Plugin Operations Are Unary")
-            if definition.visibility not in (wire.VISIBILITY_PRIVATE, wire.VISIBILITY_PROTECTED, wire.VISIBILITY_PUBLIC):
+            if definition.visibility not in (VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC):
                 raise ValueError(f"Invalid Visibility: {definition.id}")
-            if definition.visibility == wire.VISIBILITY_PRIVATE:
+            if definition.visibility == VISIBILITY_PRIVATE:
                 continue
             catalog.operations.add().CopyFrom(definition.contract())
             _merge(files, definition.request, definition.response)
         for definition in self.requires:
-            if definition.visibility == wire.VISIBILITY_PRIVATE:
+            if definition.visibility == VISIBILITY_PRIVATE:
                 raise ValueError(f"Require {definition.id}: Private Calls Are Local")
             catalog.requires.add(id=definition.id, fingerprint=definition.fingerprint)
             _merge(files, definition.request, definition.response)
@@ -136,7 +142,22 @@ class Plugin:
                     raise ValueError("Positive Observer Interval Required")
             catalog.streams.add().CopyFrom(definition.declaration())
             _merge(files, definition.row)
-        for section in self.sections:
+        names = [setting.name for setting in self.settings]
+        if any(not name for name in names) or len(set(names)) != len(names):
+            raise ValueError("Declare Settings: Duplicate or Empty Name")
+        for setting in self.settings:
+            if not setting.HasField("default") or setting.default.WhichOneof("value") is None:
+                raise ValueError(f"Declare Setting {setting.name}: Typed Default Required")
+            if setting.default.WhichOneof("value") == "duration":
+                duration = setting.default.duration
+                if abs(duration.seconds) > 315_576_000_000 or abs(duration.nanos) >= 1_000_000_000:
+                    raise ValueError(f"Declare Setting {setting.name}: Invalid Duration")
+                if duration.seconds * duration.nanos < 0:
+                    raise ValueError(f"Declare Setting {setting.name}: Invalid Duration Sign")
+        sections = list(self.sections)
+        if self.settings:
+            sections.append(SettingsDeclarations(values=self.settings))
+        for section in sections:
             catalog.sections.add(type=section.DESCRIPTOR.full_name, payload=section.SerializeToString())
             _merge(files, type(section))
         for entries, key in ((catalog.operations, "id"), (catalog.requires, "id"), (catalog.streams, "id"), (catalog.sections, "type")):
@@ -226,7 +247,7 @@ class _FaultError(Exception):
 
 
 class _Service:
-    def __init__(self, plugin: Plugin, catalog: wire.Catalog) -> None:
+    def __init__(self, plugin: Plugin, catalog: Catalog) -> None:
         self.description = carrier.InstanceGetResponse(
             id=plugin.id,
             version=plugin.version,
@@ -239,10 +260,10 @@ class _Service:
         )
         operations, streams, self.cleanup = plugin._registrations()
         self.local = {
-            definition.id: (definition, handler) for definition, handler in operations if definition.visibility == wire.VISIBILITY_PRIVATE
+            definition.id: (definition, handler) for definition, handler in operations if definition.visibility == VISIBILITY_PRIVATE
         }
         self.operations = {
-            definition.id: (definition, handler) for definition, handler in operations if definition.visibility != wire.VISIBILITY_PRIVATE
+            definition.id: (definition, handler) for definition, handler in operations if definition.visibility != VISIBILITY_PRIVATE
         }
         self.streams = {definition.id: (definition, handler, observing) for definition, handler, observing in streams}
         self.requires = {requirement.id: requirement.fingerprint for requirement in catalog.requires}
@@ -309,23 +330,29 @@ class _Service:
             return
         definition, handler, observing = registered
         await context.send_initial_metadata(())
-        execution = Context(wire.Request(operation=first.open.stream, scope=first.open.scope), self.description.id, self.requires)
-        output = asyncio.Queue(maxsize=1)
-        ticks = asyncio.Queue(maxsize=1)
-        reading = asyncio.create_task(_read_publish(request_iterator, observing, ticks, output))
-        running = asyncio.create_task(_produce(handler, execution, definition.row, observing, ticks, output))
+        output: asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None] = asyncio.Queue(maxsize=1)
+        ticks: asyncio.Queue[tuple[Timestamp, Context]] = asyncio.Queue(maxsize=1)
+        scope = _SamplesScope(first.open.stream, first.open.scope, self.description.id, self.requires, self.local)
+        reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, ticks, output))
+        running = asyncio.create_task(_produce(handler, scope, definition.row, observing, ticks, output))
         sequence = 0
         try:
             while True:
-                sample = await output.get()
-                if sample is None:
+                frame = await output.get()
+                if frame is None:
                     return
-                if isinstance(sample, _FaultError):
-                    await context.abort(sample.code, sample.message)
+                if isinstance(frame, _FaultError):
+                    await context.abort(frame.code, frame.message)
+                    return
+                if isinstance(frame, carrier.InstanceSamplesResponse):
+                    await context.write(frame)
+                    continue
                 sequence += 1
-                sample.sequence = sequence
-                await context.write(carrier.InstanceSamplesResponse(samples=[sample]))
+                frame.sequence = sequence
+                await context.write(carrier.InstanceSamplesResponse(samples=[frame]))
         finally:
+            if scope.context is not None:
+                scope.context._output = None
             await _release(running, reading)
 
 
@@ -373,9 +400,9 @@ async def _execute(
         value = await handler(execution, request)
         if not isinstance(value, response):
             raise TypeError("Handler Returned the Wrong Protobuf Type")
-        result = wire.Response(payload=value.SerializeToString())
+        result = Response(payload=value.SerializeToString())
     except Failure as failure:
-        result = wire.Response(failure=failure.value)
+        result = Response(failure=failure.value)
     except (ProtocolError, DecodeError) as error:
         await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
         return
@@ -405,22 +432,81 @@ async def _read_invoke(
         await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
 
 
+class _SamplesOutput:
+    def __init__(self, output: asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None]) -> None:
+        self.output = output
+        self.active = True
+
+    async def put(self, frame: carrier.InstanceInvokeResponse | _FaultError) -> None:
+        if not self.active:
+            raise ProtocolError("Call Samples Child: Tick Already Answered")
+        if isinstance(frame, _FaultError):
+            await self.output.put(frame)
+            return
+        kind = frame.WhichOneof("frame")
+        if kind == "child":
+            response = carrier.InstanceSamplesResponse(child=frame.child)
+        elif kind == "child_cancel":
+            response = carrier.InstanceSamplesResponse(child_cancel=frame.child_cancel)
+        elif kind == "child_demand":
+            response = carrier.InstanceSamplesResponse(child_demand=frame.child_demand)
+        else:
+            raise ProtocolError("Call Samples Child: Child Frame Required")
+        await self.output.put(response)
+
+
+class _SamplesScope:
+    def __init__(
+        self,
+        stream: str,
+        scope: str,
+        plugin: str,
+        requires: dict[str, bytes],
+        local: dict[str, tuple[Operation[Message, Message], Handler]],
+    ) -> None:
+        self.stream = stream
+        self.scope = scope
+        self.plugin = plugin
+        self.requires = requires
+        self.local = local
+        self.context: Context | None = None
+        self.next = [0]
+        self.retired: set[int] = set()
+        self.sequence = 0
+
+
 async def _read_publish(
     input: AsyncIterator[carrier.InstanceSamplesRequest],
     observing: bool,
-    ticks: asyncio.Queue[Timestamp],
-    output: asyncio.Queue[wire.Sample | _FaultError | None],
+    scope: _SamplesScope,
+    ticks: asyncio.Queue[tuple[Timestamp, Context]],
+    output: asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None],
 ) -> None:
     try:
         async for frame in input:
-            if frame.WhichOneof("frame") != "tick":
-                raise ProtocolError("Expected Tick")
+            kind = frame.WhichOneof("frame")
+            if kind == "child":
+                if scope.context is None:
+                    raise ProtocolError("Reply to Samples Child: Unanswered Tick Required")
+                await scope.context._reply(frame.child)
+                continue
+            if kind != "tick":
+                raise ProtocolError("Read Samples: Expected Tick or Child Reply")
             if not observing:
-                raise ProtocolError("Device Streams Do Not Accept Ticks")
+                raise ProtocolError("Read Samples: Device Streams Do Not Accept Ticks")
+            if scope.context is not None:
+                raise ProtocolError("Read Samples: Previous Tick Is Unanswered")
             if not frame.tick.HasField("at"):
-                raise ProtocolError("Tick Time Required")
+                raise ProtocolError("Read Samples: Tick Time Required")
             validate_timestamp(frame.tick.at)
-            await ticks.put(frame.tick.at)
+            scope.sequence += 1
+            execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires, _SamplesOutput(output))
+            execution.sequence = scope.sequence
+            execution._next = scope.next
+            execution._retired = scope.retired
+            execution._local = scope.local
+            scope.context = execution
+            await ticks.put((frame.tick.at, execution))
         await output.put(None)
     except ProtocolError as error:
         await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
@@ -428,23 +514,30 @@ async def _read_publish(
 
 async def _produce(
     handler: Observer | Producer,
-    execution: Context,
+    scope: _SamplesScope,
     row_type: type[Message],
     observing: bool,
-    ticks: asyncio.Queue[Timestamp],
-    output: asyncio.Queue[wire.Sample | _FaultError | None],
+    ticks: asyncio.Queue[tuple[Timestamp, Context]],
+    output: asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None],
 ) -> None:
     try:
         if not observing:
+            execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
             await cast(Producer, handler)(execution, Publisher(row_type, output))
             return
         while True:
-            at = await ticks.get()
-            execution.sequence += 1
+            at, execution = await ticks.get()
             row = await cast(Observer, handler)(execution)
             if not isinstance(row, row_type):
-                raise TypeError("Observer Returned the Wrong Protobuf Type")
-            await output.put(wire.Sample(at=at, row=row.SerializeToString()))
+                raise TypeError("Answer Samples Tick: Observer Returned the Wrong Protobuf Type")
+            await execution._cancel("Samples Tick Answered")
+            if isinstance(execution._output, _SamplesOutput):
+                execution._output.active = False
+            execution._output = None
+            scope.context = None
+            await output.put(Sample(at=at, row=row.SerializeToString()))
+    except ProtocolError as error:
+        await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
     except Exception as error:
         await output.put(_FaultError(grpc.StatusCode.INTERNAL, str(error)))
 
