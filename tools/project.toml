@@ -53,7 +53,7 @@ timeout_seconds = 120
 
 [languages.python]
 exclude = [".venv", "tools/python/.ruff_cache"]
-generated = ["target/generated/python/src", "sdk/python/src/harmos/v1/*_pb2*", "sdk/python/src/harmos/conformance/v1/*_pb2*"]
+generated = ["target/generated/python/src", "sdk/python/src/harmos/v1/*_pb2*", "sdk/python/tests/fixtures/conformance/v1/*_pb2*"]
 roots = ["tools/python", "sdk/python"]
 
 [languages.rust]

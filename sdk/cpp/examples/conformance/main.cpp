@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <iostream>
-#include "harmos/conformance.hpp"
+#include "conformance.hpp"
 
 int install_itself(int argc, char** argv);
 

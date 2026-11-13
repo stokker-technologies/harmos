@@ -205,10 +205,13 @@ def run(
                 if exact:
                     command += ["--", exact, "--exact"]
                 print(f"Focused Tests: {name} / {', '.join(group)}", flush=True)
+                environment = dict(os.environ, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target"))
+                suffix = ".exe" if os.name == "nt" else ""
+                environment.setdefault("HARMOS_CPP_PLUGIN", str(directory / "target/cpp/tests" / f"harmos-cpp-conformance{suffix}"))
                 result = subprocess.run(
                     command,
                     cwd=directory,
-                    env=dict(os.environ, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target")),
+                    env=environment,
                     stdin=sys.stdin,
                     stdout=sys.stdout,
                     stderr=sys.stderr,

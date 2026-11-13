@@ -1,0 +1,68 @@
+# ***
+#
+# Harmos
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# ***
+
+# === Settings === #
+
+[settings]
+lockfile = true
+
+# === Tools === #
+
+# Python and uv Are Inherited from Root Tooling; SDK Packages Use uv.lock.
+
+# === Tasks === #
+
+[tasks.prepare]
+description = "Prepare the Locked Python SDK Environment"
+run = "uv sync --locked --all-groups"
+
+[tasks.generate]
+description = "Generate the Python SDK Protocols"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol"
+
+[tasks.build]
+description = "Build the Python SDK Wheel"
+dir = "../.."
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --no-sync --project tools/python python -m build --wheel --no-isolation --outdir target/build/{{usage.profile}}/any/python sdk/python"
+
+[tasks.test]
+description = "Test the Python SDK Stories"
+usage = '''
+flag "--profile <profile>" default="dev"
+flag "--exact <exact>"
+'''
+run = "uv run --locked --no-sync python -c \"import os, runpy; os.environ['TEST_PROFILE'] = '{{usage.profile}}'; runpy.run_module('unittest', run_name='__main__')\" {% if usage.exact %}{{usage.exact}}{% else %}discover -s tests/integration -v{% endif %}"
+
+[tasks."test:unit"]
+description = "Test the Python SDK Client Units"
+run = "uv run --locked --no-sync python -m unittest tests.integration.test_client_root tests.integration.test_client_call_context -v"
+
+[tasks.format]
+description = "Format the Python SDK"
+dir = "../.."
+usage = 'flag "--check"'
+run = "uv run --locked --no-sync --project tools/python ruff format sdk/python{% if usage.check %} --check{% endif %}"
+
+[tasks.lint]
+description = "Lint the Python SDK"
+dir = "../.."
+run = [
+  "uv run --locked --no-sync --project tools/python ruff check sdk/python",
+  "uv run --locked --no-sync --project tools/python ty check --project sdk/python sdk/python",
+]
+
+[tasks.check]
+description = "Check the Python SDK and Protocol Drift"
+dir = "../.."
+run = [
+  "mise -C sdk/python run format -- --check",
+  "mise -C sdk/python run lint",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol --check",
+]

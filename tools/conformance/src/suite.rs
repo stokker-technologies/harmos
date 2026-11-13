@@ -597,7 +597,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Schema Fingerprints / Retain Options, Optional Presence, Recursion and Imports.
             let actual = harmos_protocol::schema::message_types(types, "harmos.conformance.v1.Graph.Nested")
                 .map_err(|error| Error::Invalid(error.to_string()))?;
-            let expected = harmos_protocol::schema::message_types(&harmos::conformance::v1::types(), "harmos.conformance.v1.Graph.Nested")
+            let expected = harmos_protocol::schema::message_types(&crate::conformance::types(), "harmos.conformance.v1.Graph.Nested")
                 .map_err(|error| Error::Invalid(error.to_string()))?;
             require(actual == expected, "Reachable Schema Definitions Differ")?;
             // Schema Fingerprints / Round Trip a Nested Optional Zero Through the Graph.

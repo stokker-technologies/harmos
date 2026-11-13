@@ -85,7 +85,7 @@ class CallerContext(unittest.IsolatedAsyncioTestCase):
 
                         return start
 
-                table = json.loads((Path(__file__).resolve().parents[3] / "fixtures/client/resources.json").read_text())
+                table = json.loads((Path(__file__).resolve().parents[3] / "tests/fixtures/client/resources.json").read_text())
                 client = Client(Channel(), table)
                 # Supply All Three Controls to One Generated Resource Call.
                 call = client.jobs.progress.watch(

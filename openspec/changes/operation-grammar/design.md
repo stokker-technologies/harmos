@@ -1790,20 +1790,16 @@ The inventory and proof are tracked as C.1–C.5 in tasks.md; no lifecycle or de
 command is part of this work. The README entry points remain accurate for the message
 default; affected configuration details live in the architecture and storage guides.
 
-The conformance fixture becomes a public SDK definition, with a thin executable
-caller and packaged generated fixture messages. Each language's isolated package
-journey must construct it using only the installed SDK and run the reference host.
-The public shapes are `harmos::conformance::plugin() -> harmos::Plugin`,
-Python `harmos.conformance.plugin() -> Plugin`, C#
-`new Harmos.Conformance.Fixture().Build() -> Harmos.Sdk.Plugin`, and C++
-`harmos::conformance::plugin() -> harmos::Plugin` from `harmos/conformance.hpp`.
-One `proto/harmos/conformance/v1/fixture.proto` generates all fixture bindings.
-Rust ships its generated source/descriptors in the crate; Python ships generated
-modules in the wheel; C# compiles messages into the SDK assembly; C++ builds them
-unconditionally into `Harmos::Cpp`, including with tests disabled. C++ Build stages
-the source distribution with `sdk/cpp` and `proto`; no new release asset is added.
-The four package stories use actual Cargo archives, a wheel, a NuGet package and
-that source distribution, with no workspace product sources in the consumer.
+Amended by the owner on 2026-11-13: conformance is test/example support, outside
+all shipped SDK libraries. The shared input is
+`sdk/tests/fixtures/conformance/proto/harmos/conformance/v1/fixture.proto`.
+Rust generates messages/descriptors under `sdk/rust/tests/fixtures/conformance/`;
+Python under `sdk/python/tests/fixtures/conformance/`; C# compiles them in the
+Conformance executable; C++ compiles them in its conformance target. Package
+stories copy this support into independent consumers of the Cargo SDK archives,
+wheel, NuGet package and C++ installed package, then run every reference-host rule.
+C++ stages example sources and test input alongside its source distribution;
+no new release asset is added.
 The generated C++ resource methods take `grpc::ClientContext&` supplied by the caller;
 Watch readers borrow that same caller-owned context until the reader finishes.
 The matching Rust request, Python call options and C# CallOptions retain per-call
@@ -1871,7 +1867,7 @@ The existing origin/carrier round-trip test covers this missing traversal.
 
 Regenerate protocol/SDK bindings and adopt the generated 8 MiB message default;
 retain 4 MiB transfer chunks. Configure injected transports and caller-owned byte
-budgets for the selected ceiling. Import Python's fixture from `harmos.conformance`,
+budgets for the selected ceiling. Import Python's test fixture from `tests.fixtures.conformance`,
 and use the public constructors above in layered SDK conformance programs.
 Every C++ root call now takes its caller's ClientContext first. Watch returns the
 reader directly; retain the context, call TryCancel when abandoning observation,

@@ -29,8 +29,8 @@ import sys
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/client"
 sys.path.insert(0, str(FIXTURES))
-plugins = import_module("library.v1.plugins_pb2")
-settings = import_module("library.v1.plugins.settings_pb2")
+status = import_module("harmos.v1.status_pb2")
+diagnostics = import_module("harmos.v1.status.diagnostics_pb2")
 jobs = import_module("application.v1.jobs_pb2")
 progress = import_module("application.v1.jobs.progress_pb2")
 

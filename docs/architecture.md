@@ -402,7 +402,7 @@ and caller-face authorization remain independent checks.
 
 17. **Generic Library SDKs.** One SDK package per language, amended by the owner on
     2026-11-13: Python `harmos-sdk` (import `harmos`), Rust `harmos`, NuGet `Harmos`
-    and CMake `HarmosCpp` (`Harmos::Cpp`) include authoring, client roots and host
+    and CMake `Harmos` (`Harmos::Cpp`) include authoring, client roots and host
     protocol needs. Audience-specific builds and stub guards are removed. The host
     enforces faces and visibility at runtime, regardless of available bindings.
     Keep all four SDKs in this repository, with
@@ -418,6 +418,16 @@ and caller-face authorization remain independent checks.
     each SDK. Four-language client-root fixtures compose library and product descriptors.
     Native plugin semantic parity is agreed; generic managed application clients remain
     Rust-only, while other languages use their generated application gRPC clients.
+    C++ installs `Harmos::Cpp` with config-package dependencies; its conformance
+    implementation belongs to example support, outside the installed library. Conformance
+    protocol input lives under `sdk/tests/fixtures/conformance/proto/`; generated fixture
+    messages and implementations belong only to test and conformance targets in every SDK.
+    C# builds every project through `sdk/csharp/Harmos.slnx`; central properties and
+    package versions own the .NET build. Committed client roots live in `src/Harmos/Generated`
+    and `tests/Harmos.Tests/Generated`. All build outputs live under `artifacts`; executable
+    manifests from MSBuild are the path authority for test and fixture consumers. NuGet `Harmos`
+    takes its version from the Cargo workspace and includes SourceLink and repository metadata.
+
     **Status:** landed for these SDK contracts; Wasm is Rust-only.
 
 18. **Deterministic Stories.** Correctness tests follow journeys using controlled

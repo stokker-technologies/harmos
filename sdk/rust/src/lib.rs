@@ -63,7 +63,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
 pub mod clock;
-pub mod conformance;
 mod context;
 mod error;
 mod message;

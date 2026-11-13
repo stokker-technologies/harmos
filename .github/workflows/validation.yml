@@ -65,7 +65,7 @@ jobs:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,git-cliff,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      MISE_ENABLE_TOOLS: ${{ matrix.tools }}
       COMPILER_CACHE_BACKEND: ${{ matrix.cache }}
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
@@ -78,20 +78,91 @@ jobs:
         - label: Repository
           runner: ubuntu-24.04
           arguments: --repository
+          tools: python,uv,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck
           cache: ''
           mode: ''
         - label: Rust (unix)
           runner: ubuntu-24.04
           arguments: --language rust
+          tools: python,rust,uv,sccache,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck
           cache: disk
           mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' ||
             'READ_ONLY' }}
         - label: Rust (windows)
           runner: windows-2022
           arguments: --language rust
+          tools: python,rust,uv,sccache,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck
           cache: disk
           mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' ||
             'READ_ONLY' }}
+  check_csharp:
+    if: inputs.selection == 'check'
+    name: Check / C# (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: ./.github/actions/setup
+      with:
+        platform: ${{ matrix.platform }}
+        sdk-tools: csharp
+    - name: Build the C# Solution
+      run: mise run build -- --language csharp --profile ${{ env.PROFILE }}
+    - name: Check the C# Solution
+      run: mise run check -- --language csharp
+    env:
+      MISE_ENABLE_TOOLS: python,uv,dotnet
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - platform: unix
+          runner: ubuntu-24.04
+        - platform: windows
+          runner: windows-2022
+  test_csharp:
+    if: inputs.selection == 'test'
+    name: Test / C# (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - uses: ./.github/actions/setup
+      with:
+        platform: ${{ matrix.platform }}
+        sdk-tools: csharp
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-csharp-${{ env.PROFILE }}-${{ matrix.platform }}
+        path: sdk/csharp/artifacts
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
+        path: target/ci
+    - name: Restore C# Executable Permissions
+      if: runner.os == 'Linux'
+      run: chmod +x "sdk/csharp/$(cat sdk/csharp/artifacts/paths/${{ env.PROFILE == 'release' && 'Release' || 'Debug' }}/Harmos.Conformance.txt)"
+    - name: Test the C# Solution
+      run: mise run test -- --language csharp --profile ${{ env.PROFILE }}
+      env:
+        CI_INPUT_ARCHIVES: '["target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst"]'
+        HARMOS_CONFORMANCE_HOST: ${{ github.workspace }}/target/build/${{ env.PROFILE }}/${{ matrix.target }}/fixtures/bin/harmos-conformance${{ runner.os == 'Windows' && '.exe' || '' }}
+    env:
+      MISE_ENABLE_TOOLS: python,uv,dotnet
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - platform: unix
+          runner: ubuntu-24.04
+          target: linux-x86_64
+        - platform: windows
+          runner: windows-2022
+          target: windows-x86_64
   release_dry:
     if: inputs.selection == 'release_dry'
     name: Release / Dry
@@ -145,7 +216,7 @@ jobs:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
     env:
-      MISE_ENABLE_TOOLS: git-cliff,go,node,python,rust,sccache,uv
+      MISE_ENABLE_TOOLS: git-cliff,python,rust,sccache,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
@@ -198,7 +269,7 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: git-cliff,go,node,python,rust,uv
+      MISE_ENABLE_TOOLS: git-cliff,python,rust,uv
     permissions:
       contents: read
   build_product:
@@ -251,7 +322,7 @@ jobs:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      MISE_ENABLE_TOOLS: python,rust,sccache,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
@@ -285,15 +356,43 @@ jobs:
       uses: ./.github/actions/setup
       with:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        sdk-tools: cpp csharp python
         cache-backend: disk
         cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE'
           || 'READ_ONLY' }}
+    - name: Install Linux C++ Prerequisites
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool pkg-config
     - name: Run Project Task
       run: mise run build -- --artifact tests --profile ${{ env.PROFILE }}
       env:
         CI_OUTPUT_ARCHIVES: '[{"archive":"target/ci/build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst","paths":["target/build/{profile}/{target}/fixtures"],"profile":"${{
           env.PROFILE }}"},{"archive":"target/ci/build-tests-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst","paths":["target/build/{profile}/{target}/tests/archive.tar.zst","target/build/{profile}/{target}/tests/compiler.json"],"profile":"${{
           env.PROFILE }}"}]'
+    - name: Test C++ SDK Units
+      if: github.event_name != 'push'
+      run: mise -C sdk/cpp run test -- --layer unit --profile ${{ env.PROFILE }}
+    - name: Build Installed C++ SDK Consumer
+      run: mise -C sdk/cpp run consumer -- --profile ${{ env.PROFILE }}
+    - name: Test C++ SDK Integration Stories
+      if: github.event_name != 'push'
+      run: mise -C sdk/cpp run test -- --layer integration --profile ${{ env.PROFILE }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-csharp-${{ env.PROFILE }}-${{ matrix.platform }}
+        path: |
+          sdk/csharp/artifacts/bin/
+          sdk/csharp/artifacts/paths/
+        if-no-files-found: error
+    - name: Test C# SDK Units
+      if: github.event_name != 'push'
+      run: mise -C sdk/csharp run test:unit -- --profile ${{ env.PROFILE }}
+    - name: Build Python SDK
+      if: runner.os == 'Linux'
+      run: mise -C sdk/python run build -- --profile ${{ env.PROFILE }}
+    - name: Test Python SDK Client Units
+      if: github.event_name != 'push'
+      run: mise -C sdk/python run test:unit
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
@@ -330,7 +429,8 @@ jobs:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
     env:
-      MISE_ENABLE_TOOLS: cmake,dotnet,aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
+      MISE_ENABLE_TOOLS: cmake,ninja,dotnet,python,rust,uv,sccache,aqua:nextest-rs/nextest/cargo-nextest
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
@@ -399,7 +499,7 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
+      MISE_ENABLE_TOOLS: git-cliff,python,rust,uv
     strategy:
       fail-fast: false
       matrix:
@@ -481,7 +581,7 @@ jobs:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,uv
+      MISE_ENABLE_TOOLS: python,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
@@ -515,6 +615,7 @@ jobs:
       uses: ./.github/actions/setup
       with:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        sdk-tools: ${{ matrix.sdk-tools }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-unix
@@ -546,15 +647,19 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,taplo,uv
+      MISE_ENABLE_TOOLS: ${{ matrix.tools }}
     strategy:
       fail-fast: false
       matrix:
         include:
         - suffix: ''
           arguments: --language python
+          sdk-tools: python csharp
+          tools: python,uv,rust,dotnet,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck
         - suffix: ' / Generated'
           arguments: --generated
+          sdk-tools: ''
+          tools: python,uv
   test_unit:
     if: inputs.selection == 'test_unit'
     name: Test / ${{ matrix.language }} / ${{ matrix.label }} (${{ matrix.platform }})
@@ -603,7 +708,7 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
+      MISE_ENABLE_TOOLS: python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
     strategy:
       fail-fast: false
       matrix:
@@ -639,6 +744,7 @@ jobs:
       uses: ./.github/actions/setup
       with:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        sdk-tools: python csharp
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
@@ -674,7 +780,7 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: cmake,dotnet,aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
+      MISE_ENABLE_TOOLS: dotnet,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
     strategy:
       fail-fast: false
       matrix:
@@ -754,7 +860,7 @@ jobs:
         key: ${{ steps.setup.outputs.sccache-cache-primary-key }}
         path: ${{ steps.setup.outputs.sccache-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      MISE_ENABLE_TOOLS: python,rust,sccache,uv
       COMPILER_CACHE_BACKEND: disk
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
@@ -774,6 +880,7 @@ jobs:
       uses: ./.github/actions/setup
       with:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        sdk-tools: python csharp
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-fixtures-${{ env.PROFILE }}-unix
@@ -807,7 +914,7 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: cmake,dotnet,aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov,github:bnjbvr/cargo-machete,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,sccache,taplo,uv
+      MISE_ENABLE_TOOLS: dotnet,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov
   bench:
     if: inputs.selection == 'bench'
     name: Bench / Rust / ${{ matrix.layer }}
@@ -859,7 +966,7 @@ jobs:
         key: ${{ steps.setup.outputs.bench_baselines-cache-primary-key }}
         path: ${{ steps.setup.outputs.bench_baselines-path }}
     env:
-      MISE_ENABLE_TOOLS: aqua:koalaman/shellcheck,aqua:nextest-rs/nextest/cargo-nextest,git-cliff,go,go:github.com/rhysd/actionlint/cmd/actionlint,node,python,rust,uv
+      MISE_ENABLE_TOOLS: python,rust,uv
       CI_BENCH_LAYER: ${{ matrix.layer }}
     strategy:
       fail-fast: false

@@ -261,8 +261,8 @@ The Fixed Fixture Catalog section defines the original subset and its minimal
 Value projection; its original five operations, three requirements and two streams
 retain their order and fingerprints. Catalog.types is extended with the following
 messages in the same fixture.proto and the imported google/protobuf/duration.proto.
-One `proto/harmos/conformance/v1/fixture.proto` generates the fixture messages in
-all four SDK packages. The Rust SDK ships its generated descriptor closure;
+One `sdk/tests/fixtures/conformance/proto/harmos/conformance/v1/fixture.proto` generates the fixture messages in
+all four SDKs’ test/conformance targets. The Rust test fixture retains its generated descriptor closure;
 case 17 compares the normalized reachable Graph projection against each SDK's
 advertised graph. It retains message options and omits unreachable definitions.
 

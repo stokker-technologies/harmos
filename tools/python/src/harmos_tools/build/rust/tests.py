@@ -23,7 +23,7 @@ from pathlib import Path
 # Third Party Imports
 
 # Local Imports
-from ... import temporary
+from ... import csharp, temporary
 from ...ci import summary
 from ...test import archive
 from .. import fixtures as staging
@@ -49,7 +49,12 @@ def main() -> None:
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--features")
     parser.add_argument("--extended", action="store_true")
+    parser.add_argument("--csharp-fixture", action="store_true")
     options = parser.parse_args()
+    if options.csharp_fixture:
+        fixtures = paths.output(ROOT, "build", options.profile) / "fixtures"
+        csharp_fixture(options.profile, fixtures, {}, {})
+        return
     with temporary.directory() as scratch:
         build(options.profile, scratch, features=options.features, extended=options.extended)
 
@@ -80,23 +85,17 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
         binaries[message["target"]["name"]] = destination.relative_to(fixtures).as_posix()
 
     # Build and Retain the Two Native-Language SDK Programs Used by Installation Stories.
-    subprocess.run(
-        [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "csharp", "--profile", profile], cwd=Path.cwd(), check=True
-    )
+    csharp_fixture(profile, fixtures, files, binaries)
     subprocess.run(
         [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "cpp", "--profile", profile], cwd=Path.cwd(), check=True
     )
-    configuration = "Debug" if profile == "dev" else "Release"
-    csharp = ROOT / "sdk/csharp/Conformance/bin" / configuration / "net10.0"
-    for source in csharp.iterdir():
-        if source.is_file():
-            staging.copy(source, fixtures / "csharp" / source.name, files)
     suffix = ".exe" if os.name == "nt" else ""
-    binaries["harmos-csharp-conformance-plugin"] = f"csharp/harmos-csharp-conformance-plugin{suffix}"
-    cpp = ROOT / "target/cpp" / profile
-    source = cpp / configuration / f"harmos-cpp-conformance{suffix}" if os.name == "nt" else cpp / "harmos-cpp-conformance"
+    cpp = ROOT / "target/cpp" / ("tests" if profile == "dev" else "release")
+    source = cpp / f"harmos-cpp-conformance{suffix}"
     staging.copy(source, fixtures / "bin" / source.name, files)
     binaries["harmos-cpp-conformance"] = f"bin/{source.name}"
+    for dependency in cpp.glob("*.dll"):
+        staging.copy(dependency, fixtures / "bin" / dependency.name, files)
 
     with summary.phase("Fixture Driver"):
         tool = staging.executable(artifacts, "fixture-driver")
@@ -132,6 +131,19 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
             "input_executables": executables,
         },
     )
+
+
+def csharp_fixture(profile: str, fixtures: Path, files: dict[str, str], binaries: dict[str, str]) -> None:
+    # Build the Solution Through Its SDK Task.
+    subprocess.run(
+        [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "csharp", "--profile", profile], cwd=ROOT, check=True
+    )
+    # Stage the Executable and Runtime Closure from the MSBuild Output Manifest.
+    plugin = csharp.executable(ROOT, profile)
+    for source in plugin.parent.iterdir():
+        if source.is_file():
+            staging.copy(source, fixtures / "csharp" / source.name, files)
+    binaries["harmos-csharp-conformance-plugin"] = f"csharp/{plugin.name}"
 
 
 # === Private Functions === #

@@ -158,7 +158,7 @@ pub fn catalog() -> Catalog {
             request: request.into(),
             response: response.into(),
             visibility: Visibility::Public as i32,
-            fingerprint: harmos_protocol::schema::fingerprint(id, &harmos::conformance::v1::types(), request, response)
+            fingerprint: harmos_protocol::schema::fingerprint(id, &crate::conformance::types(), request, response)
                 .expect("fixture schema resolves"),
             ..Default::default()
         });
@@ -174,7 +174,7 @@ pub fn catalog() -> Catalog {
         id: "conformance.host.schema".into(),
         fingerprint: harmos_protocol::schema::fingerprint(
             "conformance.host.schema",
-            &harmos::conformance::v1::types(),
+            &crate::conformance::types(),
             "harmos.conformance.v1.Graph",
             ROW,
         )
@@ -222,7 +222,7 @@ pub fn catalog() -> Catalog {
             fingerprint: fingerprint(id),
         });
     }
-    let mut types = harmos::conformance::v1::types();
+    let mut types = crate::conformance::types();
     for file in harmos_protocol::clock::catalog_types().file {
         if !types.file.iter().any(|existing| existing.name == file.name) {
             types.file.push(file);
@@ -235,7 +235,7 @@ pub fn catalog() -> Catalog {
         types: Some(types),
         sections: vec![Section {
             r#type: "harmos.conformance.v1.Graph".into(),
-            payload: harmos::conformance::v1::Graph {
+            payload: crate::conformance::Graph {
                 interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
                 ..Default::default()
             }

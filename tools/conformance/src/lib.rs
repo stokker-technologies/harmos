@@ -11,6 +11,8 @@
 
 /* === Modules === */
 
+#[path = "../../../sdk/rust/tests/fixtures/conformance/v1.rs"]
+pub mod conformance;
 mod error;
 mod fixture;
 mod managed;

@@ -43,13 +43,13 @@
 
 #[tokio::test]
 async fn csharp_installs_itself() {
-    let program = super::support::language_binary(
-        "harmos-csharp-conformance-plugin",
-        if cfg!(target_os = "windows") {
-            "sdk/csharp/Conformance/bin/Debug/net10.0/harmos-csharp-conformance-plugin.exe"
-        } else {
-            "sdk/csharp/Conformance/bin/Debug/net10.0/harmos-csharp-conformance-plugin"
-        },
-    );
+    let program = if std::env::var_os("STKR_TEST_PROFILE").is_some() {
+        crate::support::fixtures::binary("harmos-csharp-conformance-plugin", None)
+    } else {
+        let sdk = crate::support::fixtures::workspace().join("sdk/csharp");
+        let path = std::fs::read_to_string(sdk.join("artifacts/paths/Debug/Harmos.Conformance.txt"))
+            .expect("Build the C# Fixture: mise run build -- --language csharp");
+        sdk.join(path.trim_start_matches('\u{feff}').trim())
+    };
     super::support::installs_itself(&program, &[]).await;
 }

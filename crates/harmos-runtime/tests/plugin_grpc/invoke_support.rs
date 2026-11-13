@@ -270,7 +270,7 @@ impl Python {
         let sdk = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/python");
         let python = sdk.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
         let mut process = tokio::process::Command::new(python)
-            .args(["-m", "harmos.conformance", "--address", "127.0.0.1:0", "--shutdown-on-stdin"])
+            .args(["-m", "tests.fixtures.conformance", "--address", "127.0.0.1:0", "--shutdown-on-stdin"])
             .args(arguments)
             .current_dir(sdk)
             .stdin(Stdio::piped())

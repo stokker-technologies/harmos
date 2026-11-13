@@ -1,5 +1,14 @@
 # Tasks
 
+## 9. Locked C# Build Modernization
+
+- [x] 9.1 Repair Python remote conformance host selection, commit, and prove Python checks and both C++ stories retain 31 rules.
+- [x] 9.2 Move all C# projects into the solution layout; centralize properties, package versions, locked restore and artifacts output.
+- [x] 9.3 Replace project loops with solution tasks, migrate generated roots and drift checks, and migrate every C# output consumer.
+- [x] 9.4 Complete NuGet metadata, repository-derived version, SourceLink and deterministic CI builds; prove an independent local-feed consumer.
+- [x] 9.5 Add native Linux/Windows C# check/test lanes and code analysis; update affected maintained guides.
+- [x] 9.6 Run the requested committed-head proof from clean C# artifacts, root format, Python/repository checks and verify clean status; retain local commits only.
+
 ## 1. Contract
 
 - [x] 1.1 Fix the final entry-point arguments and workflow job list in proposal.md against the implemented dispatcher.
@@ -25,8 +34,10 @@
 
 - [ ] 4.1 Run every entry point locally on Windows and Linux, and confirm hosted CI and Nightly run the same tasks.
 - [x] 4.2 Update the contributor guide.
-
 - [ ] 4.3 Verify the installed repository checker accepts the entry-point task model and generated protocol declarations; hand remaining checker defects to its owner.
+- [x] 4.4 Prove the Committed C++ Presets from Clean Output, the Installed Consumer and Integration Stories on Windows; Record Cold and Cached Build Durations in the Final Report.
+- [x] 4.5 Run Root Format and Repository Checks, Per-SDK C# and Python Build/Unit Tasks, and Verify Clean Git Status on the Committed Candidate.
+- [x] 4.6 After Ownership Authorization, Update the Two Tooling Dispatcher Expectations in `tools/python/tests/integration/test_build_cargo.py` and Rerun `mise run check -- --language python`.
 
 ## 5. Developer Build Feedback
 
@@ -35,13 +46,26 @@
 - [x] 5.3 Repeat the measurements, evaluate independent build concurrency and document the supported workstation layout and unmeasured platforms in `docs/tooling.md`.
 - [x] 5.4 Run formatting, Rust/Python/repository checks and the Tests producer; repair owned failures and report external blockers precisely.
 
-## 6. Protocol Skeleton and Contract Comments
+## 6. C++ SDK Build
 
-- [x] 6.1 Own `proto/harmos/**` layout/comments, root Buf configuration and mise entries (including the generated Buf lock entry), comment/layout-derived generated outputs, `docs/architecture.md` and this change. Derive contract comments from handlers, SDK consumers, stories and design contracts; record unresolved semantics narrowly in proposal.md.
-- [x] 6.2 Add Buf formatting and lint with documented grammar exceptions, excluding application/third-party inputs; apply the complete symmetric skeleton to the 13 files requiring no message reordering and retain the locked proto2 settings grammar.
-- [x] 6.3 Regenerate committed protocol outputs through `generate`, review README impact and document the maintained protocol authoring convention.
-- [ ] 6.4 On the committed candidate, prove descriptor equivalence against the baseline, run format, repository and Rust checks, the focused generated-code drift test and protocol Cargo check, and leave a clean local commit without pushing.
-- [ ] 6.5 Resolve the raw-descriptor versus Buf import/declaration ordering conflict with the owner, then apply the remaining skeleton/pairing to `v1/{invocations,plugins,status,storage_types,time}.proto`, `v1/access/{listener,pairings}.proto`, `v1/status/logs.proto`, `plugin/v1/instance.proto` and `context/v1/{invocations,time}.proto`. All declarations and file boundaries remain locked.
+- [x] 6.1 Replace Fetched gRPC with Pinned vcpkg Config Packages, Packaged Generators and Native Binary Caching; Bootstrap vcpkg Outside the Repository.
+- [x] 6.2 Split Protocol Generation, Tests and Conformance Targets; Add Ninja Presets, Target-Owned Settings and Installed Harmos Package Exports.
+- [x] 6.3 Move Generated Client Headers and Conformance Support, Update Generators and Includes Without Changing SDK Behavior; Leave Installed-Consumer Execution to Final Validation.
+- [x] 6.4 Update SDK Packaging, Artifact Consumers, Tooling and C++ Guide Contracts; Commit the Complete Dependency/Build Step Locally.
+
+## 7. Per-SDK Tools
+
+- [x] 7.1 Add C++, C# and Python Mise Tools, Tasks and Locks; Remove SDK Tools and Compiler-Cache Variables from Root Configuration and Delegate Root SDK Tasks.
+- [x] 7.2 Install Only Lane Tools in GitHub Jobs and Persist the C++ Binary Cache; Retain All Existing Checks and Tests.
+- [x] 7.3 Update Maintained Tooling Guidance and Commit the Per-SDK Configuration Step Locally.
+
+## Protocol Skeleton and Contract Comments
+
+- [x] P.1 Own `proto/harmos/**` layout/comments, root Buf configuration and mise entries (including the generated Buf lock entry), comment/layout-derived generated outputs, `docs/architecture.md` and this change. Derive contract comments from handlers, SDK consumers, stories and design contracts; record unresolved semantics narrowly in proposal.md.
+- [x] P.2 Add Buf formatting and lint with documented grammar exceptions, excluding application/third-party inputs; apply the complete symmetric skeleton to the 13 files requiring no message reordering and retain the locked proto2 settings grammar.
+- [x] P.3 Regenerate committed protocol outputs through `generate`, review README impact and document the maintained protocol authoring convention.
+- [x] P.4 On the committed candidate, prove descriptor equivalence against the baseline, run format, repository and Rust checks, the focused generated-code drift test and protocol Cargo check, and leave a clean local commit without pushing.
+- [x] P.5 Resolve the raw-descriptor versus Buf import/declaration ordering conflict with the owner, then apply the remaining skeleton/pairing to `v1/{invocations,plugins,status,storage_types,time}.proto`, `v1/access/{listener,pairings}.proto`, `v1/status/logs.proto`, `plugin/v1/instance.proto` and `context/v1/{invocations,time}.proto`. All declarations and file boundaries remain locked.
 
 ## Workflow Follow-Up
 
@@ -92,3 +116,15 @@ cold-build concurrency remain unmeasured.
 
 - [x] 5.5 Merge build-speed tooling with SDK guest profiles and focused test selectors;
   retain benchmark fixture separation and move measurements out of the usage guide.
+
+## 8. Locked SDK Test Migration
+
+- [x] 8.1 Align dispatcher expectations with root-only preparation and per-SDK test delegation.
+- [x] 8.2 Replace the five C++ cases and runner with Catch2 v3 and automatic discovery.
+- [x] 8.3 Move shared client inputs under SDK tests and compose real library roots in all four SDKs.
+- [x] 8.4 Move the unchanged conformance protocol to test inputs and exclude generated fixtures from shipping packages.
+
+Final proof runs on the committed candidate: root format; Rust, Python and repository
+checks; C++ configure/build/CTest presets; the Rust generated-protocol test; C# tests;
+and Python client tests. The tree must remain clean, commits local and C: above 40 GB.
+Windows-only local evidence does not close the existing cross-platform/hosted task 4.1.

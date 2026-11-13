@@ -42,4 +42,4 @@ select = ["E4", "E7", "E9", "F", "UP", "B"]
 python-version = "3.13"
 
 [tool.ty.src]
-exclude = ["src/harmos/**/v1/*_pb2*", "src/harmos/v1/*_pb2*", "tests/fixtures/client/**/*_pb2*"]
+exclude = ["src/harmos/**/v1/*_pb2*", "src/harmos/v1/*_pb2*", "tests/fixtures/**/*_pb2*"]

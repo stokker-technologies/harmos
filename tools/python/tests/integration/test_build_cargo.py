@@ -260,7 +260,7 @@ class WorkflowTaskTests(unittest.TestCase):
                 self.assertEqual(tasks.dispatch(["test", "--language", "rust", "--layer", layer, "--filter", expression]), 0)
                 task.assert_called_once_with(f"test:rust:{layer}", "--profile", "dev", "--filter", expression)
 
-    def test_prepare_syncs_sdk_without_inheriting_tooling_environment(self):
+    def test_prepare_installs_only_the_root_toolchain(self):
         toolchain = '[toolchain]\nchannel = "custom"\nprofile = "minimal"\ncomponents = ["rustfmt"]\ntargets = ["wasm32-wasip2"]\n'
         with (
             patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv")),
@@ -269,7 +269,7 @@ class WorkflowTaskTests(unittest.TestCase):
             patch.object(cargo, "focused") as focused,
         ):
             self.assertEqual(tasks.dispatch(["prepare"]), 0)
-        self.assertEqual(execute.call_count, 2)
+        self.assertEqual(execute.call_count, 1)
         self.assertEqual(
             execute.call_args_list[0].args[0],
             [
@@ -285,32 +285,38 @@ class WorkflowTaskTests(unittest.TestCase):
                 "wasm32-wasip2",
             ],
         )
-        self.assertEqual(execute.call_args.args[0], ["uv", "sync", "--locked", "--all-groups", "--project", str(Path.cwd() / "sdk/python")])
-        self.assertNotIn("VIRTUAL_ENV", execute.call_args.kwargs["environment"])
         focused.assert_not_called()
 
     def test_sdk_tests_use_their_project_and_preserve_selection(self):
         for exact in (None, "tests.integration.example.Story.test_behavior"):
             arguments = ["test", "--language", "python", "--package", "harmos-sdk", "--target", "integration", "--profile", "release"]
-            selected = ["discover", "-s", "tests/integration", "-v"]
+            selected = ["--profile", "release"]
             if exact:
                 arguments += ["--exact", exact]
-                selected = [exact]
+                selected += ["--exact", exact]
             with (
                 self.subTest(exact=exact),
                 patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv")),
                 patch.object(tasks, "_execute", return_value=0) as execute,
             ):
                 self.assertEqual(tasks.dispatch(arguments), 0)
-            sdk = Path.cwd() / "sdk/python"
             execute.assert_called_once()
             self.assertEqual(
                 execute.call_args.args[0],
-                ["uv", "run", "--locked", "--no-sync", "--project", str(sdk), "python", "-m", "unittest", *selected],
+                ["mise", "-C", "sdk/python", "run", "test", "--", *selected],
             )
-            self.assertEqual(execute.call_args.kwargs["directory"], sdk)
-            self.assertEqual(execute.call_args.kwargs["environment"]["TEST_PROFILE"], "release")
             self.assertNotIn("VIRTUAL_ENV", execute.call_args.kwargs["environment"])
+
+    def test_csharp_solution_tasks_preserve_profile_and_test_layer(self):
+        for verb in ("build", "test", "package"):
+            arguments = [verb, "--language", "csharp", "--profile", "release"]
+            selected = ["--profile", "release"]
+            if verb == "test":
+                arguments += ["--layer", "unit"]
+                selected += ["--layer", "unit"]
+            with self.subTest(verb=verb), patch.object(tasks, "_execute", return_value=0) as execute:
+                self.assertEqual(tasks.dispatch(arguments), 0)
+            execute.assert_called_once_with(["mise", "-C", "sdk/csharp", "run", verb, "--", *selected])
 
     def test_publication_selectors_preserve_guards_and_default_order(self):
         selections = [
