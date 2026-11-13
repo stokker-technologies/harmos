@@ -3,8 +3,18 @@
   "version-semver": "0.1.14",
   "builtin-baseline": "d015e31e90838a4c9dfa3eed45979bc70d9357fc",
   "dependencies": [
-    { "name": "grpc", "default-features": false, "features": ["codegen"] },
+    {
+      "name": "grpc",
+      "default-features": false,
+      "features": [
+        "codegen"
+      ]
+    },
     "openssl",
-    "protobuf"
+    "protobuf",
+    {
+      "name": "catch2",
+      "version>=": "3.0.1"
+    }
   ]
 }

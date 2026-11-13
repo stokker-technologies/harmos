@@ -70,3 +70,5 @@ lifecycle: Stop completes cleanup and leaves the server running. Both modes use
 plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::GET_TIME` with
 `requires_operation`; observers answer ticks and cannot wait. Authors must not
 start untracked background work if they require virtual-time execution.
+
+Unit journeys use Catch2 v3 with `TEST_CASE` and `SECTION`; CTest discovers cases from the executable through `catch_discover_tests()`. No separate runner or case inventory is maintained.

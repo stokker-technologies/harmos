@@ -103,7 +103,7 @@ cold-build concurrency remain unmeasured.
 ## 8. Locked SDK Test Migration
 
 - [x] 8.1 Align dispatcher expectations with root-only preparation and per-SDK test delegation.
-- [ ] 8.2 Replace the five C++ cases and runner with Catch2 v3 and automatic discovery.
+- [x] 8.2 Replace the five C++ cases and runner with Catch2 v3 and automatic discovery.
 - [ ] 8.3 Move shared client inputs under SDK tests and compose real library roots in all four SDKs.
 - [ ] 8.4 Move the unchanged conformance protocol to test inputs and exclude generated fixtures from shipping packages.
 - [ ] 8.5 Run the requested final checks and focused SDK proofs on the committed head; retain local commits only.

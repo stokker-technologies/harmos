@@ -1,3 +1,6 @@
+find_package(Catch2 3 CONFIG REQUIRED)
+include(Catch)
+
 add_library(harmos_client_fixture STATIC)
 harmos_protocol(harmos_client_fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/client/proto"
     "${CMAKE_CURRENT_BINARY_DIR}/generated" SYNC_SERVER
@@ -15,9 +18,5 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
 add_executable(harmos-cpp-tests unit/catalog.cpp unit/client_root.cpp unit/client_call_context.cpp
     "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp")
 target_include_directories(harmos-cpp-tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_link_libraries(harmos-cpp-tests PRIVATE Harmos::Cpp harmos_client_fixture harmos_conformance_protocol)
-foreach(case one_call_preserves_metadata_deadline_override_and_cancellation
-    client_roots_compose_services catalog_rejects_duplicate_operations
-    observer_preserves_its_stream_contract catalog_preserves_typed_sections_and_dependencies)
-    add_test(NAME ${case} COMMAND harmos-cpp-tests ${case})
-endforeach()
+target_link_libraries(harmos-cpp-tests PRIVATE Harmos::Cpp harmos_client_fixture harmos_conformance_protocol Catch2::Catch2WithMain)
+catch_discover_tests(harmos-cpp-tests)
