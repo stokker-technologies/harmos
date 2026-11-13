@@ -190,6 +190,7 @@ impl Host {
                     id: name.into(),
                     history: session.as_ref().unwrap().history.clone(),
                 }),
+                at: None,
             })
             .await
             .unwrap()

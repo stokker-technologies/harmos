@@ -424,7 +424,6 @@ impl plugin::instance_server::Instance for Service {
                     }
                     let result = child.result.map(|result| match result {
                         v1::child_response::Result::Payload(payload) => v1::response::Result::Payload(payload),
-                        v1::child_response::Result::Item(_) => unreachable!("unary storage fixture receives no observations"),
                         v1::child_response::Result::Failure(failure) => v1::response::Result::Failure(failure),
                         v1::child_response::Result::Item(_) => v1::response::Result::Failure(v1::Failure {
                             classification: v1::Classification::Permanent as i32,
