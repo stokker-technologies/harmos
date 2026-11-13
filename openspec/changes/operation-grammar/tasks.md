@@ -254,6 +254,7 @@ Nightly and A.6 is closed.
 - [x] O.5 Complete final proof and local commits; keep every decision in a separate local building commit and do not push.
 - [x] O.5.1 Run format, Rust/Python/repository checks, protocol drift, four-SDK conformance, the named self-install/storage/manager/access/status/wire identity stories, guest System selections and the final Tests artifact; repair findings. Expose the existing focused fixture selection through the public build task.
 - [x] O.5.2 Verify locked offline Cargo metadata on the committed clean head with Cargo.lock unchanged.
+- [ ] No `Catalog` on the wire, decided by the owner on 2026-11-13: catalog is how the code organizes its registries, not a resource a caller names. Replace `CatalogEntries.List` and its `CatalogKind` switch on the client and context faces by one typed resource per registry, each in its own file: `Operations.List` (and `Operations.Get` for one contract), `Schemas.List`, `Streams.List`, and the storage object definitions under the storage resource (`Storage.Objects.List`) unless reading the handlers shows they stand alone. Remove the opaque `bytes entries` reply field; every reply is typed. Migrate the runtime, the four SDK roots and the consumers, and state the consumer product's change for its next pin.
 
 ## SDK and Application Content Completion
 
