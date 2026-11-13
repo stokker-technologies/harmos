@@ -39,12 +39,14 @@ mod manager;
 mod object_admissions;
 mod objects;
 mod opened_capture;
+mod persistence_work;
 pub mod query;
 mod queue;
 mod read_batch;
 mod receipts;
 mod record_view;
 mod schema_encoding;
+mod schema_sets;
 mod selection;
 mod snapshot;
 #[cfg(feature = "sqlite")]
@@ -59,7 +61,9 @@ pub mod writes;
 
 pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture, StorageWork};
 pub use batch::{FileChunk, StorageBatch};
-pub use config::{StorageAccumulatorSettings, StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use config::{
+    StorageAccumulatorSettings, StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings,
+};
 pub use definitions::{DefinitionInput, DefinitionKind, DefinitionOutcome, DefinitionRefusal};
 pub use directory::{DirectoryReader, DirectoryWatcher};
 pub use error::{BackendFailure, Error, Result};
@@ -81,10 +85,12 @@ pub use harmos_domain::model::storage::{
 pub use manager::{StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::{CompareExchange, ObjectExchange, ObjectGroup};
 pub use opened_capture::OpenedCapture;
+pub use persistence_work::{PersistenceWork, StageWork};
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
 pub use read_batch::{ReadBatch, ReadPages};
 pub use receipts::{MutationHeader, MutationReceipt, MutationValue};
 pub use record_view::RecordView;
+pub use schema_sets::{SchemaExchange, SchemaWrite, SchemaWriteReceipt};
 pub use snapshot::Snapshot;
 pub use staging::{FileProductionStatus, StorageFile};
 

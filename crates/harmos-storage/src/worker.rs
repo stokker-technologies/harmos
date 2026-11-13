@@ -133,7 +133,7 @@ impl Worker {
                 state.request_deletions();
                 state.request_definitions();
                 state.collect();
-                if state.queue.bytes() >= inner.settings.flush_batch_bytes() {
+                if state.queue.bytes() >= inner.settings.flush_trigger_bytes() {
                     state.request_flush();
                 }
                 let retry = failures.iter().find_map(|(&id, failure)| {
@@ -273,7 +273,20 @@ impl Worker {
                     Some(Action::Write(entry, _)) => {
                         let index = entry.index;
                         drop(entry);
+                        let building = std::time::Instant::now();
+                        {
+                            let super::manager::State { queue, persistence, .. } = &mut *state;
+                            queue
+                                .iter()
+                                .find(|entry| entry.index == index)
+                                .expect("selected pending owner")
+                                .measure_selection(persistence, building);
+                        }
                         let batch = Batch::prepare(inner, &mut state, index);
+                        state.persistence.batch_build.record(building.elapsed());
+                        if let Some(batch) = &batch {
+                            batch.measure_selection(&mut state.persistence, building);
+                        }
                         let entry = state.queue.iter().find(|entry| entry.index == index).expect("selected pending owner").clone();
                         Some(Action::Write(entry, batch))
                     }
@@ -416,7 +429,7 @@ impl Worker {
                         (Action::File(action), Completed::File(result)) => {
                             let publish = || {
                                 let _publication = tracing::debug_span!("storage.file.publish").entered();
-                                state.file_completed(action, result, super::config::FILE_SESSION_TIMEOUT, inner)
+                                state.file_completed(action, result, inner.settings.policy.file_session_timeout, inner)
                             };
                             match &context {
                                 Some(context) => context.sync(publish),
@@ -473,22 +486,28 @@ impl Worker {
                 }
                 Err(error) => {
                     let attempts = if generation == retry_generation { attempts.saturating_add(1) } else { 1 };
-                    let retries = match &action {
-                        Action::Delete(_) => 0,
+                    let retry_policy = match &action {
+                        Action::Delete(_) => crate::config::RetryPolicy::Never,
                         Action::Write(pending, _)
                             if pending.operation.domain() == Domain::Data && inner.state.lock().unwrap().deleting_data(pending.index) =>
                         {
-                            0
+                            crate::config::RetryPolicy::Never
                         }
-                        Action::File(file) if file.caller_retries(&inner.state.lock().unwrap()) => 0,
-                        _ => super::config::MAX_RETRIES,
+                        Action::File(file) if file.caller_retries(&inner.state.lock().unwrap()) => crate::config::RetryPolicy::Never,
+                        _ => inner.settings.policy.retries,
                     };
-                    let retry_at = if transient(&error) && attempts <= retries {
-                        let multiplier = 1u32.checked_shl((attempts - 1).min(31) as u32).unwrap_or(u32::MAX);
-                        Some(inner.execution.now() + super::config::RETRY_BASE.saturating_mul(multiplier).min(super::config::RETRY_CAP))
-                    } else {
-                        None
-                    };
+                    let retry_at = retry_policy
+                        .retry_after(
+                            attempts.saturating_sub(1),
+                            if transient(&error) {
+                                harmos_protocol::policy::FailureKind::Transient
+                            } else {
+                                harmos_protocol::policy::FailureKind::Permanent
+                            },
+                            harmos_protocol::policy::ReplaySafety::Idempotent,
+                            generation ^ failure_id.unwrap_or(next_failure),
+                        )
+                        .map(|delay| inner.execution.now() + delay);
                     let source = Arc::new(error);
                     let mut state = inner.state.lock().unwrap();
                     if let Action::File(file) = &action {
@@ -567,6 +586,7 @@ impl Operation {
                 exchange.schema.encoded_bytes()?;
                 super::manager::encoded_size(exchange.as_ref())
             }
+            Self::SetSchema(exchange) => exchange.value.encoded_bytes(),
             Self::Schema(values) => values.as_slice().iter().try_fold(0usize, |bytes, value| {
                 bytes.checked_add(value.encoded_bytes()?).ok_or(Error::InvalidInput {
                     field: "storage admission",
@@ -595,14 +615,15 @@ impl Operation {
         }
     }
 
-    pub(super) fn check_entry_bytes(&self, maximum: std::num::NonZeroUsize) -> Result<()> {
-        if self.encoded_batch_bytes()? > maximum.get() {
+    pub(super) fn check_entry_bytes(&self, maximum: std::num::NonZeroUsize) -> Result<usize> {
+        let bytes = self.encoded_batch_bytes()?;
+        if bytes > maximum.get() {
             return Err(Error::InvalidInput {
                 field: "storage admission",
                 reason: "admitted batch exceeds max_batch_bytes; split before submission",
             });
         }
-        Ok(())
+        Ok(bytes)
     }
 
     pub(super) fn required_data(&self) -> Option<&super::StorageCursor> {
@@ -625,6 +646,7 @@ impl Operation {
     pub(super) fn sequence(&self) -> u64 {
         match self {
             Self::Conditional(exchange) => exchange.value.position.sequence,
+            Self::SetSchema(exchange) => exchange.value.position.sequence,
             Self::Schema(schema) => schema.as_slice().last().unwrap().position.sequence,
             Self::File(file) => file.as_slice().last().unwrap().position.sequence,
             Self::ObjectGroup { objects, .. } => objects.as_slice().last().unwrap().position.sequence,
@@ -716,7 +738,8 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                         })
                     }
                     _ => {
-                        let saved = write_data(inner, operation).await?;
+                        let encoded_bound = batch.as_ref().map_or(entry.encoded_bound, |batch| batch.encoded_bound);
+                        let saved = write_data(inner, operation, encoded_bound).await?;
                         Ok(Completed::Write {
                             data: Some(target),
                             saved: Some(saved),

@@ -83,6 +83,10 @@ impl State {
     }
 
     pub(crate) fn request_flush(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        for entry in self.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data && self.needs_write(entry)) {
+            entry.ready_at.get_or_init(|| now);
+        }
         let mut requested = false;
         if self.data_request.is_none() && self.data_accepted.index > self.data_flushed {
             self.data_request = Some(self.data_accepted);
@@ -115,14 +119,18 @@ impl Inner {
 
     #[tracing::instrument(name = "storage.backend", level = "debug", skip_all, fields(method = method, outcome = "cancelled"))]
     pub(crate) async fn bounded<T>(&self, method: &'static str, future: StorageFuture<'_, T>) -> Result<T> {
-        let timeout = if method == "recovery.create_recovery_session" { crate::config::RECOVERY_TIMEOUT } else { IO_TIMEOUT };
+        let timeout = if method == "recovery.create_recovery_session" {
+            self.settings.policy.recovery_timeout
+        } else {
+            self.settings.policy.io_timeout
+        };
         let result = self
             .execution
             .timeout(timeout, future)
             .await
             .map_err(|_| {
                 Error::backend(
-                    "storage I/O",
+                    method,
                     crate::BackendFailure::Transient,
                     io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
                 )

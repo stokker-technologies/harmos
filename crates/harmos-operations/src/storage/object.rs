@@ -27,7 +27,7 @@ use harmos_storage::{
 use prost::Message;
 
 pub(super) enum SetOutcome {
-    Applied(wire::ObjectValue, Vec<u8>, Box<v1::Receipt>),
+    Applied(Box<wire::ObjectValue>, Vec<u8>, v1::Receipt),
     Conflict(Vec<u8>),
 }
 
@@ -112,9 +112,9 @@ pub(super) async fn set(
         let outcome = storage.compare_exchange_value_once(&identity, expected, value.clone(), graph).await?;
         Ok(match outcome {
             harmos_storage::CompareExchange::Applied(applied) => SetOutcome::Applied(
-                value.into(),
+                Box::new(value.into()),
                 revision(applied.version),
-                Box::new(super::transfers::receipt(&mutation, Some(applied.position))),
+                super::transfers::receipt(&mutation, Some(applied.position)),
             ),
             harmos_storage::CompareExchange::Conflict { current } => SetOutcome::Conflict(current.map(revision).unwrap_or_default()),
         })

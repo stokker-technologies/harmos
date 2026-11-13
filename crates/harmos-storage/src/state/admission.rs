@@ -305,6 +305,7 @@ impl Permit {
                     None,
                     self.target.index,
                     self.record_bytes,
+                    self.record_bytes,
                     Operation::Records(crate::StorageBatch::new(std::mem::take(&mut self.records))),
                 )));
                 self.target.index += 1; // Both slots were checked before mutation.
@@ -321,6 +322,7 @@ impl Permit {
                 (!self.snapshot).then_some(frontier),
                 self.target.index,
                 self.bytes,
+                0,
                 if self.snapshot {
                     Operation::Snapshot(crate::StorageBatch::new(vec![RecoverySnapshot {
                         required_data: required_data.clone(),

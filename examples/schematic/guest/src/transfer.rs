@@ -82,7 +82,7 @@ pub fn plugin() -> Plugin {
     .policy(super::POLICY);
     let hash = Operation::new("benchmark.hash.file", async |context: &Context, request: Hash| {
         let request = request.request.ok_or_else(|| Error::Invalid("Hash Request Is Required".into()))?;
-        let response = context.call(request).await?;
+        let response = context.call(request).await?.hash.ok_or_else(|| Error::Invalid("GetFileHash Result Is Required".into()))?;
         Ok(schematic_protocol::FileHash {
             read_bytes: response.bytes_read,
             sha256: response.sha256,
@@ -90,7 +90,11 @@ pub fn plugin() -> Plugin {
     })
     .visibility(Visibility::Public)
     .policy(super::POLICY);
-    super::operations::plugin().operation(put).operation(take).operation(hash).requires::<harmos_protocol::storage::HashFile>()
+    super::operations::plugin()
+        .operation(put)
+        .operation(take)
+        .operation(hash)
+        .requires::<harmos_protocol::context::StorageGetFileHashRequest>()
 }
 
 /* === Private Functions === */

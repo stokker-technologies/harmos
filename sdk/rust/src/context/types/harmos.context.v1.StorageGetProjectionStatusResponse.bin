@@ -4,8 +4,8 @@
 "StorageGetProjectionStatusResponse3
 status (2#.harmos.storage.v1.ProjectionStatus'
 resolved_at (2.harmos.v1.ReadCutbproto3
-»
-harmos/v1/storage_types.protoharmos.storage.v1"|
+Ò
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"|
 ProjectionStatus2
 frontier (2 .harmos.storage.v1.StorageCursor
 revision (

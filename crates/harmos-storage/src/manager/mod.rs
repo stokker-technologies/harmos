@@ -38,7 +38,6 @@ use tokio::sync::watch;
 // Local Imports
 use super::admissions::Mutation;
 use super::capacity::{Attempt, Refusal};
-use super::config::{IO_TIMEOUT, MUTATION_RETENTION};
 use super::queue::PendingQueue;
 use super::receipts::{MutationValue, ReceiptState};
 use super::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
@@ -125,6 +124,7 @@ pub(super) struct State {
     pub(super) ready: bool,
     service_owner: Option<Arc<()>>,
     pub(super) next: u64,
+    pub(super) persistence: crate::PersistenceWork,
     pub(super) queue: PendingQueue,
 
     pub(super) data_attempted: u64,
@@ -162,7 +162,11 @@ pub(super) struct Pending {
     pub(super) journal: Option<harmos_domain::state::Position>,
     pub(super) index: u64,
     pub(super) bytes: usize,
+    pub(super) encoded_bound: usize,
     pub(super) operation: Operation,
+    accepted_at: std::time::Instant,
+    pub(super) ready_at: std::sync::OnceLock<std::time::Instant>,
+    selected: std::sync::atomic::AtomicBool,
 }
 
 struct Counter(usize);
@@ -180,7 +184,7 @@ struct WriteWaiter {
 /* === Enums === */
 
 enum Admitted {
-    Replayed(u64),
+    Replayed(u64, Option<crate::receipts::Completion>),
     Reserved(u64, u64, u64),
 }
 
@@ -193,6 +197,7 @@ pub(super) enum Domain {
 pub(super) enum Operation {
     Conditional(Arc<super::ObjectExchange>),
     Schema(StorageBatch<StorageSchema>),
+    SetSchema(Arc<crate::SchemaExchange>),
     File(StorageBatch<super::FileReference>),
     Records(StorageBatch<StoredRecord>),
     ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry>, bytes: usize },
@@ -215,7 +220,8 @@ pub trait WorkerOwner: Send + Sync {
 
 impl Pending {
     pub(super) fn new(
-        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, operation: Operation,
+        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, encoded_bound: usize,
+        operation: Operation,
     ) -> Self {
         Self {
             context: crate::execution::Context::current(),
@@ -223,7 +229,25 @@ impl Pending {
             journal,
             index,
             bytes,
+            encoded_bound,
             operation,
+            accepted_at: std::time::Instant::now(),
+            ready_at: std::sync::OnceLock::new(),
+            selected: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+    pub(super) fn measure_selection(&self, work: &mut crate::PersistenceWork, now: std::time::Instant) {
+        if self.operation.domain() != Domain::Data || self.selected.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let ready = *self.ready_at.get_or_init(|| now);
+        work.cadence_wait.record(ready.saturating_duration_since(self.accepted_at));
+        let ordered = now.saturating_duration_since(ready);
+        work.ordered_wait.record(ordered);
+        if self.bytes >= 1024 * 1024 {
+            work.ordered_wait_large.record(ordered);
+        } else {
+            work.ordered_wait_small.record(ordered);
         }
     }
 }
@@ -248,7 +272,11 @@ impl StorageManager {
             });
         }
         self.inner.execution.adopt(clock);
-        state.receipts = super::receipts::Receipts::new(MUTATION_RETENTION, self.inner.execution.clone())?;
+        state.receipts = super::receipts::Receipts::new(
+            self.inner.settings.policy.mutation_retention,
+            self.inner.settings.request.max_mutation_receipts,
+            self.inner.execution.clone(),
+        )?;
         Ok(())
     }
 
@@ -279,7 +307,8 @@ impl StorageManager {
         let history = primary.get_history().clone();
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
-        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution.clone())?;
+        let receipts =
+            super::receipts::Receipts::new(settings.policy.mutation_retention, settings.request.max_mutation_receipts, execution.clone())?;
         Ok(Self {
             inner: Arc::new(Inner {
                 execution: execution.clone(),
@@ -319,6 +348,7 @@ impl StorageManager {
                     ready: false,
                     service_owner: None,
                     next: 0,
+                    persistence: crate::PersistenceWork::default(),
                     queue: PendingQueue::default(),
 
                     data_attempted: 0,

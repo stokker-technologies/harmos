@@ -168,6 +168,7 @@ async fn definition_receipts_survive_caller_loss_and_preserve_source_authority()
     let current = super::transfer_plugin::client_call::<operations::GetIndexDefinition>(
         &channel,
         v1::StorageGetIndexDefinitionRequest {
+            at: None,
             name: "ordered".into(),
             source: Some(source_a.clone()),
         },

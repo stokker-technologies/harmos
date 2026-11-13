@@ -47,9 +47,6 @@ impl crate::storage::ArrowPage {
         for column in &self.columns_read {
             bytes = bytes.saturating_add(column.capacity());
         }
-        if let Some(next) = &self.next {
-            bytes = bytes.saturating_add(next.snapshot.capacity()).saturating_add(next.plan.capacity());
-        }
         bytes
     }
 }
@@ -60,9 +57,6 @@ impl crate::storage::IndexPage {
         for entry in &self.entries {
             bytes = bytes.saturating_add(entry.key.capacity());
         }
-        if let Some(next) = &self.next {
-            bytes = bytes.saturating_add(next.snapshot.capacity()).saturating_add(next.plan.capacity()).saturating_add(next.key.capacity());
-        }
         bytes
     }
 }
@@ -72,9 +66,6 @@ impl crate::storage::ProjectionPage {
         bytes = bytes.saturating_add(self.changed_keys.capacity().saturating_mul(std::mem::size_of::<Vec<u8>>()));
         for key in &self.changed_keys {
             bytes = bytes.saturating_add(key.capacity());
-        }
-        if let Some(history) = self.frontier.as_ref().and_then(|frontier| frontier.history.as_ref()) {
-            bytes = bytes.saturating_add(history.store.capacity()).saturating_add(history.epoch.capacity());
         }
         bytes
     }

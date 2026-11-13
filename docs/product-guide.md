@@ -561,8 +561,8 @@ page sizes and pending writes remain bounded by the configured request and respo
 settings. Consumers own budgets for their retained results and conversion scratch.
 
 File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
-`ReadFile` streams a selected byte range; `HashFile` returns its byte count and
-SHA-256. `CaptureFile` creates an independent durable stored file while hashing.
+`ReadFile` streams a selected byte range; `Storage.GetFileHash` returns its byte count and
+SHA-256. `Storage.CaptureFile` creates an independent durable stored file while hashing.
 `CaptureConsistency::Stable` rejects detected source changes; it does not provide
 an atomic snapshot. `Bounded` copies the initially selected range. Local paths
 refer to the executing host and may be anywhere its process can access, including
@@ -597,12 +597,12 @@ cancellation; `retry_append` resends its original offset and bytes without
 cancelling production. Stable capture detects source
 changes but does not freeze concurrent writers into an atomic snapshot.
 
-`FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
+`Storage.WatchFileBytes` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
-distinct `FollowProduction` operation. Native file slices and shared read batches
+distinct `Storage.WatchFileProduction` operation. Native file slices and shared read batches
 retain their backing allocations until their final owner is released.
 
-`ListDirectory` and `WatchDirectory` share a `DirectorySelection` containing the
+`Storage.ListDirectoryEntries` and `Storage.WatchDirectoryEntries` share a `DirectorySelection` containing the
 root, recursion flag and ordered include/exclude rules. Patterns match
 case-sensitive slash-relative paths: `*` stays within one segment and `**` crosses
 segments. The last matching rule wins; unmatched paths are excluded. An excluded
@@ -747,19 +747,24 @@ and registration. It never requests persistence or retries failures. Cancellatio
 drops only the waiter. Available newer durable progress is returned first;
 otherwise close, not-ready and persistence failures terminate the wait.
 `await_durable(&receipt)` remains the active completion wait for a known write.
-`FollowRecords`, `FollowStream` and `FollowObjects` deliver saved history after
-their `after` cursor, then newly accepted entries. File following uses the
-source/start contract above; staged producers use `FollowProduction`.
+`Storage.WatchRows` observes records, samples or object revisions from an issued
+durable boundary. It reports the opening cut, then exclusive committed events and
+progress through filtered data. Retention gaps require a fresh list and reopening;
+accepted native followers remain separate. See [Storage Interfaces](storage.md#durable-row-observation).
+File following uses the source/start contract above; staged producers use `Storage.WatchFileProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
 the retry window. The receipt ledger has a bounded entry count; reclaimable
 completed receipts are evicted oldest first. Pending mutations and admitted
 callers retain their completion across replay-window expiry; fresh expired
-requests remain refused. A valid retry of an evicted identity runs as a new mutation.
+requests remain refused. Eviction rotates the issuance window, so an evicted
+identity refuses rather than duplicating its original mutation.
 
-Typed stream, record and object writers acknowledge acceptance and durability
-separately for each atomic logical batch. A disconnected invocation may have
-committed earlier batches; callers must not blindly replay unacknowledged data.
+Bounded unary sample, record and object-revision Append calls acknowledge
+acceptance and durability separately. Resending the same identity and normalized
+batch returns its original receipt; changed or retired identities refuse. Admitted
+completion survives lost delivery, and durable completion includes replay-ledger
+persistence.
 Finished-file reads are separate from producing-file follow/resume operations.
 The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
 and a JSONL journal, bounded by the storage batch ceiling.

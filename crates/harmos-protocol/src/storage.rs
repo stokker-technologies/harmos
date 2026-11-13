@@ -28,10 +28,10 @@ pub struct MutationWindow {
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageStatus {}
+pub struct StorageInfoRequest {}
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageInfo {
+pub struct StorageInfoResponse {
     #[prost(message, optional, tag = "1")]
     pub accepted: ::core::option::Option<StorageCursor>,
     #[prost(message, optional, tag = "2")]
@@ -111,11 +111,19 @@ pub struct FileProgress {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct DeleteFile {
+pub struct StorageDeleteFileRequest {
     #[prost(message, optional, tag = "1")]
     pub mutation: ::core::option::Option<MutationId>,
     #[prost(message, optional, tag = "2")]
     pub file: ::core::option::Option<StagedFile>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StorageDeleteFileResponse {
+    #[prost(message, optional, tag = "1")]
+    pub file: ::core::option::Option<StagedFile>,
+    #[prost(message, optional, tag = "2")]
+    pub receipt: ::core::option::Option<crate::v1::Receipt>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -188,20 +196,6 @@ pub mod directory_event {
         #[prost(message, tag = "7")]
         RescanRequired(super::Empty),
     }
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ListDirectory {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<DirectorySelection>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct WatchDirectory {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<DirectorySelection>,
-    #[prost(bool, tag = "2")]
-    pub include_existing: bool,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -298,42 +292,6 @@ pub struct ReadFile {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct HashFile {
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub range: ::core::option::Option<ByteRange>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct CaptureFile {
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub range: ::core::option::Option<ByteRange>,
-    #[prost(message, optional, tag = "3")]
-    pub metadata: ::core::option::Option<FileMetadata>,
-    #[prost(enumeration = "CaptureConsistency", tag = "4")]
-    pub consistency: i32,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowFile {
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub start: ::core::option::Option<FollowStart>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowProduction {
-    #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<StagedFile>,
-    #[prost(uint64, tag = "2")]
-    pub offset: u64,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SchemaKey {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
@@ -398,11 +356,45 @@ pub struct SchemaInput {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct WriteSchema {
+pub struct StorageSetSchemaRequest {
     #[prost(message, optional, tag = "1")]
     pub mutation: ::core::option::Option<MutationId>,
     #[prost(message, optional, tag = "2")]
     pub schema: ::core::option::Option<SchemaInput>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bool, tag = "4")]
+    pub create_if_absent: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StorageSetSchemaResponse {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaInput>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub receipt: ::core::option::Option<crate::v1::Receipt>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StorageGetSchemaRequest {
+    #[prost(message, optional, tag = "1")]
+    pub key: ::core::option::Option<SchemaKey>,
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<crate::v1::ReadCut>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StorageGetSchemaResponse {
+    #[prost(message, optional, tag = "1")]
+    pub schema: ::core::option::Option<SchemaInput>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bool, tag = "3")]
+    pub exists: bool,
+    #[prost(message, optional, tag = "4")]
+    pub resolved_at: ::core::option::Option<crate::v1::ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -789,47 +781,6 @@ pub struct StoredRow {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowBoundaries {
-    #[prost(message, optional, tag = "1")]
-    pub saved: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub accepted: ::core::option::Option<StorageCursor>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Followed {
-    #[prost(oneof = "followed::Followed", tags = "1, 2")]
-    pub followed: ::core::option::Option<followed::Followed>,
-}
-/// Nested message and enum types in `Followed`.
-pub mod followed {
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Followed {
-        #[prost(message, tag = "1")]
-        Boundaries(super::FollowBoundaries),
-        #[prost(message, tag = "2")]
-        Record(super::StoredRecord),
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowRecords {
-    #[prost(message, optional, tag = "1")]
-    pub after: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub selection: ::core::option::Option<RecordSelection>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowStream {
-    #[prost(message, optional, tag = "1")]
-    pub after: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub selection: ::core::option::Option<StreamSelection>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ObjectVersionToken {
     #[prost(message, optional, tag = "1")]
     pub history: ::core::option::Option<StoreHistory>,
@@ -855,14 +806,6 @@ pub struct ObjectEntry {
     pub version: ::core::option::Option<ObjectVersionToken>,
     #[prost(message, optional, tag = "3")]
     pub value: ::core::option::Option<ObjectValue>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowObjects {
-    #[prost(message, optional, tag = "1")]
-    pub after: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub selection: ::core::option::Option<ObjectSelection>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -938,18 +881,8 @@ pub struct TimeBounds {
     pub upper_ns: i64,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ArrowSeek {
-    #[prost(bytes = "vec", tag = "1")]
-    pub snapshot: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "2")]
-    pub plan: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint64, tag = "3")]
-    pub position: u64,
-}
-#[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ArrowScan {
+pub struct ColumnSelection {
     #[prost(message, optional, tag = "1")]
     pub source: ::core::option::Option<ColumnSource>,
     #[prost(string, repeated, tag = "2")]
@@ -961,10 +894,6 @@ pub struct ArrowScan {
     #[prost(uint64, tag = "5")]
     pub start: u64,
     #[prost(message, optional, tag = "6")]
-    pub after: ::core::option::Option<ArrowSeek>,
-    #[prost(message, optional, tag = "7")]
-    pub limits: ::core::option::Option<ReadLimits>,
-    #[prost(message, optional, tag = "8")]
     pub work: ::core::option::Option<ReadLimits>,
 }
 #[allow(clippy::all)]
@@ -972,17 +901,15 @@ pub struct ArrowScan {
 pub struct ArrowPage {
     #[prost(bytes = "vec", tag = "1")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "2")]
-    pub next: ::core::option::Option<ArrowSeek>,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag = "2")]
     pub complete: bool,
-    #[prost(uint64, tag = "4")]
+    #[prost(uint64, tag = "3")]
     pub scanned: u64,
-    #[prost(uint64, tag = "5")]
+    #[prost(uint64, tag = "4")]
     pub bytes_read: u64,
-    #[prost(string, repeated, tag = "6")]
+    #[prost(string, repeated, tag = "5")]
     pub columns_read: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(uint64, tag = "7")]
+    #[prost(uint64, tag = "6")]
     pub payload_rows: u64,
 }
 #[allow(clippy::all)]
@@ -1007,21 +934,7 @@ pub struct IndexEntry {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct IndexSeek {
-    #[prost(bytes = "vec", tag = "1")]
-    pub snapshot: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "2")]
-    pub plan: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint64, tag = "3")]
-    pub revision: u64,
-    #[prost(bytes = "vec", tag = "4")]
-    pub key: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint64, tag = "5")]
-    pub position: u64,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct IndexRead {
+pub struct IndexSelection {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(bytes = "vec", optional, tag = "2")]
@@ -1033,10 +946,6 @@ pub struct IndexRead {
     #[prost(bool, tag = "5")]
     pub descending: bool,
     #[prost(message, optional, tag = "6")]
-    pub after: ::core::option::Option<IndexSeek>,
-    #[prost(message, optional, tag = "7")]
-    pub limits: ::core::option::Option<ReadLimits>,
-    #[prost(message, optional, tag = "8")]
     pub work: ::core::option::Option<ReadLimits>,
 }
 #[allow(clippy::all)]
@@ -1044,9 +953,7 @@ pub struct IndexRead {
 pub struct IndexPage {
     #[prost(message, repeated, tag = "1")]
     pub entries: ::prost::alloc::vec::Vec<IndexEntry>,
-    #[prost(message, optional, tag = "2")]
-    pub next: ::core::option::Option<IndexSeek>,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag = "2")]
     pub complete: bool,
 }
 #[allow(clippy::all)]
@@ -1100,18 +1007,12 @@ pub mod projection_definition {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ProjectionRead {
+pub struct ProjectionSelection {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(uint64, tag = "2")]
-    pub revision: u64,
+    #[prost(bytes = "vec", tag = "2")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub frontier: ::core::option::Option<StorageCursor>,
-    #[prost(uint64, tag = "4")]
-    pub after: u64,
-    #[prost(message, optional, tag = "5")]
-    pub limits: ::core::option::Option<ReadLimits>,
-    #[prost(message, optional, tag = "6")]
     pub work: ::core::option::Option<ReadLimits>,
 }
 #[allow(clippy::all)]
@@ -1119,14 +1020,8 @@ pub struct ProjectionRead {
 pub struct ProjectionPage {
     #[prost(bytes = "vec", tag = "1")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "2")]
-    pub frontier: ::core::option::Option<StorageCursor>,
-    #[prost(uint64, tag = "3")]
-    pub revision: u64,
-    #[prost(bytes = "vec", repeated, tag = "4")]
+    #[prost(bytes = "vec", repeated, tag = "2")]
     pub changed_keys: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
-    #[prost(uint64, optional, tag = "5")]
-    pub next: ::core::option::Option<u64>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

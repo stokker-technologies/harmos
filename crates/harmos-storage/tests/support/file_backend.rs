@@ -280,6 +280,7 @@ impl Data {
 
     pub(super) fn fixture_abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
+            let _settled = IoAttempt(&self.control.abort_settled);
             if self.control.block_abort.load(Ordering::SeqCst) {
                 self.control.abort_entered.notify_one();
                 self.control.abort_release.notified().await;
@@ -429,6 +430,7 @@ impl Data {
 
     pub(super) fn fixture_abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
+            let _settled = IoAttempt(&self.control.abort_settled);
             self.control.aborts.fetch_add(1, Ordering::SeqCst);
             if self.control.block_abort.load(Ordering::SeqCst) {
                 self.control.abort_entered.notify_one();

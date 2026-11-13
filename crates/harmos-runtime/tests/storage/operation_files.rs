@@ -25,15 +25,16 @@ use std::num::NonZeroUsize;
 
 // Local Imports
 use super::{Fixture, config};
-use harmos_operations::storage::{FollowProduction, ReadFile};
+use harmos_operations::storage::{ReadFile, WatchFileProduction};
 use harmos_protocol::storage as wire;
+use harmos_protocol::v1;
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::{FileMetadata, StagedFile};
 use prost::Message;
 
 /* === Private Functions === */
 
-async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, wire::FollowProduction) {
+async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, v1::StorageWatchFileProductionRequest) {
     let fixture = Fixture::new(config()).await;
     crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
@@ -51,7 +52,7 @@ async fn setup() -> (Fixture, harmos_runtime::storage::StorageFile, wire::Follow
         .unwrap();
     producer.write_all((b"prefix").to_vec()).await.unwrap();
     let session = producer.session().unwrap();
-    let request = wire::FollowProduction {
+    let request = v1::StorageWatchFileProductionRequest {
         file: Some(
             StagedFile {
                 history: session.history.clone(),
@@ -74,4 +75,13 @@ fn limits() -> Option<harmos_runtime::operations::WireStreamLimits> {
 
 async fn receive(streams: &harmos_runtime::operations::WireStreams) -> Option<wire::FileBatch> {
     streams.receive_current().await.unwrap().map(|bytes| wire::FileBatch::decode(bytes.as_slice()).unwrap())
+}
+
+async fn receive_production(streams: &harmos_runtime::operations::WireStreams) -> Option<wire::FileBatch> {
+    let bytes = streams.receive_current().await.unwrap()?;
+    match v1::StorageWatchFileProductionResponse::decode(bytes.as_slice()).unwrap().event {
+        Some(v1::storage_watch_file_production_response::Event::Data(batch)) => Some(batch),
+        Some(v1::storage_watch_file_production_response::Event::Progress(_)) => None,
+        None => panic!("production observation requires an event"),
+    }
 }

@@ -20,6 +20,7 @@ mod cancellation;
 #[allow(dead_code, reason = "shared with runtime deadline stories")]
 mod clock;
 mod cursors;
+mod durable_watch;
 #[path = "../../support/events.rs"]
 pub(crate) mod events;
 mod exhaustion;
@@ -37,7 +38,9 @@ mod nominal;
 #[path = "../../support/nominal.rs"]
 mod nominal_fixture;
 mod objects;
+mod policy;
 mod retention;
+mod small_prefixes_publish_before_later_large_admissions;
 mod typed_reads;
 #[path = "../../support/waveforms.rs"]
 pub(crate) mod waveforms;

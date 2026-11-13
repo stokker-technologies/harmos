@@ -37,6 +37,51 @@ from harmos_tools import storage_bench
 
 
 class BenchmarkRelease(unittest.TestCase):
+    def test_repeated_lag_events_keep_one_case_with_spread_and_stage_work(self):
+        events = []
+        for p95, writing in [(80, 12), (120, 20), (100, 16)]:
+            events.append(
+                "STORAGE_DURABLE_LAG "
+                + json.dumps(
+                    {
+                        "case": "integration/durable_lag/mixed",
+                        "measurement": {
+                            "p50_ms": p95 / 2,
+                            "p95_ms": p95,
+                            "maximum_ms": p95 + 10,
+                            "maximum_backlog_bytes": 1024,
+                            "maximum_backlog_positions": 4,
+                            "admission_wait_ms": 5,
+                            "batches": 10,
+                            "bytes": 200,
+                            "stages": {
+                                "backend": {"count": 2, "total_ns": writing * 1000000, "maximum_ns": writing * 700000},
+                                "committed_pieces": 2,
+                                "committed_rows": 10,
+                                "committed_bytes": 200,
+                                "maximum_commit_bytes": 120,
+                            },
+                        },
+                        "synchronous_commits": 2,
+                        "synchronous_commit_ms": 8,
+                        "writing_ms": writing,
+                        "maximum_writing_ms": writing / 2,
+                        "maximum_synchronous_commit_ms": 6,
+                    }
+                )
+            )
+        document = storage_bench.measurements(events, "revision", "windows")
+        names = [row["name"] for row in document["benchmarks"]]
+        self.assertEqual(len(names), len(set(names)))
+        rows = {row["name"].removeprefix("integration/durable_lag/mixed/"): row for row in document["benchmarks"]}
+        self.assertEqual(rows["p95_ms"]["value"], 100)
+        self.assertEqual(rows["p95_min_ms"]["value"], 80)
+        self.assertEqual(rows["p95_max_ms"]["value"], 120)
+        self.assertEqual(rows["repetitions"]["value"], 3)
+        self.assertEqual(rows["stages/backend/total_ns"]["value"], 16000000)
+        self.assertEqual(rows["stages/backend/total_ns"]["unit"], "ns")
+        self.assertEqual(rows["maximum_commit_bytes"]["value"], 120)
+
     def test_ordinary_bench_runner_skips_large_storage_and_runs_other_integration_cases(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

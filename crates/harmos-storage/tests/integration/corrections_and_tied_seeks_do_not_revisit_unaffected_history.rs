@@ -77,7 +77,7 @@ async fn corrections_and_tied_seeks_do_not_revisit_unaffected_history() {
     };
     let backend = SqliteBackend::new(&path, workload.history.clone(), settings).unwrap();
     backend.create_session().await.unwrap();
-    backend.append_schemas(StorageBatch::new(vec![workload.schema(1)])).await.unwrap();
+    backend.append_schemas(StorageBatch::new(vec![workload.schema(1)]).into()).await.unwrap();
     let records = (0..workload.rows)
         .map(|index| {
             let mut value = sample(index);

@@ -165,10 +165,6 @@ pub(super) async fn delete(
     Ok((progress.into(), receipt(&mutation, None)))
 }
 
-pub(super) async fn status(storage: &StorageManager, file: wire::StagedFile) -> crate::Result<harmos_storage::FileProductionStatus> {
-    Ok(storage.get_file_production_status(&file.try_into()?).await?)
-}
-
 pub(super) async fn get(
     storage: &StorageManager, snapshots: &super::snapshot::SavedSnapshots, file: wire::FileReference, offset: u64, max_bytes: u64,
     at: Option<v1::ReadCut>,

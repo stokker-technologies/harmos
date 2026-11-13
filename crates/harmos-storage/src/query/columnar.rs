@@ -302,7 +302,7 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
         read,
         &flat,
         ScanEvidence {
-            complete: count < page.rows.get(),
+            complete: count == 0,
             bytes,
             columns: read.required_columns(),
             payload_rows: count,
@@ -439,13 +439,13 @@ pub(crate) fn finish_page(
         last = position;
     }
     let mut batch = take(&output, &indices)?;
-    if batch.get_array_memory_size() > read.limits.bytes.get() {
+    if page_bytes(&batch)? > read.limits.bytes.get() {
         let mut low = 0;
         let mut high = indices.len();
         while low < high {
             let middle = low + (high - low).div_ceil(2);
             let candidate = take(&output, &indices[..middle])?;
-            if candidate.get_array_memory_size() <= read.limits.bytes.get() {
+            if page_bytes(&candidate)? <= read.limits.bytes.get() {
                 low = middle;
             } else {
                 high = middle - 1;
@@ -480,6 +480,11 @@ pub(crate) fn finish_page(
     })
 }
 
+pub(crate) fn page_bytes(batch: &RecordBatch) -> Result<usize> {
+    let ipc = crate::arrow::ArrowBatch::try_new(batch.clone())?;
+    Ok(batch.get_array_memory_size().max(ipc.ipc_bytes().len()))
+}
+
 fn matches_row(batch: &RecordBatch, row: usize, read: &ArrowScan) -> Result<bool> {
     if let Some(time) = &read.time {
         let array = batch.column_by_name(&time.column).ok_or_else(|| invalid("time column is unavailable"))?;
@@ -504,18 +509,51 @@ fn matches_row(batch: &RecordBatch, row: usize, read: &ArrowScan) -> Result<bool
             return Err(invalid("predicate column must be numeric"));
         }
         if let Some(lower) = predicate.lower
-            && value.compare(&ScalarValue::Float(lower))?.is_lt()
+            && compare_bound(&value, lower)?.is_lt()
         {
             return Ok(false);
         }
 
         if let Some(upper) = predicate.upper
-            && !value.compare(&ScalarValue::Float(upper))?.is_lt()
+            && !compare_bound(&value, upper)?.is_lt()
         {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+fn compare_bound(value: &ScalarValue, bound: f64) -> Result<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    if !bound.is_finite() {
+        return Err(invalid("ListColumnRows predicate bound must be finite"));
+    }
+    let integer = match value {
+        ScalarValue::Signed(value) => i128::from(*value),
+        ScalarValue::Unsigned(value) => i128::from(*value),
+        ScalarValue::Float(value) => {
+            return value.partial_cmp(&bound).ok_or_else(|| invalid("ListColumnRows predicate value must be finite"));
+        }
+        _ => return Err(invalid("ListColumnRows predicate column must be numeric")),
+    };
+    // These Powers Of Two Are Exact F64 Endpoints Around Every Supported Integer.
+    if bound >= 18_446_744_073_709_551_616.0 {
+        return Ok(Ordering::Less);
+    }
+    if bound < i64::MIN as f64 {
+        return Ok(Ordering::Greater);
+    }
+    let order = integer.cmp(&(bound as i128));
+    if order != Ordering::Equal {
+        return Ok(order);
+    }
+    Ok(if bound.fract() > 0.0 {
+        Ordering::Less
+    } else if bound.fract() < 0.0 {
+        Ordering::Greater
+    } else {
+        Ordering::Equal
+    })
 }
 
 pub(crate) fn take(batch: &RecordBatch, indices: &[u64]) -> Result<RecordBatch> {
@@ -542,3 +580,27 @@ fn encoding(source: serde_json::Error) -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cmp::Ordering::{Equal, Greater, Less};
+
+    #[test]
+    fn numeric_column_bounds_preserve_integer_endpoints() {
+        for (value, bound, expected) in [
+            (ScalarValue::Signed(-2), -1.5, Less),
+            (ScalarValue::Signed(-1), -1.5, Greater),
+            (ScalarValue::Unsigned(9_007_199_254_740_995), 9_007_199_254_740_996.0, Less),
+            (ScalarValue::Unsigned(9_007_199_254_740_993), 9_007_199_254_740_992.0, Greater),
+            (ScalarValue::Signed(i64::MIN), i64::MIN as f64, Equal),
+            (ScalarValue::Unsigned(u64::MAX), 18_446_744_073_709_551_616.0, Less),
+            (ScalarValue::Signed(i64::MAX), 9_223_372_036_854_775_808.0, Less),
+            (ScalarValue::Unsigned(0), -f64::MIN_POSITIVE, Greater),
+            (ScalarValue::Unsigned(0), f64::MIN_POSITIVE, Less),
+            (ScalarValue::Float(1.25), 1.5, Less),
+        ] {
+            assert_eq!(compare_bound(&value, bound).unwrap(), expected);
+        }
+    }
+}

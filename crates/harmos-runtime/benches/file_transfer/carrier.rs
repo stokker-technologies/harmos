@@ -246,17 +246,27 @@ impl Carrier for Transport {
         })
     }
 
-    fn download_stream<'a>(&'a self, file: &'a FileReference) -> StorageFuture<'a, Vec<u8>> {
+    fn download_stream<'a>(&'a self, file: &'a FileReference) -> StorageFuture<'a, harmos_storage::FileHash> {
         Box::pin(async move {
-            if self.plugin {
-                return Err(unsupported());
-            }
             let request = wire::ReadFile {
                 source: Some(wire::FileSource {
                     source: Some(wire::file_source::Source::Stored(file.clone().into())),
                 }),
                 range: Some(wire::ByteRange { offset: 0, limit: None }),
             };
+            if self.plugin {
+                use prost::Message;
+                let response = self
+                    .operations
+                    .call_encoded("fixture.transfer.read_file", request.encode_to_vec())
+                    .await
+                    .map_err(|e| failure("ReadFile", e))?;
+                let hash = wire::FileHash::decode(response.as_slice()).map_err(|e| failure("ReadFile", e))?;
+                return Ok(harmos_storage::FileHash {
+                    bytes_read: hash.bytes_read,
+                    sha256: hash.sha256.try_into().expect("SHA-256"),
+                });
+            }
             let mut client = tonic::client::Grpc::new(self.channel.clone());
             client.ready().await.map_err(|e| failure("ReadFile", e))?;
             let path = tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/ReadFile");
@@ -265,13 +275,19 @@ impl Carrier for Transport {
                 .await
                 .map_err(|e| failure("ReadFile", e))?;
             let mut stream = response.into_inner();
-            let mut data = Vec::with_capacity(file.length as usize);
+            use sha2::{Digest, Sha256};
+            let mut length = 0u64;
+            let mut hash = Sha256::new();
             while let Some(item) = stream.message().await.map_err(|e| failure("ReadFile", e))? {
-                assert_eq!(item.offset, data.len() as u64);
-                data.extend_from_slice(&item.bytes);
+                assert_eq!(item.offset, length);
+                length += item.bytes.len() as u64;
+                hash.update(&item.bytes);
             }
-            assert_eq!(file.length, data.len() as u64);
-            Ok(data)
+            assert_eq!(file.length, length);
+            Ok(harmos_storage::FileHash {
+                bytes_read: length,
+                sha256: hash.finalize().into(),
+            })
         })
     }
 }
@@ -300,7 +316,7 @@ fn unsupported() -> Error {
         harmos_storage::BackendFailure::Unsupported,
         std::io::Error::new(
             std::io::ErrorKind::Unsupported,
-            "plugin child calls are unary; the current streaming transfers have no plugin-carrier baseline",
+            "plugin child calls reject input streams; retained streaming upload is unavailable",
         ),
     )
 }

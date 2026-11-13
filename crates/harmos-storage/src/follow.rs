@@ -160,6 +160,52 @@ impl<T: Entry> Follower<T> {
         context.scope(tracing::Instrument::instrument(future, span)).await
     }
 
+    /// Read Only Committed Entries, Including Progress Through An Unmatched Prefix.
+    /// Queue Retention And Its Gap Signal Are Shared With Accepted Followers.
+    pub async fn next_durable(&mut self) -> Result<(FollowPage<T>, StorageCursor)> {
+        let context = self.context.clone();
+        let span = context.sync(|| tracing::trace_span!("storage.reader.durable_page"));
+        context
+            .scope(tracing::Instrument::instrument(
+                async {
+                    if self.history.is_some() {
+                        if let Some(page) = self.next_history().await? {
+                            let through = StorageCursor {
+                                history: self.saved.history.clone(),
+                                sequence: self.after,
+                            };
+                            return Ok((page, through));
+                        }
+                        return Ok((FollowPage { entries: Vec::new() }, self.saved.clone()));
+                    }
+                    let id = self.id;
+                    self.inner
+                        .wait(None, |state| {
+                            if let Err(error) = super::capacity::admitting(state, false) {
+                                return Attempt::Refuse(Refusal::Failed(error));
+                            }
+                            let Some(following) = state.followers.get(&id) else {
+                                return Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "WatchRows" }));
+                            };
+                            if let Err(error) = following.check() {
+                                return Attempt::Refuse(Refusal::Failed(error));
+                            }
+                            if state.status.saved.sequence > following.after { Attempt::Ready(()) } else { Attempt::Wait }
+                        })
+                        .await
+                        .map_err(Refusal::into_error)?;
+                    let (entries, through) = {
+                        let mut state = self.inner.state.lock().unwrap();
+                        copy_durable::<T>(&mut state, id, &self.selection, self.inner.settings.response.batch_bytes)?
+                    };
+                    self.after = through.sequence;
+                    Ok((FollowPage { entries }, through))
+                },
+                span,
+            ))
+            .await
+    }
+
     // Saved History Through The Registration Frontier, From The Pinned Image.
     #[tracing::instrument(name = "storage.follow.next_history", level = "debug", skip_all)]
     async fn next_history(&mut self) -> Result<Option<FollowPage<T>>> {
@@ -352,6 +398,47 @@ fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: N
     state.retire_data();
     state.collect();
     Ok((entries, encoded))
+}
+
+// Copy At Most The Durable Prefix, Even When A Pending Batch Is Partly Committed.
+fn copy_durable<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: NonZeroUsize) -> Result<(Vec<T>, StorageCursor)> {
+    let following = state.followers.get(&id).ok_or(Error::Closing { domain: "WatchRows" })?;
+    following.check()?;
+    let mut cursor = following.after;
+    let saved = state.status.saved.clone();
+    let mut entries = Vec::new();
+    let mut encoded = 0usize;
+    'queue: for pending in state.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data) {
+        if pending.operation.sequence() <= cursor {
+            continue;
+        }
+        let values = T::pending(Queued::new(&pending.operation));
+        let start = values.partition_point(|entry| entry.position().sequence <= cursor);
+        for entry in &values[start..] {
+            if entry.position().sequence > saved.sequence || entries.len() >= SCAN_ROWS.get() {
+                break 'queue;
+            }
+            if entry.matches(selection) {
+                let size = encoded_size(entry)?;
+                if !entries.is_empty() && encoded.saturating_add(size) > bytes.get() {
+                    break 'queue;
+                }
+                encoded = encoded.saturating_add(size);
+                entries.push(entry.clone());
+            }
+            cursor = entry.position().sequence;
+        }
+        cursor = cursor.max(pending.operation.sequence().min(saved.sequence));
+        if cursor == saved.sequence {
+            break;
+        }
+    }
+    // Completed Unmatched Operations Still Advance The Durable Observation.
+    let following = state.followers.get_mut(&id).expect("registered durable follower");
+    following.after = following.after.max(cursor);
+    state.retire_data();
+    state.collect();
+    Ok((entries, StorageCursor { history: saved.history, sequence: cursor }))
 }
 
 /* === Tests === */

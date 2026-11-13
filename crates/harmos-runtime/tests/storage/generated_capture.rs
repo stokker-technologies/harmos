@@ -13,8 +13,8 @@
 
 #[tokio::test]
 async fn capture_then_follow_stored_contents() {
-    use harmos_operations::storage::{CaptureFile, FollowFile};
-    use harmos_protocol::storage as wire;
+    use harmos_operations::storage::{CaptureFile, WatchFileBytes};
+    use harmos_protocol::{storage as wire, v1};
     use harmos_runtime::operations::{StreamSettings, WireStreamLimits};
     use prost::Message;
     use std::num::NonZeroUsize;
@@ -28,7 +28,7 @@ async fn capture_then_follow_stored_contents() {
     let reference = fixture
         .runtime
         .operations
-        .call_protobuf::<CaptureFile>(wire::CaptureFile {
+        .call_protobuf::<CaptureFile>(v1::StorageCaptureFileRequest {
             source: Some(wire::FileSource {
                 source: Some(wire::file_source::Source::Local(source.to_str().unwrap().into())),
             }),
@@ -42,6 +42,9 @@ async fn capture_then_follow_stored_contents() {
         })
         .await
         .unwrap();
+    assert!(reference.receipt.as_ref().unwrap().completed);
+    assert!(reference.receipt.as_ref().unwrap().durable_at.is_some());
+    let reference = reference.file.unwrap();
     assert_eq!(reference.length, 16);
     fixture.storage.flush().await.unwrap();
     let limit = StreamSettings {
@@ -51,8 +54,8 @@ async fn capture_then_follow_stored_contents() {
     let (invocation, streams) = fixture
         .runtime
         .operations
-        .submit_protobuf::<FollowFile>(
-            wire::FollowFile {
+        .submit_protobuf::<WatchFileBytes>(
+            v1::StorageWatchFileBytesRequest {
                 source: Some(wire::FileSource {
                     source: Some(wire::file_source::Source::Stored(reference)),
                 }),
@@ -65,15 +68,22 @@ async fn capture_then_follow_stored_contents() {
         .unwrap();
     let streams = streams.unwrap();
     let mut contents = Vec::new();
+    let mut completed = None;
     while let Some(bytes) = streams.receive_current().await.unwrap() {
-        let event = wire::FileEvent::decode(bytes.as_slice()).unwrap();
+        let response = v1::StorageWatchFileBytesResponse::decode(bytes.as_slice()).unwrap();
+        if let Some(completion) = response.completion {
+            completed = Some(completion);
+            continue;
+        }
+        let event = response.event.unwrap();
         let Some(wire::file_event::Event::Data(batch)) = event.event else {
             panic!("stored files only emit contents");
         };
         assert_eq!(batch.offset, contents.len() as u64);
         contents.extend_from_slice(&batch.bytes);
     }
-    let completion = wire::FileCompletion::decode(invocation.await.unwrap().as_slice()).unwrap();
+    let completion = v1::StorageWatchFileBytesResponse::decode(invocation.await.unwrap().as_slice()).unwrap().completion.unwrap();
+    assert_eq!(completed, Some(completion));
     assert_eq!(completion.bytes, 16);
     assert_eq!(contents, b"captured-content");
     fixture.finish().await;

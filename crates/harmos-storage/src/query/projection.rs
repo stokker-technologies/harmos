@@ -477,8 +477,7 @@ pub(crate) fn page(
         let count = low + (high - low).div_ceil(2);
         let indices = (offset..offset + count.min(batch.num_rows() - offset)).map(|row| row as u64).collect::<Vec<_>>();
         let candidate = columnar::take(batch, &indices)?;
-        let bytes = candidate
-            .get_array_memory_size()
+        let bytes = columnar::page_bytes(&candidate)?
             .saturating_add(keys[..count.min(keys.len())].iter().map(|key| key.capacity() + std::mem::size_of::<Vec<u8>>()).sum::<usize>());
         if bytes <= read.limits.bytes.get() {
             low = count;

@@ -15,10 +15,7 @@
 
 /* === Imports === */
 
-use super::{
-    CaptureFile, DeleteFile, FollowFile, FollowObjects, FollowProduction, FollowRecords, FollowStream, HashFile, ListDirectory, ReadFile,
-    StorageStatus, WatchDirectory, WriteFile, WriteSchema,
-};
+use super::{DeleteFile, Info, ReadFile, SetSchema, WriteFile};
 
 // Standard Library Imports
 
@@ -47,6 +44,25 @@ pub fn storage_catalog() -> crate::execution::operations::Catalog {
 pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
     let mut batch = crate::execution::__private::Catalog::new();
     batch.operations.extend([
+        crate::execution::operations::OperationFactory::protobuf::<super::GetFileHash>().expect("GetFileHash declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetFileHash>().expect("GetFileHash declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::CaptureFile>().expect("CaptureFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::CaptureFile>().expect("CaptureFile declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ListDirectoryEntries>()
+            .expect("ListDirectoryEntries declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::ListDirectoryEntries>()
+            .expect("ListDirectoryEntries declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::WatchFileBytes>().expect("WatchFileBytes declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::WatchFileBytes>().expect("WatchFileBytes declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::WatchFileProduction>().expect("WatchFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::WatchFileProduction>()
+            .expect("WatchFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::WatchDirectoryEntries>()
+            .expect("WatchDirectoryEntries declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::WatchDirectoryEntries>()
+            .expect("WatchDirectoryEntries declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::WatchRows>().expect("WatchRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::WatchRows>().expect("WatchRows declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::AppendRecords>().expect("AppendRecords declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::AppendSamples>().expect("AppendSamples declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::AppendObjectRevisions>()
@@ -117,20 +133,12 @@ pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
         crate::execution::operations::OperationFactory::protobuf::<super::SetObject>().expect("SetObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::context::GetObject>().expect("GetObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::context::SetObject>().expect("SetObject declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<FollowRecords>().expect("FollowRecords declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<FollowStream>().expect("FollowStream declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<FollowObjects>().expect("FollowObjects declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteSchema>().expect("WriteSchema declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<SetSchema>().expect("SetSchema declaration"),
         crate::execution::operations::OperationFactory::protobuf::<ReadFile>().expect("ReadFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<CaptureFile>().expect("CaptureFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<FollowFile>().expect("FollowFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<FollowProduction>().expect("FollowProduction declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<StorageStatus>().expect("StorageStatus declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetSchema>().expect("GetSchema declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<Info>().expect("Info declaration"),
         crate::execution::operations::OperationFactory::protobuf::<DeleteFile>().expect("DeleteFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<ListDirectory>().expect("ListDirectory declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WatchDirectory>().expect("WatchDirectory declaration"),
     ]);
     batch
 }

@@ -5,6 +5,37 @@ projections and atomic conditional objects. Consumers choose capacity, concurren
 physical chunk sizes, work budgets and response limits. Storage does not expose
 product keys or a database connection.
 
+## Native Schema Mirrors
+
+`Storage.Info`, `Storage.GetSchema`, `Storage.SetSchema` and `Storage.DeleteFile`
+are Protected native hooks with service/method request-response wrappers and no
+gRPC projection. GetSchema resolves optional `at` through the same issued-cut
+owner and returns the whole schema, existence and an opaque revision. SetSchema
+requires that revision or explicit create-if-absent, validates the complete graph,
+and compares atomically in the existing schema-write hook. An existing schema
+key's graph is immutable; a changed graph requires a new version. Even an unchanged
+value with a stale revision conflicts and names SetSchema with get/retry guidance.
+
+The provider commits the original applied/conflict outcome and mutation receipt
+in the same synchronous transaction. Ordered admission owns it after caller loss;
+replay after later revisions or restart preserves that outcome. Successful
+receipts are durable, and stored schema encodings are unchanged. DeleteFile keeps
+its existing retained-reader behavior; this migration makes no reclamation change.
+
+## Operational Policy and Admission
+
+`StorageSettings.policy: StoragePolicy` owns backend I/O/recovery deadlines, the
+shared `RetryPolicy`, abandoned-production lifetime and mutation-receipt retention.
+Its defaults preserve the previous policy: 30-second I/O, 300-second recovery,
+four total transient attempts with exponential 10 ms–1 s backoff, 60-second
+productions and 300-second receipt retention. A call-local operation override
+does not change that configuration or subsequent calls.
+
+Consumers explicitly provide `request.max_file_productions` and
+`request.max_mutation_receipts` alongside pending-write, query and response limits.
+Retiring a receipt rotates its issuance window; an expired request is refused
+rather than admitted again. Admitted work remains owned until settlement.
+
 ## Reference Backend
 
 ```toml
@@ -101,6 +132,63 @@ unchecked byte count can bypass the page bound.
 work. Cancellation does not roll back an already committed write. CPU bucket work
 runs on the blocking executor; dropping its awaiting future cancels its child
 without cancelling the caller's shared token.
+
+## Unary Filesystem Metadata
+
+`GetFileHash`, `CaptureFile` and `ListDirectoryEntries` have separate client and
+context wrappers and shared handlers. Stored hashes validate an exact durable
+reference and digest. Local hashes retain their result metadata at the returned
+issued cut; repeating that cut returns the original result after the file changes.
+`GetFileProduction` similarly retains progress, writer generation and distinct
+accepted/durable byte lengths at its resolved cut.
+
+Directory enumeration retains bounded, path-ordered metadata for continuation.
+Pages obey complete response-frame limits; changing the selection refuses the
+token. This is a retained enumeration, not an atomic filesystem snapshot. An
+explicit read lease pins the same image and its continuations through automatic
+cache eviction. Releasing it, expiry or restart refuses unavailable observations
+and tokens, even when the underlying durable store position is unchanged.
+Only metadata is retained; accepted storage payloads are never snapshotted.
+
+Capture preserves native consistency checks and returns its completed durable
+publication receipt. It has unknown replay safety and no caller mutation ID;
+that receipt does not add a replay-key promise to capture.
+
+## File and Directory Observation
+
+`WatchFileBytes`, `WatchFileProduction` and `WatchDirectoryEntries` have independent
+client/context declarations and shared native handlers. Immutable stored content
+must be durable before observation; local-file events retain their live
+Beginning/End/At-offset, replacement and truncation semantics. A completed finite
+file watch emits its typed byte-count completion. These live external observations
+do not label filesystem data as a durable primary-store history.
+
+Production watches read retained prefixes, then emit terminal `FileProgress`.
+Cancelling observation neither publishes nor abandons its producer. Directory
+watching subscribes before enumeration, preserves Existing/InitialScanComplete
+and RescanRequired events, and shares native selection rules. File payload sizing
+includes every enclosing protobuf length and offset; all complete response frames
+respect the consumer byte ceiling. Delivery retains its callee-owned deadline.
+
+## Durable Row Observation
+
+Client and context `WatchRows` share the `ListRows` source selector for records,
+samples and object revisions. Omit `at` for the current durable boundary, or pass
+an issued retained cut. The first event is that boundary; historical initial state
+belongs to `ListRows`. Every later record, sample or object revision is exclusive
+of the opening cut and follows storage-position order. Samples retain their own
+sequence independently of the storage position. Accepted writes remain invisible
+until their synchronous commit has been acknowledged.
+
+Progress events advance through committed data rejected by the selector. Events
+include issued `resolved_at` cuts, so reconnection can resume exclusively while
+that cut remains available. Subscription retention starts before the boundary is
+sent; a concurrent opening commit is included in the tail. If bounded retention
+retires a slow observer, the stream emits `resync_required` and ends. List a fresh
+image and reopen from its returned cut; never manufacture an earlier sequence.
+Native `follow`/`next` still observes accepted entries separately;
+`Follower::next_durable` observes committed entries and filtered progress with the
+same bounded retention and gap mechanism. Closing/restarting retires watchers.
 
 ## Ordered Indexes
 
@@ -270,6 +358,7 @@ and grant identity. Both faces delegate to the same storage handlers.
 | Capabilities | Native acceleration and correctness capabilities |
 | CreateSnapshot / DeleteSnapshot | Explicit retained durable lease and release |
 | ListRows | Bounded unary query page, issued cut and continuation token |
+| WatchRows | Durable boundary, exclusive changes, filtered progress and explicit resynchronization |
 | ListColumnRows | Arrow IPC and source-position continuation |
 | ListIndexEntries | Ordered key/position seek page |
 | GetIndexDefinition / SetIndexDefinition | Complete definition and atomic revision guard |
@@ -281,8 +370,8 @@ and grant identity. Both faces delegate to the same storage handlers.
 | AppendRecords / AppendSamples / AppendObjectRevisions | Bounded immutable ingestion and accepted/durable receipts |
 
 A missing `at` selects the current durable position immediately. Projection status
-without a frontier selects its newest readable materialization; an explicit frontier
-must match a retained composite cut for the requested revision. Reads never flush
+without `at` selects its newest readable materialization; an explicit `at`
+must match a retained issued cut and the selected revision. Reads never flush
 or wait for accepted writes. A supplied cut must equal a retained cut this owner
 has returned; arbitrary older positions, changed composites and foreign histories
 refuse. Automatic cuts use the existing saved-read capacity and evict the oldest
@@ -290,8 +379,24 @@ idle cut when needed. `CreateSnapshot` pins its lease until `DeleteSnapshot` or
 storage retirement. Active reads retain their image through completion. A failed
 or cancelled page does not release an explicit lease.
 
-Return the whole `SavedSnapshot` unchanged for column/index reads or advancement.
-Arrow/index seek bytes bind that retained image and their plan. ListRows tokens
+Return the whole `SavedSnapshot` unchanged for explicit lease release or projection
+advancement. Native list methods take a selector, optional issued `at`, and the common
+`PageRequest` (`page_size`, `max_bytes`, `page_token`). Their replies carry `resolved_at`
+and `next_page_token`. Keep the returned cut or omit `at` when continuing the signed token.
+Column/index/projection selectors contain source/ordering/work selection; response sizing
+and continuation belong to PageRequest. Index cuts bind the selected definition revision,
+which the provider checks within its scan; a rebuild refuses old revision reads explicitly.
+Projection cuts bind the exact retained revision/frontier. Definition getters also honor
+issued participating revisions; unavailable index revisions refuse rather than substituting
+current metadata. The native page mechanisms retain their own seek/materialization behavior.
+
+The complete encoded reply respects both `max_bytes` and the configured response ceiling.
+Column/projection packing counts IPC metadata as well as native buffers; an indivisible
+row or response metadata that cannot fit refuses explicitly. A short provider page is
+progress, so a filtered empty column page can still return a continuation.
+
+
+Signed native-list tokens bind the retained image, selector and native continuation. ListRows tokens
 bind the retained image, selector, transforms, ordering and query progress with an
 owner-local HMAC; page size may change within consumer bounds. The most recent continuation request/result remains replayable with the same bounds;
 consuming its next token expires older requests. Each call advances one bounded source
@@ -420,7 +525,10 @@ record their own backend/durability mode while retaining these names, units and 
 Run `mise run bench -- --storage --filter durable_lag` for the Nightly
 `integration/durable_lag/{small_high_rate,multi_megabyte,mixed}` cases. Each reports
 acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admission wait,
-and synchronous SQLite commit count/time. Compare each p95 independently with 250 ms;
+and synchronous SQLite commit count/time. Five runs per load retain median and
+spread, compiler-activity samples and stage counters for cadence/ordered waits,
+batch construction, provider writing, synchronous commit and frontier publication.
+Compare each p95 independently with 250 ms;
 a successful benchmark process does not assert that latency bound. Windows measurements
 are recorded in the operation-grammar design; native Linux and hosted evidence remain pending.
 
@@ -430,12 +538,18 @@ manager. Supply the ordinary backend, worker owner, settings and durability mode
 The observer only subscribes to saved progress; it never requests a flush.
 
 The worker starts flushing on its cadence or when queued bytes reach the existing
-size threshold. Typed provider writes split at entry boundaries around
-`StorageSettings::flush_batch_bytes()`. A single indivisible entry may use the larger
+size threshold. `StorageSettings::flush_trigger_bytes()` requests early persistence separately
+from commit sizing. Typed provider writes retain the existing
 `max_batch_bytes()` ceiling; admission refuses entries beyond that ceiling. Each
 successful piece publishes its saved frontier independently, and retry skips its
-already durable prefix. Splitting changes no stored encoding, durability setting or
-atomic conditional-object replacement.
+already durable prefix. The redundant 1 MiB per-commit split was removed after
+stage measurements showed synchronous-commit amplification and small-write blocking;
+no stored encoding, durability setting or admission ceiling changed. Large
+admissions remain separate commit units, so an earlier small prefix cannot join
+a later large admission. Checked admission sizes are reused when batching and
+persisting. Larger state captures still split at the existing atomic byte ceiling.
+SQLite independently compacts/splits physical column chunks inside the same
+transaction, preserving its configured row/byte limits and rollback semantics.
 
 ## Native Provider Hooks
 
@@ -526,12 +640,14 @@ transfers remain for the required throughput comparison before their removal.
 30 MiB file with the configured 64 KiB chunks/ranges, checks its length and digest,
 and reports three repetitions for each available carrier/mode. Client unary and
 streaming calls cross a host socket; plugin unary calls cross the host/plugin
-carrier as context child calls. The existing plugin carrier cannot call streaming
-host operations, so it reports that comparison unavailable.
+carrier as context child calls. Streaming downloads use the retained ReadFile
+operation through output child calls with explicit demand. Streaming uploads remain
+unavailable because the carrier rejects child input streams. Download timing
+includes incremental hashing on both carriers; comparisons happen after timing.
 
-The benchmark composes the existing reference memory backend. Its saved snapshots
-copy file blobs, which disproportionately costs repeated unary ranges; the figures
-are not a claim about durable filesystem throughput. Consumer backends can reuse
+The benchmark composes the existing reference memory backend and reuses retained
+saved images across unary ranges. The figures are transport/reference-provider
+measurements, not a claim about durable filesystem throughput. Consumer backends can reuse
 `harmos_storage::bench_support::file_transfer::{Carrier, run}`. Nightly retains raw
 native output and median throughput with bytes, call counts and configured range
 sizes. Streaming remains available for owner review of that evidence.

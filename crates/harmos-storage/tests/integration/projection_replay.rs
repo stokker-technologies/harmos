@@ -106,7 +106,7 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     let cancel = Cancellation::default();
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.create_session().await.unwrap();
-        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
+        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()]).into()).await.unwrap();
         backend.append_records(StorageBatch::new(records[..2].to_vec())).await.unwrap();
         assert_eq!(
             backend

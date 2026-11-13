@@ -45,19 +45,21 @@ async fn filesystem_hash_roundtrip() {
     let attached = runtime.grpc().attach(super::settings()).await.unwrap();
     let address = format!("http://{}", attached.local_addr());
     let channel = tonic::transport::Endpoint::from_shared(address).unwrap().connect().await.unwrap();
-    let request = harmos_protocol::storage::HashFile {
+    let request = harmos_protocol::v1::StorageGetFileHashRequest {
         source: Some(harmos_protocol::storage::FileSource {
             source: Some(harmos_protocol::storage::file_source::Source::Local(path.to_str().unwrap().into())),
         }),
         range: Some(harmos_protocol::storage::ByteRange { offset: 5, limit: Some(10) }),
+        at: None,
     };
-    let answer = generated_call::<harmos_protocol::storage::HashFile, harmos_protocol::storage::FileHash>(
+    let answer = generated_call::<harmos_protocol::v1::StorageGetFileHashRequest, harmos_protocol::v1::StorageGetFileHashResponse>(
         channel,
-        "/harmos.storage.v1.Storage/HashFile",
+        "/harmos.v1.Storage/GetFileHash",
         request,
     )
     .await
     .unwrap();
+    let answer = answer.hash.unwrap();
     assert_eq!(answer.bytes_read, 10);
     assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
     drop(attached);

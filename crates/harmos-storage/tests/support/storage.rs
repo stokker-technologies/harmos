@@ -45,6 +45,8 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 
 /* === Structs === */
 
+struct IoAttempt<'a>(&'a Notify);
+
 #[derive(Default)]
 pub struct Control {
     pub record_rows_examined: AtomicUsize,
@@ -121,6 +123,7 @@ pub struct Control {
     pub fail_abort: AtomicBool,
     pub block_abort: AtomicBool,
     pub abort_entered: Notify,
+    pub abort_settled: Notify,
     pub abort_release: Notify,
     pub aborts: AtomicUsize,
     pub corrupt_file: AtomicBool,
@@ -146,6 +149,7 @@ pub struct Control {
     pub accepted_file_read: Mutex<Option<AcceptedRead>>,
     pub block_write: AtomicBool,
     pub write_entered: Notify,
+    pub write_settled: Notify,
     pub write_release: Notify,
     pub block_flush: AtomicBool,
     pub flush_entered: Notify,
@@ -235,6 +239,12 @@ pub struct Recovery {
 
 /* === Implementations === */
 
+impl Drop for IoAttempt<'_> {
+    fn drop(&mut self) {
+        self.0.notify_one();
+    }
+}
+
 impl Control {
     // Hold A Gated Read Inside The Backend, Recording How Many Overlap.
     async fn gate_read(&self) {
@@ -249,6 +259,7 @@ impl Control {
     }
 
     async fn write(&self, positions: impl IntoIterator<Item = u64>) -> Result<()> {
+        let _settled = IoAttempt(&self.write_settled);
         let positions: Vec<_> = positions.into_iter().collect();
         self.write_sizes.lock().unwrap().push(positions.len());
         self.writes.lock().unwrap().extend(positions.iter().copied());
@@ -629,8 +640,54 @@ impl StorageBackend for Data {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn append_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
-        self.persist(batch, &self.schemas, |value| &value.position, |_| Ok(()))
+    fn append_schemas(&self, write: harmos_storage::SchemaWrite) -> StorageFuture<'_, harmos_storage::SchemaWriteReceipt> {
+        Box::pin(async move {
+            match write {
+                harmos_storage::SchemaWrite::Append(batch) => {
+                    let saved = self.persist(batch, &self.schemas, |value| &value.position, |_| Ok(())).await?;
+                    Ok(harmos_storage::SchemaWriteReceipt { saved, mutation: None })
+                }
+                harmos_storage::SchemaWrite::Set(exchange) => {
+                    self.history.check(&exchange.value.position.history)?;
+                    self.control.write([exchange.value.position.sequence]).await?;
+                    let mut ledger = self.mutation_receipts.lock().unwrap();
+                    if let Some(receipt) = ledger.get(&exchange.mutation().mutation) {
+                        exchange.replay(receipt)?;
+                        return Ok(harmos_storage::SchemaWriteReceipt {
+                            saved: self.at(self.saved.load(Ordering::SeqCst) as u64),
+                            mutation: Some(receipt.clone()),
+                        });
+                    }
+                    let mut schemas = self.schemas.lock().unwrap();
+                    let prior = schemas.values().rev().find(|value| value.key == exchange.value.key);
+                    let unchanged = prior.is_none_or(|value| value.schema == exchange.value.schema);
+                    let outcome = if prior.map(|value| &value.position) == exchange.expected.as_ref() && unchanged {
+                        exchange.value.schema.prepare(&harmos_domain::config::SchemaSettings::default()).map_err(|_| {
+                            Error::InvalidInput {
+                                field: "SetSchema",
+                                reason: "invalid finite schema graph",
+                            }
+                        })?;
+                        schemas.insert(exchange.value.position.sequence, exchange.value.clone());
+                        harmos_storage::DefinitionOutcome::Applied {
+                            revision: exchange.value.position.sequence,
+                        }
+                    } else {
+                        harmos_storage::DefinitionOutcome::Refused {
+                            kind: harmos_storage::DefinitionRefusal::Conflict,
+                            reason: "schema revision changed or graph is immutable; get again and retry".to_owned(),
+                        }
+                    };
+                    let receipt = exchange.receipt(outcome);
+                    ledger.insert(receipt.mutation.clone(), receipt.clone());
+                    self.saved.store(exchange.value.position.sequence as usize, Ordering::SeqCst);
+                    Ok(harmos_storage::SchemaWriteReceipt {
+                        saved: exchange.value.position.clone(),
+                        mutation: Some(receipt),
+                    })
+                }
+            }
+        })
     }
     fn append_object_revisions(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
         self.persist(

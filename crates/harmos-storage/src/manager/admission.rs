@@ -47,6 +47,13 @@ impl StorageManager {
         &self, domain: Domain, bytes: usize, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
         build: impl FnOnce(u64) -> Result<Operation>,
     ) -> Result<u64> {
+        self.admit_mutation_owned(domain, bytes, count, mutation, measurement, build).await.map(|(sequence, _)| sequence)
+    }
+
+    pub(crate) async fn admit_mutation_owned(
+        &self, domain: Domain, bytes: usize, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
+        build: impl FnOnce(u64) -> Result<Operation>,
+    ) -> Result<(u64, Option<crate::receipts::Completion>)> {
         let result = async {
             if mutation.is_some() && !self.inner.primary.capabilities().mutation_receipts {
                 return Err(Error::InvalidInput {
@@ -76,11 +83,21 @@ impl StorageManager {
                         match state.receipts.lookup(mutation.id, &mutation.fingerprint, None) {
                             Ok(ReceiptState::Complete(value)) => {
                                 return match value.cursor() {
-                                    Ok(cursor) => Attempt::Ready(Admitted::Replayed(cursor.sequence)),
+                                    Ok(cursor) => {
+                                        Attempt::Ready(Admitted::Replayed(cursor.sequence, Some(state.receipts.completion(mutation.id))))
+                                    }
                                     Err(error) => Attempt::Refuse(Refusal::Failed(error)),
                                 };
                             }
                             Ok(ReceiptState::Pending) => {
+                                if let Some(sequence) = state.queue.iter().find_map(|entry| match &entry.operation {
+                                    Operation::SetSchema(exchange) if &exchange.mutation().mutation == mutation.id => {
+                                        Some(exchange.value.position.sequence)
+                                    }
+                                    _ => None,
+                                }) {
+                                    return Attempt::Ready(Admitted::Replayed(sequence, Some(state.receipts.completion(mutation.id))));
+                                }
                                 return Attempt::Refuse(Refusal::Failed(Error::InvalidInput {
                                     field: "storage mutation",
                                     reason: "mutation already owns different work",
@@ -125,7 +142,7 @@ impl StorageManager {
                 .await
                 .map_err(Refusal::into_error)?;
             let (sequence, last, index) = match admitted {
-                Admitted::Replayed(sequence) => return Ok(sequence),
+                Admitted::Replayed(sequence, completion) => return Ok((sequence, completion)),
                 Admitted::Reserved(sequence, last, index) => (sequence, last, index),
             };
             // The original exclusive reservation owns capacity and capture order.
@@ -133,7 +150,7 @@ impl StorageManager {
             let mut admission = Admission { inner: self.inner.clone(), active: true };
             let operation =
                 tracing::debug_span!("storage.admission.prepare").in_scope(|| build(if count == 0 { sequence } else { sequence + 1 }))?;
-            tracing::debug_span!("storage.admission.validate")
+            let encoded_bound = tracing::debug_span!("storage.admission.validate")
                 .in_scope(|| operation.check_entry_bytes(self.inner.settings.max_batch_bytes()))?;
             if let Operation::Snapshot(snapshot) = &operation
                 && (snapshot.len() != 1 || snapshot.as_slice()[0].through.sequence > sequence)
@@ -145,12 +162,13 @@ impl StorageManager {
             }
             let bytes = match &operation {
                 Operation::ObjectGroup { bytes: retained, .. } => *retained,
-                Operation::Conditional(_) => operation.encoded_batch_bytes()?,
+                Operation::Conditional(_) => encoded_bound,
                 _ => bytes,
             };
             tracing::Span::current().record("sequence", last);
             tracing::Span::current().record("index", index);
-            let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, operation));
+            let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, encoded_bound, operation));
+            let completion;
             {
                 let _publication = tracing::debug_span!("storage.admission.publish").entered();
                 let mut state = self.inner.state.lock().unwrap();
@@ -163,7 +181,17 @@ impl StorageManager {
                 if let Some(mutation) = mutation {
                     let outcome = MutationValue::Cursor(self.position(last));
                     state.receipts.insert(mutation.id, mutation.fingerprint)?;
-                    state.receipts.complete(mutation.id, outcome);
+                    if let Operation::SetSchema(exchange) = &pending.operation {
+                        exchange.header.set(state.receipts.header(mutation.id)).map_err(|_| Error::InvalidInput {
+                            field: "SetSchema",
+                            reason: "mutation already published",
+                        })?;
+                    } else {
+                        state.receipts.complete(mutation.id, outcome);
+                    }
+                    completion = Some(state.receipts.completion(mutation.id));
+                } else {
+                    completion = None;
                 }
                 let target = Target { index, sequence: last };
                 match domain {
@@ -185,7 +213,7 @@ impl StorageManager {
                 admission.active = false;
             }
             self.inner.notify();
-            Ok(last)
+            Ok((last, completion))
         }
         .await;
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
@@ -243,6 +271,10 @@ impl StorageManager {
                     notify = request.is_none_or(|current| target.index < current.index);
                     if notify {
                         *request = Some(target);
+                        let now = std::time::Instant::now();
+                        for entry in state.queue.iter().filter(|entry| entry.index <= target.index && entry.operation.domain() == domain) {
+                            entry.ready_at.get_or_init(|| now);
+                        }
                     }
                 }
                 if notify {

@@ -294,6 +294,7 @@ impl State {
                     None,
                     target.index,
                     file.reference_bytes,
+                    file.reference_bytes,
                     Operation::File(crate::StorageBatch::new(vec![reference.clone()])),
                 )));
                 progress.reference = Some(reference);

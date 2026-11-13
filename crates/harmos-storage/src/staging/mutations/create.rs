@@ -68,7 +68,7 @@ impl StorageManager {
                     name: metadata.id.to_string(),
                 });
             }
-            if state.files.len() >= crate::storage::config::MAX_FILES.get() {
+            if state.files.len() >= self.inner.settings.request.max_file_productions.get() {
                 return Err(Error::ResourceExhausted { resource: "file producers" });
             }
             let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
@@ -83,7 +83,7 @@ impl StorageManager {
                         history: self.inner.primary.get_history().clone(),
                         id: metadata.id.clone(),
                     },
-                    session: Some(Session::token(crate::storage::config::FILE_SESSION_TIMEOUT, self.inner.execution.clone())),
+                    session: Some(Session::token(self.inner.settings.policy.file_session_timeout, self.inner.execution.clone())),
                     mutation: Some(Mutation { id: mutation.clone(), kind: Kind::Create }),
                     extra: None,
                     progress: Arc::new(Mutex::new(Progress { generation: 1, ..Progress::default() })),

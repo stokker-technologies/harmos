@@ -3174,10 +3174,12 @@ pub struct StorageCreateFileProductionResponse {
     pub receipt: ::core::option::Option<Receipt>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetFileProductionRequest {
     #[prost(message, optional, tag = "1")]
     pub file: ::core::option::Option<crate::storage::StagedFile>,
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3329,9 +3331,11 @@ pub struct StorageDeleteSnapshotResponse {}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListColumnRowsRequest {
     #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<crate::storage::SavedSnapshot>,
+    pub selection: ::core::option::Option<crate::storage::ColumnSelection>,
     #[prost(message, optional, tag = "2")]
-    pub read: ::core::option::Option<crate::storage::ArrowScan>,
+    pub at: ::core::option::Option<ReadCut>,
+    #[prost(message, optional, tag = "3")]
+    pub page: ::core::option::Option<PageRequest>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3340,15 +3344,19 @@ pub struct StorageListColumnRowsResponse {
     pub page: ::core::option::Option<crate::storage::ArrowPage>,
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
+    #[prost(string, tag = "3")]
+    pub next_page_token: ::prost::alloc::string::String,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListIndexEntriesRequest {
     #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<crate::storage::SavedSnapshot>,
+    pub selection: ::core::option::Option<crate::storage::IndexSelection>,
     #[prost(message, optional, tag = "2")]
-    pub read: ::core::option::Option<crate::storage::IndexRead>,
+    pub at: ::core::option::Option<ReadCut>,
     #[prost(message, optional, tag = "3")]
+    pub page: ::core::option::Option<PageRequest>,
+    #[prost(message, optional, tag = "4")]
     pub source: ::core::option::Option<crate::storage::ColumnSource>,
 }
 #[allow(clippy::all)]
@@ -3358,6 +3366,8 @@ pub struct StorageListIndexEntriesResponse {
     pub page: ::core::option::Option<crate::storage::IndexPage>,
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
+    #[prost(string, tag = "3")]
+    pub next_page_token: ::prost::alloc::string::String,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -3430,11 +3440,15 @@ pub struct StorageAdvanceProjectionResponse {
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListProjectionRowsRequest {
     #[prost(message, optional, tag = "1")]
-    pub read: ::core::option::Option<crate::storage::ProjectionRead>,
+    pub selection: ::core::option::Option<crate::storage::ProjectionSelection>,
     #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<ReadCut>,
+    #[prost(message, optional, tag = "3")]
+    pub page: ::core::option::Option<PageRequest>,
+    #[prost(message, optional, tag = "4")]
     pub source: ::core::option::Option<crate::storage::ColumnSource>,
 }
 #[allow(clippy::all)]
@@ -3444,16 +3458,18 @@ pub struct StorageListProjectionRowsResponse {
     pub page: ::core::option::Option<crate::storage::ProjectionPage>,
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
+    #[prost(string, tag = "3")]
+    pub next_page_token: ::prost::alloc::string::String,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetProjectionStatusRequest {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(uint64, tag = "2")]
-    pub revision: u64,
+    #[prost(bytes = "vec", tag = "2")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub frontier: ::core::option::Option<crate::storage::StorageCursor>,
+    pub at: ::core::option::Option<ReadCut>,
     #[prost(message, optional, tag = "4")]
     pub source: ::core::option::Option<crate::storage::ColumnSource>,
 }
@@ -3670,6 +3686,8 @@ pub struct StorageWatchFileBytesRequest {
 pub struct StorageWatchFileBytesResponse {
     #[prost(message, optional, tag = "1")]
     pub event: ::core::option::Option<crate::storage::FileEvent>,
+    #[prost(message, optional, tag = "2")]
+    pub completion: ::core::option::Option<crate::storage::FileCompletion>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -3703,6 +3721,8 @@ pub struct StorageListDirectoryEntriesRequest {
     pub selection: ::core::option::Option<crate::storage::DirectorySelection>,
     #[prost(message, optional, tag = "2")]
     pub page: ::core::option::Option<PageRequest>,
+    #[prost(message, optional, tag = "3")]
+    pub at: ::core::option::Option<ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3729,12 +3749,14 @@ pub struct StorageWatchDirectoryEntriesResponse {
     pub event: ::core::option::Option<crate::storage::DirectoryEvent>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetIndexDefinitionRequest {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub source: ::core::option::Option<crate::storage::ColumnSource>,
+    #[prost(message, optional, tag = "3")]
+    pub at: ::core::option::Option<ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -3747,12 +3769,14 @@ pub struct StorageGetIndexDefinitionResponse {
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetProjectionDefinitionRequest {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub source: ::core::option::Option<crate::storage::ColumnSource>,
+    #[prost(message, optional, tag = "3")]
+    pub at: ::core::option::Option<ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]

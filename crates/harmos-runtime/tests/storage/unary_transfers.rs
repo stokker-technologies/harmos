@@ -116,7 +116,7 @@ async fn resume_fence_publish_and_range_across_faces() {
         crate::support::events::until(pending.as_mut(), fixture.data.control.chunk_entered.notified()).await.unwrap();
         let status = super::transfer_plugin::call::<context::GetFileProduction>(
             calls,
-            child::StorageGetFileProductionRequest { file: Some(file.clone()) },
+            child::StorageGetFileProductionRequest { file: Some(file.clone()), at: None },
         )
         .await
         .unwrap();
@@ -135,18 +135,31 @@ async fn resume_fence_publish_and_range_across_faces() {
     assert!(fixture.storage.persist_files(&save).await.is_err());
     let status = super::transfer_plugin::call::<context::GetFileProduction>(
         calls,
-        child::StorageGetFileProductionRequest { file: Some(file.clone()) },
+        child::StorageGetFileProductionRequest { file: Some(file.clone()), at: None },
     )
     .await
     .unwrap();
     assert_eq!(status.accepted_length, 6);
     assert_eq!(status.durable_length, 0);
+    let pending_cut = status.resolved_at.clone();
     fixture.storage.persist_files(&save).await.unwrap();
+    let previous = super::transfer_plugin::client_call::<operations::GetFileProduction>(
+        &channel,
+        client::StorageGetFileProductionRequest {
+            file: Some(file.clone()),
+            at: pending_cut.clone(),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(previous.accepted_length, 6);
+    assert_eq!(previous.durable_length, 0);
+    assert_eq!(previous.resolved_at, pending_cut);
 
     // Reconnect Through Context, Inspect Progress and Fence the Old Writer.
     let status = super::transfer_plugin::call::<context::GetFileProduction>(
         calls,
-        child::StorageGetFileProductionRequest { file: Some(file.clone()) },
+        child::StorageGetFileProductionRequest { file: Some(file.clone()), at: None },
     )
     .await
     .unwrap();

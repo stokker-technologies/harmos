@@ -98,7 +98,7 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
     // Populate Identical Source Batches.
     assert_eq!(workload.rows, workload::ROWS, "published case names require the locked two-million-row workload");
     assert_eq!(runtime.block_on(backend.create_session()).unwrap().sequence, 0, "benchmark backend must be empty");
-    runtime.block_on(backend.append_schemas(StorageBatch::new(vec![workload.schema(1)]))).unwrap();
+    runtime.block_on(backend.append_schemas(StorageBatch::new(vec![workload.schema(1)]).into())).unwrap();
     let batches = (0..workload.rows)
         .step_by(CHUNK_ROWS)
         .map(|first| workload.records(first, (first + CHUNK_ROWS).min(workload.rows)))

@@ -118,7 +118,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     };
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.create_session().await.unwrap();
-        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
+        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()]).into()).await.unwrap();
         backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
         let before = backend.get_work().await.unwrap();
         assert_eq!(
@@ -144,6 +144,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     let saved = native.create_snapshot(&cut).await.unwrap();
     let saved_fallback = fallback.create_snapshot(&cut).await.unwrap();
     let read = IndexRead {
+        revision: None,
         name: definition.name.clone(),
         lower: None,
         upper: None,

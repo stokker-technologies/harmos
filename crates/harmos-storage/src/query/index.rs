@@ -59,6 +59,7 @@ pub struct IndexSeek {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IndexRead {
+    pub revision: Option<u64>,
     pub name: Identifier,
     pub lower: Option<Vec<u8>>,
     pub upper: Option<Vec<u8>>,
@@ -133,6 +134,9 @@ impl IndexRead {
     pub fn validate(&self, snapshot: &BackendSnapshot, definition: &IndexDefinition, revision: u64) -> Result<()> {
         if self.lower.as_ref().zip(self.upper.as_ref()).is_some_and(|(lower, upper)| lower >= upper) {
             return Err(columnar::invalid("index bounds must increase"));
+        }
+        if self.revision.is_some_and(|expected| expected != revision) {
+            return Err(conflict("ListIndexEntries definition revision is unavailable; get again and retry"));
         }
         if let Some(after) = &self.after
             && (after.snapshot != snapshot.token || after.revision != revision || after.plan != self.identity(definition)?)

@@ -358,19 +358,11 @@ fn corrupt(reason: &'static str) -> Error {
 /* === Tests === */
 
 impl Snapshot {
-    /// Read One Bounded Range From Immutable, Durable Content.
-    pub async fn get_file_bytes(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<FileBytesRange> {
-        let resolved_at = self.at();
-        if !resolved_at.covers(&file.position)? {
+    pub(super) async fn check_file_reference(&self, file: &FileReference, action: &'static str) -> Result<()> {
+        if !self.at().covers(&file.position)? {
             return Err(Error::InvalidInput {
-                field: "GetFileBytes",
+                field: action,
                 reason: "content is unavailable at the selected durable position",
-            });
-        }
-        if offset > file.length {
-            return Err(Error::InvalidInput {
-                field: "GetFileBytes",
-                reason: "offset exceeds content length",
             });
         }
         let selection = FileSelection {
@@ -385,8 +377,21 @@ impl Snapshot {
         let (stored, _) = self.scan::<FileReference>(&selection, page).await?;
         if stored.first() != Some(file) {
             return Err(Error::InvalidInput {
-                field: "GetFileBytes",
+                field: action,
                 reason: "immutable content reference does not match stored metadata",
+            });
+        }
+        Ok(())
+    }
+
+    /// Read One Bounded Range From Immutable, Durable Content.
+    pub async fn get_file_bytes(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<FileBytesRange> {
+        self.check_file_reference(file, "GetFileBytes").await?;
+        let resolved_at = self.at();
+        if offset > file.length {
+            return Err(Error::InvalidInput {
+                field: "GetFileBytes",
+                reason: "offset exceeds content length",
             });
         }
         let maximum = max_bytes.min(self.inner.settings.response.batch_bytes);

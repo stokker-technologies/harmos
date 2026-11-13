@@ -71,6 +71,9 @@ pub struct ReadLimits {
 pub struct StorageWork {
     pub synchronous_commits: u64,
     pub synchronous_commit_ns: u64,
+    pub maximum_synchronous_commit_ns: u64,
+    pub writing_ns: u64,
+    pub maximum_writing_ns: u64,
     pub source_rows: u64,
     pub source_bytes: u64,
     pub decoded_chunks: u64,
@@ -197,7 +200,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn delete_session(&self) -> StorageFuture<'_, ()>;
 
     // Independent Durable Writes; Replayed Positions Must Be Idempotent.
-    fn append_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor>;
+    fn append_schemas(&self, write: crate::SchemaWrite) -> StorageFuture<'_, crate::SchemaWriteReceipt>;
     fn append_object_revisions(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor>;
     fn append_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor>;
     fn append_samples(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor>;

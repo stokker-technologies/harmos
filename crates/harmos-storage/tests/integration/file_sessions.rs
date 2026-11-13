@@ -49,6 +49,7 @@ pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
     let pending = NonZeroUsize::new(1024 * 1024).unwrap();
     let batch = NonZeroUsize::new(4096).unwrap();
     let settings = StorageSettings {
+        policy: Default::default(),
         filesystem: harmos_storage::StorageFilesystemSettings {
             poll_interval: std::time::Duration::from_millis(100),
             max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
@@ -56,6 +57,8 @@ pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
         },
 
         request: StorageRequestSettings {
+            max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),
+            max_mutation_receipts: std::num::NonZeroUsize::new(1024).unwrap(),
             max_pending_queries: NonZeroUsize::new(8).unwrap(),
             max_active_queries: NonZeroUsize::new(2).unwrap(),
             max_active_file_operations: NonZeroUsize::new(1).unwrap(),

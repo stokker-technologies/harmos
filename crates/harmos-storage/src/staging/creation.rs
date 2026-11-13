@@ -74,7 +74,7 @@ impl StorageManager {
                     }
                     state.collect();
                     // Leave at least one byte for batch progress even with tiny policies.
-                    if state.files.len() < crate::storage::config::MAX_FILES.get()
+                    if state.files.len() < self.inner.settings.request.max_file_productions.get()
                         && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
                         && state.status.pending_bytes < self.inner.settings.request.max_pending_write_bytes.get()
                     {
@@ -191,7 +191,7 @@ impl StorageManager {
         if let Some(file) = state.files.get_mut(&id) {
             if let Some(session) = &mut file.session {
                 if generation == Some(session.generation) && !file.abandoned {
-                    session.disconnect(&file.staging, file.length, crate::storage::config::FILE_SESSION_TIMEOUT);
+                    session.disconnect(&file.staging, file.length, self.inner.settings.policy.file_session_timeout);
                 }
                 self.inner.notify();
                 return;

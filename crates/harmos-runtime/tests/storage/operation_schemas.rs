@@ -74,8 +74,8 @@ fn schema(name: &str) -> harmos_protocol::storage::SchemaInput {
     }
 }
 
-fn request(f: &Fixture, name: &str) -> harmos_protocol::storage::WriteSchema {
-    harmos_protocol::storage::WriteSchema {
+fn schema_request(f: &Fixture, name: &str) -> harmos_protocol::storage::StorageSetSchemaRequest {
+    harmos_protocol::storage::StorageSetSchemaRequest {
         mutation: Some(
             MutationId {
                 window: f.storage.mutation_window().unwrap().id,
@@ -84,7 +84,18 @@ fn request(f: &Fixture, name: &str) -> harmos_protocol::storage::WriteSchema {
             .into(),
         ),
         schema: Some(schema(name)),
+        expected_revision: Vec::new(),
+        create_if_absent: true,
     }
+}
+
+fn assert_conflict(error: harmos_runtime::Error) {
+    let harmos_runtime::Error::OperationFailed { operation, source } = error else { panic!("unexpected failure: {error:?}") };
+    assert_eq!(operation, "storage.set_schema");
+    let Some(harmos_operations::execution::ServingError::Handler(failure)) = source.downcast_ref() else {
+        panic!("missing typed failure: {source:?}");
+    };
+    assert_eq!(failure.detail("storage.kind"), Some("STORAGE_FAILURE_CONFLICT"));
 }
 
 async fn setup() -> Fixture {
@@ -98,19 +109,75 @@ async fn setup() -> Fixture {
 #[tokio::test]
 async fn schema_registry_roundtrip() {
     let f = setup().await;
-    let request = request(&f, "nested");
-    let accepted = f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(request.clone()).await.unwrap();
-    let repeated = f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(request.clone()).await.unwrap();
+    let request = schema_request(&f, "nested");
+    let accepted = f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(request.clone()).await.unwrap();
+    let repeated = f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(request.clone()).await.unwrap();
     assert_eq!(accepted, repeated);
-    assert_eq!(harmos_protocol::storage::StorageCursor::from(f.storage.cursor_accepted()), accepted);
+    assert_eq!(accepted.receipt.as_ref().unwrap().durable_at.as_ref().unwrap().sequence, f.storage.cursor_accepted().sequence);
     let mut conflict = request.clone();
     conflict.schema.as_mut().unwrap().key.as_mut().unwrap().version = 2;
-    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(conflict).await.is_err());
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(conflict).await.is_err());
+    let mut representation = request.clone();
+    representation.schema.as_mut().unwrap().graph.as_mut().unwrap().representations[0].omissions.clear();
+    assert_conflict(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(representation).await.unwrap_err());
     let mut malformed = request.clone();
     malformed.mutation.as_mut().unwrap().key = "malformed".into();
     malformed.schema.as_mut().unwrap().graph.as_mut().unwrap().root = u64::MAX;
-    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::WriteSchema>(malformed).await.is_err());
-    assert_eq!(harmos_protocol::storage::StorageCursor::from(f.storage.cursor_accepted()), accepted);
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(malformed).await.is_err());
+    assert_eq!(accepted.receipt.as_ref().unwrap().durable_at.as_ref().unwrap().sequence, f.storage.cursor_accepted().sequence);
+    let get = harmos_protocol::storage::StorageGetSchemaRequest {
+        key: request.schema.as_ref().unwrap().key.clone(),
+        at: None,
+    };
+    let first = f.runtime.operations.call_protobuf::<harmos_operations::storage::GetSchema>(get.clone()).await.unwrap();
+    assert!(first.exists);
+    assert_eq!(first.revision, accepted.revision);
+    let mut stale = request.clone();
+    stale.mutation.as_mut().unwrap().key = "stale-create".into();
+    let refused = f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(stale.clone()).await.unwrap_err();
+    assert_conflict(refused);
+    let mut replacement = request.clone();
+    replacement.mutation.as_mut().unwrap().key = "same-graph".into();
+    replacement.create_if_absent = false;
+    replacement.expected_revision = first.revision.clone();
+    let next = f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(replacement.clone()).await.unwrap();
+    assert_ne!(next.revision, first.revision);
+    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(request.clone()).await.unwrap(), accepted);
+    assert_conflict(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(stale).await.unwrap_err());
+    let mut changed = replacement.clone();
+    changed.mutation.as_mut().unwrap().key = "changed-graph".into();
+    changed.expected_revision = next.revision.clone();
+    changed.schema.as_mut().unwrap().graph.as_mut().unwrap().definitions[1].fields[0].name = "different".into();
+    assert_conflict(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(changed).await.unwrap_err());
+    let old = f
+        .runtime
+        .operations
+        .call_protobuf::<harmos_operations::storage::GetSchema>(harmos_protocol::storage::StorageGetSchemaRequest {
+            at: first.resolved_at.clone(),
+            ..get.clone()
+        })
+        .await
+        .unwrap();
+    assert_eq!(old.revision, first.revision);
+    let latest = f.runtime.operations.call_protobuf::<harmos_operations::storage::GetSchema>(get).await.unwrap();
+    assert_eq!(latest.revision, next.revision);
+    let mut version = schema_request(&f, "nested-v2");
+    version.schema = request.schema.clone();
+    version.schema.as_mut().unwrap().key.as_mut().unwrap().version = 2;
+    version.schema.as_mut().unwrap().graph.as_mut().unwrap().definitions[1].fields[0].name = "new-value".into();
+    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(version).await.unwrap().receipt.unwrap().completed);
+    // The admitted owner survives loss of its caller before the provider commits.
+    use std::sync::atomic::Ordering;
+    f.data.control.block_write.store(true, Ordering::SeqCst);
+    let lost = schema_request(&f, "lost-schema-reply");
+    {
+        let mut call = Box::pin(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(lost.clone()));
+        assert!(crate::support::events::until(call.as_mut(), f.data.control.write_entered.notified()).await.is_ok());
+    }
+    f.data.control.block_write.store(false, Ordering::SeqCst);
+    f.data.control.write_release.notify_one();
+    let settled = f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(lost.clone()).await.unwrap();
+    assert!(settled.receipt.unwrap().completed);
     let at = f.storage.flush().await.unwrap();
     let query = harmos_runtime::storage::Query {
         at: at.clone(),
@@ -152,7 +219,7 @@ async fn schema_registry_roundtrip() {
             ..Default::default()
         });
     }
-    assert_eq!(rows, 1);
+    assert_eq!(rows, 2);
     let persisted = f.data.schemas.lock().unwrap().values().next().unwrap().clone();
     let expected: Schema = request.schema.unwrap().graph.unwrap().try_into().unwrap();
     assert_eq!(*persisted.schema, expected);

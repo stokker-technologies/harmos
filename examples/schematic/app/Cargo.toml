@@ -70,6 +70,7 @@ tempfile = { workspace = true, default-features = true }
 # === Dev Dependencies === #
 
 [dev-dependencies]
+harmos-protocol = { workspace = true }
 arrow-array = { workspace = true }
 futures-util = { workspace = true, features = ["async-await-macro"] }
 harmos-packaging = { workspace = true, features = ["sidecar"] }

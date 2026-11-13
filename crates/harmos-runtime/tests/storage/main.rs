@@ -9,10 +9,14 @@
 
 /* === Modules === */
 
+mod callee_policy;
 mod definition_receipts;
 mod generated_example_hash;
 mod generated_native_journey;
 
+mod durable_row_watch;
+mod file_observation;
+mod filesystem_metadata;
 mod filtered_pages;
 #[path = "generated_capture.rs"]
 mod generated_capture;
@@ -26,6 +30,7 @@ mod generated_file_upload;
 mod generated_status;
 mod issued_cut_lifetime;
 mod issued_pages;
+mod native_pages;
 mod transfer_plugin;
 mod unary_transfers;
 

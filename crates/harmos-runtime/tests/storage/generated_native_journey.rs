@@ -182,35 +182,60 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert_eq!(runtime.operations.call_protobuf::<operations::SetObject>(conflict).await.unwrap(), refused);
 
     // Retain the Saved Cut and Read Its Arrow Page.
-    let saved = runtime
+    let retained = runtime
         .operations
         .call_protobuf::<operations::CreateSnapshot>(harmos_protocol::v1::StorageCreateSnapshotRequest { at: None })
         .await
-        .unwrap()
-        .snapshot
         .unwrap();
+    let saved_cut = retained.resolved_at.unwrap();
+    let saved = retained.snapshot.unwrap();
     let limits = wire::ReadLimits { rows: 16, bytes: 65536 };
-    let scan = wire::ArrowScan {
+    let scan = wire::ColumnSelection {
         source: Some(source.clone()),
         columns: vec!["payload.value".into(), "payload.time_ns".into(), "payload.id".into()],
-        limits: Some(limits),
         work: Some(limits),
         ..Default::default()
     };
-    let page = runtime
+    let response = runtime
         .operations
         .call_protobuf::<operations::ListColumnRows>(harmos_protocol::v1::StorageListColumnRowsRequest {
-            snapshot: Some(saved.clone()),
-            read: Some(scan.clone()),
+            selection: Some(scan.clone()),
+            at: Some(saved_cut.clone()),
+            page: Some(harmos_protocol::v1::PageRequest {
+                page_size: limits.rows as u32,
+                max_bytes: limits.bytes,
+                page_token: String::new(),
+            }),
         })
         .await
-        .unwrap()
-        .page
         .unwrap();
+    let page = response.page.unwrap();
     assert!(page.buffer_bytes() <= limits.bytes as usize);
     let batch = harmos_storage::query::protobuf::decode_batch(page.ipc, limits.try_into().unwrap()).unwrap();
     assert_eq!(batch.as_record_batch().num_rows(), 1);
-    assert!(page.complete);
+    assert_eq!(page.complete, response.next_page_token.is_empty());
+    let mut next_page_token = response.next_page_token;
+    while !next_page_token.is_empty() {
+        let tail = runtime
+            .operations
+            .call_protobuf::<operations::ListColumnRows>(harmos_protocol::v1::StorageListColumnRowsRequest {
+                selection: Some(scan.clone()),
+                at: response.resolved_at.clone(),
+                page: Some(harmos_protocol::v1::PageRequest {
+                    page_size: limits.rows as u32,
+                    max_bytes: limits.bytes,
+                    page_token: next_page_token,
+                }),
+            })
+            .await
+            .unwrap();
+        assert_eq!(tail.resolved_at, response.resolved_at);
+        let page = tail.page.unwrap();
+        assert_eq!(page.complete, tail.next_page_token.is_empty());
+        let batch = harmos_storage::query::protobuf::decode_batch(page.ipc, limits.try_into().unwrap()).unwrap();
+        assert_eq!(batch.as_record_batch().num_rows(), 0);
+        next_page_token = tail.next_page_token;
+    }
 
     let window = storage.mutation_window().unwrap().id.to_string();
     let mutation = |key: &str| Some(wire::MutationId { window: window.clone(), key: key.into() });
@@ -236,6 +261,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     let current = runtime
         .operations
         .call_protobuf::<operations::GetIndexDefinition>(harmos_protocol::v1::StorageGetIndexDefinitionRequest {
+            at: None,
             name: index.name.clone(),
             source: index.source.clone(),
         })
@@ -260,11 +286,11 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     absent.create_if_absent = true;
     assert!(runtime.operations.call_protobuf::<operations::SetIndexDefinition>(absent).await.is_err());
     let index = harmos_protocol::v1::StorageListIndexEntriesRequest {
-        snapshot: Some(saved.clone()),
+        at: Some(saved_cut.clone()),
+        page: None,
         source: Some(source.clone()),
-        read: Some(wire::IndexRead {
+        selection: Some(wire::IndexSelection {
             name: "sample.values".into(),
-            limits: Some(limits),
             work: Some(limits),
             ..Default::default()
         }),
@@ -272,7 +298,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     let indexed = runtime.operations.call_protobuf::<operations::ListIndexEntries>(index.clone()).await.unwrap().page.unwrap();
     assert_eq!(indexed.entries.len(), 1);
     let mut missing = index;
-    missing.read.as_mut().unwrap().name = "missing".into();
+    missing.selection.as_mut().unwrap().name = "missing".into();
     assert!(runtime.operations.call_protobuf::<operations::ListIndexEntries>(missing).await.is_err());
 
     // Materialize Buckets at an Exact Durable Frontier.
@@ -304,20 +330,21 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .await
         .unwrap()
         .revision;
-    let revision = u64::from_be_bytes(revision_bytes.clone().try_into().unwrap());
     let current = runtime
         .operations
         .call_protobuf::<operations::GetProjectionDefinition>(harmos_protocol::v1::StorageGetProjectionDefinitionRequest {
+            at: None,
             name: "sample.buckets".into(),
             source: Some(source.clone()),
         })
         .await
         .unwrap();
     assert_eq!(current.revision, revision_bytes);
+    let projection_cut = current.resolved_at.clone();
     let inspect = harmos_protocol::v1::StorageGetProjectionStatusRequest {
         name: "sample.buckets".into(),
-        revision,
-        frontier: saved.at.clone(),
+        revision: revision_bytes.clone(),
+        at: Some(saved_cut.clone()),
         source: Some(source.clone()),
     };
     assert!(runtime.operations.call_protobuf::<operations::GetProjectionStatus>(inspect.clone()).await.unwrap().status.is_none());
@@ -334,12 +361,11 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert_eq!(runtime.operations.call_protobuf::<operations::GetProjectionStatus>(inspect).await.unwrap().status.unwrap().rows, 1);
     let read = harmos_protocol::v1::StorageListProjectionRowsRequest {
         source: Some(source.clone()),
-        read: Some(wire::ProjectionRead {
+        at: Some(saved_cut.clone()),
+        page: None,
+        selection: Some(wire::ProjectionSelection {
             name: "sample.buckets".into(),
-            revision,
-            frontier: saved.at.clone(),
-            after: 0,
-            limits: Some(limits),
+            revision: revision_bytes.clone(),
             work: Some(limits),
         }),
     };
@@ -369,13 +395,13 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert_eq!(at_old_cut.value, created.value);
     assert_eq!(at_old_cut.resolved_at, Some(issued));
     let changed_position = changed.receipt.as_ref().unwrap().durable_at.as_ref().unwrap();
-    let live = runtime
+    let live_lease = runtime
         .operations
         .call_protobuf::<operations::CreateSnapshot>(harmos_protocol::v1::StorageCreateSnapshotRequest { at: None })
         .await
-        .unwrap()
-        .snapshot
         .unwrap();
+    let live_cut = live_lease.resolved_at.unwrap();
+    let live = live_lease.snapshot.unwrap();
     assert_eq!(live.at.as_ref().unwrap().sequence, changed_position.sequence);
     runtime
         .operations
@@ -388,7 +414,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .await
         .unwrap();
     let mut latest = read.clone();
-    latest.read.as_mut().unwrap().frontier = live.at.clone();
+    latest.at = Some(live_cut);
     let replacement = runtime.operations.call_protobuf::<operations::ListProjectionRows>(latest).await.unwrap().page.unwrap();
     assert_eq!(replacement.changed_keys, old.changed_keys);
     assert_ne!(replacement.ipc, old.ipc);
@@ -404,7 +430,7 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     let rebuilt = wire::ProjectionDefinition {
         name: "sample.buckets".into(),
         version: 2,
-        source: Some(alternate),
+        source: Some(alternate.clone()),
         transform: Some(wire::projection_definition::Transform::Select(wire::SelectColumns { columns: vec!["payload.value".into()] })),
     };
     runtime
@@ -412,20 +438,30 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
         .call_protobuf::<operations::SetProjectionDefinition>(harmos_protocol::v1::StorageSetProjectionDefinitionRequest {
             mutation: mutation("projection-1"),
             definition: Some(rebuilt),
-            expected_revision: revision_bytes,
+            expected_revision: revision_bytes.clone(),
             create_if_absent: false,
             rebuild: true,
         })
         .await
         .unwrap();
+    let old_definition = runtime
+        .operations
+        .call_protobuf::<operations::GetProjectionDefinition>(harmos_protocol::v1::StorageGetProjectionDefinitionRequest {
+            name: "sample.buckets".into(),
+            source: scan.source.clone(),
+            at: projection_cut,
+        })
+        .await
+        .unwrap();
+    assert_eq!(old_definition.revision, revision_bytes);
+    assert_eq!(old_definition.definition.as_ref().unwrap().source, scan.source);
     let old_read = harmos_protocol::v1::StorageListProjectionRowsRequest {
         source: scan.source.clone(),
-        read: Some(wire::ProjectionRead {
+        at: Some(saved_cut.clone()),
+        page: None,
+        selection: Some(wire::ProjectionSelection {
             name: "sample.buckets".into(),
-            revision,
-            frontier: saved.at.clone(),
-            after: 0,
-            limits: Some(limits),
+            revision: revision_bytes.clone(),
             work: Some(limits),
         }),
     };
@@ -440,9 +476,11 @@ async fn saved_queries_and_conditional_updates_cross_the_protocol() {
     assert!(
         runtime
             .operations
-            .call_protobuf::<operations::ListColumnRows>(harmos_protocol::v1::StorageListColumnRowsRequest {
+            .call_protobuf::<operations::AdvanceProjection>(harmos_protocol::v1::StorageAdvanceProjectionRequest {
                 snapshot: Some(saved),
-                read: Some(scan)
+                name: "sample.buckets".into(),
+                source: Some(alternate),
+                work: Some(limits),
             })
             .await
             .is_err()

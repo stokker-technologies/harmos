@@ -16,15 +16,16 @@ use harmos_storage::StorageManager;
 /* === Structs === */
 
 /// Read the storage frontiers, mutation window and file batch size.
-pub struct StorageStatus;
+pub struct Info;
 
 /* === Implementations === */
 
-impl ProtobufOperation for StorageStatus {
-    type Request = harmos_protocol::storage::StorageStatus;
-    type Response = harmos_protocol::storage::StorageInfo;
+impl ProtobufOperation for Info {
+    type Request = harmos_protocol::storage::StorageInfoRequest;
+    type Response = harmos_protocol::storage::StorageInfoResponse;
     type Endpoints = ();
-    const ID: &'static str = "storage.status";
+    const ID: &'static str = "storage.info";
+    const VISIBILITY: crate::operations::Visibility = crate::operations::Visibility::Protected;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];

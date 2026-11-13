@@ -3,6 +3,7 @@ syntax = "proto3";
 package harmos.storage.v1;
 
 import "google/protobuf/timestamp.proto";
+import "harmos/v1/types.proto";
 
 // Histories and positions are native storage identities, independent of transport.
 message StoreHistory { string store = 1; string epoch = 2; }
@@ -12,8 +13,8 @@ message MutationWindow {
   string id = 2;
   google.protobuf.Timestamp expires_at = 3;
 }
-message StorageStatus {}
-message StorageInfo {
+message StorageInfoRequest {}
+message StorageInfoResponse {
   StorageCursor accepted = 1;
   StorageCursor saved = 2;
   MutationWindow mutations = 3;
@@ -34,7 +35,8 @@ message FileProducer { FileSession session = 1; uint64 length = 2; }
 message FileReference { StorageCursor position = 1; FileMetadata metadata = 2; uint64 length = 3; bytes sha256 = 4; }
 enum FilePhase { PRODUCING = 0; FINISHED = 1; ABANDONED = 2; }
 message FileProgress { uint64 length = 1; FilePhase phase = 2; }
-message DeleteFile { MutationId mutation = 1; StagedFile file = 2; }
+message StorageDeleteFileRequest { MutationId mutation = 1; StagedFile file = 2; }
+message StorageDeleteFileResponse { StagedFile file = 1; harmos.v1.Receipt receipt = 2; }
 
 message DirectoryRule { string pattern = 1; bool include = 2; }
 message DirectorySelection { string root = 1; bool recursive = 2; repeated DirectoryRule rules = 3; }
@@ -53,8 +55,6 @@ message DirectoryEvent {
     Empty rescan_required = 7;
   }
 }
-message ListDirectory { DirectorySelection selection = 1; }
-message WatchDirectory { DirectorySelection selection = 1; bool include_existing = 2; }
 
 message FileSource { oneof source { FileReference stored = 1; string local = 2; } }
 message ByteRange { uint64 offset = 1; optional uint64 limit = 2; }
@@ -65,10 +65,6 @@ message FollowStart { oneof start { Empty beginning = 1; Empty end = 2; uint64 a
 message FileEvent { oneof event { FileBatch data = 1; uint64 truncated = 2; Empty replaced = 3; } }
 enum CaptureConsistency { BOUNDED = 0; STABLE = 1; }
 message ReadFile { FileSource source = 1; ByteRange range = 2; }
-message HashFile { FileSource source = 1; ByteRange range = 2; }
-message CaptureFile { FileSource source = 1; ByteRange range = 2; FileMetadata metadata = 3; CaptureConsistency consistency = 4; }
-message FollowFile { FileSource source = 1; FollowStart start = 2; }
-message FollowProduction { StagedFile file = 1; uint64 offset = 2; }
 
 // Storage schema graphs describe persisted payloads; they do not change their encoding.
 enum PayloadEncoding { PAYLOAD_ENCODING_UNSPECIFIED = 0; POSTCARD_V1 = 1; }
@@ -89,7 +85,15 @@ message SchemaRepresentation {
 }
 message SchemaGraph { uint64 root = 1; repeated SchemaDefinition definitions = 2; repeated SchemaRepresentation representations = 3; }
 message SchemaInput { SchemaKey key = 1; SchemaGraph graph = 2; }
-message WriteSchema { MutationId mutation = 1; SchemaInput schema = 2; }
+message StorageSetSchemaRequest {
+  MutationId mutation = 1;
+  SchemaInput schema = 2;
+  bytes expected_revision = 3;
+  bool create_if_absent = 4;
+}
+message StorageSetSchemaResponse { SchemaInput schema = 1; bytes revision = 2; harmos.v1.Receipt receipt = 3; }
+message StorageGetSchemaRequest { SchemaKey key = 1; harmos.v1.ReadCut at = 2; }
+message StorageGetSchemaResponse { SchemaInput schema = 1; bytes revision = 2; bool exists = 3; harmos.v1.ReadCut resolved_at = 4; }
 
 message RowSlice { uint64 offset = 1; optional uint64 limit = 2; }
 enum ObjectVersions { LATEST = 0; REVISIONS = 1; }
@@ -128,14 +132,9 @@ message Transform { oneof transform { Filter filter = 1; Project project = 2; Ag
 message Query { StorageCursor at = 1; QuerySource source = 2; repeated Transform transforms = 3; RowSlice slice = 4; }
 message StoredRecord { StorageCursor position = 1; SchemaKey schema = 2; optional string scope = 3; string item = 4; optional string source = 5; google.protobuf.Timestamp source_time = 6; bytes payload = 7; }
 message StoredRow { StoredRecord record = 1; string stream = 2; uint64 sequence = 3; }
-message FollowBoundaries { StorageCursor saved = 1; StorageCursor accepted = 2; }
-message Followed { oneof followed { FollowBoundaries boundaries = 1; StoredRecord record = 2; } }
-message FollowRecords { StorageCursor after = 1; RecordSelection selection = 2; }
-message FollowStream { StorageCursor after = 1; StreamSelection selection = 2; }
 message ObjectVersionToken { StoreHistory history = 1; uint64 revision = 2; }
 message ObjectValue { SchemaKey schema = 1; string item = 2; bytes payload = 3; }
 message ObjectEntry { StorageCursor position = 1; ObjectVersionToken version = 2; ObjectValue value = 3; }
-message FollowObjects { StorageCursor after = 1; ObjectSelection selection = 2; }
 message DataBatch { uint64 sequence = 1; string destination = 2; SchemaKey schema = 3; bytes ipc = 4; }
 message WriteFile { FileMetadata metadata = 1; }
 
@@ -146,19 +145,17 @@ enum ColumnKind { COLUMN_KIND_OBJECTS = 0; COLUMN_KIND_RECORDS = 1; COLUMN_KIND_
 message ColumnSource { ColumnKind kind = 1; SchemaKey schema = 2; }
 message ColumnPredicate { string column = 1; optional double lower = 2; optional double upper = 3; }
 message TimeBounds { string column = 1; int64 lower_ns = 2; int64 upper_ns = 3; }
-message ArrowSeek { bytes snapshot = 1; bytes plan = 2; uint64 position = 3; }
-message ArrowScan { ColumnSource source = 1; repeated string columns = 2; ColumnPredicate predicate = 3; TimeBounds time = 4; uint64 start = 5; ArrowSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
-message ArrowPage { bytes ipc = 1; ArrowSeek next = 2; bool complete = 3; uint64 scanned = 4; uint64 bytes_read = 5; repeated string columns_read = 6; uint64 payload_rows = 7; }
+message ColumnSelection { ColumnSource source = 1; repeated string columns = 2; ColumnPredicate predicate = 3; TimeBounds time = 4; uint64 start = 5; ReadLimits work = 6; }
+message ArrowPage { bytes ipc = 1; bool complete = 2; uint64 scanned = 3; uint64 bytes_read = 4; repeated string columns_read = 5; uint64 payload_rows = 6; }
 message IndexDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; repeated string columns = 4; }
 message IndexEntry { bytes key = 1; uint64 position = 2; }
-message IndexSeek { bytes snapshot = 1; bytes plan = 2; uint64 revision = 3; bytes key = 4; uint64 position = 5; }
-message IndexRead { string name = 1; optional bytes lower = 2; optional bytes upper = 3; bytes prefix = 4; bool descending = 5; IndexSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
-message IndexPage { repeated IndexEntry entries = 1; IndexSeek next = 2; bool complete = 3; }
+message IndexSelection { string name = 1; optional bytes lower = 2; optional bytes upper = 3; bytes prefix = 4; bool descending = 5; ReadLimits work = 6; }
+message IndexPage { repeated IndexEntry entries = 1; bool complete = 2; }
 message TimeBucketPlan { int64 origin_ns = 1; uint64 width_ns = 2; string time = 3; string value = 4; string identity = 5; repeated string group = 6; uint64 max_samples = 7; uint64 max_bytes = 8; }
 message SelectColumns { repeated string columns = 1; }
 message ProjectionDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; oneof transform { SelectColumns select = 4; TimeBucketPlan time_buckets = 5; } }
-message ProjectionRead { string name = 1; uint64 revision = 2; StorageCursor frontier = 3; uint64 after = 4; ReadLimits limits = 5; ReadLimits work = 6; }
-message ProjectionPage { bytes ipc = 1; StorageCursor frontier = 2; uint64 revision = 3; repeated bytes changed_keys = 4; optional uint64 next = 5; }
+message ProjectionSelection { string name = 1; bytes revision = 2; ReadLimits work = 3; }
+message ProjectionPage { bytes ipc = 1; repeated bytes changed_keys = 2; }
 message ProjectionStatus { StorageCursor frontier = 1; uint64 revision = 2; uint64 rows = 3; uint64 changed_keys = 4; }
 // A saved snapshot is explicitly released. Its handle is opaque and instance scoped.
 message SavedSnapshot { bytes token = 1; StorageCursor at = 2; }

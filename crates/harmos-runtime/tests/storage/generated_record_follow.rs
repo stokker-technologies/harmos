@@ -7,61 +7,50 @@
  * ***
  */
 
-// Record follow resumes.
+// Resume Durable Records Exclusively From Their Issued Cut
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Tests === */
+use harmos_operations::storage::WatchRows;
+use harmos_protocol::{storage as wire, v1};
 
 #[tokio::test]
-async fn record_follow_resumes() {
-    use harmos_operations::storage::FollowRecords;
-    use harmos_protocol::storage::followed::Followed;
+async fn record_watch_resumes() {
     let fixture = Fixture::new(config()).await;
-    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
-    write(&fixture.storage, "historical").await;
-    fixture.storage.flush().await.unwrap();
-    let request = harmos_protocol::storage::FollowRecords {
-        after: None,
-        selection: Some(records().into()),
+    crate::support::app::register(&fixture.runtime, storage_catalog(), Default::default()).await.unwrap();
+    let request = v1::StorageWatchRowsRequest {
+        source: Some(wire::QuerySource {
+            source: Some(wire::query_source::Source::Records(records().into())),
+        }),
+        at: None,
     };
     let limits = harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let mut instance = fixture.runtime.operations.download_protobuf::<FollowRecords>(request.clone(), limits).unwrap();
-    let Some(Followed::Boundaries(boundaries)) = instance.next().await.unwrap().unwrap().followed else {
-        panic!("a follow first reports its boundaries");
-    };
-    assert_eq!(boundaries.saved, boundaries.accepted);
-    let first = followed(instance.next().await.unwrap().unwrap());
-    assert_eq!(first.item.as_str(), "historical");
-    assert!(first.position.sequence <= boundaries.saved.as_ref().unwrap().sequence);
-    let second_position = write(&fixture.storage, "live").await;
-    let second = followed(instance.next().await.unwrap().unwrap());
-    assert_eq!(second.item.as_str(), "live");
-    assert_eq!(second.position, second_position);
-    assert!(second.position.sequence > boundaries.accepted.as_ref().unwrap().sequence);
+    let mut watch = fixture.runtime.operations.download_protobuf::<WatchRows>(request.clone(), limits).unwrap();
+    let boundary = watch.next().await.unwrap().unwrap();
+    assert!(matches!(boundary.event, Some(v1::storage_watch_rows_response::Event::Boundary(_))));
+    let first_position = write(&fixture.storage, "first").await;
     fixture.storage.flush().await.unwrap();
-    instance.request_cancel();
-    assert!(instance.join().await.is_err());
+    let (first, _) = watched_record(&mut watch).await;
+    assert_eq!(first.position, first_position);
+    assert_eq!(first.item.as_str(), "first");
+    let second_position = write(&fixture.storage, "second").await;
+    fixture.storage.flush().await.unwrap();
+    let (second, cut) = watched_record(&mut watch).await;
+    assert_eq!(second.position, second_position);
+    watch.request_cancel();
+    assert!(watch.join().await.is_err());
     let mut request = request;
-    request.after = Some(second_position.into());
-    let mut instance = fixture.runtime.operations.download_protobuf::<FollowRecords>(request, limits).unwrap();
-    drop(instance.next().await.unwrap().unwrap());
-    write(&fixture.storage, "reconnected").await;
-    let third = followed(instance.next().await.unwrap().unwrap());
+    request.at = Some(cut);
+    let mut watch = fixture.runtime.operations.download_protobuf::<WatchRows>(request, limits).unwrap();
+    assert!(matches!(watch.next().await.unwrap().unwrap().event, Some(v1::storage_watch_rows_response::Event::Boundary(_))));
+    let third_position = write(&fixture.storage, "reconnected").await;
+    fixture.storage.flush().await.unwrap();
+    let (third, _) = watched_record(&mut watch).await;
+    assert_eq!(third.position, third_position);
     assert_eq!(third.item.as_str(), "reconnected");
-    instance.request_cancel();
-    assert!(instance.join().await.is_err());
+    watch.request_cancel();
+    assert!(watch.join().await.is_err());
     fixture.finish().await;
 }

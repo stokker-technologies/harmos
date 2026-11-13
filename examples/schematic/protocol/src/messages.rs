@@ -132,10 +132,12 @@ pub struct Take {
     #[prost(uint64, tag = "1")]
     pub transfer: u64,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Hash {
     #[prost(message, optional, tag = "1")]
-    pub request: ::core::option::Option<::harmos_protocol::storage::HashFile>,
+    pub request: ::core::option::Option<
+        ::harmos_protocol::context::StorageGetFileHashRequest,
+    >,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileHash {

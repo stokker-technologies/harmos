@@ -7,45 +7,37 @@
  * ***
  */
 
-// Following spends budget.
+// Apply The Declared Watch Lifetime With Controlled Time
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Tests === */
+use harmos_operations::storage::WatchRows;
+use harmos_protocol::{storage as wire, v1};
 
 #[tokio::test(start_paused = true)]
-async fn following_spends_budget() {
-    use harmos_operations::storage::FollowRecords;
-    use std::time::Duration;
+async fn watch_spends_its_declared_lifetime() {
     let fixture = Fixture::new(config()).await;
-    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
-    write(&fixture.storage, "first").await;
+    crate::support::app::register(&fixture.runtime, storage_catalog(), Default::default()).await.unwrap();
+    let request = v1::StorageWatchRowsRequest {
+        source: Some(wire::QuerySource {
+            source: Some(wire::query_source::Source::Records(records().into())),
+        }),
+        at: None,
+    };
     let limits = harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let request = harmos_protocol::storage::FollowRecords {
-        after: None,
-        selection: Some(records().into()),
-    };
-    let mut instance = fixture.runtime.operations.download_protobuf::<FollowRecords>(request, limits).unwrap();
-    drop(instance.next().await.unwrap().unwrap());
-    drop(instance.next().await.unwrap().unwrap());
-    tokio::time::advance(Duration::from_secs(16)).await;
+    let mut watch = fixture.runtime.operations.download_protobuf::<WatchRows>(request, limits).unwrap();
+    drop(watch.next().await.unwrap().unwrap());
+    write(&fixture.storage, "first").await;
+    fixture.storage.flush().await.unwrap();
+    assert_eq!(watched_record(&mut watch).await.0.item.as_str(), "first");
+    tokio::time::advance(std::time::Duration::from_secs(16)).await;
     write(&fixture.storage, "after-attempt-cap").await;
-    let record = followed(instance.next().await.unwrap().unwrap());
-    assert_eq!(record.item.as_str(), "after-attempt-cap");
-    tokio::time::advance(Duration::from_secs(44)).await;
-    assert!(instance.next().await.unwrap().is_none());
-    assert!(instance.join().await.is_err());
+    fixture.storage.flush().await.unwrap();
+    assert_eq!(watched_record(&mut watch).await.0.item.as_str(), "after-attempt-cap");
+    tokio::time::advance(std::time::Duration::from_secs(44)).await;
+    assert!(watch.next().await.unwrap().is_none());
+    assert!(watch.join().await.is_err());
     fixture.finish().await;
 }

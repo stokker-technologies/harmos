@@ -67,9 +67,12 @@ impl WorkerOwner for Task {
 
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    for load in [Load::SmallHighRate, Load::MultiMegabyte, Load::Mixed] {
+    for (repetition, load) in (1..=5)
+        .flat_map(|repetition| [Load::SmallHighRate, Load::MultiMegabyte, Load::Mixed].into_iter().map(move |load| (repetition, load)))
+    {
         // Open An Isolated WAL/FULL Backend For Each Load.
-        let root = tempfile::tempdir().unwrap();
+        let activity_before = activity();
+        let root = tempfile::Builder::new().prefix(&format!("harmos-storage-durable-lag-{}-", std::process::id())).tempdir().unwrap();
         let history = StoreHistory {
             store: Identifier::new("durable-lag").unwrap(),
             epoch: Identifier::new("benchmark").unwrap(),
@@ -94,12 +97,15 @@ fn main() {
             },
         ));
         let settings = StorageSettings {
+            policy: Default::default(),
             filesystem: StorageFilesystemSettings {
                 poll_interval: std::time::Duration::from_millis(100),
                 max_entries: nz(100_000),
                 event_capacity: nz(1024),
             },
             request: StorageRequestSettings {
+                max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),
+                max_mutation_receipts: std::num::NonZeroUsize::new(1024).unwrap(),
                 max_pending_queries: nz(64),
                 max_active_queries: nz(4),
                 max_pending_write_batches: nz(256),
@@ -151,14 +157,37 @@ fn main() {
                 serde_json::json!({
                     "case": format!("integration/durable_lag/{}", load.name()),
                     "p95_bound_ms": durable_lag::P95_BOUND_MS, "p95_within_bound": result.p95_ms <= durable_lag::P95_BOUND_MS,
+                "repetition": repetition, "activity_before": activity_before, "activity_after": activity(),
+                "data_volume": root.path().ancestors().last().map(|path| path.display().to_string()),
+                "dataset": root.path().file_name().map(|name| name.to_string_lossy()),
                 "measurement": result, "durability": "sqlite WAL synchronous=FULL",
                     "synchronous_commits": after.synchronous_commits - before.synchronous_commits,
                     "synchronous_commit_ms": (after.synchronous_commit_ns - before.synchronous_commit_ns) as f64 / 1_000_000.0,
+                    "maximum_synchronous_commit_ms": after.maximum_synchronous_commit_ns as f64 / 1_000_000.0,
+                    "writing_ms": (after.writing_ns - before.writing_ns) as f64 / 1_000_000.0,
+                    "maximum_writing_ms": after.maximum_writing_ns as f64 / 1_000_000.0,
                 })
             );
             storage.close().await.unwrap();
         });
     }
+}
+
+fn activity() -> serde_json::Value {
+    #[cfg(windows)]
+    let output = std::process::Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command",
+        "@(Get-Process -Name cargo,rustc,cl,link,cmake,ninja,python -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,CPU) | ConvertTo-Json -Compress"])
+        .output();
+    #[cfg(not(windows))]
+    let output = std::process::Command::new("sh")
+        .args(["-c", "ps -eo pid,comm,time | awk '$2 ~ /^(cargo|rustc|cc|ld|cmake|ninja|python|python3)$/ {print}'"])
+        .output();
+    output
+        .map(|output| {
+            serde_json::json!({"processes": String::from_utf8_lossy(&output.stdout),
+        "logical_cpus": std::thread::available_parallelism().map(|value| value.get()).unwrap_or(0)})
+        })
+        .unwrap_or_else(|error| serde_json::json!({"unavailable": error.to_string()}))
 }
 
 fn nz(value: usize) -> NonZeroUsize {

@@ -155,14 +155,15 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
     cases: dict[str, list[dict]] = {}
     counters = []
     work = []
-    lag = []
+    lag: dict[str, list[dict]] = {}
     transfers: dict[str, list[dict]] = {}
     for line in lines:
         if line.startswith("STORAGE_FILE_TRANSFER "):
             value = json.loads(line.removeprefix("STORAGE_FILE_TRANSFER "))
             transfers.setdefault(value["case"], []).append(value["measurement"])
         if line.startswith("STORAGE_DURABLE_LAG "):
-            lag.append(json.loads(line.removeprefix("STORAGE_DURABLE_LAG ")))
+            value = json.loads(line.removeprefix("STORAGE_DURABLE_LAG "))
+            lag.setdefault(value["case"], []).append(value)
         if line.startswith("STORAGE_MEASUREMENT "):
             value = json.loads(line.removeprefix("STORAGE_MEASUREMENT "))
             cases.setdefault(value["name"], []).append(value)
@@ -208,7 +209,7 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
             ("index_prepares", "count"),
         ):
             rows.append(_row(counter["name"] + ".work." + field.replace("_", "."), counter[field], unit, revision, system, backend))
-    for case in lag:
+    for name, samples in sorted(lag.items()):
         for field, unit in (
             ("p50_ms", "ms"),
             ("p95_ms", "ms"),
@@ -219,9 +220,46 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
             ("batches", "count"),
             ("bytes", "bytes"),
         ):
-            rows.append(_row(case["case"] + "/" + field, case["measurement"][field], unit, revision, system, backend))
-        for field, unit in (("synchronous_commits", "count"), ("synchronous_commit_ms", "ms")):
-            rows.append(_row(case["case"] + "/" + field, case[field], unit, revision, system, backend))
+            values = [case["measurement"][field] for case in samples]
+            rows.append(_row(name + "/" + field, statistics.median(values), unit, revision, system, backend))
+            if field == "p95_ms":
+                rows.append(_row(name + "/p95_min_ms", min(values), unit, revision, system, backend))
+                rows.append(_row(name + "/p95_max_ms", max(values), unit, revision, system, backend))
+        rows.append(_row(name + "/repetitions", len(samples), "count", revision, system, backend))
+        for field, unit in (
+            ("synchronous_commits", "count"),
+            ("synchronous_commit_ms", "ms"),
+            ("maximum_synchronous_commit_ms", "ms"),
+            ("writing_ms", "ms"),
+            ("maximum_writing_ms", "ms"),
+        ):
+            values = [case[field] for case in samples if field in case]
+            if values:
+                rows.append(_row(name + "/" + field, statistics.median(values), unit, revision, system, backend))
+        for stage in ("cadence_wait", "ordered_wait", "ordered_wait_small", "ordered_wait_large", "batch_build", "backend", "publication"):
+            values = [case["measurement"].get("stages", {}).get(stage) for case in samples]
+            values = [value for value in values if value is not None]
+            for field, unit in (("count", "count"), ("total_ns", "ns"), ("maximum_ns", "ns")):
+                if values:
+                    rows.append(
+                        _row(
+                            name + "/stages/" + stage + "/" + field,
+                            statistics.median(value[field] for value in values),
+                            unit,
+                            revision,
+                            system,
+                            backend,
+                        )
+                    )
+        for field, unit in (
+            ("committed_pieces", "count"),
+            ("committed_rows", "rows"),
+            ("committed_bytes", "bytes"),
+            ("maximum_commit_bytes", "bytes"),
+        ):
+            values = [case["measurement"]["stages"][field] for case in samples if "stages" in case["measurement"]]
+            if values:
+                rows.append(_row(name + "/" + field, statistics.median(values), unit, revision, system, backend))
     for name, samples in sorted(transfers.items()):
         for field, unit in (
             ("bytes", "bytes"),

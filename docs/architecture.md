@@ -37,8 +37,8 @@ and caller-face authorization remain independent checks.
    and `client_invokes_public_plugin_through_the_host_and_protected_is_refused`
    guard native admission, including absence of Instance/context on the client listener.
    Storage and management descriptors use the same audience-filtered generator;
-   unfinished storage handlers remain recorded in the change inventory.
-   **Status:** implemented for the non-storage protocol and SDKs; combined inventory open.
+   the combined descriptor inventory matches the locked 19 services/103 methods.
+   **Status:** landed for protocol/SDK declarations and storage handlers; broader guards remain open.
 
 2. **Admission Boundaries.** The host refuses catalogued Private declarations and
    unspecified visibility. Protected admits the declaring owner and host; Public
@@ -206,10 +206,16 @@ and caller-face authorization remain independent checks.
     **Why:** repeatable reads and read-your-write receipts must not hide a persistence
     barrier. The lag target is measured, never asserted against real time in a test.
     **Where:** `openspec/changes/operation-grammar/specs/storage-visibility/spec.md`.
-    **Proof:** No proof yet for the complete read contract or measured lag bound;
-    tasks 1.5 and 3.2 remain open. Today `crates/harmos-storage/src/snapshot.rs`
-    requires an explicit saved cursor; follows can include accepted data.
-    **Status:** locked direction (`operation-grammar`).
+    **Proof:** Issued-page, native-list and cut-lifetime stories in
+    `crates/harmos-runtime/tests/storage/` cover durable selection and continuation.
+    `watch_rows_closes_opening_races_and_resynchronizes_on_retention_loss` covers
+    socket/child durable observation, opening races, filtered progress and resync;
+    `durable_watch_waits_for_commit_advances_filters_and_reports_retention_gaps`
+    in the native storage manager tests covers committed-prefix gating.
+    `filesystem_metadata_cuts_repeat_results_and_pin_directory_continuations`
+    covers metadata observations, pinned continuation, eviction and restart refusal.
+    The measured lag bound remains open in the repeated benchmark investigation.
+    **Status:** partially landed; no complete lag-bound proof.
 
 12. **Stable Receipts After Lost Replies.** The caller resends; the same request
     identifier and normalized payload return the original receipt, while a changed
@@ -221,12 +227,13 @@ and caller-face authorization remain independent checks.
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`;
     `openspec/specs/storage-mutations/spec.md`;
     `openspec/changes/operation-grammar/specs/storage-mutations/spec.md`.
-    **Proof:** No proof yet across the complete new client surface. Existing
-    `mutation_receipts_survive_replays_lost_responses_and_cancellation` in
-    `crates/harmos-runtime/tests/storage/manager/receipts.rs` guards current file mutations;
-    `admitted_create_completes` in
-    `crates/harmos-storage/tests/integration/manager/mutations.rs` guards late completion.
-    **Status:** locked direction (`operation-grammar`); these underlying guarantees are landed.
+    **Proof:** Storage's unary-transfer, Append-record/sample/object, definition-
+    receipt and schema-mirror journeys in `crates/harmos-runtime/tests/storage/`
+    cover original receipts, changed requests, admitted work after caller loss and
+    retained windows. Native schema/index/projection restart journeys cover atomic
+    outcomes and `admitted_create_completes` covers completion through retry expiry.
+    **Status:** landed for the migrated storage surface; the complete service census
+    and non-storage mutation joins remain under `operation-grammar`.
 
 13. **Distinct Storage Guarantees.** Saved reads pin durable data; follows may join
     accepted data and must not label it saved. Bounded physical scans, ordered index
@@ -272,11 +279,15 @@ and caller-face authorization remain independent checks.
     `openspec/specs/operation-authoring/spec.md`, `openspec/specs/canonical-build/spec.md`;
     Policy Ownership and Honest Budgets in
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-    **Proof:** No proof yet for complete ownership. `attempt_limits_backoff` and
-    `timeouts_require_replay` in `crates/harmos-runtime/tests/operations/policy.rs`
-    guard operation policy today, but `crates/harmos-storage/src/config.rs` still
-    hardcodes backend I/O/retry/session policy. Do not describe those as consumer configuration.
-    **Status:** locked direction (`operation-grammar`) for the complete rule.
+    **Proof:** `configured_policy_owns_io_retries_and_retirement` in
+    `crates/harmos-storage/tests/integration/manager/policy.rs` proves configured
+    I/O/recovery, retries, production capacity/lifetime and receipt expiry with
+    controlled time. `a_child_deadline_override_does_not_change_the_next_storage_call`
+    in `crates/harmos-runtime/tests/storage/callee_policy.rs` proves a plugin child
+    override expires only its call. Existing operation policy stories preserve
+    replay-safety admission. `StorageSettings.policy` owns operational defaults;
+    request settings own production/receipt capacities and existing budgets.
+    **Status:** landed for storage and invocation policy (task A.8).
 
 16. **Crate Dependency Direction.** Runtime composes operations, storage, domain and
     protocol; operations depends on storage/domain/protocol, storage on domain/protocol,

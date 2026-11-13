@@ -87,8 +87,8 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         harmos_domain::schema::graph::Schema::from_declaration(Sample::DEFINITION, &harmos_domain::config::SchemaSettings::default())
             .unwrap();
     let schema = StorageSchema::new(StorageCursor { history: history.clone(), sequence: 1 }, key.clone(), graph);
-    native.append_schemas(StorageBatch::new(vec![schema.clone()])).await.unwrap();
-    fallback.append_schemas(StorageBatch::new(vec![schema])).await.unwrap();
+    native.append_schemas(StorageBatch::new(vec![schema.clone()]).into()).await.unwrap();
+    fallback.append_schemas(StorageBatch::new(vec![schema]).into()).await.unwrap();
     let records = (0..8)
         .map(|index| StoredRecord {
             position: StorageCursor {

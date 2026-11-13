@@ -1,25 +1,19 @@
 
-Í
-harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.protoharmos/v1/types.proto"v
+Ñ
+harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.protoharmos/v1/types.proto"è
 StorageListIndexEntriesResponse*
 page (2.harmos.storage.v1.IndexPage'
-resolved_at (2.harmos.v1.ReadCutbproto3
-¿
-harmos/v1/storage_types.protoharmos.storage.v1"+
+resolved_at (2.harmos.v1.ReadCut
+next_page_token (	bproto3
+Õ
+harmos/v1/storage_types.protoharmos.storage.v1harmos/v1/types.proto"+
 
 IndexEntry
 key (
-position ("y
+position ("M
 	IndexPage.
-entries (2.harmos.storage.v1.IndexEntry*
-next (2.harmos.storage.v1.IndexSeek
-complete ("\
-	IndexSeek
-snapshot (
-plan (
-revision (
-key (
-position (bproto3
+entries (2.harmos.storage.v1.IndexEntry
+complete (bproto3
 ≠
 harmos/v1/types.proto	harmos.v1"'
 History

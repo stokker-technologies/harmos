@@ -7,49 +7,37 @@
  * ***
  */
 
-// Foreign cursor refused.
+// Refuse A Foreign Watch Cut Before Its Opening Boundary
 
-/* === Imports === */
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 use super::*;
-
-/* === Tests === */
+use harmos_operations::storage::WatchRows;
+use harmos_protocol::{storage as wire, v1};
 
 #[tokio::test]
-async fn foreign_cursor_refused() {
-    use harmos_operations::storage::FollowStream;
+async fn foreign_watch_cut_refused() {
     let fixture = Fixture::new(config()).await;
-    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
-    let mut foreign = fixture.storage.cursor_accepted();
-    foreign.history.epoch = harmos_runtime::Identifier::new("foreign").unwrap();
-    let request = harmos_protocol::storage::FollowStream {
-        after: Some(foreign.into()),
-        selection: Some(
-            harmos_runtime::storage::query::StreamSelection {
-                schema: crate::storage::schema(),
-                scope: None,
-                item: None,
-                stream: None,
-                source_start: None,
-                source_end: None,
-                after: 0,
-            }
-            .into(),
-        ),
+    crate::support::app::register(&fixture.runtime, storage_catalog(), Default::default()).await.unwrap();
+    let request = v1::StorageWatchRowsRequest {
+        source: Some(wire::QuerySource {
+            source: Some(wire::query_source::Source::Records(records().into())),
+        }),
+        at: Some(v1::ReadCut {
+            positions: vec![v1::Position {
+                history: Some(v1::History {
+                    store: "foreign".into(),
+                    epoch: "foreign".into(),
+                }),
+                sequence: 0,
+            }],
+            revisions: vec![],
+        }),
     };
     let limits = harmos_runtime::operations::StreamSettings {
         items: NonZeroUsize::MIN,
         bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let mut instance = fixture.runtime.operations.download_protobuf::<FollowStream>(request, limits).unwrap();
-    assert!(instance.next().await.unwrap().is_none());
-    assert!(instance.join().await.is_err());
+    let mut watch = fixture.runtime.operations.download_protobuf::<WatchRows>(request, limits).unwrap();
+    assert!(watch.next().await.unwrap().is_none());
+    assert!(watch.join().await.is_err());
     fixture.finish().await;
 }
