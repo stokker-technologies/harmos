@@ -73,3 +73,7 @@ use existing public `Catalog` construction/naming/contracts methods without wide
 README claims remain valid; update the two example guides and protocol folder description.
 The simplest generation interface is a crate-local `generate` example and drift test,
 using the pinned vendored compiler with no runtime build script.
+
+Catalog composition uses public `Catalog::new().named(...).entry(...)` values and
+`Catalog::contracts()`. The unused example batch helpers are removed; operation
+order, membership and the three catalog names are preserved. No private use remains.

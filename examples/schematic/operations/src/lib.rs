@@ -37,6 +37,7 @@ pub use schematic::validate::ValidateSchematic;
 // Third Party Imports
 
 // Local Imports
+use harmos_operations::execution::operations::{Catalog, Contract, ContractError, OperationFactory};
 
 /* === Constants === */
 
@@ -48,34 +49,32 @@ pub use schematic::validate::ValidateSchematic;
 
 /* === Enums === */
 
-pub fn operations_catalog() -> harmos_operations::execution::operations::Catalog {
-    operations_catalog_batch().named("schematic.operations")
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+pub fn operations_catalog() -> Catalog {
+    Catalog::new()
+        .named("schematic.operations")
+        .entry(OperationFactory::protobuf::<ValidateSchematic>().expect("ValidateSchematic declaration"))
+        .entry(OperationFactory::protobuf::<ProposeRoute>().expect("ProposeRoute declaration"))
+        .entry(OperationFactory::protobuf::<AnalyzeSchematic>().expect("AnalyzeSchematic declaration"))
 }
 
-pub fn operations_catalog_batch() -> harmos_operations::execution::__private::Catalog {
-    let mut batch = harmos_operations::execution::__private::Catalog::new();
-    batch.operations.extend([
-        harmos_operations::execution::operations::OperationFactory::protobuf::<ValidateSchematic>().expect("ValidateSchematic declaration"),
-        harmos_operations::execution::operations::OperationFactory::protobuf::<ProposeRoute>().expect("ProposeRoute declaration"),
-        harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeSchematic>().expect("AnalyzeSchematic declaration"),
-    ]);
-    batch
+pub fn native_catalog() -> Catalog {
+    operations_catalog()
+        .named("schematic.native")
+        .entry(OperationFactory::protobuf::<ListDirectories>().expect("ListDirectories declaration"))
+        .entry(OperationFactory::protobuf::<AnalyzeUpload>().expect("AnalyzeUpload declaration"))
+        .entry(OperationFactory::protobuf::<AnalyzeExchange>().expect("AnalyzeExchange declaration"))
 }
 
-pub fn native_catalog() -> harmos_operations::execution::operations::Catalog {
-    native_catalog_batch().named("schematic.native")
+pub fn native_contracts() -> Result<Vec<Contract>, ContractError> {
+    native_catalog().contracts()
 }
 
-pub fn native_catalog_batch() -> harmos_operations::execution::__private::Catalog {
-    let mut batch = operations_catalog_batch();
-    batch.operations.extend([
-        harmos_operations::execution::operations::OperationFactory::protobuf::<ListDirectories>().expect("ListDirectories declaration"),
-        harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeUpload>().expect("AnalyzeUpload declaration"),
-        harmos_operations::execution::operations::OperationFactory::protobuf::<AnalyzeExchange>().expect("AnalyzeExchange declaration"),
-    ]);
-    batch
-}
+/* === Private Functions === */
 
-pub fn native_contracts() -> Result<Vec<harmos_operations::operations::Contract>, harmos_operations::operations::ContractError> {
-    native_catalog_batch().operations.into_iter().map(|factory| factory.contract()).collect()
-}
+/* === Tests === */
