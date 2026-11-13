@@ -1,3 +1,4 @@
+using Status = Grpc.Core.Status;
 using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 

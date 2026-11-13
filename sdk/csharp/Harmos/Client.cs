@@ -243,11 +243,11 @@ public sealed class StatusDiagnosticsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.V1.Status.DiagnosticsGetResponse> Get(global::Harmos.V1.Status.DiagnosticsGetRequest request, CallOptions options = default)
+  public AsyncUnaryCall<global::Harmos.V1.StatusResources.DiagnosticsGetResponse> Get(global::Harmos.V1.StatusResources.DiagnosticsGetRequest request, CallOptions options = default)
   {
-    var method = new Method<global::Harmos.V1.Status.DiagnosticsGetRequest, global::Harmos.V1.Status.DiagnosticsGetResponse>(MethodType.Unary, "harmos.v1.status.Diagnostics", "Get",
-        Marshallers.Create<global::Harmos.V1.Status.DiagnosticsGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.DiagnosticsGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.V1.Status.DiagnosticsGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.DiagnosticsGetResponse.Parser.ParseFrom(bytes)));
+    var method = new Method<global::Harmos.V1.StatusResources.DiagnosticsGetRequest, global::Harmos.V1.StatusResources.DiagnosticsGetResponse>(MethodType.Unary, "harmos.v1.status.Diagnostics", "Get",
+        Marshallers.Create<global::Harmos.V1.StatusResources.DiagnosticsGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.DiagnosticsGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.StatusResources.DiagnosticsGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.DiagnosticsGetResponse.Parser.ParseFrom(bytes)));
     return invoker.AsyncUnaryCall(method, null, options, request);
   }
 }
@@ -258,18 +258,18 @@ public sealed class StatusLogsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.V1.Status.LogsListResponse> List(global::Harmos.V1.Status.LogsListRequest request, CallOptions options = default)
+  public AsyncUnaryCall<global::Harmos.V1.StatusResources.LogsListResponse> List(global::Harmos.V1.StatusResources.LogsListRequest request, CallOptions options = default)
   {
-    var method = new Method<global::Harmos.V1.Status.LogsListRequest, global::Harmos.V1.Status.LogsListResponse>(MethodType.Unary, "harmos.v1.status.Logs", "List",
-        Marshallers.Create<global::Harmos.V1.Status.LogsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.V1.Status.LogsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsListResponse.Parser.ParseFrom(bytes)));
+    var method = new Method<global::Harmos.V1.StatusResources.LogsListRequest, global::Harmos.V1.StatusResources.LogsListResponse>(MethodType.Unary, "harmos.v1.status.Logs", "List",
+        Marshallers.Create<global::Harmos.V1.StatusResources.LogsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.LogsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.StatusResources.LogsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.LogsListResponse.Parser.ParseFrom(bytes)));
     return invoker.AsyncUnaryCall(method, null, options, request);
   }
-  public AsyncServerStreamingCall<global::Harmos.V1.Status.LogsWatchResponse> Watch(global::Harmos.V1.Status.LogsWatchRequest request, CallOptions options = default)
+  public AsyncServerStreamingCall<global::Harmos.V1.StatusResources.LogsWatchResponse> Watch(global::Harmos.V1.StatusResources.LogsWatchRequest request, CallOptions options = default)
   {
-    var method = new Method<global::Harmos.V1.Status.LogsWatchRequest, global::Harmos.V1.Status.LogsWatchResponse>(MethodType.ServerStreaming, "harmos.v1.status.Logs", "Watch",
-        Marshallers.Create<global::Harmos.V1.Status.LogsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsWatchRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.V1.Status.LogsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.LogsWatchResponse.Parser.ParseFrom(bytes)));
+    var method = new Method<global::Harmos.V1.StatusResources.LogsWatchRequest, global::Harmos.V1.StatusResources.LogsWatchResponse>(MethodType.ServerStreaming, "harmos.v1.status.Logs", "Watch",
+        Marshallers.Create<global::Harmos.V1.StatusResources.LogsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.LogsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.StatusResources.LogsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.LogsWatchResponse.Parser.ParseFrom(bytes)));
     return invoker.AsyncServerStreamingCall(method, null, options, request);
   }
 }
@@ -280,18 +280,18 @@ public sealed class StatusTraceEventsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.V1.Status.TraceEventsListResponse> List(global::Harmos.V1.Status.TraceEventsListRequest request, CallOptions options = default)
+  public AsyncUnaryCall<global::Harmos.V1.StatusResources.TraceEventsListResponse> List(global::Harmos.V1.StatusResources.TraceEventsListRequest request, CallOptions options = default)
   {
-    var method = new Method<global::Harmos.V1.Status.TraceEventsListRequest, global::Harmos.V1.Status.TraceEventsListResponse>(MethodType.Unary, "harmos.v1.status.TraceEvents", "List",
-        Marshallers.Create<global::Harmos.V1.Status.TraceEventsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.V1.Status.TraceEventsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsListResponse.Parser.ParseFrom(bytes)));
+    var method = new Method<global::Harmos.V1.StatusResources.TraceEventsListRequest, global::Harmos.V1.StatusResources.TraceEventsListResponse>(MethodType.Unary, "harmos.v1.status.TraceEvents", "List",
+        Marshallers.Create<global::Harmos.V1.StatusResources.TraceEventsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.TraceEventsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.StatusResources.TraceEventsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.TraceEventsListResponse.Parser.ParseFrom(bytes)));
     return invoker.AsyncUnaryCall(method, null, options, request);
   }
-  public AsyncServerStreamingCall<global::Harmos.V1.Status.TraceEventsWatchResponse> Watch(global::Harmos.V1.Status.TraceEventsWatchRequest request, CallOptions options = default)
+  public AsyncServerStreamingCall<global::Harmos.V1.StatusResources.TraceEventsWatchResponse> Watch(global::Harmos.V1.StatusResources.TraceEventsWatchRequest request, CallOptions options = default)
   {
-    var method = new Method<global::Harmos.V1.Status.TraceEventsWatchRequest, global::Harmos.V1.Status.TraceEventsWatchResponse>(MethodType.ServerStreaming, "harmos.v1.status.TraceEvents", "Watch",
-        Marshallers.Create<global::Harmos.V1.Status.TraceEventsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsWatchRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.V1.Status.TraceEventsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.Status.TraceEventsWatchResponse.Parser.ParseFrom(bytes)));
+    var method = new Method<global::Harmos.V1.StatusResources.TraceEventsWatchRequest, global::Harmos.V1.StatusResources.TraceEventsWatchResponse>(MethodType.ServerStreaming, "harmos.v1.status.TraceEvents", "Watch",
+        Marshallers.Create<global::Harmos.V1.StatusResources.TraceEventsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.TraceEventsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Harmos.V1.StatusResources.TraceEventsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.V1.StatusResources.TraceEventsWatchResponse.Parser.ParseFrom(bytes)));
     return invoker.AsyncServerStreamingCall(method, null, options, request);
   }
 }

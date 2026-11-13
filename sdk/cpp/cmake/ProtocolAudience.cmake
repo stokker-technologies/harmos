@@ -3,7 +3,7 @@
 foreach(protocol IN LISTS PROTOCOLS)
     set(header_path "${GENERATED}/${protocol}.grpc.pb.h")
     set(source_path "${GENERATED}/${protocol}.grpc.pb.cc")
-    if(protocol MATCHES "^harmos/context/" OR (AUDIENCE STREQUAL "Plugin" AND protocol STREQUAL "harmos/v1/storage"))
+    if(protocol MATCHES "^harmos/context/")
         file(REMOVE "${header_path}" "${source_path}")
         continue()
     endif()

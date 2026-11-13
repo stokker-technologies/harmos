@@ -59,7 +59,7 @@ class CustomBuildHook(BuildHookInterface):
                 continue
             if audience == "plugin" and (
                 path.name in ("client.py", "resources.json")
-                or (face == "v1" and generated and not path.name.startswith(("types_pb2", "storage_pb2")))
+                or (face == "v1" and generated and not path.name.startswith(("types_pb2", "storage_types_pb2")))
             ):
                 continue
             content = path.read_bytes()

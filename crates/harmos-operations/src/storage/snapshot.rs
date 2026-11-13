@@ -231,7 +231,9 @@ impl SavedSnapshots {
         let bytes = if token.len() == 208 {
             token
                 .as_bytes()
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| std::str::from_utf8(pair).ok().and_then(|pair| u8::from_str_radix(pair, 16).ok()).ok_or_else(expired))
                 .collect::<Result<Vec<_>, _>>()?
         } else {

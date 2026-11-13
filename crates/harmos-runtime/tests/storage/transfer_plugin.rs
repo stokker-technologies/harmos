@@ -98,8 +98,8 @@ impl TransferPlugin {
         ] {
             let request = format!("harmos.context.v1.Storage{method}Request");
             let response = format!("harmos.context.v1.Storage{method}Response");
-            let method_id = method;
-            let child = format!("harmos.context.v1.Storage/{method_id}");
+            let method_id = snake(method);
+            let child = format!("harmos.context.v1.Storage/{method}");
             let id = format!("fixture.transfer.{method_id}");
             catalog.operations.push(v1::OperationContract {
                 fingerprint: schema::fingerprint(&id, &types, &request, &response).unwrap(),
@@ -167,19 +167,19 @@ impl plugin::instance_server::Instance for Service {
             return Err(Status::invalid_argument("Invoke requires an opening request"));
         };
         let method = request.operation.strip_prefix("fixture.transfer.").ok_or_else(|| Status::not_found("Invoke unknown transfer"))?;
-        let operation = format!("harmos.context.v1.Storage/{method}");
         let required = self
             .catalog
             .requires
             .iter()
-            .find(|required| required.id == operation)
+            .find(|required| snake(required.id.rsplit('/').next().unwrap()) == method)
             .ok_or_else(|| Status::not_found("Invoke undeclared transfer"))?;
         let child = v1::ChildRequest {
             call: 1,
-            operation,
+            operation: required.id.clone(),
             payload: request.payload,
             fingerprint: required.fingerprint.clone(),
             policy: None,
+            ..Default::default()
         };
         let (send, receive) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
@@ -197,6 +197,12 @@ impl plugin::instance_server::Instance for Service {
                     let result = child.result.map(|result| match result {
                         v1::child_response::Result::Payload(payload) => v1::response::Result::Payload(payload),
                         v1::child_response::Result::Failure(failure) => v1::response::Result::Failure(failure),
+                        v1::child_response::Result::Item(_) => v1::response::Result::Failure(v1::Failure {
+                            classification: v1::Classification::Permanent as i32,
+                            action: "Invoke Unary Transfer".into(),
+                            message: "Invoke Unary Transfer: unexpected Watch item".into(),
+                            ..Default::default()
+                        }),
                     });
                     let _ = send
                         .send(Ok(plugin::InstanceInvokeResponse {
@@ -224,7 +230,7 @@ impl plugin::instance_server::Instance for Service {
 pub async fn call<O: harmos_operations::execution::operations::ProtobufOperation<Endpoints = ()>>(
     operations: &harmos_runtime::operations::OperationManager, request: O::Request,
 ) -> Result<O::Response, harmos_runtime::Error> {
-    let method = O::ID.rsplit('/').next().unwrap();
+    let method = snake(O::ID.rsplit('/').next().unwrap());
     let bytes = operations.call_encoded(&format!("fixture.transfer.{method}"), request.encode_to_vec()).await?;
     O::Response::decode(bytes.as_slice()).map_err(|source| harmos_runtime::Error::OperationFailed {
         operation: O::ID.into(),
@@ -244,5 +250,16 @@ pub async fn client_call<O: harmos_operations::execution::operations::ProtobufOp
 }
 
 /* === Private Functions === */
+
+fn snake(method: &str) -> String {
+    let mut value = String::new();
+    for (index, character) in method.chars().enumerate() {
+        if index > 0 && character.is_ascii_uppercase() {
+            value.push('_');
+        }
+        value.push(character.to_ascii_lowercase());
+    }
+    value
+}
 
 /* === Tests === */

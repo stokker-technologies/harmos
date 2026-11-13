@@ -29,7 +29,8 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    reject leaked stubs. `plugin_cannot_call_a_client_face_even_with_its_declared_contract`
    and `client_invokes_public_plugin_through_the_host_and_protected_is_refused`
    guard native admission, including absence of Instance/context on the client listener.
-   The complete service inventory awaits the storage/management integrations.
+   Storage and management descriptors use the same audience-filtered generator;
+   unfinished storage handlers remain recorded in the change inventory.
    **Status:** implemented for the non-storage protocol and SDKs; combined inventory open.
 
 2. **Admission Boundaries.** The host refuses catalogued Private declarations and
@@ -147,11 +148,15 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    `crates/harmos-runtime/src/storage/manager.rs`,
    `crates/harmos-runtime/src/grpc/manager.rs`, `crates/harmos-runtime/src/services/mod.rs`,
    `crates/harmos-runtime/src/state/manager.rs`, `crates/harmos-runtime/src/records/manager.rs`
-   and `crates/harmos-runtime/src/guest/host/plugin/manager.rs`.
-   **Proof:** No proof yet for the complete inventory; existing manager types do
-   not prove the future Plugins, Access and Status services exist. HostValues resolver
-   registration/removal and provider failures have focused stories under plugin_grpc.
-   **Status:** locked direction (`operation-grammar`).
+   and `crates/harmos-runtime/src/plugin/manager/mod.rs`.
+   **Proof:** `client_manages_remote_plugins`, `client_manages_bundled_plugins`,
+   `host_restores_plugin_entries` and `client_refuses_invalid_plugin_bundles` guard
+   persistent entries and activation ownership. `client_pairs_and_rotates_access`
+   and `credential_store_unavailable` guard listener/credential atomicity.
+   `client_reads_status`, `client_pages_and_watches_events` and
+   `client_reads_diagnostics_ranges` guard contributions, histories and archives.
+   HostValues resolver registration/removal and failures have plugin_grpc stories.
+   **Status:** landed; native proof is tracked separately from source.
 
 9. **Library and Product Composition.** The library owns generic hosting, access,
    transfers, status, invocations, time, storage, streams, protocol and SDKs; products
@@ -167,8 +172,9 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
    **Proof:** `declared_values_use_the_product_resolver_and_registration_lifetime`
    and `resolver_failure_and_a_mismatched_value_type_are_propagated` guard resolver
-   composition without a library store. Complete management-service composition remains open.
-   **Status:** locked direction (`operation-grammar`).
+   composition without a library store. The manager, access and status client journeys
+   compose runtime services with host-supplied persistence, credentials and facts.
+   **Status:** landed for native host composition.
 
 10. **Resource Operation Grammar.** Services name resources, methods use the closed
     ordinary verb set Get/List/Watch/Set/Create/Delete/Append; only declared domain
@@ -289,7 +295,7 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     **Where:** `sdk/rust/`, `sdk/python/`, `sdk/csharp/`, `sdk/cpp/`,
     `tools/conformance/`; Self-Sufficient Library SDK Ownership in
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-    **Proof:** the independent reference host runs 29 shared conformance cases in
+    **Proof:** the independent reference host runs the shared conformance suite in
     each SDK. Four-language client-root fixtures compose library and product descriptors.
     Native plugin semantic parity is agreed; generic managed application clients remain
     Rust-only, while other languages use their generated application gRPC clients.
@@ -363,7 +369,10 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     `crates/harmos-storage/tests/integration/file_sessions.rs` and
     `mutation_receipts_survive_replays_lost_responses_and_cancellation` in
     `crates/harmos-runtime/tests/storage/manager/receipts.rs`.
-    The replacement unary transfer surface remains future work, not additional proof.
+    `resume_fence_publish_and_range_across_faces` guards unary client/plugin transfer
+    sessions, replay, fencing and bounded immutable reads. Bundled manager stories
+    upload through the same client session operations. Diagnostics and file snapshots
+    share `harmos_storage::get_content_bytes`; the service manager owns archive retention.
     **Status:** landed for current production sessions.
 
 23. **Authoritative Host Time.** Plugin waits and interval publication use the host

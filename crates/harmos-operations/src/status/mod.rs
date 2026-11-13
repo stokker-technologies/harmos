@@ -66,7 +66,9 @@ pub trait Status: Send + Sync {
     fn get(&self, request: harmos_protocol::v1::StatusGetRequest) -> Pending<'_, harmos_protocol::v1::StatusGetResponse>;
     fn watch(&self, request: harmos_protocol::v1::StatusWatchRequest)
     -> Pending<'_, EventStream<harmos_protocol::v1::StatusWatchResponse>>;
-    fn logs_list(&self, request: harmos_protocol::v1::status::LogsListRequest) -> Pending<'_, harmos_protocol::v1::status::LogsListResponse>;
+    fn logs_list(
+        &self, request: harmos_protocol::v1::status::LogsListRequest,
+    ) -> Pending<'_, harmos_protocol::v1::status::LogsListResponse>;
     fn logs_watch(
         &self, request: harmos_protocol::v1::status::LogsWatchRequest,
     ) -> Pending<'_, EventStream<harmos_protocol::v1::status::LogsWatchResponse>>;

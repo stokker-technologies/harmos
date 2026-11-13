@@ -3,6 +3,12 @@
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <stdexcept>
+#pragma push_macro("Get")
+#undef Get
+#pragma push_macro("Start")
+#undef Start
+#pragma push_macro("Watch")
+#undef Watch
 #include "application/v1/jobs.grpc.pb.h"
 #include "application/v1/jobs/progress.grpc.pb.h"
 #include "library/v1/plugins.grpc.pb.h"
@@ -63,3 +69,6 @@ struct Client {
   explicit Client(std::shared_ptr<grpc::Channel> channel) : jobs(channel), plugins(channel) {}
 };
 }
+#pragma pop_macro("Watch")
+#pragma pop_macro("Start")
+#pragma pop_macro("Get")

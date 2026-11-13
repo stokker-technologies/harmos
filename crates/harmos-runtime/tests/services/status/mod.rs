@@ -12,8 +12,7 @@
 mod client_pages_and_watches_events;
 mod client_reads_diagnostics_ranges;
 mod client_reads_status;
-#[path = "../../support/access_status.rs"]
-mod support;
+use crate::access_status as support;
 
 /* === Re-Exports === */
 

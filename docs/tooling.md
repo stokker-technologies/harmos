@@ -378,7 +378,7 @@ mise run check -- --language csharp
 ```
 
 The test consumes both build outputs without rebuilding. Its one managed-plugin story
-runs all 29 reference-host cases in managed and remote modes, including successful
+runs every reference-host case in managed and remote modes, including successful
 managed process exit and continued remote availability after Stop. A focused unit
 test also checks clock requirement descriptors and the Rust-compatible sleep fingerprint.
 `--profile release` selects matching Release C# and release Rust outputs. Formatting

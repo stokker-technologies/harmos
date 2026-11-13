@@ -9,6 +9,9 @@
 
 /* === Modules === */
 
+#[path = "../support/access_status.rs"]
+mod access_status;
+
 #[cfg(feature = "grpc")]
 #[path = "../grpc/main.rs"]
 mod grpc;

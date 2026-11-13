@@ -190,10 +190,12 @@ impl ServiceManager {
                 name: "Status".into(),
             });
         }
-        let status = status::Status::new(settings, self.operations.clock().clone(), self.operations.registry.status_started.clone())
-            .map_err(|source| Error::OperationFailed {
-                operation: "Status.Configure".into(),
-                source: Arc::new(source),
+        let status =
+            status::Status::new(settings, self.operations.clock().clone(), self.operations.registry.status_started).map_err(|source| {
+                Error::OperationFailed {
+                    operation: "Status.Configure".into(),
+                    source: Arc::new(source),
+                }
             })?;
         status.refresh().map_err(|source| Error::OperationFailed {
             operation: "Status.Configure".into(),

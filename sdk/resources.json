@@ -13,6 +13,8 @@
     ],
     "request": "harmos.context.v1.CatalogEntriesListRequest",
     "response": "harmos.context.v1.CatalogEntriesListResponse",
+    "request_csharp": "Harmos.Context.V1.CatalogEntriesListRequest",
+    "response_csharp": "Harmos.Context.V1.CatalogEntriesListResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/catalog_entries.proto"
@@ -31,6 +33,8 @@
     ],
     "request": "harmos.context.v1.HostValuesGetRequest",
     "response": "harmos.context.v1.HostValuesGetResponse",
+    "request_csharp": "Harmos.Context.V1.HostValuesGetRequest",
+    "response_csharp": "Harmos.Context.V1.HostValuesGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/host_values.proto"
@@ -49,6 +53,8 @@
     ],
     "request": "harmos.context.v1.InvocationsGetRequest",
     "response": "harmos.context.v1.InvocationsGetResponse",
+    "request_csharp": "Harmos.Context.V1.InvocationsGetRequest",
+    "response_csharp": "Harmos.Context.V1.InvocationsGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/invocations.proto"
@@ -67,6 +73,8 @@
     ],
     "request": "harmos.context.v1.InvocationsCancelRequest",
     "response": "harmos.context.v1.InvocationsCancelResponse",
+    "request_csharp": "Harmos.Context.V1.InvocationsCancelRequest",
+    "response_csharp": "Harmos.Context.V1.InvocationsCancelResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/invocations.proto"
@@ -85,6 +93,8 @@
     ],
     "request": "harmos.context.v1.InvocationsWatchRequest",
     "response": "harmos.context.v1.InvocationsWatchResponse",
+    "request_csharp": "Harmos.Context.V1.InvocationsWatchRequest",
+    "response_csharp": "Harmos.Context.V1.InvocationsWatchResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/context/v1/invocations.proto"
@@ -103,6 +113,8 @@
     ],
     "request": "harmos.context.v1.SamplesAppendRequest",
     "response": "harmos.context.v1.SamplesAppendResponse",
+    "request_csharp": "Harmos.Context.V1.SamplesAppendRequest",
+    "response_csharp": "Harmos.Context.V1.SamplesAppendResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/samples.proto"
@@ -121,6 +133,8 @@
     ],
     "request": "harmos.context.v1.StorageCreateFileProductionRequest",
     "response": "harmos.context.v1.StorageCreateFileProductionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageCreateFileProductionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageCreateFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -139,6 +153,8 @@
     ],
     "request": "harmos.context.v1.StorageGetFileProductionRequest",
     "response": "harmos.context.v1.StorageGetFileProductionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageGetFileProductionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageGetFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -157,6 +173,8 @@
     ],
     "request": "harmos.context.v1.StorageAppendFileBytesRequest",
     "response": "harmos.context.v1.StorageAppendFileBytesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageAppendFileBytesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageAppendFileBytesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -175,6 +193,8 @@
     ],
     "request": "harmos.context.v1.StorageCreateFileWriterRequest",
     "response": "harmos.context.v1.StorageCreateFileWriterResponse",
+    "request_csharp": "Harmos.Context.V1.StorageCreateFileWriterRequest",
+    "response_csharp": "Harmos.Context.V1.StorageCreateFileWriterResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -193,6 +213,8 @@
     ],
     "request": "harmos.context.v1.StoragePublishFileProductionRequest",
     "response": "harmos.context.v1.StoragePublishFileProductionResponse",
+    "request_csharp": "Harmos.Context.V1.StoragePublishFileProductionRequest",
+    "response_csharp": "Harmos.Context.V1.StoragePublishFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -211,6 +233,8 @@
     ],
     "request": "harmos.context.v1.StorageDeleteFileProductionRequest",
     "response": "harmos.context.v1.StorageDeleteFileProductionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageDeleteFileProductionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageDeleteFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -229,6 +253,8 @@
     ],
     "request": "harmos.context.v1.StorageGetFileBytesRequest",
     "response": "harmos.context.v1.StorageGetFileBytesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageGetFileBytesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageGetFileBytesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -247,6 +273,8 @@
     ],
     "request": "harmos.context.v1.StorageCapabilitiesRequest",
     "response": "harmos.context.v1.StorageCapabilitiesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageCapabilitiesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageCapabilitiesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -265,6 +293,8 @@
     ],
     "request": "harmos.context.v1.StorageCreateSnapshotRequest",
     "response": "harmos.context.v1.StorageCreateSnapshotResponse",
+    "request_csharp": "Harmos.Context.V1.StorageCreateSnapshotRequest",
+    "response_csharp": "Harmos.Context.V1.StorageCreateSnapshotResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -283,6 +313,8 @@
     ],
     "request": "harmos.context.v1.StorageDeleteSnapshotRequest",
     "response": "harmos.context.v1.StorageDeleteSnapshotResponse",
+    "request_csharp": "Harmos.Context.V1.StorageDeleteSnapshotRequest",
+    "response_csharp": "Harmos.Context.V1.StorageDeleteSnapshotResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -301,6 +333,8 @@
     ],
     "request": "harmos.context.v1.StorageListColumnRowsRequest",
     "response": "harmos.context.v1.StorageListColumnRowsResponse",
+    "request_csharp": "Harmos.Context.V1.StorageListColumnRowsRequest",
+    "response_csharp": "Harmos.Context.V1.StorageListColumnRowsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -319,6 +353,8 @@
     ],
     "request": "harmos.context.v1.StorageListIndexEntriesRequest",
     "response": "harmos.context.v1.StorageListIndexEntriesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageListIndexEntriesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageListIndexEntriesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -337,6 +373,8 @@
     ],
     "request": "harmos.context.v1.StorageSetIndexDefinitionRequest",
     "response": "harmos.context.v1.StorageSetIndexDefinitionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageSetIndexDefinitionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageSetIndexDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -355,6 +393,8 @@
     ],
     "request": "harmos.context.v1.StorageSetProjectionDefinitionRequest",
     "response": "harmos.context.v1.StorageSetProjectionDefinitionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageSetProjectionDefinitionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageSetProjectionDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -373,6 +413,8 @@
     ],
     "request": "harmos.context.v1.StorageAdvanceProjectionRequest",
     "response": "harmos.context.v1.StorageAdvanceProjectionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageAdvanceProjectionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageAdvanceProjectionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -391,6 +433,8 @@
     ],
     "request": "harmos.context.v1.StorageListProjectionRowsRequest",
     "response": "harmos.context.v1.StorageListProjectionRowsResponse",
+    "request_csharp": "Harmos.Context.V1.StorageListProjectionRowsRequest",
+    "response_csharp": "Harmos.Context.V1.StorageListProjectionRowsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -409,6 +453,8 @@
     ],
     "request": "harmos.context.v1.StorageGetProjectionStatusRequest",
     "response": "harmos.context.v1.StorageGetProjectionStatusResponse",
+    "request_csharp": "Harmos.Context.V1.StorageGetProjectionStatusRequest",
+    "response_csharp": "Harmos.Context.V1.StorageGetProjectionStatusResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -427,6 +473,8 @@
     ],
     "request": "harmos.context.v1.StorageSetObjectRequest",
     "response": "harmos.context.v1.StorageSetObjectResponse",
+    "request_csharp": "Harmos.Context.V1.StorageSetObjectRequest",
+    "response_csharp": "Harmos.Context.V1.StorageSetObjectResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -445,6 +493,8 @@
     ],
     "request": "harmos.context.v1.StorageListRowsRequest",
     "response": "harmos.context.v1.StorageListRowsResponse",
+    "request_csharp": "Harmos.Context.V1.StorageListRowsRequest",
+    "response_csharp": "Harmos.Context.V1.StorageListRowsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -463,6 +513,8 @@
     ],
     "request": "harmos.context.v1.StorageWatchRowsRequest",
     "response": "harmos.context.v1.StorageWatchRowsResponse",
+    "request_csharp": "Harmos.Context.V1.StorageWatchRowsRequest",
+    "response_csharp": "Harmos.Context.V1.StorageWatchRowsResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/context/v1/storage.proto"
@@ -481,6 +533,8 @@
     ],
     "request": "harmos.context.v1.StorageAppendRecordsRequest",
     "response": "harmos.context.v1.StorageAppendRecordsResponse",
+    "request_csharp": "Harmos.Context.V1.StorageAppendRecordsRequest",
+    "response_csharp": "Harmos.Context.V1.StorageAppendRecordsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -499,6 +553,8 @@
     ],
     "request": "harmos.context.v1.StorageAppendSamplesRequest",
     "response": "harmos.context.v1.StorageAppendSamplesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageAppendSamplesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageAppendSamplesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -517,6 +573,8 @@
     ],
     "request": "harmos.context.v1.StorageAppendObjectRevisionsRequest",
     "response": "harmos.context.v1.StorageAppendObjectRevisionsResponse",
+    "request_csharp": "Harmos.Context.V1.StorageAppendObjectRevisionsRequest",
+    "response_csharp": "Harmos.Context.V1.StorageAppendObjectRevisionsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -535,6 +593,8 @@
     ],
     "request": "harmos.context.v1.StorageGetFileHashRequest",
     "response": "harmos.context.v1.StorageGetFileHashResponse",
+    "request_csharp": "Harmos.Context.V1.StorageGetFileHashRequest",
+    "response_csharp": "Harmos.Context.V1.StorageGetFileHashResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -553,6 +613,8 @@
     ],
     "request": "harmos.context.v1.StorageCaptureFileRequest",
     "response": "harmos.context.v1.StorageCaptureFileResponse",
+    "request_csharp": "Harmos.Context.V1.StorageCaptureFileRequest",
+    "response_csharp": "Harmos.Context.V1.StorageCaptureFileResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -571,6 +633,8 @@
     ],
     "request": "harmos.context.v1.StorageWatchFileBytesRequest",
     "response": "harmos.context.v1.StorageWatchFileBytesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageWatchFileBytesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageWatchFileBytesResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/context/v1/storage.proto"
@@ -589,6 +653,8 @@
     ],
     "request": "harmos.context.v1.StorageWatchFileProductionRequest",
     "response": "harmos.context.v1.StorageWatchFileProductionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageWatchFileProductionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageWatchFileProductionResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/context/v1/storage.proto"
@@ -607,6 +673,8 @@
     ],
     "request": "harmos.context.v1.StorageListDirectoryEntriesRequest",
     "response": "harmos.context.v1.StorageListDirectoryEntriesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageListDirectoryEntriesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageListDirectoryEntriesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -625,6 +693,8 @@
     ],
     "request": "harmos.context.v1.StorageWatchDirectoryEntriesRequest",
     "response": "harmos.context.v1.StorageWatchDirectoryEntriesResponse",
+    "request_csharp": "Harmos.Context.V1.StorageWatchDirectoryEntriesRequest",
+    "response_csharp": "Harmos.Context.V1.StorageWatchDirectoryEntriesResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/context/v1/storage.proto"
@@ -643,6 +713,8 @@
     ],
     "request": "harmos.context.v1.StorageGetIndexDefinitionRequest",
     "response": "harmos.context.v1.StorageGetIndexDefinitionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageGetIndexDefinitionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageGetIndexDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -661,6 +733,8 @@
     ],
     "request": "harmos.context.v1.StorageGetProjectionDefinitionRequest",
     "response": "harmos.context.v1.StorageGetProjectionDefinitionResponse",
+    "request_csharp": "Harmos.Context.V1.StorageGetProjectionDefinitionRequest",
+    "response_csharp": "Harmos.Context.V1.StorageGetProjectionDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -679,6 +753,8 @@
     ],
     "request": "harmos.context.v1.StorageGetObjectRequest",
     "response": "harmos.context.v1.StorageGetObjectResponse",
+    "request_csharp": "Harmos.Context.V1.StorageGetObjectRequest",
+    "response_csharp": "Harmos.Context.V1.StorageGetObjectResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/storage.proto"
@@ -697,6 +773,8 @@
     ],
     "request": "harmos.context.v1.TimeGetRequest",
     "response": "harmos.context.v1.TimeGetResponse",
+    "request_csharp": "Harmos.Context.V1.TimeGetRequest",
+    "response_csharp": "Harmos.Context.V1.TimeGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/time.proto"
@@ -715,6 +793,8 @@
     ],
     "request": "harmos.context.v1.TimeSleepRequest",
     "response": "harmos.context.v1.TimeSleepResponse",
+    "request_csharp": "Harmos.Context.V1.TimeSleepRequest",
+    "response_csharp": "Harmos.Context.V1.TimeSleepResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/context/v1/time.proto"
@@ -733,6 +813,8 @@
     ],
     "request": "harmos.plugin.v1.InstanceGetRequest",
     "response": "harmos.plugin.v1.InstanceGetResponse",
+    "request_csharp": "Harmos.Plugin.V1.InstanceGetRequest",
+    "response_csharp": "Harmos.Plugin.V1.InstanceGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/plugin/v1/instance.proto"
@@ -751,6 +833,8 @@
     ],
     "request": "harmos.plugin.v1.InstanceInvokeRequest",
     "response": "harmos.plugin.v1.InstanceInvokeResponse",
+    "request_csharp": "Harmos.Plugin.V1.InstanceInvokeRequest",
+    "response_csharp": "Harmos.Plugin.V1.InstanceInvokeResponse",
     "client_streaming": true,
     "server_streaming": true,
     "file": "harmos/plugin/v1/instance.proto"
@@ -769,6 +853,8 @@
     ],
     "request": "harmos.plugin.v1.InstanceSamplesRequest",
     "response": "harmos.plugin.v1.InstanceSamplesResponse",
+    "request_csharp": "Harmos.Plugin.V1.InstanceSamplesRequest",
+    "response_csharp": "Harmos.Plugin.V1.InstanceSamplesResponse",
     "client_streaming": true,
     "server_streaming": true,
     "file": "harmos/plugin/v1/instance.proto"
@@ -787,6 +873,8 @@
     ],
     "request": "harmos.plugin.v1.InstanceStopRequest",
     "response": "harmos.plugin.v1.InstanceStopResponse",
+    "request_csharp": "Harmos.Plugin.V1.InstanceStopRequest",
+    "response_csharp": "Harmos.Plugin.V1.InstanceStopResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/plugin/v1/instance.proto"
@@ -808,6 +896,8 @@
     ],
     "request": "harmos.v1.access.CertificatesCreateRequest",
     "response": "harmos.v1.access.CertificatesCreateResponse",
+    "request_csharp": "Harmos.V1.Access.CertificatesCreateRequest",
+    "response_csharp": "Harmos.V1.Access.CertificatesCreateResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/access/certificates.proto"
@@ -829,6 +919,8 @@
     ],
     "request": "harmos.v1.access.ListenerGetRequest",
     "response": "harmos.v1.access.ListenerGetResponse",
+    "request_csharp": "Harmos.V1.Access.ListenerGetRequest",
+    "response_csharp": "Harmos.V1.Access.ListenerGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/access/listener.proto"
@@ -850,6 +942,8 @@
     ],
     "request": "harmos.v1.access.ListenerSetRequest",
     "response": "harmos.v1.access.ListenerSetResponse",
+    "request_csharp": "Harmos.V1.Access.ListenerSetRequest",
+    "response_csharp": "Harmos.V1.Access.ListenerSetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/access/listener.proto"
@@ -871,6 +965,8 @@
     ],
     "request": "harmos.v1.access.PairingsCreateRequest",
     "response": "harmos.v1.access.PairingsCreateResponse",
+    "request_csharp": "Harmos.V1.Access.PairingsCreateRequest",
+    "response_csharp": "Harmos.V1.Access.PairingsCreateResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/access/pairings.proto"
@@ -892,6 +988,8 @@
     ],
     "request": "harmos.v1.access.PairingsListRequest",
     "response": "harmos.v1.access.PairingsListResponse",
+    "request_csharp": "Harmos.V1.Access.PairingsListRequest",
+    "response_csharp": "Harmos.V1.Access.PairingsListResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/access/pairings.proto"
@@ -913,6 +1011,8 @@
     ],
     "request": "harmos.v1.access.PairingsDeleteRequest",
     "response": "harmos.v1.access.PairingsDeleteResponse",
+    "request_csharp": "Harmos.V1.Access.PairingsDeleteRequest",
+    "response_csharp": "Harmos.V1.Access.PairingsDeleteResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/access/pairings.proto"
@@ -931,6 +1031,8 @@
     ],
     "request": "harmos.v1.CatalogEntriesListRequest",
     "response": "harmos.v1.CatalogEntriesListResponse",
+    "request_csharp": "Harmos.V1.CatalogEntriesListRequest",
+    "response_csharp": "Harmos.V1.CatalogEntriesListResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/catalog_entries.proto"
@@ -949,6 +1051,8 @@
     ],
     "request": "harmos.v1.InvocationsInvokeRequest",
     "response": "harmos.v1.InvocationsInvokeResponse",
+    "request_csharp": "Harmos.V1.InvocationsInvokeRequest",
+    "response_csharp": "Harmos.V1.InvocationsInvokeResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/invocations.proto"
@@ -967,6 +1071,8 @@
     ],
     "request": "harmos.v1.InvocationsGetRequest",
     "response": "harmos.v1.InvocationsGetResponse",
+    "request_csharp": "Harmos.V1.InvocationsGetRequest",
+    "response_csharp": "Harmos.V1.InvocationsGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/invocations.proto"
@@ -985,6 +1091,8 @@
     ],
     "request": "harmos.v1.InvocationsCancelRequest",
     "response": "harmos.v1.InvocationsCancelResponse",
+    "request_csharp": "Harmos.V1.InvocationsCancelRequest",
+    "response_csharp": "Harmos.V1.InvocationsCancelResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/invocations.proto"
@@ -1003,6 +1111,8 @@
     ],
     "request": "harmos.v1.InvocationsWatchRequest",
     "response": "harmos.v1.InvocationsWatchResponse",
+    "request_csharp": "Harmos.V1.InvocationsWatchRequest",
+    "response_csharp": "Harmos.V1.InvocationsWatchResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/invocations.proto"
@@ -1021,6 +1131,8 @@
     ],
     "request": "harmos.v1.PluginsGetRequest",
     "response": "harmos.v1.PluginsGetResponse",
+    "request_csharp": "Harmos.V1.PluginsGetRequest",
+    "response_csharp": "Harmos.V1.PluginsGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/plugins.proto"
@@ -1039,6 +1151,8 @@
     ],
     "request": "harmos.v1.PluginsListRequest",
     "response": "harmos.v1.PluginsListResponse",
+    "request_csharp": "Harmos.V1.PluginsListRequest",
+    "response_csharp": "Harmos.V1.PluginsListResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/plugins.proto"
@@ -1057,6 +1171,8 @@
     ],
     "request": "harmos.v1.PluginsWatchRequest",
     "response": "harmos.v1.PluginsWatchResponse",
+    "request_csharp": "Harmos.V1.PluginsWatchRequest",
+    "response_csharp": "Harmos.V1.PluginsWatchResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/plugins.proto"
@@ -1075,6 +1191,8 @@
     ],
     "request": "harmos.v1.PluginsCreateRequest",
     "response": "harmos.v1.PluginsCreateResponse",
+    "request_csharp": "Harmos.V1.PluginsCreateRequest",
+    "response_csharp": "Harmos.V1.PluginsCreateResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/plugins.proto"
@@ -1093,6 +1211,8 @@
     ],
     "request": "harmos.v1.PluginsSetRequest",
     "response": "harmos.v1.PluginsSetResponse",
+    "request_csharp": "Harmos.V1.PluginsSetRequest",
+    "response_csharp": "Harmos.V1.PluginsSetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/plugins.proto"
@@ -1111,6 +1231,8 @@
     ],
     "request": "harmos.v1.PluginsDeleteRequest",
     "response": "harmos.v1.PluginsDeleteResponse",
+    "request_csharp": "Harmos.V1.PluginsDeleteRequest",
+    "response_csharp": "Harmos.V1.PluginsDeleteResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/plugins.proto"
@@ -1129,6 +1251,8 @@
     ],
     "request": "harmos.v1.PluginsRestartRequest",
     "response": "harmos.v1.PluginsRestartResponse",
+    "request_csharp": "Harmos.V1.PluginsRestartRequest",
+    "response_csharp": "Harmos.V1.PluginsRestartResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/plugins.proto"
@@ -1150,6 +1274,8 @@
     ],
     "request": "harmos.v1.status.DiagnosticsGetRequest",
     "response": "harmos.v1.status.DiagnosticsGetResponse",
+    "request_csharp": "Harmos.V1.StatusResources.DiagnosticsGetRequest",
+    "response_csharp": "Harmos.V1.StatusResources.DiagnosticsGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/status/diagnostics.proto"
@@ -1171,6 +1297,8 @@
     ],
     "request": "harmos.v1.status.LogsListRequest",
     "response": "harmos.v1.status.LogsListResponse",
+    "request_csharp": "Harmos.V1.StatusResources.LogsListRequest",
+    "response_csharp": "Harmos.V1.StatusResources.LogsListResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/status/logs.proto"
@@ -1192,6 +1320,8 @@
     ],
     "request": "harmos.v1.status.LogsWatchRequest",
     "response": "harmos.v1.status.LogsWatchResponse",
+    "request_csharp": "Harmos.V1.StatusResources.LogsWatchRequest",
+    "response_csharp": "Harmos.V1.StatusResources.LogsWatchResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/status/logs.proto"
@@ -1213,6 +1343,8 @@
     ],
     "request": "harmos.v1.status.TraceEventsListRequest",
     "response": "harmos.v1.status.TraceEventsListResponse",
+    "request_csharp": "Harmos.V1.StatusResources.TraceEventsListRequest",
+    "response_csharp": "Harmos.V1.StatusResources.TraceEventsListResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/status/trace_events.proto"
@@ -1234,6 +1366,8 @@
     ],
     "request": "harmos.v1.status.TraceEventsWatchRequest",
     "response": "harmos.v1.status.TraceEventsWatchResponse",
+    "request_csharp": "Harmos.V1.StatusResources.TraceEventsWatchRequest",
+    "response_csharp": "Harmos.V1.StatusResources.TraceEventsWatchResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/status/trace_events.proto"
@@ -1252,6 +1386,8 @@
     ],
     "request": "harmos.v1.StatusGetRequest",
     "response": "harmos.v1.StatusGetResponse",
+    "request_csharp": "Harmos.V1.StatusGetRequest",
+    "response_csharp": "Harmos.V1.StatusGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/status.proto"
@@ -1270,6 +1406,8 @@
     ],
     "request": "harmos.v1.StatusWatchRequest",
     "response": "harmos.v1.StatusWatchResponse",
+    "request_csharp": "Harmos.V1.StatusWatchRequest",
+    "response_csharp": "Harmos.V1.StatusWatchResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/status.proto"
@@ -1288,6 +1426,8 @@
     ],
     "request": "harmos.v1.StorageCreateFileProductionRequest",
     "response": "harmos.v1.StorageCreateFileProductionResponse",
+    "request_csharp": "Harmos.V1.StorageCreateFileProductionRequest",
+    "response_csharp": "Harmos.V1.StorageCreateFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1306,6 +1446,8 @@
     ],
     "request": "harmos.v1.StorageGetFileProductionRequest",
     "response": "harmos.v1.StorageGetFileProductionResponse",
+    "request_csharp": "Harmos.V1.StorageGetFileProductionRequest",
+    "response_csharp": "Harmos.V1.StorageGetFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1324,6 +1466,8 @@
     ],
     "request": "harmos.v1.StorageAppendFileBytesRequest",
     "response": "harmos.v1.StorageAppendFileBytesResponse",
+    "request_csharp": "Harmos.V1.StorageAppendFileBytesRequest",
+    "response_csharp": "Harmos.V1.StorageAppendFileBytesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1342,6 +1486,8 @@
     ],
     "request": "harmos.v1.StorageCreateFileWriterRequest",
     "response": "harmos.v1.StorageCreateFileWriterResponse",
+    "request_csharp": "Harmos.V1.StorageCreateFileWriterRequest",
+    "response_csharp": "Harmos.V1.StorageCreateFileWriterResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1360,6 +1506,8 @@
     ],
     "request": "harmos.v1.StoragePublishFileProductionRequest",
     "response": "harmos.v1.StoragePublishFileProductionResponse",
+    "request_csharp": "Harmos.V1.StoragePublishFileProductionRequest",
+    "response_csharp": "Harmos.V1.StoragePublishFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1378,6 +1526,8 @@
     ],
     "request": "harmos.v1.StorageDeleteFileProductionRequest",
     "response": "harmos.v1.StorageDeleteFileProductionResponse",
+    "request_csharp": "Harmos.V1.StorageDeleteFileProductionRequest",
+    "response_csharp": "Harmos.V1.StorageDeleteFileProductionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1396,6 +1546,8 @@
     ],
     "request": "harmos.v1.StorageGetFileBytesRequest",
     "response": "harmos.v1.StorageGetFileBytesResponse",
+    "request_csharp": "Harmos.V1.StorageGetFileBytesRequest",
+    "response_csharp": "Harmos.V1.StorageGetFileBytesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1414,6 +1566,8 @@
     ],
     "request": "harmos.v1.StorageCapabilitiesRequest",
     "response": "harmos.v1.StorageCapabilitiesResponse",
+    "request_csharp": "Harmos.V1.StorageCapabilitiesRequest",
+    "response_csharp": "Harmos.V1.StorageCapabilitiesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1432,6 +1586,8 @@
     ],
     "request": "harmos.v1.StorageCreateSnapshotRequest",
     "response": "harmos.v1.StorageCreateSnapshotResponse",
+    "request_csharp": "Harmos.V1.StorageCreateSnapshotRequest",
+    "response_csharp": "Harmos.V1.StorageCreateSnapshotResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1450,6 +1606,8 @@
     ],
     "request": "harmos.v1.StorageDeleteSnapshotRequest",
     "response": "harmos.v1.StorageDeleteSnapshotResponse",
+    "request_csharp": "Harmos.V1.StorageDeleteSnapshotRequest",
+    "response_csharp": "Harmos.V1.StorageDeleteSnapshotResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1468,6 +1626,8 @@
     ],
     "request": "harmos.v1.StorageListColumnRowsRequest",
     "response": "harmos.v1.StorageListColumnRowsResponse",
+    "request_csharp": "Harmos.V1.StorageListColumnRowsRequest",
+    "response_csharp": "Harmos.V1.StorageListColumnRowsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1486,6 +1646,8 @@
     ],
     "request": "harmos.v1.StorageListIndexEntriesRequest",
     "response": "harmos.v1.StorageListIndexEntriesResponse",
+    "request_csharp": "Harmos.V1.StorageListIndexEntriesRequest",
+    "response_csharp": "Harmos.V1.StorageListIndexEntriesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1504,6 +1666,8 @@
     ],
     "request": "harmos.v1.StorageSetIndexDefinitionRequest",
     "response": "harmos.v1.StorageSetIndexDefinitionResponse",
+    "request_csharp": "Harmos.V1.StorageSetIndexDefinitionRequest",
+    "response_csharp": "Harmos.V1.StorageSetIndexDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1522,6 +1686,8 @@
     ],
     "request": "harmos.v1.StorageSetProjectionDefinitionRequest",
     "response": "harmos.v1.StorageSetProjectionDefinitionResponse",
+    "request_csharp": "Harmos.V1.StorageSetProjectionDefinitionRequest",
+    "response_csharp": "Harmos.V1.StorageSetProjectionDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1540,6 +1706,8 @@
     ],
     "request": "harmos.v1.StorageAdvanceProjectionRequest",
     "response": "harmos.v1.StorageAdvanceProjectionResponse",
+    "request_csharp": "Harmos.V1.StorageAdvanceProjectionRequest",
+    "response_csharp": "Harmos.V1.StorageAdvanceProjectionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1558,6 +1726,8 @@
     ],
     "request": "harmos.v1.StorageListProjectionRowsRequest",
     "response": "harmos.v1.StorageListProjectionRowsResponse",
+    "request_csharp": "Harmos.V1.StorageListProjectionRowsRequest",
+    "response_csharp": "Harmos.V1.StorageListProjectionRowsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1576,6 +1746,8 @@
     ],
     "request": "harmos.v1.StorageGetProjectionStatusRequest",
     "response": "harmos.v1.StorageGetProjectionStatusResponse",
+    "request_csharp": "Harmos.V1.StorageGetProjectionStatusRequest",
+    "response_csharp": "Harmos.V1.StorageGetProjectionStatusResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1594,6 +1766,8 @@
     ],
     "request": "harmos.v1.StorageSetObjectRequest",
     "response": "harmos.v1.StorageSetObjectResponse",
+    "request_csharp": "Harmos.V1.StorageSetObjectRequest",
+    "response_csharp": "Harmos.V1.StorageSetObjectResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1612,6 +1786,8 @@
     ],
     "request": "harmos.v1.StorageListRowsRequest",
     "response": "harmos.v1.StorageListRowsResponse",
+    "request_csharp": "Harmos.V1.StorageListRowsRequest",
+    "response_csharp": "Harmos.V1.StorageListRowsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1630,6 +1806,8 @@
     ],
     "request": "harmos.v1.StorageWatchRowsRequest",
     "response": "harmos.v1.StorageWatchRowsResponse",
+    "request_csharp": "Harmos.V1.StorageWatchRowsRequest",
+    "response_csharp": "Harmos.V1.StorageWatchRowsResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/storage.proto"
@@ -1648,6 +1826,8 @@
     ],
     "request": "harmos.v1.StorageAppendRecordsRequest",
     "response": "harmos.v1.StorageAppendRecordsResponse",
+    "request_csharp": "Harmos.V1.StorageAppendRecordsRequest",
+    "response_csharp": "Harmos.V1.StorageAppendRecordsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1666,6 +1846,8 @@
     ],
     "request": "harmos.v1.StorageAppendSamplesRequest",
     "response": "harmos.v1.StorageAppendSamplesResponse",
+    "request_csharp": "Harmos.V1.StorageAppendSamplesRequest",
+    "response_csharp": "Harmos.V1.StorageAppendSamplesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1684,6 +1866,8 @@
     ],
     "request": "harmos.v1.StorageAppendObjectRevisionsRequest",
     "response": "harmos.v1.StorageAppendObjectRevisionsResponse",
+    "request_csharp": "Harmos.V1.StorageAppendObjectRevisionsRequest",
+    "response_csharp": "Harmos.V1.StorageAppendObjectRevisionsResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1702,6 +1886,8 @@
     ],
     "request": "harmos.v1.StorageGetFileHashRequest",
     "response": "harmos.v1.StorageGetFileHashResponse",
+    "request_csharp": "Harmos.V1.StorageGetFileHashRequest",
+    "response_csharp": "Harmos.V1.StorageGetFileHashResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1720,6 +1906,8 @@
     ],
     "request": "harmos.v1.StorageCaptureFileRequest",
     "response": "harmos.v1.StorageCaptureFileResponse",
+    "request_csharp": "Harmos.V1.StorageCaptureFileRequest",
+    "response_csharp": "Harmos.V1.StorageCaptureFileResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1738,6 +1926,8 @@
     ],
     "request": "harmos.v1.StorageWatchFileBytesRequest",
     "response": "harmos.v1.StorageWatchFileBytesResponse",
+    "request_csharp": "Harmos.V1.StorageWatchFileBytesRequest",
+    "response_csharp": "Harmos.V1.StorageWatchFileBytesResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/storage.proto"
@@ -1756,6 +1946,8 @@
     ],
     "request": "harmos.v1.StorageWatchFileProductionRequest",
     "response": "harmos.v1.StorageWatchFileProductionResponse",
+    "request_csharp": "Harmos.V1.StorageWatchFileProductionRequest",
+    "response_csharp": "Harmos.V1.StorageWatchFileProductionResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/storage.proto"
@@ -1774,6 +1966,8 @@
     ],
     "request": "harmos.v1.StorageListDirectoryEntriesRequest",
     "response": "harmos.v1.StorageListDirectoryEntriesResponse",
+    "request_csharp": "Harmos.V1.StorageListDirectoryEntriesRequest",
+    "response_csharp": "Harmos.V1.StorageListDirectoryEntriesResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1792,6 +1986,8 @@
     ],
     "request": "harmos.v1.StorageWatchDirectoryEntriesRequest",
     "response": "harmos.v1.StorageWatchDirectoryEntriesResponse",
+    "request_csharp": "Harmos.V1.StorageWatchDirectoryEntriesRequest",
+    "response_csharp": "Harmos.V1.StorageWatchDirectoryEntriesResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "harmos/v1/storage.proto"
@@ -1810,6 +2006,8 @@
     ],
     "request": "harmos.v1.StorageGetIndexDefinitionRequest",
     "response": "harmos.v1.StorageGetIndexDefinitionResponse",
+    "request_csharp": "Harmos.V1.StorageGetIndexDefinitionRequest",
+    "response_csharp": "Harmos.V1.StorageGetIndexDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1828,6 +2026,8 @@
     ],
     "request": "harmos.v1.StorageGetProjectionDefinitionRequest",
     "response": "harmos.v1.StorageGetProjectionDefinitionResponse",
+    "request_csharp": "Harmos.V1.StorageGetProjectionDefinitionRequest",
+    "response_csharp": "Harmos.V1.StorageGetProjectionDefinitionResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1846,6 +2046,8 @@
     ],
     "request": "harmos.v1.StorageGetObjectRequest",
     "response": "harmos.v1.StorageGetObjectResponse",
+    "request_csharp": "Harmos.V1.StorageGetObjectRequest",
+    "response_csharp": "Harmos.V1.StorageGetObjectResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/storage.proto"
@@ -1864,6 +2066,8 @@
     ],
     "request": "harmos.v1.TimeGetRequest",
     "response": "harmos.v1.TimeGetResponse",
+    "request_csharp": "Harmos.V1.TimeGetRequest",
+    "response_csharp": "Harmos.V1.TimeGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/time.proto"
@@ -1882,6 +2086,8 @@
     ],
     "request": "harmos.v1.TimeSleepRequest",
     "response": "harmos.v1.TimeSleepResponse",
+    "request_csharp": "Harmos.V1.TimeSleepRequest",
+    "response_csharp": "Harmos.V1.TimeSleepResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "harmos/v1/time.proto"

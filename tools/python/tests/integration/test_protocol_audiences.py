@@ -68,6 +68,9 @@ if audience != 'client':
     assert hasattr(instance, 'InstanceServicer')
     assert hasattr(instance, 'InstanceStub') == (audience == 'host')
     assert importlib.util.find_spec('harmos.context.v1.time_pb2_grpc') is None
+    from harmos.context.v1 import storage_pb2 as context_storage
+    from harmos.v1 import storage_types_pb2 as payload
+    context_storage.StorageCreateFileProductionRequest(metadata=payload.FileMetadata(id='upload'))
 else:
     assert importlib.util.find_spec('harmos.plugin') is None
     assert importlib.util.find_spec('harmos.context') is None
@@ -77,6 +80,8 @@ if audience != 'plugin':
     assert hasattr(invocations, 'InvocationsServicer') == (audience == 'host')
 else:
     assert importlib.util.find_spec('harmos.v1.invocations_pb2') is None
+    assert importlib.util.find_spec('harmos.v1.storage_pb2') is None
+    assert importlib.util.find_spec('harmos.v1.access') is None
 """
             try:
                 with tempfile.TemporaryDirectory() as directory:

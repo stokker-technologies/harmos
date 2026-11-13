@@ -16,21 +16,20 @@
     <PackageReference Include="Google.Protobuf" Version="3.33.1" />
     <PackageReference Include="Grpc.Tools" Version="2.76.0" PrivateAssets="All" />
     <Protobuf Include="../../../proto/harmos/v1/types.proto" ProtoRoot="../../../proto" GrpcServices="None" />
+    <Protobuf Include="../../../proto/harmos/v1/storage_types.proto" ProtoRoot="../../../proto" GrpcServices="None" />
   </ItemGroup>
   <ItemGroup Condition="'$(HarmosAudience)' != 'Client'">
     <Protobuf Include="../../../proto/harmos/plugin/v1/instance.proto" ProtoRoot="../../../proto" GrpcServices="$(InstanceServices)" />
     <Protobuf Include="../../../proto/harmos/context/v1/*.proto" ProtoRoot="../../../proto" GrpcServices="None" />
-    <Protobuf Include="../../../proto/harmos/v1/storage.proto" ProtoRoot="../../../proto" GrpcServices="None" />
   </ItemGroup>
   <ItemGroup Condition="'$(HarmosAudience)' == 'Plugin'">
     <Compile Remove="Client.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(HarmosAudience)' != 'Plugin'">
-    <Protobuf Include="../../../proto/harmos/v1/**/*.proto" Exclude="../../../proto/harmos/v1/types.proto;../../../proto/harmos/v1/guest.proto;../../../proto/harmos/v1/storage.proto" ProtoRoot="../../../proto" GrpcServices="$(ClientServices)" />
+    <Protobuf Include="../../../proto/harmos/v1/**/*.proto" Exclude="../../../proto/harmos/v1/types.proto;../../../proto/harmos/v1/guest.proto;../../../proto/harmos/v1/storage_types.proto" ProtoRoot="../../../proto" GrpcServices="$(ClientServices)" />
   </ItemGroup>
   <ItemGroup Condition="'$(HarmosAudience)' == 'Client'">
     <Compile Remove="**/*.cs" />
     <Compile Include="Client.cs" />
-    <Protobuf Include="../../../proto/harmos/v1/storage.proto" ProtoRoot="../../../proto" GrpcServices="None" />
   </ItemGroup>
 </Project>

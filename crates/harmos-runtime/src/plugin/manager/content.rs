@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use super::{Error, PluginManagerSettings, persistence::problem};
 use crate::bundle::{Bundle, Facility};
-use crate::storage::{ByteRange, FileRead, FileReference, FileSource, StorageManager};
+use crate::storage::{FileReference, StorageManager};
 use harmos_protocol::v1 as wire;
 
 /* === Constants === */
@@ -71,26 +71,21 @@ impl ContentSource for PublishedContent {
                     "upload a bundle within the configured archive capacity",
                 ));
             }
-            let mut reader = self
-                .0
-                .read_file(FileRead {
-                    source: FileSource::Stored(reference),
-                    range: ByteRange { offset: 0, limit: None },
-                })
-                .await
-                .map_err(|error| problem("Read Published Bundle", error))?;
+            let read = self.0.snapshot(&self.0.get_saved_position()).await.map_err(|error| problem("Read Published Bundle", error))?;
             let mut bytes = Vec::new();
-            while let Some(batch) = reader.next().await.map_err(|error| problem("Read Published Bundle", error))? {
-                if batch.bytes().len() > max_bytes.saturating_sub(bytes.len()) {
-                    return Err(Error::new(
-                        "bundle_capacity",
-                        "Read Published Bundle",
-                        "upload a bundle within the configured archive capacity",
-                    ));
+            while (bytes.len() as u64) < reference.length {
+                let range = read
+                    .get_file_bytes(&reference, bytes.len() as u64, self.0.settings().response.batch_bytes)
+                    .await
+                    .map_err(|error| problem("Read Published Bundle", error))?;
+                if range.data.is_empty() || range.data.len() > max_bytes.saturating_sub(bytes.len()) {
+                    return Err(Error::new("bundle_capacity", "Read Published Bundle", "read bounded nonempty published ranges"));
                 }
-                bytes.extend_from_slice(batch.bytes());
+                bytes.extend_from_slice(&range.data);
             }
-            reader.completion().map_err(|error| problem("Verify Published Bundle", error))?;
+            if bytes.len() as u64 != reference.length || Sha256::digest(&bytes).as_slice() != reference.sha256 {
+                return Err(Error::new("content_digest", "Read Published Bundle", "restore the published content and its digest"));
+            }
             Ok(bytes)
         })
     }

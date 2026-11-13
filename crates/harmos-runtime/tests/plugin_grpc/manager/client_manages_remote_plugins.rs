@@ -59,7 +59,7 @@ async fn client_manages_remote_plugins() {
     let factory = harmos_runtime::operations::OperationFactory::protobuf::<harmos_operations::plugins::Get>().unwrap();
     let contract = factory.contract().unwrap();
     let binding = contract.grpc().unwrap();
-    let declaration = wire::OperationContract {
+    let declaration = wire::DiscoveredContract {
         id: contract.operation().id.to_string(),
         visibility: wire::Visibility::Public as i32,
         protobuf: contract.protobuf().cloned(),

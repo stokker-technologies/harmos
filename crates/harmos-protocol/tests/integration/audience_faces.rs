@@ -49,10 +49,6 @@ fn service_packages_separate_audiences_and_only_declared_methods_stream() {
     let pool = descriptor.parent_pool();
     let mut instances = Vec::new();
     for service in pool.services() {
-        // The Legacy Storage File Is Replaced by the Storage Worktree's Face Inventory.
-        if service.parent_file().name() == "harmos/v1/storage.proto" {
-            continue;
-        }
         let face = if service.full_name().starts_with("harmos.plugin.v1.") {
             "plugin"
         } else if service.full_name().starts_with("harmos.context.v1.") {
@@ -78,7 +74,7 @@ fn service_packages_separate_audiences_and_only_declared_methods_stream() {
         }
     }
     assert_eq!(instances, ["harmos.plugin.v1.Instance"]);
-    for name in ["CatalogEntries", "Invocations", "Time"] {
+    for name in ["CatalogEntries", "Invocations", "Time", "Storage"] {
         let client = pool.get_service_by_name(&format!("harmos.v1.{name}")).unwrap();
         let context = pool.get_service_by_name(&format!("harmos.context.v1.{name}")).unwrap();
         for child in context.methods() {

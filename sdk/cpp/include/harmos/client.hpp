@@ -3,6 +3,90 @@
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <stdexcept>
+#pragma push_macro("AdvanceProjection")
+#undef AdvanceProjection
+#pragma push_macro("AppendFileBytes")
+#undef AppendFileBytes
+#pragma push_macro("AppendObjectRevisions")
+#undef AppendObjectRevisions
+#pragma push_macro("AppendRecords")
+#undef AppendRecords
+#pragma push_macro("AppendSamples")
+#undef AppendSamples
+#pragma push_macro("Cancel")
+#undef Cancel
+#pragma push_macro("Capabilities")
+#undef Capabilities
+#pragma push_macro("CaptureFile")
+#undef CaptureFile
+#pragma push_macro("Create")
+#undef Create
+#pragma push_macro("CreateFileProduction")
+#undef CreateFileProduction
+#pragma push_macro("CreateFileWriter")
+#undef CreateFileWriter
+#pragma push_macro("CreateSnapshot")
+#undef CreateSnapshot
+#pragma push_macro("Delete")
+#undef Delete
+#pragma push_macro("DeleteFileProduction")
+#undef DeleteFileProduction
+#pragma push_macro("DeleteSnapshot")
+#undef DeleteSnapshot
+#pragma push_macro("Get")
+#undef Get
+#pragma push_macro("GetFileBytes")
+#undef GetFileBytes
+#pragma push_macro("GetFileHash")
+#undef GetFileHash
+#pragma push_macro("GetFileProduction")
+#undef GetFileProduction
+#pragma push_macro("GetIndexDefinition")
+#undef GetIndexDefinition
+#pragma push_macro("GetObject")
+#undef GetObject
+#pragma push_macro("GetProjectionDefinition")
+#undef GetProjectionDefinition
+#pragma push_macro("GetProjectionStatus")
+#undef GetProjectionStatus
+#pragma push_macro("Invoke")
+#undef Invoke
+#pragma push_macro("List")
+#undef List
+#pragma push_macro("ListColumnRows")
+#undef ListColumnRows
+#pragma push_macro("ListDirectoryEntries")
+#undef ListDirectoryEntries
+#pragma push_macro("ListIndexEntries")
+#undef ListIndexEntries
+#pragma push_macro("ListProjectionRows")
+#undef ListProjectionRows
+#pragma push_macro("ListRows")
+#undef ListRows
+#pragma push_macro("PublishFileProduction")
+#undef PublishFileProduction
+#pragma push_macro("Restart")
+#undef Restart
+#pragma push_macro("Set")
+#undef Set
+#pragma push_macro("SetIndexDefinition")
+#undef SetIndexDefinition
+#pragma push_macro("SetObject")
+#undef SetObject
+#pragma push_macro("SetProjectionDefinition")
+#undef SetProjectionDefinition
+#pragma push_macro("Sleep")
+#undef Sleep
+#pragma push_macro("Watch")
+#undef Watch
+#pragma push_macro("WatchDirectoryEntries")
+#undef WatchDirectoryEntries
+#pragma push_macro("WatchFileBytes")
+#undef WatchFileBytes
+#pragma push_macro("WatchFileProduction")
+#undef WatchFileProduction
+#pragma push_macro("WatchRows")
+#undef WatchRows
 #include "harmos/v1/access/certificates.grpc.pb.h"
 #include "harmos/v1/access/listener.grpc.pb.h"
 #include "harmos/v1/access/pairings.grpc.pb.h"
@@ -67,7 +151,7 @@ struct AccessPairingsResource {
     if (!status.ok()) throw std::runtime_error(std::string("List: ") + status.error_message());
     return response;
   }
-  ::harmos::v1::access::PairingsDeleteResponse delete(const ::harmos::v1::access::PairingsDeleteRequest& request) {
+  ::harmos::v1::access::PairingsDeleteResponse delete_(const ::harmos::v1::access::PairingsDeleteRequest& request) {
     grpc::ClientContext context;
     ::harmos::v1::access::PairingsDeleteResponse response;
     const auto status = ::harmos::v1::access::Pairings::NewStub(channel)->Delete(&context, request, &response);
@@ -201,7 +285,7 @@ struct PluginsResource {
     if (!status.ok()) throw std::runtime_error(std::string("Set: ") + status.error_message());
     return response;
   }
-  ::harmos::v1::PluginsDeleteResponse delete(const ::harmos::v1::PluginsDeleteRequest& request) {
+  ::harmos::v1::PluginsDeleteResponse delete_(const ::harmos::v1::PluginsDeleteRequest& request) {
     grpc::ClientContext context;
     ::harmos::v1::PluginsDeleteResponse response;
     const auto status = ::harmos::v1::Plugins::NewStub(channel)->Delete(&context, request, &response);
@@ -484,3 +568,45 @@ struct Client {
   explicit Client(std::shared_ptr<grpc::Channel> channel) : access(channel), catalog_entries(channel), invocations(channel), plugins(channel), status(channel), storage(channel), time(channel) {}
 };
 }
+#pragma pop_macro("WatchRows")
+#pragma pop_macro("WatchFileProduction")
+#pragma pop_macro("WatchFileBytes")
+#pragma pop_macro("WatchDirectoryEntries")
+#pragma pop_macro("Watch")
+#pragma pop_macro("Sleep")
+#pragma pop_macro("SetProjectionDefinition")
+#pragma pop_macro("SetObject")
+#pragma pop_macro("SetIndexDefinition")
+#pragma pop_macro("Set")
+#pragma pop_macro("Restart")
+#pragma pop_macro("PublishFileProduction")
+#pragma pop_macro("ListRows")
+#pragma pop_macro("ListProjectionRows")
+#pragma pop_macro("ListIndexEntries")
+#pragma pop_macro("ListDirectoryEntries")
+#pragma pop_macro("ListColumnRows")
+#pragma pop_macro("List")
+#pragma pop_macro("Invoke")
+#pragma pop_macro("GetProjectionStatus")
+#pragma pop_macro("GetProjectionDefinition")
+#pragma pop_macro("GetObject")
+#pragma pop_macro("GetIndexDefinition")
+#pragma pop_macro("GetFileProduction")
+#pragma pop_macro("GetFileHash")
+#pragma pop_macro("GetFileBytes")
+#pragma pop_macro("Get")
+#pragma pop_macro("DeleteSnapshot")
+#pragma pop_macro("DeleteFileProduction")
+#pragma pop_macro("Delete")
+#pragma pop_macro("CreateSnapshot")
+#pragma pop_macro("CreateFileWriter")
+#pragma pop_macro("CreateFileProduction")
+#pragma pop_macro("Create")
+#pragma pop_macro("CaptureFile")
+#pragma pop_macro("Capabilities")
+#pragma pop_macro("Cancel")
+#pragma pop_macro("AppendSamples")
+#pragma pop_macro("AppendRecords")
+#pragma pop_macro("AppendObjectRevisions")
+#pragma pop_macro("AppendFileBytes")
+#pragma pop_macro("AdvanceProjection")

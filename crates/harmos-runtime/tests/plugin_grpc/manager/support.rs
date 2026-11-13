@@ -109,6 +109,9 @@ impl Host {
         })
         .await;
         let runtime = Arc::new(runtime);
+        crate::support::app::register(&runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+            .await
+            .unwrap();
         manager.start(&runtime).await.unwrap();
         let policy = Arc::new(Policy(AtomicBool::new(true)));
         runtime.operations.register_authorizer(policy.clone()).unwrap();
@@ -141,24 +144,71 @@ impl Host {
     }
     pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> wire::PluginManaged {
         let digest = Sha256::digest(&bytes).to_vec();
-        let mut file = self
-            .storage
-            .produce_file(harmos_runtime::storage::FileMetadata {
-                id: harmos_runtime::Identifier::new(name).unwrap(),
-                scope: None,
-                media_type: "application/x-tar".into(),
-                expected_length: Some(bytes.len() as u64),
-                expected_sha256: Some(digest.clone().try_into().unwrap()),
+        let mut client = wire::storage_client::StorageClient::new(self.channel.clone());
+        let window = self.storage.mutation_window().unwrap().id.to_string();
+        let mutation = |action: &str| {
+            Some(harmos_protocol::storage::MutationId {
+                window: window.clone(),
+                key: format!("{name}-{action}"),
+            })
+        };
+        // Create the Upload and Append Ordered Offsets Through the Client Face.
+        let production = client
+            .create_file_production(wire::StorageCreateFileProductionRequest {
+                metadata: Some(harmos_protocol::storage::FileMetadata {
+                    id: name.into(),
+                    scope: None,
+                    media_type: "application/x-tar".into(),
+                    expected_length: Some(bytes.len() as u64),
+                    expected_sha256: Some(digest.clone()),
+                }),
+                mutation: mutation("create"),
             })
             .await
+            .unwrap()
+            .into_inner()
+            .production
             .unwrap();
-        file.write_all(bytes).await.unwrap();
-        let content = file.finish().await.unwrap();
-        self.storage.flush_until(&content.position).await.unwrap();
-        wire::PluginManaged {
-            content: Some(content.into()),
-            sha256: digest,
+        let session = production.session;
+        let mut offset = 0;
+        for chunk in bytes.chunks(self.storage.settings().response.batch_bytes.get() / 2) {
+            client
+                .append_file_bytes(wire::StorageAppendFileBytesRequest {
+                    session: session.clone(),
+                    offset,
+                    data: chunk.to_vec(),
+                    mutation: mutation(&format!("append-{offset}")),
+                })
+                .await
+                .unwrap();
+            offset += chunk.len() as u64;
         }
+        // Get Confirms Resume Progress Before Publication.
+        let progress = client
+            .get_file_production(wire::StorageGetFileProductionRequest {
+                file: Some(harmos_protocol::storage::StagedFile {
+                    id: name.into(),
+                    history: session.as_ref().unwrap().history.clone(),
+                }),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(progress.accepted_length, bytes.len() as u64);
+        let content = client
+            .publish_file_production(wire::StoragePublishFileProductionRequest {
+                session,
+                length: bytes.len() as u64,
+                sha256: digest.clone(),
+                mutation: mutation("publish"),
+            })
+            .await
+            .unwrap()
+            .into_inner()
+            .file
+            .unwrap();
+
+        wire::PluginManaged { content: Some(content), sha256: digest }
     }
 }
 

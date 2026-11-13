@@ -68,7 +68,7 @@ pub use file_capture::FileCapture;
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::{FileFollow, FileFollower};
 pub use file_production::ProductionFollower;
-pub use file_reads::{FileBytesRange, FileRead, FileReader};
+pub use file_reads::{ContentRange, FileBytesRange, FileRead, FileReader, get_content_bytes};
 pub use frozen_file::FrozenFile;
 pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{

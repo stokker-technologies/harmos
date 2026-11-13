@@ -13,6 +13,8 @@
     ],
     "request": "library.v1.PluginsGetRequest",
     "response": "library.v1.PluginsGetResponse",
+    "request_csharp": "Library.V1.PluginsGetRequest",
+    "response_csharp": "Library.V1.PluginsGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "library/v1/plugins.proto"
@@ -34,6 +36,8 @@
     ],
     "request": "library.v1.plugins.SettingsGetRequest",
     "response": "library.v1.plugins.SettingsGetResponse",
+    "request_csharp": "Library.V1.Plugins.SettingsGetRequest",
+    "response_csharp": "Library.V1.Plugins.SettingsGetResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "library/v1/plugins/settings.proto"
@@ -52,6 +56,8 @@
     ],
     "request": "application.v1.JobsStartRequest",
     "response": "application.v1.JobsStartResponse",
+    "request_csharp": "Application.V1.JobsStartRequest",
+    "response_csharp": "Application.V1.JobsStartResponse",
     "client_streaming": false,
     "server_streaming": false,
     "file": "application/v1/jobs.proto"
@@ -73,6 +79,8 @@
     ],
     "request": "application.v1.jobs.ProgressWatchRequest",
     "response": "application.v1.jobs.ProgressWatchResponse",
+    "request_csharp": "Application.V1.Jobs.ProgressWatchRequest",
+    "response_csharp": "Application.V1.Jobs.ProgressWatchResponse",
     "client_streaming": false,
     "server_streaming": true,
     "file": "application/v1/jobs/progress.proto"

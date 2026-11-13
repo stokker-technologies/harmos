@@ -83,8 +83,12 @@ pub fn generate(
             if package.starts_with(&format!("{external}.")) {
                 // Map Ancestor Payloads Individually Without Externalizing This Package.
                 for file in descriptors.file.iter().filter(|file| file.package.as_ref() == Some(external)) {
-                    for name in file.message_type.iter().filter_map(|message| message.name.as_ref())
-                        .chain(file.enum_type.iter().filter_map(|value| value.name.as_ref())) {
+                    for name in file
+                        .message_type
+                        .iter()
+                        .filter_map(|message| message.name.as_ref())
+                        .chain(file.enum_type.iter().filter_map(|value| value.name.as_ref()))
+                    {
                         config.extern_path(format!(".{external}.{name}"), format!("crate::{module}::{name}"));
                     }
                 }

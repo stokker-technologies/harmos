@@ -39,6 +39,12 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 def table(descriptors: FileDescriptorSet) -> list[dict]:
     methods = []
     leaves = set()
+    csharp_types = {}
+    for file in descriptors.file:
+        namespace = file.options.csharp_namespace or ".".join(part[0].upper() + part[1:] for part in file.package.split("."))
+        for message in file.message_type:
+            csharp_types[f".{file.package}.{message.name}"] = f"{namespace}.{message.name}"
+
     for file in descriptors.file:
         parts = file.package.split(".")
         version = next((index for index, part in enumerate(parts) if re.fullmatch(r"v[0-9]+", part)), None)
@@ -65,6 +71,8 @@ def table(descriptors: FileDescriptorSet) -> list[dict]:
                         path=path,
                         request=method.input_type.lstrip("."),
                         response=method.output_type.lstrip("."),
+                        request_csharp=csharp_types[method.input_type],
+                        response_csharp=csharp_types[method.output_type],
                         client_streaming=method.client_streaming,
                         server_streaming=method.server_streaming,
                         file=file.name,
@@ -223,8 +231,8 @@ def csharp(root: Path, methods: list[dict], *, namespace: str = "harmos", target
         lines += [f"    {title(child[-1])} = new {names[child]}(invoker);" for child in children]
         lines += ["  }"]
         for method in operations:
-            request = "global::" + ".".join(part[0].upper() + part[1:] for part in method["request"].split("."))
-            response = "global::" + ".".join(part[0].upper() + part[1:] for part in method["response"].split("."))
+            request = "global::" + method["request_csharp"]
+            response = "global::" + method["response_csharp"]
             stream = method["server_streaming"]
             result = f"AsyncServerStreamingCall<{response}>" if stream else f"AsyncUnaryCall<{response}>"
             kind = "ServerStreaming" if stream else "Unary"
@@ -242,6 +250,18 @@ def csharp(root: Path, methods: list[dict], *, namespace: str = "harmos", target
 
 
 def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: Path | None = None) -> None:
+    keywords = set(
+        "alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t char32_t class compl concept const "
+        "consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else "
+        "enum explicit export extern false float for friend goto if inline int long mutable namespace new noexcept not not_eq nullptr "
+        "operator or or_eq private protected public register reinterpret_cast requires return short signed sizeof static static_assert "
+        "static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using virtual void "
+        "volatile wchar_t while xor xor_eq".split()
+    )
+
+    def identifier(value):
+        return value + "_" if value in keywords else value
+
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
@@ -258,6 +278,9 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
         "#include <memory>",
         "#include <stdexcept>",
     ]
+    # Preserve Platform Macros While Declaring and Calling Wire Method Names.
+    macro_names = sorted({method["method"] for method in methods})
+    lines += [line for name in macro_names for line in (f'#pragma push_macro("{name}")', f"#undef {name}")]
     lines += [f'#include "{name}"' for name in includes]
     lines += [
         f"namespace {namespace.replace('.', '::')} {{",
@@ -273,8 +296,8 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
         lines += [f"struct {names[node]} {{"]
         if operations:
             lines += ["  std::shared_ptr<grpc::Channel> channel;"]
-        lines += [f"  {names[child]} {child[-1]};" for child in children]
-        initializers = (["channel(channel)"] if operations else []) + [f"{child[-1]}(channel)" for child in children]
+        lines += [f"  {names[child]} {identifier(child[-1])};" for child in children]
+        initializers = (["channel(channel)"] if operations else []) + [f"{identifier(child[-1])}(channel)" for child in children]
         lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> channel) : {', '.join(initializers)} {{}}"]
         for method in operations:
             request = "::" + method["request"].replace(".", "::")
@@ -282,7 +305,7 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
             service = "::" + method["package"].replace(".", "::") + "::" + method["service"]
             if method["server_streaming"]:
                 lines += [
-                    f"  ClientWatch<{response}> {method['path'][-1]}(const {request}& request) {{",
+                    f"  ClientWatch<{response}> {identifier(method['path'][-1])}(const {request}& request) {{",
                     "    auto context = std::make_unique<grpc::ClientContext>();",
                     f"    auto reader = {service}::NewStub(channel)->{method['method']}(context.get(), request);",
                     "    return {std::move(context), std::move(reader)};",
@@ -290,7 +313,7 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
                 ]
             else:
                 lines += [
-                    f"  {response} {method['path'][-1]}(const {request}& request) {{",
+                    f"  {response} {identifier(method['path'][-1])}(const {request}& request) {{",
                     "    grpc::ClientContext context;",
                     f"    {response} response;",
                     f"    const auto status = {service}::NewStub(channel)->{method['method']}(&context, request, &response);",
@@ -300,6 +323,7 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
                 ]
         lines += ["};"]
     lines += ["}"]
+    lines += [f'#pragma pop_macro("{name}")' for name in reversed(macro_names)]
     (target or root / "sdk/cpp/include/harmos/client.hpp").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 

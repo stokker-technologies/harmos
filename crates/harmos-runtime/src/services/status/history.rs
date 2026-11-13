@@ -18,7 +18,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 // Third Party Imports
 use harmos_operations::execution::operations::ServingError;
-use harmos_protocol::v1::{status::Event, History as WireHistory, PageRequest, Position};
+use harmos_protocol::v1::{History as WireHistory, PageRequest, Position, status::Event};
 use prost::Message;
 
 // Local Imports

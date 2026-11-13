@@ -56,6 +56,13 @@ pub struct FileBytesRange {
     pub resolved_at: crate::StorageCursor,
 }
 
+#[derive(Clone, Debug)]
+pub struct ContentRange {
+    pub data: Vec<u8>,
+    pub total_length: u64,
+    pub sha256: [u8; 32],
+}
+
 pub struct FileReader {
     context: crate::execution::Context,
     source: Source,
@@ -308,6 +315,36 @@ impl StoredReader {
 
 /* === Public Functions === */
 
+/// Read One Bounded Range From an Immutable Source, Including Short Backend Reads.
+pub async fn get_content_bytes<F, Fut>(
+    total_length: u64, sha256: [u8; 32], offset: u64, max_bytes: NonZeroUsize, mut read: F,
+) -> Result<ContentRange>
+where
+    F: FnMut(u64, NonZeroUsize) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<u8>>>,
+{
+    if offset > total_length {
+        return Err(Error::InvalidInput {
+            field: "GetFileBytes",
+            reason: "offset exceeds content length",
+        });
+    }
+    let expected = (total_length - offset).min(max_bytes.get() as u64) as usize;
+    let mut data = Vec::with_capacity(expected);
+    while data.len() < expected {
+        let remaining = NonZeroUsize::new(expected - data.len()).unwrap();
+        let bytes = read(offset + data.len() as u64, remaining).await?;
+        if bytes.is_empty() || bytes.len() > remaining.get() || bytes.capacity() > remaining.get() {
+            return Err(corrupt("GetFileBytes returned an empty or oversized range"));
+        }
+        data.extend_from_slice(&bytes);
+    }
+    if offset == 0 && data.len() as u64 == total_length && <[u8; 32]>::from(Sha256::digest(&data)) != sha256 {
+        return Err(corrupt("GetFileBytes content digest mismatch"));
+    }
+    Ok(ContentRange { data, total_length, sha256 })
+}
+
 /* === Private Functions === */
 
 fn invalid(reason: &'static str) -> Error {
@@ -353,23 +390,13 @@ impl Snapshot {
             });
         }
         let maximum = max_bytes.min(self.inner.settings.response.batch_bytes);
-        let expected = (file.length - offset).min(maximum.get() as u64) as usize;
-        let mut data = Vec::with_capacity(expected);
-        while data.len() < expected {
-            let remaining = NonZeroUsize::new(expected - data.len()).unwrap();
-            let bytes = self.read_file(file, offset + data.len() as u64, remaining).await?;
-            if bytes.is_empty() || bytes.len() > remaining.get() || bytes.capacity() > remaining.get() {
-                return Err(corrupt("GetFileBytes returned an empty or oversized range"));
-            }
-            data.extend_from_slice(&bytes);
-        }
-        if offset == 0 && data.len() as u64 == file.length && <[u8; 32]>::from(Sha256::digest(&data)) != file.sha256 {
-            return Err(corrupt("GetFileBytes content digest mismatch"));
-        }
+        let range =
+            get_content_bytes(file.length, file.sha256, offset, maximum, |offset, remaining| self.read_file(file, offset, remaining))
+                .await?;
         Ok(FileBytesRange {
-            data,
-            total_length: file.length,
-            sha256: file.sha256,
+            data: range.data,
+            total_length: range.total_length,
+            sha256: range.sha256,
             resolved_at: resolved_at.clone(),
         })
     }

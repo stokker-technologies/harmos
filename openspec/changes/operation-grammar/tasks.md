@@ -5,10 +5,11 @@ Boundary, managers and nested resources locked by the owner on 2026-11-12
 Separation by audience locked by the owner on 2026-11-12
 Three visibility levels locked by the owner on 2026-11-12
 
-The owner authorizes implementation under the combined `grpc-plugins` marker.
-This worktree owns access/status runtime trees, client protos and operations,
-stories and guides, and the required gRPC/service-manager extensions.
-Grammar-core, storage and plugin-manager changes remain with their assigned owners.
+The owner authorizes this checkout to integrate the committed core, plugin-manager,
+access/status and storage branches under the combined `grpc-plugins` marker.
+Integration owns merge resolutions, generated outputs, transfer joins, affected
+consumers/stories/guides and local proof. Further storage implementation remains
+in its source worktree; this task captures only its committed state at the merge.
 
 Implementation is authorized under the combined `grpc-plugins` marker. Storage ownership:
 `proto/harmos/**/storage*.proto`, `crates/harmos-storage/**`,
@@ -20,8 +21,8 @@ The task numbers below supersede the earlier inventory: durable lag is 1.5
 
 The locked source inventory covers library proto/protocol/operations/storage,
 runtime managers and projection, all four SDKs and their build generators,
-conformance, examples, tests and maintained guides. Before later implementation, record
-exact owned paths within these domains. Three open questions remain at their
+conformance, examples, tests and maintained guides. Exact integration ownership is
+recorded above and in Integration Candidate. Three open questions remain at their
 owning tasks; per-plugin settings/secrets ownership is closed. Preserve data
 encodings and required behavior; no compatibility aliases or second authorities.
 Unchecked tasks remain work. Order is dependency order: establish
@@ -54,10 +55,10 @@ compile-time consumers atomically.
 
 ## 2. Library Owners and Generic Services
 
-- [ ] 2.1 Integrate already-in-progress plugin-manager work and expose Plugins Create/Get/List/Watch/Set/Restart/Delete with managed/remote entries, verified bundles, persistence, state and failures. Migrate the protocol carriers to harmos.plugin.v1.Instance Get/Invoke/Samples/Stop and preserve activation fencing, disconnect isolation and cooperative settlement; migrate affected library consumers in the same compiling slice.
-- [ ] 2.2 Implement access.Listener Get/Set, durable access.Pairings Create/List/Delete and live access.Certificates.Create under GrpcManager with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
-- [ ] 2.3 Implement Status.Get/Watch, status.Logs/TraceEvents List/Watch and status.Diagnostics.Get under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and bounded diagnostics archive ranges through the narrow ContentSource join to shared storage ranges, with no second transfer engine.
-- [ ] 2.4 Add narrow product-contribution registration under ServiceManager for product version/identity and component health/availability; define registration lifetime, aggregation and provider failure handling, and prove focused registration/removal/failure behavior without a product-specific dependency.
+- [x] 2.1 Integrate already-in-progress plugin-manager work and expose Plugins Create/Get/List/Watch/Set/Restart/Delete with managed/remote entries, verified bundles, persistence, state and failures. Migrate the protocol carriers to harmos.plugin.v1.Instance Get/Invoke/Samples/Stop and preserve activation fencing, disconnect isolation and cooperative settlement; migrate affected library consumers in the same compiling slice.
+- [x] 2.2 Implement access.Listener Get/Set, durable access.Pairings Create/List/Delete and live access.Certificates.Create under GrpcManager with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
+- [x] 2.3 Implement Status.Get/Watch, status.Logs/TraceEvents List/Watch and status.Diagnostics.Get under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and bounded diagnostics archive ranges through the narrow ContentSource join to shared storage ranges, with no second transfer engine.
+- [x] 2.4 Add narrow product-contribution registration under ServiceManager for product version/identity and component health/availability; define registration lifetime, aggregation and provider failure handling, and prove focused registration/removal/failure behavior without a product-specific dependency.
 - [x] 2.5 Implement generic context-only HostValues.Get and its host resolver registration under OperationManager, plus the plugin catalog's settings-declaration section. The product supplies settings/secrets stores, schemas, UI, archives, credential integration and policy. Verify scoped value delivery/failure behavior; add no library value store or client settings service.
 - [x] 2.6 Retain OperationManager for face-local CatalogEntries/Invocations and client Invocations.Invoke, StreamManager for context Samples/publication, existing host-clock/service lifetime for face-local Time, and StateManager/RecordManager for their existing responsibilities; migrate names and declarations without duplicate managers or schedulers.
 
@@ -93,8 +94,8 @@ proof does not close them; no checkbox is completed by this documentation task.
 
 - [ ] A.1 Add **Three Audience Faces** descriptor/generation and admission cases for each SDK, rejecting cross-audience calls and stubs (tasks 1.1, 4.7).
 - [ ] A.2 Add **Explicit Streaming and Cooperative Control** stories proving no generated twins, the single declared final-result replacement, running cancellation/child settlement, distinct Stop and preservation of queued action refusals (tasks 1.4, 3.11).
-- [ ] A.3 Add **Manager Ownership** lifecycle stories for entry activation/retirement, listener rotation, product-fact registration/removal and resolver failure/cleanup, showing each service uses its one manager (tasks 2.1–2.6).
-- [ ] A.4 Add **Library and Product Composition** independent-host stories composing library services/resolvers without redeclarations, duplicate hosting or product settings/secrets stores in the library (tasks 2.1–2.5).
+- [x] A.3 Add **Manager Ownership** lifecycle stories for entry activation/retirement, listener rotation, product-fact registration/removal and resolver failure/cleanup, showing each service uses its one manager (tasks 2.1–2.6).
+- [x] A.4 Add **Library and Product Composition** independent-host stories composing library services/resolvers without redeclarations, duplicate hosting or product settings/secrets stores in the library (tasks 2.1–2.5).
 - [ ] A.5 Add **Resource Operation Grammar** descriptor and four-language generated-call stories for bare verbs, nested packages, service-qualified wrappers, stale whole-value Set and immutable Append (tasks 1.2–1.4, 3.3–3.4, 4.1).
 - [ ] A.6 Add **Position-Resolved Reads** controlled-backend stories for optional at, immediate latest-durable selection, resolved_at in every reply, issued-position paging and durable watch boundaries; keep lag evidence in Nightly benchmarks, not timing assertions (tasks 1.5, 3.2, 3.8–3.9).
 - [ ] A.7 Add **Stable Receipts After Lost Replies** client stories across the migrated mutation surface proving same normalized request returns its original receipt, changed payload conflicts, expiry refuses and admitted completion survives caller loss (task 3.4).
@@ -140,9 +141,9 @@ combined source closure and hosted validation are not claimed here.
 ## 8. Plugin Manager
 
 - [x] 8.1 Record the owner-authorized manager contract, public shapes, ownership, decisions and requirement scenarios before implementation.
-- [x] 8.2 Add `Plugins` proto, generated bindings, seven operation files and Rust client request bindings; join shared primitives from the core branch without duplicating them.
+- [x] 8.2 Add `Plugins` proto, generated bindings, seven operation files and descriptor-generated SDK root bindings; join shared primitives from the core branch without duplicating them.
 - [x] 8.3 Implement the bounded persistent manager registry with conditional objects, whole-value revision guards, replay-safe Create, issued read cuts, paging and explicit Watch resynchronization.
-- [ ] 8.4 Reuse verified bundle reading and shared published-content uploads; install only verified native executables under the manager root, with no process started on invalid content. Join unary upload sessions from the storage worker.
+- [x] 8.4 Reuse verified bundle reading and shared published-content uploads; install only verified native executables under the manager root, with no process started on invalid content. Join unary upload sessions from the storage worker.
 - [x] 8.5 Compose existing attachments, reconnect and process supervision; expose process identity, hidden Windows startup, unavailable failures, enable/disable, activation replacement, deletion and host restoration.
 - [x] 8.6 Add one journey per file: `client_manages_remote_plugins`, `client_manages_bundled_plugins`, `host_restores_plugin_entries`, and `client_refuses_invalid_plugin_bundles`; use the controlled clock, awaited events and existing reference plugins.
 - [x] 8.7 Document host adoption, product-owned policy and removal of duplicated management/hosting code; update affected README and guide links.
@@ -151,15 +152,15 @@ combined source closure and hosted validation are not claimed here.
 
 ## Workflow Follow-Up
 
-- Published content uses the shared file-session owner; the storage worker's unary service/client join remains in task 8.4. At the native storage join, migrate the registry's `read_object` call to `get_object` in `plugin/manager/persistence.rs` with the owning hook rename, and move story uploads to the unary client operations. The manager continues to consume the same published-content source.
+- Manager stories upload through unary client file sessions; persistence uses `get_object` and published bundles use bounded `get_file_bytes`. Diagnostics and file snapshots share the storage ranged-content implementation. No transfer join remains deferred; unfinished storage migration tasks remain with their owner.
 
 - The manager implementation and local commits are authorized. Push, review creation, publication and specification lifecycle commands remain outside this task's authorization.
 - Keep final validation unchecked until the combined implementation proof is actually performed; documentation validation alone does not close it.
 
 ## Integration Candidate
 
-- [ ] I.1 Merge the committed core, plugin-manager, access/status and storage branches in order; retain core audience generation, visibility and mechanical roots, regenerate every affected output and prove touched packages.
-- [ ] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
+- [x] I.1 Merge the committed core, plugin-manager, access/status and storage branches in order; retain core audience generation, visibility and mechanical roots, regenerate every affected output and prove touched packages.
+- [x] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
 - [ ] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
 - [ ] I.4 Commit the candidate locally, verify clean status and locked offline metadata; document consumer adoption and pending proof without pushing.
 
@@ -169,10 +170,12 @@ combined source closure and hosted validation are not claimed here.
 - [x] AS.2 Add client contracts and one operation per file; regenerate protocol and prove focused builds.
 - [x] AS.3 Implement gRPC-owned listener Get/Set, durable pairings, credential-store atomicity and live certificate rotation.
 - [x] AS.4 Implement service-owned identity/health, bounded redacted event histories/watches and ranged diagnostics with contributions.
-- [x] AS.5 Add five deterministic client journeys, Rust client bindings and adoption guidance.
+- [x] AS.5 Add five deterministic client journeys, descriptor-generated client bindings and adoption guidance.
 - [ ] AS.6 Run required format, Rust/Python/repository checks, stories twice, existing listener/certificate tests and Tests build; repair findings.
 
 ### Storage Follow-Up
+
+- Integration leaves the storage owner's unfinished source tasks open. In `crates/harmos-operations/src/storage/registration.rs`, legacy row follows, capture/hash/read/write-file and directory operations plus native schema hooks still await their full grammar migration; complete paging/Watch, policy/retention and Nightly measurements remain in tasks 1.4, 3.2–3.4 and 3.8–3.11. These are inherited committed storage work, not deferred manager/diagnostics transfer joins.
 
 - Storage implementation commits remain local on `feat/gp-grammar-storage`; no push or specification lifecycle commands.
 - Transfer source/proof: `storage::unary_transfers::resume_fence_publish_and_range_across_faces` exercises the socket client and plugin child carrier. Remaining read-provenance, paging and Watch work stays in 3.2, 3.8 and 3.9.

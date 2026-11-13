@@ -81,8 +81,9 @@ returns the content name, total length and SHA-256 digest. Repeat Get with that 
 an offset and a configured maximum range size; verify the completed content digest.
 Collection retains one archive; another collection replaces it, and old names fail
 explicitly. Unsafe paths, duplicate entries and oversized archives fail instead of
-producing partial archives. The `ContentSource` trait is the narrow integration
-boundary for the shared storage ranged-transfer mechanism.
+producing partial archives. Diagnostics and stored-file reads share
+`harmos_storage::get_content_bytes`, including range bounds, short-read handling
+and full-content digest verification. The service manager retains archive lifetime.
 
 Rust clients use generated contracts under `harmos::client::v1` and its `access`/`status` modules.
 The mechanical root exposes `client.access.listener`, `client.access.pairings`,

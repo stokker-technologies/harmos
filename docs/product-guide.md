@@ -19,7 +19,7 @@ use `stage_plugin_observers(resources, scope, backends)` and
 `submit_resident_in(id, resources)` to retain plugin scope and resource identity;
 generation retirement stops these observers with the plugin.
 
-Built-in host operations use generated `harmos_protocol::{host, storage}` messages
+Built-in host operations use generated `harmos_protocol::{v1, context, storage}` messages
 directly. Their declarations and handlers stay together in `harmos-operations`; its
 former `runtime` feature is removed. Lifecycle requests/results are
 `harmos_protocol::v1::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
@@ -27,8 +27,8 @@ former `runtime` feature is removed. Lifecycle requests/results are
 native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
 its timeout and cancellation policy. Status and cancellation expose only instances
-owned by the caller. Guest child controls keep their private status codec until
-the guest protocol migration.
+owned by the caller. Guest child controls use the SDK protobuf adapter and retain
+the original attempt capability.
 
 Bind an opaque invocation scope with `runtime.operations.with_scope("opaque-scope")`.
 The runtime's `harmos_runtime::Scope::as_str()` exposes it to native handlers and child
@@ -1298,6 +1298,10 @@ Native Criterion HTML and raw measurements live under `.stkr/benchmarks/criterio
 partitioned by compatibility identity and benchmark executable. The runner compares
 against the compatible `dev` baseline and reports missing baselines or regressions
 in its output. HTML rendering uses Plotters and does not require Gnuplot.
+
+Client resource paths are descriptor-derived in all SDKs. C++ escapes reserved
+identifiers with a trailing underscore, such as `client.plugins.delete_`; C# nested
+status payloads use `Harmos.V1.StatusResources` while `client.Status` retains its wire hierarchy.
 
 ## Documentation
 

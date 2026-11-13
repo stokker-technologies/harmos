@@ -6,7 +6,7 @@ Naming rule amended by the owner on 2026-11-12: bare verbs on the service's reso
 Separation by audience locked by the owner on 2026-11-12
 Three visibility levels locked by the owner on 2026-11-12
 
-Nothing here claims implementation.
+Locked contracts remain authoritative; implementation sections below describe landed source.
 Only the explicitly listed open questions await decisions when their work is reached.
 
 ## Context
@@ -1298,7 +1298,7 @@ Owned source inventory: `proto/harmos/v1/plugins.proto`,
 `crates/harmos-runtime/src/plugin/manager/**`,
 `crates/harmos-operations/src/plugins/**`, manager stories under
 `crates/harmos-runtime/tests/plugin_grpc/manager/**`,
-`sdk/rust/src/plugins_contracts.rs`, and `docs/plugin-manager.md`.
+descriptor-generated SDK client roots, and `docs/plugin-manager.md`.
 Existing hosting extensions are confined to `plugin/grpc/mod.rs` (shared
 attachment supervision, process identity and awaited reaping after disconnect), `plugin/grpc/managed.rs` (explicit
 endpoint and platform launch), and `plugin/grpc/managed/{windows,unix}.rs`
@@ -1411,8 +1411,8 @@ failure instead of silently skipping. Process histories expire at restart and re
 eviction; zero is an issued empty boundary, never an arbitrary historical selection.
 Logs/traces are volatile diagnostics, not claims of storage durability.
 Diagnostics freezes a bounded tar archive under an opaque content id; subsequent ranges
-read the same bytes and digest. A narrow content-source boundary joins the shared storage
-range mechanism when that worker lands; no streaming twin or upload engine is added.
+read the same bytes and digest. The shared storage `get_content_bytes` mechanism serves archive and stored-file
+ranges, including short reads and digest verification; no streaming twin or upload engine is added.
 Text-only contributed entries permit redaction before archiving; reject unsafe/duplicate
 archive paths and refuse over-budget archives instead of truncating valid content.
 Registered secret values and sensitive field names redact before log/trace retention,
@@ -1454,6 +1454,29 @@ ServerCertificate resolver themselves are reused unchanged.
   before removing or reclaiming content. No stored-data deletion is authorized here.
 
 ## Open Questions
+
+Integration decision: core service/method operation identities, audience generation,
+visibility and descriptor-derived roots are authoritative. Plugins, access/status
+and committed storage declarations use those identities without aliases. The generator
+isolates each package output and maps ancestor payloads individually, so imported
+services cannot overwrite messages or suppress nested-package definitions.
+Nested status messages select the C# namespace `Harmos.V1.StatusResources` to avoid
+the generated Status service class collision. The common table reads protobuf C#
+namespace options; resource paths still derive only from wire packages and names.
+C++ resource identifiers escape language keywords with a trailing underscore. The
+generator temporarily saves and undefines method-name platform macros while emitting
+its calls, then restores them, retaining the original wire names.
+Explicit face-local declarations take precedence over inferred context projections
+within a registration batch; storage retains its own context handlers and grants.
+Manager uploads use client CreateFileProduction/AppendFileBytes/GetFileProduction/
+PublishFileProduction; abandonment remains DeleteFileProduction in the shared service.
+Published bundles retain one storage snapshot and use its get_file_bytes ranged reader,
+verifying the assembled reference digest before bundle admission. Diagnostics keeps service-owned
+archive retention and uses the same storage ranged-content implementation as snapshots.
+The merged storage checkpoint is partial: remaining declaration/handler, Watch,
+policy and retention tasks remain open with their storage owner. No whole-change
+source closure or cross-platform validation is claimed by the integration task.
+
 
 Implementation choice (4.1): one descriptor table drives generated Rust/C#/C++ resource classes and Python runtime binding; parents and service names determine every client path.
 
@@ -1597,8 +1620,8 @@ Shared domain payloads retain their owner in `harmos.storage.v1`, now declared i
 `storage_types.proto`; they do not import another face's wrappers. The storage operation
 owner declares client methods and context-only methods with shared handlers in
 `crates/harmos-operations/src/storage/`. Native operation identifiers mechanically use
-`<package>.storage.<snake_case_method>` because native identifiers are lowercase dotted
-names; the gRPC full method retains `<package>.Storage/<Method>`. Reserved declarations
+`<package>.Storage/<Method>`, matching the core identity grammar and gRPC full method.
+The shared Identifier alphabet accepts that canonical separator. Reserved declarations
 are checked against their authoritative face descriptors before host registration.
 
 `StorageManager::get_file_bytes` reads bounded immutable ranges at saved progress.

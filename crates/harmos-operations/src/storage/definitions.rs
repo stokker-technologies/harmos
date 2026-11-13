@@ -75,12 +75,11 @@ pub(super) async fn get_index(
 }
 
 pub(super) async fn set_index(
-    context: &ExecutionContext, id: &'static str, definition: Option<wire::IndexDefinition>, expected_revision: Vec<u8>,
-    create_if_absent: bool, rebuild: bool, work: Option<wire::ReadLimits>, mutation: Option<wire::MutationId>,
+    context: &ExecutionContext, id: &'static str, definition: Option<wire::IndexDefinition>, expected: Option<u64>, rebuild: bool,
+    work: Option<wire::ReadLimits>, mutation: Option<wire::MutationId>,
 ) -> Result<(wire::IndexDefinition, Vec<u8>, v1::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
-        let expected = expected(&expected_revision, create_if_absent)?;
         let definition: harmos_storage::query::index::IndexDefinition = required(definition)?.try_into()?;
         definition.validate()?;
         super::native::admit(context, id, &definition.source)?;

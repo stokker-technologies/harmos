@@ -24,13 +24,14 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"harmos/v1/status/diagnostics.proto\x12\x10harmos.v1.status\"H\n\x15\x44iagnosticsGetRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0e\n\x06offset\x18\x02 \x01(\x04\x12\x11\n\tmax_bytes\x18\x03 \x01(\x04\"Z\n\x16\x44iagnosticsGetResponse\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x12\x14\n\x0ctotal_length\x18\x03 \x01(\x04\x12\x0e\n\x06sha256\x18\x04 \x01(\x0c\x32g\n\x0b\x44iagnostics\x12X\n\x03Get\x12\'.harmos.v1.status.DiagnosticsGetRequest\x1a(.harmos.v1.status.DiagnosticsGetResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"harmos/v1/status/diagnostics.proto\x12\x10harmos.v1.status\"H\n\x15\x44iagnosticsGetRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0e\n\x06offset\x18\x02 \x01(\x04\x12\x11\n\tmax_bytes\x18\x03 \x01(\x04\"Z\n\x16\x44iagnosticsGetResponse\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\x0c\x12\x14\n\x0ctotal_length\x18\x03 \x01(\x04\x12\x0e\n\x06sha256\x18\x04 \x01(\x0c\x32g\n\x0b\x44iagnostics\x12X\n\x03Get\x12\'.harmos.v1.status.DiagnosticsGetRequest\x1a(.harmos.v1.status.DiagnosticsGetResponseB\x1c\xaa\x02\x19Harmos.V1.StatusResourcesb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.v1.status.diagnostics_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  DESCRIPTOR._loaded_options = None
+  _globals['DESCRIPTOR']._loaded_options = None
+  _globals['DESCRIPTOR']._serialized_options = b'\252\002\031Harmos.V1.StatusResources'
   _globals['_DIAGNOSTICSGETREQUEST']._serialized_start=56
   _globals['_DIAGNOSTICSGETREQUEST']._serialized_end=128
   _globals['_DIAGNOSTICSGETRESPONSE']._serialized_start=130

@@ -74,9 +74,9 @@ fn catalog_serves_operations() {
     for required in [
         "harmos.v1.Storage/ListRows",
         "storage.read_file",
-        "storage.write_records",
-        "storage.write_streams",
-        "storage.write_objects",
+        "harmos.v1.Storage/AppendRecords",
+        "harmos.v1.Storage/AppendSamples",
+        "harmos.v1.Storage/AppendObjectRevisions",
         "storage.write_file",
     ] {
         assert!(served.iter().any(|id| id == required), "missing {required}");

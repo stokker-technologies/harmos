@@ -16,7 +16,7 @@ mod redaction;
 
 /* === Re-Exports === */
 
-pub use diagnostics::{ContentSource, Entry, Range};
+pub use diagnostics::Entry;
 pub use layer::StatusLayer;
 pub use redaction::Redaction;
 
@@ -432,7 +432,7 @@ impl harmos_operations::status::Status for Port {
         })
     }
     fn diagnostics_get(&self, r: wire::DiagnosticsGetRequest) -> Pending<'_, wire::DiagnosticsGetResponse> {
-        Box::pin(async move { self.diagnostics(r) })
+        Box::pin(async move { self.diagnostics(r).await })
     }
 }
 

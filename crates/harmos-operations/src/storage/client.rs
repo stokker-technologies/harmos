@@ -440,8 +440,7 @@ impl ProtobufOperation for SetIndexDefinition {
             &context,
             Self::ID,
             request.definition,
-            request.expected_revision,
-            request.create_if_absent,
+            super::definitions::expected(&request.expected_revision, request.create_if_absent).map_err(super::native::failure)?,
             request.rebuild,
             request.work,
             request.mutation,
@@ -855,7 +854,7 @@ impl ProtobufOperation for SetObject {
             super::object::SetOutcome::Applied(value, revision, receipt) => Outcome::Applied(Applied {
                 value: Some(value),
                 revision,
-                receipt: Some(receipt),
+                receipt: Some(*receipt),
             }),
             super::object::SetOutcome::Conflict(current_revision) => Outcome::Conflict(Conflict {
                 current_revision,

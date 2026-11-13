@@ -36,15 +36,10 @@ pub struct Entry {
     pub path: String,
     pub text: String,
 }
-pub struct Range {
-    pub data: Vec<u8>,
-    pub total_length: u64,
-    pub sha256: Vec<u8>,
-}
 pub(super) struct Archive {
     pub name: String,
-    bytes: Vec<u8>,
-    digest: Vec<u8>,
+    bytes: std::sync::Arc<Vec<u8>>,
+    digest: [u8; 32],
 }
 struct Bounded {
     bytes: Vec<u8>,
@@ -54,11 +49,6 @@ struct Bounded {
 /* === Enums === */
 
 /* === Traits === */
-
-/// Immutable Content Boundary Shared by Unary Ranged Reads.
-pub trait ContentSource {
-    fn range(&self, name: &str, offset: u64, maximum_bytes: usize) -> Result<Range, ServingError>;
-}
 
 /* === Implementations === */
 
@@ -74,32 +64,8 @@ impl Write for Bounded {
         Ok(())
     }
 }
-impl ContentSource for Status {
-    fn range(&self, name: &str, offset: u64, maximum_bytes: usize) -> Result<Range, ServingError> {
-        let action = "Status.Diagnostics.Get";
-        if maximum_bytes == 0 || maximum_bytes > self.settings.range_bytes.get() {
-            return Err(failure(action, "range exceeds configured byte bound"));
-        }
-        let state = self.state.lock().expect("status lock is healthy");
-        let archive = state
-            .archive
-            .as_ref()
-            .filter(|archive| archive.name == name)
-            .ok_or_else(|| failure(action, "archive is unknown or expired"))?;
-        let offset = usize::try_from(offset).map_err(|_| failure(action, "range offset is unsupported"))?;
-        if offset > archive.bytes.len() {
-            return Err(failure(action, "range offset exceeds archive length"));
-        }
-        let end = offset.saturating_add(maximum_bytes).min(archive.bytes.len());
-        Ok(Range {
-            data: archive.bytes[offset..end].to_vec(),
-            total_length: archive.bytes.len() as u64,
-            sha256: archive.digest.clone(),
-        })
-    }
-}
 impl Status {
-    pub(super) fn diagnostics(&self, request: DiagnosticsGetRequest) -> Result<DiagnosticsGetResponse, ServingError> {
+    pub(super) async fn diagnostics(&self, request: DiagnosticsGetRequest) -> Result<DiagnosticsGetResponse, ServingError> {
         let action = "Status.Diagnostics.Get";
         if request.max_bytes == 0 || request.max_bytes > self.settings.range_bytes.get() as u64 {
             return Err(failure(action, "range exceeds configured byte bound"));
@@ -112,12 +78,36 @@ impl Status {
         } else {
             request.name
         };
-        let range = self.range(&name, request.offset, request.max_bytes as usize)?;
+        let (bytes, digest) = {
+            let state = self.state.lock().expect("status lock is healthy");
+            let archive = state
+                .archive
+                .as_ref()
+                .filter(|archive| archive.name == name)
+                .ok_or_else(|| failure(action, "archive is unknown or expired"))?;
+            (archive.bytes.clone(), archive.digest)
+        };
+        let range = crate::storage::get_content_bytes(
+            bytes.len() as u64,
+            digest,
+            request.offset,
+            std::num::NonZeroUsize::new(request.max_bytes as usize).expect("validated positive range"),
+            |offset, maximum| {
+                let bytes = bytes.clone();
+                async move {
+                    let offset = offset as usize;
+                    let end = offset.saturating_add(maximum.get()).min(bytes.len());
+                    Ok(bytes[offset..end].to_vec())
+                }
+            },
+        )
+        .await
+        .map_err(|error| failure(action, &error.to_string()))?;
         Ok(DiagnosticsGetResponse {
             name,
             data: range.data,
             total_length: range.total_length,
-            sha256: range.sha256,
+            sha256: range.sha256.to_vec(),
         })
     }
     fn archive(&self) -> Result<String, ServingError> {
@@ -182,9 +172,13 @@ impl Status {
                 .map_err(|_| failure(action, "archive entry exceeds configured budget or has an invalid path"))?;
         }
         let bytes = builder.into_inner().map_err(|_| failure(action, "archive exceeds configured byte budget"))?.bytes;
-        let digest = Sha256::digest(&bytes).to_vec();
+        let digest: [u8; 32] = Sha256::digest(&bytes).into();
         let name = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-        self.state.lock().expect("status lock is healthy").archive = Some(Archive { name: name.clone(), bytes, digest });
+        self.state.lock().expect("status lock is healthy").archive = Some(Archive {
+            name: name.clone(),
+            bytes: std::sync::Arc::new(bytes),
+            digest,
+        });
         Ok(name)
     }
 }

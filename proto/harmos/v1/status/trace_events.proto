@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package harmos.v1.status;
+option csharp_namespace = "Harmos.V1.StatusResources";
 import "harmos/v1/types.proto";
 import "harmos/v1/status/logs.proto";
 message TraceEventsListRequest { harmos.v1.Position at = 1; harmos.v1.PageRequest page = 2; }

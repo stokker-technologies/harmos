@@ -68,7 +68,6 @@ mod snapshot;
 
 /* === Re-Exports === */
 
-
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use client::{
     AdvanceProjection, AppendFileBytes, AppendObjectRevisions, AppendRecords, AppendSamples, Capabilities, CreateFileProduction,

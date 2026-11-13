@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package harmos.v1.status;
+option csharp_namespace = "Harmos.V1.StatusResources";
 import "harmos/v1/types.proto";
 import "google/protobuf/timestamp.proto";
 message Event { uint64 sequence = 1; google.protobuf.Timestamp observed_at = 2; string level = 3; string target = 4; string message = 5; map<string,string> fields = 6; }

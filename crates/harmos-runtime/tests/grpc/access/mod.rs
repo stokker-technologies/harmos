@@ -11,8 +11,7 @@
 
 mod client_pairs_and_rotates_access;
 mod credential_store_unavailable;
-#[path = "../../support/access_status.rs"]
-mod support;
+use crate::access_status as support;
 
 /* === Re-Exports === */
 

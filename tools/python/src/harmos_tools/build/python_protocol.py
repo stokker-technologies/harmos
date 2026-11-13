@@ -63,6 +63,15 @@ def generate(output: Path) -> None:
         *PROTOCOLS,
     ]
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
+    # Generated Convenience Calls Require the Experimental Submodule Explicitly.
+    for name in GENERATED:
+        if name.endswith("_pb2_grpc.py"):
+            path = output / name
+            source = path.read_text(encoding="utf-8")
+            if "grpc.experimental." in source:
+                path.write_text(
+                    source.replace("import grpc\n", "import grpc\nimport grpc.experimental\n", 1), encoding="utf-8", newline="\n"
+                )
 
 
 def generate_client_fixture(output: Path) -> None:
