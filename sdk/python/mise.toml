@@ -22,7 +22,7 @@ description = "Prepare the Locked Python SDK Environment"
 run = "uv sync --locked --all-groups"
 
 [tasks.generate]
-description = "Generate the Python SDK Protocols"
+description = "Generate the Typed Python SDK and Fixture Roots"
 dir = "../.."
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol"
 
@@ -43,6 +43,10 @@ run = "uv run --locked --no-sync python -c \"import os, runpy; os.environ['TEST_
 [tasks."test:unit"]
 description = "Test the Python SDK Client Units"
 run = "uv run --locked --no-sync python -m unittest tests.integration.test_client_root tests.integration.test_client_call_context -v"
+
+[tasks."test:examples"]
+description = "Test the Python SDK Examples Through gRPC"
+run = "uv run --locked --no-sync python -m unittest tests.integration.test_examples -v"
 
 [tasks.format]
 description = "Format the Python SDK"

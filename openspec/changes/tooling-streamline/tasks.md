@@ -1,5 +1,13 @@
 # Tasks
 
+## 10. Locked Typed Python SDK
+
+- [x] 10.1 Generate typed Python resource classes and composed fixture roots; replace runtime binding and migrate caller-control stories.
+- [x] 10.2 Ship typed package markers, annotate SDK/tooling/tests, enable annotation/import/naming rules and repair type findings without blanket ignores.
+- [x] 10.3 Add annotated client and plugin examples, real-fixture stories, Python CI coverage and maintained guide contracts.
+- [x] 10.4 Derive all four language roots from descriptors in memory; remove serialized resource inventories and compare fresh generation with committed roots.
+- [ ] 10.5 Commit the complete source and run the requested format, Python/repository checks, SDK units/integration/example stories, generation drift and tooling tests on the committed head; verify clean status and local-only commits.
+
 ## 9. Locked C# Build Modernization
 
 - [x] 9.1 Repair Python remote conformance host selection, commit, and prove Python checks and both C++ stories retain 31 rules.

@@ -73,9 +73,10 @@ Applications generate their own protobuf messages and own connection and authent
 
 #### Examples
 
-The [contract and binding examples](docs/product-guide.md#cargo-features) show
-how a producer exports its interface. Keep generated clients matched to the
-application revision that produced them.
+The [Python SDK Guide](docs/python-sdk.md) covers typed clients, product roots and
+the runnable [client](sdk/python/examples/client.py) and
+[plugin](sdk/python/examples/plugin.py) examples. Keep generated clients matched
+to the application revision that produced them.
 
 ### Rust
 

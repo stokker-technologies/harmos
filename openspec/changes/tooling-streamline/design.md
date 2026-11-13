@@ -39,8 +39,20 @@ Compiled C# fixtures still require the pinned .NET runtime: setup activates `DOT
 
 The 2026-11-13 owner decision uses Catch2 v3 with its main and CMake discovery, preserving all five existing journeys and assertions. Shared client input belongs in `sdk/tests/fixtures/client/`; only the two application protocols remain invented, composed with the real library client. Conformance input belongs in `sdk/tests/fixtures/conformance/proto/`, unchanged in content and package, and its generated code belongs only to test/conformance targets. This expands source ownership to every affected protocol generator, SDK consumer and guide; the existing implementing marker remains unchanged. Local commits only; no push or lifecycle transition.
 
-The composed fixture uses real Status/Diagnostics roots plus application Jobs/Progress. Keep `resources.json`: the two Python client journeys load that generated table, including collision and wrong-face rejection.
+The composed fixture uses real Status/Diagnostics roots plus application Jobs/Progress. Its Python resource classes are generated from the merged descriptors; collision and wrong-face rejection belong to generation.
 
 Conformance implementations move with their generated messages out of shipped SDK libraries: Rust test fixtures, C# Conformance executable support and Python test fixtures. Package-isolation stories copy this support into their independent consumer, compile or load it against only the packaged SDK, and retain the complete conformance suite. C++ conformance sources carry their test input beside the example, outside installed headers and libraries.
 
 The Python SDK test task sets its selected profile inside the Python invocation: mise renders usage values in commands, while task environment templates are evaluated before usage is available. Exact selection and project-local execution are unchanged.
+
+## Locked Typed Python SDK
+
+The 2026-11-13 owner locks `sdk/python/**`, the maintained Python tooling and Python SDK generators under `tools/python/**`, Python mise delegation and CI steps, maintained guides and this change. Other language generators may change only their descriptor inputs. Wire behavior, protocol inputs, Rust crates and other SDK implementations remain unchanged. This session is the only writer; commits stay local and the implementing marker remains untouched.
+
+Generated Python resource classes own explicit request and response types and typed nested attributes. `Client` initializes the library root. Products generate their own root from descriptors and attach its typed resources in an ordinary subclass constructor. Shared fixture generation merges library and application descriptors to exercise common parents. No runtime resource binding or serialized resource inventory remains.
+
+Per-call metadata, credentials and timeout use the native gRPC call signature; typed unary awaitables and streaming async iterators retain native `cancel()` and `read()` controls. Cancellation therefore needs no second token mechanism. Protobuf compiler output remains the untyped boundary and is narrowed by message classes and stubs. All maintained SDK, examples, tests and tooling functions carry annotations; Ruff enables E4/E7/E9/F/I/N/UP/B/ANN and pinned ty checks each package with its own environment.
+
+Examples are linear annotated programs with callable async entry points: the client discovers the host catalog, gets status and watches invocation progress; the plugin serves one public echo operation. Stories run their entry points against real gRPC host/instance fixtures, synchronizing with events and controlled protocol completion. README review retains the existing package and product claims; the maintained Python section of `docs/tooling.md` owns usage and composition.
+
+The maintained `docs/python-sdk.md` owns typed calls, product composition and runnable examples; `docs/tooling.md` retains repository tasks and plugin lifecycle contracts. Provider JSON callbacks distinguish object and collection responses at their decoding boundary; Cargo artifact and metadata dictionaries use explicit structural types. Shared fixture Python imports use a generator module-prefix mapping, leaving protobuf identity unchanged and avoiding import-time path mutation.

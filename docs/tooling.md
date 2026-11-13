@@ -179,10 +179,18 @@ library and product descriptors with:
 mise run generate -- --sdk rust --descriptors path/to/product-descriptors.bin --output path/to/generated --namespace application
 ```
 
-This writes all four language roots and their shared table. Product protobuf
-bindings retain their qualified message identity. Rust product roots take the
-existing client's `transport_handle()`; Python accepts explicit complete tables
-as `Client(channel, library_table, product_table)`. Actual leaf collisions are refused.
+This writes all four language roots directly from an in-memory descriptor table.
+Product protobuf bindings retain their qualified message identity. Rust product
+roots take the existing client's `transport_handle()`. Python generates explicit
+resource classes and composes them with ordinary typed attributes; see the
+[Python SDK Guide](python-sdk.md#product-roots). Actual leaf collisions are refused
+during generation. No serialized resource inventory is committed, shipped or read.
+
+Generate only a composed Python root into a product-owned module with:
+
+```sh
+mise run generate -- --sdk python --descriptors path/to/product-descriptors.bin --output path/to/generated/client.py --namespace application
+```
 
 Each language builds one complete SDK containing plugin authoring, its client root
 and host protocol needs. Python is `harmos-sdk` (import `harmos`), Rust is `harmos`,
@@ -220,6 +228,10 @@ sampling elapsed or remaining wall-clock time. A later call keeps its own option
 
 ## Python Plugin SDK
 
+The [Python SDK Guide](python-sdk.md) covers typed clients, product composition
+and the runnable [client](../sdk/python/examples/client.py) and
+[plugin](../sdk/python/examples/plugin.py) examples.
+
 `sdk/python` builds the pure Python `harmos-sdk` distribution for Python 3.13+.
 Its runtime dependencies are `grpcio` and `protobuf`; it contains no native code.
 `prepare` installs the local package into `sdk/python/.venv/`; SDK tests and type
@@ -235,7 +247,7 @@ from harmos.v1 import types_pb2 as wire
 READ_SENSOR = Operation("sensor.read", SetTemperature, Reading, visibility=wire.VISIBILITY_PUBLIC)
 
 class Chamber:
-    def __init__(self):
+    def __init__(self) -> None:
         self.target = 0.0
 
     @operation("thermal.set", request=SetTemperature, response=Reading, visibility=wire.VISIBILITY_PUBLIC)
@@ -709,6 +721,9 @@ same `proto/harmos/v1/storage.proto`. See [Generated Storage Clients](storage.md
 
 Shared SDK client inputs live in `sdk/tests/fixtures/client/proto/application/v1/`.
 Each SDK composes those roots with the real library Status and nested Diagnostics
-resources. `sdk/tests/fixtures/client/resources.json` is the generated composed
-table read by Python's `ClientRoot.test_library_and_product_services_share_parents_and_keep_watch_cardinality`
+resources. Python's generated `sdk/python/tests/fixtures/client/client.py` supplies
+the composed classes exercised by
+`ClientRoot.test_library_and_product_services_share_parents_and_keep_watch_cardinality`
 and `CallerContext.test_one_call_preserves_metadata_deadline_override_and_cancellation`.
+The generator check compares committed Python roots and fixture bindings with a
+fresh generation. All four language generators derive their inputs from descriptors.
