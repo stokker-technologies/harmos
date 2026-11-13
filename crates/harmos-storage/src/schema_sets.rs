@@ -106,11 +106,9 @@ impl StorageManager {
             reason: "invalid complete schema candidate",
         })?);
         let fingerprint: [u8; 32] = hash.finalize().into();
-        let bytes = StorageSchema::new(self.position(u64::MAX), key.clone(), schema.clone()).encoded_bytes()?;
         let (_, completion) = self
             .admit_mutation_owned(
                 crate::manager::Domain::Data,
-                bytes,
                 1,
                 Some(crate::admissions::Mutation { id: mutation, fingerprint }),
                 false,

@@ -72,7 +72,7 @@ impl StorageManager {
                 return Err(Error::ResourceExhausted { resource: "file producers" });
             }
             let id = NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1)).map_err(|_| size_error())?;
-            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, &self.inner.settings)?;
             state.files.insert(
                 id,
                 FileState {

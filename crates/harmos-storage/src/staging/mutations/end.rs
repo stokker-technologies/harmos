@@ -63,8 +63,7 @@ impl StorageManager {
             if file.command.is_some() || file.in_flight { return Ok(false); }
             let digest: [u8; 32] = file.hash.clone().finalize().into();
             let valid = expected.is_none_or(|(length, sha256)| length == file.length && sha256 == digest) && file.metadata.expected_length.is_none_or(|length| length == file.length) && file.metadata.expected_sha256.is_none_or(|expected| expected == digest);
-            let bytes = file.reference_bytes;
-            reserve(state, mutation, fingerprint, bytes, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Finish });
             if valid { file.context = crate::execution::Context::current();
@@ -95,7 +94,7 @@ impl StorageManager {
             if file.command.is_some() || file.in_flight {
                 return Ok(false);
             }
-            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation {
                 id: mutation.clone(),

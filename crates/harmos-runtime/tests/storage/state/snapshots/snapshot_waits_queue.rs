@@ -19,5 +19,5 @@ async fn snapshot_waits_queue() {
     runtime.state.commit(deposit(4)).await.unwrap();
     crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.snapshot().through.sequence, 1);
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
 }

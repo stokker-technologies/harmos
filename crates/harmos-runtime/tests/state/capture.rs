@@ -192,7 +192,7 @@ async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model
         setup.settings().tail(tail);
         setup.settings().require_capture(
             CaptureLimits {
-                pending_bytes: pending,
+                pending_groups: pending,
                 max_group_bytes: max,
             },
             Consumer { offered, release: release.clone(), fail },
@@ -209,7 +209,7 @@ async fn group(observed: &mut mpsc::UnboundedReceiver<Group>) -> Group {
 
 #[tokio::test]
 async fn owned_transaction_survives_capture_after_tail_eviction() {
-    let (runtime, mut observed, release) = open(4096, 4096, false, 1).await;
+    let (runtime, mut observed, release) = open(4, 4096, false, 1).await;
     let owner = Arc::new(Changes::Add(Add(1)));
     let retained = Arc::downgrade(&owner);
     let transaction = harmos_runtime::operations::Response::from_owner(owner);
@@ -236,8 +236,8 @@ async fn owned_transaction_survives_capture_after_tail_eviction() {
 
 #[tokio::test]
 async fn capture_preserves_evicted() {
-    // Each 600-byte record charges >600 bytes; two cannot fit in 1,400.
-    let (runtime, mut observed, release) = open(1400, 1400, false, 1).await;
+    // One pending group: the second waits until the callback acknowledges the first.
+    let (runtime, mut observed, release) = open(1, 1400, false, 1).await;
     let first = runtime.records.publish(Observed("x".repeat(600))).await.unwrap();
     let (held, frontier) = group(&mut observed).await;
     assert_eq!(frontier, first.frontier);
@@ -263,7 +263,7 @@ async fn capture_preserves_evicted() {
 
 #[tokio::test]
 async fn stop_awaits_groups() {
-    let (runtime, mut observed, release) = open(32_000, 8000, false, 1).await;
+    let (runtime, mut observed, release) = open(8, 8000, false, 1).await;
     let principal = PrincipalId::new("capture");
     let journal = runtime.state.as_principal(principal.clone());
     let commit = journal.commit(Add(5)).await.unwrap();
@@ -305,7 +305,7 @@ async fn stop_awaits_groups() {
 
 #[tokio::test]
 async fn failure_wakes_waiters() {
-    let (runtime, mut observed, release) = open(1400, 1400, true, 1).await;
+    let (runtime, mut observed, release) = open(1, 1400, true, 1).await;
     runtime.records.publish(Observed("x".repeat(600))).await.unwrap();
     group(&mut observed).await;
     let journal = runtime.state.clone();
@@ -340,7 +340,7 @@ async fn oversize_never_applies() {
 
 #[tokio::test]
 async fn queued_groups_outlive() {
-    let (runtime, mut observed, release) = open(2_000_000, 4000, false, 1024).await;
+    let (runtime, mut observed, release) = open(2048, 4000, false, 1024).await;
     // More independent publications than the normal 1,024-entry tail, with
     // the first callback stalled and every later accepted group still pending.
     for index in 0..1100 {
@@ -362,13 +362,7 @@ async fn queued_groups_outlive() {
 async fn panic_fails_capture() {
     let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
         setup.settings().register(facts_registry());
-        setup.settings().require_capture(
-            CaptureLimits {
-                pending_bytes: 4096,
-                max_group_bytes: 4096,
-            },
-            Panics,
-        );
+        setup.settings().require_capture(CaptureLimits { pending_groups: 4, max_group_bytes: 4096 }, Panics);
     })
     .await
     .unwrap();

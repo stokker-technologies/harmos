@@ -33,7 +33,6 @@ use crate::{Error, Result};
 /* === Enums === */
 
 pub(super) enum Refusal {
-    Exceeded(&'static str),
     Elapsed,
     Failed(Error),
 }
@@ -51,7 +50,6 @@ pub(super) enum Attempt<T> {
 impl Refusal {
     pub(super) fn into_error(self) -> Error {
         match self {
-            Self::Exceeded(resource) => Error::ResourceExhausted { resource },
             Self::Elapsed => Error::ResourceExhausted { resource: "storage admission deadline" },
             Self::Failed(error) => error,
         }

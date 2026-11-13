@@ -64,7 +64,7 @@ pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
             max_active_queries: NonZeroUsize::new(2).unwrap(),
             max_active_file_operations: NonZeroUsize::new(1).unwrap(),
             max_pending_write_batches: NonZeroUsize::new(16).unwrap(),
-            max_pending_write_bytes: pending,
+            max_write_batch_bytes: pending,
         },
         response: StorageResponseSettings {
             batch_rows: NonZeroUsize::new(32).unwrap(),

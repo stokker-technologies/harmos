@@ -29,8 +29,6 @@ mod snapshot_keeps_tail;
 mod snapshot_payload_boundary_restores_segmented_state;
 #[path = "snapshots/snapshot_read_ignores_write_queue_budget.rs"]
 mod snapshot_read_ignores_write_queue_budget;
-#[path = "snapshots/snapshot_releases_unused.rs"]
-mod snapshot_releases_unused;
 #[path = "snapshots/snapshot_restores_state.rs"]
 mod snapshot_restores_state;
 #[path = "snapshots/snapshot_resumes_durable.rs"]

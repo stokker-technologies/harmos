@@ -78,7 +78,7 @@ impl StorageFile {
                 ticket
             }
             None => {
-                let admitted = self.queue_append(offset, &bytes, false).await;
+                let admitted = self.queue_append(offset, &bytes).await;
                 if matches!(admitted, Err(Error::InvalidInput { .. })) {
                     self.append = None;
                 }
@@ -108,7 +108,7 @@ impl StorageFile {
         let mut offset = 0usize;
         loop {
             let remaining = source.slice(offset..source.len());
-            let admitted = self.queue_append(self.length(), &remaining, true).await?;
+            let admitted = self.queue_append(self.length(), &remaining).await?;
             let Some((count, ticket)) = admitted else {
                 cancel.armed = false;
                 return Ok(());
@@ -123,7 +123,7 @@ impl StorageFile {
         }
     }
 
-    async fn queue_append(&self, offset: u64, bytes: &crate::FileChunk, partial: bool) -> Result<Option<(usize, u64)>> {
+    async fn queue_append(&self, offset: u64, bytes: &crate::FileChunk) -> Result<Option<(usize, u64)>> {
         self.manager
             .inner
             .admit_when(|state| {
@@ -171,19 +171,11 @@ impl StorageFile {
                 if bytes.is_empty() {
                     return Ok(Some(None));
                 }
-                let budget = self.manager.inner.settings.request.max_pending_write_bytes.get();
-                if !partial && bytes.len() > budget {
-                    return Err(Error::ResourceExhausted { resource: "file append" });
-                }
-                let available = budget.saturating_sub(state.status.pending_bytes);
-                let required = if partial { 1 } else { bytes.len() };
-                if available < required
-                    || state.status.pending_batches >= self.manager.inner.settings.request.max_pending_write_batches.get()
-                {
-                    self.manager.inner.relieve_pressure(state, required, 1);
+                if state.status.pending_batches >= self.manager.inner.settings.request.max_pending_write_batches.get() {
+                    self.manager.inner.relieve_pressure(state, 1);
                     return Ok(None);
                 }
-                let count = bytes.len().min(available).min(self.manager.inner.settings.transfer_chunk_bytes().get());
+                let count = bytes.len().min(self.manager.inner.settings.transfer_chunk_bytes().get());
                 let file = state.files.get_mut(&self.id).expect("selected file");
                 file.ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
                 file.context = crate::execution::Context::current();
@@ -249,7 +241,7 @@ impl StorageFile {
                         state.collect();
                         Ok(Some(()))
                     } else {
-                        self.manager.inner.relieve_pressure(state, 0, 1);
+                        self.manager.inner.relieve_pressure(state, 1);
                         Ok(None)
                     }
                 }

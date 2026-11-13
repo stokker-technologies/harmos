@@ -43,7 +43,7 @@ pub(super) struct PendingQueue {
 
 impl PendingQueue {
     pub(super) fn push_back(&mut self, entry: Arc<Pending>) {
-        self.bytes += entry.bytes;
+        self.bytes += entry.encoded_bound;
         self.entries.push_back(entry);
     }
 
@@ -78,7 +78,7 @@ impl PendingQueue {
                 && entry.operation.domain() == domain
                 && (sequence == u64::MAX || entry.operation.sequence() <= sequence)
             {
-                *bytes -= entry.bytes;
+                *bytes -= entry.encoded_bound;
                 false
             } else {
                 true

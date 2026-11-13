@@ -48,7 +48,7 @@ use harmos_storage::{Identifier, StreamInput};
 async fn large_batches_preserve_committed_prefixes() {
     // Keep Large Record And Sample Admissions As Distinct Ordered Commit Units.
     let mut settings = config();
-    settings.request.max_pending_write_bytes = NonZeroUsize::new(4 * 1024 * 1024).unwrap();
+    settings.request.max_write_batch_bytes = NonZeroUsize::new(4 * 1024 * 1024).unwrap();
     let trigger = settings.flush_trigger_bytes();
     let ceiling = settings.max_batch_bytes().get();
     let fixture = Fixture::new(settings).await;

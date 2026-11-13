@@ -71,7 +71,6 @@ impl Drop for Admission {
         if self.active {
             {
                 let mut state = self.inner.state.lock().unwrap();
-                state.reserved = 0;
                 state.reserved_batches = 0;
                 state.collect();
             }

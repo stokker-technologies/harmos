@@ -336,7 +336,7 @@ async fn capture_overflow_refuses() {
         assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 0);
         assert_eq!(storage.status().accepted.sequence, 1);
         assert_eq!(storage.status().recovery_accepted.sequence, 0);
-        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
         assert_eq!(storage.status().pending_batches, 0);
         crate::support::app::shutdown(&runtime).await.unwrap();
     }
@@ -378,7 +378,7 @@ async fn panic_releases_reservation() {
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
     assert_eq!(storage.status().accepted.sequence, 1);
     assert_eq!(storage.status().recovery_accepted.sequence, 0);
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     assert_eq!(storage.status().pending_batches, 0);
     assert!(store.data.records.lock().unwrap().is_empty());
     crate::support::app::shutdown(&runtime).await.unwrap();
@@ -528,7 +528,7 @@ async fn capture_coalesces_writes() {
 
     assert_eq!(store.data.records.lock().unwrap().len(), 2000);
     assert_eq!(runtime.state.stored(), Position(4000));
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     for control in [&store.data.control, &store.recovery.control] {
         let sizes = control.write_sizes.lock().unwrap();
         assert!(sizes.len() < 100, "uncoalesced backend calls: {}", sizes.len());
@@ -547,14 +547,13 @@ async fn recovery_failure_retries() {
     for _ in 0..20 {
         runtime.state.commit(Advance { panic: false }).await.unwrap();
     }
-    let admitted = storage.status().pending_bytes;
+    let admitted = storage.status().pending_batches;
     store.recovery.control.block_write.store(true, Ordering::SeqCst);
     let flushing = storage.clone();
     let flushing = tokio::spawn(async move { flushing.flush_recovery().await });
     store.recovery.control.write_entered.notified().await;
-    let attempting = storage.status().pending_bytes;
+    let attempting = storage.status().pending_batches;
     assert!(attempting > 0);
-    assert!(attempting <= config().request.max_pending_write_bytes.get());
     assert_eq!(storage.status().saved.sequence, 21);
     assert_eq!(store.data.records.lock().unwrap().len(), 20);
     store.recovery.control.failures.store(1, Ordering::SeqCst);
@@ -562,14 +561,14 @@ async fn recovery_failure_retries() {
     store.recovery.control.write_release.notify_one();
     assert!(flushing.await.unwrap().is_err());
     // The Retry Retains Exactly The Accepted Write Payload.
-    assert_eq!(storage.status().pending_bytes, attempting);
-    assert!(storage.status().pending_bytes <= admitted);
+    assert_eq!(storage.status().pending_batches, attempting);
+    assert!(storage.status().pending_batches <= admitted);
     storage.flush().await.unwrap();
     storage.flush_recovery().await.unwrap();
     assert_eq!(store.calls.load(Ordering::SeqCst), 20);
     assert_eq!(store.data.records.lock().unwrap().len(), 20);
     assert_eq!(store.recovery.entries.lock().unwrap().len(), 20);
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     let writes = store.data.control.write_sizes.lock().unwrap().clone();
     assert_eq!(writes.iter().filter(|size| **size == 20).count(), 1);
     crate::support::app::shutdown(&runtime).await.unwrap();
@@ -598,27 +597,7 @@ async fn flush_skips_recovery() {
     store.recovery.control.block_write.store(false, Ordering::SeqCst);
     storage.flush_recovery().await.unwrap();
     assert_eq!(runtime.state.stored(), Position(40));
-    assert_eq!(storage.status().pending_bytes, 0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
-}
-
-#[tokio::test]
-async fn capture_reserves_actual() {
-    let store = Store::new();
-    let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(512 * 1024).unwrap();
-    let storage = store.manager(policy);
-    let runtime = store.boot(&storage, limits(4, 4 * 1024 * 1024), false).await;
-    store.ready(&storage).await;
-
-    for _ in 0..4 {
-        runtime.state.commit(Advance { panic: false }).await.unwrap();
-    }
-    assert_eq!(store.calls.load(Ordering::SeqCst), 4);
-    assert_eq!(storage.cursor_accepted().sequence, 5);
-    assert_eq!(storage.get_saved_position().sequence, 1);
-    assert!(storage.status().pending_bytes < 32 * 1024);
-    assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 4);
+    assert_eq!(storage.status().pending_batches, 0);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
@@ -628,7 +607,7 @@ async fn partial_projection_refused() {
         let store = Store::new();
         let cancelled = Arc::new(AtomicBool::new(false));
         let mut policy = config();
-        policy.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
+        policy.request.max_write_batch_bytes = NonZeroUsize::new(256 * 1024).unwrap();
         let storage = store.manager(policy);
         let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
             setup
@@ -667,7 +646,7 @@ async fn partial_projection_refused() {
         store.data.control.block_write.store(false, Ordering::SeqCst);
         store.data.control.write_release.notify_one();
         storage.flush().await.unwrap();
-        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
         assert_eq!(storage.status().pending_batches, 0);
         crate::support::app::shutdown(&runtime).await.unwrap();
     }

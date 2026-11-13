@@ -314,9 +314,9 @@ async fn stop_retries_uncertain() {
     assert!(crate::support::app::shutdown(&f.runtime).await.is_err());
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
-    assert!(f.storage.status().pending_bytes > 0);
+    assert!(f.storage.status().pending_batches > 0);
     crate::support::app::shutdown(&f.runtime).await.unwrap();
     assert_eq!(f.storage.status().saved.sequence, 1);
     assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), &[1, 1]);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
 }

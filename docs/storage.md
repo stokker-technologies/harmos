@@ -524,7 +524,7 @@ record their own backend/durability mode while retaining these names, units and 
 
 Run `mise run bench -- --storage --filter durable_lag` for the Nightly
 `integration/durable_lag/{small_high_rate,multi_megabyte,mixed}` cases. Each reports
-acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admission wait,
+acceptance-to-durability p50, p95 and maximum, pending batches/positions, admission wait,
 and synchronous SQLite commit count/time. Five runs per load retain median and
 spread, compiler-activity samples and stage counters for cadence/ordered waits,
 batch construction, provider writing, synchronous commit and frontier publication.
@@ -609,8 +609,7 @@ let appended = operations.call_protobuf::<AppendFileBytes>(
 Obtain mutation identities from `StorageManager::mutation_window()`; retain the
 window and key when retrying a lost reply. An identical normalized request
 returns its original outcome; changing it conflicts, and expired windows refuse.
-Chunks are bounded by the configured response batch byte limit and pending write
-budget. Appends require contiguous offsets. Replaying an identical retained
+Chunks are bounded by the configured transfer chunk size and take one write queue slot each. Appends require contiguous offsets. Replaying an identical retained
 prefix under a new key succeeds; different bytes conflict without modifying it.
 `GetFileProduction` observes retained length, phase and current writer generation
 without acquiring a writer. `accepted_length` includes an admitted in-flight

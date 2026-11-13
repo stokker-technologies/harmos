@@ -58,7 +58,7 @@ async fn admission_durability_distinct() {
     assert_eq!(f.storage.flush().await.unwrap().sequence, 3);
     assert_eq!(f.storage.status().recovery_saved.sequence, 0);
     assert_eq!(f.storage.flush_recovery().await.unwrap().sequence, 2);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     assert_eq!(f.data.rows.lock().unwrap()[&3].sequence, 99);
     assert_eq!(f.recovery.entries.lock().unwrap().len(), 2);
     f.finish().await;
@@ -94,7 +94,7 @@ async fn close_retains_writes() {
     let error = f.storage.close().await.unwrap_err();
     let Error::Persistence { source } = error else { panic!("expected preserved persistence cause") };
     assert!(matches!(source.as_ref(), Error::Backend { kind: BackendFailure::Permanent, .. }));
-    assert!(f.storage.status().pending_bytes > 0);
+    assert!(f.storage.status().pending_batches > 0);
     assert_eq!(f.storage.status().accepted.sequence, 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
     assert!(f.storage.status().closing);
@@ -243,7 +243,7 @@ async fn snapshots_require_flush() {
         .unwrap();
     assert_eq!(page.entries.len(), 1);
     assert_eq!(page.next.as_ref().unwrap().sequence, 1);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     f.finish().await;
 }
 
@@ -254,7 +254,7 @@ async fn wrong_receipt_retains() {
     write(&f.storage, "one").await;
     assert!(f.storage.flush().await.is_err());
     assert_eq!(f.storage.status().saved.sequence, 0);
-    assert!(f.storage.status().pending_bytes > 0);
+    assert!(f.storage.status().pending_batches > 0);
     f.data.control.wrong_receipt.store(false, Ordering::SeqCst);
     f.finish().await;
 }
@@ -269,7 +269,7 @@ async fn deadline_retains_admitted() {
         matches!(error, harmos_storage::Error::Persistence { source } if matches!(source.as_ref(), harmos_storage::Error::Backend { kind: BackendFailure::Transient, .. }))
     );
     assert_eq!(f.storage.status().accepted.sequence, 1);
-    assert!(f.storage.status().pending_bytes > 0);
+    assert!(f.storage.status().pending_batches > 0);
     f.data.control.block_write.store(false, Ordering::SeqCst);
     f.finish().await;
 }

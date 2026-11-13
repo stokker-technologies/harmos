@@ -85,7 +85,7 @@ pub struct StorageRequestSettings {
     pub max_active_queries: NonZeroUsize,
     pub max_pending_write_batches: NonZeroUsize,
     pub max_active_file_operations: NonZeroUsize,
-    pub max_pending_write_bytes: NonZeroUsize,
+    pub max_write_batch_bytes: NonZeroUsize,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -182,9 +182,9 @@ impl StorageSettings {
         harmos_protocol::transfer::message_bytes(&self.transfer).expect("validated StorageSettings.transfer.chunk_bytes")
     }
 
-    // Largest Atomic Batch: The Private Ceiling Within The Pending Write Budget.
+    /// Largest encoded entry one admission may queue.
     pub fn max_batch_bytes(&self) -> NonZeroUsize {
-        self.request.max_pending_write_bytes.min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
+        self.request.max_write_batch_bytes.min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
     }
 
     /// Request an early flush at this queued encoded size. Each commit retains
@@ -226,7 +226,7 @@ mod tests {
                 max_active_queries: NonZeroUsize::new(4).unwrap(),
                 max_pending_write_batches: NonZeroUsize::new(256).unwrap(),
                 max_active_file_operations: NonZeroUsize::MIN,
-                max_pending_write_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+                max_write_batch_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
             },
             response: StorageResponseSettings {
                 batch_rows: NonZeroUsize::new(64).unwrap(),

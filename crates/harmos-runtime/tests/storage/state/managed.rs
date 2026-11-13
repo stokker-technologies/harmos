@@ -289,7 +289,7 @@ async fn oversized_group_refused() {
     assert!(runtime.records.publish(Noted("x".repeat(4096))).await.is_err());
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert_eq!(storage.status().recovery_accepted.sequence, 0);
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     assert!(runtime.state.capture_status().is_ok());
     runtime.state.commit(deposit(2)).await.unwrap();
     assert_eq!(balance(&runtime).await, 2);
@@ -509,10 +509,10 @@ async fn cancelled_replay_releases() {
         }
         assert!(store.recovery.control.open.load(Ordering::SeqCst));
         assert!(store.data.control.open.load(Ordering::SeqCst));
-        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
     }
     closed(&storage, cleanup.get()).await;
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     assert!(!store.recovery.control.open.load(Ordering::SeqCst));
     assert!(!store.data.control.open.load(Ordering::SeqCst));
 }
@@ -675,6 +675,6 @@ async fn commits_skip_save() {
 
         assert_eq!(*store.recovery.control.write_sizes.lock().unwrap(), [1]);
         assert_eq!(storage.status().recovery_saved.sequence, 1);
-        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
     }
 }

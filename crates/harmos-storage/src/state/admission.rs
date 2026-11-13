@@ -67,8 +67,7 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.state.admission.reserve_recovery", level = "debug", skip_all)]
     async fn reserve_recovery(&self, payload_bytes: usize, records: Option<ReadLimits>, snapshot: bool) -> Result<Permit> {
-        let recovery_bytes = recovery_encoded_bound(payload_bytes, self.inner.recovery.get_history(), self.inner.primary.get_history())?;
-        let bytes = recovery_bytes;
+        let bytes = recovery_encoded_bound(payload_bytes, self.inner.recovery.get_history(), self.inner.primary.get_history())?;
         let batches = 1 + usize::from(records.is_some());
         if batches > self.inner.settings.request.max_pending_write_batches.get() {
             return Err(Error::InvalidInput {
@@ -76,17 +75,17 @@ impl StorageManager {
                 reason: "requires two queue slots",
             });
         }
-        if bytes > self.inner.settings.request.max_pending_write_bytes.get() {
+        if bytes > self.inner.settings.max_batch_bytes().get() {
             return Err(Error::InvalidInput {
                 field: "managed recovery",
-                reason: "group exceeds queued byte limit",
+                reason: "group exceeds max_batch_bytes",
             });
         }
         let mut changed = self.inner.changed.subscribe();
         loop {
             {
                 let mut state = self.inner.state.lock().unwrap();
-                if !snapshot && recovery_bytes > state.journal_limit {
+                if !snapshot && bytes > state.journal_limit {
                     return Err(Error::InvalidInput {
                         field: "managed recovery",
                         reason: "group exceeds recovery read bound",
@@ -102,9 +101,8 @@ impl StorageManager {
                     return Err(Error::Persistence { source: source.clone() });
                 }
                 state.collect();
-                if state.reserved == 0
+                if state.reserved_batches == 0
                     && state.finishing.is_none()
-                    && state.status.pending_bytes <= self.inner.settings.request.max_pending_write_bytes.get() - bytes
                     && state.status.pending_batches <= self.inner.settings.request.max_pending_write_batches.get() - batches
                 {
                     state.next.checked_add(batches as u64).ok_or(Error::InvalidInput {
@@ -129,13 +127,12 @@ impl StorageManager {
                             reason: "position overflow",
                         })?,
                     };
-                    state.reserved = bytes;
                     state.reserved_batches = batches;
                     state.collect();
                     return Ok(Permit {
                         context: crate::execution::Context::current(),
                         inner: self.inner.clone(),
-                        bytes: recovery_bytes,
+                        bytes,
                         target,
                         first_record,
                         records: Vec::new(),
@@ -147,7 +144,7 @@ impl StorageManager {
                         snapshot_payload: None,
                     });
                 }
-                self.inner.relieve_pressure(&mut state, bytes, batches);
+                self.inner.relieve_pressure(&mut state, batches);
             }
             changed.changed().await.map_err(|_| Error::NotReady { domain: "storage" })?;
         }
@@ -157,7 +154,7 @@ impl StorageManager {
     pub async fn settle_transition(&self) {
         let mut changed = self.inner.changed.subscribe();
         loop {
-            if self.inner.state.lock().unwrap().reserved == 0 {
+            if self.inner.state.lock().unwrap().reserved_batches == 0 {
                 return;
             }
             if changed.changed().await.is_err() {
@@ -183,10 +180,6 @@ impl Permit {
             }
             self.snapshot_payload = Some(payload);
             self.bytes = bytes;
-            let mut state = self.inner.state.lock().unwrap();
-            state.reserved = bytes;
-            state.collect();
-            self.inner.notify();
             Ok(())
         })
     }
@@ -210,38 +203,11 @@ impl Permit {
             let bytes = record.encoded_bytes(&self.first_record.history)?;
             let capture_total = self.capture_bytes.checked_add(bytes).ok_or_else(invalid)?;
             let total = self.record_bytes.checked_add(bytes).ok_or_else(invalid)?;
-            // Refuse a group that cannot fit even after all accepted work drains.
-            // Waiting with a partial permit in that case would deadlock itself.
-            if capture_total > limits.bytes.get()
-                || self.bytes.checked_add(total).is_none_or(|total| total > self.inner.settings.request.max_pending_write_bytes.get())
-            {
+            if capture_total > limits.bytes.get() {
                 return Err(invalid());
             }
             let mut position = self.first_record.clone();
             position.sequence = position.sequence.checked_add(self.records.len() as u64).ok_or_else(invalid)?;
-            let capacity = self.inner.settings.request.max_pending_write_bytes.get();
-            self.inner
-                .admit_when(|state| {
-                    super::super::capacity::admitting(state, true)?;
-                    state.collect();
-                    if state.status.pending_bytes <= capacity - bytes {
-                        state.reserved += bytes;
-                        state.collect();
-                        return Ok(Some(()));
-                    }
-                    // File finalization also needs this exclusive permit to end.
-                    // Only queued writes and saver scratch can drain underneath us;
-                    // never wait on bytes held by our own permit or staged owners.
-                    let held = state.status.pending_bytes.saturating_sub(state.queue.bytes());
-                    if held > capacity - bytes {
-                        return Err(invalid());
-                    }
-                    // Flush accepted work only; this permit owns the uncommitted
-                    // position and partial projection until the whole group settles.
-                    self.inner.relieve_pressure(state, bytes, 0);
-                    Ok(None)
-                })
-                .await?;
             self.records.push(record.stored(position));
             self.record_bytes = total;
             self.capture_bytes = capture_total;
@@ -258,22 +224,15 @@ impl Permit {
                 field: "managed recovery",
                 reason: "cannot encode group",
             })?;
-            // Encoding runs under the original conservative scratch reservation.
-            // Only the encoded buffer survives commit; release unused framing and
-            // growth allowance before the group becomes queued work.
             let bytes = recovery_encoded_bound(self.payload.len(), self.inner.recovery.get_history(), self.inner.primary.get_history())?;
             if bytes > self.bytes {
                 return Err(Error::InvalidInput {
                     field: "managed recovery",
-                    reason: "encoded group exceeds queued byte limit",
+                    reason: "encoded group exceeds its reservation",
                 });
             }
             self.bytes = bytes;
             let mut state = self.inner.state.lock().unwrap();
-            state.reserved = self.bytes.checked_add(self.record_bytes).ok_or(Error::InvalidInput {
-                field: "managed recovery",
-                reason: "size overflow",
-            })?;
             state.reserved_batches = 1 + usize::from(!self.records.is_empty());
             state.collect();
             self.inner.notify();
@@ -305,7 +264,6 @@ impl Permit {
                     None,
                     self.target.index,
                     self.record_bytes,
-                    self.record_bytes,
                     Operation::Records(crate::StorageBatch::new(std::mem::take(&mut self.records))),
                 )));
                 self.target.index += 1; // Both slots were checked before mutation.
@@ -322,7 +280,6 @@ impl Permit {
                 (!self.snapshot).then_some(frontier),
                 self.target.index,
                 self.bytes,
-                0,
                 if self.snapshot {
                     Operation::Snapshot(crate::StorageBatch::new(vec![RecoverySnapshot {
                         required_data: required_data.clone(),
@@ -337,7 +294,6 @@ impl Permit {
                     }]))
                 },
             )));
-            state.reserved = 0;
             state.reserved_batches = 0;
             self.active = false;
             state.collect();
@@ -350,7 +306,6 @@ impl Drop for Permit {
     fn drop(&mut self) {
         if self.active {
             let mut state = self.inner.state.lock().unwrap();
-            state.reserved = 0;
             state.reserved_batches = 0;
             state.collect();
             self.inner.notify();

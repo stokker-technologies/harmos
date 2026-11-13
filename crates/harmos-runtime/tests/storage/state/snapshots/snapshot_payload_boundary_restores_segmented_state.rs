@@ -29,7 +29,7 @@ async fn snapshot_payload_boundary_restores_segmented_state() {
         if segments == 1 {
             assert_eq!(snapshot.payload.len(), bounded.max_bytes.get());
         }
-        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
 
         // Restore Without A Journal Fallback, Then Save The Same Segmentation.
         store.recovery.entries.lock().unwrap().clear();

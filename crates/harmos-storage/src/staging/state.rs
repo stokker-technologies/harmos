@@ -58,14 +58,6 @@ impl FileState {
         }))
     }
 
-    pub(crate) fn bytes(&self) -> usize {
-        match &self.command {
-            Some(Command::Write(bytes) | Command::Replay { bytes, .. }) => bytes.len(),
-            Some(Command::Finish { .. }) => self.reference_bytes,
-            _ => 0,
-        }
-    }
-
     pub(crate) fn pending_batch(&self) -> bool {
         self.command.is_some()
     }
@@ -112,7 +104,7 @@ impl State {
                         && (allow_finish || !matches!(file.command, Some(Command::Finish { .. })))
                         && (file.abandoned || file.command.is_some())
                         && (!matches!(file.command, Some(Command::Finish { .. }))
-                            || (self.reserved == 0 && self.finishing.is_none_or(|owner| owner == *id)))
+                            || (self.reserved_batches == 0 && self.finishing.is_none_or(|owner| owner == *id)))
                 },
             )?;
         self.file_cursor = id;
@@ -293,7 +285,6 @@ impl State {
                     inner,
                     None,
                     target.index,
-                    file.reference_bytes,
                     file.reference_bytes,
                     Operation::File(crate::StorageBatch::new(vec![reference.clone()])),
                 )));

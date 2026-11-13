@@ -66,8 +66,6 @@ pub struct StorageMetrics {
     pub saved: StorageCursor,
     pub recovery_accepted: RecoveryPosition,
     pub recovery_saved: RecoveryPosition,
-    pub pending_bytes: usize,
-
     pub pending_batches: usize,
     pub running: bool,
     pub closing: bool,
@@ -117,7 +115,6 @@ pub(super) struct State {
     pub(super) execution: Execution,
     prefer_measurement: bool,
     pub(super) journal_required_data: StorageCursor,
-    pub(super) reserved: usize,
     pub(super) reserved_batches: usize,
     pub(super) journal_limit: usize,
     pub(super) journal_saved: Option<watch::Sender<harmos_domain::state::Position>>,
@@ -162,7 +159,6 @@ pub(super) struct Pending {
     pub(super) queued: Mutex<Option<tracing::Span>>,
     pub(super) journal: Option<harmos_domain::state::Position>,
     pub(super) index: u64,
-    pub(super) bytes: usize,
     pub(super) encoded_bound: usize,
     pub(super) operation: Operation,
     accepted_at: std::time::Instant,
@@ -201,7 +197,7 @@ pub(super) enum Operation {
     SetSchema(Arc<crate::SchemaExchange>),
     File(StorageBatch<super::FileReference>),
     Records(StorageBatch<StoredRecord>),
-    ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry>, bytes: usize },
+    ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry> },
     Stream(StorageBatch<StoredRow>),
     Recovery(StorageBatch<RecoveryEntry>),
     Snapshot(StorageBatch<RecoverySnapshot>),
@@ -221,15 +217,13 @@ pub trait WorkerOwner: Send + Sync {
 
 impl Pending {
     pub(super) fn new(
-        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, encoded_bound: usize,
-        operation: Operation,
+        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, encoded_bound: usize, operation: Operation,
     ) -> Self {
         Self {
             context: crate::execution::Context::current(),
             queued: Mutex::new(Some(tracing::debug_span!("storage.queue"))),
             journal,
             index,
-            bytes,
             encoded_bound,
             operation,
             accepted_at: std::time::Instant::now(),
@@ -245,7 +239,7 @@ impl Pending {
         work.cadence_wait.record(ready.saturating_duration_since(self.accepted_at));
         let ordered = now.saturating_duration_since(ready);
         work.ordered_wait.record(ordered);
-        if self.bytes >= 1024 * 1024 {
+        if self.encoded_bound >= 1024 * 1024 {
             work.ordered_wait_large.record(ordered);
         } else {
             work.ordered_wait_small.record(ordered);
@@ -330,7 +324,6 @@ impl StorageManager {
                     execution: execution.clone(),
                     prefer_measurement: false,
                     journal_required_data: position.clone(),
-                    reserved: 0,
                     reserved_batches: 0,
                     journal_limit: 0,
                     journal_saved: None,
@@ -339,7 +332,6 @@ impl StorageManager {
                         saved: position,
                         recovery_accepted: recovery_position.clone(),
                         recovery_saved: recovery_position,
-                        pending_bytes: 0,
 
                         pending_batches: 0,
                         running: false,

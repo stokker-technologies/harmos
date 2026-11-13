@@ -122,7 +122,7 @@ async fn receipt_releases_covered() {
     }
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[2]);
     assert_eq!(f.storage.status().pending_batches, 0);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     assert_eq!(f.storage.flush_until(&second).await.unwrap(), second);
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[2]);
     f.finish().await;
@@ -140,7 +140,7 @@ async fn uncertain_batch_acknowledge() {
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 2);
     assert_eq!(f.storage.flush_until(&first).await.unwrap(), second);
     assert_eq!(*f.data.control.writes.lock().unwrap(), [1, 2, 1]);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     assert_eq!(f.data.records.lock().unwrap().len(), 2);
     f.finish().await;
 }

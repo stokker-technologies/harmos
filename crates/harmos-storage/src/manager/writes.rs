@@ -46,9 +46,8 @@ impl StorageManager {
             field: "storage schema",
             reason: "invalid message fields",
         })?;
-        let bytes = StorageSchema::new(self.position(u64::MAX), key.clone(), schema.clone()).encoded_bytes()?;
         let sequence = self
-            .admit_mutation(Domain::Data, bytes, 1, None, false, |sequence| {
+            .admit_mutation(Domain::Data, 1, None, false, |sequence| {
                 Ok(Operation::Schema(StorageBatch::new(vec![StorageSchema::new(self.position(sequence), key, schema)])))
             })
             .await?;
@@ -102,14 +101,8 @@ impl StorageManager {
         if records.is_empty() {
             return Ok(self.status().accepted);
         }
-        let bytes = records.iter().try_fold(0usize, |bytes, record| {
-            bytes.checked_add(record.encoded_bytes(self.inner.primary.get_history())?).ok_or(Error::InvalidInput {
-                field: "storage admission",
-                reason: "size overflow",
-            })
-        })?;
         let sequence = self
-            .admit_mutation(Domain::Data, bytes, records.len(), mutation, false, |first| {
+            .admit_mutation(Domain::Data, records.len(), mutation, false, |first| {
                 Ok(Operation::Records(StorageBatch::new(
                     records.into_iter().enumerate().map(|(index, record)| record.stored(self.position(first + index as u64))).collect(),
                 )))
@@ -128,18 +121,8 @@ impl StorageManager {
         if rows.is_empty() {
             return Ok(self.status().accepted);
         }
-        let bytes = rows.iter().try_fold(0usize, |bytes, row| {
-            bytes
-                .checked_add(row.record.encoded_bytes(self.inner.primary.get_history())?)
-                .and_then(|bytes| bytes.checked_add(std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>()))
-                .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
-                .ok_or(Error::InvalidInput {
-                    field: "storage admission",
-                    reason: "size overflow",
-                })
-        })?;
         let sequence = self
-            .admit_mutation(Domain::Data, bytes, rows.len(), mutation, true, |first| {
+            .admit_mutation(Domain::Data, rows.len(), mutation, true, |first| {
                 Ok(Operation::Stream(StorageBatch::new(
                     rows.into_iter()
                         .enumerate()

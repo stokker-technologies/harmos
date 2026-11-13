@@ -154,37 +154,9 @@ async fn cancelled_finish_drained() {
 }
 
 #[tokio::test]
-async fn budget_bounds_chunks() {
-    let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(20_000).unwrap();
-    let f = Fixture::new(policy).await;
-    let bytes = vec![42; 100_000];
-    let mut file = f.storage.create_file(metadata("bounded", &bytes)).await.unwrap();
-    let base = f.storage.status().pending_bytes;
-    f.data.control.block_chunk.store(true, Ordering::SeqCst);
-    {
-        let write = file.write_all((bytes).to_vec());
-        tokio::pin!(write);
-        tokio::select! {
-            biased;
-            _ = &mut write => panic!("chunk must block"),
-            _ = f.data.control.chunk_entered.notified() => {}
-        }
-        assert!(f.storage.status().pending_bytes <= 20_000);
-        assert!(f.data.control.chunk_sizes.lock().unwrap()[0] <= 20_000 - base);
-        f.data.control.block_chunk.store(false, Ordering::SeqCst);
-        f.data.control.chunk_release.notify_one();
-        write.await.unwrap();
-    }
-    assert_eq!(file.length(), bytes.len() as u64);
-    file.finish().await.unwrap();
-    f.finish().await;
-}
-
-#[tokio::test]
 async fn retained_write_waits() {
     let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
+    policy.request.max_pending_write_batches = NonZeroUsize::MIN;
     let f = Fixture::new(policy).await;
     let full = vec![42; 4096];
     let mut first = f.storage.create_file(metadata("full", &full)).await.unwrap();
@@ -196,10 +168,10 @@ async fn retained_write_waits() {
         tokio::pin!(append);
         tokio::select! {
             biased;
-            result = &mut append => panic!("the full-budget append must block: {result:?}"),
+            result = &mut append => panic!("the queue-filling append must block: {result:?}"),
             _ = f.data.control.chunk_entered.notified() => {}
         }
-        assert_eq!(f.storage.status().pending_bytes, 4096);
+        assert_eq!(f.storage.status().pending_batches, 1);
         let retained = second.write_retained_at(0, harmos_storage::FileChunk::new(tail.to_vec()));
         tokio::pin!(retained);
         assert!(std::future::poll_fn(|cx| std::task::Poll::Ready(retained.as_mut().poll(cx).is_pending())).await);
@@ -353,7 +325,7 @@ async fn bounded_file_parallelism() {
 #[tokio::test]
 async fn pressure_preserves_owner() {
     let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(40_000).unwrap();
+    policy.request.max_write_batch_bytes = NonZeroUsize::new(40_000).unwrap();
     policy.request.max_pending_write_batches = NonZeroUsize::MIN;
     policy.response.batch_bytes = NonZeroUsize::new(1024).unwrap();
     policy.transfer.chunk_bytes = Some(1024);
@@ -377,7 +349,6 @@ async fn pressure_preserves_owner() {
     let first = f.data.control.chunk_pointers.lock().unwrap()[0].clone();
     assert_eq!(first.2, pointer);
     assert_eq!(first.3, capacity);
-    assert!(f.storage.status().pending_bytes <= 40_000);
     f.data.control.block_chunk.store(false, Ordering::SeqCst);
     f.data.control.chunk_release.notify_waiters();
     let mut file = writing.await.unwrap();
@@ -456,7 +427,7 @@ async fn close_drains_files() {
     assert!(f.data.control.chunk_active.lock().unwrap().is_empty());
     assert!(f.data.staged.lock().unwrap().is_empty());
     assert!(!f.data.control.open.load(Ordering::SeqCst));
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     f.finish().await;
 }
 
