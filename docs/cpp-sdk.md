@@ -70,4 +70,3 @@ lifecycle: Stop completes cleanup and leaves the server running. Both modes use
 plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::GET_TIME` with
 `requires_operation`; observers answer ticks and cannot wait. Authors must not
 start untracked background work if they require virtual-time execution.
-
