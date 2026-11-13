@@ -38,7 +38,7 @@ impl ProtobufOperation for Cancel {
     type Request = harmos_protocol::v1::InvocationsCancelRequest;
     type Response = harmos_protocol::v1::InvocationsCancelResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.invocations.cancel";
+    const ID: &'static str = "harmos.v1.Invocations/Cancel";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Invocations", "Cancel"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;

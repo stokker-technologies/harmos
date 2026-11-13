@@ -34,6 +34,11 @@ use crate::plugin::grpc::{Activation, Error as PlacementError, invoke::Binding};
 
 /* === Structs === */
 
+pub(crate) struct ChildInvocation {
+    pub invocation: crate::operations::EncodedInvocation,
+    pub streams: Option<harmos_operations::execution::operations::WireStreams>,
+}
+
 pub(crate) struct Admission {
     registry: Weak<Registry>,
     entries: Vec<Arc<Entry>>,
@@ -68,15 +73,39 @@ impl Manager {
     pub(crate) fn register_grpc_clock(&self) -> Result<()> {
         let mut entries = Vec::new();
         use harmos_operations::execution::operations::OperationFactory;
-        let factories = [
+        let factories = vec![
             OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
             OperationFactory::protobuf::<harmos_operations::clock::Get>(),
         ];
+        #[cfg(feature = "grpc")]
+        let factories = {
+            let mut factories = factories;
+            factories.push(OperationFactory::protobuf::<crate::operations::values::Get>());
+            factories
+        };
+        let mut both_faces = Vec::new();
         for factory in factories {
             let factory = factory.map_err(|source| Error::OperationFailed {
-                operation: "harmos.time".into(),
+                operation: "Time".into(),
                 source: Arc::new(source),
             })?;
+            if let Some(context) = factory
+                .contract()
+                .map_err(|source| Error::OperationFailed {
+                    operation: "Time".into(),
+                    source: Arc::new(source),
+                })?
+                .context(&self.schema_settings)
+                .map_err(|source| Error::OperationFailed {
+                    operation: "Time".into(),
+                    source: Arc::new(source),
+                })?
+            {
+                both_faces.push(factory.clone().with_contract(context));
+            }
+            both_faces.push(factory);
+        }
+        for factory in both_faces {
             let contract = factory.contract().map_err(|source| Error::OperationFailed {
                 operation: factory.definition.id.to_string(),
                 source: Arc::new(source),
@@ -91,10 +120,12 @@ impl Manager {
                 #[cfg(feature = "plugin-guest")]
                 None,
             )?;
-            Arc::get_mut(&mut entry).expect("unpublished clock entry").contract = Some(contract);
+            Arc::get_mut(&mut entry).expect("unpublished clock entry").contract = Some(contract.clone());
             #[cfg(feature = "grpc")]
             {
-                Arc::get_mut(&mut entry).expect("unpublished clock entry").grpc = Some(crate::grpc::native::serve);
+                if contract.grpc().is_some() {
+                    Arc::get_mut(&mut entry).expect("unpublished clock entry").grpc = Some(crate::grpc::native::serve);
+                }
             }
             entries.push(entry);
         }
@@ -109,7 +140,7 @@ impl Manager {
                 id: Identifier::new(&contract.id).map_err(|error| PlacementError::Invalid(error.to_string()))?,
                 description: contract.description.clone(),
                 visibility: match contract.visibility() {
-                    v1::Visibility::Private => Visibility::Private,
+                    v1::Visibility::Protected => Visibility::Protected,
                     v1::Visibility::Public => Visibility::Public,
                     _ => return Err(PlacementError::Invalid(format!("Invalid Visibility for {}", contract.id))),
                 },
@@ -118,7 +149,7 @@ impl Manager {
                 fingerprint: harmos_domain::Fingerprint(contract.fingerprint.clone().try_into().unwrap()),
             };
             let binding = Arc::new(Binding::new(activation, contract.clone()));
-            let entry = self
+            let mut entry = self
                 .binding_erased(
                     &activation.description.id,
                     lane,
@@ -129,6 +160,20 @@ impl Manager {
                     None,
                 )
                 .map_err(|error| PlacementError::Invalid(error.to_string()))?;
+            use prost::Message;
+            let types = catalog.types.as_ref().expect("admitted catalog types");
+            let protobuf = harmos_operations::operations::Protobuf {
+                descriptors: harmos_protocol::schema::operation_types(types, &[&contract.request, &contract.response])
+                    .map_err(|error| PlacementError::Invalid(error.to_string()))?
+                    .encode_to_vec(),
+                request: contract.request.clone(),
+                response: contract.response.clone(),
+                input: None,
+                output: None,
+            };
+            let metadata = crate::operations::Contract::from_protobuf(entry.definition.clone(), protobuf, None, &self.schema_settings)
+                .map_err(|error| PlacementError::Invalid(error.to_string()))?;
+            Arc::get_mut(&mut entry).expect("unpublished plugin entry").contract = Some(metadata);
             entries.push(entry);
         }
         self.reserve(&entries).map_err(|error| PlacementError::Invalid(error.to_string()))?;
@@ -140,9 +185,33 @@ impl Manager {
 }
 
 impl crate::operations::Context<'_> {
+    pub(crate) async fn invoke_client(&self, request: v1::InvocationsInvokeRequest) -> Result<Vec<u8>> {
+        let entry = self.operations.capture_entry(&request.operation)?;
+        if entry.definition.visibility != Visibility::Public || request.operation.starts_with("harmos.context.v1.") {
+            return Err(Error::OperationUnauthorized {
+                caller: "client".into(),
+                owner: entry.owner.to_string(),
+                operation: request.operation,
+            });
+        }
+        if fingerprint(&entry)? != request.fingerprint {
+            return Err(Error::InvalidInput {
+                field: "Invoke fingerprint",
+                reason: "Invoke requires the admitted operation fingerprint",
+            });
+        }
+        self.submit_encoded(&request.operation, request.payload)?.await
+    }
+
     pub(crate) fn submit_grpc_child(
-        &self, owner: &str, requires: &[v1::Requirement], child: v1::ChildRequest,
-    ) -> Result<crate::operations::EncodedInvocation> {
+        &self, owner: &str, requires: &[v1::Requirement], declarations: &[v1::SettingDeclaration], child: v1::ChildRequest,
+    ) -> Result<ChildInvocation> {
+        if child.background && child.operation != "harmos.context.v1.Time/Sleep" {
+            return Err(Error::InvalidInput {
+                field: "child policy timer",
+                reason: "Invoke permits background waits only for context Time.Sleep",
+            });
+        }
         let entry = self.operations.capture_entry(&child.operation)?;
         entry.available()?;
         let denied = || Error::OperationUnauthorized {
@@ -151,7 +220,15 @@ impl crate::operations::Context<'_> {
             operation: child.operation.clone(),
         };
         let plugin = entry.binding.downcast_ref::<Binding>();
-        if plugin.is_some_and(|binding| binding.owner != owner) && entry.definition.visibility != Visibility::Public {
+        if entry.owner.as_str() != owner && entry.definition.visibility != Visibility::Public {
+            return Err(denied());
+        }
+        if entry
+            .contract
+            .as_ref()
+            .and_then(|contract| contract.grpc())
+            .is_some_and(|grpc| grpc.package == "harmos.v1" || grpc.package.starts_with("harmos.v1."))
+        {
             return Err(denied());
         }
         let required = requires.iter().find(|required| required.id == child.operation).ok_or_else(denied)?;
@@ -159,6 +236,14 @@ impl crate::operations::Context<'_> {
             return Err(Error::InvalidInput {
                 field: "child fingerprint",
                 reason: "callee differs from the declared requirement",
+            });
+        }
+        let output = entry.contract.as_ref().is_some_and(|contract| contract.output().is_some());
+        let input = entry.contract.as_ref().is_some_and(|contract| contract.input().is_some());
+        if input || output != child.watch || (child.watch && child.max_response_bytes == 0) {
+            return Err(Error::InvalidInput {
+                field: "child operation",
+                reason: "Watch requires a declared server stream and a consumer item limit",
             });
         }
         let prepared = if let Some(binding) = plugin {
@@ -173,9 +258,21 @@ impl crate::operations::Context<'_> {
                     field: "child operation",
                     reason: "host operation has no protobuf codec",
                 })?;
+            let resources = self.operations.resources_for(&entry);
+            #[cfg(feature = "grpc")]
+            let resources = {
+                let mut resources = resources;
+                resources.replace(Arc::new(crate::operations::values::Caller {
+                    plugin: owner.into(),
+                    declarations: declarations.to_vec(),
+                }));
+                resources
+            };
+            #[cfg(not(feature = "grpc"))]
+            let _ = declarations;
             factory
                 .prepare_grpc(
-                    self.operations.resources_for(&entry),
+                    resources,
                     &child.payload,
                     harmos_operations::execution::operations::WireStreamLimits {
                         input: crate::operations::StreamSettings {
@@ -184,7 +281,15 @@ impl crate::operations::Context<'_> {
                         },
                         output: crate::operations::StreamSettings {
                             items: std::num::NonZeroUsize::MIN,
-                            bytes: std::num::NonZeroUsize::MIN,
+                            bytes: std::num::NonZeroUsize::new(
+                                usize::try_from(child.max_response_bytes)
+                                    .map_err(|_| Error::InvalidInput {
+                                        field: "Watch item bytes",
+                                        reason: "limit exceeds the address space",
+                                    })?
+                                    .max(1),
+                            )
+                            .unwrap(),
                         },
                     },
                 )
@@ -193,10 +298,10 @@ impl crate::operations::Context<'_> {
                     source: Arc::new(source),
                 })?
         };
-        if let Some(override_policy) = child.policy {
-            return self.operations.dispatch_grpc_prepared(entry, prepared, self, Some(policy(Some(&override_policy))?));
-        }
-        self.operations.dispatch_grpc_prepared(entry, prepared, self, None)
+        let streams = prepared.streams.clone();
+        let override_policy = child.policy.as_ref().map(|value| policy(Some(value))).transpose()?;
+        let invocation = self.operations.dispatch_grpc_prepared(entry, prepared, self, override_policy)?;
+        Ok(ChildInvocation { invocation, streams })
     }
 }
 
@@ -238,24 +343,14 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
         field: "host contract",
         reason: "protobuf contract required",
     })?;
-    if contract.input().is_some() || contract.output().is_some() {
+    if contract.input().is_some() {
         return Err(Error::InvalidInput {
             field: "child operation",
-            reason: "child calls are unary",
+            reason: "child calls do not accept input streams",
         });
     }
-    if let Some(protobuf) = contract.protobuf() {
-        use prost::Message;
-        let types = prost_types::FileDescriptorSet::decode(protobuf.descriptors.as_slice()).map_err(|source| Error::OperationFailed {
-            operation: entry.id().into(),
-            source: Arc::new(source),
-        })?;
-        return harmos_protocol::schema::fingerprint(entry.id(), &types, &protobuf.request, &protobuf.response).map_err(|source| {
-            Error::OperationFailed {
-                operation: entry.id().into(),
-                source: Arc::new(source),
-            }
-        });
+    if contract.protobuf().is_some() {
+        return Ok(contract.fingerprint().0.to_vec());
     }
     let binding = contract.grpc().ok_or(Error::InvalidInput {
         field: "host contract",

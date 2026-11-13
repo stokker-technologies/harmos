@@ -44,9 +44,9 @@ pub(crate) fn contract(
     operation: &OperationDefinition, protobuf: &Protobuf, binding: Option<&Grpc>, settings: &SchemaSettings,
 ) -> Result<Option<Contract>, ContractError> {
     let id = operation.id.as_str();
-    let package = if id.starts_with("harmos.v1.storage.") {
+    let package = if id.starts_with("harmos.v1.Storage/") {
         "harmos.v1"
-    } else if id.starts_with("harmos.context.v1.storage.") {
+    } else if id.starts_with("harmos.context.v1.Storage/") {
         "harmos.context.v1"
     } else {
         return Ok(None);
@@ -84,14 +84,7 @@ pub(crate) fn contract(
 /* === Private Functions === */
 
 fn operation_id(package: &str, method: &str) -> String {
-    let mut id = format!("{package}.storage.");
-    for (index, character) in method.chars().enumerate() {
-        if index > 0 && character.is_ascii_uppercase() {
-            id.push('_');
-        }
-        id.push(character.to_ascii_lowercase());
-    }
-    id
+    format!("{package}.Storage/{method}")
 }
 
 /* === Tests === */

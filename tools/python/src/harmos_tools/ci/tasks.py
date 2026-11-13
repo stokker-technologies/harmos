@@ -70,6 +70,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
     commands.add_parser("prepare")
     generate = commands.add_parser("generate")
     generate.add_argument("--profile", choices=("dev", "release"), default="dev")
+    generate.add_argument("--dependencies", action="store_true")
+    generate.add_argument("--descriptors", type=Path, action="append", default=[])
+    generate.add_argument("--output", type=Path)
+    generate.add_argument("--namespace", default="harmos")
     generate.add_argument("--sdk", choices=("python", "rust", "csharp", "cpp"))
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)
@@ -88,6 +92,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             command.add_argument("--repository", action="store_true")
             command.add_argument("--generated", action="store_true")
     build = commands.add_parser("build")
+    build.add_argument("--audience", choices=("plugin", "client", "host"))
     build.add_argument("--language", choices=("rust", "csharp", "cpp"))
     build.add_argument("--profile", choices=("dev", "release"), default="dev")
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
@@ -96,6 +101,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--target")
     build.add_argument("--messages", type=Path)
     build.add_argument("--features")
+    build.add_argument("--no-default-features", action="store_true")
     build.add_argument("--example")
     build.add_argument("--lib", action="store_true")
     build.add_argument("--check", action="store_true")
@@ -239,7 +245,13 @@ def dispatch(arguments: list[str] | None = None) -> int:
             parser.error("C# builds its SDK and tests its one integration story")
         if options.command == "build" and options.check:
             parser.error("C# formatting uses check --language csharp")
-        return csharp.run(root, options.command, getattr(options, "profile", "dev"), check=getattr(options, "check", False))
+        return csharp.run(
+            root,
+            options.command,
+            getattr(options, "profile", "dev"),
+            check=getattr(options, "check", False),
+            audience=getattr(options, "audience", None),
+        )
 
     if options.command in ("build", "test", "check") and options.language == "cpp":
         if options.command == "build":
@@ -253,7 +265,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 or options.extended
             ):
                 parser.error("C++ builds select only --language cpp and optional --profile")
-            return _module("build.cpp", "--profile", options.profile)
+            return _module("build.cpp", "--profile", options.profile, *(["--audience", options.audience] if options.audience else []))
         if options.command == "check":
             if options.package or options.repository or options.generated or options.extended:
                 parser.error("C++ checks select only --language cpp")
@@ -339,15 +351,18 @@ def dispatch(arguments: list[str] | None = None) -> int:
                     "--wheel",
                     "--no-isolation",
                     "--outdir",
-                    str(root / "target/build" / options.profile / "any/python"),
+                    str(root / "target/build" / options.profile / "any/python" / (options.audience or "plugin")),
                     str(root / "sdk/python"),
-                ]
+                ],
+                environment=dict(os.environ, HARMOS_AUDIENCE=options.audience or "plugin"),
             )
         command = ["--locked", "--profile", options.profile, "-p", options.package]
         if options.manifest_path:
             command += ["--manifest-path", str(options.manifest_path)]
         if options.features:
             command += ["--features", options.features]
+        if options.no_default_features:
+            command += ["--no-default-features"]
         if options.example:
             command += ["--example", options.example]
         if options.lib:
@@ -398,12 +413,21 @@ def dispatch(arguments: list[str] | None = None) -> int:
         environment.pop("VIRTUAL_ENV", None)
         return _execute(["uv", "sync", "--locked", "--all-groups", "--project", str(root / "sdk/python")], environment=environment)
     if options.command == "generate":
+        from ..build.resource_roots import generate as resource_roots
+
+        if options.descriptors:
+            from ..build.resource_roots import compose
+
+            if options.output is None:
+                parser.error("composed client roots require --output")
+            compose(root, options.descriptors, options.output, options.namespace)
+            return 0
         if options.sdk == "python":
             return _module("build.python_protocol")
         if options.sdk == "csharp":
             from .. import csharp
 
-            return csharp.run(root, "generate", options.profile)
+            return csharp.run(root, "generate", options.profile, dependencies=options.dependencies)
         if options.sdk == "cpp":
             return _module("build.cpp", "--generate", "--profile", options.profile)
         if options.sdk == "rust":
@@ -414,7 +438,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 / "examples"
                 / ("generate.exe" if os.name == "nt" else "generate")
             )
-            return _execute([str(binary)])
+            result = _execute([str(binary)])
+            if result == 0:
+                resource_roots(root)
+            return result
         from ..build.__main__ import generate
 
         generate(options.profile)

@@ -162,7 +162,7 @@ pub struct StreamDeclaration {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Section {
     /// Fully qualified message name of the payload, for example
-    /// "dokime.v1.Suites". At most one section per name.
+    /// "application.v1.Contributions". At most one section per name.
     #[prost(string, tag = "1")]
     pub r#type: ::prost::alloc::string::String,
     #[prost(bytes = "vec", tag = "2")]
@@ -226,6 +226,21 @@ pub struct ChildRequest {
     /// Optional override of the callee's policy for this call.
     #[prost(message, optional, tag = "5")]
     pub policy: ::core::option::Option<OperationPolicy>,
+    /// Explicit server-streaming child; each item requires one ChildDemand.
+    #[prost(bool, tag = "6")]
+    pub watch: bool,
+    /// Consumer-owned maximum encoded item size; required for Watch.
+    #[prost(uint64, tag = "7")]
+    pub max_response_bytes: u64,
+    /// Policy guard timers do not make the executing handler idle.
+    #[prost(bool, tag = "8")]
+    pub background: bool,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct ChildDemand {
+    #[prost(uint64, tag = "1")]
+    pub call: u64,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -238,7 +253,7 @@ pub struct ChildCancel {
 pub struct ChildResponse {
     #[prost(uint64, tag = "1")]
     pub call: u64,
-    #[prost(oneof = "child_response::Result", tags = "2, 3")]
+    #[prost(oneof = "child_response::Result", tags = "2, 3, 4")]
     pub result: ::core::option::Option<child_response::Result>,
 }
 /// Nested message and enum types in `ChildResponse`.
@@ -250,6 +265,8 @@ pub mod child_response {
         Payload(::prost::alloc::vec::Vec<u8>),
         #[prost(message, tag = "3")]
         Failure(super::Failure),
+        #[prost(bytes, tag = "4")]
+        Item(::prost::alloc::vec::Vec<u8>),
     }
 }
 #[allow(clippy::all)]
@@ -424,15 +441,32 @@ pub struct FollowingRow {
     #[prost(message, optional, tag = "2")]
     pub published_delta: ::core::option::Option<::prost_types::Duration>,
 }
+/// A Catalog Section Declares Values, Never Their Contents or Their Storage.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SettingsDeclarations {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<SettingDeclaration>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SettingDeclaration {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub r#type: ::prost::alloc::string::String,
+}
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum Visibility {
     Unspecified = 0,
-    /// The declaring plugin and the host.
+    /// Process-local only; invalid in any wire catalog.
     Private = 1,
     /// Everyone connected: other plugins and the host's clients.
     Public = 2,
+    /// The declaring plugin and its host, through the carrier only.
+    Protected = 3,
 }
 impl Visibility {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -444,6 +478,7 @@ impl Visibility {
             Self::Unspecified => "VISIBILITY_UNSPECIFIED",
             Self::Private => "VISIBILITY_PRIVATE",
             Self::Public => "VISIBILITY_PUBLIC",
+            Self::Protected => "VISIBILITY_PROTECTED",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -452,6 +487,7 @@ impl Visibility {
             "VISIBILITY_UNSPECIFIED" => Some(Self::Unspecified),
             "VISIBILITY_PRIVATE" => Some(Self::Private),
             "VISIBILITY_PUBLIC" => Some(Self::Public),
+            "VISIBILITY_PROTECTED" => Some(Self::Protected),
             _ => None,
         }
     }
@@ -554,7 +590,7 @@ pub struct CatalogEntriesListResponse {
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
 /// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
 pub mod catalog_entries_client {
     #![allow(
         unused_variables,
@@ -672,7 +708,7 @@ pub mod catalog_entries_client {
     }
 }
 /// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
 pub mod catalog_entries_server {
     #![allow(
         unused_variables,
@@ -1079,8 +1115,24 @@ pub struct InvocationsWatchResponse {
     #[prost(message, optional, tag = "1")]
     pub invocation: ::core::option::Option<InstanceState>,
 }
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsInvokeRequest {
+    #[prost(string, tag = "1")]
+    pub operation: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsInvokeResponse {
+    #[prost(bytes = "vec", tag = "1")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
 /// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
 pub mod invocations_client {
     #![allow(
         unused_variables,
@@ -1171,6 +1223,30 @@ pub mod invocations_client {
             self.inner = self.inner.max_encoding_message_size(limit);
             self
         }
+        pub async fn invoke(
+            &mut self,
+            request: impl tonic::IntoRequest<super::InvocationsInvokeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::InvocationsInvokeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/harmos.v1.Invocations/Invoke",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("harmos.v1.Invocations", "Invoke"));
+            self.inner.unary(req, path, codec).await
+        }
         pub async fn get(
             &mut self,
             request: impl tonic::IntoRequest<super::InvocationsGetRequest>,
@@ -1245,7 +1321,7 @@ pub mod invocations_client {
     }
 }
 /// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
 pub mod invocations_server {
     #![allow(
         unused_variables,
@@ -1258,6 +1334,13 @@ pub mod invocations_server {
     /// Generated trait containing gRPC methods that should be implemented for use with InvocationsServer.
     #[async_trait]
     pub trait Invocations: std::marker::Send + std::marker::Sync + 'static {
+        async fn invoke(
+            &self,
+            request: tonic::Request<super::InvocationsInvokeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::InvocationsInvokeResponse>,
+            tonic::Status,
+        >;
         async fn get(
             &self,
             request: tonic::Request<super::InvocationsGetRequest>,
@@ -1362,6 +1445,51 @@ pub mod invocations_server {
         }
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             match req.uri().path() {
+                "/harmos.v1.Invocations/Invoke" => {
+                    #[allow(non_camel_case_types)]
+                    struct InvokeSvc<T: Invocations>(pub Arc<T>);
+                    impl<
+                        T: Invocations,
+                    > tonic::server::UnaryService<super::InvocationsInvokeRequest>
+                    for InvokeSvc<T> {
+                        type Response = super::InvocationsInvokeResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::InvocationsInvokeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Invocations>::invoke(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = InvokeSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
                 "/harmos.v1.Invocations/Get" => {
                     #[allow(non_camel_case_types)]
                     struct GetSvc<T: Invocations>(pub Arc<T>);
@@ -2187,7 +2315,7 @@ pub struct StorageGetObjectResponse {
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
 /// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
 pub mod storage_client {
     #![allow(
         unused_variables,
@@ -3059,7 +3187,7 @@ pub mod storage_client {
     }
 }
 /// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
 pub mod storage_server {
     #![allow(
         unused_variables,
@@ -4966,7 +5094,7 @@ pub struct TimeGetResponse {
     pub now: ::core::option::Option<::prost_types::Timestamp>,
 }
 /// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
 pub mod time_client {
     #![allow(
         unused_variables,
@@ -5102,7 +5230,7 @@ pub mod time_client {
     }
 }
 /// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
 pub mod time_server {
     #![allow(
         unused_variables,

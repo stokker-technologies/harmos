@@ -39,16 +39,21 @@ class Operation[Q: Message, R: Message]:
     id: str
     request: type[Q]
     response: type[R]
-    visibility: wire.Visibility = wire.VISIBILITY_PRIVATE
+    visibility: wire.Visibility
     policy: wire.OperationPolicy | None = None
     description: str = ""
     replay_safe: bool = False
+    watch: bool = False
 
     @property
     def fingerprint(self) -> bytes:
         request = message_types(self.request).SerializeToString(deterministic=True)
         response = message_types(self.response).SerializeToString(deterministic=True)
-        return sha256(self.id.encode() + b"\0" + request + response).digest()
+        base = sha256(self.id.encode() + b"\0" + request + response).digest()
+        if not self.watch:
+            return base
+        item = sha256(self.id.encode() + b"\0" + response + response).digest()
+        return sha256(b"harmos.protobuf.stream.v1\0" + base + b"\0\1" + item).digest()
 
     def contract(self) -> wire.OperationContract:
         return wire.OperationContract(
@@ -89,7 +94,7 @@ def operation[Q: Message, R: Message, F: Callable](
     *,
     request: type[Q],
     response: type[R],
-    visibility: wire.Visibility = wire.VISIBILITY_PRIVATE,
+    visibility: wire.Visibility,
     policy: wire.OperationPolicy | None = None,
     description: str = "",
     replay_safe: bool = False,

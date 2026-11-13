@@ -31,12 +31,14 @@ from ..process import spawn_flags
 # === Constants === #
 
 ROOT = Path(__file__).resolve().parents[5]
-PROTOCOLS = (
-    "harmos/v1/types.proto", "harmos/v1/catalog_entries.proto", "harmos/v1/invocations.proto", "harmos/v1/time.proto",
-    "harmos/plugin/v1/instance.proto", "harmos/context/v1/catalog_entries.proto", "harmos/context/v1/invocations.proto",
-    "harmos/context/v1/time.proto", "harmos/context/v1/samples.proto", "harmos/v1/storage.proto", "harmos/v1/storage_types.proto", "harmos/context/v1/storage.proto",
-    "harmos/conformance/v1/fixture.proto",
-)
+PROTOCOLS = tuple(
+    sorted(
+        path.relative_to(ROOT / "proto").as_posix()
+        for face in ("v1", "context/v1", "plugin/v1")
+        for path in (ROOT / "proto/harmos" / face).rglob("*.proto")
+        if path.name != "guest.proto"
+    )
+) + ("harmos/conformance/v1/fixture.proto",)
 GENERATED = tuple(name.removesuffix(".proto") + suffix for name in PROTOCOLS for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))
 
 # === Types === #
@@ -63,6 +65,18 @@ def generate(output: Path) -> None:
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
 
 
+def generate_client_fixture(output: Path) -> None:
+    proto = ROOT / "sdk/fixtures/client/proto"
+    inputs = sorted(path.relative_to(proto).as_posix() for path in proto.rglob("*.proto"))
+    output.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [sys.executable, "-m", "grpc_tools.protoc", f"-I{proto}", f"--python_out={output}", f"--grpc_python_out={output}", *inputs],
+        check=True,
+        cwd=ROOT,
+        creationflags=spawn_flags(),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
@@ -70,6 +84,7 @@ def main() -> None:
     committed = ROOT / "sdk/python/src"
     if not options.check:
         generate(committed)
+        generate_client_fixture(ROOT / "sdk/python/tests/fixtures/client")
         return
 
     with tempfile.TemporaryDirectory() as scratch:

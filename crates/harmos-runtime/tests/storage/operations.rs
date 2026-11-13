@@ -72,11 +72,11 @@ fn catalog_serves_operations() {
     let served: Vec<_> =
         contracts.iter().filter(|contract| contract.grpc().is_some()).map(|contract| contract.operation().id.to_string()).collect();
     for required in [
-        "harmos.v1.storage.list_rows",
+        "harmos.v1.Storage/ListRows",
         "storage.read_file",
-        "storage.write_records",
-        "storage.write_streams",
-        "storage.write_objects",
+        "harmos.v1.Storage/AppendRecords",
+        "harmos.v1.Storage/AppendSamples",
+        "harmos.v1.Storage/AppendObjectRevisions",
         "storage.write_file",
     ] {
         assert!(served.iter().any(|id| id == required), "missing {required}");

@@ -236,7 +236,7 @@ async fn private_grpc_refused() {
         })
     }
 
-    assert!(matches!(PRIVATE_OPERATION.wire().contract(), Err(harmos_runtime::operations::ContractError::PrivateGrpc { .. })));
+    assert!(matches!(PRIVATE_OPERATION.wire().contract(), Err(harmos_runtime::operations::ContractError::RestrictedGrpc { .. })));
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
     let registration = Registration::new(harmos_runtime::operations::Lane::default())
         .operation(private_operation().expect("representable operation"), PRIVATE_OPERATION.entry().id)
@@ -245,7 +245,7 @@ async fn private_grpc_refused() {
     let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("unexpected error: {error:?}") };
     assert!(matches!(
         source.downcast_ref::<harmos_runtime::operations::ContractError>(),
-        Some(harmos_runtime::operations::ContractError::PrivateGrpc { .. })
+        Some(harmos_runtime::operations::ContractError::RestrictedGrpc { .. })
     ));
     assert!(runtime.operations.definition(PRIVATE_OPERATION.entry().id).is_err());
     crate::support::app::shutdown(&runtime).await.unwrap();

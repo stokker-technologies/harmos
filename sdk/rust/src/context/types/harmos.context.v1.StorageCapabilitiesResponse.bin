@@ -1,0 +1,31 @@
+
+g
+google/protobuf/timestamp.protogoogle.protobuf"+
+	Timestamp
+seconds (
+nanos (bproto3
+‰
+harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.proto"«
+StorageCapabilitiesResponse<
+capabilities (2&.harmos.storage.v1.StorageCapabilities4
+	mutations (2!.harmos.storage.v1.MutationWindow
+file_batch_bytes (bproto3
+Ð
+harmos/v1/storage_types.protoharmos.storage.v1google/protobuf/timestamp.proto"~
+MutationWindow0
+history (2.harmos.storage.v1.StoreHistory
+
+id (	.
+
+expires_at (2.google.protobuf.Timestamp"Ä
+StorageCapabilities
+native_arrow (
+native_index (
+durable_projections (
+conditional_objects (
+file_sessions (
+file_deletion (
+mutation_receipts (",
+StoreHistory
+store (	
+epoch (	bproto3

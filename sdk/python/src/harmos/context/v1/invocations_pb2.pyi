@@ -1,6 +1,4 @@
 from harmos.v1 import types_pb2 as _types_pb2
-from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from google.protobuf import duration_pb2 as _duration_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from collections.abc import Mapping as _Mapping

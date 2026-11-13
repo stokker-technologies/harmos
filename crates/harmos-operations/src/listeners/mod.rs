@@ -296,7 +296,7 @@ mod tests {
         assert!(matches!(listener.definition(), Err(Error::Source { .. })));
 
         let mut callback = HEARD_OPERATION.wire();
-        callback.operation.visibility = Visibility::Private;
+        callback.operation.visibility = Visibility::Protected;
         let listener = Entry::stream::<()>("fixture.rows", "fixture.samples", callback);
         assert!(matches!(listener.definition(), Err(Error::Callback { .. })));
 

@@ -16,7 +16,7 @@ The task numbers below supersede the earlier inventory: durable lag is 1.5
 The locked source inventory covers library proto/protocol/operations/storage,
 runtime managers and projection, all four SDKs and their build generators,
 conformance, examples, tests and maintained guides. Before later implementation, record
-exact owned paths within these domains. Six open questions remain at their
+exact owned paths within these domains. Three open questions remain at their
 owning tasks; per-plugin settings/secrets ownership is closed. Preserve data
 encodings and required behavior; no compatibility aliases or second authorities.
 Order is dependency order: establish
@@ -26,16 +26,16 @@ compile-time consumers atomically.
 
 ## 0. Visibility Guards and SDK Dispatch
 
-- [ ] 0.1 Add the deterministic story guarding **Three-Level Visibility** and **Host-Mediated Public Calls** first: plugin to host to another plugin's Public operation succeeds; Private runs only in its declaring process, is absent from the catalog and every wire, and is unreachable from the host, another plugin or a client. Existing child_calls.rs and private_refusal.rs prove the old two-level routing/refusal only, not the new Private contract. Cover both call directions, returned failures, inherited scope, requirements/fingerprints and child cancellation.
-- [ ] 0.2 Add the third visibility enum value (Protected), explicit SDK selection with no default, and admission rules rejecting unspecified values, Private catalog entries, and Private/Protected client gRPC bindings. Preserve Public routing through the host.
-- [ ] 0.3 Implement SDK-local Private dispatch with ordinary policy, retry, deadline and cancellation semantics in Rust (sdk/rust/src/context.rs): today child calls use the host carrier, not a local handler registry.
-- [ ] 0.4 Implement the same SDK-local Private dispatch in Python (sdk/python/src/harmos/context.py): today operation() emits a ChildRequest through the host.
-- [ ] 0.5 Implement the same SDK-local Private dispatch in C# (sdk/csharp/Harmos/Context.cs): today CallAsync writes a ChildRequest through the host.
-- [ ] 0.6 Implement the same SDK-local Private dispatch in C++ (sdk/cpp/include/harmos/harmos.hpp): today Context::call sends a ChildRequest through the host. No four-language SDK currently supplies this local operation path.
-- [ ] 0.7 Add conformance cases in each SDK: Private absent from catalogs and callable only locally; Protected invocable by host and declaring plugin but refused to another plugin and a client; Public invocable by another plugin with a requirement and by a client through the host. Verify no Private bytes appear even on the host/plugin carrier.
+- [x] 0.1 Add the deterministic story guarding **Three-Level Visibility** and **Host-Mediated Public Calls** first: plugin to host to another plugin's Public operation succeeds; Private runs only in its declaring process, is absent from the catalog and every wire, and is unreachable from the host, another plugin or a client. Cover both call directions, returned failures, inherited scope, requirements/fingerprints and child cancellation.
+- [x] 0.2 Add the third visibility enum value (Protected), explicit SDK selection with no default, and admission rules rejecting unspecified values, Private catalog entries, and Private/Protected client gRPC bindings. Preserve Public routing through the host.
+- [x] 0.3 Implement SDK-local Private dispatch with ordinary policy, retry, deadline and cancellation semantics in Rust (sdk/rust/src/context.rs): Proof: conformance cases 24 and 26–28 and policy_clock_spans_keep_large_durations_and_fractional_seconds; the Rust guest component story also checks catalog omission and zero private import calls.
+- [x] 0.4 Implement the same SDK-local Private dispatch in Python (sdk/python/src/harmos/invocation.py): Proof: conformance cases 24 and 26–28 exercise local handlers and host-clock policy.
+- [x] 0.5 Implement the same SDK-local Private dispatch in C# (sdk/csharp/Harmos/Context.cs): Proof: conformance cases 24 and 26–28 exercise local handlers, resources and reason-bearing cancellation.
+- [x] 0.6 Implement the same SDK-local Private dispatch in C++ (sdk/cpp/include/harmos/harmos.hpp): Proof: conformance cases 24 and 26–28 exercise local handlers, host-clock retries, deadline and child cleanup.
+- [x] 0.7 Add conformance cases in each SDK: Private absent from catalogs and callable only locally; Protected invocable by host and declaring plugin but refused to another plugin and a client; Public invocable by another plugin with a requirement and by a client through the host. Verify no Private bytes appear even on the host/plugin carrier.
 - [ ] 0.8 Apply design.md's decided built-in mapping, including reserved controls and native hooks; this records the resolution of operation-visibility task 1.7 without editing that earlier change. Keep product host-only requests of a plugin declared Protected and prove their refusal to other plugins/clients.
 
-- [ ] 0.9 Guard **Current Two-Level Admission**'s identified host-built-in gap with a deterministic migrated Protected built-in story: a plugin with a matching declared requirement is still refused, as is a client, while the declaring host retains access. Fix submit_grpc_child's plugin-binding-only visibility gate; do not lock its bypass in as compatibility.
+- [x] 0.9 Guard the identified host-built-in admission gap with a deterministic migrated Protected built-in story: a plugin with a matching declared requirement is still refused, as is a client, while the declaring host retains access. Fix submit_grpc_child's plugin-binding-only visibility gate; do not lock its bypass in as compatibility.
 
 ## 1. Face Packages, Primitives, Final Descriptors and Benchmark Cases
 
@@ -53,8 +53,8 @@ compile-time consumers atomically.
 - [ ] 2.2 Implement Access and access.Listener under GrpcManager: CreatePairing, CreateCertificate regeneration/key rotation and Listener.Get/Set with complete writable values/revisions. Move generic listener/pairing/certificate orchestration here; verify focused lifecycle, invalid rotation and conflict behavior.
 - [ ] 2.3 Implement Status, status.Logs and status.TraceEvents under ServiceManager: host identity, health, availability, bounded log/trace reads/watches and diagnostics archive references. Read archive bytes through Storage.GetFileBytes, with no second transfer implementation.
 - [ ] 2.4 Add narrow product-contribution registration under ServiceManager for product version/identity and component health/availability; define registration lifetime, aggregation and provider failure handling, and prove focused registration/removal/failure behavior without a product-specific dependency.
-- [ ] 2.5 Implement generic context-only HostValues.Get and its host resolver registration under OperationManager, plus the plugin catalog's settings-declaration section. The product supplies settings/secrets stores, schemas, UI, archives, credential integration and policy. Verify scoped value delivery/failure behavior; add no library value store or client settings service.
-- [ ] 2.6 Retain OperationManager for face-local CatalogEntries/Invocations and client Invocations.Invoke, StreamManager for context Samples/publication, existing host-clock/service lifetime for face-local Time, and StateManager/RecordManager for their existing responsibilities; migrate names and declarations without duplicate managers or schedulers.
+- [x] 2.5 Implement generic context-only HostValues.Get and its host resolver registration under OperationManager, plus the plugin catalog's settings-declaration section. The product supplies settings/secrets stores, schemas, UI, archives, credential integration and policy. Verify scoped value delivery/failure behavior; add no library value store or client settings service.
+- [x] 2.6 Retain OperationManager for face-local CatalogEntries/Invocations and client Invocations.Invoke, StreamManager for context Samples/publication, existing host-clock/service lifetime for face-local Time, and StateManager/RecordManager for their existing responsibilities; migrate names and declarations without duplicate managers or schedulers.
 
 ## 3. Storage Handlers, Native Providers and Transfers
 
@@ -72,13 +72,13 @@ compile-time consumers atomically.
 
 ## 4. Four-Language SDK Roots and Library Consumers
 
-- [ ] 4.1 Produce a common descriptor table with owner/face/version, parent/service/method, wrappers, cardinality and exposure; add face-selecting build generators for Rust, Python, C# and C++. Generate plugin SDKs with protocol serving and context calling only, clients with client API only, and hosts with all three; generate hierarchical roots only for their audience. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
-- [ ] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, admission, cross-plugin Public invocation, Protected refusal naming the action and local-only Private execution, client Public invocation, inherited scope, child cancellation, clock, failure and call-local policy behavior; deny client context/protocol calls and plugin client-only calls. Preserve explicit catalog visibility and one host registry.
+- [x] 4.1 Produce a common descriptor table with owner/face/version, parent/service/method, wrappers, cardinality and exposure; add face-selecting build generators for Rust, Python, C# and C++. Generate plugin SDKs with protocol serving and context calling only, clients with client API only, and hosts with all three; generate hierarchical roots only for their audience. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
+- [x] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, admission, cross-plugin Public invocation, Protected refusal naming the action and local-only Private execution, client Public invocation, inherited scope, child cancellation, clock, failure and call-local policy behavior; deny client context/protocol calls and plugin client-only calls. Preserve explicit catalog visibility and one host registry.
 - [x] 4.3 Settle the semantic plugin-parity promise across Rust, Python, C# and C++ and record it in design.md; four-language client-root naming is already locked.
 - [x] 4.4 Settle generic managed-client invocation coverage (Rust-only or more languages) and record it in design.md without reopening the naming hierarchy.
-- [ ] 4.5 Require explicit Private, Protected or Public visibility in all four SDKs with no default and reject omitted/unspecified visibility at admission, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
-- [ ] 4.6 Migrate tools/conformance/, fixtures, native/guest examples, generated clients and affected tests in the owning compiling slices; preserve interval/device publication and update README/topic/language-guide claims with each user-facing change.
-- [ ] 4.7 Verify generated service-stub sets in all four languages: plugin = Instance server plus context callers, client = client-face callers, host = all faces. Reject cross-audience root/stub leakage while retaining imported shared payloads. Keep this generation contract separate from the open semantic parity and managed-client language questions.
+- [x] 4.5 Require explicit Private, Protected or Public visibility in all four SDKs with no default and reject omitted/unspecified visibility at admission, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
+- [x] 4.6 Migrate tools/conformance/, fixtures, native/guest examples, generated clients and affected tests in the owning compiling slices; preserve interval/device publication and update README/topic/language-guide claims with each user-facing change.
+- [x] 4.7 Verify generated service-stub sets in all four languages: plugin = Instance server plus context callers, client = client-face callers, host = all faces. Reject cross-audience root/stub leakage while retaining imported shared payloads. Keep this generation contract separate from the open semantic parity and managed-client language questions.
 
 ## Architecture Guards
 
@@ -94,13 +94,30 @@ proof does not close them; no checkbox is completed by this documentation task.
 - [ ] A.6 Add **Position-Resolved Reads** controlled-backend stories for optional at, immediate latest-durable selection, resolved_at in every reply, issued-position paging and durable watch boundaries; keep lag evidence in Nightly benchmarks, not timing assertions (tasks 1.5, 3.2, 3.8–3.9).
 - [ ] A.7 Add **Stable Receipts After Lost Replies** client stories across the migrated mutation surface proving same normalized request returns its original receipt, changed payload conflicts, expiry refuses and admitted completion survives caller loss (task 3.4).
 - [x] A.8 Add **Callee-Owned Policy and Consumer Budgets** controlled-clock/backend stories for call-local overrides and configured backend I/O, retries and session lifetimes; migrate hardcoded operational policy in crates/harmos-storage/src/config.rs to its owning policy/configuration without weakening limits. Preserve consumer admission/concurrency/response sizing and replay-safety checks.
-- [ ] A.9 Add a deterministic production dependency-graph check for **Crate Dependency Direction**, rejecting upward runtime/product dependencies from lower library crates or SDKs while permitting declared derive/build/dev roles.
-- [ ] A.10 Add **Generic Library SDKs** independent-host conformance and generated-root cases in all four languages using only shared generic concepts; do not close unresolved semantic parity/client-coverage questions by assumption (tasks 4.1, 4.3–4.4).
+- [x] A.9 Add a deterministic production dependency-graph check for **Crate Dependency Direction**, rejecting upward runtime/product dependencies from lower library crates or SDKs while permitting declared derive/build/dev roles.
+- [x] A.10 Add **Generic Library SDKs** independent-host conformance and generated-root cases in all four languages using only shared generic concepts; do not close unresolved semantic parity/client-coverage questions by assumption (tasks 4.1, 4.3–4.4).
 - [ ] A.11 Audit **Deterministic Stories** repository-wide: replace timing/load/sampled-memory assertions with controlled-clock/event journeys, move measurements to benchmarks, and remove prose/constant/tautological assertions. Add any missing deterministic deadline/cancellation stories; never test authored wording.
 
 **Three-Level Visibility** and the combined **Host-Mediated Public Calls** guard
 are deliberately first in tasks 0.1–0.8, including all four SDK-local dispatches
 and the complete built-in mapping.
+
+
+### Owned Guards and Integration Boundary
+
+- [x] 0.8.1 Migrate native reserved lifecycle/control declarations to Protected and context/client built-ins to their decided faces; prove the built-in refusal and owner access. Storage's built-in mapping remains task 0.8 with its owning worktree.
+- [x] A.1.1 Guard non-storage face descriptors, separate wrappers, client listener admission and plugin client-face refusal; select audience stubs in all four SDKs. The complete descriptor census remains 1.3 after the other service owners merge.
+- [x] A.2.1 Guard explicit non-storage streams and managed replacement, queued product Cancel refusal/cause, separate safe-boundary Stop, peer cancellation and local child cleanup. Proof: audience_faces, generated_sdk_client_invokes_streams_and_settles_cancellation, client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_boundary, peer_journey and conformance 25–28.
+- [x] A.5.1 Prove face-local wrappers and four-language library/product root composition, including Plugins with plugins.Settings and Jobs with jobs.Progress. Whole-value Set/Append and position semantics remain with storage.
+- [x] A.8.1 Prove SDK-local call policy, replay-safe retries, host-clock deadlines and cooperative grace without raising budgets. Proof: common conformance 26–28 in all four languages.
+
+Owned source: `proto/harmos/{plugin,context}/v1`, non-storage client proto files,
+`crates/harmos-protocol`, non-storage `crates/harmos-operations`, runtime operations
+and gRPC instance execution outside management/access/status, `sdk`, conformance,
+examples and their build generators. The shared Identifier alphabet accepts the
+canonical service/method separator. Storage, Plugins, Access and Status inventory,
+benchmark and complete-service guards remain open for their declared owners;
+combined source closure and hosted validation are not claimed here.
 
 ## 5. Library Handoff and Source Closure
 
@@ -222,3 +239,12 @@ and the complete built-in mapping.
   and `storage::callee_policy::a_child_deadline_override_does_not_change_the_next_storage_call`
   pass with controlled time/provider events. Backend defaults and durability are
   preserved; retained-production/receipt capacities are now explicit consumer inputs.
+
+- Core generation/visibility join: merged `43843f60`; storage operation IDs now use
+  the descriptor-qualified service/method identity emitted by all SDK generators.
+  Explicitly declared context factories suppress duplicate automatic projections
+  in native registration. Rust/Python generation and descriptor drift proof pass;
+  `storage::unary_transfers::resume_fence_publish_and_range_across_faces` passes
+  after the join. The reserved storage validator remains its declaration owner.
+  Coupling changes native registration's projection deduplication and removes one
+  stale native SDK import; SDK wrapper/resource outputs are generator-owned.

@@ -11,6 +11,9 @@
 
 /* === Modules === */
 
+#[rustfmt::skip]
+pub mod resources;
+
 mod admission;
 mod codec;
 mod method;
@@ -26,7 +29,7 @@ use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc};
 
 // Third Party Imports
 use prost::Message;
-use prost_reflect::{DescriptorPool, MessageDescriptor, ReflectMessage};
+use prost_reflect::{DescriptorPool, MessageDescriptor};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tonic::{Request, Status, Streaming, transport::Channel};
 
@@ -54,6 +57,13 @@ pub struct ClientSettings {
 
 #[derive(Clone)]
 pub struct Client {
+    transport: ClientTransport,
+    resources: resources::Root,
+}
+
+/// Transport and Budgets Shared by Generated Library and Product Resource Roots.
+#[derive(Clone)]
+pub struct ClientTransport {
     retained: Arc<Semaphore>,
     channel: Channel,
     settings: ClientSettings,
@@ -107,18 +117,19 @@ impl Client {
         {
             return Err(Status::invalid_argument("client decoded, wire or queue bounds exceed transport capacity"));
         }
-        Ok(Self {
+        let transport = ClientTransport {
             retained: Arc::new(Semaphore::new(settings.retained_bytes.get())),
             channel,
             settings,
+        };
+        Ok(Self {
+            resources: resources::Root::new(transport.clone()),
+            transport,
         })
     }
 
-    /// Read One Consumer-Bounded Discovery Page Through The Shared Host Protocol.
-    pub async fn catalog(
-        &self, request: Request<harmos_protocol::v1::CatalogEntriesListRequest>,
-    ) -> Result<tonic::Response<harmos_protocol::v1::CatalogEntriesListResponse>, Status> {
-        self.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), request, host_page()).await
+    pub fn transport_handle(&self) -> ClientTransport {
+        self.transport.clone()
     }
 
     /// Call The Ordinary Unary Method With Generated Messages And Caller Metadata.
@@ -131,28 +142,7 @@ impl Client {
         if method.contract.grpc.as_ref().is_some_and(|grpc| grpc.managed) {
             return Err(Status::invalid_argument("call requires an ordinary unary method; use start for a cooperative final result"));
         }
-        self.unary(method.path.clone(), request, descriptors(method)?.0).await
-    }
-
-    async fn unary<Q, R>(
-        &self, path: tonic::codegen::http::uri::PathAndQuery, request: Request<Q>, response: MessageDescriptor,
-    ) -> Result<tonic::Response<R>, Status>
-    where
-        Q: Message + Default + Send + 'static,
-        R: Message + Default + Send + 'static,
-    {
-        let (metadata, extensions, value) = request.into_parts();
-        let budget = Arc::new(Semaphore::new(self.settings.input_bytes.get()));
-        let frame = frame(&budget, self.settings, None, &value).await?;
-        let mut client = self.transport();
-        client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
-        let response =
-            client.unary(Request::from_parts(metadata, extensions, frame), path, self.codec::<R, NoItems>(false, response, None)).await?;
-        let (metadata, value, extensions) = response.into_parts();
-        let Output::Response(value, _permit) = value else {
-            return Err(Status::data_loss("unexpected unary item"));
-        };
-        Ok(tonic::Response::from_parts(metadata, value, extensions))
+        self.transport.unary(method.path.clone(), request, descriptors(method)?.0).await
     }
 
     /// Start A Managed Unary, Upload, Download Or Bidirectional Invocation.
@@ -169,21 +159,25 @@ impl Client {
         }
         let (response, output) = descriptors(method)?;
         let (metadata, extensions, value) = request.into_parts();
-        let budget = Arc::new(Semaphore::new(self.settings.input_bytes.get()));
-        let opening = frame(&budget, self.settings, Some(1), &value).await?;
-        let (outgoing, incoming) = mpsc::channel(self.settings.input_items.get());
+        let budget = Arc::new(Semaphore::new(self.transport.settings.input_bytes.get()));
+        let opening = frame(&budget, self.transport.settings, Some(1), &value).await?;
+        let (outgoing, incoming) = mpsc::channel(self.transport.settings.input_items.get());
         outgoing.send(opening).await.map_err(|_| Status::cancelled("client input closed"))?;
         let stream =
             futures_util::stream::unfold(incoming, |mut receiver| async move { receiver.recv().await.map(|frame| (frame, receiver)) });
-        let mut client = self.transport();
+        let mut client = self.transport.transport();
         client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
         let response = client
-            .streaming(Request::from_parts(metadata, extensions, stream), method.path.clone(), self.codec::<R, O>(true, response, output))
+            .streaming(
+                Request::from_parts(metadata, extensions, stream),
+                method.path.clone(),
+                self.transport.codec::<R, O>(true, response, output),
+            )
             .await?;
         Ok(Running {
             outgoing,
             budget,
-            settings: self.settings,
+            settings: self.transport.settings,
             incoming: response.into_inner(),
             input: method.input,
             output: method.output,
@@ -208,18 +202,66 @@ impl Client {
         }
         let (_, output) = descriptors(method)?;
         let (metadata, extensions, value) = request.into_parts();
-        let budget = Arc::new(Semaphore::new(self.settings.input_bytes.get()));
-        let opening = frame(&budget, self.settings, None, &value).await?;
-        let mut client = self.transport();
+        let budget = Arc::new(Semaphore::new(self.transport.settings.input_bytes.get()));
+        let opening = frame(&budget, self.transport.settings, None, &value).await?;
+        let mut client = self.transport.transport();
         client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
         let response = client
             .server_streaming(
                 Request::from_parts(metadata, extensions, opening),
                 method.path.clone(),
-                self.codec::<O, NoItems>(false, output.expect("validated output"), None),
+                self.transport.codec::<O, NoItems>(false, output.expect("validated output"), None),
             )
             .await?;
         Ok(Watching { incoming: response.into_inner() })
+    }
+}
+
+impl std::ops::Deref for Client {
+    type Target = resources::Root;
+    fn deref(&self) -> &Self::Target {
+        &self.resources
+    }
+}
+
+impl ClientTransport {
+    pub async fn watch_known<Q, O>(
+        &self, path: tonic::codegen::http::uri::PathAndQuery, request: Request<Q>, output: MessageDescriptor,
+    ) -> Result<Watching<O>, Status>
+    where
+        Q: Message + Default + Send + 'static,
+        O: Message + Default + Send + 'static,
+    {
+        let (metadata, extensions, value) = request.into_parts();
+        let budget = Arc::new(Semaphore::new(self.settings.input_bytes.get()));
+        let opening = frame(&budget, self.settings, None, &value).await?;
+        let mut client = self.transport();
+        client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
+        let response = client
+            .server_streaming(Request::from_parts(metadata, extensions, opening), path, self.codec::<O, NoItems>(false, output, None))
+            .await?;
+        Ok(Watching { incoming: response.into_inner() })
+    }
+
+    pub async fn unary<Q, R>(
+        &self, path: tonic::codegen::http::uri::PathAndQuery, request: Request<Q>, response: MessageDescriptor,
+    ) -> Result<tonic::Response<R>, Status>
+    where
+        Q: Message + Default + Send + 'static,
+        R: Message + Default + Send + 'static,
+    {
+        let (metadata, extensions, value) = request.into_parts();
+        let budget = Arc::new(Semaphore::new(self.settings.input_bytes.get()));
+        let frame = frame(&budget, self.settings, None, &value).await?;
+        let mut client = self.transport();
+        client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
+        let response =
+            client.unary(Request::from_parts(metadata, extensions, frame), path, self.codec::<R, NoItems>(false, response, None)).await?;
+        let (metadata, value, extensions) = response.into_parts();
+        let Output::Response(value, _permit) = value else {
+            return Err(Status::data_loss("unexpected unary item"));
+        };
+        Ok(tonic::Response::from_parts(metadata, value, extensions))
     }
 
     fn transport(&self) -> tonic::client::Grpc<Channel> {
@@ -351,10 +393,6 @@ impl<R: Message + Default, I: Message + Default, O: Message + Default> Running<R
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn host_page() -> MessageDescriptor {
-    harmos_protocol::v1::CatalogEntriesListResponse::default().descriptor()
-}
 
 fn descriptors<Q, R, I, O>(method: &Method<Q, R, I, O>) -> Result<(MessageDescriptor, Option<MessageDescriptor>), Status> {
     let protobuf = method.contract.protobuf.as_ref().expect("validated contract");

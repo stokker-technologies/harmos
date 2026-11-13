@@ -59,14 +59,16 @@ class InstanceInvokeRequest(_message.Message):
     def __init__(self, request: _Optional[_Union[_types_pb2.Request, _Mapping]] = ..., child: _Optional[_Union[_types_pb2.ChildResponse, _Mapping]] = ..., cancel: _Optional[_Union[_types_pb2.Cancel, _Mapping]] = ...) -> None: ...
 
 class InstanceInvokeResponse(_message.Message):
-    __slots__ = ("child", "child_cancel", "response")
+    __slots__ = ("child", "child_cancel", "response", "child_demand")
     CHILD_FIELD_NUMBER: _ClassVar[int]
     CHILD_CANCEL_FIELD_NUMBER: _ClassVar[int]
     RESPONSE_FIELD_NUMBER: _ClassVar[int]
+    CHILD_DEMAND_FIELD_NUMBER: _ClassVar[int]
     child: _types_pb2.ChildRequest
     child_cancel: _types_pb2.ChildCancel
     response: _types_pb2.Response
-    def __init__(self, child: _Optional[_Union[_types_pb2.ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[_types_pb2.ChildCancel, _Mapping]] = ..., response: _Optional[_Union[_types_pb2.Response, _Mapping]] = ...) -> None: ...
+    child_demand: _types_pb2.ChildDemand
+    def __init__(self, child: _Optional[_Union[_types_pb2.ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[_types_pb2.ChildCancel, _Mapping]] = ..., response: _Optional[_Union[_types_pb2.Response, _Mapping]] = ..., child_demand: _Optional[_Union[_types_pb2.ChildDemand, _Mapping]] = ...) -> None: ...
 
 class InstanceSamplesRequest(_message.Message):
     __slots__ = ("open", "tick")

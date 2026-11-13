@@ -2,10 +2,9 @@
 syntax = "proto3";
 package harmos.v1;
 import "harmos/v1/types.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
 
 service Invocations {
+  rpc Invoke(InvocationsInvokeRequest) returns (InvocationsInvokeResponse);
   rpc Get(InvocationsGetRequest) returns (InvocationsGetResponse);
   rpc Cancel(InvocationsCancelRequest) returns (InvocationsCancelResponse);
   rpc Watch(InvocationsWatchRequest) returns (stream InvocationsWatchResponse);
@@ -22,3 +21,6 @@ message InvocationsGetResponse { harmos.v1.InstanceState invocation = 1; }
 message InvocationsCancelResponse { harmos.v1.InstanceState invocation = 1; }
 
 message InvocationsWatchResponse { harmos.v1.InstanceState invocation = 1; }
+
+message InvocationsInvokeRequest { string operation = 1; bytes fingerprint = 2; bytes payload = 3; }
+message InvocationsInvokeResponse { bytes payload = 1; }

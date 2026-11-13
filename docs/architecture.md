@@ -24,33 +24,25 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    **Where:** `openspec/changes/operation-grammar/design.md`, Audience Faces and
    Face-Local Contracts; requirement: Audience-Separated Service Packages in
    `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-   **Proof:** No proof yet for face-filtered generation/admission. Today
-   `proto/harmos/v1/plugin.proto` and `proto/harmos/v1/host.proto` share the old layout.
-   **Status:** locked direction (`operation-grammar`).
+   **Proof:** `service_packages_separate_audiences_and_only_declared_methods_stream`
+   checks face-local service and wrapper descriptors. SDK audience generation probes
+   reject leaked stubs. `plugin_cannot_call_a_client_face_even_with_its_declared_contract`
+   and `client_invokes_public_plugin_through_the_host_and_protected_is_refused`
+   guard native admission, including absence of Instance/context on the client listener.
+   The complete service inventory awaits the storage/management integrations.
+   **Status:** implemented for the non-storage protocol and SDKs; combined inventory open.
 
-2. **Current Two-Level Admission.** For plugin-provided operations today Private
-   admits the declaring owner and host, refuses other plugins and clients, and
-   cannot bind client-facing gRPC;
-   Public also permits other plugins and clients subject to requirements and
-   authorization. This is the migration baseline, not the new meaning of Private.
-   **Why:** retain host control and exposed peer calls while migrating deliberately.
-   **Where:** `crates/harmos-operations/src/operations/mod.rs`,
-   `crates/harmos-operations/src/operations/contract.rs`,
-   `crates/harmos-runtime/src/operations/manager/entry.rs` (`authorize`),
-   `crates/harmos-runtime/src/operations/manager/plugin_grpc.rs` (`submit_grpc_child`);
-   successor requirement: Explicit Three-Level Operation Visibility in
-   `openspec/changes/operation-grammar/specs/operation-invocation/spec.md`.
-   **Proof:** `private_peer_operation_is_refused_across_plugins` in
-   `crates/harmos-runtime/tests/plugin_grpc/private_refusal.rs`;
-   `host_invokes_registered_plugin_operation` in
-   `crates/harmos-runtime/tests/plugin_grpc/host_invoke.rs`;
-   `grpc_visibility_contracts` in `crates/harmos-operations/src/operations/mod.rs`.
-   For host-provided built-ins, gRPC child dispatch checks a declared requirement
-   and fingerprint but currently skips the Private visibility gate: that gate is
-   conditional on a plugin binding. **No proof yet** guards refusal of such a
-   host built-in to another plugin; this is a discrepancy to repair under the
-   locked Protected rule, not an access promise (task 0.9).
-   **Status:** landed baseline, including the identified admission gap.
+2. **Admission Boundaries.** The host refuses catalogued Private declarations and
+   unspecified visibility. Protected admits the declaring owner and host; Public
+   admits declared peers and authorized clients. Visibility is checked before
+   provider selection branches, including host-provided built-ins.
+   **Why:** matching requirements and fingerprints do not grant host visibility.
+   **Where:** `crates/harmos-runtime/src/operations/manager/plugin_grpc.rs`,
+   `crates/harmos-runtime/src/operations/manager/entry.rs` and
+   `crates/harmos-runtime/src/plugin/grpc/catalog.rs`.
+   **Proof:** `protected_host_operation_refuses_a_plugin_with_a_matching_requirement`
+   and `protected_peer_operation_is_refused_across_plugins` are the focused guards.
+   **Status:** landed with focused native proof.
 
 3. **Three-Level Visibility.** Private is callable only inside the declaring plugin
    process, absent from its catalog, invisible to the host, never on any wire
@@ -65,21 +57,16 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    **Where:** Explicit Three-Level Operation Visibility in
    `openspec/changes/operation-grammar/specs/operation-invocation/spec.md`;
    Decided Built-In Visibility Mapping in `openspec/changes/operation-grammar/design.md`.
-   Host-only requests of a plugin must be Protected. The mapping closes the earlier
-   built-in question; it does not relabel today's host-callable Private as local.
-   **Proof:** No proof yet. Current peer/refusal stories in invariant 2 and 4 do
-   not prove local Private execution. SDK self-calls today are as follows:
-
-   | SDK | Current Operation Call Path | Current Visibility Default |
-   | --- | --- | --- |
-   | Rust | `sdk/rust/src/context.rs`: child request through host, including self-calls; no SDK-local operation dispatch. | Private in `sdk/rust/src/operation.rs`. |
-   | Python | `sdk/python/src/harmos/context.py`: operation() sends a child request through host, including self-calls; no local dispatch. | Public in `sdk/python/src/harmos/contracts.py`. |
-   | C# | `sdk/csharp/Harmos/Context.cs`: CallAsync writes a child request through host, including self-calls; no local dispatch. | Private in `sdk/csharp/Harmos/Operation.cs`. |
-   | C++ | `sdk/cpp/include/harmos/harmos.hpp`: Context::call sends a child request through host, including self-calls; no local dispatch. | Private in the same header. |
-
-   SDK child calls require declared requirements; the native runtime's same-owner
-   admission without a self-requirement is not an SDK-local dispatch mechanism.
-   **Status:** locked direction (`operation-grammar`).
+   Host-only requests of a plugin must be Protected; Private dispatch stays inside
+   the declaring SDK process.
+   **Proof:** common conformance case 24 guards local dispatch, catalog omission
+   and direct carrier refusal in all four SDKs. Rust uses its local operation map;
+   Python, C# and C++ use their registered typed handlers without a child frame.
+   Cases 26–28 additionally guard host-clock retry, attempt deadlines, child cleanup,
+   isolated attempt resources and reason-bearing cooperative cancellation in all four SDKs.
+   Native reserved controls are Protected; the complete storage mapping belongs to
+   its declaration owner.
+   **Status:** native SDK dispatch and policy implemented; combined built-in census open.
 
 4. **Host-Mediated Public Calls.** A plugin calls a Public peer as plugin → host →
    plugin: the host resolves one registry, requires the declared requirement and
@@ -94,16 +81,17 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    routing plus mismatched/absent providers; scope proof is invariant 7.
    `cancellation_reaches_the_plugin_before_settlement` in
    `crates/harmos-runtime/tests/plugin_grpc/cancellation.rs` proves cooperative
-   settlement. **No proof yet** combines peer routing, peer cancellation and local-only Private
-   isolation in one story; task 0.1 is that guard.
-   **Status:** landed for current routing; the new client Invocations.Invoke and
-   complete three-level conformance belong to invariants 1 and 3.
+   settlement. `public_peer_inherits_scope_cause_and_caller_cancellation_through_the_host`
+   combines peer scope, structured causes and cooperative child settlement;
+   common conformance cases 24 and 29 guard local-only Private isolation and peer visibility.
+   The client invocation story in invariant 1 covers Public and Protected client calls.
+   **Status:** landed for native gRPC plugins and all four SDKs.
 
 5. **Unary Plugin Operations.** A plugin operation has one request and one final
    response per attempt, even though its carrier multiplexes control/child frames;
    samples and observation are separate streams.
    **Why:** transport duplexing must not silently change the operation contract.
-   **Where:** `proto/harmos/v1/plugin.proto`, `proto/harmos/v1/behaviour.md`,
+   **Where:** `proto/harmos/plugin/v1/instance.proto`, `proto/harmos/v1/behaviour.md`,
    `crates/harmos-runtime/src/plugin/grpc/invoke.rs`; requirement: Unary Plugin
    Attempts in `openspec/changes/operation-grammar/specs/operation-invocation/spec.md`.
    **Proof:** `host_invokes_registered_plugin_operation` in
@@ -121,9 +109,13 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    confusing observation loss with work ownership; queued control refusals stay explicit.
    **Where:** No Automatic Streaming Twins and Distinct Stop and Cancel Actions in
    `openspec/changes/operation-grammar/specs/operation-invocation/spec.md`.
-   **Proof:** No proof yet for this complete projection/control contract.
-   `crates/harmos-runtime/src/grpc/projection.rs` still generates Run twins today.
-   **Status:** locked direction (`operation-grammar`).
+   **Proof:** the face descriptor guard excludes generated twins; the discovered-client
+   journey in `crates/harmos-runtime/tests/operations/wire/sdk_client.rs` exercises
+   explicit managed replacement and cooperative final results. The product-control
+   story preserves a queued Cancel refusal and its cause, then awaits a separate Stop
+   boundary without issuing Cancel. Peer and local-policy stories guard child settlement.
+   The final storage stream census awaits its declaration owner.
+   **Status:** landed for non-storage projection/control; combined inventory open.
 
 7. **Opaque Invocation Scope.** Carry caller-bound scope unchanged through children;
    never interpret it as authorization or require it for operations that do not ask.
@@ -157,7 +149,8 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    `crates/harmos-runtime/src/state/manager.rs`, `crates/harmos-runtime/src/records/manager.rs`
    and `crates/harmos-runtime/src/guest/host/plugin/manager.rs`.
    **Proof:** No proof yet for the complete inventory; existing manager types do
-   not prove the future Plugins, Access, Status and HostValues services exist.
+   not prove the future Plugins, Access and Status services exist. HostValues resolver
+   registration/removal and provider failures have focused stories under plugin_grpc.
    **Status:** locked direction (`operation-grammar`).
 
 9. **Library and Product Composition.** The library owns generic hosting, access,
@@ -172,7 +165,9 @@ both directions of plugin/host invocation. A face is never a substitute for visi
    **Where:** Generic Machinery and Product Composition and Product Definitions,
    Policy and Plugin Values in
    `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-   **Proof:** No proof yet for complete composed services and resolver lifecycle.
+   **Proof:** `declared_values_use_the_product_resolver_and_registration_lifetime`
+   and `resolver_failure_and_a_mismatched_value_type_are_propagated` guard resolver
+   composition without a library store. Complete management-service composition remains open.
    **Status:** locked direction (`operation-grammar`).
 
 10. **Resource Operation Grammar.** Services name resources, methods use the closed
@@ -185,8 +180,10 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     **Where:** Predictable Public Method Grammar, Nested Wire Packages and Wrappers
     in `openspec/changes/operation-grammar/specs/operation-contract/spec.md`;
     `openspec/changes/operation-grammar/specs/storage-mutations/spec.md`.
-    **Proof:** No proof yet for generated grammar across all four SDKs; existing
-    atomic object proof (invariant 13) does not prove the renamed whole-value surface.
+    **Proof:** client-root fixtures in all four SDKs compose library Plugins and
+    plugins.Settings with product Jobs and jobs.Progress, preserving unary and Watch
+    cardinality and qualified message identity. The complete storage mutation surface
+    remains with its declaration owner; invariant 13 guards existing atomic behavior.
     **Status:** locked direction (`operation-grammar`).
 
 11. **Position-Resolved Reads.** One read path takes optional `at`: absent selects
@@ -273,7 +270,7 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     **Status:** landed for storage and invocation policy (task A.8).
 
 16. **Crate Dependency Direction.** Runtime composes operations, storage, domain and
-    protocol; operations depends on domain/protocol, storage on domain/protocol,
+    protocol; operations depends on storage/domain/protocol, storage on domain/protocol,
     domain on protocol; the standalone Rust SDK depends on protocol/derive, never
     runtime, and lower crates and SDKs must not depend on runtime or a consuming product.
     **Why:** contracts and plugin/client authoring must work without host machinery;
@@ -283,8 +280,8 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     `crates/harmos-protocol/Cargo.toml`, `sdk/rust/Cargo.toml`;
     Library Dependency Direction in
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-    **Proof:** No proof yet guarding the complete forbidden-edge contract;
-    current production manifests establish the stated graph.
+    **Proof:** `test_production_edges_follow_domain_ownership` inspects normal and
+    target production dependencies across all six libraries, excluding derive support.
     **Status:** landed.
 
 17. **Generic Library SDKs.** Keep all four language SDKs in this repository, with
@@ -296,9 +293,11 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     **Where:** `sdk/rust/`, `sdk/python/`, `sdk/csharp/`, `sdk/cpp/`,
     `tools/conformance/`; Self-Sufficient Library SDK Ownership in
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-    **Proof:** No proof yet for common generated roots and complete independence;
-    semantic plugin parity and managed-client language coverage remain explicitly open.
-    **Status:** locked direction (`operation-grammar`).
+    **Proof:** the independent reference host runs 29 shared conformance cases in
+    each SDK. Four-language client-root fixtures compose library and product descriptors.
+    Native plugin semantic parity is agreed; generic managed application clients remain
+    Rust-only, while other languages use their generated application gRPC clients.
+    **Status:** landed for these SDK contracts; Wasm is Rust-only.
 
 18. **Deterministic Stories.** Correctness tests follow journeys using controlled
     clocks/events, never assertions on real elapsed time, machine load or sampled
@@ -423,7 +422,7 @@ both directions of plugin/host invocation. A face is never a substitute for visi
 | Resource grammar, nested packages and shared primitives (2026-11-12) | Generate predictable SDKs without flattening storage guarantees. | `openspec/changes/operation-grammar/` |
 | Latest durable reads, measured lag and caller resending (2026-11-12) | Repeatable reads and lost replies must preserve durable boundaries and original outcomes. | `openspec/changes/operation-grammar/` |
 | No automatic twins; distinct Stop and Cancel (2026-11-12) | Keep one method per promise and preserve cooperative final results. | `openspec/changes/operation-grammar/` |
-| Host-only control uses Protected | Preserve the former host-callable Private purpose without exporting the new local-only Private. | `openspec/changes/operation-visibility/`; superseded in `openspec/changes/operation-grammar/` |
+| Host-only control uses Protected | Keep host controls on the instance carrier and refuse peer/client calls. | `openspec/changes/operation-grammar/` |
 | Retained plugin history and derived revisions (2026-11-07) | Written schema identity must outlive plugin replacement or removal. | `openspec/changes/archive/2026-11-07-plugin-state-survives-shape-changes/`, `openspec/changes/archive/2026-11-07-stream-schema-revisions/` |
 | Segmented recovery snapshots (2026-11-08) | Bounded checkpoint pieces must preserve complete recovery and atomic publication. | `openspec/changes/archive/2026-11-08-snapshot-payload-limit/` |
 | Deterministic stories (agreed 2026-11-10) | Correctness must not depend on workstation speed or measurement noise. | `openspec/changes/test-stories/` |

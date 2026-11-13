@@ -656,8 +656,8 @@ file. Reusable primitives, plugin catalog/control payloads and discovery values
 live in service-free `harmos/v1/types.proto`; the discovery contract is
 DiscoveredContract, distinct from the plugin catalog's OperationContract.
 Rust exposes `plugin`, `context` and `v1` modules; the superseded `host` module is
-removed. Python's authoring Context and Plugin retain their public imports from
-package roots, making room for generated child packages without name collisions.
+removed. Python authoring lives in `authoring.py` and `invocation.py`; its generated
+face namespace packages have inert initializers, preserving root SDK imports.
 Storage face inventory and management services are integrated by their owners.
 Runtime face admission and generation filtering are tracked separately from file moves.
 
@@ -1162,6 +1162,33 @@ manager inventory above; application operations remain outside this repository.
   before removing or reclaiming content. No stored-data deletion is authorized here.
 
 ## Open Questions
+
+Implementation choice (4.1): one descriptor table drives generated Rust/C#/C++ resource classes and Python runtime binding; parents and service names determine every client path.
+
+Implementation (0.3–0.7): each SDK runs Private handlers from its local registry,
+with fresh attempt resources, host-clock policy guards, replay-safe retries and
+reason-bearing cancellation. Conformance cases 24 and 26–29 guard local isolation,
+retry, deadline, cooperative cancellation and host-mediated peer visibility.
+Child demand frames bound context Watch to one requested item; background policy
+guards do not make active handler work eligible for virtual-time advancement.
+The runtime peer story independently guards inherited scope, failure cause and
+caller-to-child cancellation. HostValues.Get uses an OperationManager resolver
+registration with declared value types and invocation scope; dropping registration
+ends new resolution. No library settings or secrets store is introduced.
+
+Implementation (4.7): Rust Cargo features, Python wheel audience selection, C#
+HarmosAudience and CMake HARMOS_AUDIENCE select plugin/client/host bindings.
+Context methods remain child calls, with no standalone context service stubs.
+C++ and Python filter the pinned compiler's output during generation/packaging;
+generated files are never edited as source. Python editable development installs
+retain all faces; installable wheels select exactly one audience.
+
+Implementation (4.6): context message descriptor graphs are projected during
+generation and embedded per SDK message. Guest registration never initializes the
+full host reflection pool; the existing fuel budgets remain unchanged. Guest
+assignments retain their provider alongside the canonical service/method identity,
+and runtime dispatch checks that provider, generation, fingerprint and audience.
+
 
 Implementation decision (3.11): no library built-in promises a cooperative final result after cancellation: actions use unary receipts/status and watches end observation; explicit application `Grpc::managed()` declarations replace the canonical method. The Collect and Exchange fixtures promise the accepted-input aggregate, and Wait promises its typed cancellation summary; those three fixture declarations exercise the opt-in contract.
 

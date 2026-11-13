@@ -156,7 +156,7 @@ impl Entry {
     pub(in crate::operations) fn authorize(&self, _origin: &Origin) -> Result<()> {
         #[cfg(feature = "grpc")]
         if matches!(_origin.identity, super::super::caller::Identity::External(_))
-            && self.definition.visibility != crate::operations::Visibility::Public
+            && (self.definition.visibility != crate::operations::Visibility::Public || self.id().starts_with("harmos.context.v1."))
         {
             return Err(Error::OperationUnauthorized {
                 caller: "external".to_owned(),
@@ -166,7 +166,13 @@ impl Entry {
         }
         #[cfg(feature = "plugin-guest")]
         if let Some(caller) = &_origin.scope {
-            if self.sdk.is_some() {
+            if self.sdk.is_some()
+                || self
+                    .contract
+                    .as_ref()
+                    .and_then(|contract| contract.grpc())
+                    .is_some_and(|grpc| grpc.package == "harmos.v1" || grpc.package.starts_with("harmos.v1."))
+            {
                 return Err(Error::OperationUnauthorized {
                     caller: caller.owner().to_owned(),
                     owner: self.owner.to_string(),

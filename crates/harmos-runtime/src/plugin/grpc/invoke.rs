@@ -44,6 +44,7 @@ pub(crate) struct Binding {
     pub(crate) owner: String,
     pub(crate) contract: v1::OperationContract,
     pub(crate) requires: Vec<v1::Requirement>,
+    declarations: Vec<v1::SettingDeclaration>,
     connection: Arc<Connection>,
 }
 
@@ -56,8 +57,8 @@ struct Invocation {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CallError {
-    #[error("{}", .0.message)]
-    Remote(Box<v1::Failure>),
+    #[error("{0}")]
+    Remote(#[source] Box<harmos_operations::Failure>),
 
     #[error("plugin transport failed: {0}")]
     Transport(tonic::Status),
@@ -76,6 +77,20 @@ impl Binding {
             owner: activation.description.id.clone(),
             contract,
             requires: activation.description.catalog.as_ref().unwrap().requires.clone(),
+            declarations: activation
+                .description
+                .catalog
+                .as_ref()
+                .unwrap()
+                .sections
+                .iter()
+                .find(|section| section.r#type == "harmos.v1.SettingsDeclarations")
+                .map(|section| {
+                    <v1::SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
+                        .expect("admitted settings section")
+                        .values
+                })
+                .unwrap_or_default(),
             connection: activation.connection.clone(),
         }
     }
@@ -88,7 +103,7 @@ impl Binding {
 impl CallError {
     pub fn classification(&self) -> v1::Classification {
         match self {
-            Self::Remote(failure) => failure.classification(),
+            Self::Remote(failure) => v1::Failure::from(failure.as_ref()).classification(),
             Self::Transport(status) => match status.code() {
                 tonic::Code::Cancelled => v1::Classification::Cancelled,
                 tonic::Code::DeadlineExceeded => v1::Classification::TimedOut,
@@ -180,6 +195,9 @@ async fn invoke(
         }
         loop {
             let has_children = !children.is_empty();
+            let waiting = controls
+                .values()
+                .any(|(_, background, _): &(Arc<crate::supervision::instance::Instance>, bool, Option<mpsc::Sender<()>>)| !background);
             let next = async {
                 tokio::select! {
                     biased;
@@ -188,7 +206,7 @@ async fn invoke(
                     frame = input.message() => Event::Frame(frame),
                 }
             };
-            let event = if has_children { crate::clock::waiting(next).await } else { next.await };
+            let event = if waiting { crate::clock::waiting(next).await } else { next.await };
             match event {
                 Event::Cancel => {
                     cancelled = true;
@@ -224,7 +242,7 @@ async fn invoke(
                         }
                         return match response.result {
                             Some(v1::response::Result::Payload(payload)) => Ok(payload),
-                            Some(v1::response::Result::Failure(failure)) => Err(CallError::Remote(Box::new(failure))),
+                            Some(v1::response::Result::Failure(failure)) => Err(CallError::Remote(Box::new(failure.into()))),
                             None => Err(CallError::Protocol("Missing Response Result".into())),
                         };
                     }
@@ -234,25 +252,37 @@ async fn invoke(
                         }
                         let call = child.call;
                         let operation = child.operation.clone();
-                        let invocation = host.borrow().submit_grpc_child(&binding.owner, &binding.requires, child);
-                        if let Ok(invocation) = &invocation {
-                            controls.insert(call, invocation.control.clone());
+                        let background = child.background;
+                        let invocation = host.borrow().submit_grpc_child(&binding.owner, &binding.requires, &binding.declarations, child);
+                        let (demand, credits) = mpsc::channel(1);
+                        if let Ok(child) = &invocation {
+                            controls.insert(call, (child.invocation.control.clone(), background, child.streams.as_ref().map(|_| demand)));
                         }
+                        let output = output.clone();
                         children.push(Box::pin(async move {
                             let result = match invocation {
-                                Ok(invocation) => invocation.await,
+                                Ok(child) => match child.streams {
+                                    Some(streams) => watch_child(call, child.invocation, streams, credits, output).await,
+                                    None => child.invocation.await,
+                                },
                                 Err(error) => Err(error),
                             };
                             (call, operation, result)
                         }));
                     }
                     Some(instance_invoke_response::Frame::ChildCancel(child)) => {
-                        if let Some(control) = controls.get(&child.call) {
+                        if let Some((control, _, _)) = controls.get(&child.call) {
                             cancelled_children.insert(child.call);
                             control.request_cancel();
                         } else if !seen.contains(&child.call) {
                             return Err(CallError::Protocol(format!("Unknown Child ID {}", child.call)));
                         }
+                    }
+                    Some(instance_invoke_response::Frame::ChildDemand(demand)) => {
+                        let Some((_, _, Some(credits))) = controls.get(&demand.call) else {
+                            return Err(CallError::Protocol(format!("Watch {}: Unknown Child Demand", demand.call)));
+                        };
+                        credits.try_send(()).map_err(|_| CallError::Protocol(format!("Watch {}: Duplicate Demand", demand.call)))?;
                     }
                     None => return Err(CallError::Protocol("Invoke Ended Without Response".into())),
                 },
@@ -266,10 +296,47 @@ async fn invoke(
     }
 }
 
+async fn watch_child(
+    call: u64, mut invocation: crate::operations::EncodedInvocation, streams: harmos_operations::execution::operations::WireStreams,
+    mut credits: mpsc::Receiver<()>, output: mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>,
+) -> crate::Result<Vec<u8>> {
+    let mut response = None;
+    loop {
+        // Completion Is Observed Even While the Consumer Is Not Requesting an Item.
+        tokio::select! {
+            result = &mut invocation, if response.is_none() => { response = Some(result?); continue; }
+            credit = credits.recv() => if credit.is_none() { invocation.request_cancel(); return invocation.await; }
+        }
+        let item = loop {
+            tokio::select! {
+                result = &mut invocation, if response.is_none() => response = Some(result?),
+                item = streams.receive_current() => break item.map_err(|source| crate::Error::OperationFailed {
+                    operation: "Watch child".into(), source: Arc::new(source),
+                })?,
+            }
+        };
+        let Some(payload) = item else {
+            return match response {
+                Some(response) => Ok(response),
+                None => invocation.await,
+            };
+        };
+        output
+            .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
+                    call,
+                    result: Some(v1::child_response::Result::Item(payload)),
+                })),
+            })
+            .await
+            .map_err(|_| crate::Error::Closing { domain: "Watch child carrier" })?;
+    }
+}
+
 pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> v1::Failure {
     if let crate::Error::OperationFailed { source, .. } = error {
         if let Some(CallError::Remote(failure)) = source.downcast_ref::<CallError>() {
-            return failure.as_ref().clone();
+            return v1::Failure::from(failure.as_ref());
         }
         if let Some(error) = source.downcast_ref::<CallError>() {
             return v1::Failure {
@@ -282,6 +349,9 @@ pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> v1
                 ..Default::default()
             };
         }
+    }
+    if let Some(failure) = error.failure() {
+        return v1::Failure::from(failure);
     }
     let classification = match error {
         crate::Error::NotRegistered { .. }

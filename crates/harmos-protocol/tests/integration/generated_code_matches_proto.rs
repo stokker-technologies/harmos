@@ -100,11 +100,26 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
     assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
     assert_eq!(fs::read(output.path().join("guest-descriptors.bin"))?, include_bytes!("../../src/guest-descriptors.bin"));
+    for entry in fs::read_dir(output.path().join("context-types"))? {
+        let path = entry?.path();
+        assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);
+    }
     codegen::generate_example(&compiler, &includes, output.path())?;
     for (generated, committed) in
         [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
     {
         assert_eq!(fs::read(output.path().join(generated))?, fs::read(root.join("examples/schematic/protocol/src").join(committed))?);
+    }
+    codegen::generate_client_fixture(&compiler, &includes, output.path())?;
+    for name in [
+        "library.v1.rs",
+        "library.v1.plugins.rs",
+        "application.v1.rs",
+        "application.v1.jobs.rs",
+        "client-descriptors.bin",
+        "client-reflection.rs",
+    ] {
+        assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
     }
     Ok(())
 }

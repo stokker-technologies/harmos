@@ -84,8 +84,11 @@ struct DecodedOperationDefinition {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Visibility {
-    /// Callable by the declaring plugin and the host.
+    /// Callable only inside the declaring process.
     Private,
+
+    /// Callable by the declaring plugin and the host over its carrier.
+    Protected,
 
     /// Callable by everyone connected, subject to client authorization.
     Public,
@@ -163,13 +166,13 @@ mod tests {
     #[test]
     fn grpc_visibility_contracts() {
         let binding = Grpc::new("visibility.v1", "Operations", "Call");
-        for visibility in [Visibility::Private, Visibility::Public] {
+        for visibility in [Visibility::Private, Visibility::Protected, Visibility::Public] {
             let mut declaration = PUBLISHED_OPERATION.wire();
             declaration.operation.visibility = visibility;
             declaration.grpc = Some(binding.clone());
             let result = declaration.contract();
-            if visibility == Visibility::Private {
-                assert!(matches!(result, Err(ContractError::PrivateGrpc { .. })));
+            if visibility != Visibility::Public {
+                assert!(matches!(result, Err(ContractError::RestrictedGrpc { .. })));
                 continue;
             }
             let contract = result.unwrap();

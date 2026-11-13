@@ -22,7 +22,7 @@ impl ProtobufOperation for Append {
     type Request = harmos_protocol::context::SamplesAppendRequest;
     type Response = harmos_protocol::context::SamplesAppendResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.samples.append";
+    const ID: &'static str = "harmos.context.v1.Samples/Append";
     const POLICY: crate::OperationPolicy = crate::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<PublicationAccess>()];

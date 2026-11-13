@@ -31,7 +31,6 @@ use harmos_protocol::plugin::{
     instance_client::InstanceClient,
     instance_server::{Instance, InstanceServer},
 };
-use harmos_protocol::v1;
 
 /* === Constants === */
 

@@ -29,7 +29,7 @@ use harmos_protocol::v1::*;
 /* === Constants === */
 
 pub const OPERATIONS: &[&str] = &["echo", "children", "cancel", "failure", "child_failure", "policy"];
-pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.time.sleep", "harmos.time.get"];
+pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.context.v1.Time/Sleep", "harmos.context.v1.Time/Get"];
 
 pub const ROW: &str = "harmos.conformance.v1.Value";
 
@@ -84,11 +84,24 @@ pub fn types() -> FileDescriptorSet {
 }
 
 pub fn fingerprint(id: &str) -> Vec<u8> {
+    if id == "conformance.host.watch" {
+        return harmos_protocol::schema::host_fingerprint(
+            id,
+            &Protobuf {
+                descriptors: types().encode_to_vec(),
+                request: ROW.into(),
+                response: ROW.into(),
+                input: None,
+                output: Some(ROW.into()),
+            },
+        )
+        .unwrap();
+    }
     if CLOCK_OPERATIONS.contains(&id) {
-        let (request, response) = if id == "harmos.time.sleep" {
-            ("harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse")
+        let (request, response) = if id == "harmos.context.v1.Time/Sleep" {
+            ("harmos.context.v1.TimeSleepRequest", "harmos.context.v1.TimeSleepResponse")
         } else {
-            ("harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse")
+            ("harmos.context.v1.TimeGetRequest", "harmos.context.v1.TimeGetResponse")
         };
         return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
             .expect("clock contract");
@@ -111,13 +124,22 @@ pub fn catalog() -> Catalog {
             }
         })
         .collect();
-    let mut requires: Vec<_> = ["conformance.host.echo", "conformance.host.pending", "conformance.host.fail"]
-        .into_iter()
-        .map(|id| Requirement {
-            id: id.into(),
-            fingerprint: fingerprint(id),
-        })
-        .collect();
+    let mut requires: Vec<_> = [
+        "conformance.host.echo",
+        "conformance.host.pending",
+        "conformance.host.fail",
+        "conformance.host.watch",
+        "conformance.peer.public",
+        "conformance.peer.protected",
+        "conformance.peer.local",
+        "conformance.protected",
+    ]
+    .into_iter()
+    .map(|id| Requirement {
+        id: id.into(),
+        fingerprint: fingerprint(id),
+    })
+    .collect();
     let mut streams: Vec<_> = ["ticks", "device"]
         .into_iter()
         .map(|name| StreamDeclaration {
@@ -168,9 +190,11 @@ pub fn catalog() -> Catalog {
         ..Default::default()
     });
     for (id, visibility, replay_safe) in [
-        ("conformance.private", Visibility::Private, false),
+        ("conformance.protected", Visibility::Protected, false),
         ("conformance.resources", Visibility::Public, true),
         ("conformance.cancel_reason", Visibility::Public, false),
+        ("conformance.watch", Visibility::Public, false),
+        ("conformance.peer_call", Visibility::Public, false),
     ] {
         operations.push(OperationContract {
             id: id.into(),
@@ -182,6 +206,17 @@ pub fn catalog() -> Catalog {
             ..Default::default()
         });
     }
+    operations.insert(
+        0,
+        OperationContract {
+            id: "conformance.local_call".into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Public as i32,
+            fingerprint: fingerprint("conformance.local_call"),
+            ..Default::default()
+        },
+    );
     for id in CLOCK_OPERATIONS {
         requires.push(Requirement {
             id: id.into(),

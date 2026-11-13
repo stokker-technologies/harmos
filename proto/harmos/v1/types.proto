@@ -62,10 +62,12 @@ message OperationContract {
 
 enum Visibility {
   VISIBILITY_UNSPECIFIED = 0;
-  // The declaring plugin and the host.
+  // Process-local only; invalid in any wire catalog.
   VISIBILITY_PRIVATE = 1;
   // Everyone connected: other plugins and the host's clients.
   VISIBILITY_PUBLIC = 2;
+  // The declaring plugin and its host, through the carrier only.
+  VISIBILITY_PROTECTED = 3;
 }
 
 message OperationPolicy {
@@ -107,7 +109,7 @@ message StreamDeclaration {
 
 message Section {
   // Fully qualified message name of the payload, for example
-  // "dokime.v1.Suites". At most one section per name.
+  // "application.v1.Contributions". At most one section per name.
   string type = 1;
   bytes payload = 2;
 }
@@ -145,7 +147,15 @@ message ChildRequest {
   bytes fingerprint = 4;
   // Optional override of the callee's policy for this call.
   OperationPolicy policy = 5;
+  // Explicit server-streaming child; each item requires one ChildDemand.
+  bool watch = 6;
+  // Consumer-owned maximum encoded item size; required for Watch.
+  uint64 max_response_bytes = 7;
+  // Policy guard timers do not make the executing handler idle.
+  bool background = 8;
 }
+
+message ChildDemand { uint64 call = 1; }
 
 message ChildCancel {
   uint64 call = 1;
@@ -156,6 +166,7 @@ message ChildResponse {
   oneof result {
     bytes payload = 2;
     Failure failure = 3;
+    bytes item = 4;
   }
 }
 
@@ -274,3 +285,7 @@ message FollowingRow {
   bytes payload = 1;
   google.protobuf.Duration published_delta = 2;
 }
+
+// A Catalog Section Declares Values, Never Their Contents or Their Storage.
+message SettingsDeclarations { repeated SettingDeclaration values = 1; }
+message SettingDeclaration { string name = 1; string type = 2; }

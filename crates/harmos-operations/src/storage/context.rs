@@ -58,7 +58,7 @@ impl ProtobufOperation for CreateFileProduction {
     type Request = wire::StorageCreateFileProductionRequest;
     type Response = wire::StorageCreateFileProductionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.create_file_production";
+    const ID: &'static str = "harmos.context.v1.Storage/CreateFileProduction";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -101,7 +101,7 @@ impl ProtobufOperation for GetFileProduction {
     type Request = wire::StorageGetFileProductionRequest;
     type Response = wire::StorageGetFileProductionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.get_file_production";
+    const ID: &'static str = "harmos.context.v1.Storage/GetFileProduction";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -145,7 +145,7 @@ impl ProtobufOperation for AppendFileBytes {
     type Request = wire::StorageAppendFileBytesRequest;
     type Response = wire::StorageAppendFileBytesResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.append_file_bytes";
+    const ID: &'static str = "harmos.context.v1.Storage/AppendFileBytes";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -194,7 +194,7 @@ impl ProtobufOperation for CreateFileWriter {
     type Request = wire::StorageCreateFileWriterRequest;
     type Response = wire::StorageCreateFileWriterResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.create_file_writer";
+    const ID: &'static str = "harmos.context.v1.Storage/CreateFileWriter";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -237,7 +237,7 @@ impl ProtobufOperation for PublishFileProduction {
     type Request = wire::StoragePublishFileProductionRequest;
     type Response = wire::StoragePublishFileProductionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.publish_file_production";
+    const ID: &'static str = "harmos.context.v1.Storage/PublishFileProduction";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -283,7 +283,7 @@ impl ProtobufOperation for DeleteFileProduction {
     type Request = wire::StorageDeleteFileProductionRequest;
     type Response = wire::StorageDeleteFileProductionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.delete_file_production";
+    const ID: &'static str = "harmos.context.v1.Storage/DeleteFileProduction";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -326,7 +326,7 @@ impl ProtobufOperation for GetFileBytes {
     type Request = wire::StorageGetFileBytesRequest;
     type Response = wire::StorageGetFileBytesResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.get_file_bytes";
+    const ID: &'static str = "harmos.context.v1.Storage/GetFileBytes";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -394,7 +394,7 @@ impl ProtobufOperation for GetIndexDefinition {
     type Request = wire::StorageGetIndexDefinitionRequest;
     type Response = wire::StorageGetIndexDefinitionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.get_index_definition";
+    const ID: &'static str = "harmos.context.v1.Storage/GetIndexDefinition";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -427,7 +427,7 @@ impl ProtobufOperation for SetIndexDefinition {
     type Request = wire::StorageSetIndexDefinitionRequest;
     type Response = wire::StorageSetIndexDefinitionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.set_index_definition";
+    const ID: &'static str = "harmos.context.v1.Storage/SetIndexDefinition";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -468,7 +468,7 @@ impl ProtobufOperation for GetProjectionDefinition {
     type Request = wire::StorageGetProjectionDefinitionRequest;
     type Response = wire::StorageGetProjectionDefinitionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.get_projection_definition";
+    const ID: &'static str = "harmos.context.v1.Storage/GetProjectionDefinition";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -501,7 +501,7 @@ impl ProtobufOperation for SetProjectionDefinition {
     type Request = wire::StorageSetProjectionDefinitionRequest;
     type Response = wire::StorageSetProjectionDefinitionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.set_projection_definition";
+    const ID: &'static str = "harmos.context.v1.Storage/SetProjectionDefinition";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -541,7 +541,7 @@ impl ProtobufOperation for ListRows {
     type Request = wire::StorageListRowsRequest;
     type Response = wire::StorageListRowsResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.list_rows";
+    const ID: &'static str = "harmos.context.v1.Storage/ListRows";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -572,7 +572,7 @@ impl ProtobufOperation for Capabilities {
     type Request = wire::StorageCapabilitiesRequest;
     type Response = wire::StorageCapabilitiesResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.capabilities";
+    const ID: &'static str = "harmos.context.v1.Storage/Capabilities";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -601,7 +601,7 @@ impl ProtobufOperation for CreateSnapshot {
     type Request = wire::StorageCreateSnapshotRequest;
     type Response = wire::StorageCreateSnapshotResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.create_snapshot";
+    const ID: &'static str = "harmos.context.v1.Storage/CreateSnapshot";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -629,7 +629,7 @@ impl ProtobufOperation for DeleteSnapshot {
     type Request = wire::StorageDeleteSnapshotRequest;
     type Response = wire::StorageDeleteSnapshotResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.delete_snapshot";
+    const ID: &'static str = "harmos.context.v1.Storage/DeleteSnapshot";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -651,7 +651,7 @@ impl ProtobufOperation for ListColumnRows {
     type Request = wire::StorageListColumnRowsRequest;
     type Response = wire::StorageListColumnRowsResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.list_column_rows";
+    const ID: &'static str = "harmos.context.v1.Storage/ListColumnRows";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -683,7 +683,7 @@ impl ProtobufOperation for ListIndexEntries {
     type Request = wire::StorageListIndexEntriesRequest;
     type Response = wire::StorageListIndexEntriesResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.list_index_entries";
+    const ID: &'static str = "harmos.context.v1.Storage/ListIndexEntries";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -715,7 +715,7 @@ impl ProtobufOperation for AdvanceProjection {
     type Request = wire::StorageAdvanceProjectionRequest;
     type Response = wire::StorageAdvanceProjectionResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.advance_projection";
+    const ID: &'static str = "harmos.context.v1.Storage/AdvanceProjection";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -740,7 +740,7 @@ impl ProtobufOperation for GetProjectionStatus {
     type Request = wire::StorageGetProjectionStatusRequest;
     type Response = wire::StorageGetProjectionStatusResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.get_projection_status";
+    const ID: &'static str = "harmos.context.v1.Storage/GetProjectionStatus";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -765,7 +765,7 @@ impl ProtobufOperation for ListProjectionRows {
     type Request = wire::StorageListProjectionRowsRequest;
     type Response = wire::StorageListProjectionRowsResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.list_projection_rows";
+    const ID: &'static str = "harmos.context.v1.Storage/ListProjectionRows";
     const GRPC: Option<crate::execution::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -801,7 +801,7 @@ impl ProtobufOperation for GetObject {
     type Request = wire::StorageGetObjectRequest;
     type Response = wire::StorageGetObjectResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.get_object";
+    const ID: &'static str = "harmos.context.v1.Storage/GetObject";
     const GRPC: Option<crate::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -828,7 +828,7 @@ impl ProtobufOperation for SetObject {
     type Request = wire::StorageSetObjectRequest;
     type Response = wire::StorageSetObjectResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.set_object";
+    const ID: &'static str = "harmos.context.v1.Storage/SetObject";
     const GRPC: Option<crate::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -871,7 +871,7 @@ impl ProtobufOperation for AppendRecords {
     type Request = wire::StorageAppendRecordsRequest;
     type Response = wire::StorageAppendRecordsResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.append_records";
+    const ID: &'static str = "harmos.context.v1.Storage/AppendRecords";
     const GRPC: Option<crate::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -894,7 +894,7 @@ impl ProtobufOperation for AppendSamples {
     type Request = wire::StorageAppendSamplesRequest;
     type Response = wire::StorageAppendSamplesResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.append_samples";
+    const ID: &'static str = "harmos.context.v1.Storage/AppendSamples";
     const GRPC: Option<crate::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -917,7 +917,7 @@ impl ProtobufOperation for AppendObjectRevisions {
     type Request = wire::StorageAppendObjectRevisionsRequest;
     type Response = wire::StorageAppendObjectRevisionsResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.storage.append_object_revisions";
+    const ID: &'static str = "harmos.context.v1.Storage/AppendObjectRevisions";
     const GRPC: Option<crate::operations::Grpc> = None;
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;

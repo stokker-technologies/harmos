@@ -179,7 +179,7 @@ fn contract(operation: &v1::OperationContract, types: &prost_types::FileDescript
     let invalid = |message: String| Error::Guest { message };
     let visibility = match operation.visibility() {
         v1::Visibility::Public => Visibility::Public,
-        v1::Visibility::Private => Visibility::Private,
+        v1::Visibility::Protected => Visibility::Protected,
         _ => return Err(invalid("Invalid Guest Operation Visibility".into())),
     };
     let policy = OperationPolicy::try_from(operation.policy.as_ref()).map_err(|error| invalid(error.to_string()))?;

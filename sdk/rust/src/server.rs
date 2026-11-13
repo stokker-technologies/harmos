@@ -55,6 +55,7 @@ struct Settled(Option<oneshot::Sender<()>>);
 struct Server {
     description: harmos_protocol::plugin::InstanceGetResponse,
     operations: HashMap<String, Arc<dyn Handler>>,
+    local: Arc<HashMap<String, Arc<crate::Operation>>>,
     streams: HashMap<String, Publication>,
     requires: Arc<HashMap<String, Vec<u8>>>,
     jobs: mpsc::Sender<Job>,
@@ -131,6 +132,7 @@ impl Service for Server {
         handler.validate(&request.payload)?;
         let payload = request.payload.clone();
         let mut context = Context::new(request, self.description.id.clone(), self.requires.clone());
+        context.local = self.local.clone();
         let (output, receiver) = mpsc::channel(1);
         context.output = Some(output.clone());
         let jobs = self.jobs.clone();
@@ -221,7 +223,20 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
             sdk: "harmos_rust".into(),
             sdk_version: env!("CARGO_PKG_VERSION").into(),
         },
-        operations: plugin.operations.into_iter().map(|operation| (operation.contract.id, operation.handler)).collect(),
+        local: Arc::new(
+            plugin
+                .operations
+                .iter()
+                .filter(|operation| operation.contract.visibility == v1::Visibility::Private as i32)
+                .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
+                .collect(),
+        ),
+        operations: plugin
+            .operations
+            .into_iter()
+            .filter(|operation| operation.contract.visibility != v1::Visibility::Private as i32)
+            .map(|operation| (operation.contract.id, operation.handler))
+            .collect(),
         streams,
         requires,
         jobs,
@@ -322,15 +337,17 @@ async fn invoke(
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
+            _ = context.call_changes.notified() => context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?,
             result = &mut complete => break result.map_err(|_| Status::internal("Handler Panicked"))?,
             frame = input.message(), if !eof => match frame? {
-                Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child)?,
+                Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Child(child)) }) => context.reply(child).await?,
                 Some(harmos_protocol::plugin::InstanceInvokeRequest { frame: Some(instance_invoke_request::Frame::Cancel(cancel)) }) => context.cancel(cancel.reason).await.map_err(|error| Status::unavailable(error.to_string()))?,
                 None => { eof = true; if !context.calls.lock().expect("Child Calls Poisoned").pending.is_empty() { return Err(Status::unavailable("Host Closed Before Child Replies")); } },
                 _ => return Err(Status::invalid_argument("Repeated Request")),
             }
         }
     };
+    context.cancel_calls(false, "Invocation Settled", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
     let result = match result {
         Ok(payload) => response::Result::Payload(payload),
         Err(error) => error.response(&context.operation, &context.plugin)?,

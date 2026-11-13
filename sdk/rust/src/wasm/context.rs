@@ -132,7 +132,7 @@ impl Context {
     }
     pub async fn submit_with<Q: OperationRequest>(&self, request: Q, policy: Option<v1::OperationPolicy>) -> Result<Child<Q::Response>> {
         let transport = self.guest_transport()?;
-        let fingerprint = crate::message::fingerprint::<Q, Q::Response>(Q::ID)?;
+        let fingerprint = crate::message::request_fingerprint::<Q>()?;
         if self.requires.get(Q::ID) != Some(&fingerprint) {
             return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
         }
@@ -144,6 +144,7 @@ impl Context {
                     payload: request.encode_to_vec(),
                     fingerprint,
                     policy,
+                    ..Default::default()
                 },
                 self.values.clone(),
                 true,
@@ -210,27 +211,6 @@ impl<R: Message> Child<R> {
         self.context.child_control(self.instance, GuestChildAction::Detach).await?;
         self.released = true;
         Ok(self.instance)
-    }
-}
-
-impl Message for harmos_protocol::context::SamplesAppendRequest {
-    fn name() -> String {
-        "harmos.context.v1.SamplesAppendRequest".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        protocol_types(&Self::name())
-    }
-}
-impl OperationRequest for harmos_protocol::context::SamplesAppendRequest {
-    type Response = harmos_protocol::context::SamplesAppendResponse;
-    const ID: &'static str = "harmos.samples.append";
-}
-impl Message for harmos_protocol::context::SamplesAppendResponse {
-    fn name() -> String {
-        "harmos.context.v1.SamplesAppendResponse".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        protocol_types(&Self::name())
     }
 }
 

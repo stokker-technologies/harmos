@@ -347,7 +347,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "harmos.catalog_entries.list" | "grpc.descendant" => (),
+            "harmos.v1.CatalogEntries/List" | "grpc.descendant" => (),
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {

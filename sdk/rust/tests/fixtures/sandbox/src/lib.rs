@@ -89,6 +89,10 @@ pub fn harmos_register() -> Registration {
     };
     let plugin = Plugin::new("sandbox_guest", env!("CARGO_PKG_VERSION"))
         .operation(
+            Operation::new(LocalEcho::ID, async |_: &Context, request: LocalEcho| Ok(Echoed { said: request.say }))
+                .visibility(Visibility::Private),
+        )
+        .operation(
             Operation::new(EchoOperation::ID, async move |context: &Context, request: EchoOperation| {
                 echo(&echo_owner, context, request).await
             })
@@ -225,6 +229,9 @@ async fn progress(context: &Context, value: &str) -> Result<()> {
     context.publish(&Stream::new("progress"), Echoed { said: value.into() }).await
 }
 async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Result<Echoed> {
+    if let Some(say) = request.say.strip_prefix("local:") {
+        return context.call(LocalEcho { say: say.into() }).await;
+    }
     if let Some(value) = request.say.strip_prefix("saved-publish:") {
         let saved = owner.initialized.lock().unwrap().clone().ok_or_else(|| Error::Invalid("Initialization Context Is Missing".into()))?;
         progress(&saved, value).await?;

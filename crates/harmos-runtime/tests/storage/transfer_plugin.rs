@@ -105,7 +105,7 @@ impl TransferPlugin {
             let request = format!("harmos.context.v1.Storage{method}Request");
             let response = format!("harmos.context.v1.Storage{method}Response");
             let method_id = snake(method);
-            let child = format!("harmos.context.v1.storage.{method_id}");
+            let child = format!("harmos.context.v1.Storage/{method}");
             let id = format!("fixture.transfer.{method_id}");
             catalog.operations.push(v1::OperationContract {
                 fingerprint: schema::fingerprint(&id, &types, &request, &response).unwrap(),
@@ -188,19 +188,20 @@ impl plugin::instance_server::Instance for Service {
             return Err(Status::invalid_argument("Invoke requires an opening request"));
         };
         let method = request.operation.strip_prefix("fixture.transfer.").ok_or_else(|| Status::not_found("Invoke unknown transfer"))?;
-        let operation = format!("harmos.context.v1.storage.{method}");
+
         let required = self
             .catalog
             .requires
             .iter()
-            .find(|required| required.id == operation)
+            .find(|required| required.id.rsplit_once('/').is_some_and(|(_, name)| snake(name) == method))
             .ok_or_else(|| Status::not_found("Invoke undeclared transfer"))?;
         let child = v1::ChildRequest {
             call: 1,
-            operation,
+            operation: required.id.clone(),
             payload: request.payload,
             fingerprint: required.fingerprint.clone(),
             policy: self.next_policy.lock().unwrap().take(),
+            ..Default::default()
         };
         let (send, receive) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
@@ -217,6 +218,7 @@ impl plugin::instance_server::Instance for Service {
                 if let Some(plugin::instance_invoke_request::Frame::Child(child)) = frame.frame {
                     let result = child.result.map(|result| match result {
                         v1::child_response::Result::Payload(payload) => v1::response::Result::Payload(payload),
+                        v1::child_response::Result::Item(_) => unreachable!("unary storage fixture receives no observations"),
                         v1::child_response::Result::Failure(failure) => v1::response::Result::Failure(failure),
                     });
                     let _ = send
@@ -245,7 +247,7 @@ impl plugin::instance_server::Instance for Service {
 pub async fn call<O: harmos_operations::execution::operations::ProtobufOperation<Endpoints = ()>>(
     operations: &harmos_runtime::operations::OperationManager, request: O::Request,
 ) -> Result<O::Response, harmos_runtime::Error> {
-    let method = O::ID.rsplit('.').next().unwrap();
+    let method = snake(O::ID.rsplit('/').next().unwrap());
     let bytes = operations.call_encoded(&format!("fixture.transfer.{method}"), request.encode_to_vec()).await?;
     O::Response::decode(bytes.as_slice()).map_err(|source| harmos_runtime::Error::OperationFailed {
         operation: O::ID.into(),

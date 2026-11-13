@@ -50,7 +50,7 @@ simulation = []
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-sdk-derive = { workspace = true, default-features = true }
 harmos-operations = { workspace = true, features = ["lifecycle", "streaming", "grpc"] }
-harmos-protocol = { workspace = true }
+harmos-protocol = { workspace = true, features = ["host"] }
 harmos-storage = { workspace = true }
 
 # Git
@@ -115,7 +115,7 @@ tower = { workspace = true }
 prost-build = { workspace = true }
 protoc-bin-vendored = { workspace = true }
 # Local
-harmos = { workspace = true, features = ["wasm"] }
+harmos = { workspace = true, features = ["wasm", "client"] }
 harmos-packaging = { path = "../../tools/packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }

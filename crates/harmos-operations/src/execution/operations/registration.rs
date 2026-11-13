@@ -435,6 +435,17 @@ impl OperationFactory {
         })
     }
 
+    /// Share Execution With an Independently Declared Face Contract.
+    pub fn with_contract(mut self, contract: Contract) -> Self {
+        self.definition = contract.operation().clone();
+        self.declared = std::sync::Arc::new({
+            let definition = self.definition.clone();
+            move || definition.clone()
+        });
+        self.contract = std::sync::Arc::new(move |_| Ok(contract.clone()));
+        self
+    }
+
     pub fn with_id(mut self, id: &str) -> Result<Self, ServingError> {
         self.definition = (self.named)(id)?;
         self.registered_id = Some(self.definition.id.clone());

@@ -106,7 +106,22 @@ impl Manager {
             });
         }
         let mut entries = Vec::with_capacity(batch.operations.len());
+        let declared: std::collections::BTreeSet<_> = batch.operations.iter().map(|factory| factory.definition.id.to_string()).collect();
+        let mut factories = Vec::new();
         for factory in batch.operations {
+            if let Ok(contract) = factory.contract_with_settings(&self.schema_settings)
+                && let Some(context) = contract.context(&self.schema_settings).map_err(|source| Error::OperationFailed {
+                    operation: factory.definition.id.to_string(),
+                    source: Arc::new(source),
+                })?
+            {
+                if !declared.contains(context.operation().id.as_str()) {
+                    factories.push(factory.clone().with_contract(context));
+                }
+            }
+            factories.push(factory);
+        }
+        for factory in factories {
             let provided = Self::provided_resources();
             factory.verify_resources(self.resources(), &provided).map_err(|source| Error::OperationFailed {
                 operation: factory.definition.id.to_string(),

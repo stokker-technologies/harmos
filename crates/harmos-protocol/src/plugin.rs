@@ -67,7 +67,7 @@ pub mod instance_invoke_request {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceInvokeResponse {
-    #[prost(oneof = "instance_invoke_response::Frame", tags = "1, 2, 3")]
+    #[prost(oneof = "instance_invoke_response::Frame", tags = "1, 2, 3, 4")]
     pub frame: ::core::option::Option<instance_invoke_response::Frame>,
 }
 /// Nested message and enum types in `InstanceInvokeResponse`.
@@ -81,6 +81,8 @@ pub mod instance_invoke_response {
         ChildCancel(crate::v1::ChildCancel),
         #[prost(message, tag = "3")]
         Response(crate::v1::Response),
+        #[prost(message, tag = "4")]
+        ChildDemand(crate::v1::ChildDemand),
     }
 }
 #[allow(clippy::all)]
@@ -108,7 +110,7 @@ pub struct InstanceSamplesResponse {
     pub samples: ::prost::alloc::vec::Vec<crate::v1::Sample>,
 }
 /// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
 pub mod instance_client {
     #![allow(
         unused_variables,
@@ -314,7 +316,7 @@ pub mod instance_client {
     }
 }
 /// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), any(feature = "plugin", feature = "host")))]
 pub mod instance_server {
     #![allow(
         unused_variables,

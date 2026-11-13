@@ -1,0 +1,13 @@
+
+¢
+#harmos/context/v1/invocations.protoharmos.context.v1harmos/v1/types.proto"I
+InvocationsCancelResponse,
+
+invocation (2.harmos.v1.InstanceStatebproto3
+Œ
+harmos/v1/types.proto	harmos.v1"`
+InstanceState
+phase (	
+outcome (	
+cancellation_requested (
+attempt (bproto3

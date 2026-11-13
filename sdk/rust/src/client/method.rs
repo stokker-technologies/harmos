@@ -71,7 +71,7 @@ impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
     /// Bind Generated Types To An Authoritative Discovered Or Application Contract.
     pub fn new(contract: host::DiscoveredContract) -> Result<Self, Status> {
         if contract.visibility != host::Visibility::Public as i32 {
-            return Err(Status::permission_denied("operation is private"));
+            return Err(Status::permission_denied(format!("Bind {}: Public Visibility Required", contract.id)));
         }
         let protobuf = contract.protobuf.as_ref().ok_or_else(|| Status::invalid_argument("operation has no generated contract"))?;
         verify::<Q>(&protobuf.request, protobuf)?;

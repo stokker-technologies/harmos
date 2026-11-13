@@ -45,6 +45,8 @@ mod registration;
 mod protobuf;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod sdk;
+#[cfg(feature = "grpc")]
+pub mod values;
 mod wire;
 
 /* === Re-Exports === */

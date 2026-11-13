@@ -1,0 +1,15 @@
+
+«
+harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.proto"N
+StorageGetFileProductionRequest+
+file (2.harmos.storage.v1.StagedFilebproto3
+´
+harmos/v1/storage_types.protoharmos.storage.v1"J
+
+StagedFile0
+history (2.harmos.storage.v1.StoreHistory
+
+id (	",
+StoreHistory
+store (	
+epoch (	bproto3

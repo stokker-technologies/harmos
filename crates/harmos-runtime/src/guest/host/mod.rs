@@ -462,7 +462,7 @@ impl<A: Application> Bridge<A> {
     fn publication_payload(
         &self, call: &mut crate::operations::WireChildCall,
     ) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, crate::operations::WireCodecError> {
-        if call.operation != "harmos.samples.append" && !call.operation.ends_with(".harmos.samples.append") {
+        if call.operation != "harmos.context.v1.Samples/Append" && !call.operation.ends_with(".harmos.context.v1.Samples/Append") {
             return Ok(None);
         }
         let factory = harmos_operations::execution::operations::OperationFactory::protobuf::<harmos_operations::streams::Append>()

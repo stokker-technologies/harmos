@@ -43,7 +43,7 @@ impl ProtobufOperation for List {
     type Request = harmos_protocol::v1::CatalogEntriesListRequest;
     type Response = CatalogEntriesListResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.catalog_entries.list";
+    const ID: &'static str = "harmos.v1.CatalogEntries/List";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "CatalogEntries", "List"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;

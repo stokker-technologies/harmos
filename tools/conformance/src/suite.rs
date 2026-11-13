@@ -60,6 +60,12 @@ pub const CASES: &[&str] = &[
     "Explicit Visibility and Replay Safety",
     "Invocation Resource Isolation",
     "Cooperative Cancellation Reason",
+    "Local Private Isolation",
+    "Demand-Bounded Context Watch",
+    "Local Private Retry Policy",
+    "Local Private Attempt Deadline",
+    "Local Private Cooperative Cancellation",
+    "Host-Mediated Peer Visibility",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -255,8 +261,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
             let expected = fixture::catalog();
             require(
-                catalog.operations.get(..6) == expected.operations.get(..6)
-                    && catalog.requires == expected.requires
+                expected.operations.iter().all(|entry| catalog.operations.iter().find(|actual| actual.id == entry.id) == Some(entry))
+                    && catalog.requires.len() == expected.requires.len()
+                    && expected.requires.iter().all(|entry| catalog.requires.iter().find(|actual| actual.id == entry.id) == Some(entry))
                     && catalog.streams.get(..2) == expected.streams.get(..2),
                 "Fixed Fixture Catalog Differs",
             )?;
@@ -579,8 +586,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
             let types = catalog.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
             for (id, (request, response)) in fixture::CLOCK_OPERATIONS.into_iter().zip([
-                ("harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse"),
-                ("harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse"),
+                ("harmos.context.v1.TimeSleepRequest", "harmos.context.v1.TimeSleepResponse"),
+                ("harmos.context.v1.TimeGetRequest", "harmos.context.v1.TimeGetResponse"),
             ]) {
                 let requirement = catalog
                     .requires
@@ -597,9 +604,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Answer Host Clock Calls Without Any Local Timer.
             let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(&[])).await?;
             for (id, operation, payload, reply) in [
-                (1, "harmos.time.get", vec![], vec![0x0a, 2, 8, 100]),
-                (2, "harmos.time.sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
-                (3, "harmos.time.get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
+                (1, "harmos.context.v1.Time/Get", vec![], vec![0x0a, 2, 8, 100]),
+                (2, "harmos.context.v1.Time/Sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
+                (3, "harmos.context.v1.Time/Get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
             ] {
                 child(&mut input, id, operation, &payload).await?;
                 send_child(&send, id, child_response::Result::Payload(reply)).await?;
@@ -631,7 +638,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         21 => {
             let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
             for (id, visibility, replay_safe) in [
-                ("conformance.private", v1::Visibility::Private, false),
+                ("conformance.protected", v1::Visibility::Protected, false),
                 ("conformance.resources", v1::Visibility::Public, true),
                 ("conformance.echo", v1::Visibility::Public, false),
             ] {
@@ -673,6 +680,292 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"Requested Stop")),
                 "Cancellation Reason Did Not Reach Handler",
             )?;
+        }
+        24 => {
+            let description =
+                client.get(harmos_protocol::plugin::InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner();
+            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Catalog Missing".into()))?;
+            require(
+                !catalog.operations.iter().any(|operation| operation.id == "conformance.local"),
+                "Private Operation Leaked Into Catalog",
+            )?;
+            require(
+                !catalog.requires.iter().any(|operation| operation.id == "conformance.local"),
+                "Private Requirement Leaked Into Catalog",
+            )?;
+            let payload = fixture::payload(b"local payload");
+            let (_send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
+            // terminal Rejects Any Child Frame, So Private Dispatch Cannot Use the Carrier.
+            require(terminal(&mut input).await? == response::Result::Payload(payload), "Local Private Result Differs")?;
+            let result = invoke(&mut client, "conformance.local", fixture::payload(b"outside")).await;
+            match result {
+                Err(Error::Status(status)) if status.code() == Code::NotFound => {}
+                Ok((_send, mut input)) => {
+                    require(
+                        input.message().await.is_err_and(|status| status.code() == Code::NotFound),
+                        "Private Carrier Call Was Admitted",
+                    )?;
+                }
+                _ => return Err(Error::Invalid("Private Carrier Call Was Admitted".into())),
+            }
+        }
+        29 => {
+            for (mode, operation) in [
+                (b"public".as_slice(), "conformance.peer.public"),
+                (b"self", "conformance.protected"),
+                (b"protected", "conformance.peer.protected"),
+                (b"local", "conformance.peer.local"),
+            ] {
+                let payload = fixture::payload(mode);
+                let (send, mut input) = invoke(&mut client, "conformance.peer_call", payload.clone()).await?;
+                child(&mut input, 1, operation, &if mode == b"public" { fixture::payload(b"fixture") } else { payload.clone() }).await?;
+                if mode == b"self" {
+                    send_child(&send, 1, child_response::Result::Payload(payload.clone())).await?;
+                    require(
+                        terminal(&mut input).await? == response::Result::Payload(payload),
+                        "Declaring Plugin Cannot Call Its Protected Operation",
+                    )?;
+                } else if mode == b"public" {
+                    let payload = fixture::payload(b"peer result");
+                    send_child(&send, 1, child_response::Result::Payload(payload.clone())).await?;
+                    require(
+                        terminal(&mut input).await? == response::Result::Payload(payload),
+                        "Public Peer Result Did Not Cross the Host",
+                    )?;
+                } else {
+                    let mut failure = fixture::failure(operation);
+                    failure.classification = v1::Classification::Refused as i32;
+                    failure.message = format!(
+                        "Invoke {operation}: {}",
+                        if mode == b"protected" { "Protected Peer Operation" } else { "Operation Is Not Declared in the Peer Catalog" }
+                    );
+                    send_child(&send, 1, child_response::Result::Failure(failure.clone())).await?;
+                    require(terminal(&mut input).await? == response::Result::Failure(failure), "Peer Refusal Lost Its Action or Cause")?;
+                }
+            }
+        }
+        27 => {
+            for mode in [b"deadline".as_slice(), b"overall"] {
+                let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(mode)).await?;
+                for call in 1..=2 {
+                    child(&mut input, call, "harmos.context.v1.Time/Get", &[]).await?;
+                    send_child(
+                        &send,
+                        call,
+                        child_response::Result::Payload(
+                            harmos_protocol::context::TimeGetResponse {
+                                now: Some(prost_types::Timestamp { seconds: 0, nanos: 0 }),
+                            }
+                            .encode_to_vec(),
+                        ),
+                    )
+                    .await?;
+                }
+                let mut deadline = None;
+                let mut sleeping = None;
+                for _ in 0..2 {
+                    let frame = input.message().await?.and_then(|frame| frame.frame);
+                    let Some(instance_invoke_response::Frame::Child(child)) = frame else {
+                        return Err(Error::Invalid("Private Deadline: Expected Clock Child".into()));
+                    };
+                    require(child.operation == "harmos.context.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
+                    let duration = harmos_protocol::context::TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
+                    if child.background {
+                        require(duration == prost_types::Duration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
+                        deadline = Some(child.call);
+                    } else {
+                        require(duration == prost_types::Duration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
+                        sleeping = Some(child.call);
+                    }
+                }
+                send_child(
+                    &send,
+                    deadline.ok_or_else(|| Error::Invalid("Private Deadline: Guard Missing".into()))?,
+                    child_response::Result::Payload(Vec::new()),
+                )
+                .await?;
+                let mut cancelled = false;
+                loop {
+                    let frame = input.message().await?.and_then(|frame| frame.frame);
+                    match frame {
+                        Some(instance_invoke_response::Frame::ChildCancel(child)) => {
+                            if Some(child.call) == sleeping {
+                                cancelled = true;
+                            }
+                        }
+                        Some(instance_invoke_response::Frame::Response(v1::Response {
+                            result: Some(response::Result::Failure(failure)),
+                        })) => {
+                            require(
+                                cancelled && failure.classification() == v1::Classification::TimedOut,
+                                "Private Deadline Did Not Cancel Its Child Before Settling",
+                            )?;
+                            require(input.message().await?.is_none(), "Frame After Private Deadline")?;
+                            break;
+                        }
+                        _ => return Err(Error::Invalid(format!("Private Deadline: Unexpected Frame {frame:?}"))),
+                    }
+                }
+            }
+        }
+        28 => {
+            let payload = fixture::payload(b"cancel");
+            let (send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
+            child(&mut input, 1, "conformance.host.echo", &payload).await?;
+            send_child(&send, 1, child_response::Result::Payload(payload)).await?;
+            send.send(harmos_protocol::plugin::InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "Local Stop".into() })),
+            })
+            .await
+            .map_err(|_| Error::Invalid("Private Cancel: Carrier Closed".into()))?;
+            let mut guards = std::collections::BTreeSet::new();
+            loop {
+                let frame = input.message().await?.and_then(|frame| frame.frame);
+                match frame {
+                    Some(instance_invoke_response::Frame::Child(child)) => {
+                        require(
+                            child.background && child.operation == "harmos.context.v1.Time/Sleep",
+                            "Private Cancellation Leaked a Local Call",
+                        )?;
+                        guards.insert(child.call);
+                    }
+                    Some(instance_invoke_response::Frame::ChildCancel(child)) => {
+                        guards.remove(&child.call);
+                    }
+                    Some(instance_invoke_response::Frame::Response(v1::Response {
+                        result: Some(response::Result::Payload(payload)),
+                    })) => {
+                        require(
+                            guards.is_empty() && payload == fixture::payload(b"Local Stop"),
+                            "Private Cancellation Did Not Preserve Its Reason and Settle Guards",
+                        )?;
+                        require(input.message().await?.is_none(), "Frame After Private Cancellation")?;
+                        break;
+                    }
+                    _ => return Err(Error::Invalid(format!("Private Cancel: Unexpected Frame {frame:?}"))),
+                }
+            }
+        }
+        26 => {
+            let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry")).await?;
+            let delay = harmos_protocol::context::TimeSleepRequest {
+                duration: Some(prost_types::Duration { seconds: 1, nanos: 11 }),
+            }
+            .encode_to_vec();
+            child(&mut input, 1, "harmos.context.v1.Time/Sleep", &delay).await?;
+            send_child(&send, 1, child_response::Result::Payload(Vec::new())).await?;
+            require(
+                terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"2")),
+                "Private Retry Did Not Preserve Attempt Semantics",
+            )?;
+            // An Hour-Long Retry Must Stop at the Remaining Overall Budget.
+            let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry-bound")).await?;
+            let mut now = 0;
+            let mut slept = false;
+            let mut guards = std::collections::BTreeSet::new();
+            loop {
+                let frame = input.message().await?.and_then(|frame| frame.frame);
+                match frame {
+                    Some(instance_invoke_response::Frame::Child(child)) => {
+                        require(child.fingerprint == fixture::fingerprint(&child.operation), "Private Retry: Clock Fingerprint Differs")?;
+                        if child.operation == "harmos.context.v1.Time/Get" {
+                            send_child(
+                                &send,
+                                child.call,
+                                child_response::Result::Payload(
+                                    harmos_protocol::context::TimeGetResponse {
+                                        now: Some(prost_types::Timestamp { seconds: now, nanos: 0 }),
+                                    }
+                                    .encode_to_vec(),
+                                ),
+                            )
+                            .await?;
+                        } else {
+                            require(child.operation == "harmos.context.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
+                            let duration = harmos_protocol::context::TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
+                            require(duration == prost_types::Duration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
+                            if child.background {
+                                guards.insert(child.call);
+                            } else {
+                                require(!slept, "Private Retry Continued After Its Overall Deadline")?;
+                                slept = true;
+                                now = 1;
+                                send_child(&send, child.call, child_response::Result::Payload(Vec::new())).await?;
+                            }
+                        }
+                    }
+                    Some(instance_invoke_response::Frame::ChildCancel(cancel)) => {
+                        guards.remove(&cancel.call);
+                    }
+                    Some(instance_invoke_response::Frame::Response(v1::Response {
+                        result: Some(response::Result::Failure(failure)),
+                    })) => {
+                        require(
+                            slept && guards.is_empty() && failure.classification() == v1::Classification::TimedOut,
+                            &format!(
+                                "Private Retry Did Not Settle at Its Overall Deadline: slept={slept}, guards={}, failure={failure:?}",
+                                guards.len()
+                            ),
+                        )?;
+                        require(input.message().await?.is_none(), "Frame After Private Retry Deadline")?;
+                        break;
+                    }
+                    _ => return Err(Error::Invalid(format!("Private Retry: Unexpected Frame {frame:?}"))),
+                }
+            }
+        }
+        25 => {
+            for mode in [b"normal".as_slice(), b"cancel", b"failure"] {
+                let (send, mut input) = invoke(&mut client, "conformance.watch", fixture::payload(mode)).await?;
+                let frame = input.message().await?.and_then(|frame| frame.frame);
+                let Some(instance_invoke_response::Frame::Child(child)) = frame else {
+                    return Err(Error::Invalid("Watch: Missing Open".into()));
+                };
+                require(
+                    child.operation == "conformance.host.watch" && child.watch && child.max_response_bytes == 4096,
+                    "Watch Open Differs",
+                )?;
+                let call = child.call;
+                for bytes in [b"first".as_slice(), b"second"] {
+                    let frame = input.message().await?.and_then(|frame| frame.frame);
+                    require(
+                        frame == Some(instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call })),
+                        "Watch Item Without Demand",
+                    )?;
+                    send_child(&send, call, child_response::Result::Item(fixture::payload(bytes))).await?;
+                    if mode == b"cancel" {
+                        break;
+                    }
+                }
+                if mode == b"cancel" {
+                    require(
+                        input.message().await?.and_then(|frame| frame.frame)
+                            == Some(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call })),
+                        "Watch Demand Not Cancelled",
+                    )?;
+                    require(
+                        terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"first")),
+                        "Watch Cancel Result Differs",
+                    )?;
+                } else {
+                    require(
+                        input.message().await?.and_then(|frame| frame.frame)
+                            == Some(instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call })),
+                        "Watch Terminal Demand Missing",
+                    )?;
+                    if mode == b"failure" {
+                        let failure = fixture::failure("conformance.host.watch");
+                        send_child(&send, call, child_response::Result::Failure(failure.clone())).await?;
+                        require(terminal(&mut input).await? == response::Result::Failure(failure), "Watch Failure Cause Changed")?;
+                    } else {
+                        send_child(&send, call, child_response::Result::Payload(Vec::new())).await?;
+                        require(
+                            terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"firstsecond")),
+                            "Watch Result Differs",
+                        )?;
+                    }
+                }
+            }
         }
         16 => {
             client.stop(harmos_protocol::plugin::InstanceStopRequest { reason: "Conformance Complete".into() }).await?;

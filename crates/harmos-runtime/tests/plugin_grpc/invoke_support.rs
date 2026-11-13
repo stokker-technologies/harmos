@@ -152,6 +152,10 @@ impl HostFixture {
         let runtime = crate::support::booted(Default::default(), |setup| {
             setup.settings().clock(source.unwrap_or_else(|| harmos_runtime::clock::Clock::with_clock(clock.clone())));
             setup.resource::<Signals>(signals.clone());
+            setup.settings().operation_settings(harmos_runtime::operations::Settings {
+                preparation_bytes: std::num::NonZeroUsize::new(4096),
+                ..Default::default()
+            });
             setup.settings().attach_streams(Store(stored.clone(), harmos_runtime::storage::Cursor::ORIGIN, signals.clone()));
         })
         .await;

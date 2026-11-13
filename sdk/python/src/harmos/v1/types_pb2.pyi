@@ -17,6 +17,7 @@ class Visibility(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     VISIBILITY_UNSPECIFIED: _ClassVar[Visibility]
     VISIBILITY_PRIVATE: _ClassVar[Visibility]
     VISIBILITY_PUBLIC: _ClassVar[Visibility]
+    VISIBILITY_PROTECTED: _ClassVar[Visibility]
 
 class Classification(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -36,6 +37,7 @@ class CatalogKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
 VISIBILITY_UNSPECIFIED: Visibility
 VISIBILITY_PRIVATE: Visibility
 VISIBILITY_PUBLIC: Visibility
+VISIBILITY_PROTECTED: Visibility
 CLASSIFICATION_UNSPECIFIED: Classification
 CLASSIFICATION_PERMANENT: Classification
 CLASSIFICATION_TRANSIENT: Classification
@@ -220,18 +222,30 @@ class Response(_message.Message):
     def __init__(self, payload: _Optional[bytes] = ..., failure: _Optional[_Union[Failure, _Mapping]] = ...) -> None: ...
 
 class ChildRequest(_message.Message):
-    __slots__ = ("call", "operation", "payload", "fingerprint", "policy")
+    __slots__ = ("call", "operation", "payload", "fingerprint", "policy", "watch", "max_response_bytes", "background")
     CALL_FIELD_NUMBER: _ClassVar[int]
     OPERATION_FIELD_NUMBER: _ClassVar[int]
     PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     POLICY_FIELD_NUMBER: _ClassVar[int]
+    WATCH_FIELD_NUMBER: _ClassVar[int]
+    MAX_RESPONSE_BYTES_FIELD_NUMBER: _ClassVar[int]
+    BACKGROUND_FIELD_NUMBER: _ClassVar[int]
     call: int
     operation: str
     payload: bytes
     fingerprint: bytes
     policy: OperationPolicy
-    def __init__(self, call: _Optional[int] = ..., operation: _Optional[str] = ..., payload: _Optional[bytes] = ..., fingerprint: _Optional[bytes] = ..., policy: _Optional[_Union[OperationPolicy, _Mapping]] = ...) -> None: ...
+    watch: bool
+    max_response_bytes: int
+    background: bool
+    def __init__(self, call: _Optional[int] = ..., operation: _Optional[str] = ..., payload: _Optional[bytes] = ..., fingerprint: _Optional[bytes] = ..., policy: _Optional[_Union[OperationPolicy, _Mapping]] = ..., watch: _Optional[bool] = ..., max_response_bytes: _Optional[int] = ..., background: _Optional[bool] = ...) -> None: ...
+
+class ChildDemand(_message.Message):
+    __slots__ = ("call",)
+    CALL_FIELD_NUMBER: _ClassVar[int]
+    call: int
+    def __init__(self, call: _Optional[int] = ...) -> None: ...
 
 class ChildCancel(_message.Message):
     __slots__ = ("call",)
@@ -240,14 +254,16 @@ class ChildCancel(_message.Message):
     def __init__(self, call: _Optional[int] = ...) -> None: ...
 
 class ChildResponse(_message.Message):
-    __slots__ = ("call", "payload", "failure")
+    __slots__ = ("call", "payload", "failure", "item")
     CALL_FIELD_NUMBER: _ClassVar[int]
     PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     FAILURE_FIELD_NUMBER: _ClassVar[int]
+    ITEM_FIELD_NUMBER: _ClassVar[int]
     call: int
     payload: bytes
     failure: Failure
-    def __init__(self, call: _Optional[int] = ..., payload: _Optional[bytes] = ..., failure: _Optional[_Union[Failure, _Mapping]] = ...) -> None: ...
+    item: bytes
+    def __init__(self, call: _Optional[int] = ..., payload: _Optional[bytes] = ..., failure: _Optional[_Union[Failure, _Mapping]] = ..., item: _Optional[bytes] = ...) -> None: ...
 
 class Failure(_message.Message):
     __slots__ = ("classification", "code", "message", "action", "operation", "plugin", "cause", "details", "diagnostics")
@@ -407,3 +423,17 @@ class FollowingRow(_message.Message):
     payload: bytes
     published_delta: _duration_pb2.Duration
     def __init__(self, payload: _Optional[bytes] = ..., published_delta: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ...) -> None: ...
+
+class SettingsDeclarations(_message.Message):
+    __slots__ = ("values",)
+    VALUES_FIELD_NUMBER: _ClassVar[int]
+    values: _containers.RepeatedCompositeFieldContainer[SettingDeclaration]
+    def __init__(self, values: _Optional[_Iterable[_Union[SettingDeclaration, _Mapping]]] = ...) -> None: ...
+
+class SettingDeclaration(_message.Message):
+    __slots__ = ("name", "type")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    type: str
+    def __init__(self, name: _Optional[str] = ..., type: _Optional[str] = ...) -> None: ...

@@ -49,10 +49,13 @@ pub(super) fn verify(catalog: &v1::Catalog) -> Result<(), Error> {
         .map_err(|error| Error::Invalid(format!("Invalid Catalog Definitions: {error}")))?;
     let mut operations = BTreeSet::new();
     for operation in &catalog.operations {
+        if harmos_operations::reserved(&operation.id) {
+            return Err(Error::Invalid(format!("Register {}: Host Namespace Is Reserved", operation.id)));
+        }
         if operation.id.is_empty() || !operations.insert(&operation.id) {
             return Err(Error::Invalid(format!("Duplicate or Empty Operation: {}", operation.id)));
         }
-        if !matches!(v1::Visibility::try_from(operation.visibility), Ok(v1::Visibility::Private | v1::Visibility::Public)) {
+        if !matches!(v1::Visibility::try_from(operation.visibility), Ok(v1::Visibility::Protected | v1::Visibility::Public)) {
             return Err(Error::Invalid(format!("Invalid Operation Visibility: {}", operation.id)));
         }
         let fingerprint = schema::fingerprint(&operation.id, &types, &operation.request, &operation.response)
@@ -74,6 +77,18 @@ pub(super) fn verify(catalog: &v1::Catalog) -> Result<(), Error> {
             return Err(Error::Invalid(format!("Duplicate Section: {}", section.r#type)));
         }
         schema::message_types(&types, &section.r#type).map_err(|error| Error::Invalid(error.to_string()))?;
+        if section.r#type == "harmos.v1.SettingsDeclarations" {
+            let values = <v1::SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
+                .map_err(|error| Error::Invalid(format!("Declare HostValues: {error}")))?;
+            let mut names = BTreeSet::new();
+            for value in values.values {
+                if value.name.is_empty() || !names.insert(value.name.clone()) {
+                    return Err(Error::Invalid(format!("Declare HostValues: Duplicate or Empty Name {}", value.name)));
+                }
+                schema::message_types(&types, &value.r#type)
+                    .map_err(|error| Error::Invalid(format!("Declare HostValues {}: {error}", value.name)))?;
+            }
+        }
     }
     let mut requires = BTreeSet::new();
     for requirement in &catalog.requires {

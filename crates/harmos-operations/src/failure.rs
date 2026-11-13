@@ -385,8 +385,14 @@ fn sources<'a>(error: &'a (dyn std::error::Error + 'static)) -> impl Iterator<It
 }
 
 fn carried<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a Failure> {
-    sources(error)
-        .find_map(|error| error.downcast_ref::<Failure>().or_else(|| error.downcast_ref::<crate::Refusal>().map(crate::Refusal::failure)))
+    sources(error).find_map(|error| {
+        error.downcast_ref::<Failure>().or_else(|| error.downcast_ref::<crate::Refusal>().map(crate::Refusal::failure)).or_else(|| {
+            match error.downcast_ref::<crate::execution::ServingError>() {
+                Some(crate::execution::ServingError::Handler(failure)) => Some(failure),
+                _ => None,
+            }
+        })
+    })
 }
 
 fn bounded(mut text: String, limit: usize) -> String {

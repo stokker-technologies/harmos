@@ -70,7 +70,7 @@ impl Entry {
             id,
             description: "",
             policy,
-            visibility: Visibility::Private,
+            visibility: Visibility::Protected,
             replay: ReplaySafety::Unknown,
             fingerprint: request_fingerprint::<Q>,
         }

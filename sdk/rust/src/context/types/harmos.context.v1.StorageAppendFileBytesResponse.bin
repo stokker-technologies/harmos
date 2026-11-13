@@ -1,0 +1,36 @@
+
+î
+harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.protoharmos/v1/types.proto"z
+StorageAppendFileBytesResponse3
+
+production (2.harmos.storage.v1.FileProducer#
+receipt (2.harmos.v1.Receiptbproto3
+š
+harmos/v1/storage_types.protoharmos.storage.v1"O
+FileProducer/
+session (2.harmos.storage.v1.FileSession
+length ("_
+FileSession0
+history (2.harmos.storage.v1.StoreHistory
+
+id (	
+
+generation (",
+StoreHistory
+store (	
+epoch (	bproto3
+œ
+harmos/v1/types.proto	harmos.v1"'
+History
+store (	
+epoch (	"A
+Position#
+history (2.harmos.v1.History
+sequence ("ƒ
+Receipt
+
+request_id (	(
+accepted_at (2.harmos.v1.Position'
+
+durable_at (2.harmos.v1.Position
+	completed (bproto3

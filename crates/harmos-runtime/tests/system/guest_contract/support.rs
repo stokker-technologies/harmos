@@ -122,7 +122,7 @@ impl ProtobufOperation for Publisher {
     type Request = harmos_protocol::context::SamplesAppendRequest;
     type Response = harmos_protocol::context::SamplesAppendResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.samples.append";
+    const ID: &'static str = "harmos.context.v1.Samples/Append";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_runtime::operations::HostContext>()];
@@ -229,7 +229,7 @@ pub fn host(runtime: &Runtime<crate::support::Bank>) -> harmos_runtime::guest::H
 pub fn settings(configuration: &str) -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["harmos.samples.append", "provider.echo"]
+        host_operations: ["harmos.context.v1.Samples/Append", "provider.echo"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),

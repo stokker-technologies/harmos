@@ -38,7 +38,7 @@ impl ProtobufOperation for Watch {
     type Request = harmos_protocol::v1::InvocationsWatchRequest;
     type Response = harmos_protocol::v1::InvocationsWatchResponse;
     type Endpoints = ProtobufOutput<harmos_protocol::v1::InvocationsWatchResponse>;
-    const ID: &'static str = "harmos.invocations.watch";
+    const ID: &'static str = "harmos.v1.Invocations/Watch";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Invocations", "Watch"));
     const POLICY: crate::OperationPolicy = super::WATCH_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;

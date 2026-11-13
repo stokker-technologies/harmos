@@ -57,14 +57,14 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
         # An Hour-Long Wait Is a Child Call, Completed Only by the Host's Reply.
         call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
-        self.assertEqual(sleep.operation, "harmos.time.sleep")
+        self.assertEqual(sleep.operation, "harmos.context.v1.Time/Sleep")
         self.assertEqual(clock.TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
         self.assertEqual(sleep.fingerprint, description.catalog.requires[0].fingerprint)
         await calls.reply(call, sleep, clock.TimeSleepResponse())
 
         # Supply Host Evidence Time Through the Next Child Call.
         now = (await call.read()).child
-        self.assertEqual(now.operation, "harmos.time.get")
+        self.assertEqual(now.operation, "harmos.context.v1.Time/Get")
         at = Timestamp(seconds=12345, nanos=67890)
         await calls.reply(call, now, clock.TimeGetResponse(now=at))
         result = (await call.read()).response
