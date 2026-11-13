@@ -94,12 +94,15 @@ fn main() {
             },
         ));
         let settings = StorageSettings {
+            policy: Default::default(),
             filesystem: StorageFilesystemSettings {
                 poll_interval: std::time::Duration::from_millis(100),
                 max_entries: nz(100_000),
                 event_capacity: nz(1024),
             },
             request: StorageRequestSettings {
+                max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),
+                max_mutation_receipts: std::num::NonZeroUsize::new(1024).unwrap(),
                 max_pending_queries: nz(64),
                 max_active_queries: nz(4),
                 max_pending_write_batches: nz(256),

@@ -13,6 +13,8 @@
 
 /* === Re-Exports === */
 
+pub use harmos_protocol::policy::{Backoff, Jitter, RetryPolicy};
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -33,18 +35,6 @@ pub(super) const TARGET_BATCH_BYTES: usize = 1024 * 1024;
 pub(super) const OBJECT_PRUNE_ENTRIES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 pub(super) const SNAPSHOT_BYTES: usize = 1024 * 1024;
 
-// Backend I/O And Transient Persistence Retry.
-pub(super) const IO_TIMEOUT: Duration = Duration::from_secs(30);
-pub(super) const RECOVERY_TIMEOUT: Duration = Duration::from_secs(300);
-pub(super) const MAX_RETRIES: usize = 3;
-pub(super) const RETRY_BASE: Duration = Duration::from_millis(10);
-pub(super) const RETRY_CAP: Duration = Duration::from_secs(1);
-
-// Producer Sessions And Idempotent Mutation Receipts.
-pub(super) const MAX_FILES: NonZeroUsize = NonZeroUsize::new(256).unwrap();
-pub(super) const FILE_SESSION_TIMEOUT: Duration = Duration::from_secs(60);
-pub(super) const MAX_MUTATIONS: NonZeroUsize = NonZeroUsize::new(1024).unwrap();
-pub(super) const MUTATION_RETENTION: Duration = Duration::from_secs(300);
 // Internal Scan Pages Amortize Backend Calls On Desktop Storage: 16,384 Rows / 8 MiB.
 // Response Sizing And Concurrent Query Counts Remain Explicit Consumer Settings.
 // Query Reductions Cache at Most 32 MiB of Arrow Pages and 32 MiB of Coordinates,
@@ -61,9 +51,20 @@ pub(super) const SCAN_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StorageSettings {
+    pub policy: StoragePolicy,
     pub request: StorageRequestSettings,
     pub response: StorageResponseSettings,
     pub filesystem: StorageFilesystemSettings,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoragePolicy {
+    pub io_timeout: Duration,
+    pub recovery_timeout: Duration,
+    pub retries: RetryPolicy,
+    pub file_session_timeout: Duration,
+    pub mutation_retention: Duration,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -77,6 +78,8 @@ pub struct StorageFilesystemSettings {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StorageRequestSettings {
+    pub max_file_productions: NonZeroUsize,
+    pub max_mutation_receipts: NonZeroUsize,
     pub max_pending_queries: NonZeroUsize,
     pub max_active_queries: NonZeroUsize,
     pub max_pending_write_batches: NonZeroUsize,
@@ -104,6 +107,25 @@ pub struct StorageAccumulatorSettings {
 
 /* === Implementations === */
 
+impl Default for StoragePolicy {
+    fn default() -> Self {
+        Self {
+            io_timeout: Duration::from_secs(30),
+            recovery_timeout: Duration::from_secs(300),
+            retries: RetryPolicy::OnTransient {
+                total_attempts: 4,
+                backoff: Backoff::Exponential {
+                    initial: Duration::from_millis(10),
+                    maximum: Duration::from_secs(1),
+                    jitter: Jitter::None,
+                },
+            },
+            file_session_timeout: Duration::from_secs(60),
+            mutation_retention: Duration::from_secs(300),
+        }
+    }
+}
+
 impl Default for StorageAccumulatorSettings {
     fn default() -> Self {
         Self { memory_bytes: 64 * 1024 }
@@ -112,6 +134,21 @@ impl Default for StorageAccumulatorSettings {
 
 impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
+        if self.policy.io_timeout.is_zero()
+            || self.policy.recovery_timeout.is_zero()
+            || self.policy.file_session_timeout.is_zero()
+            || self.policy.mutation_retention.is_zero()
+        {
+            return Err(crate::Error::InvalidInput {
+                field: "Storage policy",
+                reason: "I/O and session durations must be positive",
+            });
+        }
+        self.policy
+            .retries
+            .validate()
+            .map_err(|error| crate::Error::backend("configure Storage retries", crate::BackendFailure::Permanent, error))?;
+
         if self.filesystem.poll_interval.is_zero() || self.filesystem.event_capacity.get() > tokio::sync::Semaphore::MAX_PERMITS {
             return Err(crate::Error::InvalidInput {
                 field: "storage filesystem",
@@ -159,6 +196,7 @@ mod tests {
 
     fn settings() -> StorageSettings {
         StorageSettings {
+            policy: Default::default(),
             filesystem: crate::config::StorageFilesystemSettings {
                 poll_interval: std::time::Duration::from_millis(100),
                 max_entries: std::num::NonZeroUsize::new(100_000).unwrap(),
@@ -166,6 +204,8 @@ mod tests {
             },
 
             request: StorageRequestSettings {
+                max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),
+                max_mutation_receipts: std::num::NonZeroUsize::new(1024).unwrap(),
                 max_pending_queries: NonZeroUsize::new(64).unwrap(),
                 max_active_queries: NonZeroUsize::new(4).unwrap(),
                 max_pending_write_batches: NonZeroUsize::new(256).unwrap(),

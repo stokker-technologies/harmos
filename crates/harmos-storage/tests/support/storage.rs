@@ -45,6 +45,8 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 
 /* === Structs === */
 
+struct IoAttempt<'a>(&'a Notify);
+
 #[derive(Default)]
 pub struct Control {
     pub record_rows_examined: AtomicUsize,
@@ -121,6 +123,7 @@ pub struct Control {
     pub fail_abort: AtomicBool,
     pub block_abort: AtomicBool,
     pub abort_entered: Notify,
+    pub abort_settled: Notify,
     pub abort_release: Notify,
     pub aborts: AtomicUsize,
     pub corrupt_file: AtomicBool,
@@ -146,6 +149,7 @@ pub struct Control {
     pub accepted_file_read: Mutex<Option<AcceptedRead>>,
     pub block_write: AtomicBool,
     pub write_entered: Notify,
+    pub write_settled: Notify,
     pub write_release: Notify,
     pub block_flush: AtomicBool,
     pub flush_entered: Notify,
@@ -235,6 +239,12 @@ pub struct Recovery {
 
 /* === Implementations === */
 
+impl Drop for IoAttempt<'_> {
+    fn drop(&mut self) {
+        self.0.notify_one();
+    }
+}
+
 impl Control {
     // Hold A Gated Read Inside The Backend, Recording How Many Overlap.
     async fn gate_read(&self) {
@@ -249,6 +259,7 @@ impl Control {
     }
 
     async fn write(&self, positions: impl IntoIterator<Item = u64>) -> Result<()> {
+        let _settled = IoAttempt(&self.write_settled);
         let positions: Vec<_> = positions.into_iter().collect();
         self.write_sizes.lock().unwrap().push(positions.len());
         self.writes.lock().unwrap().extend(positions.iter().copied());

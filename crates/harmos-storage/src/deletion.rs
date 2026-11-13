@@ -20,7 +20,6 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use super::config::MAX_MUTATIONS;
 use super::manager::{Inner, State, Target};
 use super::receipts::ReceiptState;
 use super::{MutationId, MutationReceipt, MutationValue, StagedFile, StorageManager};
@@ -118,7 +117,7 @@ impl StorageManager {
                             if state.deleting(&file.id) {
                                 return Err(invalid("another deletion owns this file"));
                             }
-                            if state.deletions.len() >= MAX_MUTATIONS.get() {
+                            if state.deletions.len() >= self.inner.settings.request.max_mutation_receipts.get() {
                                 return Err(exhausted());
                             }
                             let outcome = MutationValue::Deleted(file.clone());

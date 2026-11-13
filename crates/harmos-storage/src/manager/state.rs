@@ -115,14 +115,18 @@ impl Inner {
 
     #[tracing::instrument(name = "storage.backend", level = "debug", skip_all, fields(method = method, outcome = "cancelled"))]
     pub(crate) async fn bounded<T>(&self, method: &'static str, future: StorageFuture<'_, T>) -> Result<T> {
-        let timeout = if method == "recovery.create_recovery_session" { crate::config::RECOVERY_TIMEOUT } else { IO_TIMEOUT };
+        let timeout = if method == "recovery.create_recovery_session" {
+            self.settings.policy.recovery_timeout
+        } else {
+            self.settings.policy.io_timeout
+        };
         let result = self
             .execution
             .timeout(timeout, future)
             .await
             .map_err(|_| {
                 Error::backend(
-                    "storage I/O",
+                    method,
                     crate::BackendFailure::Transient,
                     io::Error::new(io::ErrorKind::TimedOut, "backend deadline exceeded"),
                 )

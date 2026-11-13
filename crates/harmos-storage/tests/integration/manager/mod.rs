@@ -37,6 +37,7 @@ mod nominal;
 #[path = "../../support/nominal.rs"]
 mod nominal_fixture;
 mod objects;
+mod policy;
 mod retention;
 mod typed_reads;
 #[path = "../../support/waveforms.rs"]

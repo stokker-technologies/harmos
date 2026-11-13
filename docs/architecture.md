@@ -262,11 +262,15 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     `openspec/specs/operation-authoring/spec.md`, `openspec/specs/canonical-build/spec.md`;
     Policy Ownership and Honest Budgets in
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-    **Proof:** No proof yet for complete ownership. `attempt_limits_backoff` and
-    `timeouts_require_replay` in `crates/harmos-runtime/tests/operations/policy.rs`
-    guard operation policy today, but `crates/harmos-storage/src/config.rs` still
-    hardcodes backend I/O/retry/session policy. Do not describe those as consumer configuration.
-    **Status:** locked direction (`operation-grammar`) for the complete rule.
+    **Proof:** `configured_policy_owns_io_retries_and_retirement` in
+    `crates/harmos-storage/tests/integration/manager/policy.rs` proves configured
+    I/O/recovery, retries, production capacity/lifetime and receipt expiry with
+    controlled time. `a_child_deadline_override_does_not_change_the_next_storage_call`
+    in `crates/harmos-runtime/tests/storage/callee_policy.rs` proves a plugin child
+    override expires only its call. Existing operation policy stories preserve
+    replay-safety admission. `StorageSettings.policy` owns operational defaults;
+    request settings own production/receipt capacities and existing budgets.
+    **Status:** landed for storage and invocation policy (task A.8).
 
 16. **Crate Dependency Direction.** Runtime composes operations, storage, domain and
     protocol; operations depends on domain/protocol, storage on domain/protocol,

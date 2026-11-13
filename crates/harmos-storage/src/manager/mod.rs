@@ -38,7 +38,6 @@ use tokio::sync::watch;
 // Local Imports
 use super::admissions::Mutation;
 use super::capacity::{Attempt, Refusal};
-use super::config::{IO_TIMEOUT, MUTATION_RETENTION};
 use super::queue::PendingQueue;
 use super::receipts::{MutationValue, ReceiptState};
 use super::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend};
@@ -248,7 +247,11 @@ impl StorageManager {
             });
         }
         self.inner.execution.adopt(clock);
-        state.receipts = super::receipts::Receipts::new(MUTATION_RETENTION, self.inner.execution.clone())?;
+        state.receipts = super::receipts::Receipts::new(
+            self.inner.settings.policy.mutation_retention,
+            self.inner.settings.request.max_mutation_receipts,
+            self.inner.execution.clone(),
+        )?;
         Ok(())
     }
 
@@ -279,7 +282,8 @@ impl StorageManager {
         let history = primary.get_history().clone();
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
-        let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution.clone())?;
+        let receipts =
+            super::receipts::Receipts::new(settings.policy.mutation_retention, settings.request.max_mutation_receipts, execution.clone())?;
         Ok(Self {
             inner: Arc::new(Inner {
                 execution: execution.clone(),

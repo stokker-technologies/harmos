@@ -59,7 +59,9 @@ pub mod writes;
 
 pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture, StorageWork};
 pub use batch::{FileChunk, StorageBatch};
-pub use config::{StorageAccumulatorSettings, StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
+pub use config::{
+    StorageAccumulatorSettings, StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings,
+};
 pub use definitions::{DefinitionInput, DefinitionKind, DefinitionOutcome, DefinitionRefusal};
 pub use directory::{DirectoryReader, DirectoryWatcher};
 pub use error::{BackendFailure, Error, Result};

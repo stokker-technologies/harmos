@@ -1450,3 +1450,14 @@ completion. Native output packing includes IPC schema bytes as well as retained
 buffers; the full wire envelope is checked against both response ceilings.
 Numeric column bounds compare integer endpoints without converting stored
 integers to floating point.
+
+### Storage Operational Policy
+
+`StorageSettings.policy` owns backend I/O/recovery deadlines, shared replay-safe
+retry policy, production lifetime and receipt retention. Previous durations and
+attempt counts remain its defaults. Consumers explicitly choose maximum retained
+productions and mutation receipts in request settings, alongside existing admission
+and response budgets. A child-call policy override is invocation-local; it does
+not mutate either the operation declaration or storage configuration. Controlled
+clock/provider stories cover exhaustion, explicit repair, abandonment, receipt
+expiry and the next call inheriting its unchanged declaration.

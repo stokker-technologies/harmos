@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
 // Local Imports
-use super::config::MUTATION_RETENTION;
 use super::{FileProducer, MutationId, MutationWindow, StorageManager, StoreHistory};
 use crate::{Error, Identifier, MemorySize, Result};
 
@@ -54,6 +53,8 @@ pub struct MutationHeader {
 }
 
 pub(super) struct Receipts {
+    maximum: NonZeroUsize,
+    retention: Duration,
     execution: crate::execution::Execution,
     window: Identifier,
     deadline: Instant,
@@ -106,11 +107,13 @@ impl Entry {
 }
 
 impl Receipts {
-    pub(super) fn new(retention: Duration, execution: crate::execution::Execution) -> Result<Self> {
+    pub(super) fn new(retention: Duration, maximum: NonZeroUsize, execution: crate::execution::Execution) -> Result<Self> {
         let reading = execution.read();
         let now = reading.instant;
         let wall = reading.date;
         Ok(Self {
+            maximum,
+            retention,
             execution,
             window: epoch()?,
             deadline: now + retention,
@@ -135,7 +138,7 @@ impl Receipts {
 
     pub(super) fn recovery_limits(&self) -> super::ReadLimits {
         super::ReadLimits {
-            rows: super::config::MAX_MUTATIONS,
+            rows: self.maximum,
             bytes: NonZeroUsize::new(super::config::MAX_BATCH_BYTES).unwrap(),
         }
     }
@@ -196,7 +199,7 @@ impl Receipts {
                 name: id.key.to_string(),
             });
         }
-        while self.entries.len() >= super::config::MAX_MUTATIONS.get() {
+        while self.entries.len() >= self.maximum.get() {
             self.evict_oldest()?;
         }
         self.order.push_back(id.clone());
@@ -339,7 +342,7 @@ impl Receipts {
             let Ok(remaining) = receipt.expires_at.duration_since(wall) else {
                 continue;
             };
-            let remaining = remaining.min(MUTATION_RETENTION);
+            let remaining = remaining.min(self.retention);
             if remaining.is_zero() {
                 continue;
             }
@@ -362,7 +365,7 @@ impl Receipts {
         self.unsaved.clear();
         self.entries = restored;
         self.order = order;
-        while self.entries.len() > super::config::MAX_MUTATIONS.get() {
+        while self.entries.len() > self.maximum.get() {
             self.evict_oldest()?;
         }
         Ok(())
@@ -497,7 +500,7 @@ impl StorageManager {
             return Err(Error::NotReady { domain: "storage" });
         }
         let mutations = if self.inner.primary.capabilities().mutation_receipts {
-            Some(state.receipts.window(self.inner.primary.get_history(), MUTATION_RETENTION)?)
+            Some(state.receipts.window(self.inner.primary.get_history(), self.inner.settings.policy.mutation_retention)?)
         } else {
             None
         };
@@ -536,7 +539,7 @@ impl StorageManager {
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage mutations" });
         }
-        let window = state.receipts.window(self.inner.primary.get_history(), MUTATION_RETENTION)?;
+        let window = state.receipts.window(self.inner.primary.get_history(), self.inner.settings.policy.mutation_retention)?;
         state.collect();
         Ok(window)
     }
@@ -674,7 +677,9 @@ mod tests {
     async fn restored_receipts_expire_on_the_host_clock() {
         let epoch = SystemTime::UNIX_EPOCH + Duration::from_secs(123);
         let clock = crate::execution::Execution::at(epoch, Instant::now, |duration| Box::pin(tokio::time::sleep(duration)));
-        let mut original = Receipts::new(MUTATION_RETENTION, clock.clone()).unwrap();
+        let retention = Duration::from_secs(40);
+        let maximum = NonZeroUsize::new(8).unwrap();
+        let mut original = Receipts::new(retention, maximum, clock.clone()).unwrap();
         let mutation = MutationId {
             window: original.window.clone(),
             key: Identifier::new("saved").unwrap(),
@@ -682,13 +687,13 @@ mod tests {
         original.insert(&mutation, [1; 32]).unwrap();
         original.complete(&mutation, MutationValue::Rejected);
         let saved = original.snapshot(None);
-        assert_eq!(saved[0].expires_at, epoch + MUTATION_RETENTION);
+        assert_eq!(saved[0].expires_at, epoch + retention);
 
-        tokio::time::advance(MUTATION_RETENTION / 2).await;
-        let mut restored = Receipts::new(MUTATION_RETENTION, clock).unwrap();
+        tokio::time::advance(retention / 2).await;
+        let mut restored = Receipts::new(retention, maximum, clock).unwrap();
         restored.restore(saved).unwrap();
         assert!(matches!(restored.lookup(&mutation, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
-        tokio::time::advance(MUTATION_RETENTION / 2).await;
+        tokio::time::advance(retention / 2).await;
         assert!(restored.lookup(&mutation, &[1; 32], None).is_err());
     }
 
@@ -697,8 +702,9 @@ mod tests {
         // Fill One Receipt Window At A Fixed Clock Reading.
         let now = Instant::now();
         let execution = crate::execution::Execution::at(SystemTime::UNIX_EPOCH, move || now, |_| Box::pin(std::future::pending()));
-        let mut receipts = Receipts::new(MUTATION_RETENTION, execution).unwrap();
-        let ids: Vec<_> = (0..=super::super::config::MAX_MUTATIONS.get())
+        let maximum = NonZeroUsize::new(5).unwrap();
+        let mut receipts = Receipts::new(Duration::from_secs(90), maximum, execution).unwrap();
+        let ids: Vec<_> = (0..=maximum.get())
             .map(|index| MutationId {
                 window: receipts.window.clone(),
                 key: Identifier::new(format!("receipt-{index}")).unwrap(),
@@ -737,7 +743,8 @@ mod tests {
 
     #[test]
     fn receipt_checkpoints_keep_unsaved_outcomes_until_success() {
-        let mut receipts = Receipts::new(MUTATION_RETENTION, crate::execution::Execution::default()).unwrap();
+        let mut receipts =
+            Receipts::new(Duration::from_secs(90), NonZeroUsize::new(4).unwrap(), crate::execution::Execution::default()).unwrap();
         let first = MutationId {
             window: receipts.window.clone(),
             key: Identifier::new("first").unwrap(),

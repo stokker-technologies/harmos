@@ -5,6 +5,20 @@ projections and atomic conditional objects. Consumers choose capacity, concurren
 physical chunk sizes, work budgets and response limits. Storage does not expose
 product keys or a database connection.
 
+## Operational Policy and Admission
+
+`StorageSettings.policy: StoragePolicy` owns backend I/O/recovery deadlines, the
+shared `RetryPolicy`, abandoned-production lifetime and mutation-receipt retention.
+Its defaults preserve the previous policy: 30-second I/O, 300-second recovery,
+four total transient attempts with exponential 10 ms–1 s backoff, 60-second
+productions and 300-second receipt retention. A call-local operation override
+does not change that configuration or subsequent calls.
+
+Consumers explicitly provide `request.max_file_productions` and
+`request.max_mutation_receipts` alongside pending-write, query and response limits.
+Retiring a receipt rotates its issuance window; an expired request is refused
+rather than admitted again. Admitted work remains owned until settlement.
+
 ## Reference Backend
 
 ```toml

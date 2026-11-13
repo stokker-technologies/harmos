@@ -38,6 +38,8 @@ pub struct AllowTransfers;
 
 pub struct TransferPlugin {
     pub address: String,
+    #[cfg(test)]
+    next_policy: Arc<std::sync::Mutex<Option<v1::OperationPolicy>>>,
     shutdown: tokio::sync::oneshot::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -45,6 +47,7 @@ pub struct TransferPlugin {
 #[derive(Clone)]
 struct Service {
     catalog: Arc<v1::Catalog>,
+    next_policy: Arc<std::sync::Mutex<Option<v1::OperationPolicy>>>,
 }
 
 /* === Enums === */
@@ -125,7 +128,11 @@ impl TransferPlugin {
             Some((socket, listener))
         });
         let (shutdown, stopped) = tokio::sync::oneshot::channel();
-        let service = Service { catalog: Arc::new(catalog) };
+        let next_policy = Arc::new(std::sync::Mutex::new(None));
+        let service = Service {
+            catalog: Arc::new(catalog),
+            next_policy: next_policy.clone(),
+        };
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_service(plugin::instance_server::InstanceServer::new(service))
@@ -135,7 +142,18 @@ impl TransferPlugin {
                 .await
                 .unwrap();
         });
-        Self { address, shutdown, task }
+        Self {
+            address,
+            #[cfg(test)]
+            next_policy,
+            shutdown,
+            task,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn override_next_child(&self, policy: v1::OperationPolicy) {
+        *self.next_policy.lock().unwrap() = Some(policy);
     }
 
     pub async fn stop(self) {
@@ -182,7 +200,7 @@ impl plugin::instance_server::Instance for Service {
             operation,
             payload: request.payload,
             fingerprint: required.fingerprint.clone(),
-            policy: None,
+            policy: self.next_policy.lock().unwrap().take(),
         };
         let (send, receive) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {

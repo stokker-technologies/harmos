@@ -84,7 +84,7 @@ impl StorageManager {
         // Recover The Complete Bounded Checkpoint Set.
         let bytes = super::super::config::MAX_BATCH_BYTES;
         let limits = ReadLimits {
-            rows: crate::storage::config::MAX_FILES,
+            rows: self.inner.settings.request.max_file_productions,
             bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)?,
         };
         let checkpoints = self
@@ -132,7 +132,7 @@ impl StorageManager {
                 },
                 session: Some(Session::recovered(
                     checkpoint.session.generation,
-                    crate::storage::config::FILE_SESSION_TIMEOUT,
+                    self.inner.settings.policy.file_session_timeout,
                     self.inner.execution.clone(),
                 )),
                 extra: None,
