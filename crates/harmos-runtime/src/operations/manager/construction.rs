@@ -38,7 +38,7 @@ impl Manager {
     pub(crate) fn new<A: crate::Application>(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
         schema_settings: Arc<crate::config::SchemaSettings>,
-    ) -> Self {
+    ) -> Result<Self> {
         let status_started = instances.clock.date().into();
         let manager = Self {
             schema_settings,
@@ -68,8 +68,8 @@ impl Manager {
                 }),
             }),
         };
-        manager.register_grpc_clock().expect("host clock contracts are valid");
-        manager
+        manager.register_grpc_clock()?;
+        Ok(manager)
     }
 
     pub fn register_middleware(&self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Result<()> {

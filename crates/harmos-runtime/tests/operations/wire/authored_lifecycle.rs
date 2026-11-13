@@ -38,7 +38,8 @@ static REQUEST_DESCRIPTION: harmos_runtime::operations::WireDeclaration = harmos
             },
         },
     },
-);
+)
+.replay(ReplaySafety::Idempotent);
 
 const REQUEST_OPERATION: harmos_runtime::operations::OperationSpec<Request> =
     harmos_runtime::operations::OperationSpec::<Request>::new(&REQUEST_DESCRIPTION);
@@ -150,7 +151,8 @@ struct Streaming {
 }
 
 static STREAMING_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
-    harmos_runtime::operations::WireDeclaration::request::<Streaming>("borrowed.streaming", REQUEST_OPERATION.entry().policy);
+    harmos_runtime::operations::WireDeclaration::request::<Streaming>("borrowed.streaming", REQUEST_OPERATION.entry().policy)
+        .replay(ReplaySafety::Idempotent);
 
 const STREAMING_OPERATION: harmos_runtime::operations::OperationSpec<Streaming> =
     harmos_runtime::operations::OperationSpec::<Streaming>::new(&STREAMING_DESCRIPTION);

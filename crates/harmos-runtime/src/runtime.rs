@@ -910,7 +910,8 @@ impl<A: Application> Builder<A> {
             }
         }
         let operations =
-            crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone(), schema_settings);
+            crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone(), schema_settings)
+                .map_err(Incompatible::work)?;
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }

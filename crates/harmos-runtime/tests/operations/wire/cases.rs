@@ -130,6 +130,7 @@ pub(super) struct EchoDeclaration {
 
 pub(super) static ECHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<EchoDeclaration>("fixture.echo", ECHO_POLICY)
+        .replay(harmos_runtime::operations::ReplaySafety::Idempotent)
         .visibility(harmos_runtime::operations::Visibility::Public);
 
 pub(super) const ECHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<EchoDeclaration> =
@@ -145,7 +146,8 @@ pub(super) struct PrivateEchoDeclaration {
 }
 
 pub(super) static PRIVATE_ECHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
-    harmos_runtime::operations::WireDeclaration::request::<PrivateEchoDeclaration>("fixture.protected_echo", ECHO_POLICY);
+    harmos_runtime::operations::WireDeclaration::request::<PrivateEchoDeclaration>("fixture.protected_echo", ECHO_POLICY)
+        .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
 
 pub(super) const PRIVATE_ECHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<PrivateEchoDeclaration> =
     harmos_runtime::operations::OperationSpec::<PrivateEchoDeclaration>::new(&PRIVATE_ECHO_DECLARATION_DESCRIPTION);

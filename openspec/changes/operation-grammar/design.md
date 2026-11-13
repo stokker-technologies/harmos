@@ -1455,6 +1455,24 @@ ServerCertificate resolver themselves are reused unchanged.
 
 ## Open Questions
 
+Integration proof conflict: `operations::wire::grpc_manager::grpc_network::external_authority_parity`
+requests catalog pages bounded to 2,048 bytes. The complete descriptor-bearing
+`harmos.v1.CatalogEntries/List` entry now encodes to 2,471 bytes by itself, so the
+catalog correctly refuses that page as `discovery schema bytes`. The existing
+test expects complete enumeration. Atomic entries, complete descriptors and the
+fixed consumer budget cannot satisfy that expectation together. Integration keeps
+the descriptor, refusal, test assertion and budget unchanged; a contract decision
+is required before this proof can pass. The generated descriptor is already
+normalized without source information, file options or redundant JSON names.
+
+Integration repair: automatic Time/HostValues contract admission propagates
+schema-budget failures through runtime startup instead of panicking. The schema
+snapshot story retains its one-byte refusal and verifies failure at startup when
+even the automatically registered contracts cannot fit. Native request selection
+resolves request identity before validating supplied endpoints, preserving typed
+endpoint refusal and charged-request release. Retry fixture declarations explicitly
+state their idempotence; stream-transfer guards still prevent replay after progress.
+
 Integration decision: core service/method operation identities, audience generation,
 visibility and descriptor-derived roots are authoritative. Plugins, access/status
 and committed storage declarations use those identities without aliases. The generator

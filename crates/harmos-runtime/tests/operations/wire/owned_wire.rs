@@ -61,7 +61,8 @@ static READ_CONTRACT_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDe
                 },
             },
         },
-    );
+    )
+    .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
 
 const READ_CONTRACT_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ReadContractDeclaration> =
     harmos_runtime::operations::OperationSpec::<ReadContractDeclaration>::new(&READ_CONTRACT_DECLARATION_DESCRIPTION);
@@ -279,7 +280,7 @@ async fn wire_registration_uses_supplied_schema_snapshot() {
                 }
             })
             .await;
-            if initial {
+            if initial || !accepted {
                 assert_eq!(runtime.is_ok(), accepted);
                 if let Ok(runtime) = runtime {
                     assert!(runtime.operations.definition(READ_CONTRACT_DECLARATION_OPERATION.entry().id).is_ok());

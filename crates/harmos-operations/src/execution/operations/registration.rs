@@ -465,6 +465,11 @@ impl OperationFactory {
         (self.native_types)() == (std::any::TypeId::of::<D::Request>(), std::any::TypeId::of::<D::Response>(), std::any::TypeId::of::<P>())
     }
 
+    pub fn accepts_native_request<D: RequestShape>(&self) -> bool {
+        let (request, response, _) = (self.native_types)();
+        (request, response) == (std::any::TypeId::of::<D::Request>(), std::any::TypeId::of::<D::Response>())
+    }
+
     // Every Declared Resource Comes From The Snapshot Or The Carrier's Execution Context.
     pub fn verify_resources(&self, resources: &ResourceSet, provided: &[std::any::TypeId]) -> Result<(), ServingError> {
         let missing = self.resources.iter().find(|resource| !resources.contains(resource.id()) && !provided.contains(&resource.id()));

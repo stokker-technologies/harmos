@@ -49,7 +49,7 @@ impl Manager {
                     let native = entry
                         .binding
                         .downcast_ref::<harmos_operations::execution::operations::OperationFactory>()
-                        .is_some_and(|operation| operation.accepts_native::<O, P>());
+                        .is_some_and(|operation| operation.accepts_native_request::<O>());
                     selected && (native || entry.binding.is::<super::super::binding::Typed<O, P>>())
                 })
                 .map(|entry| entry.id().to_owned())
