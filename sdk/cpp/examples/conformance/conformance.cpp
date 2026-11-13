@@ -139,20 +139,6 @@ harmos::Plugin harmos::conformance::plugin() {
     const harmos::Operation<harmos::plugin::host::v1::OperationsGetRequest, harmos::plugin::host::v1::OperationsGetResponse>
         get_operation("harmos.plugin.host.v1.Operations/Get", harmos::wire::VISIBILITY_PUBLIC);
     plugin.requires_operation(list_operations).requires_operation(get_operation);
-    plugin.operation(ValueOperation("conformance.settings_read", harmos::wire::VISIBILITY_PUBLIC, [](Context& context, Value) {
-        return value(harmos::detail::encode(context.settings().value()));
-    }));
-    plugin.operation(ValueOperation("conformance.discover", harmos::wire::VISIBILITY_PUBLIC, [list_operations, get_operation](Context& context, Value) {
-        const auto listed = context.call(list_operations, harmos::plugin::host::v1::OperationsListRequest{}).get();
-        if (listed.operations().empty()) throw std::runtime_error("List Operations: Missing Contract");
-        const auto& operation = listed.operations(0);
-        harmos::plugin::host::v1::OperationsGetRequest request;
-        request.set_id(operation.contract().id());
-        const auto found = context.call(get_operation, request).get();
-        if (harmos::detail::encode(found.operation()) != harmos::detail::encode(operation))
-            throw std::runtime_error("Get Operation: Contract Differs");
-        return value(operation.contract().id());
-    }));
     plugin.operation(ValueOperation("conformance.clock", harmos::wire::VISIBILITY_PUBLIC, [](Context& ctx, Value) {
         const auto before = ctx.now();
         google::protobuf::Duration duration;
@@ -205,6 +191,21 @@ harmos::Plugin harmos::conformance::plugin() {
             if (request.value() == "public") return context.call(peer_public, value(context.scope())).get();
             return context.call(request.value() == "protected" ? peer_protected : peer_local, request).get();
         })).requires_operation(peer_public).requires_operation(peer_protected).requires_operation(peer_local).requires_operation(own_protected);
+    plugin.operation(ValueOperation("conformance.settings_read", harmos::wire::VISIBILITY_PUBLIC, [](Context& context, Value) {
+        return value(harmos::detail::encode(context.settings().value()));
+    }));
+    plugin.operation(ValueOperation("conformance.discover", harmos::wire::VISIBILITY_PUBLIC, [list_operations, get_operation](Context& context, Value) {
+        const auto listed = context.call(list_operations, harmos::plugin::host::v1::OperationsListRequest{}).get();
+        if (listed.operations().empty()) throw std::runtime_error("List Operations: Missing Contract");
+        const auto& operation = listed.operations(0);
+        harmos::plugin::host::v1::OperationsGetRequest request;
+        request.set_id(operation.contract().id());
+        const auto found = context.call(get_operation, request).get();
+        if (harmos::detail::encode(found.operation()) != harmos::detail::encode(operation))
+            throw std::runtime_error("Get Operation: Contract Differs");
+        return value(operation.contract().id());
+    }));
+
     google::protobuf::Duration interval;
     interval.set_seconds(1);
     observer.every(interval);
@@ -252,7 +253,13 @@ harmos::Plugin harmos::conformance::plugin() {
         const auto echoed = context.call(echo, value(context.scope())).get();
         const auto time = context.call(harmos::GET_TIME, harmos::plugin::host::v1::TimeGetRequest{}).get();
         const auto settings = context.settings();
-        return value(harmos::detail::encode(echoed) + harmos::detail::encode(time) + harmos::detail::encode(settings));
+        std::string bytes;
+        for (const auto& reply : {harmos::detail::encode(echoed), harmos::detail::encode(time), harmos::detail::encode(settings)}) {
+            const auto length = static_cast<std::uint32_t>(reply.size());
+            for (unsigned index = 0; index < 4; ++index) bytes += static_cast<char>(length >> (8 * index));
+            bytes += reply;
+        }
+        return value(bytes);
     });
     plugin.stream(calls).observer(call_observer.every(interval));
 
