@@ -111,11 +111,10 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         (root / "sdk/fixtures/client/resources.json").write_text(
             json.dumps(fixture_methods, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
-        for folder in ["sdk/csharp/Tests/Generated", "target/generated/cpp"]:
+        for folder in ["sdk/csharp/Tests/Generated"]:
             (root / folder).mkdir(parents=True, exist_ok=True)
         rust(root, fixture_methods, target=fixture.parent / "resources.rs")
         csharp(root, fixture_methods, namespace="fixture", target=root / "sdk/csharp/Tests/Generated/Client.cs")
-        cpp(root, fixture_methods, namespace="fixture", target=root / "target/generated/cpp/client.hpp")
 
 
 def rust(root: Path, methods: list[dict], *, target: Path | None = None) -> None:

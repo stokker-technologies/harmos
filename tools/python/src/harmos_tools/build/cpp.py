@@ -131,6 +131,13 @@ def main() -> None:
     if options.prepare:
         print(f"vcpkg: {child_environment['VCPKG_ROOT']}")
         return
+    if options.generate:
+        from google.protobuf.descriptor_pb2 import FileDescriptorSet
+
+        from .resource_roots import cpp, table
+
+        descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
+        cpp(ROOT, [method for method in table(descriptors) if method["face"] == "client"])
 
     # Tests Consume Existing Producer Outputs.
     if options.test:
