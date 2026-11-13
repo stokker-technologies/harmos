@@ -40,16 +40,16 @@
 
 ## 6. C++ SDK Build
 
-- [ ] 6.1 Replace fetched gRPC with pinned vcpkg config packages, packaged generators and native binary caching; bootstrap vcpkg outside the repository.
-- [ ] 6.2 Split protocol generation, tests and conformance targets; add Ninja presets, target-owned settings and installed Harmos package exports.
-- [ ] 6.3 Move generated client headers and conformance support, update generators and includes, and prove the installed conformance consumer without changing SDK behavior.
-- [ ] 6.4 Update SDK packaging, artifact consumers, tooling and C++ guide contracts; commit the complete dependency/build step locally.
+- [x] 6.1 Replace fetched gRPC with pinned vcpkg config packages, packaged generators and native binary caching; bootstrap vcpkg outside the repository.
+- [x] 6.2 Split protocol generation, tests and conformance targets; add Ninja presets, target-owned settings and installed Harmos package exports.
+- [x] 6.3 Move generated client headers and conformance support, update generators and includes without changing SDK behavior; leave installed-consumer execution to final validation.
+- [x] 6.4 Update SDK packaging, artifact consumers, tooling and C++ guide contracts; commit the complete dependency/build step locally.
 
 ## 7. Per-SDK Tools
 
-- [ ] 7.1 Add C++, C# and Python mise tools, tasks and locks; remove SDK tools and compiler-cache variables from root configuration and delegate root SDK tasks.
-- [ ] 7.2 Install only lane tools in GitHub jobs and persist the C++ binary cache; retain all existing checks and tests.
-- [ ] 7.3 Update maintained tooling guidance and commit the per-SDK configuration step locally.
+- [x] 7.1 Add C++, C# and Python mise tools, tasks and locks; remove SDK tools and compiler-cache variables from root configuration and delegate root SDK tasks.
+- [x] 7.2 Install only lane tools in GitHub jobs and persist the C++ binary cache; retain all existing checks and tests.
+- [x] 7.3 Update maintained tooling guidance and commit the per-SDK configuration step locally.
 
 ## Workflow Follow-Up
 

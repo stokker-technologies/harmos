@@ -39,3 +39,8 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.c
 description = "Test the C# SDK Units"
 dir = "../.."
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp test --layer unit"
+
+[tasks."test:tooling"]
+description = "Test Tooling and the C# Package Consumer"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m unittest discover -s tools/python/tests/integration -v"

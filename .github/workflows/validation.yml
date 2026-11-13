@@ -540,7 +540,7 @@ jobs:
       uses: ./.github/actions/setup
       with:
         platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
-        sdk-tools: python
+        sdk-tools: ${{ matrix.sdk-tools }}
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         name: build-product-${{ env.PROFILE }}-unix
@@ -572,15 +572,19 @@ jobs:
         key: ${{ steps.setup.outputs.uv-cache-primary-key }}
         path: ${{ steps.setup.outputs.uv-path }}
     env:
-      MISE_ENABLE_TOOLS: python,uv,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck
+      MISE_ENABLE_TOOLS: ${{ matrix.tools }}
     strategy:
       fail-fast: false
       matrix:
         include:
         - suffix: ''
           arguments: --language python
+          sdk-tools: python csharp
+          tools: python,uv,rust,dotnet,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck
         - suffix: ' / Generated'
           arguments: --generated
+          sdk-tools: ''
+          tools: python,uv
   test_unit:
     if: inputs.selection == 'test_unit'
     name: Test / ${{ matrix.language }} / ${{ matrix.label }} (${{ matrix.platform }})

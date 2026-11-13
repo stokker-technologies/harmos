@@ -32,6 +32,10 @@ checks those configurations without Clippy. Build, test, bench and fixture tasks
 not run Clippy. `check --repository` checks repository configuration without a build;
 `check --generated` checks existing generated Python, and ordinary `check` includes both.
 
+The repository Python check includes package-isolation stories for Rust and C#;
+its tooling suite therefore runs in the C# SDK tool environment and needs the root
+Rust toolchain. Generated-Python-only checks need Python and uv.
+
 ## Workstation Builds
 
 The workstation owns the compiler cache: `RUSTC_WRAPPER`, `SCCACHE_DIR`,

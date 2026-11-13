@@ -24,19 +24,24 @@ set(HARMOS_PROTOCOLS
     harmos/v1/types.proto)
 
 function(harmos_protocol target root output)
+    cmake_parse_arguments(PROTOCOL "SYNC_SERVER" "" "" ${ARGN})
     set(inputs)
-    foreach(protocol IN LISTS ARGN)
+    foreach(protocol IN LISTS PROTOCOL_UNPARSED_ARGUMENTS)
         list(APPEND inputs "${root}/${protocol}")
     endforeach()
     file(MAKE_DIRECTORY "${output}")
     get_target_property(protobuf_includes protobuf::libprotobuf INTERFACE_INCLUDE_DIRECTORIES)
     protobuf_generate(TARGET ${target} PROTOS ${inputs}
         IMPORT_DIRS "${root}" ${protobuf_includes} PROTOC_OUT_DIR "${output}")
+    set(server_options "allow_sync_server_api=false,allow_cq_api=false")
+    if(PROTOCOL_SYNC_SERVER)
+        set(server_options "allow_sync_server_api=true,allow_cq_api=true")
+    endif()
     protobuf_generate(TARGET ${target} LANGUAGE grpc PROTOS ${inputs}
         IMPORT_DIRS "${root}" ${protobuf_includes} PROTOC_OUT_DIR "${output}"
         GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
         PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
-        PLUGIN_OPTIONS "allow_sync_server_api=false,allow_cq_api=false"
+        PLUGIN_OPTIONS "${server_options}"
         DEPENDENCIES gRPC::grpc_cpp_plugin)
     target_include_directories(${target} SYSTEM PUBLIC
         $<BUILD_INTERFACE:${output}>

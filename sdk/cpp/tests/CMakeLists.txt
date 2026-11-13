@@ -1,6 +1,6 @@
 add_library(harmos_client_fixture STATIC)
 harmos_protocol(harmos_client_fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/client/proto"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" SYNC_SERVER
     library/v1/plugins.proto library/v1/plugins/settings.proto
     application/v1/jobs.proto application/v1/jobs/progress.proto)
 target_link_libraries(harmos_client_fixture PUBLIC Harmos::Cpp)
