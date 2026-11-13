@@ -37,7 +37,8 @@ jobs:
   release_dry:
     needs:
     - package_rust
-    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'closed' && startsWith(github.head_ref,
+      'release/v'))
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
@@ -101,7 +102,7 @@ jobs:
       run: mise run ci:required --
       env:
         RESULTS: ${{ toJSON(needs) }}
-        OPTIONAL_JOBS: ${{ github.event_name == 'push' && '["release_dry","release_rehearsal","package_rust","prepare_test_fixtures","test","test_unit"]' || '[]' }}
+        OPTIONAL_JOBS: ${{ github.event_name == 'push' && '["release_dry","release_rehearsal","package_rust","prepare_test_fixtures","test","test_unit"]' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/v')) && '[]' || '["release_dry"]' }}
         RELEASE_REVIEW: ${{ github.event_name == 'pull_request' && github.base_ref == 'dev' && startsWith(github.head_ref, 'release/v') }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
