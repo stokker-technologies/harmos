@@ -192,6 +192,10 @@ runs:
     if: contains(inputs.sdk-tools, 'python')
     shell: bash
     run: mise -C sdk/python run prepare
+  - name: Activate the C# Runtime for Fixture Consumers
+    if: contains(inputs.sdk-tools, 'csharp')
+    shell: bash
+    run: echo "DOTNET_ROOT=$(mise -C sdk/csharp where dotnet)" >> "$GITHUB_ENV"
   - name: Prepare C++ Binary Cache
     if: contains(inputs.sdk-tools, 'cpp')
     shell: bash

@@ -19,3 +19,5 @@ Each SDK folder declares its language tools and build, test, format and check op
 Focused Rust test tooling supplies the C++ preset artifact through the existing `HARMOS_CPP_PLUGIN` override; Rust crate sources and their local fallback paths remain untouched. Two tooling tests outside the assigned inventory still assert the replaced root SDK commands; their expectation updates require ownership authorization.
 
 The repository Python integration suite includes a real C# package consumer and a Rust crate consumer. Its task runs inside the C# mise environment; the Python check job installs C# and Rust only for that matrix entry. The generated-Python-only entry installs Python and uv.
+
+Compiled C# fixtures still require the pinned .NET runtime: setup activates `DOTNET_ROOT` for Rust fixture consumers in Test and Coverage without installing C++ build tools there. Non-check jobs omit repository lint tools and unrelated runtimes.
