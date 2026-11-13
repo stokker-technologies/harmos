@@ -60,9 +60,21 @@ prost-types = { workspace = true }
 
 # === Dev Dependencies === #
 
+[dev-dependencies]
+# Serialization
+prost-build = { workspace = true, features = ["format"] }
+protoc-bin-vendored = { workspace = true }
+
+# Filesystem
+tempfile = { workspace = true, default-features = true }
+
 # === Target Dependencies === #
 
 # === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
 
 # === Bench Targets === #
 

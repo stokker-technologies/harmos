@@ -1,0 +1,155 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Schematic Operations
+//
+// Application-owned analysis, routing, native directory and transfer contracts.
+
+syntax = "proto3";
+
+package schematic.v1;
+
+// === Imports === //
+
+import "harmos/context/v1/storage.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// Requests validation of the supplied schematic snapshot.
+message ValidateSchematic {
+  Snapshot schematic = 1;
+}
+
+// Returns diagnostics for invalid connections or missing symbols.
+message Validation {
+  repeated string diagnostics = 1;
+}
+
+// Requests a right-angle route between two points.
+message ProposeRoute {
+  Point from = 1;
+  Point to = 2;
+}
+
+// Returns the ordered points of a proposed route.
+message Route {
+  repeated Point points = 1;
+}
+
+// Requests immediate subdirectories of the native plugin working directory.
+message ListDirectories {}
+
+// Returns sorted immediate subdirectory names.
+message Directories {
+  repeated string directories = 1;
+}
+
+// Requests streamed findings for the supplied snapshot.
+message AnalyzeSchematic {
+  Snapshot schematic = 1;
+}
+
+// Reports the number of symbols checked during analysis.
+message Analysis {
+  uint32 checked = 1;
+}
+
+// Starts snapshot upload analysis under a nonblank bounded title.
+message AnalyzeUpload {
+  string title = 1;
+}
+
+// Starts bidirectional snapshot analysis under a nonblank bounded title.
+message AnalyzeExchange {
+  string title = 1;
+}
+
+// Starts a batch upload for a transfer identity.
+message Upload {
+  uint64 transfer = 1;
+}
+
+// Requests the retained batches for a transfer identity.
+message Download {
+  uint64 transfer = 1;
+}
+
+// Adds a batch to a transfer, optionally replacing its previous contents.
+message Put {
+  uint64 transfer = 1;
+  bool first = 2;
+  Batch batch = 3;
+}
+
+// Reports accepted record, sample and byte counts.
+message Receipt {
+  uint64 records = 1;
+  uint64 samples = 2;
+  uint64 bytes = 3;
+}
+
+// Returns and removes the next retained batch for a transfer.
+message Take {
+  uint64 transfer = 1;
+}
+
+// Requests the host file-hash operation through the plugin.
+message Hash {
+  harmos.context.v1.StorageGetFileHashRequest request = 1;
+}
+
+// Returns the number of bytes read and their SHA-256 digest.
+message FileHash {
+  uint64 read_bytes = 1;
+  bytes sha256 = 2;
+}
+
+// === Resources === //
+
+// Connects two symbol identities in a schematic snapshot.
+message Connection {
+  uint64 from = 1;
+  uint64 to = 2;
+}
+
+// Carries symbol identities and their connections for analysis.
+message Snapshot {
+  repeated uint64 symbols = 1;
+  repeated Connection connections = 2;
+}
+
+// Identifies a route point in integer schematic coordinates.
+message Point {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+// Carries one analysis finding.
+message Finding {
+  string text = 1;
+}
+
+// Carries an ordered record and its opaque payload.
+message Record {
+  uint64 sequence = 1;
+  bytes payload = 2;
+}
+
+// Carries an ordered timestamped scalar sample.
+message Sample {
+  uint64 sequence = 1;
+  uint64 timestamp_us = 2;
+  double value = 3;
+}
+
+// Groups transferred records, samples and file bytes.
+message Batch {
+  repeated Record records = 1;
+  repeated Sample samples = 2;
+  bytes bytes = 3;
+}
+
+// === Enums === //

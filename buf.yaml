@@ -2,9 +2,10 @@
 version: v2
 modules:
   - path: proto
-    # Only maintained Harmos contracts; application and vendored inputs are outside this module.
+    # Core contracts and the separately owned application module share lint policy.
     includes:
       - proto/harmos
+  - path: examples/schematic/proto
 lint:
   use:
     - STANDARD

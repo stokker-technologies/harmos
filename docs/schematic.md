@@ -41,7 +41,10 @@ initialization starts; the readiness interval covers plugin initialization.
 
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
-The protocol crate exposes generated contracts without the host stack. The operations
+The protocol crate exposes generated contracts without the host stack.
+Its `generate` Cargo example owns regeneration from `examples/schematic/proto/`,
+and its `generated_code_matches_proto` test checks source and descriptor drift.
+Buf formats and lints the example contracts alongside `proto/harmos/`. The operations
 crate enables implementations with `runtime`. The guest uses the same generated
 messages with SDK operation builders. Native analysis publishes
 progress through its host-owned callback resource.
@@ -56,7 +59,7 @@ through `Runtime::launch_with` while keeping that preparation path.
 
 The native plugin depends on `harmos`; its unary protobuf contracts and
 operation builder values live in `sidecar/src/operations.rs`, using messages generated
-from `proto/schematic/v1/operations.proto`. It ends in `serve()`.
+from `examples/schematic/proto/schematic/v1/operations.proto`. It ends in `serve()`.
 The host uses managed gRPC placement and checks its `Instance.Get` identity.
 The guest uses `harmos/wasm` and one `harmos_register` function returning SDK builders.
 

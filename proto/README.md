@@ -22,3 +22,8 @@ Services have one audience: `harmos.plugin.v1.Instance` is called by the host;
 `harmos.context.v1` signatures are carried as plugin child calls; `harmos.v1`
 services are client APIs. Each service has its own file. Shared payloads live in
 `harmos/v1/types.proto`; face-local wrappers never alias one another.
+
+The library protocol root contains only `harmos/` contracts. The Schematic example
+owns `examples/schematic/proto/schematic/v1/operations.proto`; its `schematic-protocol`
+crate generates and verifies its messages and descriptors independently. Both roots
+share repository Buf formatting and lint policy.
