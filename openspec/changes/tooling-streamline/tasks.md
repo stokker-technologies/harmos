@@ -144,9 +144,9 @@ Windows-only local evidence does not close the existing cross-platform/hosted ta
 ## 11. Locked Example and Native Modules
 
 - [x] 11.1 Move the unchanged wire contract to `examples/schematic/proto/`; own generation and drift proof in `examples/schematic/protocol`, remove library-generator example ownership, include it in Buf, and update `docs/schematic.md` and `docs/examples.md`.
-- [x] 11.2 Verify native consumers and the independent Wasm guest; remove the operations runtime feature, all its gates, and dependent feature selections.
+- [ ] 11.2 Verify native consumers and the independent Wasm guest; remove the operations runtime feature, all its gates, and dependent feature selections.
 - [x] 11.3 Replace private catalog references with the existing public catalog composition API, preserving membership and names.
-- [ ] 11.4 Apply imported Rust names in touched files and the default Tokio runtime in SDK/example entry points; review README impact.
+- [x] 11.4 Apply imported Rust names in touched files and the default Tokio runtime in SDK/example entry points; review README impact.
 - [ ] 11.5 On the committed source head, run root format, Rust/repository checks, native and Wasm builds, focused example stories, library/example protocol drift and SDK examples check; verify clean status and local-only commits.
 
 Ownership is the owner-locked example/protocol/generator/Buf/guides inventory.

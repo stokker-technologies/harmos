@@ -67,7 +67,7 @@ knows only Harmos and SDK test fixtures. Buf includes both protocol roots. Packa
 message identities, fields and behavior remain unchanged; comments and declaration order
 follow the protocol skeleton. No service is added to a message-only contract.
 
-The native operations crate has app and CLI consumers, including the CLI build script;
+The native operations crate has app, CLI and runtime test/bench consumers, including the CLI build script;
 the guest consumes protocol messages directly. Remove the redundant runtime feature and
 use existing public `Catalog` construction/naming/contracts methods without widening libraries.
 README claims remain valid; update the two example guides and protocol folder description.
@@ -77,3 +77,15 @@ using the pinned vendored compiler with no runtime build script.
 Catalog composition uses public `Catalog::new().named(...).entry(...)` values and
 `Catalog::contracts()`. The unused example batch helpers are removed; operation
 order, membership and the three catalog names are preserved. No private use remains.
+
+Root Cargo resolution revealed a native runtime dev-dependency still selecting the removed
+feature in `crates/harmos-runtime/Cargo.toml`; removing that selector requires the owner
+to extend the locked file inventory. It does not establish a Wasm or feature-less use.
+
+The SDK example's default Tokio entry point requires `rt-multi-thread` in its
+existing Tokio dev-dependency. This manifest-only ownership extension is also
+requested; production SDK features remain unchanged.
+
+The native-plugin story still called the removed `sidecar::call`. Migrate those
+five calls to the existing `services::call`, preserving every assertion and the
+same routed protobuf requests; import the named types in that touched story.

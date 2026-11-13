@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::{env, error::Error, path::PathBuf};
 
 // Third Party Imports
 
@@ -39,9 +40,9 @@
 
 /* === Private Functions === */
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let contracts = schematic_operations::native_contracts()?;
-    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?).join("grpc/operations");
+    let output = PathBuf::from(env::var_os("OUT_DIR").ok_or("missing OUT_DIR")?).join("grpc/operations");
     harmos_packaging::proto::generate(&contracts, &output)?;
     Ok(())
 }
