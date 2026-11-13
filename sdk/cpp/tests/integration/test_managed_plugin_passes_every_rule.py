@@ -29,7 +29,7 @@ from tests.support import host
 
 
 class ManagedPlugin(unittest.TestCase):
-    def test_managed_plugin_passes_every_rule(self):
+    def test_managed_plugin_passes_every_rule(self) -> None:
         # Start the Managed Plugin and Run Every Reference-Host Case Through Stop.
         result = host.run_managed()
 
