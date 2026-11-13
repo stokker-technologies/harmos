@@ -84,7 +84,8 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
 10. **Ticks and Samples.** Instance.Samples MUST open with SamplesSelection for one stream.
     For an interval stream the host resolves the interval, sends ticks, and the
     plugin MUST answer each tick once, in order, with exactly one sample per
-    InstanceSamplesResponse message at revision 1. Sample.at MUST equal Tick.at exactly; sequence
+    sample-bearing InstanceSamplesResponse message at revision 1. Child-only frames
+    do not answer a tick. Sample.at MUST equal Tick.at exactly; sequence
     MUST count from 1 per call. The conformance.ticks row is Value containing the
     sequence encoded as eight little-endian bytes. A large tick-time jump MUST NOT
     cause synthesized catch-up samples. No wall-clock scheduling is permitted.
@@ -344,6 +345,38 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
     Protected and absent Private peer requests are refused with the action named.
     The declaring plugin's Protected self-call still crosses the host carrier and
     succeeds; Protected is never dispatched through the Private registry.
+
+30. **Samples Child Calls and Correlation.** Between receiving a tick and answering
+    it with its sample, the plugin MAY send the shared ChildRequest, ChildDemand
+    and ChildCancel frames on Instance.Samples. The host MUST answer with shared
+    ChildResponse frames on that same stream. Only one tick may be unanswered;
+    the host MUST wait for its sample before sending the next tick. Child-only
+    responses MUST have empty samples and MUST NOT count as tick answers; a
+    response carrying both samples and a child frame MUST fail with INVALID_ARGUMENT.
+    IDs MUST be unique for the entire Samples call, including across ticks;
+    separate calls MAY reuse IDs. Replies MUST correlate by ID even out of order.
+    Unknown or duplicate terminal reply IDs MUST fail that RPC with INVALID_ARGUMENT.
+    Consumers MUST prove reverse-order replies, two ticks without ID reuse and
+    isolation between separate Samples calls and Invoke calls.
+31. **Samples Child Routing and Failures.** Tick children MUST inherit the admitted
+    plugin's caller context, grants and SamplesSelection.scope. The same registry,
+    visibility, requirement/fingerprint checks and call-local policy rules as Invoke
+    apply, including host operations, peer operations, clock and caller-scoped settings.
+    Unary and demand-bounded Watch children follow the same result/item rules as
+    Invoke (rule 25); rule 5's unary fixture does not exclude declared Watch children.
+    Every field of a ChildResponse.failure MUST remain unchanged, including nested
+    cause, details and diagnostics; it MUST NOT become a transport fault or answer
+    the tick. Consumers MUST prove ordinary, clock and settings calls from an observer,
+    structured failure preservation and demand-bounded Watch from a tick.
+32. **Samples Child Lifetime and Refusal.** Answering the tick or ending/cancelling
+    the Samples stream MUST cancel every child still open for that tick and suppress
+    later replies. ChildCancel MUST cancel only its child and suppress later replies
+    for that ID, without answering the tick; completed replies remain completed.
+    Child traffic before a tick, after its answer or on a device stream without ticks
+    MUST fail that RPC with INVALID_ARGUMENT. An unknown or duplicate terminal reply,
+    including a late reply from an earlier tick, MUST NOT be assigned to a later tick.
+    Consumers MUST prove explicit child cancellation, tick-answer and stream-end cleanup,
+    refusal outside a tick and continued usability of other streams and invocations.
 
 ## Shared Operation Grammar
 

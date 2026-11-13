@@ -247,6 +247,9 @@ Nightly and A.6 is closed.
 
 ## Owner Amendments of 2026-11-13
 
+- [ ] Samples child calls: migrate the runtime, Rust/Python/C#/C++ SDK observers and conformance tool to shared tick-scoped child frames on Instance.Samples; implement correlation, ordering, preserved failures, cancellation and outside-tick refusal under behaviour rules 30–32.
+  - [x] D.10 Definition: Add shared child frames with new field numbers only, document the tick contract and numbered conformance rules, regenerate outputs and extend the mapping and all six consumer work lists. Consumer implementation and conformance proof remain open.
+
 - [x] O.1 Replace paging for bounded catalogs, plugin entries and pairings in proto, operations, runtime, generated SDKs, consumers, examples, stories and guides; preserve paging and issued positions for unbounded data. Record the bounded/unbounded inventory and scenarios.
 - [x] O.2 Ship one SDK package per language; delete audience build selection, generated-stub guards and their tests/tooling; add four copyable self-install client journeys and migrate package consumers/guides. Preserve runtime face/visibility enforcement.
 - [x] O.3 Keep unary transfers with one storage-owned 4 MiB chunk default and the owner's later separate 8 MiB message default; derive the minimum ceiling including framing, refuse incompatible startup settings, delete streaming transfer declarations/handlers/SDKs/stories and benchmark cases, record and rerun the default benchmark.

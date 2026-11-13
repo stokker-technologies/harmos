@@ -50,9 +50,9 @@ message Response {
   }
 }
 
-// Submits a dependency call from the current attempt under its inherited caller context and checked grants.
+// Submits a dependency call from the current attempt or unanswered samples tick under its inherited caller context and checked grants.
 message ChildRequest {
-  // Chosen by the plugin, unique within this Invoke call.
+  // Chosen by the plugin, unique within this Invoke or Samples call, including across ticks.
   uint64 call = 1;
   // Complete admitted operation routing identity; no provider prefix or provider selection is added.
   string operation = 2;
@@ -72,19 +72,19 @@ message ChildRequest {
 
 // Permits one further item from a streaming child; demand is not a second child invocation.
 message ChildDemand {
-  // Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+  // Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
   uint64 call = 1;
 }
 
-// Cancels the outstanding child identified within this Invoke carrier.
+// Cancels the outstanding child identified within this Invoke or Samples carrier.
 message ChildCancel {
-  // Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+  // Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
   uint64 call = 1;
 }
 
 // Correlates a unary result, streaming item or failure with a child call on the same carrier.
 message ChildResponse {
-  // Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+  // Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
   uint64 call = 1;
   // Selects one variant; an unset discriminator carries no selected value.
   oneof result {

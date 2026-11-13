@@ -635,7 +635,7 @@ parents (`access`, `status`, `plugins`) rather than adding root Access RPCs.
 | `harmos.context.v1.Time/Sleep` | `harmos.context.v1.TimeSleepRequest` / `harmos.context.v1.TimeSleepResponse` | `harmos.plugin.host.v1.Time/Sleep` | `harmos.plugin.host.v1.TimeSleepRequest` / `harmos.plugin.host.v1.TimeSleepResponse` | Plugin-Host |
 | `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.InstanceGetRequest` / `harmos.plugin.v1.InstanceGetResponse` | `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.InstanceGetRequest` / `harmos.plugin.v1.InstanceGetResponse` | Plugin |
 | `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.InstanceInvokeRequest` / `harmos.plugin.v1.InstanceInvokeResponse` | `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.InstanceInvokeRequest` / `harmos.plugin.v1.InstanceInvokeResponse` | Plugin |
-| `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | Plugin |
+| `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | Plugin; additive tick-scoped children: request `child = 3`; response `child = 2`, `child_cancel = 3`, `child_demand = 4`; existing fields preserved |
 | `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.InstanceStopRequest` / `harmos.plugin.v1.InstanceStopResponse` | `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.InstanceStopRequest` / `harmos.plugin.v1.InstanceStopResponse` | Plugin |
 | `harmos.v1.access.Certificates/Create` | `harmos.v1.access.CertificatesCreateRequest` / `harmos.v1.access.CertificatesCreateResponse` | `harmos.client.v1.access.Certificates/Create` | `harmos.client.v1.access.CertificatesCreateRequest` / `harmos.client.v1.access.CertificatesCreateResponse` | Client |
 | `harmos.v1.access.Listener/Get` | `harmos.v1.access.ListenerGetRequest` / `harmos.v1.access.ListenerGetResponse` | `harmos.client.v1.access.Listener/Get` | `harmos.client.v1.access.ListenerGetRequest` / `harmos.client.v1.access.ListenerGetResponse` | Client |
@@ -771,6 +771,8 @@ representation for internal batch metadata; do not regenerate them as library wi
 
 ### Runtime Worker
 
+- Implement samples child calls (behaviour rules 30–32): Route observer child calls through the existing admitted plugin context and registry; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
+
 The consumer workers also migrate the affected README claims and owning guides
 (`docs/product-guide.md`, `docs/plugin-manager.md`, `docs/storage.md` and language
 guides) with their implementation. Their current executable examples describe the
@@ -797,11 +799,15 @@ preceding consumer tree, not proof of the new definition-only candidate.
 
 ### Rust SDK Worker
 
+- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
+
 - Regenerated modules are `harmos_protocol::{v1,client,client::access,client::plugins,client::status,plugin,plugin::host}`. `context` and `storage` protocol modules are deleted. Apply the Runtime Worker mechanical recipe to hand-written SDK authoring, clock, transfer, server and guest code; retain the public SDK Context object.
 - Generated client methods now live at `client.operations.{list,get}`, `client.schemas.list`, `client.streams.list`, `client.plugins.replace`, `client.plugins.settings.{list,set}`. The `catalog_entries` and `storage` roots are removed. `context/contracts.rs` and its per-message descriptor projections are already regenerated for `plugin::host`; migrate hand-written imports and declared requirements/fingerprints.
 - Decode the existing Catalog settings section as typed declarations; read values through plugin-host Settings.List. Remove HostValues and Samples/Storage wire conveniences; product operations own any required wrappers. No SDK-owned replacement native storage request types are needed.
 
 ### Python SDK Worker
+
+- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
 
 - Old `harmos.v1.<service>_pb2[_grpc]` → `harmos._wire.client.v1.<service>_pb2[_grpc]`; `harmos.v1.access/status.*` → `harmos._wire.client.v1.access/status.*`. Old `harmos.context.v1.<retained service>_pb2` → `harmos.plugin.host.v1.<service>_pb2`. Instance remains `harmos.plugin.v1.instance_pb2[_grpc]`.
 - Replace the former `harmos.v1.types_pb2` aggregate import with concept imports: `.position_pb2`, `.page_pb2`, `.receipt_pb2`, `.failure_pb2`, `.policy_pb2`, `.operation_pb2`, `.description_pb2`, `.invocation_pb2`, `.stream_pb2`, `.setting_pb2`. File/schema/default vocabulary moves from `storage_types_pb2`/`storage_settings_pb2` to `.file_pb2`/`.schema_pb2`/`.transfer_pb2`.
@@ -809,11 +815,15 @@ preceding consumer tree, not proof of the new definition-only candidate.
 
 ### C# SDK Worker
 
+- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
+
 - `Harmos.V1.<client wrapper/resource>` → `Harmos.Client.V1.<same name>`; `Harmos.V1.AccessResources` → `Harmos.Client.V1.AccessResources`; `Harmos.V1.StatusResources` → `Harmos.Client.V1.StatusResources`; new settings wrappers live in `Harmos.Client.V1.PluginsResources`.
 - `Harmos.Context.V1` → `Harmos.Plugin.Host.V1`; Instance remains `Harmos.Plugin.V1`. `Harmos.Storage.V1.<retained shared type>` → `Harmos.V1.<same name>`. The old file names Types/StorageTypes/StorageSettings are replaced by the concept files under `harmos/v1`.
 - Regenerated `Generated/Client.g.cs` and composition fixture include typed registries and Plugins.Settings. Update any explicit protobuf input inventory/build imports, authoring/settings section builders, carrier requirements and transfer defaults; remove wire storage/HostValues/Samples helpers. No SDK-native storage request types are needed.
 
 ### C++ SDK Worker
+
+- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
 
 - `::harmos::v1::<client wrapper/resource>` → `::harmos::client::v1::<same name>`; nested `::harmos::v1::{access,status}` → `::harmos::client::v1::{access,status}`. `::harmos::context::v1` → `::harmos::plugin::host::v1`; Instance remains `::harmos::plugin::v1`.
 - `::harmos::storage::v1::<retained shared type>` → `::harmos::v1::<same name>`. Include `harmos/client/v1/<service>.pb.h`, `harmos/plugin/host/v1/<service>.pb.h`, and the specific shared concept headers instead of `harmos/v1/types.pb.h` or storage aggregates.
@@ -826,6 +836,8 @@ preceding consumer tree, not proof of the new definition-only candidate.
 - Restore product-owned Buf validation after the proto imports compile, independently of the library module. No library wire aliases may be added to make the example compile.
 
 ### Conformance Tool Worker
+
+- Implement samples child calls (behaviour rules 30–32): Implement deterministic cases for rules 30–32 in the reference host and fixtures; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
 
 - Apply `v1::<client wrapper>` → `client::<same name>` and `context::<retained wrapper>` → `plugin::host::<same name>` to the reference host and fixtures; shared Catalog/frames stay `v1`. Adapt any aggregate proto imports to the concept files.
 - Recompute descriptors/fingerprints for renamed service wrappers, preserve Instance wire identity, and migrate HostValues/registry tests to typed Settings/Operations. Storage and pushed publication belong to product fixture contracts or native stories, rather than library wire declarations. Conformance owns no native storage request replacement.

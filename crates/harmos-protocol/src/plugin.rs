@@ -87,33 +87,54 @@ pub mod instance_invoke_response {
         ChildDemand(crate::v1::ChildDemand),
     }
 }
-/// Carries a stream selection or clock tick for Instance.Samples.
+/// Carries a stream selection, clock tick or child reply for Instance.Samples.
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceSamplesRequest {
     /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 2")]
+    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 2, 3")]
     pub frame: ::core::option::Option<instance_samples_request::Frame>,
 }
 /// Nested message and enum types in `InstanceSamplesRequest`.
 pub mod instance_samples_request {
     /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Frame {
         /// First frame.
         #[prost(message, tag = "1")]
         Open(crate::v1::SamplesSelection),
         #[prost(message, tag = "2")]
         Tick(crate::v1::Tick),
+        /// Reply to a child of the unanswered tick; never before open or after its sample.
+        #[prost(message, tag = "3")]
+        Child(crate::v1::ChildResponse),
     }
 }
-/// Carries one or more declared stream rows within the active demand call.
+/// Carries declared stream rows or child traffic for the unanswered tick within the active demand call.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceSamplesResponse {
+    /// A tick answer ends its child-call scope. Must be empty when a child frame is selected.
     #[prost(message, repeated, tag = "1")]
     pub samples: ::prost::alloc::vec::Vec<crate::v1::Sample>,
+    /// Child frames do not answer the tick. Unset for sample-bearing responses.
+    #[prost(oneof = "instance_samples_response::Frame", tags = "2, 3, 4")]
+    pub frame: ::core::option::Option<instance_samples_response::Frame>,
+}
+/// Nested message and enum types in `InstanceSamplesResponse`.
+pub mod instance_samples_response {
+    /// Child frames do not answer the tick. Unset for sample-bearing responses.
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Frame {
+        #[prost(message, tag = "2")]
+        Child(crate::v1::ChildRequest),
+        #[prost(message, tag = "3")]
+        ChildCancel(crate::v1::ChildCancel),
+        #[prost(message, tag = "4")]
+        ChildDemand(crate::v1::ChildDemand),
+    }
 }
 /// Carries the reason text for Instance.Stop.
 #[allow(clippy::all)]
@@ -277,7 +298,17 @@ pub mod instance_client {
         /// One declared stream. The host opens the call with a harmos.v1.SamplesSelection;
         /// opening it is the demand for the stream and closing it ends the demand.
         /// For a stream with an interval the host then sends one harmos.v1.Tick per interval
-        /// and the plugin answers each with one sample.
+        /// and the plugin answers each with one sample. Only one tick may be unanswered.
+        /// Between receiving a tick and sending its sample, the plugin may send ChildRequest,
+        /// ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
+        /// same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's
+        /// caller context and grants, with the same routing and policy checks as Invoke.
+        /// Replies may arrive out of order and are matched by call ID, unique for the whole
+        /// Samples call, not reused on later ticks. Failures retain every field unchanged.
+        /// Answering the tick or ending the stream cancels its outstanding children and
+        /// suppresses their later replies. ChildCancel does the same for its child only.
+        /// Child traffic outside an unanswered tick (including device streams), unknown or
+        /// duplicate terminal reply IDs, and mixed sample/child responses are refused with INVALID_ARGUMENT.
         pub async fn samples(
             &mut self,
             request: impl tonic::IntoStreamingRequest<
@@ -378,7 +409,17 @@ pub mod instance_server {
         /// One declared stream. The host opens the call with a harmos.v1.SamplesSelection;
         /// opening it is the demand for the stream and closing it ends the demand.
         /// For a stream with an interval the host then sends one harmos.v1.Tick per interval
-        /// and the plugin answers each with one sample.
+        /// and the plugin answers each with one sample. Only one tick may be unanswered.
+        /// Between receiving a tick and sending its sample, the plugin may send ChildRequest,
+        /// ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
+        /// same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's
+        /// caller context and grants, with the same routing and policy checks as Invoke.
+        /// Replies may arrive out of order and are matched by call ID, unique for the whole
+        /// Samples call, not reused on later ticks. Failures retain every field unchanged.
+        /// Answering the tick or ending the stream cancels its outstanding children and
+        /// suppresses their later replies. ChildCancel does the same for its child only.
+        /// Child traffic outside an unanswered tick (including device streams), unknown or
+        /// duplicate terminal reply IDs, and mixed sample/child responses are refused with INVALID_ARGUMENT.
         async fn samples(
             &self,
             request: tonic::Request<tonic::Streaming<super::InstanceSamplesRequest>>,

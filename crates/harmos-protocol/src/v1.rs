@@ -200,11 +200,11 @@ pub mod response {
         Failure(super::Failure),
     }
 }
-/// Submits a dependency call from the current attempt under its inherited caller context and checked grants.
+/// Submits a dependency call from the current attempt or unanswered samples tick under its inherited caller context and checked grants.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildRequest {
-    /// Chosen by the plugin, unique within this Invoke call.
+    /// Chosen by the plugin, unique within this Invoke or Samples call, including across ticks.
     #[prost(uint64, tag = "1")]
     pub call: u64,
     /// Complete admitted operation routing identity; no provider prefix or provider selection is added.
@@ -233,15 +233,15 @@ pub struct ChildRequest {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildDemand {
-    /// Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+    /// Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
     #[prost(uint64, tag = "1")]
     pub call: u64,
 }
-/// Cancels the outstanding child identified within this Invoke carrier.
+/// Cancels the outstanding child identified within this Invoke or Samples carrier.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildCancel {
-    /// Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+    /// Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
     #[prost(uint64, tag = "1")]
     pub call: u64,
 }
@@ -249,7 +249,7 @@ pub struct ChildCancel {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ChildResponse {
-    /// Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+    /// Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
     #[prost(uint64, tag = "1")]
     pub call: u64,
     /// Selects one variant; an unset discriminator carries no selected value.

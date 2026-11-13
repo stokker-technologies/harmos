@@ -65,18 +65,26 @@ class InstanceInvokeResponse(_message.Message):
     def __init__(self, child: _Optional[_Union[_invocation_pb2.ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[_invocation_pb2.ChildCancel, _Mapping]] = ..., response: _Optional[_Union[_invocation_pb2.Response, _Mapping]] = ..., child_demand: _Optional[_Union[_invocation_pb2.ChildDemand, _Mapping]] = ...) -> None: ...
 
 class InstanceSamplesRequest(_message.Message):
-    __slots__ = ("open", "tick")
+    __slots__ = ("open", "tick", "child")
     OPEN_FIELD_NUMBER: _ClassVar[int]
     TICK_FIELD_NUMBER: _ClassVar[int]
+    CHILD_FIELD_NUMBER: _ClassVar[int]
     open: _stream_pb2.SamplesSelection
     tick: _stream_pb2.Tick
-    def __init__(self, open: _Optional[_Union[_stream_pb2.SamplesSelection, _Mapping]] = ..., tick: _Optional[_Union[_stream_pb2.Tick, _Mapping]] = ...) -> None: ...
+    child: _invocation_pb2.ChildResponse
+    def __init__(self, open: _Optional[_Union[_stream_pb2.SamplesSelection, _Mapping]] = ..., tick: _Optional[_Union[_stream_pb2.Tick, _Mapping]] = ..., child: _Optional[_Union[_invocation_pb2.ChildResponse, _Mapping]] = ...) -> None: ...
 
 class InstanceSamplesResponse(_message.Message):
-    __slots__ = ("samples",)
+    __slots__ = ("samples", "child", "child_cancel", "child_demand")
     SAMPLES_FIELD_NUMBER: _ClassVar[int]
+    CHILD_FIELD_NUMBER: _ClassVar[int]
+    CHILD_CANCEL_FIELD_NUMBER: _ClassVar[int]
+    CHILD_DEMAND_FIELD_NUMBER: _ClassVar[int]
     samples: _containers.RepeatedCompositeFieldContainer[_stream_pb2.Sample]
-    def __init__(self, samples: _Optional[_Iterable[_Union[_stream_pb2.Sample, _Mapping]]] = ...) -> None: ...
+    child: _invocation_pb2.ChildRequest
+    child_cancel: _invocation_pb2.ChildCancel
+    child_demand: _invocation_pb2.ChildDemand
+    def __init__(self, samples: _Optional[_Iterable[_Union[_stream_pb2.Sample, _Mapping]]] = ..., child: _Optional[_Union[_invocation_pb2.ChildRequest, _Mapping]] = ..., child_cancel: _Optional[_Union[_invocation_pb2.ChildCancel, _Mapping]] = ..., child_demand: _Optional[_Union[_invocation_pb2.ChildDemand, _Mapping]] = ...) -> None: ...
 
 class InstanceStopRequest(_message.Message):
     __slots__ = ("reason",)
