@@ -354,7 +354,7 @@ its fixture constructor, implementation and protocol in `examples/conformance/`;
 they are test support and are excluded from the installed SDK.
 The C++ Build stages its standalone source package under the native Product
 directory's `cpp/harmos-cpp.tar.gz`. Package-isolation stories install/extract each
-SDK, compile or import its public fixture outside the checkout, and run every host rule.
+SDK, compile or import its fixture in a standalone consumer project, and run every host rule.
 
 ## Install a Plugin from Its Own Codebase
 

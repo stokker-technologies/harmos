@@ -23,13 +23,12 @@
 
 ## 4. Final Validation
 
-- [ ] 4.4 Prove the committed C++ presets from clean output, installed consumer and integration stories on Windows; record cold and cached build durations in the final report.
-- [ ] 4.5 Run root format, Python and repository checks, per-SDK C# and Python build/test tasks, and verify clean Git status on the committed candidate.
-
 - [ ] 4.1 Run every entry point locally on Windows and Linux, and confirm hosted CI and Nightly run the same tasks.
 - [x] 4.2 Update the contributor guide.
-
 - [ ] 4.3 Verify the installed repository checker accepts the entry-point task model and generated protocol declarations; hand remaining checker defects to its owner.
+- [x] 4.4 Prove the Committed C++ Presets from Clean Output, the Installed Consumer and Integration Stories on Windows; Record Cold and Cached Build Durations in the Final Report.
+- [x] 4.5 Run Root Format and Repository Checks, Per-SDK C# and Python Build/Unit Tasks, and Verify Clean Git Status on the Committed Candidate.
+- [ ] 4.6 After Ownership Authorization, Update the Two Tooling Dispatcher Expectations in `tools/python/tests/integration/test_build_cargo.py` and Rerun `mise run check -- --language python`.
 
 ## 5. Developer Build Feedback
 
@@ -40,16 +39,16 @@
 
 ## 6. C++ SDK Build
 
-- [x] 6.1 Replace fetched gRPC with pinned vcpkg config packages, packaged generators and native binary caching; bootstrap vcpkg outside the repository.
-- [x] 6.2 Split protocol generation, tests and conformance targets; add Ninja presets, target-owned settings and installed Harmos package exports.
-- [x] 6.3 Move generated client headers and conformance support, update generators and includes without changing SDK behavior; leave installed-consumer execution to final validation.
-- [x] 6.4 Update SDK packaging, artifact consumers, tooling and C++ guide contracts; commit the complete dependency/build step locally.
+- [x] 6.1 Replace Fetched gRPC with Pinned vcpkg Config Packages, Packaged Generators and Native Binary Caching; Bootstrap vcpkg Outside the Repository.
+- [x] 6.2 Split Protocol Generation, Tests and Conformance Targets; Add Ninja Presets, Target-Owned Settings and Installed Harmos Package Exports.
+- [x] 6.3 Move Generated Client Headers and Conformance Support, Update Generators and Includes Without Changing SDK Behavior; Leave Installed-Consumer Execution to Final Validation.
+- [x] 6.4 Update SDK Packaging, Artifact Consumers, Tooling and C++ Guide Contracts; Commit the Complete Dependency/Build Step Locally.
 
 ## 7. Per-SDK Tools
 
-- [x] 7.1 Add C++, C# and Python mise tools, tasks and locks; remove SDK tools and compiler-cache variables from root configuration and delegate root SDK tasks.
-- [x] 7.2 Install only lane tools in GitHub jobs and persist the C++ binary cache; retain all existing checks and tests.
-- [x] 7.3 Update maintained tooling guidance and commit the per-SDK configuration step locally.
+- [x] 7.1 Add C++, C# and Python Mise Tools, Tasks and Locks; Remove SDK Tools and Compiler-Cache Variables from Root Configuration and Delegate Root SDK Tasks.
+- [x] 7.2 Install Only Lane Tools in GitHub Jobs and Persist the C++ Binary Cache; Retain All Existing Checks and Tests.
+- [x] 7.3 Update Maintained Tooling Guidance and Commit the Per-SDK Configuration Step Locally.
 
 ## Workflow Follow-Up
 

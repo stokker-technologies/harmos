@@ -38,6 +38,8 @@ GitHub persists that cache between runs. Compiler-cache settings are workstation
 
 `CMakePresets.json` defines Ninja configure, build and test presets `development`,
 `release` and `tests`. Tasks and CI use those presets; editors can select them too.
+Use `mise -C sdk/cpp run build -- --fresh` to reset CMake configuration while
+retaining the installed dependencies and their binary cache.
 For direct CMake calls, export `VCPKG_ROOT` to the prepared checkout and activate
 the native compiler environment. `development` builds the shipping libraries;
 `tests` builds Debug libraries, all five unit cases and the conformance plugin;
@@ -56,9 +58,9 @@ and runs every host rule. Test consumers use existing SDK and host builds;
 For a focused host build, select `target/debug/harmos-conformance` (`.exe` on
 Windows) explicitly with that variable; otherwise stories prefer the native
 Product export when it exists.
-Native catalog tests run through CTest before the single managed-plugin story,
-which checks every reference-host case, including
-cleanup and successful process exit after Stop.
+Native catalog tests run through CTest before the managed-plugin and installed-package
+stories. Both check every reference-host case, including cleanup and successful
+process exit after Stop.
 
 The fixture is `target/cpp/tests/harmos-cpp-conformance.exe` on Windows and
 `target/cpp/tests/harmos-cpp-conformance` on Linux. Without arguments it binds an
