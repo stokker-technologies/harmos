@@ -59,7 +59,7 @@ class PackagedConformance(unittest.TestCase):
         # Compile the Packaged Example Against the Installed SDK, Without Its Sources.
         selected = "tests" if profile == "dev" else "release"
         prefix = root / "target/cpp" / selected / "installed"
-        build = root / "target/cpp/packaged" / profile
+        build = root / "target/cpp/packaged-consumer" / profile
         child_environment = environment()
         toolchain = Path(child_environment["VCPKG_ROOT"]) / "scripts/buildsystems/vcpkg.cmake"
         configure = [
