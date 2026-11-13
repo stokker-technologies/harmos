@@ -14,6 +14,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -288,14 +289,13 @@ def dispatch(arguments: list[str] | None = None) -> int:
             options.package
             or options.features
             or options.target
-            or options.exact
             or options.coverage
             or options.extended
             or options.filter
             or options.stress_count
             or options.layer
         ):
-            parser.error("C++ conformance selects only --language cpp and optional --profile")
+            parser.error("C++ conformance selects --language cpp, optional --profile and --exact")
         configuration = "Debug" if options.profile == "dev" else "Release"
         _execute(
             [
@@ -306,8 +306,11 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 configuration,
                 "--output-on-failure",
                 "--no-tests=error",
+                *(["-R", "^" + re.escape(options.exact) + "$"] if options.exact else []),
             ]
         )
+        if options.exact:
+            return 0
         return _execute(
             [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration", "-v"],
             directory=root / "sdk/cpp",

@@ -41,12 +41,14 @@ int install_itself(int argc, char** argv) {
     harmos::v1::PluginsCreateRequest create;
     create.set_request_id("self-install"); create.set_name("example");
     create.mutable_placement()->mutable_remote()->set_url(argv[3]); create.mutable_value()->set_enabled(true);
-    client.plugins.create(create);
+    grpc::ClientContext create_context;
+    client.plugins.create(create_context, create);
     harmos::v1::PluginsWatchRequest selection; selection.set_name("example");
-    auto watch = client.plugins.watch(selection);
+    grpc::ClientContext watch_context;
+    auto watch = client.plugins.watch(watch_context, selection);
     harmos::v1::PluginEntry ready;
     harmos::v1::PluginsWatchResponse event;
-    while (watch.reader->Read(&event)) {
+    while (watch->Read(&event)) {
         if (event.has_snapshot()) {
             for (const auto& entry : event.snapshot().entries()) if (entry.state() == harmos::v1::PLUGIN_STATE_READY) ready = entry;
         } else if (event.has_change() && event.change().has_entry() && event.change().entry().state() == harmos::v1::PLUGIN_STATE_READY) {
@@ -55,6 +57,8 @@ int install_itself(int argc, char** argv) {
         if (ready.state() == harmos::v1::PLUGIN_STATE_READY) break;
     }
     if (ready.state() != harmos::v1::PLUGIN_STATE_READY) throw std::runtime_error("Watch Plugins: closed before Ready");
+    watch_context.TryCancel();
+    watch->Finish();
     // Invoke Its Public Operation Through the Host
     harmos::v1::InvocationsInvokeRequest invoke;
     for (const auto& contract : ready.description().catalog().operations()) if (contract.id() == "example.echo") {
@@ -63,13 +67,15 @@ int install_itself(int argc, char** argv) {
     std::string data(static_cast<std::size_t>(transfer.chunk_bytes()), '\0');
     data.replace(0, 5, "hello");
     Value request; request.set_value(data); invoke.set_payload(request.SerializeAsString());
-    const auto reply = client.invocations.invoke(invoke);
+    grpc::ClientContext invoke_context;
+    const auto reply = client.invocations.invoke(invoke_context, invoke);
     Value response;
     if (!response.ParseFromString(reply.payload())) throw std::runtime_error("Invoke example.echo: invalid response");
     if (response.value() != data) throw std::runtime_error("Invoke example.echo: payload changed");
     std::cout << "hello" << std::endl;
     harmos::v1::PluginsDeleteRequest remove; remove.set_name("example"); remove.set_expected_revision(ready.revision());
-    client.plugins.delete_(remove);
+    grpc::ClientContext delete_context;
+    client.plugins.delete_(delete_context, remove);
     return 0;
 }
 

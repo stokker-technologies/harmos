@@ -11,21 +11,13 @@
 # === Imports === #
 
 import json
-from importlib import import_module
-import sys
 import unittest
 from pathlib import Path
 
 import grpc
 
 from harmos import Client
-
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures/client"
-sys.path.insert(0, str(FIXTURES))
-plugins = import_module("library.v1.plugins_pb2")
-settings = import_module("library.v1.plugins.settings_pb2")
-jobs = import_module("application.v1.jobs_pb2")
-progress = import_module("application.v1.jobs.progress_pb2")
+from tests.support.client_protocol import jobs, plugins, progress, settings
 
 # Third Party Imports
 

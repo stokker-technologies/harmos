@@ -2,6 +2,7 @@
 using Grpc.Core;
 using Google.Protobuf;
 namespace Fixture.Sdk;
+
 public sealed class Client
 {
   public JobsResource Jobs { get; }

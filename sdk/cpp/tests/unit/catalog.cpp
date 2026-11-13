@@ -91,12 +91,14 @@ void catalog_preserves_typed_sections_and_dependencies() {
 /* === Entry Point === */
 
 void client_roots_compose_services();
+void one_call_preserves_metadata_deadline_override_and_cancellation();
 
 int main(int argc, char** argv) {
     try {
         if (argc != 2) throw std::invalid_argument("Expected a Test Name");
         const std::string name = argv[1];
         if (name == "client_roots_compose_services") client_roots_compose_services();
+        else if (name == "one_call_preserves_metadata_deadline_override_and_cancellation") one_call_preserves_metadata_deadline_override_and_cancellation();
         else if (name == "catalog_rejects_duplicate_operations") catalog_rejects_duplicate_operations();
         else if (name == "observer_preserves_its_stream_contract") observer_preserves_its_stream_contract();
         else if (name == "catalog_preserves_typed_sections_and_dependencies") catalog_preserves_typed_sections_and_dependencies();

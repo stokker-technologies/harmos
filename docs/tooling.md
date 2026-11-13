@@ -183,6 +183,34 @@ remain child calls and have no independent gRPC listener.
 
 ## Python Plugin SDK
 
+### Control for Each Call
+
+Generated roots preserve caller metadata/credentials, a deadline override and
+cancellation for each call. The transport options belong to that call:
+
+| SDK | Caller Control |
+| --- | --- |
+| Rust | Pass `tonic::Request<Q>` with metadata and `set_timeout`; drop the pending future or returned Watch to cancel observation. |
+| Python | Pass `metadata=`, `credentials=` and `timeout=` to the generated callable; retain its call object and use `cancel()`. |
+| C# | Pass `Grpc.Core.CallOptions` with Headers, Credentials, Deadline and CancellationToken. |
+| C++ | Pass `grpc::ClientContext&` as the first argument of every generated root method; configure metadata, credentials and deadline on it and use `TryCancel()`. |
+
+C++ Watch methods return `std::unique_ptr<grpc::ClientReader<Response>>` and borrow
+that same caller-owned context. Keep the context alive until the reader finishes;
+cancel it explicitly when abandoning the Watch. The former ClientWatch wrapper and
+its inaccessible context are removed. For example:
+
+```cpp
+grpc::ClientContext context;
+context.AddMetadata("authorization", credential);
+context.set_deadline(deadline);
+auto response = client.access.pairings.create(context, request);
+```
+
+The four SDKs exercise `one_call_preserves_metadata_deadline_override_and_cancellation`
+(normal PascalCase in C#), using events and transport option inspection without
+sampling elapsed or remaining wall-clock time. A later call keeps its own options.
+
 `sdk/python` builds the pure Python `harmos-sdk` distribution for Python 3.13+.
 Its runtime dependencies are `grpcio` and `protobuf`; it contains no native code.
 `prepare` installs the local package into `sdk/python/.venv/`; SDK tests and type

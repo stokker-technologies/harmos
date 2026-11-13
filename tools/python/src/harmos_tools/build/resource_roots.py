@@ -217,6 +217,7 @@ def csharp(root: Path, methods: list[dict], *, namespace: str = "harmos", target
         "using Grpc.Core;",
         "using Google.Protobuf;",
         f"namespace {'.'.join(part.title() for part in namespace.split('.'))}.Sdk;",
+        "",
     ]
     for node in sorted(nodes):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
@@ -299,14 +300,7 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
     macro_names = sorted({method["method"] for method in methods})
     lines += [line for name in macro_names for line in (f'#pragma push_macro("{name}")', f"#undef {name}")]
     lines += [f'#include "{name}"' for name in includes]
-    lines += [
-        f"namespace {namespace.replace('.', '::')} {{",
-        "template<class Response> struct ClientWatch {",
-        "  std::unique_ptr<grpc::ClientContext> context;",
-        "  std::unique_ptr<grpc::ClientReader<Response>> reader;",
-        "  ~ClientWatch() { if (context) context->TryCancel(); }",
-        "};",
-    ]
+    lines += [f"namespace {namespace.replace('.', '::')} {{"]
     for node in sorted(nodes, key=lambda node: (-len(node), node)):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
         operations = [method for method in methods if tuple(method["path"][:-1]) == node]
@@ -331,16 +325,13 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
             service = "::" + method["package"].replace(".", "::") + "::" + method["service"]
             if method["server_streaming"]:
                 lines += [
-                    f"  ClientWatch<{response}> {identifier(method['path'][-1])}(const {request}& request) {{",
-                    "    auto context = std::make_unique<grpc::ClientContext>();",
-                    f"    auto reader = {service}::NewStub(channel)->{method['method']}(context.get(), request);",
-                    "    return {std::move(context), std::move(reader)};",
+                    f"  std::unique_ptr<grpc::ClientReader<{response}>> {identifier(method['path'][-1])}(grpc::ClientContext& context, const {request}& request) {{",
+                    f"    return {service}::NewStub(channel)->{method['method']}(&context, request);",
                     "  }",
                 ]
             else:
                 lines += [
-                    f"  {response} {identifier(method['path'][-1])}(const {request}& request) {{",
-                    "    grpc::ClientContext context;",
+                    f"  {response} {identifier(method['path'][-1])}(grpc::ClientContext& context, const {request}& request) {{",
                     f"    {response} response;",
                     f"    const auto status = {service}::NewStub(channel)->{method['method']}(&context, request, &response);",
                     f'    if (!status.ok()) throw std::runtime_error(std::string("{method["method"]}: ") + status.error_message());',

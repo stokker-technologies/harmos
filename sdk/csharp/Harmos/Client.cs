@@ -2,6 +2,7 @@
 using Grpc.Core;
 using Google.Protobuf;
 namespace Harmos.Sdk;
+
 public sealed class Client : global::System.IDisposable
 {
   private global::Grpc.Net.Client.GrpcChannel? ownedChannel;

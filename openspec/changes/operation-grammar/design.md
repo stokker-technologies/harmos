@@ -1781,6 +1781,52 @@ then read ranges through that lease. The same trait replaces diagnostics' range
 callback and the bundle reader's independent content trait. The host application
 retains its bytes and metadata; library saved references retain their existing path.
 
+#### Application Content Public Shape
+
+```rust
+storage.register_content_source(Arc::new(source))?;
+pub trait ContentSource: Send + Sync + 'static {
+    fn resolve<'a>(&'a self, reference: &'a str, scope: Option<&'a str>)
+        -> StorageFuture<'a, ContentLease>;
+    fn read<'a>(&'a self, lease: &'a ContentLease, offset: u64, maximum: NonZeroUsize)
+        -> StorageFuture<'a, Vec<u8>>;
+}
+pub struct ContentLease {
+    pub length: u64,
+    pub sha256: [u8; 32],
+    pub expires_at: SystemTime,
+    pub max_bytes: NonZeroUsize,
+    pub token: Vec<u8>,
+}
+let read = storage.open_content(&reference, caller_scope, None).await?;
+let range = read.get_bytes(offset, maximum).await?;
+```
+
+There is one application resolver per StorageManager, retained until shutdown;
+registration refuses replacement. Library-history references use saved storage.
+An application supplies a distinct history and an immutable metadata identifier;
+its resolver receives that identifier and the inherited opaque invocation scope,
+returns authoritative length/digest and a bounded expiring lease, and owns the token.
+The library refuses reference/metadata disagreement, oversized tokens/ranges, short
+or oversized provider reads and expired leases, with GetFileBytes named in errors.
+No application bytes or metadata are written into library persistence.
+
+The existing SavedSnapshots observation mechanism retains the ContentRead handle
+under a returned ReadCut, charging its existing capacity. The observation plan binds
+the complete reference and caller scope. Continuations reuse that exact lease;
+scope changes, expired/evicted leases and restart refuse rather than resolving anew.
+This is one retained-cut owner, not another cache or manager. Library saved-reference
+reads retain their existing durability/provenance behavior and grants remain separate.
+
+Opaque invocation Scope moves to the lower operations context owner, with the runtime
+re-export preserved, so storage handlers read it without a reverse dependency.
+Diagnostics uses the same ContentSource/ContentRead contract for each bounded archive
+range; required consumer `StatusSettings.read_timeout` bounds that call's lease.
+The archive itself still lives until replaced, so this does not introduce archive TTL.
+Plugin installation takes the StorageManager directly and opens one content read;
+the former bundle-only ContentSource, ContentRead alias and PublishedContent adapter
+are removed with their constructor parameter and all callers.
+
 Delete native ReadFile/WriteFile operation declarations and handlers, their two proto
 requests and generated bindings, their streaming-only stories and fixture branches,
 and the streaming benchmark cases. Keep native file readers and production APIs,

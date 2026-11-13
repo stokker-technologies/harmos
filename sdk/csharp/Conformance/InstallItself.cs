@@ -20,8 +20,10 @@ internal static class InstallItself
     var transfer = new global::Harmos.Storage.V1.StorageTransferSettings();
     using var client = Client.Connect(arguments[0], transfer);
     // Install and Start This Codebase's Running Instance
-    await client.Plugins.Create(new PluginsCreateRequest {
-      RequestId = "self-install", Name = "example",
+    await client.Plugins.Create(new PluginsCreateRequest
+    {
+      RequestId = "self-install",
+      Name = "example",
       Placement = new PluginPlacement { Remote = new PluginRemote { Url = arguments[1] } },
       Value = new PluginValue { Enabled = true }
     });
@@ -38,8 +40,11 @@ internal static class InstallItself
     var contract = ready.Description.Catalog.Operations.Single(operation => operation.Id == "example.echo");
     var data = new byte[checked((int)transfer.ChunkBytes)];
     "hello"u8.CopyTo(data);
-    var reply = await client.Invocations.Invoke(new InvocationsInvokeRequest {
-      Operation = contract.Id, Fingerprint = contract.Fingerprint, Payload = new Value { Value_ = ByteString.CopyFrom(data) }.ToByteString()
+    var reply = await client.Invocations.Invoke(new InvocationsInvokeRequest
+    {
+      Operation = contract.Id,
+      Fingerprint = contract.Fingerprint,
+      Payload = new Value { Value_ = ByteString.CopyFrom(data) }.ToByteString()
     });
     if (!Value.Parser.ParseFrom(reply.Payload).Value_.Span.SequenceEqual(data))
       throw new InvalidOperationException("Invoke example.echo: payload changed");

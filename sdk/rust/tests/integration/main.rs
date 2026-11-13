@@ -38,6 +38,7 @@ mod client_reflection {
 mod composed_resources {
     include!("../fixtures/client/resources.rs");
 }
+mod client_call_context;
 mod client_root;
 
 /* === Re-Exports === */
