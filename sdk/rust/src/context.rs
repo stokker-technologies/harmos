@@ -20,19 +20,34 @@ mod contracts;
 
 // Standard Library Imports
 use std::{
+    any::type_name,
     any::{Any, TypeId},
     collections::{BTreeMap, BTreeSet, HashMap},
-    sync::{Arc, Mutex},
+    marker::PhantomData,
+    mem,
+    num::NonZeroUsize,
+    result::Result as StdResult,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
 // Third Party Imports
+use crate::Operation;
+use crate::operation::LocalFuture;
 use prost::Message as _;
-use tokio::sync::{mpsc, oneshot, watch};
+use prost_types::{Duration as ProtoDuration, Timestamp};
+use tokio::sync::{Notify, mpsc, oneshot, watch};
+use tonic::Status;
 
 // Local Imports
 use crate::{Error, Message, OperationRequest, Result, message::request_fingerprint};
-use harmos_protocol::plugin::instance_invoke_response;
+use harmos_protocol::plugin::host::{
+    SettingsListRequest, SettingsListResponse, TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse,
+};
+use harmos_protocol::plugin::{InstanceInvokeResponse, InstanceSamplesResponse, instance_invoke_response, instance_samples_response};
 use harmos_protocol::v1::{self};
 
 /* === Constants === */
@@ -41,14 +56,23 @@ use harmos_protocol::v1::{self};
 
 /* === Type Aliases === */
 
-type ChildResult = std::result::Result<Vec<u8>, Error>;
+type ChildResult = StdResult<Vec<u8>, Error>;
 type WatchResult = Result<Option<Vec<u8>>>;
 pub(crate) type Pending = BTreeMap<u64, PendingCall>;
 pub(crate) struct PendingCall {
     pub sender: oneshot::Sender<ChildResult>,
     pub group: Arc<()>,
     pub background: bool,
+    pub sent: bool,
 }
+#[derive(Clone)]
+pub(crate) struct WatchCall {
+    pub sender: mpsc::Sender<WatchResult>,
+    pub limit: usize,
+    pub group: Arc<()>,
+    pub sent: bool,
+}
+
 struct PendingDrop {
     context: Context,
     call: u64,
@@ -56,7 +80,9 @@ struct PendingDrop {
 impl Drop for PendingDrop {
     fn drop(&mut self) {
         let mut calls = self.context.calls.lock().expect("Child Calls Poisoned");
-        if calls.pending.remove(&self.call).is_some() {
+        if let Some(pending) = calls.pending.remove(&self.call)
+            && pending.sent
+        {
             calls.cancelled.insert(self.call);
             calls.cancel_queue.insert(self.call);
             self.context.call_changes.notify_one();
@@ -77,23 +103,66 @@ pub struct Context {
     pub(crate) plugin: String,
     resources: Arc<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
     pub(crate) calls: Arc<Mutex<Calls>>,
-    pub(crate) output: Option<mpsc::Sender<std::result::Result<harmos_protocol::plugin::InstanceInvokeResponse, tonic::Status>>>,
+    pub(crate) output: Option<ChildOutput>,
     pub(crate) cancellation: watch::Sender<Option<String>>,
     pub(crate) requires: Arc<HashMap<String, Vec<u8>>>,
-    pub(crate) local: Arc<HashMap<String, Arc<crate::Operation>>>,
+    pub(crate) local: Arc<HashMap<String, Arc<Operation>>>,
     pub(crate) sequence: u64,
     background: bool,
     group: Arc<()>,
-    pub(crate) call_changes: Arc<tokio::sync::Notify>,
+    pub(crate) call_changes: Arc<Notify>,
     pub(crate) child: Option<Arc<dyn ChildTransport>>,
     pub(crate) values: Vec<v1::GuestValue>,
-    pub(crate) samples: Option<mpsc::Sender<(Vec<u8>, Option<prost_types::Timestamp>)>>,
+    pub(crate) samples: Option<mpsc::Sender<(Vec<u8>, Option<Timestamp>)>>,
+}
+
+#[derive(Clone)]
+pub(crate) enum ChildOutput {
+    Invoke(mpsc::Sender<StdResult<InstanceInvokeResponse, Status>>),
+    Samples { sender: mpsc::Sender<StdResult<InstanceSamplesResponse, Status>>, active: Arc<AtomicBool> },
+}
+
+impl ChildOutput {
+    fn check(&self) -> Result<()> {
+        if let Self::Samples { active, .. } = self
+            && !active.load(Ordering::Acquire)
+        {
+            return Err(Status::invalid_argument("Call Child: No Unanswered Samples Tick").into());
+        }
+        Ok(())
+    }
+
+    async fn send(&self, frame: instance_invoke_response::Frame) -> Result<()> {
+        match self {
+            Self::Invoke(sender) => sender
+                .send(Ok(InstanceInvokeResponse { frame: Some(frame) }))
+                .await
+                .map_err(|_| Status::unavailable("Send Child Frame: Host Closed"))?,
+            Self::Samples { sender, .. } => {
+                let cancel = matches!(&frame, instance_invoke_response::Frame::ChildCancel(_));
+                let frame = match frame {
+                    instance_invoke_response::Frame::Child(child) => instance_samples_response::Frame::Child(child),
+                    instance_invoke_response::Frame::ChildCancel(cancel) => instance_samples_response::Frame::ChildCancel(cancel),
+                    instance_invoke_response::Frame::ChildDemand(demand) => instance_samples_response::Frame::ChildDemand(demand),
+                    instance_invoke_response::Frame::Response(_) => {
+                        return Err(Error::Invalid("Send Child Frame: Unexpected Result".into()));
+                    }
+                };
+                let permit = sender.reserve().await.map_err(|_| Status::unavailable("Send Samples Child: Host Closed"))?;
+                if !cancel {
+                    self.check()?;
+                }
+                permit.send(Ok(InstanceSamplesResponse { samples: Vec::new(), frame: Some(frame) }));
+            }
+        }
+        Ok(())
+    }
 }
 
 pub(crate) struct Calls {
     next: u64,
     pub pending: Pending,
-    pub watches: BTreeMap<u64, (mpsc::Sender<WatchResult>, usize, Arc<()>)>,
+    pub watches: BTreeMap<u64, WatchCall>,
     pub cancelled: BTreeSet<u64>,
     pub cancel_queue: BTreeSet<u64>,
 }
@@ -103,9 +172,7 @@ pub(crate) struct Calls {
 /* === Traits === */
 
 pub(crate) trait ChildTransport: Send + Sync + Any {
-    fn call<'a>(
-        &'a self, request: v1::ChildRequest, values: Vec<v1::GuestValue>, submit: bool,
-    ) -> crate::operation::LocalFuture<'a, Result<Vec<u8>>>;
+    fn call<'a>(&'a self, request: v1::ChildRequest, values: Vec<v1::GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>>;
 }
 
 /* === Implementations === */
@@ -135,7 +202,7 @@ impl Context {
             sequence: 0,
             background: false,
             group: Arc::new(()),
-            call_changes: Arc::new(tokio::sync::Notify::new()),
+            call_changes: Arc::new(Notify::new()),
             samples: None,
         }
     }
@@ -165,7 +232,7 @@ impl Context {
             .get(&TypeId::of::<T>())
             .cloned()
             .and_then(|value| value.downcast().ok())
-            .ok_or_else(|| Error::Invalid(format!("Missing Resource: {}", std::any::type_name::<T>())))
+            .ok_or_else(|| Error::Invalid(format!("Missing Resource: {}", type_name::<T>())))
     }
 
     /// The sequence of the sample being requested on this publication call.
@@ -194,29 +261,33 @@ impl Context {
             return Err(Error::Invalid(format!("Call {}: Use Watch for a Streaming Contract", Q::ID)));
         }
         if self.output.is_none() && self.child.is_none() {
-            return Err(Error::Invalid("Observers Cannot Call Operations or Wait".into()));
+            return Err(Error::Invalid(format!("Call {}: Child Carrier Required", Q::ID)));
+        }
+        if let Some(output) = &self.output {
+            output.check()?;
         }
         if let Some(operation) = self.local.get(Q::ID) {
             if operation.contract.request != Q::name() || operation.contract.response != Q::Response::name() {
                 return Err(Error::Invalid(format!("Call {}: Local Contract Differs", Q::ID)));
             }
             let payload = self.invoke_local(operation, request.encode_to_vec(), policy).await?;
-            return Q::Response::decode(payload.as_slice()).map_err(|error| tonic::Status::invalid_argument(error.to_string()).into());
+            return Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into());
         }
         let fingerprint = request_fingerprint::<Q>()?;
         if self.requires.get(Q::ID) != Some(&fingerprint) {
             return Err(Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)));
         }
         let payload = self.send_call(Q::ID, request.encode_to_vec(), fingerprint, policy).await?;
-        Q::Response::decode(payload.as_slice()).map_err(|error| tonic::Status::invalid_argument(error.to_string()).into())
+        Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
     }
 
     /// Open a declared context Watch with a consumer-owned maximum encoded item size.
-    pub async fn watch<Q: OperationRequest>(&self, request: Q, max_item_bytes: std::num::NonZeroUsize) -> Result<Watching<Q::Response>> {
+    pub async fn watch<Q: OperationRequest>(&self, request: Q, max_item_bytes: NonZeroUsize) -> Result<Watching<Q::Response>> {
         if !Q::WATCH {
             return Err(Error::Invalid(format!("Watch {}: Server-Streaming Contract Required", Q::ID)));
         }
-        let output = self.output.as_ref().ok_or_else(|| Error::Invalid(format!("Watch {}: Native Invocation Required", Q::ID)))?;
+        let output = self.output.as_ref().ok_or_else(|| Error::Invalid(format!("Watch {}: Child Carrier Required", Q::ID)))?;
+        output.check()?;
         let fingerprint = request_fingerprint::<Q>()?;
         if self.requires.get(Q::ID) != Some(&fingerprint) {
             return Err(Error::Invalid(format!("Watch {}: Undeclared Requirement", Q::ID)));
@@ -226,7 +297,15 @@ impl Context {
             let mut calls = self.calls.lock().expect("Child Calls Poisoned");
             calls.next += 1;
             let call = calls.next;
-            calls.watches.insert(call, (sender, max_item_bytes.get(), self.group.clone()));
+            calls.watches.insert(
+                call,
+                WatchCall {
+                    sender,
+                    limit: max_item_bytes.get(),
+                    group: self.group.clone(),
+                    sent: false,
+                },
+            );
             call
         };
         let watching = Watching {
@@ -234,28 +313,26 @@ impl Context {
             call,
             receiver,
             closed: false,
-            response: std::marker::PhantomData,
+            response: PhantomData,
         };
         output
-            .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
-                frame: Some(instance_invoke_response::Frame::Child(v1::ChildRequest {
-                    call,
-                    operation: Q::ID.into(),
-                    payload: request.encode_to_vec(),
-                    fingerprint,
-                    watch: true,
-                    max_response_bytes: max_item_bytes.get() as u64,
-                    ..Default::default()
-                })),
+            .send(instance_invoke_response::Frame::Child(v1::ChildRequest {
+                call,
+                operation: Q::ID.into(),
+                payload: request.encode_to_vec(),
+                fingerprint,
+                watch: true,
+                max_response_bytes: max_item_bytes.get() as u64,
+                ..Default::default()
             }))
-            .await
-            .map_err(|_| tonic::Status::unavailable("Watch: Host Closed"))?;
+            .await?;
+        if let Some(watch) = self.calls.lock().expect("Child Calls Poisoned").watches.get_mut(&call) {
+            watch.sent = true;
+        }
         Ok(watching)
     }
 
-    async fn invoke_local(
-        &self, operation: &crate::Operation, payload: Vec<u8>, override_policy: Option<v1::OperationPolicy>,
-    ) -> Result<Vec<u8>> {
+    async fn invoke_local(&self, operation: &Operation, payload: Vec<u8>, override_policy: Option<v1::OperationPolicy>) -> Result<Vec<u8>> {
         use harmos_protocol::policy::{FailureKind, OperationPolicy, ReplaySafety, UNBOUNDED};
         let policy = OperationPolicy::try_from(override_policy.as_ref().or(operation.contract.policy.as_ref()))
             .map_err(|error| Error::Invalid(format!("Invoke {}: {error}", operation.contract.id)))?;
@@ -350,21 +427,25 @@ impl Context {
     /// Every wait is a child call to the host. No SDK timer advances scenario time.
     /// Declare `.requires::<harmos::clock::TimeSleepRequest>()` when composing the plugin.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
-        let duration = prost_types::Duration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
-        let request = harmos_protocol::plugin::host::TimeSleepRequest { duration: Some(duration) };
+        let duration = ProtoDuration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
+        let request = TimeSleepRequest { duration: Some(duration) };
         let payload = self.clock_call("harmos.plugin.host.v1.Time/Sleep", request.encode_to_vec()).await?;
-        harmos_protocol::plugin::host::TimeSleepResponse::decode(payload.as_slice())
-            .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
+        TimeSleepResponse::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()))?;
         Ok(())
     }
 
     /// Read evidence time from the host; declare `.requires::<harmos::clock::TimeGetRequest>()`.
-    pub async fn now(&self) -> Result<prost_types::Timestamp> {
-        let payload = self.clock_call("harmos.plugin.host.v1.Time/Get", harmos_protocol::plugin::host::TimeGetRequest {}.encode_to_vec()).await?;
-        harmos_protocol::plugin::host::TimeGetResponse::decode(payload.as_slice())
-            .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?
+    pub async fn now(&self) -> Result<Timestamp> {
+        let payload = self.clock_call("harmos.plugin.host.v1.Time/Get", TimeGetRequest {}.encode_to_vec()).await?;
+        TimeGetResponse::decode(payload.as_slice())
+            .map_err(|error| Status::invalid_argument(error.to_string()))?
             .now
-            .ok_or_else(|| tonic::Status::invalid_argument("Host Time Missing").into())
+            .ok_or_else(|| Status::invalid_argument("Host Time Missing").into())
+    }
+
+    /// Read the calling plugin entry's effective settings. Declare `SettingsListRequest` as a requirement.
+    pub async fn settings(&self) -> Result<SettingsListResponse> {
+        self.call(SettingsListRequest { at: None }).await
     }
 
     async fn clock_call(&self, id: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
@@ -392,7 +473,8 @@ impl Context {
                 )
                 .await;
         }
-        let output = self.output.as_ref().ok_or_else(|| Error::Invalid("Observers Cannot Call Operations or Wait".into()))?;
+        let output = self.output.as_ref().ok_or_else(|| Error::Invalid(format!("Call {operation}: Child Carrier Required")))?;
+        output.check()?;
         if !self.background
             && let Some(reason) = self.cancellation.borrow().clone()
         {
@@ -410,6 +492,7 @@ impl Context {
                     sender: send,
                     group: self.group.clone(),
                     background: self.background,
+                    sent: false,
                 },
             );
             call
@@ -424,25 +507,18 @@ impl Context {
             background: self.background,
             ..Default::default()
         };
-        output
-            .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
-                frame: Some(instance_invoke_response::Frame::Child(child)),
-            }))
-            .await
-            .map_err(|_| tonic::Status::unavailable("Host Closed"))?;
-        receive.await.map_err(|_| tonic::Status::unavailable("Invocation Closed"))?
+        output.send(instance_invoke_response::Frame::Child(child)).await?;
+        if let Some(pending) = self.calls.lock().expect("Child Calls Poisoned").pending.get_mut(&call) {
+            pending.sent = true;
+        }
+        receive.await.map_err(|_| Status::unavailable("Invocation Closed"))?
     }
 
     pub(crate) async fn flush_cancels(&self) -> Result<()> {
-        let cancelled = std::mem::take(&mut self.calls.lock().expect("Child Calls Poisoned").cancel_queue);
+        let cancelled = mem::take(&mut self.calls.lock().expect("Child Calls Poisoned").cancel_queue);
         if let Some(output) = &self.output {
             for call in cancelled {
-                output
-                    .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
-                        frame: Some(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call })),
-                    }))
-                    .await
-                    .map_err(|_| tonic::Status::unavailable("Cancel: Host Closed"))?;
+                output.send(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call })).await?;
             }
         }
         Ok(())
@@ -459,32 +535,37 @@ impl Context {
                 .collect::<Vec<_>>();
             let mut pending = Vec::new();
             for id in ids {
-                pending.push(calls.pending.remove(&id).expect("selected child"));
-                calls.cancelled.insert(id);
-                calls.cancel_queue.insert(id);
+                let call = calls.pending.remove(&id).expect("selected child");
+                if call.sent {
+                    calls.cancelled.insert(id);
+                    calls.cancel_queue.insert(id);
+                }
+                pending.push(call);
             }
             let ids = calls
                 .watches
                 .iter()
-                .filter(|(_, (_, _, group))| !owned || Arc::ptr_eq(group, &self.group))
+                .filter(|(_, call)| !owned || Arc::ptr_eq(&call.group, &self.group))
                 .map(|(id, _)| *id)
                 .collect::<Vec<_>>();
             let mut watches = Vec::new();
             for id in ids {
-                watches.push(calls.watches.remove(&id).expect("selected watch").0);
-                calls.cancelled.insert(id);
-                calls.cancel_queue.insert(id);
+                let watch = calls.watches.remove(&id).expect("selected watch");
+                if watch.sent {
+                    calls.cancelled.insert(id);
+                    calls.cancel_queue.insert(id);
+                }
+                watches.push(watch.sender);
             }
             (pending, watches)
         };
-        self.flush_cancels().await?;
         for call in pending {
             let _ = call.sender.send(Err(self.cancel_failure(reason.into())));
         }
         for watch in watches {
-            let _ = watch.send(Err(self.cancel_failure(reason.into()))).await;
+            let _ = watch.try_send(Err(self.cancel_failure(reason.into())));
         }
-        Ok(())
+        self.flush_cancels().await
     }
 
     pub(crate) fn cancel_failure(&self, reason: String) -> Error {
@@ -508,7 +589,7 @@ pub struct Watching<R: Message> {
     call: u64,
     receiver: mpsc::Receiver<WatchResult>,
     closed: bool,
-    response: std::marker::PhantomData<fn() -> R>,
+    response: PhantomData<fn() -> R>,
 }
 impl<R: Message> Watching<R> {
     pub async fn next(&mut self) -> Result<Option<R>> {
@@ -516,12 +597,7 @@ impl<R: Message> Watching<R> {
             return Ok(None);
         }
         let output = self.context.output.as_ref().expect("Native Watch");
-        output
-            .send(Ok(harmos_protocol::plugin::InstanceInvokeResponse {
-                frame: Some(instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call: self.call })),
-            }))
-            .await
-            .map_err(|_| tonic::Status::unavailable("Watch: Host Closed"))?;
+        output.send(instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call: self.call })).await?;
         match self.receiver.recv().await {
             Some(Ok(Some(bytes))) => R::decode(bytes.as_slice()).map(Some).map_err(|error| Error::Invalid(format!("Watch: {error}"))),
             Some(Ok(None)) => {
@@ -532,14 +608,16 @@ impl<R: Message> Watching<R> {
                 self.closed = true;
                 Err(error)
             }
-            None => Err(tonic::Status::unavailable("Watch: Invocation Closed").into()),
+            None => Err(Status::unavailable("Watch: Invocation Closed").into()),
         }
     }
 }
 impl<R: Message> Drop for Watching<R> {
     fn drop(&mut self) {
         let mut calls = self.context.calls.lock().expect("Child Calls Poisoned");
-        if calls.watches.remove(&self.call).is_some() {
+        if let Some(watch) = calls.watches.remove(&self.call)
+            && watch.sent
+        {
             calls.cancelled.insert(self.call);
             calls.cancel_queue.insert(self.call);
             self.context.call_changes.notify_one();
@@ -551,7 +629,7 @@ impl<R: Message> Drop for Watching<R> {
 
 /* === Private Functions === */
 
-fn elapsed(started: &prost_types::Timestamp, now: &prost_types::Timestamp) -> Duration {
+fn elapsed(started: &Timestamp, now: &Timestamp) -> Duration {
     let nanos = ((i128::from(now.seconds) - i128::from(started.seconds)) * 1_000_000_000 + i128::from(now.nanos)
         - i128::from(started.nanos))
     .max(0) as u128;
@@ -566,11 +644,11 @@ mod tests {
 
     #[test]
     fn policy_clock_spans_keep_large_durations_and_fractional_seconds() {
-        let started = prost_types::Timestamp {
+        let started = Timestamp {
             seconds: -30_000_000_000,
             nanos: 900_000_000,
         };
-        let now = prost_types::Timestamp {
+        let now = Timestamp {
             seconds: 10_000_000_001,
             nanos: 100_000_000,
         };

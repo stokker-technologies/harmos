@@ -56,8 +56,8 @@ impl Context {
                 calls.watches.remove(&child.call)
             }
         };
-        if let Some((watch, limit, _)) = watch {
-            if matches!(&child.result, Some(child_response::Result::Item(bytes) | child_response::Result::Payload(bytes)) if bytes.len() > limit)
+        if let Some(watch) = watch {
+            if matches!(&child.result, Some(child_response::Result::Item(bytes) | child_response::Result::Payload(bytes)) if bytes.len() > watch.limit)
             {
                 return Err(tonic::Status::resource_exhausted("Watch: Item Exceeds Consumer Limit"));
             }
@@ -67,7 +67,7 @@ impl Context {
                 Some(child_response::Result::Failure(failure)) => Err(failure.into()),
                 None => return Err(tonic::Status::invalid_argument("Watch: Child Result Missing")),
             };
-            let _ = watch.send(item).await;
+            let _ = watch.sender.send(item).await;
             return Ok(());
         }
         if self.calls.lock().expect("Child Calls Poisoned").cancelled.contains(&child.call) {

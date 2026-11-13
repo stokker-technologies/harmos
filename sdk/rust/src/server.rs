@@ -16,7 +16,16 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{collections::HashMap, io::Write, pin::Pin, sync::Arc, time::SystemTime};
+use std::{
+    collections::HashMap,
+    io::Write,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::SystemTime,
+};
 
 // Third Party Imports
 use futures_core::Stream;
@@ -134,7 +143,7 @@ impl Service for Server {
         let mut context = Context::new(request, self.description.id.clone(), self.requires.clone());
         context.local = self.local.clone();
         let (output, receiver) = mpsc::channel(1);
-        context.output = Some(output.clone());
+        context.output = Some(crate::context::ChildOutput::Invoke(output.clone()));
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
             let result = invoke(jobs, handler, context, payload, &mut input, &output).await;
@@ -157,7 +166,7 @@ impl Service for Server {
         let publication = self.streams.get(&open.stream).ok_or_else(|| Status::not_found("Unknown Stream"))?;
         let observer = publication.observer.clone();
         let producer = publication.producer.clone();
-        let context = Context::new(
+        let mut context = Context::new(
             v1::Request {
                 scope: open.scope,
                 operation: open.stream,
@@ -166,6 +175,7 @@ impl Service for Server {
             self.description.id.clone(),
             self.requires.clone(),
         );
+        context.local = self.local.clone();
         let (output, receiver) = mpsc::channel(1);
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
@@ -382,28 +392,41 @@ async fn samples(
         None => None,
     };
     let mut observing = None;
-    let mut next_tick = None;
     let mut sample = None;
     let mut sequence = 0;
     let result = async {
     loop {
-        if observing.is_none()
-            && sample.is_none()
-            && let Some(at) = next_tick.take()
-        {
-            let handler = observer.as_ref().expect("Validated Observer Tick");
-            context.sequence = sequence + 1;
-            observing = Some((at, dispatch(&jobs, handler.clone(), context.clone(), Vec::new()).await?));
-        }
         tokio::select! {
             biased;
             _ = output.closed() => return Ok(()),
-            frame = input.message(), if next_tick.is_none() => {
+            _ = context.call_changes.notified(), if observing.is_some() => {
+                context.flush_cancels().await.map_err(|error| Status::unavailable(error.to_string()))?;
+            }
+            frame = input.message() => {
                 let Some(frame) = frame? else { return Ok(()); };
-                let Some(instance_samples_request::Frame::Tick(tick)) = frame.frame else { return Err(Status::invalid_argument("Expected Tick")); };
-                let at = tick.at.ok_or_else(|| Status::invalid_argument("Tick Time Required"))?; crate::stream::validate_timestamp(at)?;
-                if observer.is_none() { return Err(Status::invalid_argument("Device Streams Do Not Accept Ticks")); }
-                next_tick = Some(at);
+                match frame.frame {
+                    Some(instance_samples_request::Frame::Tick(tick)) => {
+                        if observer.is_none() { return Err(Status::invalid_argument("Sample Tick: Device Stream Has No Observer")); }
+                        if observing.is_some() || sample.is_some() { return Err(Status::invalid_argument("Sample Tick: Previous Tick Is Unanswered")); }
+                        let at = tick.at.ok_or_else(|| Status::invalid_argument("Sample Tick: Time Required"))?;
+                        crate::stream::validate_timestamp(at)?;
+                        let mut tick_context = Context::new(v1::Request {
+                            operation: context.operation.clone(), scope: context.scope.clone(), ..Default::default()
+                        }, context.plugin.clone(), context.requires.clone());
+                        tick_context.calls = context.calls.clone();
+                        tick_context.call_changes = context.call_changes.clone();
+                        tick_context.local = context.local.clone();
+                        tick_context.sequence = sequence + 1;
+                        tick_context.output = Some(crate::context::ChildOutput::Samples {
+                            sender: output.clone(), active: Arc::new(AtomicBool::new(true)),
+                        });
+                        context = tick_context;
+                        let handler = observer.as_ref().expect("Validated Observer Tick");
+                        observing = Some((at, dispatch(&jobs, handler.clone(), context.clone(), Vec::new()).await?));
+                    }
+                    Some(instance_samples_request::Frame::Child(child)) if observing.is_some() => context.reply(child).await?,
+                    _ => return Err(Status::invalid_argument("Receive Samples: Expected Tick or Active Child Reply")),
+                }
             }
             permit = output.reserve(), if sample.is_some() => {
                 let permit = permit.map_err(|_| Status::cancelled("Demand Closed"))?;
@@ -413,6 +436,9 @@ async fn samples(
             }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
                 let (at, _) = observing.take().expect("Observer Active");
+                if let Some(crate::context::ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
+                context.cancellation.send_replace(Some("Samples Tick Answered".into()));
+                context.cancel_calls(false, "Samples Tick Answered", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
                 let row = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;
                 sample = Some((row, Some(at)));
             }
@@ -427,13 +453,19 @@ async fn samples(
         }
     }
     }.await;
+    if let Some(crate::context::ChildOutput::Samples { active, .. }) = &context.output {
+        active.store(false, Ordering::Release);
+    }
+    context.cancellation.send_replace(Some("Samples Stream Ended".into()));
+    let cancellation = context.cancel_calls(false, "Samples Stream Ended", false).await;
     if let Some((_, complete)) = observing {
         complete.cancel().await;
     }
     if let Some(complete) = producing {
         complete.cancel().await;
     }
-    result
+    result?;
+    cancellation.map_err(|error| Status::unavailable(error.to_string()))
 }
 
 /* === Tests === */
