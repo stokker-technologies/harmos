@@ -80,6 +80,7 @@ def environment() -> dict[str, str]:
 
     # Ninja Uses the Native MSVC Environment on Windows.
     if os.name == "nt" and not environment.get("VCINSTALLDIR"):
+        tool_path = environment["PATH"]
         vswhere = Path(environment["PROGRAMFILES(X86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"
         installation = subprocess.check_output(
             [
@@ -108,6 +109,7 @@ def environment() -> dict[str, str]:
             if "=" in line and not line.startswith("=")
             for key, value in [line.split("=", 1)]
         )
+        environment["PATH"] = tool_path + os.pathsep + environment["PATH"]
     environment["VCPKG_ROOT"] = str(checkout)
     return environment
 
