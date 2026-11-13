@@ -2,7 +2,7 @@
 
 // Plugin Instance
 //
-// Calls the host makes to a running plugin.
+// Calls the host makes to a running plugin through the plugin boundary.
 
 syntax = "proto3";
 
@@ -11,7 +11,9 @@ package harmos.plugin.v1;
 // === Imports === //
 
 import "google/protobuf/timestamp.proto";
-import "harmos/v1/types.proto";
+import "harmos/v1/description.proto";
+import "harmos/v1/invocation.proto";
+import "harmos/v1/stream.proto";
 
 // === Options === //
 

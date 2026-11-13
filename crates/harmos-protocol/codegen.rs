@@ -60,7 +60,7 @@ pub fn generate(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
     let mut inputs = Vec::new();
-    let mut folders = vec![proto.join("harmos/v1"), proto.join("harmos/context/v1"), proto.join("harmos/plugin/v1")];
+    let mut folders = vec![proto.join("harmos")];
     while let Some(folder) = folders.pop() {
         for entry in std::fs::read_dir(folder)? {
             let path = entry?.path();
@@ -96,7 +96,7 @@ pub fn generate(
         let mut config = prost_build::Config::new();
         config.protoc_executable(compiler);
         config.type_attribute(".harmos.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
-        config.type_attribute(".harmos.storage.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
+        config.type_attribute(".harmos.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
         for external in packages.keys().filter(|external| *external != package) {
             let module = module_path(external)?;
             if package.starts_with(&format!("{external}.")) {
@@ -115,7 +115,7 @@ pub fn generate(
                 config.extern_path(format!(".{external}"), format!("crate::{module}"));
             }
         }
-        let services = !package.starts_with("harmos.context.");
+        let services = !package.starts_with("harmos.plugin.host.");
         let package_output = output.join(package);
         std::fs::create_dir_all(&package_output)?;
         tonic_prost_build::configure()
@@ -138,6 +138,9 @@ pub fn generate(
             let parent = module.rsplit("::").next().ok_or("missing parent module")?;
             source.push_str(&format!("\npub mod {name} {{ include!(\"{parent}/{name}.rs\"); }}\n"));
         }
+        if package == "harmos.plugin.v1" {
+            source.push_str("\npub mod host { include!(\"plugin/host.rs\"); }\n");
+        }
         std::fs::write(path, source)?;
     }
     // Source Locations Belong to Authoring, Not Runtime Descriptor Validation.
@@ -146,17 +149,7 @@ pub fn generate(
     }
     std::fs::write(output.join("descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
     // Preproject Guest Graphs During Generation, Before Fuel-Bounded Registration.
-    let guest_types = harmos_protocol::schema::operation_types(
-        &descriptors,
-        &[
-            "harmos.v1.GuestInitialize",
-            "harmos.v1.GuestShutdown",
-            "harmos.context.v1.SamplesAppendRequest",
-            "harmos.context.v1.SamplesAppendResponse",
-            "harmos.context.v1.StorageGetFileHashRequest",
-            "harmos.context.v1.StorageGetFileHashResponse",
-        ],
-    )?;
+    let guest_types = harmos_protocol::schema::operation_types(&descriptors, &["harmos.v1.GuestInitialize", "harmos.v1.GuestShutdown"])?;
     std::fs::write(output.join("guest-descriptors.bin"), prost::Message::encode_to_vec(&guest_types))?;
     // SDK Metadata Loads Only Its Reachable Graph Inside a Fuel-Bounded Guest.
     let sdk_types = output.join("context-types");
@@ -165,7 +158,8 @@ pub fn generate(
         let package = file.package.as_deref().unwrap_or_default();
         for message in &file.message_type {
             let name = message.name.as_deref().ok_or("missing message name")?;
-            if package != "harmos.context.v1" && !(package == "harmos.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
+            if package != "harmos.plugin.host.v1"
+                && !(package == "harmos.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
             {
                 continue;
             }
@@ -195,7 +189,7 @@ pub fn generate(
 
 pub fn module_path(package: &str) -> Result<String, Box<dyn std::error::Error>> {
     for (prefix, root) in
-        [("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin"), ("harmos.storage.v1", "storage"), ("harmos.v1", "v1")]
+        [("harmos.plugin.host.v1", "plugin::host"), ("harmos.client.v1", "client"), ("harmos.plugin.v1", "plugin"), ("harmos.v1", "v1")]
     {
         if package == prefix {
             return Ok(root.into());

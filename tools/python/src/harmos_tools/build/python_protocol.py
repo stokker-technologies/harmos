@@ -37,12 +37,16 @@ ROOT = Path(__file__).resolve().parents[5]
 PROTOCOLS = tuple(
     sorted(
         path.relative_to(ROOT / "proto").as_posix()
-        for face in ("v1", "context/v1", "plugin/v1")
+        for face in ("v1", "client/v1", "plugin")
         for path in (ROOT / "proto/harmos" / face).rglob("*.proto")
         if path.name != "guest.proto"
     )
 )
-GENERATED = tuple(name.removesuffix(".proto") + suffix for name in PROTOCOLS for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))
+GENERATED = tuple(
+    name.removesuffix(".proto").replace("harmos/client/", "harmos/_wire/client/", 1) + suffix
+    for name in PROTOCOLS
+    for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
+)
 
 # === Types === #
 
@@ -53,6 +57,10 @@ GENERATED = tuple(name.removesuffix(".proto") + suffix for name in PROTOCOLS for
 
 def generate(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
+    for path in (output / "harmos").rglob("*_pb2*"):
+        name = path.relative_to(output).as_posix()
+        if path.is_file() and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) and name not in GENERATED:
+            path.unlink()
     command = [
         sys.executable,
         "-m",
@@ -65,6 +73,20 @@ def generate(output: Path) -> None:
         *PROTOCOLS,
     ]
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
+    # Keep Generated Client Modules Separate From the Authored harmos.client Module.
+    client = output / "harmos/client"
+    destination = output / "harmos/_wire/client"
+    if client.is_dir():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(client, destination, dirs_exist_ok=True)
+        shutil.rmtree(client)
+    for name in GENERATED:
+        path = output / name
+        source = path.read_text(encoding="utf-8")
+        source = source.replace("from harmos.client", "from harmos._wire.client")
+        source = source.replace("import harmos.client.", "import harmos._wire.client.")
+        source = source.replace("'harmos.client.v1.", "'harmos._wire.client.v1.")
+        path.write_text(source, encoding="utf-8", newline="\n")
     # Generated Convenience Calls Require the Experimental Submodule Explicitly.
     for name in GENERATED:
         if name.endswith("_pb2_grpc.py"):
@@ -151,6 +173,13 @@ def main() -> None:
             name
             for name in (*GENERATED, "harmos/generated/client.py")
             if not (committed / name).exists() or not filecmp.cmp(output / name, committed / name, shallow=False)
+        ]
+        changed += [
+            path.relative_to(committed).as_posix()
+            for path in (committed / "harmos").rglob("*_pb2*")
+            if path.is_file()
+            and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))
+            and path.relative_to(committed).as_posix() not in GENERATED
         ]
         generated_client = output / "client"
         generate_client_fixture(generated_client)

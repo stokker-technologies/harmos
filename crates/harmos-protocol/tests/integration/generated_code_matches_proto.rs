@@ -90,15 +90,16 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
     codegen::generate(&compiler, &includes, output.path())?;
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.
-    for (package, module) in [("harmos.v1", "v1"), ("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin")] {
-        assert_eq!(
-            fs::read(output.path().join(format!("{package}.rs")))?,
-            fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?
-        );
+    for entry in fs::read_dir(output.path())? {
+        let path = entry?.path();
+        let name = path.file_name().unwrap().to_string_lossy();
+        if !name.starts_with("harmos.") || !name.ends_with(".rs") {
+            continue;
+        }
+        let module = codegen::module_path(name.trim_end_matches(".rs"))?;
+        let committed = root.join(format!("crates/harmos-protocol/src/{}.rs", module.replace("::", "/")));
+        assert_eq!(fs::read(path)?, fs::read(committed)?, "{module}");
     }
-    assert_eq!(fs::read(output.path().join("harmos.v1.access.rs"))?, include_bytes!("../../src/v1/access.rs"));
-    assert_eq!(fs::read(output.path().join("harmos.v1.status.rs"))?, include_bytes!("../../src/v1/status.rs"));
-    assert_eq!(fs::read(output.path().join("harmos.storage.v1.rs"))?, include_bytes!("../../src/storage.rs"));
     assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
     assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
     assert_eq!(fs::read(output.path().join("guest-descriptors.bin"))?, include_bytes!("../../src/guest-descriptors.bin"));

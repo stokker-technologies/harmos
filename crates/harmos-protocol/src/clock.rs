@@ -39,11 +39,11 @@
 
 /// Complete descriptor inventory for the two built-in clock operations.
 pub fn catalog_types() -> prost_types::FileDescriptorSet {
-    types("harmos.context.v1")
+    types("harmos.plugin.host.v1")
 }
 
 pub fn client_types() -> prost_types::FileDescriptorSet {
-    types("harmos.v1")
+    types("harmos.client.v1")
 }
 
 fn types(package: &str) -> prost_types::FileDescriptorSet {

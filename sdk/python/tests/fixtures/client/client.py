@@ -3,20 +3,22 @@
 
 import grpc
 
-import harmos.v1.access.certificates_pb2 as messages_0
-import harmos.v1.access.listener_pb2 as messages_1
-import harmos.v1.access.pairings_pb2 as messages_2
-import harmos.v1.catalog_entries_pb2 as messages_3
-import harmos.v1.invocations_pb2 as messages_4
-import harmos.v1.plugins_pb2 as messages_5
-import harmos.v1.status.diagnostics_pb2 as messages_6
-import harmos.v1.status.logs_pb2 as messages_7
-import harmos.v1.status.trace_events_pb2 as messages_8
-import harmos.v1.status_pb2 as messages_9
-import harmos.v1.storage_pb2 as messages_10
-import harmos.v1.time_pb2 as messages_11
-import tests.fixtures.client.application.v1.jobs.progress_pb2 as messages_12
-import tests.fixtures.client.application.v1.jobs_pb2 as messages_13
+import harmos._wire.client.v1.access.certificates_pb2 as messages_0
+import harmos._wire.client.v1.access.listener_pb2 as messages_1
+import harmos._wire.client.v1.access.pairings_pb2 as messages_2
+import harmos._wire.client.v1.invocations_pb2 as messages_3
+import harmos._wire.client.v1.operations_pb2 as messages_4
+import harmos._wire.client.v1.plugins.settings_pb2 as messages_5
+import harmos._wire.client.v1.plugins_pb2 as messages_6
+import harmos._wire.client.v1.schemas_pb2 as messages_7
+import harmos._wire.client.v1.status.diagnostics_pb2 as messages_8
+import harmos._wire.client.v1.status.logs_pb2 as messages_9
+import harmos._wire.client.v1.status.trace_events_pb2 as messages_10
+import harmos._wire.client.v1.status_pb2 as messages_11
+import harmos._wire.client.v1.streams_pb2 as messages_12
+import harmos._wire.client.v1.time_pb2 as messages_13
+import tests.fixtures.client.application.v1.jobs.progress_pb2 as messages_14
+import tests.fixtures.client.application.v1.jobs_pb2 as messages_15
 from harmos.client_transport import Metadata, stream, unary
 
 
@@ -34,7 +36,7 @@ class AccessCertificatesResource:
     ) -> grpc.aio.UnaryUnaryCall[messages_0.CertificatesCreateRequest, messages_0.CertificatesCreateResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.access.Certificates/Create",
+            "/harmos.client.v1.access.Certificates/Create",
             request,
             messages_0.CertificatesCreateResponse,
             metadata=metadata,
@@ -57,7 +59,7 @@ class AccessListenerResource:
     ) -> grpc.aio.UnaryUnaryCall[messages_1.ListenerGetRequest, messages_1.ListenerGetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.access.Listener/Get",
+            "/harmos.client.v1.access.Listener/Get",
             request,
             messages_1.ListenerGetResponse,
             metadata=metadata,
@@ -75,7 +77,7 @@ class AccessListenerResource:
     ) -> grpc.aio.UnaryUnaryCall[messages_1.ListenerSetRequest, messages_1.ListenerSetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.access.Listener/Set",
+            "/harmos.client.v1.access.Listener/Set",
             request,
             messages_1.ListenerSetResponse,
             metadata=metadata,
@@ -98,7 +100,7 @@ class AccessPairingsResource:
     ) -> grpc.aio.UnaryUnaryCall[messages_2.PairingsCreateRequest, messages_2.PairingsCreateResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.access.Pairings/Create",
+            "/harmos.client.v1.access.Pairings/Create",
             request,
             messages_2.PairingsCreateResponse,
             metadata=metadata,
@@ -116,7 +118,7 @@ class AccessPairingsResource:
     ) -> grpc.aio.UnaryUnaryCall[messages_2.PairingsListRequest, messages_2.PairingsListResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.access.Pairings/List",
+            "/harmos.client.v1.access.Pairings/List",
             request,
             messages_2.PairingsListResponse,
             metadata=metadata,
@@ -134,7 +136,7 @@ class AccessPairingsResource:
     ) -> grpc.aio.UnaryUnaryCall[messages_2.PairingsDeleteRequest, messages_2.PairingsDeleteResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.access.Pairings/Delete",
+            "/harmos.client.v1.access.Pairings/Delete",
             request,
             messages_2.PairingsDeleteResponse,
             metadata=metadata,
@@ -149,17 +151,58 @@ class JobsProgressResource:
 
     def watch(
         self,
-        request: messages_12.ProgressWatchRequest,
+        request: messages_14.ProgressWatchRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_12.ProgressWatchRequest, messages_12.ProgressWatchResponse]:
+    ) -> grpc.aio.UnaryStreamCall[messages_14.ProgressWatchRequest, messages_14.ProgressWatchResponse]:
         return stream(
             self._channel,
             "/application.v1.jobs.Progress/Watch",
             request,
-            messages_12.ProgressWatchResponse,
+            messages_14.ProgressWatchResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+        )
+
+
+class PluginsSettingsResource:
+    def __init__(self, channel: grpc.aio.Channel) -> None:
+        self._channel = channel
+
+    def list(
+        self,
+        request: messages_5.SettingsListRequest,
+        *,
+        metadata: Metadata | None = None,
+        timeout: float | None = None,
+        credentials: grpc.CallCredentials | None = None,
+    ) -> grpc.aio.UnaryUnaryCall[messages_5.SettingsListRequest, messages_5.SettingsListResponse]:
+        return unary(
+            self._channel,
+            "/harmos.client.v1.plugins.Settings/List",
+            request,
+            messages_5.SettingsListResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+        )
+
+    def set(
+        self,
+        request: messages_5.SettingsSetRequest,
+        *,
+        metadata: Metadata | None = None,
+        timeout: float | None = None,
+        credentials: grpc.CallCredentials | None = None,
+    ) -> grpc.aio.UnaryUnaryCall[messages_5.SettingsSetRequest, messages_5.SettingsSetResponse]:
+        return unary(
+            self._channel,
+            "/harmos.client.v1.plugins.Settings/Set",
+            request,
+            messages_5.SettingsSetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -172,17 +215,17 @@ class StatusDiagnosticsResource:
 
     def get(
         self,
-        request: messages_6.DiagnosticsGetRequest,
+        request: messages_8.DiagnosticsGetRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_6.DiagnosticsGetRequest, messages_6.DiagnosticsGetResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_8.DiagnosticsGetRequest, messages_8.DiagnosticsGetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.status.Diagnostics/Get",
+            "/harmos.client.v1.status.Diagnostics/Get",
             request,
-            messages_6.DiagnosticsGetResponse,
+            messages_8.DiagnosticsGetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -195,17 +238,17 @@ class StatusLogsResource:
 
     def list(
         self,
-        request: messages_7.LogsListRequest,
+        request: messages_9.LogsListRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_7.LogsListRequest, messages_7.LogsListResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_9.LogsListRequest, messages_9.LogsListResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.status.Logs/List",
+            "/harmos.client.v1.status.Logs/List",
             request,
-            messages_7.LogsListResponse,
+            messages_9.LogsListResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -213,17 +256,17 @@ class StatusLogsResource:
 
     def watch(
         self,
-        request: messages_7.LogsWatchRequest,
+        request: messages_9.LogsWatchRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_7.LogsWatchRequest, messages_7.LogsWatchResponse]:
+    ) -> grpc.aio.UnaryStreamCall[messages_9.LogsWatchRequest, messages_9.LogsWatchResponse]:
         return stream(
             self._channel,
-            "/harmos.v1.status.Logs/Watch",
+            "/harmos.client.v1.status.Logs/Watch",
             request,
-            messages_7.LogsWatchResponse,
+            messages_9.LogsWatchResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -236,17 +279,17 @@ class StatusTraceEventsResource:
 
     def list(
         self,
-        request: messages_8.TraceEventsListRequest,
+        request: messages_10.TraceEventsListRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_8.TraceEventsListRequest, messages_8.TraceEventsListResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_10.TraceEventsListRequest, messages_10.TraceEventsListResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.status.TraceEvents/List",
+            "/harmos.client.v1.status.TraceEvents/List",
             request,
-            messages_8.TraceEventsListResponse,
+            messages_10.TraceEventsListResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -254,17 +297,17 @@ class StatusTraceEventsResource:
 
     def watch(
         self,
-        request: messages_8.TraceEventsWatchRequest,
+        request: messages_10.TraceEventsWatchRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_8.TraceEventsWatchRequest, messages_8.TraceEventsWatchResponse]:
+    ) -> grpc.aio.UnaryStreamCall[messages_10.TraceEventsWatchRequest, messages_10.TraceEventsWatchResponse]:
         return stream(
             self._channel,
-            "/harmos.v1.status.TraceEvents/Watch",
+            "/harmos.client.v1.status.TraceEvents/Watch",
             request,
-            messages_8.TraceEventsWatchResponse,
+            messages_10.TraceEventsWatchResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -279,46 +322,23 @@ class AccessResource:
         self.pairings: AccessPairingsResource = AccessPairingsResource(channel)
 
 
-class CatalogEntriesResource:
-    def __init__(self, channel: grpc.aio.Channel) -> None:
-        self._channel = channel
-
-    def list(
-        self,
-        request: messages_3.CatalogEntriesListRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_3.CatalogEntriesListRequest, messages_3.CatalogEntriesListResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.CatalogEntries/List",
-            request,
-            messages_3.CatalogEntriesListResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-
 class InvocationsResource:
     def __init__(self, channel: grpc.aio.Channel) -> None:
         self._channel = channel
 
     def invoke(
         self,
-        request: messages_4.InvocationsInvokeRequest,
+        request: messages_3.InvocationsInvokeRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_4.InvocationsInvokeRequest, messages_4.InvocationsInvokeResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_3.InvocationsInvokeRequest, messages_3.InvocationsInvokeResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Invocations/Invoke",
+            "/harmos.client.v1.Invocations/Invoke",
             request,
-            messages_4.InvocationsInvokeResponse,
+            messages_3.InvocationsInvokeResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -326,17 +346,17 @@ class InvocationsResource:
 
     def get(
         self,
-        request: messages_4.InvocationsGetRequest,
+        request: messages_3.InvocationsGetRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_4.InvocationsGetRequest, messages_4.InvocationsGetResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_3.InvocationsGetRequest, messages_3.InvocationsGetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Invocations/Get",
+            "/harmos.client.v1.Invocations/Get",
             request,
-            messages_4.InvocationsGetResponse,
+            messages_3.InvocationsGetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -344,17 +364,17 @@ class InvocationsResource:
 
     def cancel(
         self,
-        request: messages_4.InvocationsCancelRequest,
+        request: messages_3.InvocationsCancelRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_4.InvocationsCancelRequest, messages_4.InvocationsCancelResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_3.InvocationsCancelRequest, messages_3.InvocationsCancelResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Invocations/Cancel",
+            "/harmos.client.v1.Invocations/Cancel",
             request,
-            messages_4.InvocationsCancelResponse,
+            messages_3.InvocationsCancelResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -362,17 +382,17 @@ class InvocationsResource:
 
     def watch(
         self,
-        request: messages_4.InvocationsWatchRequest,
+        request: messages_3.InvocationsWatchRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_4.InvocationsWatchRequest, messages_4.InvocationsWatchResponse]:
+    ) -> grpc.aio.UnaryStreamCall[messages_3.InvocationsWatchRequest, messages_3.InvocationsWatchResponse]:
         return stream(
             self._channel,
-            "/harmos.v1.Invocations/Watch",
+            "/harmos.client.v1.Invocations/Watch",
             request,
-            messages_4.InvocationsWatchResponse,
+            messages_3.InvocationsWatchResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -386,17 +406,58 @@ class JobsResource:
 
     def start(
         self,
-        request: messages_13.JobsStartRequest,
+        request: messages_15.JobsStartRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_13.JobsStartRequest, messages_13.JobsStartResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_15.JobsStartRequest, messages_15.JobsStartResponse]:
         return unary(
             self._channel,
             "/application.v1.Jobs/Start",
             request,
-            messages_13.JobsStartResponse,
+            messages_15.JobsStartResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+        )
+
+
+class OperationsResource:
+    def __init__(self, channel: grpc.aio.Channel) -> None:
+        self._channel = channel
+
+    def list(
+        self,
+        request: messages_4.OperationsListRequest,
+        *,
+        metadata: Metadata | None = None,
+        timeout: float | None = None,
+        credentials: grpc.CallCredentials | None = None,
+    ) -> grpc.aio.UnaryUnaryCall[messages_4.OperationsListRequest, messages_4.OperationsListResponse]:
+        return unary(
+            self._channel,
+            "/harmos.client.v1.Operations/List",
+            request,
+            messages_4.OperationsListResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+        )
+
+    def get(
+        self,
+        request: messages_4.OperationsGetRequest,
+        *,
+        metadata: Metadata | None = None,
+        timeout: float | None = None,
+        credentials: grpc.CallCredentials | None = None,
+    ) -> grpc.aio.UnaryUnaryCall[messages_4.OperationsGetRequest, messages_4.OperationsGetResponse]:
+        return unary(
+            self._channel,
+            "/harmos.client.v1.Operations/Get",
+            request,
+            messages_4.OperationsGetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -406,20 +467,21 @@ class JobsResource:
 class PluginsResource:
     def __init__(self, channel: grpc.aio.Channel) -> None:
         self._channel = channel
+        self.settings: PluginsSettingsResource = PluginsSettingsResource(channel)
 
     def get(
         self,
-        request: messages_5.PluginsGetRequest,
+        request: messages_6.PluginsGetRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_5.PluginsGetRequest, messages_5.PluginsGetResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_6.PluginsGetRequest, messages_6.PluginsGetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Plugins/Get",
+            "/harmos.client.v1.Plugins/Get",
             request,
-            messages_5.PluginsGetResponse,
+            messages_6.PluginsGetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -427,17 +489,17 @@ class PluginsResource:
 
     def list(
         self,
-        request: messages_5.PluginsListRequest,
+        request: messages_6.PluginsListRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_5.PluginsListRequest, messages_5.PluginsListResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_6.PluginsListRequest, messages_6.PluginsListResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Plugins/List",
+            "/harmos.client.v1.Plugins/List",
             request,
-            messages_5.PluginsListResponse,
+            messages_6.PluginsListResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -445,17 +507,17 @@ class PluginsResource:
 
     def watch(
         self,
-        request: messages_5.PluginsWatchRequest,
+        request: messages_6.PluginsWatchRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_5.PluginsWatchRequest, messages_5.PluginsWatchResponse]:
+    ) -> grpc.aio.UnaryStreamCall[messages_6.PluginsWatchRequest, messages_6.PluginsWatchResponse]:
         return stream(
             self._channel,
-            "/harmos.v1.Plugins/Watch",
+            "/harmos.client.v1.Plugins/Watch",
             request,
-            messages_5.PluginsWatchResponse,
+            messages_6.PluginsWatchResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -463,17 +525,17 @@ class PluginsResource:
 
     def create(
         self,
-        request: messages_5.PluginsCreateRequest,
+        request: messages_6.PluginsCreateRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_5.PluginsCreateRequest, messages_5.PluginsCreateResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_6.PluginsCreateRequest, messages_6.PluginsCreateResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Plugins/Create",
+            "/harmos.client.v1.Plugins/Create",
             request,
-            messages_5.PluginsCreateResponse,
+            messages_6.PluginsCreateResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -481,17 +543,17 @@ class PluginsResource:
 
     def set(
         self,
-        request: messages_5.PluginsSetRequest,
+        request: messages_6.PluginsSetRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_5.PluginsSetRequest, messages_5.PluginsSetResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_6.PluginsSetRequest, messages_6.PluginsSetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Plugins/Set",
+            "/harmos.client.v1.Plugins/Set",
             request,
-            messages_5.PluginsSetResponse,
+            messages_6.PluginsSetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -499,17 +561,17 @@ class PluginsResource:
 
     def delete(
         self,
-        request: messages_5.PluginsDeleteRequest,
+        request: messages_6.PluginsDeleteRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_5.PluginsDeleteRequest, messages_5.PluginsDeleteResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_6.PluginsDeleteRequest, messages_6.PluginsDeleteResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Plugins/Delete",
+            "/harmos.client.v1.Plugins/Delete",
             request,
-            messages_5.PluginsDeleteResponse,
+            messages_6.PluginsDeleteResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -517,17 +579,58 @@ class PluginsResource:
 
     def restart(
         self,
-        request: messages_5.PluginsRestartRequest,
+        request: messages_6.PluginsRestartRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_5.PluginsRestartRequest, messages_5.PluginsRestartResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_6.PluginsRestartRequest, messages_6.PluginsRestartResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Plugins/Restart",
+            "/harmos.client.v1.Plugins/Restart",
             request,
-            messages_5.PluginsRestartResponse,
+            messages_6.PluginsRestartResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+        )
+
+    def replace(
+        self,
+        request: messages_6.PluginsReplaceRequest,
+        *,
+        metadata: Metadata | None = None,
+        timeout: float | None = None,
+        credentials: grpc.CallCredentials | None = None,
+    ) -> grpc.aio.UnaryUnaryCall[messages_6.PluginsReplaceRequest, messages_6.PluginsReplaceResponse]:
+        return unary(
+            self._channel,
+            "/harmos.client.v1.Plugins/Replace",
+            request,
+            messages_6.PluginsReplaceResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+        )
+
+
+class SchemasResource:
+    def __init__(self, channel: grpc.aio.Channel) -> None:
+        self._channel = channel
+
+    def list(
+        self,
+        request: messages_7.SchemasListRequest,
+        *,
+        metadata: Metadata | None = None,
+        timeout: float | None = None,
+        credentials: grpc.CallCredentials | None = None,
+    ) -> grpc.aio.UnaryUnaryCall[messages_7.SchemasListRequest, messages_7.SchemasListResponse]:
+        return unary(
+            self._channel,
+            "/harmos.client.v1.Schemas/List",
+            request,
+            messages_7.SchemasListResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -543,17 +646,17 @@ class StatusResource:
 
     def get(
         self,
-        request: messages_9.StatusGetRequest,
+        request: messages_11.StatusGetRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_9.StatusGetRequest, messages_9.StatusGetResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_11.StatusGetRequest, messages_11.StatusGetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Status/Get",
+            "/harmos.client.v1.Status/Get",
             request,
-            messages_9.StatusGetResponse,
+            messages_11.StatusGetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -561,598 +664,40 @@ class StatusResource:
 
     def watch(
         self,
-        request: messages_9.StatusWatchRequest,
+        request: messages_11.StatusWatchRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_9.StatusWatchRequest, messages_9.StatusWatchResponse]:
+    ) -> grpc.aio.UnaryStreamCall[messages_11.StatusWatchRequest, messages_11.StatusWatchResponse]:
         return stream(
             self._channel,
-            "/harmos.v1.Status/Watch",
+            "/harmos.client.v1.Status/Watch",
             request,
-            messages_9.StatusWatchResponse,
+            messages_11.StatusWatchResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
         )
 
 
-class StorageResource:
+class StreamsResource:
     def __init__(self, channel: grpc.aio.Channel) -> None:
         self._channel = channel
 
-    def create_file_production(
+    def list(
         self,
-        request: messages_10.StorageCreateFileProductionRequest,
+        request: messages_12.StreamsListRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageCreateFileProductionRequest, messages_10.StorageCreateFileProductionResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_12.StreamsListRequest, messages_12.StreamsListResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Storage/CreateFileProduction",
+            "/harmos.client.v1.Streams/List",
             request,
-            messages_10.StorageCreateFileProductionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def get_file_production(
-        self,
-        request: messages_10.StorageGetFileProductionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageGetFileProductionRequest, messages_10.StorageGetFileProductionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/GetFileProduction",
-            request,
-            messages_10.StorageGetFileProductionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def append_file_bytes(
-        self,
-        request: messages_10.StorageAppendFileBytesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageAppendFileBytesRequest, messages_10.StorageAppendFileBytesResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/AppendFileBytes",
-            request,
-            messages_10.StorageAppendFileBytesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def create_file_writer(
-        self,
-        request: messages_10.StorageCreateFileWriterRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageCreateFileWriterRequest, messages_10.StorageCreateFileWriterResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/CreateFileWriter",
-            request,
-            messages_10.StorageCreateFileWriterResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def publish_file_production(
-        self,
-        request: messages_10.StoragePublishFileProductionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StoragePublishFileProductionRequest, messages_10.StoragePublishFileProductionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/PublishFileProduction",
-            request,
-            messages_10.StoragePublishFileProductionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def delete_file_production(
-        self,
-        request: messages_10.StorageDeleteFileProductionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageDeleteFileProductionRequest, messages_10.StorageDeleteFileProductionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/DeleteFileProduction",
-            request,
-            messages_10.StorageDeleteFileProductionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def get_file_bytes(
-        self,
-        request: messages_10.StorageGetFileBytesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageGetFileBytesRequest, messages_10.StorageGetFileBytesResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/GetFileBytes",
-            request,
-            messages_10.StorageGetFileBytesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def capabilities(
-        self,
-        request: messages_10.StorageCapabilitiesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageCapabilitiesRequest, messages_10.StorageCapabilitiesResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/Capabilities",
-            request,
-            messages_10.StorageCapabilitiesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def create_snapshot(
-        self,
-        request: messages_10.StorageCreateSnapshotRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageCreateSnapshotRequest, messages_10.StorageCreateSnapshotResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/CreateSnapshot",
-            request,
-            messages_10.StorageCreateSnapshotResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def delete_snapshot(
-        self,
-        request: messages_10.StorageDeleteSnapshotRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageDeleteSnapshotRequest, messages_10.StorageDeleteSnapshotResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/DeleteSnapshot",
-            request,
-            messages_10.StorageDeleteSnapshotResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def list_column_rows(
-        self,
-        request: messages_10.StorageListColumnRowsRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageListColumnRowsRequest, messages_10.StorageListColumnRowsResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/ListColumnRows",
-            request,
-            messages_10.StorageListColumnRowsResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def list_index_entries(
-        self,
-        request: messages_10.StorageListIndexEntriesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageListIndexEntriesRequest, messages_10.StorageListIndexEntriesResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/ListIndexEntries",
-            request,
-            messages_10.StorageListIndexEntriesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def set_index_definition(
-        self,
-        request: messages_10.StorageSetIndexDefinitionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageSetIndexDefinitionRequest, messages_10.StorageSetIndexDefinitionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/SetIndexDefinition",
-            request,
-            messages_10.StorageSetIndexDefinitionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def set_projection_definition(
-        self,
-        request: messages_10.StorageSetProjectionDefinitionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageSetProjectionDefinitionRequest, messages_10.StorageSetProjectionDefinitionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/SetProjectionDefinition",
-            request,
-            messages_10.StorageSetProjectionDefinitionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def advance_projection(
-        self,
-        request: messages_10.StorageAdvanceProjectionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageAdvanceProjectionRequest, messages_10.StorageAdvanceProjectionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/AdvanceProjection",
-            request,
-            messages_10.StorageAdvanceProjectionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def list_projection_rows(
-        self,
-        request: messages_10.StorageListProjectionRowsRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageListProjectionRowsRequest, messages_10.StorageListProjectionRowsResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/ListProjectionRows",
-            request,
-            messages_10.StorageListProjectionRowsResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def get_projection_status(
-        self,
-        request: messages_10.StorageGetProjectionStatusRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageGetProjectionStatusRequest, messages_10.StorageGetProjectionStatusResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/GetProjectionStatus",
-            request,
-            messages_10.StorageGetProjectionStatusResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def set_object(
-        self,
-        request: messages_10.StorageSetObjectRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageSetObjectRequest, messages_10.StorageSetObjectResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/SetObject",
-            request,
-            messages_10.StorageSetObjectResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def list_rows(
-        self,
-        request: messages_10.StorageListRowsRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageListRowsRequest, messages_10.StorageListRowsResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/ListRows",
-            request,
-            messages_10.StorageListRowsResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def watch_rows(
-        self,
-        request: messages_10.StorageWatchRowsRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_10.StorageWatchRowsRequest, messages_10.StorageWatchRowsResponse]:
-        return stream(
-            self._channel,
-            "/harmos.v1.Storage/WatchRows",
-            request,
-            messages_10.StorageWatchRowsResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def append_records(
-        self,
-        request: messages_10.StorageAppendRecordsRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageAppendRecordsRequest, messages_10.StorageAppendRecordsResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/AppendRecords",
-            request,
-            messages_10.StorageAppendRecordsResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def append_samples(
-        self,
-        request: messages_10.StorageAppendSamplesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageAppendSamplesRequest, messages_10.StorageAppendSamplesResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/AppendSamples",
-            request,
-            messages_10.StorageAppendSamplesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def append_object_revisions(
-        self,
-        request: messages_10.StorageAppendObjectRevisionsRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageAppendObjectRevisionsRequest, messages_10.StorageAppendObjectRevisionsResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/AppendObjectRevisions",
-            request,
-            messages_10.StorageAppendObjectRevisionsResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def get_file_hash(
-        self,
-        request: messages_10.StorageGetFileHashRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageGetFileHashRequest, messages_10.StorageGetFileHashResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/GetFileHash",
-            request,
-            messages_10.StorageGetFileHashResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def capture_file(
-        self,
-        request: messages_10.StorageCaptureFileRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageCaptureFileRequest, messages_10.StorageCaptureFileResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/CaptureFile",
-            request,
-            messages_10.StorageCaptureFileResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def watch_file_bytes(
-        self,
-        request: messages_10.StorageWatchFileBytesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_10.StorageWatchFileBytesRequest, messages_10.StorageWatchFileBytesResponse]:
-        return stream(
-            self._channel,
-            "/harmos.v1.Storage/WatchFileBytes",
-            request,
-            messages_10.StorageWatchFileBytesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def watch_file_production(
-        self,
-        request: messages_10.StorageWatchFileProductionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_10.StorageWatchFileProductionRequest, messages_10.StorageWatchFileProductionResponse]:
-        return stream(
-            self._channel,
-            "/harmos.v1.Storage/WatchFileProduction",
-            request,
-            messages_10.StorageWatchFileProductionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def list_directory_entries(
-        self,
-        request: messages_10.StorageListDirectoryEntriesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageListDirectoryEntriesRequest, messages_10.StorageListDirectoryEntriesResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/ListDirectoryEntries",
-            request,
-            messages_10.StorageListDirectoryEntriesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def watch_directory_entries(
-        self,
-        request: messages_10.StorageWatchDirectoryEntriesRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryStreamCall[messages_10.StorageWatchDirectoryEntriesRequest, messages_10.StorageWatchDirectoryEntriesResponse]:
-        return stream(
-            self._channel,
-            "/harmos.v1.Storage/WatchDirectoryEntries",
-            request,
-            messages_10.StorageWatchDirectoryEntriesResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def get_index_definition(
-        self,
-        request: messages_10.StorageGetIndexDefinitionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageGetIndexDefinitionRequest, messages_10.StorageGetIndexDefinitionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/GetIndexDefinition",
-            request,
-            messages_10.StorageGetIndexDefinitionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def get_projection_definition(
-        self,
-        request: messages_10.StorageGetProjectionDefinitionRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageGetProjectionDefinitionRequest, messages_10.StorageGetProjectionDefinitionResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/GetProjectionDefinition",
-            request,
-            messages_10.StorageGetProjectionDefinitionResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-        )
-
-    def get_object(
-        self,
-        request: messages_10.StorageGetObjectRequest,
-        *,
-        metadata: Metadata | None = None,
-        timeout: float | None = None,
-        credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_10.StorageGetObjectRequest, messages_10.StorageGetObjectResponse]:
-        return unary(
-            self._channel,
-            "/harmos.v1.Storage/GetObject",
-            request,
-            messages_10.StorageGetObjectResponse,
+            messages_12.StreamsListResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -1165,17 +710,17 @@ class TimeResource:
 
     def get(
         self,
-        request: messages_11.TimeGetRequest,
+        request: messages_13.TimeGetRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_11.TimeGetRequest, messages_11.TimeGetResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_13.TimeGetRequest, messages_13.TimeGetResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Time/Get",
+            "/harmos.client.v1.Time/Get",
             request,
-            messages_11.TimeGetResponse,
+            messages_13.TimeGetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -1183,17 +728,17 @@ class TimeResource:
 
     def sleep(
         self,
-        request: messages_11.TimeSleepRequest,
+        request: messages_13.TimeSleepRequest,
         *,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: grpc.CallCredentials | None = None,
-    ) -> grpc.aio.UnaryUnaryCall[messages_11.TimeSleepRequest, messages_11.TimeSleepResponse]:
+    ) -> grpc.aio.UnaryUnaryCall[messages_13.TimeSleepRequest, messages_13.TimeSleepResponse]:
         return unary(
             self._channel,
-            "/harmos.v1.Time/Sleep",
+            "/harmos.client.v1.Time/Sleep",
             request,
-            messages_11.TimeSleepResponse,
+            messages_13.TimeSleepResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -1204,10 +749,11 @@ class ClientRoot:
     def __init__(self, channel: grpc.aio.Channel) -> None:
         self._channel = channel
         self.access: AccessResource = AccessResource(channel)
-        self.catalog_entries: CatalogEntriesResource = CatalogEntriesResource(channel)
         self.invocations: InvocationsResource = InvocationsResource(channel)
         self.jobs: JobsResource = JobsResource(channel)
+        self.operations: OperationsResource = OperationsResource(channel)
         self.plugins: PluginsResource = PluginsResource(channel)
+        self.schemas: SchemasResource = SchemasResource(channel)
         self.status: StatusResource = StatusResource(channel)
-        self.storage: StorageResource = StorageResource(channel)
+        self.streams: StreamsResource = StreamsResource(channel)
         self.time: TimeResource = TimeResource(channel)

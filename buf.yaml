@@ -2,10 +2,9 @@
 version: v2
 modules:
   - path: proto
-    # Core contracts and the separately owned application module share lint policy.
+    # Library contracts are checked independently of product-owned wrapper migrations.
     includes:
       - proto/harmos
-  - path: examples/schematic/proto
 lint:
   use:
     - STANDARD
@@ -13,18 +12,12 @@ lint:
     - COMMENT_RPC
     - COMMENT_MESSAGE
   except:
-    # Resource grammar uses names such as Storage and Instance without a Service suffix.
+    # Resource grammar uses names such as Operations and Instance without a Service suffix.
     - SERVICE_SUFFIX
-    # Locked native storage enums retain their existing unprefixed value names.
+    # Persisted schema enums retain their encoded value names.
     - ENUM_VALUE_PREFIX
-    # Locked storage enums and CatalogKind use meaningful zero values without UNSPECIFIED.
+    # Persisted schema enums retain meaningful zero values without UNSPECIFIED.
     - ENUM_ZERO_VALUE_SUFFIX
-    # Locked storage payload files share harmos/v1 with the harmos.v1 wrappers.
-    - DIRECTORY_SAME_PACKAGE
-    # Locked storage payload file paths do not mirror harmos.storage.v1.
-    - PACKAGE_DIRECTORY_MATCH
-    # Locked shared types and storage wrappers reference each other's packages, without file cycles.
-    - PACKAGE_NO_IMPORT_CYCLE
-    # Locked nested resource packages end in access/status after their v1 segment.
+    # Nested client resource packages end in access, status or plugins after their v1 segment.
     - PACKAGE_VERSION_SUFFIX
   disallow_comment_ignores: true

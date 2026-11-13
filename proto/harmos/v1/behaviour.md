@@ -135,8 +135,8 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
     The reference host supplies times 100 and 3700 and answers sleep immediately;
     the runtime story instead executes the sleep through its virtual clock.
 
-    The context requirement identities are `harmos.context.v1.Time/Get` and
-    `harmos.context.v1.Time/Sleep`; the reference host computes their fingerprints
+    The context requirement identities are `harmos.plugin.host.v1.Time/Get` and
+    `harmos.plugin.host.v1.Time/Sleep`; the reference host computes their fingerprints
     from the authoritative context wrappers and canonical schema projection.
 
 20. **Descriptor-Only Registration.** Payload-only messages MUST be registered
@@ -347,13 +347,20 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
 
 ## Shared Operation Grammar
 
+The boundary definitions are migrated; hand-written SDK/runtime/conformance consumers
+remain pending in the definition pass. Follow the [consumer mapping](../../../docs/architecture.md#protocol-boundary-definition-and-consumer-migration)
+for module paths, native storage type ownership and implementation responsibilities.
+
 Services name resources; methods on one resource use bare verbs. A single-mode
-part uses its noun, such as `Instance.Samples`. Mixed-resource Storage keeps nouns
-in its method names. Every method uses `<Service><Method>Request` and
+part uses its noun, such as `Instance.Samples`. Storage has no library wire
+operations; products declare their own typed wrappers over Private native operations. Every method uses `<Service><Method>Request` and
 `<Service><Method>Response`, including empty results. The host resource services
-are face-local CatalogEntries (List), Invocations (Get, Cancel, Watch), Time (Get,
-Sleep); client Invocations also supplies Invoke, and context supplies Samples.Append
-and HostValues.Get. Ordinary calls have one canonical gRPC method;
+are face-local Operations (List, Get), Invocations (Get, Cancel, Watch) and Time
+(Get, Sleep). Clients also have Invocations.Invoke, Plugins (including Replace),
+Plugins.Settings (List, Set), Schemas.List, Streams.List, Access resources and Status
+resources. The plugin-host boundary supplies caller-scoped Settings.List. Plugin
+sampling remains on Instance.Samples, including device-originated samples under
+an open demand; product operations own any pushed publication wrapper. Ordinary calls have one canonical gRPC method;
 managed control streams exist only for explicit cooperative final-result promises
 and replace that method. No automatic twins or automatic client resending exist.
 
@@ -362,7 +369,7 @@ Host and plugin policies share Duration budgets, `RetryPolicy.total_attempts`
 and `deterministic_jitter`. Absent retries or one total attempt means no retry.
 Call-local overrides do not alter callee defaults. Shared positions contain
 history (store and epoch) and sequence; cuts retain every position/revision.
-Only data rows that can grow without bound are paged. CatalogEntries, Plugins and
+Only data rows that can grow without bound are paged. Registry lists, Plugins and
 Access.Pairings return complete sets; carrier overflow names the action.
 Paging uses `page_size`, `max_bytes`, `page_token`, `next_page_token`, and
 `resolved_at`. Receipts separate accepted and durable positions and completion.

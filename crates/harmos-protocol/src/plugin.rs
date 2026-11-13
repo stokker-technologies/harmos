@@ -697,3 +697,5 @@ pub mod instance_server {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
+
+pub mod host { include!("plugin/host.rs"); }

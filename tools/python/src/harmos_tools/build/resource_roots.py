@@ -74,8 +74,16 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
         version = next((index for index, part in enumerate(parts) if re.fullmatch(r"v[0-9]+", part)), None)
         if version is None or version == 0:
             continue
-        face = parts[version - 1] if parts[version - 1] in ("plugin", "context") else "client"
-        owner = ".".join(parts[: version - 1] if face != "client" else parts[:version])
+        boundary = parts[:version]
+        if boundary[-2:] == ["plugin", "host"]:
+            face = "context"
+            owner = ".".join(boundary[:-2])
+        elif boundary[-1] == "plugin":
+            face = "plugin"
+            owner = ".".join(boundary[:-1])
+        else:
+            face = "client"
+            owner = ".".join(boundary[:-1] if boundary[-1] == "client" else boundary)
         for service in file.service:
             for method in service.method:
                 path = [*parts[version + 1 :], snake(service.name), snake(method.name)]
@@ -171,7 +179,10 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
             record_messages(list(definition.nested_type), package, module, name + ".")
 
     for file in descriptors.file:
-        record_messages(list(file.message_type), file.package, file.name.removesuffix(".proto").replace("/", ".") + "_pb2")
+        module = file.name.removesuffix(".proto").replace("/", ".") + "_pb2"
+        if module.startswith("harmos.client."):
+            module = module.replace("harmos.client.", "harmos._wire.client.", 1)
+        record_messages(list(file.message_type), file.package, module)
     for prefix, replacement in (module_prefixes or {}).items():
         messages = {
             name: (module.replace(prefix + ".", replacement + ".", 1) if module.startswith(prefix + ".") else module, message)
@@ -255,8 +266,10 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
                 )
 
             def message(full: str) -> str:
-                if full.startswith("harmos.storage.v1."):
-                    return "harmos_protocol::storage::" + full.split(".")[-1]
+                if full.startswith("harmos.client.v1."):
+                    return "harmos_protocol::client::" + "::".join(full.split(".")[3:])
+                if full.startswith("harmos.plugin.host.v1."):
+                    return "harmos_protocol::plugin::host::" + "::".join(full.split(".")[4:])
                 parts = full.split(".")
                 version = next(index for index, part in enumerate(parts) if re.fullmatch(r"v[0-9]+", part))
                 crate = snake(parts[0]) + "_protocol"
@@ -287,7 +300,7 @@ def rust_context(root: Path, methods: list[Method]) -> None:
         parts = name.split(".")
         if parts[1] == "v1":
             return "harmos_protocol::v1::" + "::".join(parts[2:])
-        return "harmos_protocol::context::" + "::".join(parts[3:])
+        return "harmos_protocol::plugin::host::" + "::".join(parts[4:])
 
     for message in messages:
         lines += [
@@ -427,7 +440,7 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
         lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> channel) : {', '.join(initializers)} {{}}"]
         if not node and builtin:
             lines += [
-                "  static Client connect(std::string address, const ::harmos::storage::v1::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {",
+                "  static Client connect(std::string address, const ::harmos::v1::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {",
                 "    const auto maximum = ::harmos::transfer_message_bytes(transfer, message_bytes);",
                 "    grpc::ChannelArguments arguments; arguments.SetMaxSendMessageSize(maximum); arguments.SetMaxReceiveMessageSize(maximum);",
                 '    if (address.starts_with("http://")) address.erase(0, 7);',

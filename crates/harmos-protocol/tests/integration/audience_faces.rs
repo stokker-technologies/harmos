@@ -45,16 +45,16 @@ use prost_reflect::ReflectMessage;
 
 #[test]
 fn service_packages_separate_audiences_and_only_declared_methods_stream() {
-    let descriptor = harmos_protocol::context::TimeGetRequest::default().descriptor();
+    let descriptor = harmos_protocol::plugin::host::TimeGetRequest::default().descriptor();
     let pool = descriptor.parent_pool();
     let mut instances = Vec::new();
     for service in pool.services() {
         let face = if service.full_name().starts_with("harmos.plugin.v1.") {
             "plugin"
-        } else if service.full_name().starts_with("harmos.context.v1.") {
+        } else if service.full_name().starts_with("harmos.plugin.host.v1.") {
             "context"
         } else {
-            assert!(service.full_name().starts_with("harmos.v1."), "{}", service.full_name());
+            assert!(service.full_name().starts_with("harmos.client.v1."), "{}", service.full_name());
             "client"
         };
         assert_ne!(service.name(), "Plugin");
@@ -74,9 +74,16 @@ fn service_packages_separate_audiences_and_only_declared_methods_stream() {
         }
     }
     assert_eq!(instances, ["harmos.plugin.v1.Instance"]);
-    for name in ["CatalogEntries", "Invocations", "Time", "Storage"] {
-        let client = pool.get_service_by_name(&format!("harmos.v1.{name}")).unwrap();
-        let context = pool.get_service_by_name(&format!("harmos.context.v1.{name}")).unwrap();
+    assert!(pool.files().filter(|file| file.package_name() == "harmos.v1").all(|file| file.services().len() == 0));
+    for file in pool.files().filter(|file| file.package_name().starts_with("harmos.")) {
+        let package_path = file.package_name().replace('.', "/");
+        assert!(file.name().starts_with(&format!("{package_path}/")), "{}", file.name());
+        assert!(file.messages().all(|message| message.name() != "CatalogEntriesListResponse"));
+        assert!(file.services().all(|service| !matches!(service.name(), "Storage" | "CatalogEntries" | "HostValues" | "Samples")));
+    }
+    for name in ["Operations", "Invocations", "Time"] {
+        let client = pool.get_service_by_name(&format!("harmos.client.v1.{name}")).unwrap();
+        let context = pool.get_service_by_name(&format!("harmos.plugin.host.v1.{name}")).unwrap();
         for child in context.methods() {
             let parent = client.methods().find(|method| method.name() == child.name()).unwrap();
             assert_ne!(parent.input().full_name(), child.input().full_name());
