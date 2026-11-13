@@ -83,20 +83,17 @@ async fn schema_exchange_records_original_outcomes_and_revisions_across_restart(
                 window,
                 key: Identifier::new("immutable").unwrap(),
             };
-            assert!(
-                storage
-                    .set_schema_once(&bad, key.clone(), different, Some(next.clone()))
-                    .await
-                    .unwrap_err()
-                    .to_string()
-                    .contains("immutable")
+            assert_eq!(
+                storage.set_schema_once(&bad, key.clone(), different, Some(next.clone())).await.unwrap_err().backend_failure(),
+                Some(BackendFailure::Conflict)
             );
             original = Some((winner, loser, first, next));
         }
         let (winner, loser, first, next) = original.as_ref().unwrap();
         assert_eq!(storage.set_schema_once(winner, key.clone(), graph.clone(), None).await.unwrap(), *first);
-        assert!(
-            storage.set_schema_once(loser, key.clone(), graph.clone(), None).await.unwrap_err().to_string().contains("get again and retry")
+        assert_eq!(
+            storage.set_schema_once(loser, key.clone(), graph.clone(), None).await.unwrap_err().backend_failure(),
+            Some(BackendFailure::Conflict)
         );
         let read = storage.snapshot(&storage.get_saved_position()).await.unwrap();
         assert_eq!(read.get_schema(&key).await.unwrap().unwrap().position, *next);

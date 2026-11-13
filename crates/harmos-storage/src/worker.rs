@@ -133,7 +133,7 @@ impl Worker {
                 state.request_deletions();
                 state.request_definitions();
                 state.collect();
-                if state.queue.bytes() >= inner.settings.flush_batch_bytes() {
+                if state.queue.bytes() >= inner.settings.flush_trigger_bytes() {
                     state.request_flush();
                 }
                 let retry = failures.iter().find_map(|(&id, failure)| {
@@ -273,7 +273,20 @@ impl Worker {
                     Some(Action::Write(entry, _)) => {
                         let index = entry.index;
                         drop(entry);
+                        let building = std::time::Instant::now();
+                        {
+                            let super::manager::State { queue, persistence, .. } = &mut *state;
+                            queue
+                                .iter()
+                                .find(|entry| entry.index == index)
+                                .expect("selected pending owner")
+                                .measure_selection(persistence, building);
+                        }
                         let batch = Batch::prepare(inner, &mut state, index);
+                        state.persistence.batch_build.record(building.elapsed());
+                        if let Some(batch) = &batch {
+                            batch.measure_selection(&mut state.persistence, building);
+                        }
                         let entry = state.queue.iter().find(|entry| entry.index == index).expect("selected pending owner").clone();
                         Some(Action::Write(entry, batch))
                     }
@@ -602,14 +615,15 @@ impl Operation {
         }
     }
 
-    pub(super) fn check_entry_bytes(&self, maximum: std::num::NonZeroUsize) -> Result<()> {
-        if self.encoded_batch_bytes()? > maximum.get() {
+    pub(super) fn check_entry_bytes(&self, maximum: std::num::NonZeroUsize) -> Result<usize> {
+        let bytes = self.encoded_batch_bytes()?;
+        if bytes > maximum.get() {
             return Err(Error::InvalidInput {
                 field: "storage admission",
                 reason: "admitted batch exceeds max_batch_bytes; split before submission",
             });
         }
-        Ok(())
+        Ok(bytes)
     }
 
     pub(super) fn required_data(&self) -> Option<&super::StorageCursor> {
@@ -724,7 +738,8 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                         })
                     }
                     _ => {
-                        let saved = write_data(inner, operation).await?;
+                        let encoded_bound = batch.as_ref().map_or(entry.encoded_bound, |batch| batch.encoded_bound);
+                        let saved = write_data(inner, operation, encoded_bound).await?;
                         Ok(Completed::Write {
                             data: Some(target),
                             saved: Some(saved),

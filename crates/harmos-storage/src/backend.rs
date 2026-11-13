@@ -71,6 +71,9 @@ pub struct ReadLimits {
 pub struct StorageWork {
     pub synchronous_commits: u64,
     pub synchronous_commit_ns: u64,
+    pub maximum_synchronous_commit_ns: u64,
+    pub writing_ns: u64,
+    pub maximum_writing_ns: u64,
     pub source_rows: u64,
     pub source_bytes: u64,
     pub decoded_chunks: u64,

@@ -25,6 +25,17 @@ use harmos_storage::{
     },
 };
 
+/* === Structs === */
+
+pub(super) struct SetIndexInput {
+    pub definition: Option<wire::IndexDefinition>,
+    pub expected_revision: Vec<u8>,
+    pub create_if_absent: bool,
+    pub rebuild: bool,
+    pub work: Option<wire::ReadLimits>,
+    pub mutation: Option<wire::MutationId>,
+}
+
 /* === Public Functions === */
 
 pub(super) fn expected(bytes: &[u8], create_if_absent: bool) -> crate::Result<Option<u64>> {
@@ -76,9 +87,16 @@ pub(super) async fn get_index(
 }
 
 pub(super) async fn set_index(
-    context: &ExecutionContext, id: &'static str, definition: Option<wire::IndexDefinition>, expected_revision: Vec<u8>,
-    create_if_absent: bool, rebuild: bool, work: Option<wire::ReadLimits>, mutation: Option<wire::MutationId>,
+    context: &ExecutionContext, id: &'static str, input: SetIndexInput,
 ) -> Result<(wire::IndexDefinition, Vec<u8>, v1::Receipt), ServingError> {
+    let SetIndexInput {
+        definition,
+        expected_revision,
+        create_if_absent,
+        rebuild,
+        work,
+        mutation,
+    } = input;
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
         let expected = expected(&expected_revision, create_if_absent)?;

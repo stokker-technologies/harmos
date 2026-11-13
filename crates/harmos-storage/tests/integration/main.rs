@@ -10,6 +10,7 @@
 /* === Modules === */
 
 mod benchmark_boundary;
+mod bounded_native_chunks;
 mod cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection;
 mod columnar_snapshot;
 mod conditional_objects;

@@ -99,13 +99,11 @@ impl StorageManager {
                 });
             }
         }
-        let base = crate::admissions::schema_mutation(mutation, &key, &schema)?;
         let mut hash = Sha256::new();
         hash.update(b"storage.set_schema:v1\0");
-        hash.update(base.fingerprint);
-        hash.update(serde_json::to_vec(&expected).map_err(|_| Error::InvalidInput {
+        hash.update(serde_json::to_vec(&(&key, schema.as_ref(), &expected)).map_err(|_| Error::InvalidInput {
             field: "SetSchema",
-            reason: "invalid expected revision",
+            reason: "invalid complete schema candidate",
         })?);
         let fingerprint: [u8; 32] = hash.finalize().into();
         let bytes = StorageSchema::new(self.position(u64::MAX), key.clone(), schema.clone()).encoded_bytes()?;

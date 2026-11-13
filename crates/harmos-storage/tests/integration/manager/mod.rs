@@ -40,6 +40,7 @@ mod nominal_fixture;
 mod objects;
 mod policy;
 mod retention;
+mod small_prefixes_publish_before_later_large_admissions;
 mod typed_reads;
 #[path = "../../support/waveforms.rs"]
 pub(crate) mod waveforms;

@@ -148,7 +148,7 @@ async fn mutation_receipts_survive_replays_lost_responses_and_cancellation() {
     };
     let abandoned_reply =
         f.runtime.operations.call_protobuf::<harmos_operations::storage::DeleteFileProduction>(abandon.clone()).await.unwrap();
-    let abandoned = abandoned_reply.production.clone().unwrap();
+    let abandoned = abandoned_reply.production.unwrap();
     assert_eq!(abandoned.phase, harmos_protocol::storage::FilePhase::Abandoned as i32);
     assert_eq!(abandoned.length, 7);
     assert_eq!(

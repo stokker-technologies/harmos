@@ -124,6 +124,7 @@ pub(super) struct State {
     pub(super) ready: bool,
     service_owner: Option<Arc<()>>,
     pub(super) next: u64,
+    pub(super) persistence: crate::PersistenceWork,
     pub(super) queue: PendingQueue,
 
     pub(super) data_attempted: u64,
@@ -161,7 +162,11 @@ pub(super) struct Pending {
     pub(super) journal: Option<harmos_domain::state::Position>,
     pub(super) index: u64,
     pub(super) bytes: usize,
+    pub(super) encoded_bound: usize,
     pub(super) operation: Operation,
+    accepted_at: std::time::Instant,
+    pub(super) ready_at: std::sync::OnceLock<std::time::Instant>,
+    selected: std::sync::atomic::AtomicBool,
 }
 
 struct Counter(usize);
@@ -215,7 +220,8 @@ pub trait WorkerOwner: Send + Sync {
 
 impl Pending {
     pub(super) fn new(
-        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, operation: Operation,
+        _inner: &Arc<Inner>, journal: Option<harmos_domain::state::Position>, index: u64, bytes: usize, encoded_bound: usize,
+        operation: Operation,
     ) -> Self {
         Self {
             context: crate::execution::Context::current(),
@@ -223,7 +229,25 @@ impl Pending {
             journal,
             index,
             bytes,
+            encoded_bound,
             operation,
+            accepted_at: std::time::Instant::now(),
+            ready_at: std::sync::OnceLock::new(),
+            selected: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+    pub(super) fn measure_selection(&self, work: &mut crate::PersistenceWork, now: std::time::Instant) {
+        if self.operation.domain() != Domain::Data || self.selected.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        let ready = *self.ready_at.get_or_init(|| now);
+        work.cadence_wait.record(ready.saturating_duration_since(self.accepted_at));
+        let ordered = now.saturating_duration_since(ready);
+        work.ordered_wait.record(ordered);
+        if self.bytes >= 1024 * 1024 {
+            work.ordered_wait_large.record(ordered);
+        } else {
+            work.ordered_wait_small.record(ordered);
         }
     }
 }
@@ -324,6 +348,7 @@ impl StorageManager {
                     ready: false,
                     service_owner: None,
                     next: 0,
+                    persistence: crate::PersistenceWork::default(),
                     queue: PendingQueue::default(),
 
                     data_attempted: 0,

@@ -83,7 +83,7 @@ async fn capture_then_follow_stored_contents() {
         contents.extend_from_slice(&batch.bytes);
     }
     let completion = v1::StorageWatchFileBytesResponse::decode(invocation.await.unwrap().as_slice()).unwrap().completion.unwrap();
-    assert_eq!(completed, Some(completion.clone()));
+    assert_eq!(completed, Some(completion));
     assert_eq!(completion.bytes, 16);
     assert_eq!(contents, b"captured-content");
     fixture.finish().await;

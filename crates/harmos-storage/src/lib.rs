@@ -39,6 +39,7 @@ mod manager;
 mod object_admissions;
 mod objects;
 mod opened_capture;
+mod persistence_work;
 pub mod query;
 mod queue;
 mod read_batch;
@@ -84,6 +85,7 @@ pub use harmos_domain::model::storage::{
 pub use manager::{StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::{CompareExchange, ObjectExchange, ObjectGroup};
 pub use opened_capture::OpenedCapture;
+pub use persistence_work::{PersistenceWork, StageWork};
 pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
 pub use read_batch::{ReadBatch, ReadPages};
 pub use receipts::{MutationHeader, MutationReceipt, MutationValue};

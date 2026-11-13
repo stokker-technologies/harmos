@@ -117,6 +117,9 @@ async fn schema_registry_roundtrip() {
     let mut conflict = request.clone();
     conflict.schema.as_mut().unwrap().key.as_mut().unwrap().version = 2;
     assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(conflict).await.is_err());
+    let mut representation = request.clone();
+    representation.schema.as_mut().unwrap().graph.as_mut().unwrap().representations[0].omissions.clear();
+    assert_conflict(f.runtime.operations.call_protobuf::<harmos_operations::storage::SetSchema>(representation).await.unwrap_err());
     let mut malformed = request.clone();
     malformed.mutation.as_mut().unwrap().key = "malformed".into();
     malformed.schema.as_mut().unwrap().graph.as_mut().unwrap().root = u64::MAX;

@@ -114,10 +114,9 @@ impl Manager {
                     operation: factory.definition.id.to_string(),
                     source: Arc::new(source),
                 })?
+                && !declared.contains(context.operation().id.as_str())
             {
-                if !declared.contains(context.operation().id.as_str()) {
-                    factories.push(factory.clone().with_contract(context));
-                }
+                factories.push(factory.clone().with_contract(context));
             }
             factories.push(factory);
         }

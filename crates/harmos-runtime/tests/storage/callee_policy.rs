@@ -9,8 +9,7 @@
 
 // Keep A Plugin Child Policy Override Local To One Storage Call
 
-#[path = "../../../harmos-storage/tests/support/clock.rs"]
-mod clock;
+use crate::support::clock;
 
 /* === Imports === */
 

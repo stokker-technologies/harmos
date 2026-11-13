@@ -52,6 +52,7 @@ pub struct Measurement {
     pub maximum_backlog_bytes: usize,
     pub maximum_backlog_positions: u64,
     pub admission_wait_ms: f64,
+    pub stages: crate::PersistenceWork,
 }
 
 /* === Enums === */
@@ -84,6 +85,7 @@ impl Load {
 /// Lag starts at admission return; passive frontier notifications end each observation.
 /// Scheduler observation delay is included; admission backpressure is reported separately.
 pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Result<Measurement> {
+    storage.inner.state.lock().unwrap().persistence = crate::PersistenceWork::default();
     let batches = if matches!(load, Load::MultiMegabyte) { 128 } else { 1000 };
     let (accepted, mut admitted) = tokio::sync::mpsc::unbounded_channel();
     let producer = async {
@@ -185,6 +187,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
         maximum_backlog_bytes,
         maximum_backlog_positions,
         admission_wait_ms: admission_wait.as_secs_f64() * 1000.0,
+        stages: storage.inner.state.lock().unwrap().persistence,
     })
 }
 

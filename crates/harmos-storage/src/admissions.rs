@@ -94,59 +94,6 @@ impl StorageManager {
 
 /* === Private Functions === */
 
-// Called After Shared Schema Preflight Has Bounded The Finite Definition Table.
-pub(super) fn schema_mutation<'a>(
-    id: &'a MutationId, key: &super::SchemaKey, schema: &crate::schema::graph::Schema,
-) -> Result<Mutation<'a>> {
-    let mut hash = Sha256::new();
-    part(&mut hash, b"storage.write_schema:v1");
-    part(&mut hash, key.id.as_str().as_bytes());
-    hash.update(key.version.get().to_le_bytes());
-    hash.update((schema.root as u64).to_le_bytes());
-    hash.update((schema.definitions.len() as u64).to_le_bytes());
-    for fields in &schema.definitions {
-        hash_fields(&mut hash, fields)?;
-    }
-    Ok(Mutation { id, fingerprint: hash.finalize().into() })
-}
-fn hash_fields(hash: &mut Sha256, fields: &[crate::schema::graph::Field]) -> Result<()> {
-    use crate::schema::Cardinality;
-    use crate::schema::graph::Kind;
-    hash.update((fields.len() as u64).to_le_bytes());
-    for field in fields {
-        if field.name.len() > crate::schema::MAX_NAME_BYTES {
-            return Err(Error::InvalidInput {
-                field: "storage schema",
-                reason: "field name exceeds limit",
-            });
-        }
-        part(hash, field.name.as_bytes());
-        hash.update(field.tag.to_le_bytes());
-        hash.update([match field.cardinality {
-            Cardinality::Required => 0,
-            Cardinality::Optional => 1,
-            Cardinality::Repeated => 2,
-            Cardinality::Variant => 3,
-        }]);
-        hash.update([match field.kind {
-            Kind::Bool => 0,
-            Kind::U32 => 1,
-            Kind::U64 => 2,
-            Kind::I32 => 3,
-            Kind::I64 => 4,
-            Kind::F32 => 5,
-            Kind::F64 => 6,
-            Kind::String => 7,
-            Kind::Bytes => 8,
-            Kind::Message { .. } => 9,
-        }]);
-        if let Kind::Message { definition } = field.kind {
-            hash.update((definition as u64).to_le_bytes());
-        }
-    }
-    Ok(())
-}
-
 fn nonempty(count: usize) -> Result<()> {
     if count == 0 {
         return Err(Error::InvalidInput {

@@ -329,35 +329,37 @@ only if that lag stays small for large payloads as well as small ones. The newes
 durable position must trail newest accepted data by no more than 250 ms
 at p95, independent of payload size.
 
-The current 100 ms flush cadence is not proof: each flush adds its own duration,
-which grows with what is written. Batches target 1 MB and are capped at 16 MB,
-each committed synchronously. Scheduling, backlog, separate typed writes and
-persistence failures can increase lag, and nothing measures durable lag today.
-Reads incur their normal query cost but no wait for newer accepted writes.
-Persistence errors stay visible.
-Consumers choose budgets; this proposal adds no library storage-capacity defaults.
+The 100 ms cadence and existing 1 MiB early-flush trigger are unchanged. Each
+commit retains the existing atomic admission ceiling (at most 16 MiB within the
+consumer's pending-write budget) and synchronous durability. Logical input and
+larger internal state captures split before exceeding that ceiling. The earlier
+1 MiB per-commit split was measured, not assumed beneficial: it multiplied the
+large workload's FULL commits from 128 to 1,664. The current implementation reuses
+checked admission sizes, isolates large admissions from preceding small prefixes,
+and publishes each acknowledged committed piece immediately. SQLite independently
+compacts or splits physical column chunks inside the same atomic transaction;
+its configured row/byte bounds and stored encodings are preserved.
 
-Add a reusable backend benchmark to the Nightly benchmark set, following storage
-benches' stable `integration/<case>` naming: `integration/durable_lag` with
-`small_high_rate`, `multi_megabyte` and `mixed` load cases. Measure acceptance-to-
-durability delay for admitted positions and report p50, p95 and maximum lag for
-each load, including persistence backlog and synchronous commit contribution.
-Consumers must be able to run the same case against their own backend. Assess
-each load against the owner's bound rather than hiding large-payload lag in an
-aggregate. This is a benchmark measurement, never a wall-clock test assertion.
-Deterministic mechanism tests instead prove that flushes are byte-bounded and
-large input is split so no single commit exceeds the configured size.
+`integration/durable_lag` runs five repetitions each of `small_high_rate`,
+`multi_megabyte` and `mixed`, retaining per-load p50/p95/maximum, spread, backlog,
+admission wait, compiler-activity samples and stage counters. The counters separate
+waiting for the first cadence/size trigger, ordered queue wait, batch construction,
+provider writing, synchronous commit and saved-frontier publication. They measure
+elapsed work, including scheduling/I/O contention, and never drive admission or
+assert real time in tests. Reads select an issued saved position without requesting
+a flush or a newer durability barrier. Persistence failures remain visible.
 
-If the measured bound is missed, first try smaller flush pieces and flushing as
-soon as a size threshold is reached, not only on the cadence, then remeasure all
-three loads. If that is insufficient, the named fallback is reads resolving
-against a snapshot of accepted data. That fallback is not built by this proposal.
+The small-pieces/early-flush experiment has therefore been performed. Repeated
+results below keep the 250 ms target distinct from the observed floor. Accepted-data
+snapshots remain unbuilt: they would require a new retention/read-image mechanism,
+could expose accepted data independently of writer I/O, and would not make a FULL
+commit finish sooner or justify acknowledging durability before it.
 
 | Alternative | Cost and Disposition |
 | --- | --- |
 | Latest durable without waiting | Owner: coherent saved data and no new persistence wait; requires payload-size-independent p95 lag within 250 ms, proven by the three-load Nightly benchmark. |
 | Barrier on every latest read | Not chosen: latency depends on queued data and a synchronous commit; a passive read requests persistence. An explicit durability wait remains available to writers. |
-| Snapshot of accepted data | Named fallback, not built: use if smaller flush pieces and size-triggered flushing still miss the measured bound. Requires a snapshot/retention mechanism spanning pending typed data and mutable state; existing saved snapshots cannot do it. |
+| Snapshot of accepted data | Owner decision after the measured floor: not built. Requires retention/read images spanning accepted data and mutable state; existing saved snapshots cannot provide it. It can decouple read visibility from persistence, not accelerate durable acknowledgement. |
 
 A write receipt containing only `accepted_at` cannot be used as proof of
 durability. Obtain `durable_at` from that write's completion/status before a read
@@ -1239,41 +1241,76 @@ Streaming transfers remain until task 5.2; no accepted-data snapshot is implemen
 
 ### Windows Durable-Lag Measurements
 
-Measured on 2026-11-12 in the bench profile, SQLite WAL with `synchronous=FULL`.
-Each load opens an empty store and a native worker. Small load offers 1,000 single
-32-byte samples separated by 1 ms; large load offers 128 logical 4 MiB batches
-(64 samples of 64 KiB); mixed load offers 1,000 batches with every sixteenth batch
-large. Existing admission bounds split a logical batch when needed, without changing
-its bytes. An independent observer measures admission-return to passive saved-frontier
-notification; scheduler observation delay is included. Admission backpressure is separate.
-These are local measurements, not assertions or native Linux/hosted proof.
+Measured on 2026-11-13 in the bench profile with SQLite WAL/FULL, five independent
+fresh-store runs per load before and after the persistence changes. The unchanged
+loads are 1,000 single 32-byte samples separated by 1 ms; 128 logical 4 MiB batches
+of 64 samples; and 1,000 mixed batches with every sixteenth batch large. Existing
+admission bounds, the 100 ms cadence, 1 MiB early trigger, 16 MiB atomic ceiling,
+response/physical-chunk settings and deadlines are unchanged. An independent
+observer times admission-return to passive saved-frontier notification; admission
+backpressure is reported separately. No read requests a flush.
 
-The before run uses whole admitted provider batches; the after run splits at entry
-boundaries around the existing 1 MiB target, retaining the existing 16 MiB admission
-ceiling and size-triggered flushing. An indivisible row retains that ceiling. Durability
-mode, cadence, workload, pending-write budget and deadlines are unchanged.
+Data used the existing system temporary volume, C: (about 55 GB free when checked);
+build output used D:. No temporary-volume relocation or workload tuning was used.
+This session started no other compilation during the final timed loads. Activity
+samples record generic compiler names/PIDs/CPU at each load's endpoints, not a
+claim that every intervening process or I/O source was observed. Final repetitions
+1–2 for small/large and 1 for mixed showed only Python task drivers; later endpoints
+also showed cargo/rustc/link and cl/cmake work from other sessions. Baseline later
+runs likewise overlapped compilation. Even a compiler-free endpoint pair did not
+guarantee a low-latency FULL commit.
 
-| Load | Before p50 / p95 / Maximum (ms) | After p50 / p95 / Maximum (ms) | Before / After Maximum Backlog (Bytes) | Before / After Commit Count | Before / After Synchronous Commit Total (ms) |
-| --- | --- | --- | --- | --- | --- |
-| `small_high_rate` | 53.96 / 99.11 / 104.45 | 53.10 / 98.69 / 103.67 | 18,032 / 18,032 | 24 / 23 | 19.00 / 17.70 |
-| `multi_megabyte` | 141.18 / 149.83 / 157.95 | 175.54 / 229.27 / 258.32 | 12,602,304 / 12,602,304 | 128 / 1664 | 9459.83 / 11553.25 |
-| `mixed` | 257.81 / 301.59 / 331.38 | 174.14 / 198.77 / 233.64 | 12,614,064 / 12,614,064 | 82 / 833 | 4778.64 / 5261.50 |
+| Load | Before p95 Median (Minimum–Maximum), ms | Final p95 Values, ms | Final p95 Median (Minimum–Maximum), ms | 250 ms Result |
+| --- | ---: | --- | ---: | --- |
+| `small_high_rate` | 100.49 (98.36–142.69) | 98.17, 98.77, 105.23, 103.49, 99.07 | 99.07 (98.17–105.23) | 5/5 runs meet it |
+| `multi_megabyte` | 789.01 (207.37–2358.97) | 177.80, 288.81, 570.00, 391.28, 457.40 | 391.28 (177.80–570.00) | 1/5 runs meet it |
+| `mixed` | 744.14 (225.92–1702.05) | 172.86, 321.45, 492.84, 346.45, 396.80 | 346.45 (172.86–492.84) | 1/5 runs meet it |
 
-Mixed p95 missed 250 ms before splitting. All three after-run p95 values meet it;
-the large-load maximum exceeds 250 ms, which is not a maximum-latency promise.
-The increased commit count and total commit contribution remain visible. Accepted-data
-snapshots were not built. The benchmark emits backlog positions and admission wait as
-well as this table; Nightly retains the raw observations and platform-qualified metrics.
+Stage totals below are medians across the five final runs. Cadence and ordered
+waits are means per admission; all other times are totals per fixed workload.
+Stage counts differ, so these columns are not additive percentile decompositions.
+Commit-byte counters are checked encoded upper bounds, not device traffic.
 
-A fresh Windows confirmation on the same workload after the provider migration measured
-`small_high_rate` 54.76 / 98.76 / 104.70 ms, `multi_megabyte`
-272.72 / 359.90 / 702.77 ms, and `mixed` 333.83 / 427.73 / 486.73 ms
-(p50 / p95 / maximum). Commit counts were 23 / 1664 / 827 and synchronous commit
-totals 19.77 / 17809.58 / 9791.44 ms; maximum backlogs were 18,816 / 12,602,304 /
-12,614,064 bytes. Large and mixed p95 **miss 250 ms after task 3.7**. The earlier
-passing measurement does not establish acceptance; the bound remains unmet in this
-confirmation. No budget, deadline or workload was changed and no accepted-data
-snapshot was built. The owner decides the fallback.
+| Load | Cadence Mean, ms | Ordered Wait Mean, ms | Batch Build Total, ms | Provider Writing Total, ms | FULL Commit Total, ms | Commit Count | Publication Total, ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `small_high_rate` | 51.545 | 0.006 | 0.706 | 29.685 | 28.923 | 23 | 0.048 |
+| `multi_megabyte` | 0.043 | 0.004 | 0.892 | 8490.100 | 26504.241 | 128 | 1.426 |
+| `mixed` | 0.022 | 241.923 | 1.452 | 4078.273 | 12115.634 | 126 | 0.732 |
+
+Small load is cadence-dominated. Large-load queue/cadence waits are negligible;
+its own serialized writing and FULL commit dominate after admission. Mixed small
+admissions wait behind earlier large commits: their final mean ordered wait has a
+258.01 ms median. Publication itself takes only about 0.05/1.43/0.73 ms total per
+small/large/mixed workload. It already happened per committed piece; delaying one
+notification until the end of a flush was not the cause.
+
+The earlier split produced 1,664 FULL commits for 128 large admissions. The final
+implementation uses 128, reuses admission's checked sizes instead of serializing
+payloads again, and prevents a small prefix from joining a later large admission.
+Batch-build totals fall from a baseline median 9,070.21 ms to 0.89 ms for the large
+load and from 3,759.83 ms to 1.45 ms for mixed. The native physical-column fix handles
+coalesced variable-size rows within the existing chunk bounds in the same transaction.
+Larger internal state captures retain bounded pieces and durable-prefix retry.
+Controlled proofs cover those mechanisms without assertions about real time.
+
+**The 250 ms target remains missed for large and mixed loads.** The quietest
+observed final p95 values are 177.80 ms large and 172.86 ms mixed; these are observed
+floors on this run set, not universal hardware limits. Final single FULL commits
+stall as long as 1,148.54 ms (large) and 466.78 ms (mixed), while writing maxima are
+reported separately. The earlier split baseline includes a 17,495.83 ms commit
+stall. Absolute before/after latency therefore includes substantial shared-machine
+I/O variation; reduced commit count and eliminated serialization are measured
+mechanism changes, not a claim that all variability came from batching or builds.
+No durability setting, budget, deadline or workload was weakened.
+
+An accepted-data snapshot could retain a coherent accepted read image independently
+of writer I/O and expose newer accepted data promptly. It cannot reduce the physical
+acceptance-to-durability floor or label uncommitted data durable. That read/retention
+contract remains an owner decision; no such snapshot is built. Native Linux/hosted
+proof remains pending. Raw complete runs, intermediate failed/partial experiments
+and compiler evidence are retained under `target/benchmarks/storage/`; incomplete
+experiments and the discarded instrumentation run are excluded from these tables.
+Nightly exports one median per case plus p95 spread, repetitions and stage counters.
 
 The upload owner now verifies a replayed accepted prefix under the file's serialized
 command ownership, including short backend reads. Matching bytes under a different
@@ -1345,33 +1382,32 @@ receipt story passes without changing its retry budget or durability guarantees.
 
 ### Windows Unary Transfer Measurements
 
-The focused `integration/file_transfer` case uses the existing resumable reference
-memory backend, real client sockets and a real plugin child-call carrier. Each of
-three repetitions transfers the same deterministic 30 MiB file using the existing
-64 KiB response/chunk configuration, verifies its published length/digest and checks
-every downloaded byte. Setup and final verification are outside timing; session
-creation and publication are included. No workload, consumer budget or deadline was
-changed. The reusable workload accepts consumer-supplied carrier/backend composition.
+Measured on 2026-11-13 with the source-complete storage carrier paths, the existing
+reference memory backend and real client/plugin sockets. Each of three repetitions
+transfers the same deterministic 30 MiB file with the existing 64 KiB chunk/range
+configuration. Session creation and publication are timed. Download timing includes
+incremental hashing on both carriers; setup and digest comparisons are outside it.
+Unary downloads reuse retained saved images rather than copying the whole file for
+each range. Full-frame bounds result in 481 ranged calls; uploads use 482 session/
+Append/publication calls. Streaming calls consume the same bytes in one invocation.
+No consumer budget, deadline or workload size changed.
 
-Local measurements after transfer progress/range proof on 2026-11-12 (MiB/s; median and minimum–maximum of three):
-
-| Carrier and Direction | Unary | Retained Streaming |
+| Carrier and Direction | Unary MiB/s, Median (Minimum–Maximum) | Retained Streaming MiB/s, Median (Minimum–Maximum) |
 | --- | ---: | ---: |
-| Client Upload | 73.16 (70.72–89.61) | 341.38 (218.21–360.01) |
-| Client Download | 7.13 (7.10–7.96) | 270.61 (166.60–305.41) |
-| Plugin Upload | 46.96 (33.67–48.74) | Unavailable |
-| Plugin Download | 6.11 (5.85–6.37) | Unavailable |
+| Client Upload | 56.89 (51.53–61.54) | 394.02 (223.28–516.48) |
+| Client Download | 100.94 (94.65–137.97) | 355.03 (178.85–460.33) |
+| Plugin Upload | 38.54 (38.28–39.25) | Unavailable: child input streams are refused |
+| Plugin Download | 52.91 (52.71–54.74) | 94.78 (75.53–122.46) |
 
-These are transport/reference-backend measurements, not disk throughput or hosted
-Windows/Linux evidence. The reference backend copies all file blobs when opening
-its saved snapshot. A unary range currently opens a snapshot per call, so download
-pays that whole-file copy repeatedly while streaming opens it once. This limits any
-cross-backend interpretation; it is not a reason to alter the benchmark or remove
-streaming. Plugin child calls are unary and refuse streaming host operations: there
-is no existing plugin-carrier streaming baseline to measure. That absence is reported
-explicitly rather than represented by zero throughput or a native-call substitute.
-Raw native output and compiler evidence remain under `target/benchmarks/storage/`;
-Nightly runs the same focused case and exports its medians.
+The plugin streaming download invokes the retained ReadFile handler through output
+child calls with explicit demand, counts/hashes every item and verifies completion.
+It returns a typed byte count/digest instead of materializing the file in a unary
+parent response. It is not a native-call substitute. Streaming upload has no existing
+plugin-carrier input mechanism; runtime admission rejects child input streams, so
+no throughput is invented for it. These are transport/reference-provider results,
+not durable-disk throughput or hosted Windows/Linux proof. Streaming stays for owner
+review. Raw output/compiler evidence remains in `target/benchmarks/storage/`, and
+Nightly exports the same case's medians.
 
 ### Face Generator Integration
 

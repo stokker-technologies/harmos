@@ -46,9 +46,54 @@ pub(super) fn store(connection: &Connection, source: &ColumnSource, batch: &Reco
     if batch.num_rows() == 0 {
         return Ok(());
     }
-    if batch.num_rows() > settings.chunk_rows.get() || batch.get_array_memory_size() > settings.chunk_bytes.get() {
-        return Err(columnar::exhausted());
+    if positions(batch)?.values().windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(invalid("native chunk positions must increase"));
     }
+    let mut pending = std::iter::once(0..batch.num_rows()).collect::<Vec<_>>();
+    while let Some(range) = pending.pop() {
+        let original = range.start == 0 && range.end == batch.num_rows();
+        let mut part =
+            if original { batch.clone() } else { columnar::take(batch, &(range.start as u64..range.end as u64).collect::<Vec<_>>())? };
+        let mut data = prepare(&part, settings)?;
+        if data.is_none() && original {
+            // Builder spare capacity is not a physical chunk. Compact before splitting.
+            part = columnar::take(batch, &(range.start as u64..range.end as u64).collect::<Vec<_>>())?;
+            data = prepare(&part, settings)?;
+        }
+        if let Some(data) = data {
+            store_chunk(connection, source, &part, data)?;
+            continue;
+        }
+        if range.len() == 1 {
+            return Err(columnar::exhausted());
+        }
+        let middle = range.start + range.len() / 2;
+        pending.push(middle..range.end);
+        pending.push(range.start..middle);
+    }
+    Ok(())
+}
+
+fn prepare(batch: &RecordBatch, settings: SqliteSettings) -> Result<Option<Vec<Vec<u8>>>> {
+    if batch.num_rows() > settings.chunk_rows.get() || batch.get_array_memory_size() > settings.chunk_bytes.get() {
+        return Ok(None);
+    }
+    let mut bytes = 0usize;
+    let mut data = Vec::with_capacity(batch.num_columns());
+    for (field, column) in batch.schema().fields().iter().zip(batch.columns()) {
+        let single = RecordBatch::try_new(Arc::new(Schema::new(vec![field.clone()])), vec![column.clone()])
+            .map_err(|_| invalid("invalid native column"))?;
+        let encoded = ipc(&single)?;
+        bytes = bytes.saturating_add(encoded.len());
+        if bytes > settings.chunk_bytes.get() {
+            return Ok(None);
+        }
+        data.push(encoded);
+    }
+    Ok(Some(data))
+}
+
+fn store_chunk(connection: &Connection, source: &ColumnSource, batch: &RecordBatch, data: Vec<Vec<u8>>) -> Result<()> {
     let positions = positions(batch)?;
     if positions.values().windows(2).any(|pair| pair[0] >= pair[1]) {
         return Err(invalid("native chunk positions must increase"));
@@ -60,16 +105,7 @@ pub(super) fn store(connection: &Connection, source: &ColumnSource, batch: &Reco
         )
         .map_err(db)?;
     let chunk = connection.last_insert_rowid();
-    let mut bytes = 0usize;
-    for (index, field) in batch.schema().fields().iter().enumerate() {
-        let column = batch.column(index);
-        let single = RecordBatch::try_new(Arc::new(Schema::new(vec![field.clone()])), vec![column.clone()])
-            .map_err(|_| invalid("invalid native column"))?;
-        let data = ipc(&single)?;
-        bytes = bytes.saturating_add(data.len());
-        if bytes > settings.chunk_bytes.get() {
-            return Err(columnar::exhausted());
-        }
+    for ((field, column), data) in batch.schema().fields().iter().zip(batch.columns()).zip(data) {
         let range = column
             .as_any()
             .downcast_ref::<Float64Array>()

@@ -79,7 +79,7 @@ impl ProtobufOperation for SetSchema {
             })
         }
         .await;
-        result.map_err(super::native::failure)
+        result.map_err(super::native::failure).and_then(|response| super::native::read_response(&context, response))
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {

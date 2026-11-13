@@ -44,10 +44,10 @@ where
         if let Some(grant) = &grant {
             access.0.admit(grant).map_err(crate::Error::Access)?;
         }
-        if let FileSource::Stored(file) = &source {
-            if !storage.get_saved_position().covers(&file.position)? {
-                return Err(harmos_storage::Error::NotReady { domain: "WatchFileBytes durable content" }.into());
-            }
+        if let FileSource::Stored(file) = &source
+            && !storage.get_saved_position().covers(&file.position)?
+        {
+            return Err(harmos_storage::Error::NotReady { domain: "WatchFileBytes durable content" }.into());
         }
         Ok((
             storage

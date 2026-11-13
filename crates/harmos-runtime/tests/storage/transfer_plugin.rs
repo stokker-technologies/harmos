@@ -404,7 +404,11 @@ impl plugin::instance_server::Instance for Service {
                         }
                         continue;
                     }
-                    if watch_kind == "read_file" && matches!(child.result, Some(v1::child_response::Result::Payload(_))) {
+                    if watch_kind == "read_file"
+                        && let Some(v1::child_response::Result::Payload(payload)) = &child.result
+                    {
+                        let completion = harmos_protocol::storage::FileCompletion::decode(payload.as_slice()).unwrap();
+                        assert_eq!(completion.bytes, stream_length);
                         let hash = harmos_protocol::storage::FileHash {
                             bytes_read: stream_length,
                             sha256: stream_hash.finalize().to_vec(),

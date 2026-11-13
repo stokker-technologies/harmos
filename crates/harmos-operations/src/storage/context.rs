@@ -431,12 +431,14 @@ impl ProtobufOperation for SetIndexDefinition {
         let (definition, revision, receipt) = super::definitions::set_index(
             &context,
             Self::ID,
-            request.definition,
-            request.expected_revision,
-            request.create_if_absent,
-            request.rebuild,
-            request.work,
-            request.mutation,
+            super::definitions::SetIndexInput {
+                definition: request.definition,
+                expected_revision: request.expected_revision,
+                create_if_absent: request.create_if_absent,
+                rebuild: request.rebuild,
+                work: request.work,
+                mutation: request.mutation,
+            },
         )
         .await?;
         super::native::read_response(
@@ -842,7 +844,7 @@ impl ProtobufOperation for SetObject {
         use wire::storage_set_object_response::{Applied, Conflict, Outcome};
         let outcome = match result {
             super::object::SetOutcome::Applied(value, revision, receipt) => Outcome::Applied(Applied {
-                value: Some(value),
+                value: Some(*value),
                 revision,
                 receipt: Some(receipt),
             }),

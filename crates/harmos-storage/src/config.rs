@@ -172,9 +172,9 @@ impl StorageSettings {
         self.request.max_pending_write_bytes.min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
     }
 
-    /// Target encoded bytes per provider write. An indivisible entry may use the
-    /// larger admission ceiling returned by `max_batch_bytes`.
-    pub fn flush_batch_bytes(&self) -> usize {
+    /// Request an early flush at this queued encoded size. Each commit retains
+    /// the existing atomic admission ceiling returned by `max_batch_bytes`.
+    pub fn flush_trigger_bytes(&self) -> usize {
         TARGET_BATCH_BYTES.min(self.max_batch_bytes().get())
     }
 

@@ -83,6 +83,10 @@ impl State {
     }
 
     pub(crate) fn request_flush(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        for entry in self.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data && self.needs_write(entry)) {
+            entry.ready_at.get_or_init(|| now);
+        }
         let mut requested = false;
         if self.data_request.is_none() && self.data_accepted.index > self.data_flushed {
             self.data_request = Some(self.data_accepted);

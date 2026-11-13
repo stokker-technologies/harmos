@@ -150,7 +150,7 @@ impl StorageManager {
             let mut admission = Admission { inner: self.inner.clone(), active: true };
             let operation =
                 tracing::debug_span!("storage.admission.prepare").in_scope(|| build(if count == 0 { sequence } else { sequence + 1 }))?;
-            tracing::debug_span!("storage.admission.validate")
+            let encoded_bound = tracing::debug_span!("storage.admission.validate")
                 .in_scope(|| operation.check_entry_bytes(self.inner.settings.max_batch_bytes()))?;
             if let Operation::Snapshot(snapshot) = &operation
                 && (snapshot.len() != 1 || snapshot.as_slice()[0].through.sequence > sequence)
@@ -162,12 +162,12 @@ impl StorageManager {
             }
             let bytes = match &operation {
                 Operation::ObjectGroup { bytes: retained, .. } => *retained,
-                Operation::Conditional(_) => operation.encoded_batch_bytes()?,
+                Operation::Conditional(_) => encoded_bound,
                 _ => bytes,
             };
             tracing::Span::current().record("sequence", last);
             tracing::Span::current().record("index", index);
-            let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, operation));
+            let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, encoded_bound, operation));
             let completion;
             {
                 let _publication = tracing::debug_span!("storage.admission.publish").entered();
@@ -271,6 +271,10 @@ impl StorageManager {
                     notify = request.is_none_or(|current| target.index < current.index);
                     if notify {
                         *request = Some(target);
+                        let now = std::time::Instant::now();
+                        for entry in state.queue.iter().filter(|entry| entry.index <= target.index && entry.operation.domain() == domain) {
+                            entry.ready_at.get_or_init(|| now);
+                        }
                     }
                 }
                 if notify {

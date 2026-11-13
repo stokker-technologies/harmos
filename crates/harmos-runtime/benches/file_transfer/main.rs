@@ -53,7 +53,7 @@ use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 fn main() {
     let executor = tokio::runtime::Runtime::new().unwrap();
     for repetition in 1..=3 {
-        for (plugin_carrier, streaming) in [(false, false), (false, true), (true, false)] {
+        for (plugin_carrier, streaming) in [(false, false), (false, true), (true, false), (true, true)] {
             executor.block_on(async {
                 // Compose an Isolated Host With the Same Reference Backend and Budgets.
                 let data = Arc::new(backend::Data::new(backend::history()));
@@ -78,7 +78,7 @@ fn main() {
                 let carrier = carrier::Transport::new(host.operations.clone(), channel, storage.mutation_window().unwrap().id.to_string(), plugin_carrier);
 
                 // Measure Upload and Download, Including Publication and Integrity.
-                let measurements = file_transfer::run(&carrier, chunk_bytes, streaming).await.unwrap();
+                let measurements = if plugin_carrier && streaming { vec![file_transfer::streaming_download(&carrier, chunk_bytes).await.unwrap()] } else { file_transfer::run(&carrier, chunk_bytes, streaming).await.unwrap().into() };
                 for measurement in measurements {
                     println!("STORAGE_FILE_TRANSFER {}", serde_json::json!({ "case": format!("integration/file_transfer/{}/{}/{}", measurement.carrier, measurement.transfer, measurement.direction), "backend": "reference-memory", "repetition": repetition, "measurement": measurement }));
                 }
@@ -94,7 +94,7 @@ fn main() {
     }
     println!(
         "STORAGE_FILE_TRANSFER_UNAVAILABLE {}",
-        serde_json::json!({ "carrier": "plugin", "transfer": "streaming", "reason": "plugin child calls are unary; no retained streaming upload or download is callable through this carrier" })
+        serde_json::json!({ "carrier": "plugin", "transfer": "streaming", "direction": "upload", "reason": "plugin child calls reject input streams; retained streaming download is measured through output child calls" })
     );
 }
 

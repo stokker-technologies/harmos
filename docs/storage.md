@@ -525,7 +525,10 @@ record their own backend/durability mode while retaining these names, units and 
 Run `mise run bench -- --storage --filter durable_lag` for the Nightly
 `integration/durable_lag/{small_high_rate,multi_megabyte,mixed}` cases. Each reports
 acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admission wait,
-and synchronous SQLite commit count/time. Compare each p95 independently with 250 ms;
+and synchronous SQLite commit count/time. Five runs per load retain median and
+spread, compiler-activity samples and stage counters for cadence/ordered waits,
+batch construction, provider writing, synchronous commit and frontier publication.
+Compare each p95 independently with 250 ms;
 a successful benchmark process does not assert that latency bound. Windows measurements
 are recorded in the operation-grammar design; native Linux and hosted evidence remain pending.
 
@@ -535,12 +538,18 @@ manager. Supply the ordinary backend, worker owner, settings and durability mode
 The observer only subscribes to saved progress; it never requests a flush.
 
 The worker starts flushing on its cadence or when queued bytes reach the existing
-size threshold. Typed provider writes split at entry boundaries around
-`StorageSettings::flush_batch_bytes()`. A single indivisible entry may use the larger
+size threshold. `StorageSettings::flush_trigger_bytes()` requests early persistence separately
+from commit sizing. Typed provider writes retain the existing
 `max_batch_bytes()` ceiling; admission refuses entries beyond that ceiling. Each
 successful piece publishes its saved frontier independently, and retry skips its
-already durable prefix. Splitting changes no stored encoding, durability setting or
-atomic conditional-object replacement.
+already durable prefix. The redundant 1 MiB per-commit split was removed after
+stage measurements showed synchronous-commit amplification and small-write blocking;
+no stored encoding, durability setting or admission ceiling changed. Large
+admissions remain separate commit units, so an earlier small prefix cannot join
+a later large admission. Checked admission sizes are reused when batching and
+persisting. Larger state captures still split at the existing atomic byte ceiling.
+SQLite independently compacts/splits physical column chunks inside the same
+transaction, preserving its configured row/byte limits and rollback semantics.
 
 ## Native Provider Hooks
 
@@ -631,12 +640,14 @@ transfers remain for the required throughput comparison before their removal.
 30 MiB file with the configured 64 KiB chunks/ranges, checks its length and digest,
 and reports three repetitions for each available carrier/mode. Client unary and
 streaming calls cross a host socket; plugin unary calls cross the host/plugin
-carrier as context child calls. The existing plugin carrier cannot call streaming
-host operations, so it reports that comparison unavailable.
+carrier as context child calls. Streaming downloads use the retained ReadFile
+operation through output child calls with explicit demand. Streaming uploads remain
+unavailable because the carrier rejects child input streams. Download timing
+includes incremental hashing on both carriers; comparisons happen after timing.
 
-The benchmark composes the existing reference memory backend. Its saved snapshots
-copy file blobs, which disproportionately costs repeated unary ranges; the figures
-are not a claim about durable filesystem throughput. Consumer backends can reuse
+The benchmark composes the existing reference memory backend and reuses retained
+saved images across unary ranges. The figures are transport/reference-provider
+measurements, not a claim about durable filesystem throughput. Consumer backends can reuse
 `harmos_storage::bench_support::file_transfer::{Carrier, run}`. Nightly retains raw
 native output and median throughput with bytes, call counts and configured range
 sizes. Streaming remains available for owner review of that evidence.

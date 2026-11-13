@@ -214,12 +214,13 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`;
     `openspec/specs/storage-mutations/spec.md`;
     `openspec/changes/operation-grammar/specs/storage-mutations/spec.md`.
-    **Proof:** No proof yet across the complete new client surface. Existing
-    `mutation_receipts_survive_replays_lost_responses_and_cancellation` in
-    `crates/harmos-runtime/tests/storage/manager/receipts.rs` guards current file mutations;
-    `admitted_create_completes` in
-    `crates/harmos-storage/tests/integration/manager/mutations.rs` guards late completion.
-    **Status:** locked direction (`operation-grammar`); these underlying guarantees are landed.
+    **Proof:** Storage's unary-transfer, Append-record/sample/object, definition-
+    receipt and schema-mirror journeys in `crates/harmos-runtime/tests/storage/`
+    cover original receipts, changed requests, admitted work after caller loss and
+    retained windows. Native schema/index/projection restart journeys cover atomic
+    outcomes and `admitted_create_completes` covers completion through retry expiry.
+    **Status:** landed for the migrated storage surface; the complete service census
+    and non-storage mutation joins remain under `operation-grammar`.
 
 13. **Distinct Storage Guarantees.** Saved reads pin durable data; follows may join
     accepted data and must not label it saved. Bounded physical scans, ordered index
