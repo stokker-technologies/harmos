@@ -32,7 +32,8 @@ function(harmos_protocol target root output)
     file(MAKE_DIRECTORY "${output}")
     get_target_property(protobuf_includes protobuf::libprotobuf INTERFACE_INCLUDE_DIRECTORIES)
     protobuf_generate(TARGET ${target} PROTOS ${inputs}
-        IMPORT_DIRS "${root}" ${protobuf_includes} PROTOC_OUT_DIR "${output}")
+        IMPORT_DIRS "${root}" ${protobuf_includes} PROTOC_OUT_DIR "${output}"
+        DEPENDENCIES protobuf::protoc ${inputs})
     set(server_options "allow_sync_server_api=false,allow_cq_api=false")
     if(PROTOCOL_SYNC_SERVER)
         set(server_options "allow_sync_server_api=true,allow_cq_api=true")
@@ -42,7 +43,7 @@ function(harmos_protocol target root output)
         GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
         PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
         PLUGIN_OPTIONS "${server_options}"
-        DEPENDENCIES gRPC::grpc_cpp_plugin)
+        DEPENDENCIES protobuf::protoc gRPC::grpc_cpp_plugin ${inputs})
     target_include_directories(${target} SYSTEM PUBLIC
         $<BUILD_INTERFACE:${output}>
         $<INSTALL_INTERFACE:include>)
