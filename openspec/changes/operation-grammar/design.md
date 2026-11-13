@@ -1521,3 +1521,18 @@ subscription precedes enumeration and preserves initial boundary and explicit
 rescan-required uncertainty. Native selection, cancellation and lifetimes remain
 owned by those readers. Whole wire envelopes, including nested event lengths,
 count toward consumer response limits without changing the limits themselves.
+
+### Filesystem Metadata and Retained Image Identity
+
+GetFileHash, CaptureFile and ListDirectoryEntries now share handlers across the
+independently declared faces. A local hash, production status or directory listing
+retains only bounded result metadata under the existing issued-cut owner. Explicit
+`at` repeats that observation, not a newer filesystem image. Directory enumeration
+is ordered and bounded but not an atomic filesystem snapshot. Whole response
+framing counts against page limits. A lease has its own release handle while
+sharing the retained image identity; pinning therefore preserves already issued
+continuations through automatic cache eviction. Restart changes issuance ownership
+and refuses old cuts/tokens even if persisted primary positions are unchanged.
+No accepted-payload snapshot is introduced. Capture retains unknown replay safety,
+its existing consistency modes and completed durable publication; without a caller
+mutation ID it does not promise replay-key deduplication.

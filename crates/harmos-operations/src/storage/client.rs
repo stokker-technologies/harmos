@@ -114,26 +114,17 @@ impl ProtobufOperation for GetFileProduction {
     }
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
-        let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
-        let result: crate::Result<Self::Response> = async {
-            Self::grant(&request).map_err(|_| crate::Error::InvalidInput {
-                field: "GetFileProduction",
-                reason: "file identity is required",
-            })?;
-            transfers::admit(&context, Self::ID, request.file.as_ref().map(|value| value.id.as_str()).expect("validated file identity"))?;
-            let status = transfers::status(&storage, transfers::required(request.file)?).await?;
-            let read = snapshots.resolve(&storage, None).await?;
-            Ok(Self::Response {
-                production: Some(status.progress.into()),
-                writer_generation: status.writer_generation.unwrap_or(0),
-                resolved_at: Some(read.cut().clone()),
-                accepted_length: status.accepted_length,
-                durable_length: status.durable_length,
-            })
-        }
-        .await;
-        result.map_err(super::native::failure)
+        let (production, at) = super::file_access::production(&context, Self::ID, request.file, request.at).await?;
+        super::native::read_response(
+            &context,
+            Self::Response {
+                production: Some(production.progress),
+                writer_generation: production.generation,
+                resolved_at: Some(at),
+                accepted_length: production.accepted,
+                durable_length: production.durable,
+            },
+        )
     }
 
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
@@ -1076,5 +1067,77 @@ impl ProtobufOperation for WatchDirectoryEntries {
         })
         .await?;
         Ok(Self::Response { event: None })
+    }
+}
+
+pub struct GetFileHash;
+impl ProtobufOperation for GetFileHash {
+    type Request = wire::StorageGetFileHashRequest;
+    type Response = wire::StorageGetFileHashResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.Storage/GetFileHash";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Storage", "GetFileHash"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::file_watches::grant(Self::ID, request.source.as_ref())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (hash, at) = super::file_access::hash(&context, Self::ID, request.source, request.range, request.at).await?;
+        super::native::read_response(&context, Self::Response { hash: Some(hash), resolved_at: Some(at) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct CaptureFile;
+impl ProtobufOperation for CaptureFile {
+    type Request = wire::StorageCaptureFileRequest;
+    type Response = wire::StorageCaptureFileResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.Storage/CaptureFile";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Storage", "CaptureFile"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Unknown;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::SavedSnapshots>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::file_watches::grant(Self::ID, request.source.as_ref())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (file, receipt) =
+            super::file_access::capture(&context, Self::ID, request.source, request.range, request.metadata, request.consistency).await?;
+        super::native::read_response(&context, Self::Response { file: Some(file), receipt: Some(receipt) })
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct ListDirectoryEntries;
+impl ProtobufOperation for ListDirectoryEntries {
+    type Request = wire::StorageListDirectoryEntriesRequest;
+    type Response = wire::StorageListDirectoryEntriesResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.v1.Storage/ListDirectoryEntries";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.v1", "Storage", "ListDirectoryEntries"));
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::SavedSnapshots>()];
+    fn grant(_: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        Ok(None)
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        super::file_access::directory(&context, request.selection, request.at, request.page).await
+    }
+    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
     }
 }

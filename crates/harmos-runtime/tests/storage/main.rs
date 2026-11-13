@@ -16,6 +16,7 @@ mod generated_native_journey;
 
 mod durable_row_watch;
 mod file_observation;
+mod filesystem_metadata;
 mod filtered_pages;
 #[path = "generated_capture.rs"]
 mod generated_capture;

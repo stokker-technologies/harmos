@@ -28,7 +28,7 @@ async fn capture_then_follow_stored_contents() {
     let reference = fixture
         .runtime
         .operations
-        .call_protobuf::<CaptureFile>(wire::CaptureFile {
+        .call_protobuf::<CaptureFile>(v1::StorageCaptureFileRequest {
             source: Some(wire::FileSource {
                 source: Some(wire::file_source::Source::Local(source.to_str().unwrap().into())),
             }),
@@ -42,6 +42,9 @@ async fn capture_then_follow_stored_contents() {
         })
         .await
         .unwrap();
+    assert!(reference.receipt.as_ref().unwrap().completed);
+    assert!(reference.receipt.as_ref().unwrap().durable_at.is_some());
+    let reference = reference.file.unwrap();
     assert_eq!(reference.length, 16);
     fixture.storage.flush().await.unwrap();
     let limit = StreamSettings {

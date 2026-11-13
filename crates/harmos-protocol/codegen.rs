@@ -127,8 +127,8 @@ pub fn generate(
             "harmos.v1.GuestShutdown",
             "harmos.context.v1.SamplesAppendRequest",
             "harmos.context.v1.SamplesAppendResponse",
-            "harmos.storage.v1.HashFile",
-            "harmos.storage.v1.FileHash",
+            "harmos.context.v1.StorageGetFileHashRequest",
+            "harmos.context.v1.StorageGetFileHashResponse",
         ],
     )?;
     std::fs::write(output.join("guest-descriptors.bin"), prost::Message::encode_to_vec(&guest_types))?;
@@ -192,6 +192,7 @@ pub fn generate_example(
     config.protoc_executable(compiler);
     config.out_dir(output);
     config.extern_path(".harmos.storage.v1", "::harmos_protocol::storage");
+    config.extern_path(".harmos.context.v1", "::harmos_protocol::context");
     config.file_descriptor_set_path(output.join("schematic.descriptors.bin"));
     config.compile_protos(&[proto.join("schematic/v1/operations.proto")], &[proto, includes.into()])?;
     let mut descriptors: prost_types::FileDescriptorSet =

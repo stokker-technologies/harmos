@@ -25,10 +25,12 @@ class StorageCreateFileProductionResponse(_message.Message):
     def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
 class StorageGetFileProductionRequest(_message.Message):
-    __slots__ = ("file",)
+    __slots__ = ("file", "at")
     FILE_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
     file: _storage_types_pb2.StagedFile
-    def __init__(self, file: _Optional[_Union[_storage_types_pb2.StagedFile, _Mapping]] = ...) -> None: ...
+    at: _types_pb2.ReadCut
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.StagedFile, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageGetFileProductionResponse(_message.Message):
     __slots__ = ("production", "writer_generation", "resolved_at", "accepted_length", "durable_length")
@@ -537,12 +539,14 @@ class StorageWatchFileProductionResponse(_message.Message):
     def __init__(self, data: _Optional[_Union[_storage_types_pb2.FileBatch, _Mapping]] = ..., progress: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ...) -> None: ...
 
 class StorageListDirectoryEntriesRequest(_message.Message):
-    __slots__ = ("selection", "page")
+    __slots__ = ("selection", "page", "at")
     SELECTION_FIELD_NUMBER: _ClassVar[int]
     PAGE_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
     selection: _storage_types_pb2.DirectorySelection
     page: _types_pb2.PageRequest
-    def __init__(self, selection: _Optional[_Union[_storage_types_pb2.DirectorySelection, _Mapping]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ...) -> None: ...
+    at: _types_pb2.ReadCut
+    def __init__(self, selection: _Optional[_Union[_storage_types_pb2.DirectorySelection, _Mapping]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageListDirectoryEntriesResponse(_message.Message):
     __slots__ = ("entries", "next_page_token", "resolved_at")

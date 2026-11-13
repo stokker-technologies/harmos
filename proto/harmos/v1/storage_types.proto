@@ -53,7 +53,6 @@ message DirectoryEvent {
     Empty rescan_required = 7;
   }
 }
-message ListDirectory { DirectorySelection selection = 1; }
 
 message FileSource { oneof source { FileReference stored = 1; string local = 2; } }
 message ByteRange { uint64 offset = 1; optional uint64 limit = 2; }
@@ -64,8 +63,6 @@ message FollowStart { oneof start { Empty beginning = 1; Empty end = 2; uint64 a
 message FileEvent { oneof event { FileBatch data = 1; uint64 truncated = 2; Empty replaced = 3; } }
 enum CaptureConsistency { BOUNDED = 0; STABLE = 1; }
 message ReadFile { FileSource source = 1; ByteRange range = 2; }
-message HashFile { FileSource source = 1; ByteRange range = 2; }
-message CaptureFile { FileSource source = 1; ByteRange range = 2; FileMetadata metadata = 3; CaptureConsistency consistency = 4; }
 
 // Storage schema graphs describe persisted payloads; they do not change their encoding.
 enum PayloadEncoding { PAYLOAD_ENCODING_UNSPECIFIED = 0; POSTCARD_V1 = 1; }

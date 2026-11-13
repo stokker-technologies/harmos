@@ -190,12 +190,6 @@ pub mod directory_event {
     }
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ListDirectory {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<DirectorySelection>,
-}
-#[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileSource {
     #[prost(oneof = "file_source::Source", tags = "1, 2")]
@@ -287,26 +281,6 @@ pub struct ReadFile {
     pub source: ::core::option::Option<FileSource>,
     #[prost(message, optional, tag = "2")]
     pub range: ::core::option::Option<ByteRange>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct HashFile {
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub range: ::core::option::Option<ByteRange>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct CaptureFile {
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub range: ::core::option::Option<ByteRange>,
-    #[prost(message, optional, tag = "3")]
-    pub metadata: ::core::option::Option<FileMetadata>,
-    #[prost(enumeration = "CaptureConsistency", tag = "4")]
-    pub consistency: i32,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

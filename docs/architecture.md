@@ -199,8 +199,9 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     socket/child durable observation, opening races, filtered progress and resync;
     `durable_watch_waits_for_commit_advances_filters_and_reports_retention_gaps`
     in the native storage manager tests covers committed-prefix gating.
-    Complete external file/directory migration and the measured lag bound remain
-    open under tasks 3.2/3.8 and the repeated benchmark investigation.
+    `filesystem_metadata_cuts_repeat_results_and_pin_directory_continuations`
+    covers metadata observations, pinned continuation, eviction and restart refusal.
+    The measured lag bound remains open in the repeated benchmark investigation.
     **Status:** partially landed; no complete lag-bound proof.
 
 12. **Stable Receipts After Lost Replies.** The caller resends; the same request

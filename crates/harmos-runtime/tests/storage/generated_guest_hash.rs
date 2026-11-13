@@ -7,17 +7,16 @@
  * ***
  */
 
-// Hash a Local File Through the Private Guest Callee Boundary.
+// Hash A Local File Through The Declared Context Callee.
 
 /* === Tests === */
 
 #[tokio::test]
 async fn guest_hash_uses_the_native_protobuf_handler() {
     use super::*;
-    use harmos_protocol::storage::FileHash;
-    use harmos_protocol::storage::HashFile;
+    use harmos_operations::storage::context::GetFileHash;
+    use harmos_protocol::context::StorageGetFileHashRequest;
     use harmos_runtime::storage::{ByteRange, FileSource};
-    use prost::Message as _;
     use sha2::{Digest, Sha256};
     let fixture = Fixture::new(config()).await;
     crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
@@ -26,8 +25,7 @@ async fn guest_hash_uses_the_native_protobuf_handler() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("input.bin");
     std::fs::write(&path, b"private guest hash").unwrap();
-    let contract =
-        harmos_runtime::operations::OperationFactory::protobuf::<harmos_operations::storage::HashFile>().unwrap().contract().unwrap();
+    let contract = harmos_runtime::operations::OperationFactory::protobuf::<GetFileHash>().unwrap().contract().unwrap();
     let definitions = PluginDefinitions::new([plugin("reader", vec![Required { contract, grants: vec![] }])], []).unwrap();
     let mut manager = PluginManager::new(definitions).unwrap();
     let mut host = Host {
@@ -37,17 +35,15 @@ async fn guest_hash_uses_the_native_protobuf_handler() {
     manager.initialize(&mut host).await.unwrap();
     let reader = fixture.runtime.operations.caller(&host.callers["reader"]).unwrap();
     let response = reader
-        .call_encoded(
-            "host.storage.hash_file",
-            HashFile {
-                source: Some(FileSource::Local(path).try_into().unwrap()),
-                range: Some(ByteRange { offset: 0, limit: None }.into()),
-            }
-            .encode_to_vec(),
-        )
+        .call_protobuf::<GetFileHash>(StorageGetFileHashRequest {
+            source: Some(FileSource::Local(path).try_into().unwrap()),
+            range: Some(ByteRange { offset: 0, limit: None }.into()),
+            at: None,
+        })
         .await
+        .unwrap()
+        .hash
         .unwrap();
-    let response = FileHash::decode(response.as_slice()).unwrap();
     assert_eq!(response.bytes_read, 18);
     assert_eq!(response.sha256, Sha256::digest(b"private guest hash").to_vec());
     manager.shutdown(&mut host).await.unwrap();

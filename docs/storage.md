@@ -116,6 +116,27 @@ work. Cancellation does not roll back an already committed write. CPU bucket wor
 runs on the blocking executor; dropping its awaiting future cancels its child
 without cancelling the caller's shared token.
 
+## Unary Filesystem Metadata
+
+`GetFileHash`, `CaptureFile` and `ListDirectoryEntries` have separate client and
+context wrappers and shared handlers. Stored hashes validate an exact durable
+reference and digest. Local hashes retain their result metadata at the returned
+issued cut; repeating that cut returns the original result after the file changes.
+`GetFileProduction` similarly retains progress, writer generation and distinct
+accepted/durable byte lengths at its resolved cut.
+
+Directory enumeration retains bounded, path-ordered metadata for continuation.
+Pages obey complete response-frame limits; changing the selection refuses the
+token. This is a retained enumeration, not an atomic filesystem snapshot. An
+explicit read lease pins the same image and its continuations through automatic
+cache eviction. Releasing it, expiry or restart refuses unavailable observations
+and tokens, even when the underlying durable store position is unchanged.
+Only metadata is retained; accepted storage payloads are never snapshotted.
+
+Capture preserves native consistency checks and returns its completed durable
+publication receipt. It has unknown replay safety and no caller mutation ID;
+that receipt does not add a replay-key promise to capture.
+
 ## File and Directory Observation
 
 `WatchFileBytes`, `WatchFileProduction` and `WatchDirectoryEntries` have independent

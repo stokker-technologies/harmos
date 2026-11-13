@@ -1,9 +1,10 @@
 
-ù
-harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.protoharmos/v1/types.proto"„
+™
+harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.protoharmos/v1/types.proto"¤
 "StorageListDirectoryEntriesRequest8
 	selection (2%.harmos.storage.v1.DirectorySelection$
-page (2.harmos.v1.PageRequestbproto3
+page (2.harmos.v1.PageRequest
+at (2.harmos.v1.ReadCutbproto3
 Õ
 harmos/v1/storage_types.protoharmos.storage.v1"1
 DirectoryRule
@@ -13,10 +14,22 @@
 root (	
 	recursive (/
 rules (2 .harmos.storage.v1.DirectoryRulebproto3
-s
-harmos/v1/types.proto	harmos.v1"G
+ö
+harmos/v1/types.proto	harmos.v1"'
+History
+store (	
+epoch (	"G
 PageRequest
 	page_size (
 	max_bytes (
 
-page_token (	bproto3
+page_token (	"A
+Position#
+history (2.harmos.v1.History
+sequence ("a
+ReadCut&
+	positions (2.harmos.v1.Position.
+	revisions (2.harmos.v1.ResourceRevision"2
+ResourceRevision
+name (	
+revision (bproto3

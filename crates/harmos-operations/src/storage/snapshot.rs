@@ -42,9 +42,11 @@ pub(crate) struct SnapshotRead {
 }
 
 struct HeldSnapshot {
+    identity: Vec<u8>,
     snapshot: Arc<Snapshot>,
     cut: v1::ReadCut,
     explicit: bool,
+    observation: Option<Arc<super::file_access::Observation>>,
     _permit: tokio::sync::OwnedSemaphorePermit,
 }
 
@@ -58,10 +60,13 @@ impl std::ops::Deref for SnapshotRead {
 }
 impl SnapshotRead {
     pub(crate) fn identity(&self) -> &[u8] {
-        &self.handle.token
+        &self.snapshot.identity
     }
     pub(crate) fn cut(&self) -> &v1::ReadCut {
         &self.snapshot.cut
+    }
+    pub(super) fn observation(&self) -> Option<&super::file_access::Observation> {
+        self.snapshot.observation.as_deref()
     }
     pub(crate) fn snapshot(&self) -> Arc<Snapshot> {
         self.snapshot.snapshot.clone()
@@ -93,7 +98,7 @@ impl SavedSnapshots {
                 })
             });
             let Some(index) = index else {
-                let pinned = registry.entries.iter().filter(|(_, held)| held.explicit).map(|(token, _)| token.clone()).collect();
+                let pinned = registry.entries.values().filter(|held| held.explicit).map(|held| held.identity.clone()).collect();
                 if self.queries.evict_idle(Some(&pinned)) {
                     continue;
                 }
@@ -108,17 +113,29 @@ impl SavedSnapshots {
         &self, snapshot: Snapshot, permit: tokio::sync::OwnedSemaphorePermit,
     ) -> harmos_storage::Result<wire::SavedSnapshot> {
         let cut = super::transfers::cut(snapshot.at().clone());
-        self.insert_cut(Arc::new(snapshot), cut, true, permit)
+        self.insert_cut(Arc::new(snapshot), cut, true, permit, None, None)
     }
     fn insert_cut(
         &self, snapshot: Arc<Snapshot>, cut: v1::ReadCut, explicit: bool, permit: tokio::sync::OwnedSemaphorePermit,
+        observation: Option<Arc<super::file_access::Observation>>, identity: Option<Vec<u8>>,
     ) -> harmos_storage::Result<wire::SavedSnapshot> {
         let mut token = vec![0; 32];
         getrandom::fill(&mut token).map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "snapshot entropy" })?;
+        let identity = identity.unwrap_or_else(|| token.clone());
         let at = Some(snapshot.at().clone().into());
         let mut registry = self.registry.lock().unwrap();
         registry.order.push_back(token.clone());
-        registry.entries.insert(token.clone(), Arc::new(HeldSnapshot { snapshot, cut, explicit, _permit: permit }));
+        registry.entries.insert(
+            token.clone(),
+            Arc::new(HeldSnapshot {
+                identity,
+                snapshot,
+                cut,
+                explicit,
+                observation,
+                _permit: permit,
+            }),
+        );
         Ok(wire::SavedSnapshot { token, at })
     }
     fn get(&self, handle: &wire::SavedSnapshot) -> harmos_storage::Result<Arc<HeldSnapshot>> {
@@ -151,7 +168,14 @@ impl SavedSnapshots {
             let read = self.resolve(storage, Some(at)).await?;
             let permit = self.reserve()?;
             let cut = read.cut().clone();
-            let handle = self.insert_cut(read.snapshot(), cut.clone(), true, permit)?;
+            let handle = self.insert_cut(
+                read.snapshot(),
+                cut.clone(),
+                true,
+                permit,
+                read.snapshot.observation.clone(),
+                Some(read.identity().to_vec()),
+            )?;
             Ok((handle, cut))
         } else {
             let permit = self.reserve()?;
@@ -187,7 +211,7 @@ impl SavedSnapshots {
             }
             let permit = self.reserve()?;
             let snapshot = Arc::new(storage.snapshot(&position).await?);
-            self.insert_cut(snapshot, cut, false, permit)?
+            self.insert_cut(snapshot, cut, false, permit, None, None)?
         };
         let read = self.read(handle)?;
         Ok(read)
@@ -201,10 +225,38 @@ impl SavedSnapshots {
         let mut base = cut.clone();
         base.revisions.clear();
         let position = super::transfers::at(Some(base))?.expect("one storage history");
+        let observation = self
+            .registry
+            .lock()
+            .unwrap()
+            .entries
+            .values()
+            .find(|held| {
+                held.observation.is_some()
+                    && held.cut.positions == cut.positions
+                    && held.cut.revisions.iter().all(|revision| cut.revisions.contains(revision))
+                    && held.snapshot.is_available()
+            })
+            .and_then(|held| held.observation.clone());
         let permit = self.reserve()?;
         let snapshot = Arc::new(storage.snapshot(&position).await?);
-        self.insert_cut(snapshot, cut.clone(), false, permit)?;
+        self.insert_cut(snapshot, cut.clone(), false, permit, observation, None)?;
         Ok(cut)
+    }
+    /// Attach Only Observed Metadata; No Accepted Storage Bytes Are Copied.
+    pub(super) async fn observe(
+        &self, storage: &StorageManager, position: StorageCursor, resource: String, observation: super::file_access::Observation,
+    ) -> crate::Result<SnapshotRead> {
+        let _issuance = self.issuance.lock().await;
+        let permit = self.reserve()?;
+        let snapshot = Arc::new(storage.snapshot(&position).await?);
+        let mut revision = vec![0; 16];
+        getrandom::fill(&mut revision)
+            .map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "observation revision entropy" })?;
+        let mut cut = super::transfers::cut(position);
+        cut.revisions.push(v1::ResourceRevision { name: resource, revision });
+        let handle = self.insert_cut(snapshot, cut, false, permit, Some(Arc::new(observation)), None)?;
+        Ok(self.read(handle)?)
     }
     pub(crate) fn seal_cursor<T: serde::Serialize>(&self, read: &SnapshotRead, plan: &[u8], cursor: &T) -> crate::Result<String> {
         let mut signing = self.signing.lock().unwrap();
@@ -250,9 +302,10 @@ impl SavedSnapshots {
         let cursor = postcard::from_bytes(&message[PREFIX.len() + 64..]).map_err(|_| expired())?;
         let handle = {
             let registry = self.registry.lock().unwrap();
-            let held = registry.entries.get(identity).filter(|held| held.snapshot.is_available()).ok_or_else(expired)?;
+            let (token, held) =
+                registry.entries.iter().find(|(_, held)| held.identity == identity && held.snapshot.is_available()).ok_or_else(expired)?;
             wire::SavedSnapshot {
-                token: identity.to_vec(),
+                token: token.clone(),
                 at: Some(held.snapshot.at().clone().into()),
             }
         };

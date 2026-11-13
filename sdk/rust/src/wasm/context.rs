@@ -214,33 +214,8 @@ impl<R: Message> Child<R> {
     }
 }
 
-impl Message for harmos_protocol::storage::HashFile {
-    fn name() -> String {
-        "harmos.storage.v1.HashFile".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        protocol_types(&Self::name())
-    }
-}
-impl OperationRequest for harmos_protocol::storage::HashFile {
-    type Response = harmos_protocol::storage::FileHash;
-    const ID: &'static str = "storage.hash_file";
-}
-impl Message for harmos_protocol::storage::FileHash {
-    fn name() -> String {
-        "harmos.storage.v1.FileHash".into()
-    }
-    fn types() -> prost_types::FileDescriptorSet {
-        protocol_types(&Self::name())
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */
-
-fn protocol_types(name: &str) -> prost_types::FileDescriptorSet {
-    harmos_protocol::schema::message_types(harmos_protocol::guest::types(), name).expect("generated publication message")
-}
 
 /* === Tests === */

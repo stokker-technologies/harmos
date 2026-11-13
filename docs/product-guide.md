@@ -561,8 +561,8 @@ page sizes and pending writes remain bounded by the configured request and respo
 settings. Consumers own budgets for their retained results and conversion scratch.
 
 File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
-`ReadFile` streams a selected byte range; `HashFile` returns its byte count and
-SHA-256. `CaptureFile` creates an independent durable stored file while hashing.
+`ReadFile` streams a selected byte range; `Storage.GetFileHash` returns its byte count and
+SHA-256. `Storage.CaptureFile` creates an independent durable stored file while hashing.
 `CaptureConsistency::Stable` rejects detected source changes; it does not provide
 an atomic snapshot. `Bounded` copies the initially selected range. Local paths
 refer to the executing host and may be anywhere its process can access, including
@@ -602,7 +602,7 @@ explicit truncation/replacement events. Staged-production observation uses the
 distinct `Storage.WatchFileProduction` operation. Native file slices and shared read batches
 retain their backing allocations until their final owner is released.
 
-`ListDirectory` and `Storage.WatchDirectoryEntries` share a `DirectorySelection` containing the
+`Storage.ListDirectoryEntries` and `Storage.WatchDirectoryEntries` share a `DirectorySelection` containing the
 root, recursion flag and ordered include/exclude rules. Patterns match
 case-sensitive slash-relative paths: `*` stays within one segment and `**` crosses
 segments. The last matching rule wins; unmatched paths are excluded. An excluded

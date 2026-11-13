@@ -7,7 +7,7 @@ import "harmos/v1/storage_types.proto";
 
 message StorageCreateFileProductionRequest { .harmos.storage.v1.FileMetadata metadata = 1; .harmos.storage.v1.MutationId mutation = 2; }
 message StorageCreateFileProductionResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
-message StorageGetFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; }
+message StorageGetFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; .harmos.v1.ReadCut at = 2; }
 message StorageGetFileProductionResponse { .harmos.storage.v1.FileProgress production = 1; uint64 writer_generation = 2; .harmos.v1.ReadCut resolved_at = 3; uint64 accepted_length = 4; uint64 durable_length = 5; }
 message StorageAppendFileBytesRequest { .harmos.storage.v1.FileSession session = 1; uint64 offset = 2; bytes data = 3; .harmos.storage.v1.MutationId mutation = 4; }
 message StorageAppendFileBytesResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
@@ -64,7 +64,7 @@ message StorageWatchFileBytesRequest { .harmos.storage.v1.FileSource source = 1;
 message StorageWatchFileBytesResponse { .harmos.storage.v1.FileEvent event = 1; .harmos.storage.v1.FileCompletion completion = 2; }
 message StorageWatchFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; uint64 offset = 2; }
 message StorageWatchFileProductionResponse { oneof event { .harmos.storage.v1.FileBatch data = 1; .harmos.storage.v1.FileProgress progress = 2; } }
-message StorageListDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; .harmos.v1.PageRequest page = 2; }
+message StorageListDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; .harmos.v1.PageRequest page = 2; .harmos.v1.ReadCut at = 3; }
 message StorageListDirectoryEntriesResponse { repeated .harmos.storage.v1.DirectoryEntry entries = 1; string next_page_token = 2; .harmos.v1.ReadCut resolved_at = 3; }
 message StorageWatchDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; bool include_existing = 2; }
 message StorageWatchDirectoryEntriesResponse { .harmos.storage.v1.DirectoryEvent event = 1; }

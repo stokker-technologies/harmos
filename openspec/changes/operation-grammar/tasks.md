@@ -277,5 +277,16 @@ combined source closure and hosted validation are not claimed here.
   `storage::file_observation::distinct_file_observations_preserve_bounded_frames_and_terminal_progress`,
   captured-file/directory journeys, production reconnect/future-offset refusal,
   retained streaming read and durable-row-watch regression (one passed each).
-  The remaining Storage face join is GetFileHash/CaptureFile/ListDirectoryEntries;
+  All 32 Storage methods now have independent declarations and shared handlers;
   streaming upload/download remain solely for the owner's throughput comparison.
+
+- Unary filesystem metadata migration closes the 32-handler storage face join.
+  `filesystem_metadata_cuts_repeat_results_and_pin_directory_continuations`
+  passes across socket/child calls, mutation, eviction, explicit leases and a
+  manager restart on the same persisted providers. Production status repeats its
+  issued metadata in `resume_fence_publish_and_range_across_faces`. Generated
+  hash/capture/directory, issued-cut/native-page regressions and native/guest
+  Schematic checks pass. The four Protected native wrappers/schema mirror still
+  keep inventory/3.3 open. Coupling updates the Schematic hash example/proto,
+  generator roots, generated outputs, SDK guest bindings, gRPC hash fixture and
+  one guest benchmark operation identifier; no second declaration owner is added.

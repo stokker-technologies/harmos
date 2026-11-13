@@ -1473,10 +1473,12 @@ pub struct StorageCreateFileProductionResponse {
     pub receipt: ::core::option::Option<crate::v1::Receipt>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetFileProductionRequest {
     #[prost(message, optional, tag = "1")]
     pub file: ::core::option::Option<crate::storage::StagedFile>,
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<crate::v1::ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2018,6 +2020,8 @@ pub struct StorageListDirectoryEntriesRequest {
     pub selection: ::core::option::Option<crate::storage::DirectorySelection>,
     #[prost(message, optional, tag = "2")]
     pub page: ::core::option::Option<crate::v1::PageRequest>,
+    #[prost(message, optional, tag = "3")]
+    pub at: ::core::option::Option<crate::v1::ReadCut>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]

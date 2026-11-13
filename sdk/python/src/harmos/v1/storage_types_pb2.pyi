@@ -337,12 +337,6 @@ class DirectoryEvent(_message.Message):
     rescan_required: Empty
     def __init__(self, existing: _Optional[_Union[DirectoryEntry, _Mapping]] = ..., initial_scan_complete: _Optional[_Union[Empty, _Mapping]] = ..., created: _Optional[_Union[DirectoryEntry, _Mapping]] = ..., modified: _Optional[_Union[DirectoryEntry, _Mapping]] = ..., removed: _Optional[str] = ..., renamed: _Optional[_Union[DirectoryRename, _Mapping]] = ..., rescan_required: _Optional[_Union[Empty, _Mapping]] = ...) -> None: ...
 
-class ListDirectory(_message.Message):
-    __slots__ = ("selection",)
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    selection: DirectorySelection
-    def __init__(self, selection: _Optional[_Union[DirectorySelection, _Mapping]] = ...) -> None: ...
-
 class FileSource(_message.Message):
     __slots__ = ("stored", "local")
     STORED_FIELD_NUMBER: _ClassVar[int]
@@ -408,26 +402,6 @@ class ReadFile(_message.Message):
     source: FileSource
     range: ByteRange
     def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ...) -> None: ...
-
-class HashFile(_message.Message):
-    __slots__ = ("source", "range")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    RANGE_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    range: ByteRange
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ...) -> None: ...
-
-class CaptureFile(_message.Message):
-    __slots__ = ("source", "range", "metadata", "consistency")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    RANGE_FIELD_NUMBER: _ClassVar[int]
-    METADATA_FIELD_NUMBER: _ClassVar[int]
-    CONSISTENCY_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    range: ByteRange
-    metadata: FileMetadata
-    consistency: CaptureConsistency
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ..., metadata: _Optional[_Union[FileMetadata, _Mapping]] = ..., consistency: _Optional[_Union[CaptureConsistency, str]] = ...) -> None: ...
 
 class SchemaKey(_message.Message):
     __slots__ = ("id", "version", "payload_encoding")

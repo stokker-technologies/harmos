@@ -36,12 +36,15 @@ impl ProtobufOperation for Hash {
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =
         harmos_operations::execution::operations::ReplaySafety::Idempotent;
     const OPERATIONS: &'static [harmos_operations::execution::operations::ProtobufDependency] =
-        &[harmos_operations::execution::operations::ProtobufDependency::of::<harmos_operations::storage::HashFile>()];
+        &[harmos_operations::execution::operations::ProtobufDependency::of::<harmos_operations::storage::context::GetFileHash>()];
     async fn run(ctx: ExecutionContext, request: Self::Request, _endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let result: Result<Self::Response, crate::Error> = async {
             let request = request.request.ok_or(crate::Error::InvalidInput)?;
-            let response =
-                ctx.call_protobuf::<harmos_operations::storage::HashFile>(request).await.map_err(|e| crate::Error::Host(Box::new(e)))?;
+            let response = ctx
+                .call_protobuf::<harmos_operations::storage::context::GetFileHash>(request)
+                .await
+                .map_err(|e| crate::Error::Host(Box::new(e)))?;
+            let response = response.hash.as_ref().ok_or(crate::Error::InvalidInput)?;
             Ok(crate::protocol::FileHash {
                 read_bytes: response.bytes_read,
                 sha256: response.sha256.clone(),
