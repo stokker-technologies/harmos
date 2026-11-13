@@ -8,6 +8,10 @@
 - [x] 10.4 Derive all four language roots from descriptors in memory; remove serialized resource inventories and compare fresh generation with committed roots.
 - [ ] 10.5 Commit the complete source and run the requested format, Python/repository checks, SDK units/integration/example stories, generation drift and tooling tests on the committed head; verify clean status and local-only commits.
 
+## Workflow Follow-Up
+
+- The shared root Python Ruff invocation also checks C++ scripts. Its new ANN rules expose missing return annotations in `sdk/cpp/tests/integration/test_managed_plugin_passes_every_rule.py` and `sdk/cpp/tests/integration/test_packaged_conformance.py`. These files are outside the locked Python ownership. Root Python proof remains open pending the owner's decision on the two annotations; no rule exemptions or check weakening are introduced.
+
 ## 9. Locked C# Build Modernization
 
 - [x] 9.1 Repair Python remote conformance host selection, commit, and prove Python checks and both C++ stories retain 31 rules.

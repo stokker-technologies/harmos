@@ -269,7 +269,7 @@ def _requirements(project: Path, destination: Path) -> None:
         )
 
 
-def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
+def generate_python(tool: Path, build: Path, protoc: Path, files: dict, *, source_root: Path = ROOT) -> None:
     """Generate the Schematic Host's Python Client From Its Captured Contracts."""
     metadata = json.loads(build.read_text(encoding="utf-8"))
     catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-cli"}
@@ -283,7 +283,11 @@ def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
 
     catalog = catalogs.pop()
     schema = next(schema for schema in metadata["schemas"] if schema["producer"] == "schematic-cli" and schema["catalog"] == catalog)
-    request = {"action": "python", "export": schema["directory"], "output": str(output), "protoc": str(protoc)}
+    # Consume the Immutable Export, Including When the Producer Checkout Is Gone.
+    directory = build.parent.parent / "builds" / build.stem / Path(schema["directory"]).relative_to(source_root)
+    for name, expected in schema["files"].items():
+        verify(digest(directory / name), expected, f"Python client schema differs from captured bytes: {name}")
+    request = {"action": "python", "export": str(directory), "output": str(output), "protoc": str(protoc)}
     subprocess.run(
         [str(tool)],
         input=json.dumps(request),
@@ -293,6 +297,25 @@ def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
         check=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         stderr=sys.stderr,
+    )
+    # Normalize Product Bindings Before Recording Their Published Digests.
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--config",
+            str(ROOT / "tools/python/ruff.toml"),
+            "--select",
+            "I",
+            "--fix",
+            "--extend-exclude=_wire",
+            str(output / "src"),
+        ],
+        cwd=ROOT,
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     generated = sorted(output.rglob("*"))
     generated_files = (path for path in generated if path.is_file())
