@@ -550,11 +550,6 @@ impl ReflectMessage for crate::storage::ListDirectory {
         pool().get_message_by_name("harmos.storage.v1.ListDirectory").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::WatchDirectory {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WatchDirectory").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::FileSource {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.FileSource").expect("generated message")
@@ -603,16 +598,6 @@ impl ReflectMessage for crate::storage::HashFile {
 impl ReflectMessage for crate::storage::CaptureFile {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.CaptureFile").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::FollowFile {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.FollowFile").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::FollowProduction {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.FollowProduction").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::SchemaKey {

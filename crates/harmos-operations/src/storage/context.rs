@@ -980,3 +980,92 @@ impl WatchRows {
         }
     }
 }
+
+pub struct WatchFileBytes;
+impl ProtobufOperation for WatchFileBytes {
+    type Request = wire::StorageWatchFileBytesRequest;
+    type Response = wire::StorageWatchFileBytesResponse;
+    type Endpoints = crate::execution::operations::ProtobufOutput<wire::StorageWatchFileBytesResponse>;
+    const ID: &'static str = "harmos.context.v1.Storage/WatchFileBytes";
+
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::file_watches::grant(Self::ID, request.source.as_ref())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let context = &context;
+        let completion = super::file_watches::bytes(context, Self::ID, request.source, request.start, |event| async move {
+            super::file_watches::send(context, Self::ID, output, Self::Response { event: Some(event), completion: None }).await
+        })
+        .await?;
+        let response = Self::Response {
+            event: None,
+            completion: Some(completion),
+        };
+        super::file_watches::send(context, Self::ID, output, response.clone()).await?;
+        Ok(response)
+    }
+}
+
+pub struct WatchFileProduction;
+impl ProtobufOperation for WatchFileProduction {
+    type Request = wire::StorageWatchFileProductionRequest;
+    type Response = wire::StorageWatchFileProductionResponse;
+    type Endpoints = crate::execution::operations::ProtobufOutput<wire::StorageWatchFileProductionResponse>;
+    const ID: &'static str = "harmos.context.v1.Storage/WatchFileProduction";
+
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::transfers::grant(Self::ID, request.file.as_ref().map(|file| file.id.as_str()))
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let context = &context;
+        let progress = super::file_watches::production(context, Self::ID, request.file, request.offset, |data| async move {
+            super::file_watches::send(
+                context,
+                Self::ID,
+                output,
+                Self::Response {
+                    event: Some(wire::storage_watch_file_production_response::Event::Data(data)),
+                },
+            )
+            .await
+        })
+        .await?;
+        let response = Self::Response {
+            event: Some(wire::storage_watch_file_production_response::Event::Progress(progress)),
+        };
+        super::file_watches::send(context, Self::ID, output, response.clone()).await?;
+        Ok(response)
+    }
+}
+
+pub struct WatchDirectoryEntries;
+impl ProtobufOperation for WatchDirectoryEntries {
+    type Request = wire::StorageWatchDirectoryEntriesRequest;
+    type Response = wire::StorageWatchDirectoryEntriesResponse;
+    type Endpoints = crate::execution::operations::ProtobufOutput<wire::StorageWatchDirectoryEntriesResponse>;
+    const ID: &'static str = "harmos.context.v1.Storage/WatchDirectoryEntries";
+
+    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>()];
+    fn grant(_: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        Ok(None)
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let context = &context;
+        super::file_watches::directory(context, request.selection, request.include_existing, |event| async move {
+            super::file_watches::send(context, Self::ID, output, Self::Response { event: Some(event) }).await
+        })
+        .await?;
+        Ok(Self::Response { event: None })
+    }
+}

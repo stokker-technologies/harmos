@@ -597,12 +597,12 @@ cancellation; `retry_append` resends its original offset and bytes without
 cancelling production. Stable capture detects source
 changes but does not freeze concurrent writers into an atomic snapshot.
 
-`FollowFile` starts at `Beginning`, `End` or `At(offset)` and streams data with
+`Storage.WatchFileBytes` starts at `Beginning`, `End` or `At(offset)` and streams data with
 explicit truncation/replacement events. Staged-production observation uses the
-distinct `FollowProduction` operation. Native file slices and shared read batches
+distinct `Storage.WatchFileProduction` operation. Native file slices and shared read batches
 retain their backing allocations until their final owner is released.
 
-`ListDirectory` and `WatchDirectory` share a `DirectorySelection` containing the
+`ListDirectory` and `Storage.WatchDirectoryEntries` share a `DirectorySelection` containing the
 root, recursion flag and ordered include/exclude rules. Patterns match
 case-sensitive slash-relative paths: `*` stays within one segment and `**` crosses
 segments. The last matching rule wins; unmatched paths are excluded. An excluded
@@ -751,7 +751,7 @@ otherwise close, not-ready and persistence failures terminate the wait.
 durable boundary. It reports the opening cut, then exclusive committed events and
 progress through filtered data. Retention gaps require a fresh list and reopening;
 accepted native followers remain separate. See [Storage Interfaces](storage.md#durable-row-observation).
-File following uses the source/start contract above; staged producers use `FollowProduction`.
+File following uses the source/start contract above; staged producers use `Storage.WatchFileProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
 the retry window. The receipt ledger has a bounded entry count; reclaimable

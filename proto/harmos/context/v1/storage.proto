@@ -61,7 +61,7 @@ message StorageGetFileHashResponse { .harmos.storage.v1.FileHash hash = 1; .harm
 message StorageCaptureFileRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.ByteRange range = 2; .harmos.storage.v1.FileMetadata metadata = 3; .harmos.storage.v1.CaptureConsistency consistency = 4; }
 message StorageCaptureFileResponse { .harmos.storage.v1.FileReference file = 1; .harmos.v1.Receipt receipt = 2; }
 message StorageWatchFileBytesRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.FollowStart start = 2; }
-message StorageWatchFileBytesResponse { .harmos.storage.v1.FileEvent event = 1; }
+message StorageWatchFileBytesResponse { .harmos.storage.v1.FileEvent event = 1; .harmos.storage.v1.FileCompletion completion = 2; }
 message StorageWatchFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; uint64 offset = 2; }
 message StorageWatchFileProductionResponse { oneof event { .harmos.storage.v1.FileBatch data = 1; .harmos.storage.v1.FileProgress progress = 2; } }
 message StorageListDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; .harmos.v1.PageRequest page = 2; }

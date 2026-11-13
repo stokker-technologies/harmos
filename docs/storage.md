@@ -116,6 +116,22 @@ work. Cancellation does not roll back an already committed write. CPU bucket wor
 runs on the blocking executor; dropping its awaiting future cancels its child
 without cancelling the caller's shared token.
 
+## File and Directory Observation
+
+`WatchFileBytes`, `WatchFileProduction` and `WatchDirectoryEntries` have independent
+client/context declarations and shared native handlers. Immutable stored content
+must be durable before observation; local-file events retain their live
+Beginning/End/At-offset, replacement and truncation semantics. A completed finite
+file watch emits its typed byte-count completion. These live external observations
+do not label filesystem data as a durable primary-store history.
+
+Production watches read retained prefixes, then emit terminal `FileProgress`.
+Cancelling observation neither publishes nor abandons its producer. Directory
+watching subscribes before enumeration, preserves Existing/InitialScanComplete
+and RescanRequired events, and shares native selection rules. File payload sizing
+includes every enclosing protobuf length and offset; all complete response frames
+respect the consumer byte ceiling. Delivery retains its callee-owned deadline.
+
 ## Durable Row Observation
 
 Client and context `WatchRows` share the `ListRows` source selector for records,

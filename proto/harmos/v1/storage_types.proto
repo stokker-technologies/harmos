@@ -54,7 +54,6 @@ message DirectoryEvent {
   }
 }
 message ListDirectory { DirectorySelection selection = 1; }
-message WatchDirectory { DirectorySelection selection = 1; bool include_existing = 2; }
 
 message FileSource { oneof source { FileReference stored = 1; string local = 2; } }
 message ByteRange { uint64 offset = 1; optional uint64 limit = 2; }
@@ -67,8 +66,6 @@ enum CaptureConsistency { BOUNDED = 0; STABLE = 1; }
 message ReadFile { FileSource source = 1; ByteRange range = 2; }
 message HashFile { FileSource source = 1; ByteRange range = 2; }
 message CaptureFile { FileSource source = 1; ByteRange range = 2; FileMetadata metadata = 3; CaptureConsistency consistency = 4; }
-message FollowFile { FileSource source = 1; FollowStart start = 2; }
-message FollowProduction { StagedFile file = 1; uint64 offset = 2; }
 
 // Storage schema graphs describe persisted payloads; they do not change their encoding.
 enum PayloadEncoding { PAYLOAD_ENCODING_UNSPECIFIED = 0; POSTCARD_V1 = 1; }

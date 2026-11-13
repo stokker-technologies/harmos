@@ -13,8 +13,8 @@
 
 #[tokio::test]
 async fn list_and_watch_existing_files() {
-    use harmos_operations::storage::{ListDirectory, WatchDirectory};
-    use harmos_protocol::storage as wire;
+    use harmos_operations::storage::{ListDirectory, WatchDirectoryEntries};
+    use harmos_protocol::{storage as wire, v1};
     use harmos_runtime::operations::{StreamSettings, WireStreamLimits};
     use prost::Message;
     use std::num::NonZeroUsize;
@@ -49,12 +49,18 @@ async fn list_and_watch_existing_files() {
     let (invocation, streams) = fixture
         .runtime
         .operations
-        .submit_protobuf::<WatchDirectory>(wire::WatchDirectory { selection, include_existing: true }, limits)
+        .submit_protobuf::<WatchDirectoryEntries>(v1::StorageWatchDirectoryEntriesRequest { selection, include_existing: true }, limits)
         .unwrap();
     let streams = streams.unwrap();
-    let first = wire::DirectoryEvent::decode(streams.receive_current().await.unwrap().unwrap().as_slice()).unwrap();
+    let first = v1::StorageWatchDirectoryEntriesResponse::decode(streams.receive_current().await.unwrap().unwrap().as_slice())
+        .unwrap()
+        .event
+        .unwrap();
     assert!(matches!(first.event, Some(wire::directory_event::Event::Existing(entry)) if entry.path.ends_with("sample.bin")));
-    let complete = wire::DirectoryEvent::decode(streams.receive_current().await.unwrap().unwrap().as_slice()).unwrap();
+    let complete = v1::StorageWatchDirectoryEntriesResponse::decode(streams.receive_current().await.unwrap().unwrap().as_slice())
+        .unwrap()
+        .event
+        .unwrap();
     assert!(matches!(complete.event, Some(wire::directory_event::Event::InitialScanComplete(_))));
     invocation.request_cancel();
     assert!(invocation.await.is_err());

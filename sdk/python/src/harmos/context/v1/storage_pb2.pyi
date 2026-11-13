@@ -513,10 +513,12 @@ class StorageWatchFileBytesRequest(_message.Message):
     def __init__(self, source: _Optional[_Union[_storage_types_pb2.FileSource, _Mapping]] = ..., start: _Optional[_Union[_storage_types_pb2.FollowStart, _Mapping]] = ...) -> None: ...
 
 class StorageWatchFileBytesResponse(_message.Message):
-    __slots__ = ("event",)
+    __slots__ = ("event", "completion")
     EVENT_FIELD_NUMBER: _ClassVar[int]
+    COMPLETION_FIELD_NUMBER: _ClassVar[int]
     event: _storage_types_pb2.FileEvent
-    def __init__(self, event: _Optional[_Union[_storage_types_pb2.FileEvent, _Mapping]] = ...) -> None: ...
+    completion: _storage_types_pb2.FileCompletion
+    def __init__(self, event: _Optional[_Union[_storage_types_pb2.FileEvent, _Mapping]] = ..., completion: _Optional[_Union[_storage_types_pb2.FileCompletion, _Mapping]] = ...) -> None: ...
 
 class StorageWatchFileProductionRequest(_message.Message):
     __slots__ = ("file", "offset")

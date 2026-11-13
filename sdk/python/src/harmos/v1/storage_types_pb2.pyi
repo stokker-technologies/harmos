@@ -343,14 +343,6 @@ class ListDirectory(_message.Message):
     selection: DirectorySelection
     def __init__(self, selection: _Optional[_Union[DirectorySelection, _Mapping]] = ...) -> None: ...
 
-class WatchDirectory(_message.Message):
-    __slots__ = ("selection", "include_existing")
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    INCLUDE_EXISTING_FIELD_NUMBER: _ClassVar[int]
-    selection: DirectorySelection
-    include_existing: bool
-    def __init__(self, selection: _Optional[_Union[DirectorySelection, _Mapping]] = ..., include_existing: _Optional[bool] = ...) -> None: ...
-
 class FileSource(_message.Message):
     __slots__ = ("stored", "local")
     STORED_FIELD_NUMBER: _ClassVar[int]
@@ -436,22 +428,6 @@ class CaptureFile(_message.Message):
     metadata: FileMetadata
     consistency: CaptureConsistency
     def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ..., metadata: _Optional[_Union[FileMetadata, _Mapping]] = ..., consistency: _Optional[_Union[CaptureConsistency, str]] = ...) -> None: ...
-
-class FollowFile(_message.Message):
-    __slots__ = ("source", "start")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    START_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    start: FollowStart
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., start: _Optional[_Union[FollowStart, _Mapping]] = ...) -> None: ...
-
-class FollowProduction(_message.Message):
-    __slots__ = ("file", "offset")
-    FILE_FIELD_NUMBER: _ClassVar[int]
-    OFFSET_FIELD_NUMBER: _ClassVar[int]
-    file: StagedFile
-    offset: int
-    def __init__(self, file: _Optional[_Union[StagedFile, _Mapping]] = ..., offset: _Optional[int] = ...) -> None: ...
 
 class SchemaKey(_message.Message):
     __slots__ = ("id", "version", "payload_encoding")

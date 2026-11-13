@@ -92,6 +92,9 @@ impl TransferPlugin {
             "GetFileBytes",
             "ListRows",
             "WatchRows",
+            "WatchFileBytes",
+            "WatchFileProduction",
+            "WatchDirectoryEntries",
             "ListColumnRows",
             "ListIndexEntries",
             "ListProjectionRows",
@@ -127,7 +130,7 @@ impl TransferPlugin {
                         request: request.clone(),
                         response: response.clone(),
                         input: None,
-                        output: (method == "WatchRows").then_some(response.clone()),
+                        output: method.starts_with("Watch").then_some(response.clone()),
                     },
                 )
                 .unwrap(),
@@ -218,7 +221,8 @@ impl plugin::instance_server::Instance for Service {
             .iter()
             .find(|required| required.id.rsplit_once('/').is_some_and(|(_, name)| snake(name) == method))
             .ok_or_else(|| Status::not_found("Invoke undeclared transfer"))?;
-        let watch = method == "watch_rows";
+        let watch = method.starts_with("watch_");
+        let watch_kind = method.to_owned();
         let watch_opened = self.watch_opened.clone();
         let child = v1::ChildRequest {
             call: 1,
@@ -254,12 +258,37 @@ impl plugin::instance_server::Instance for Service {
             while let Ok(Some(frame)) = input.message().await {
                 if let Some(plugin::instance_invoke_request::Frame::Child(child)) = frame.frame {
                     if let Some(v1::child_response::Result::Item(payload)) = &child.result {
-                        let frame = harmos_protocol::context::StorageWatchRowsResponse::decode(payload.as_slice()).unwrap();
-                        use harmos_protocol::context::storage_watch_rows_response::Event;
-                        if matches!(frame.event, Some(Event::Boundary(_))) {
-                            watch_opened.notify_one();
-                        }
-                        if matches!(frame.event, Some(Event::Record(_) | Event::Sample(_) | Event::Object(_) | Event::ResyncRequired(_))) {
+                        let take = match watch_kind.as_str() {
+                            "watch_rows" => {
+                                let frame = harmos_protocol::context::StorageWatchRowsResponse::decode(payload.as_slice()).unwrap();
+                                use harmos_protocol::context::storage_watch_rows_response::Event;
+                                if matches!(frame.event, Some(Event::Boundary(_))) {
+                                    watch_opened.notify_one();
+                                }
+                                matches!(
+                                    frame.event,
+                                    Some(Event::Record(_) | Event::Sample(_) | Event::Object(_) | Event::ResyncRequired(_))
+                                )
+                            }
+                            "watch_file_bytes" => {
+                                let frame = harmos_protocol::context::StorageWatchFileBytesResponse::decode(payload.as_slice()).unwrap();
+                                frame.event.is_some() || frame.completion.is_some()
+                            }
+                            "watch_file_production" => {
+                                harmos_protocol::context::StorageWatchFileProductionResponse::decode(payload.as_slice())
+                                    .unwrap()
+                                    .event
+                                    .is_some()
+                            }
+                            "watch_directory_entries" => {
+                                harmos_protocol::context::StorageWatchDirectoryEntriesResponse::decode(payload.as_slice())
+                                    .unwrap()
+                                    .event
+                                    .is_some()
+                            }
+                            _ => unreachable!("declared observation fixture"),
+                        };
+                        if take {
                             if send
                                 .send(Ok(plugin::InstanceInvokeResponse {
                                     frame: Some(plugin::instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call: 1 })),

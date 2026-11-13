@@ -1983,6 +1983,8 @@ pub struct StorageWatchFileBytesRequest {
 pub struct StorageWatchFileBytesResponse {
     #[prost(message, optional, tag = "1")]
     pub event: ::core::option::Option<crate::storage::FileEvent>,
+    #[prost(message, optional, tag = "2")]
+    pub completion: ::core::option::Option<crate::storage::FileCompletion>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

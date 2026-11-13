@@ -1508,3 +1508,16 @@ issued boundary and terminates. The caller lists a fresh durable image and opens
 a new watch from its returned cut. Expired/foreign input cuts refuse before the
 opening boundary. Close or restart retires observers; reconnect uses only a still
 retained issued cut, never an arbitrary earlier sequence or silent latest fallback.
+
+### External File and Directory Watches
+
+The three per-face external Watch methods share native file/production/directory
+owners. Stored immutable content requires durable publication. Local file watches
+retain source/start, explicit replacement/truncation and finite byte-count
+completion; they do not claim local bytes are a saved primary history. Production
+observation retains checkpointed prefix, offset, fencing and terminal progress;
+observation loss never publishes, abandons or deletes content. Directory
+subscription precedes enumeration and preserves initial boundary and explicit
+rescan-required uncertainty. Native selection, cancellation and lifetimes remain
+owned by those readers. Whole wire envelopes, including nested event lengths,
+count toward consumer response limits without changing the limits themselves.

@@ -196,14 +196,6 @@ pub struct ListDirectory {
     pub selection: ::core::option::Option<DirectorySelection>,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct WatchDirectory {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<DirectorySelection>,
-    #[prost(bool, tag = "2")]
-    pub include_existing: bool,
-}
-#[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileSource {
     #[prost(oneof = "file_source::Source", tags = "1, 2")]
@@ -315,22 +307,6 @@ pub struct CaptureFile {
     pub metadata: ::core::option::Option<FileMetadata>,
     #[prost(enumeration = "CaptureConsistency", tag = "4")]
     pub consistency: i32,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowFile {
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub start: ::core::option::Option<FollowStart>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowProduction {
-    #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<StagedFile>,
-    #[prost(uint64, tag = "2")]
-    pub offset: u64,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

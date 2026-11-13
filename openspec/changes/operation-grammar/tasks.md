@@ -266,3 +266,16 @@ combined source closure and hosted validation are not claimed here.
   plus catalog and call-local-policy regressions. The socket/child journey covers
   a commit during opening, blocked accepted data, progress, explicit resync and a
   fresh-list boundary. External file/directory watches retain their separate join.
+
+- File/directory observation migration: WatchFileBytes, WatchFileProduction and
+  WatchDirectoryEntries now have independent per-face declarations with shared
+  native handlers. Superseded FollowFile/FollowProduction/WatchDirectory adapters
+  and request DTOs are removed. File frames include all nested framing; finite
+  byte-count completion and terminal production progress are explicit stream
+  responses. Existing offset, observation cancellation and directory boundaries
+  are preserved. Focused proofs: the cross-face
+  `storage::file_observation::distinct_file_observations_preserve_bounded_frames_and_terminal_progress`,
+  captured-file/directory journeys, production reconnect/future-offset refusal,
+  retained streaming read and durable-row-watch regression (one passed each).
+  The remaining Storage face join is GetFileHash/CaptureFile/ListDirectoryEntries;
+  streaming upload/download remain solely for the owner's throughput comparison.
