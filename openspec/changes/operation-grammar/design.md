@@ -9,6 +9,14 @@ Three visibility levels locked by the owner on 2026-11-12
 Locked contracts remain authoritative; implementation sections below describe landed source.
 Only the explicitly listed open questions await decisions when their work is reached.
 
+## Owner Confirmations, 2026-11-13
+
+- Owner decision: the host clock service keeps the name `Time`, with `Time.Get`
+  and `Time.Sleep`; no clock-service rename is authorized.
+- Owner decision: library release waits until the consumer product has stabilized
+  on this branch. Task 5.1 stays open; preparing this candidate does not authorize
+  publication or a consumer pin change.
+
 ## Context
 
 See proposal.md for motivation and decision status. Both supplied research
