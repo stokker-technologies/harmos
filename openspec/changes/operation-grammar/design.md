@@ -102,14 +102,18 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   A client invokes a Public plugin-served operation through the generic
   `harmos.v1.Invocations.Invoke` path, with the same host checks and routing.
   Protected operations refuse other plugins and clients with an error naming the
-  attempted action; Private operations have no host route at all. Host mediation
+  attempted action; Private operations have no host gRPC method. Host mediation
   never broadens visibility. A host application's operations that only it may
   request of a plugin are declared Protected, never Private or Public.
-- **Generation by Audience (Owner):** a plugin SDK generates the plugin protocol
-  to serve and context to call; a client generates only the client API; a host
-  generates all three. This applies to Rust, Python, C# and C++. Filter descriptor
-  inputs by face before generating bindings or resource roots. Shared types
-  required by those inputs do not import another audience's service stubs.
+- **One SDK per Language (amended by the owner on 2026-11-13):** Python ships
+  `harmos-sdk` (import `harmos`), Rust ships `harmos`, C# ships NuGet `Harmos`,
+  and C++ ships CMake `HarmosCpp` with target `Harmos::Cpp`. Each contains plugin
+  authoring, its client root and the host's protocol needs. The separate Rust
+  runtime library remains the host composition owner, not a second SDK.
+  There is no audience wheel, Cargo feature, MSBuild/CMake switch or generated
+  service-stub guard. Context methods remain child-carried rather than standalone
+  services. Host admission and SDK-local Private dispatch enforce the three faces
+  and three visibility levels at runtime; possession of a stub grants no authority.
 - **Names (Owner):** a service names its resource with a plural noun, or a
   singular noun for one thing, such as Instance. Methods acting on that resource
   are bare verbs. A part read in exactly one way keeps its noun on its parent:
@@ -712,7 +716,7 @@ Rust exposes `plugin`, `context` and `v1` modules; the superseded `host` module 
 removed. Python authoring lives in `authoring.py` and `invocation.py`; its generated
 face namespace packages have inert initializers, preserving root SDK imports.
 Storage face inventory and management services are integrated by their owners.
-Runtime face admission and generation filtering are tracked separately from file moves.
+Runtime face admission remains independent of binding availability.
 
 ### Current Visibility Discrepancy
 
@@ -1523,7 +1527,7 @@ resolves request identity before validating supplied endpoints, preserving typed
 endpoint refusal and charged-request release. Retry fixture declarations explicitly
 state their idempotence; stream-transfer guards still prevent replay after progress.
 
-Integration decision: core service/method operation identities, audience generation,
+Integration decision: core service/method operation identities, complete SDK generation,
 visibility and descriptor-derived roots are authoritative. Plugins, access/status
 and committed storage declarations use those identities without aliases. The generator
 isolates each package output and maps ancestor payloads individually, so imported
@@ -1565,12 +1569,16 @@ caller-to-child cancellation. HostValues.Get uses an OperationManager resolver
 registration with declared value types and invocation scope; dropping registration
 ends new resolution. No library settings or secrets store is introduced.
 
-Implementation (4.7): Rust Cargo features, Python wheel audience selection, C#
-HarmosAudience and CMake HARMOS_AUDIENCE select plugin/client/host bindings.
-Context methods remain child calls, with no standalone context service stubs.
-C++ and Python filter the pinned compiler's output during generation/packaging;
-generated files are never edited as source. Python editable development installs
-retain all faces; installable wheels select exactly one audience.
+Implementation (amended by the owner on 2026-11-13): the Python audience build
+hook/environment selector, Rust audience features, MSBuild/CMake switches and
+per-audience generated-stub guards/tests are deleted. Each language's flat
+`install_itself` entry program registers its own running remote instance with
+Plugins.Create(enabled=true), awaits Ready through Watch, invokes its Public
+example.echo through the same package's client root, then removes the entry.
+The codebase serves the instance in a separate process through the ordinary plugin
+API; installing it starts the host activation, not an unauthorized process launcher.
+The examples live beside the four conformance programs and their runtime journeys
+use the controlled host clock and awaited readiness/events, without polling or sleeps.
 
 Implementation (4.6): context message descriptor graphs are projected during
 generation and embedded per SDK message. Guest registration never initializes the

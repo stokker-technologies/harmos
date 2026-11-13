@@ -261,6 +261,49 @@ impl Drop for Peer {
 
 /* === Public Functions === */
 
+pub async fn installs_itself(program: &Path, arguments: &[&str]) {
+    // Serve This Codebase's Plugin in Its Own Process
+    let mut command = tokio::process::Command::from(crate::support::fixtures::command(program));
+    let mut peer = command
+        .args(arguments)
+        .args(["--install-itself", "serve"])
+        .env("HARMOS_ADDRESS", "127.0.0.1:0")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut output = BufReader::new(peer.stdout.take().unwrap()).lines();
+    let line = output.next_line().await.unwrap().expect("the SDK announces its bound endpoint");
+    let endpoint = format!("http://{}", line.strip_prefix("harmos listening ").expect("SDK readiness"));
+    let drain = tokio::spawn(async move { while output.next_line().await.ok().flatten().is_some() {} });
+
+    // Run Its Entry Program Against a Controlled Host
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let host = Host::start(root.path(), &backends).await;
+    host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
+    let address = format!("http://{}", host._listener.local_addr());
+    let mut command = tokio::process::Command::from(crate::support::fixtures::command(program));
+    let result = command.args(arguments).args(["--install-itself", &address, &endpoint]).kill_on_drop(true).output().await.unwrap();
+    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "hello");
+    assert!(host.client.clone().list(list()).await.unwrap().into_inner().entries.is_empty());
+
+    // Settle the Host and the Owned External Process
+    host.close().await;
+    peer.kill().await.unwrap();
+    peer.wait().await.unwrap();
+    drain.await.unwrap();
+}
+
+pub fn language_binary(name: &str, local: &str) -> std::path::PathBuf {
+    if std::env::var_os("STKR_TEST_PROFILE").is_some() {
+        return crate::support::fixtures::binary(name, None);
+    }
+    crate::support::fixtures::workspace().join(local)
+}
+
 pub fn settings(root: &Path) -> PluginManagerSettings {
     PluginManagerSettings {
         namespace: "plugin-manager-story".into(),

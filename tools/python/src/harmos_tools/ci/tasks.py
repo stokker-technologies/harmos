@@ -88,11 +88,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if name in ("lint", "check"):
             command.add_argument("--extended", action="store_true")
         if name == "check":
-            command.add_argument("--package", choices=("harmos-plugin",))
+            command.add_argument("--package", choices=("harmos-sdk",))
             command.add_argument("--repository", action="store_true")
             command.add_argument("--generated", action="store_true")
     build = commands.add_parser("build")
-    build.add_argument("--audience", choices=("plugin", "client", "host"))
     build.add_argument("--language", choices=("rust", "csharp", "cpp"))
     build.add_argument("--profile", choices=("dev", "release"), default="dev")
     build.add_argument("--artifact", choices=("product", "tests", "bench", "fixtures"), default="product")
@@ -173,7 +172,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     root = Path.cwd()
 
     if options.command == "build" and options.lib:
-        if not options.package or options.package == "harmos-plugin" or options.example or options.language not in (None, "rust"):
+        if not options.package or options.package == "harmos-sdk" or options.example or options.language not in (None, "rust"):
             parser.error("--lib requires a Rust --package without --example")
     if options.command == "test":
         for selector in ("package", "target", "story", "exact"):
@@ -250,7 +249,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
             options.command,
             getattr(options, "profile", "dev"),
             check=getattr(options, "check", False),
-            audience=getattr(options, "audience", None),
         )
 
     if options.command in ("build", "test", "check") and options.language == "cpp":
@@ -265,7 +263,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 or options.extended
             ):
                 parser.error("C++ builds select only --language cpp and optional --profile")
-            return _module("build.cpp", "--profile", options.profile, *(["--audience", options.audience] if options.audience else []))
+            return _module("build.cpp", "--profile", options.profile)
         if options.command == "check":
             if options.package or options.repository or options.generated or options.extended:
                 parser.error("C++ checks select only --language cpp")
@@ -307,10 +305,10 @@ def dispatch(arguments: list[str] | None = None) -> int:
         parser.error("--features requires --package")
     if options.command == "check" and options.package:
         if options.language != "python" or options.repository or options.generated or options.extended:
-            parser.error("SDK checks require --language python --package harmos-plugin")
+            parser.error("SDK checks require --language python --package harmos-sdk")
         return _task("check:python:sdk")
 
-    if options.command == "test" and options.language == "python" and options.package == "harmos-plugin":
+    if options.command == "test" and options.language == "python" and options.package == "harmos-sdk":
         if (
             options.target not in (None, "integration")
             or options.coverage
@@ -338,7 +336,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     if options.command == "build" and options.package:
         if options.artifact != "product" or options.compatibility or options.extended:
             parser.error("--package cannot select artifacts, compatibility, C++ or extended builds")
-        if options.package == "harmos-plugin":
+        if options.package == "harmos-sdk":
             if options.features or options.example:
                 parser.error("Python SDK builds have no Cargo features or examples")
             if options.check:
@@ -351,10 +349,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
                     "--wheel",
                     "--no-isolation",
                     "--outdir",
-                    str(root / "target/build" / options.profile / "any/python" / (options.audience or "plugin")),
+                    str(root / "target/build" / options.profile / "any/python"),
                     str(root / "sdk/python"),
                 ],
-                environment=dict(os.environ, HARMOS_AUDIENCE=options.audience or "plugin"),
             )
         command = ["--locked", "--profile", options.profile, "-p", options.package]
         if options.manifest_path:

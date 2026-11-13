@@ -14,5 +14,9 @@
 mod client_manages_bundled_plugins;
 mod client_manages_remote_plugins;
 mod client_refuses_invalid_plugin_bundles;
+mod cpp_installs_itself;
+mod csharp_installs_itself;
 mod host_restores_plugin_entries;
+mod python_installs_itself;
+mod rust_installs_itself;
 mod support;

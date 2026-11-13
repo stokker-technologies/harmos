@@ -1,8 +1,5 @@
 <Project>
-  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Harmos'">
-    <HarmosAudience Condition="'$(HarmosAudience)' == ''">Plugin</HarmosAudience>
-    <BaseOutputPath>bin/$(HarmosAudience)/</BaseOutputPath>
-    <BaseIntermediateOutputPath>obj/$(HarmosAudience)/</BaseIntermediateOutputPath>
+  <PropertyGroup>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup>

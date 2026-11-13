@@ -2,13 +2,7 @@
   <PropertyGroup>
     <Description>Typed Harmos v1 Plugin SDK</Description>
     <Version>0.1.0</Version>
-    <HarmosAudience Condition="'$(HarmosAudience)' == ''">Plugin</HarmosAudience>
-    <InstanceServices>Server</InstanceServices>
-    <InstanceServices Condition="'$(HarmosAudience)' == 'Host'">Both</InstanceServices>
-    <ClientServices>Client</ClientServices>
-    <ClientServices Condition="'$(HarmosAudience)' == 'Host'">Both</ClientServices>
-    <AssemblyName Condition="'$(HarmosAudience)' == 'Client'">Harmos.Client</AssemblyName>
-    <AssemblyName Condition="'$(HarmosAudience)' == 'Host'">Harmos.Host</AssemblyName>
+    <PackageId>Harmos</PackageId>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -18,18 +12,11 @@
     <Protobuf Include="../../../proto/harmos/v1/types.proto" ProtoRoot="../../../proto" GrpcServices="None" />
     <Protobuf Include="../../../proto/harmos/v1/storage_types.proto" ProtoRoot="../../../proto" GrpcServices="None" />
   </ItemGroup>
-  <ItemGroup Condition="'$(HarmosAudience)' != 'Client'">
-    <Protobuf Include="../../../proto/harmos/plugin/v1/instance.proto" ProtoRoot="../../../proto" GrpcServices="$(InstanceServices)" />
+  <ItemGroup>
+    <Protobuf Include="../../../proto/harmos/plugin/v1/instance.proto" ProtoRoot="../../../proto" GrpcServices="Both" />
     <Protobuf Include="../../../proto/harmos/context/v1/*.proto" ProtoRoot="../../../proto" GrpcServices="None" />
   </ItemGroup>
-  <ItemGroup Condition="'$(HarmosAudience)' == 'Plugin'">
-    <Compile Remove="Client.cs" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(HarmosAudience)' != 'Plugin'">
-    <Protobuf Include="../../../proto/harmos/v1/**/*.proto" Exclude="../../../proto/harmos/v1/types.proto;../../../proto/harmos/v1/guest.proto;../../../proto/harmos/v1/storage_types.proto" ProtoRoot="../../../proto" GrpcServices="$(ClientServices)" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(HarmosAudience)' == 'Client'">
-    <Compile Remove="**/*.cs" />
-    <Compile Include="Client.cs" />
+  <ItemGroup>
+    <Protobuf Include="../../../proto/harmos/v1/**/*.proto" Exclude="../../../proto/harmos/v1/types.proto;../../../proto/harmos/v1/guest.proto;../../../proto/harmos/v1/storage_types.proto" ProtoRoot="../../../proto" GrpcServices="Both" />
   </ItemGroup>
 </Project>

@@ -22,7 +22,7 @@ pub struct DiagnosticsGetResponse {
     pub sha256: ::prost::alloc::vec::Vec<u8>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod diagnostics_client {
     #![allow(
         unused_variables,
@@ -140,7 +140,7 @@ pub mod diagnostics_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod diagnostics_server {
     #![allow(
         unused_variables,
@@ -378,7 +378,7 @@ pub struct LogsWatchResponse {
     pub resolved_at: ::core::option::Option<crate::v1::Position>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod logs_client {
     #![allow(
         unused_variables,
@@ -520,7 +520,7 @@ pub mod logs_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod logs_server {
     #![allow(
         unused_variables,
@@ -793,7 +793,7 @@ pub struct TraceEventsWatchResponse {
     pub resolved_at: ::core::option::Option<crate::v1::Position>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod trace_events_client {
     #![allow(
         unused_variables,
@@ -935,7 +935,7 @@ pub mod trace_events_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod trace_events_server {
     #![allow(
         unused_variables,

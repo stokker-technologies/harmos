@@ -74,13 +74,12 @@ compile-time consumers atomically.
 
 ## 4. Four-Language SDK Roots and Library Consumers
 
-- [x] 4.1 Produce a common descriptor table with owner/face/version, parent/service/method, wrappers, cardinality and exposure; add face-selecting build generators for Rust, Python, C# and C++. Generate plugin SDKs with protocol serving and context calling only, clients with client API only, and hosts with all three; generate hierarchical roots only for their audience. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
+- [x] 4.1 Produce a common descriptor table with owner/face/version, parent/service/method, wrappers, cardinality and exposure; generate one complete SDK for Rust, Python, C# and C++, each containing plugin authoring and descriptor-derived client roots. Compose library/product tables so Plugins and plugins.Settings share a node, preserve qualified message identity and reject actual leaf collisions. Prove generated paths for client.plugins.settings.get, client.jobs.progress.watch and client.jobs.start with no hand-written per-operation layer.
 - [x] 4.2 Migrate retained SDK/carrier contracts, service-qualified wrappers, fingerprints and policy alongside each declaration slice; preserve standalone protocol/SDK/conformance ownership and product SDK composition. Verify focused catalog, admission, cross-plugin Public invocation, Protected refusal naming the action and local-only Private execution, client Public invocation, inherited scope, child cancellation, clock, failure and call-local policy behavior; deny client context/protocol calls and plugin client-only calls. Preserve explicit catalog visibility and one host registry.
 - [x] 4.3 Settle the semantic plugin-parity promise across Rust, Python, C# and C++ and record it in design.md; four-language client-root naming is already locked.
 - [x] 4.4 Settle generic managed-client invocation coverage (Rust-only or more languages) and record it in design.md without reopening the naming hierarchy.
 - [x] 4.5 Require explicit Private, Protected or Public visibility in all four SDKs with no default and reject omitted/unspecified visibility at admission, add C# invocation-local resources/reason-bearing cancellation and correct the stale draft proto header; verify focused behavior and affected guides.
 - [x] 4.6 Migrate tools/conformance/, fixtures, native/guest examples, generated clients and affected tests in the owning compiling slices; preserve interval/device publication and update README/topic/language-guide claims with each user-facing change.
-- [x] 4.7 Verify generated service-stub sets in all four languages: plugin = Instance server plus context callers, client = client-face callers, host = all faces. Reject cross-audience root/stub leakage while retaining imported shared payloads. Keep this generation contract separate from the open semantic parity and managed-client language questions.
 
 ## Architecture Guards
 
@@ -88,7 +87,7 @@ These are future deterministic behavior/structure guards for the named invariant
 in docs/architecture.md, not tests of that document's wording. Partial existing
 proof does not close them; no checkbox is completed by this documentation task.
 
-- [ ] A.1 Add **Three Audience Faces** descriptor/generation and admission cases for each SDK, rejecting cross-audience calls and stubs (tasks 1.1, 4.7).
+- [ ] A.1 Add **Three Audience Faces** descriptor and runtime admission cases for each SDK, rejecting cross-face calls independently of available bindings (task 1.1).
 - [ ] A.2 Add **Explicit Streaming and Cooperative Control** stories proving no generated twins, the single declared final-result replacement, running cancellation/child settlement, distinct Stop and preservation of queued action refusals (tasks 1.4, 3.11).
 - [x] A.3 Add **Manager Ownership** lifecycle stories for entry activation/retirement, listener rotation, product-fact registration/removal and resolver failure/cleanup, showing each service uses its one manager (tasks 2.1–2.6).
 - [x] A.4 Add **Library and Product Composition** independent-host stories composing library services/resolvers without redeclarations, duplicate hosting or product settings/secrets stores in the library (tasks 2.1–2.5).
@@ -112,7 +111,7 @@ and the complete built-in mapping.
 - [x] 3.4.1 Complete storage AppendRecords/AppendSamples/AppendObjectRevisions/upload-byte receipts and immutable-prefix replay. Log-line Append remains the core service owner's join under 3.4.
 
 - [x] 0.8.1 Migrate native reserved lifecycle/control declarations to Protected and context/client built-ins to their decided faces; prove the built-in refusal and owner access. Storage's mapping is proved separately in 0.8.2.
-- [x] A.1.1 Guard non-storage face descriptors, separate wrappers, client listener admission and plugin client-face refusal; select audience stubs in all four SDKs. The complete descriptor census remains 1.3 after the other service owners merge.
+- [x] A.1.1 Guard non-storage face descriptors, separate wrappers, client listener admission and plugin client-face refusal. All four SDKs include authoring and client bindings; host runtime admission is the guard. The complete descriptor census remains 1.3 after the other service owners merge.
 - [x] A.2.1 Guard explicit non-storage streams and managed replacement, queued product Cancel refusal/cause, separate safe-boundary Stop, peer cancellation and local child cleanup. Proof: audience_faces, generated_sdk_client_invokes_streams_and_settles_cancellation, client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_boundary, peer_journey and conformance 25–28.
 - [x] A.5.1 Prove face-local wrappers and four-language library/product root composition, including Plugins with plugins.Settings and Jobs with jobs.Progress. Storage whole-value Set/Append and positions are proved in the storage table below.
 - [x] A.8.1 Prove SDK-local call policy, replay-safe retries, host-clock deadlines and cooperative grace without raising budgets. Proof: common conformance 26–28 in all four languages.
@@ -165,7 +164,7 @@ combined source closure and hosted validation are not claimed here.
 
 ## Integration Candidate
 
-- [x] I.1 Merge the committed core, plugin-manager, access/status and storage branches in order; retain core audience generation, visibility and mechanical roots, regenerate every affected output and prove touched packages.
+- [x] I.1 Merge the committed core, plugin-manager, access/status and storage branches in order; retain complete SDK generation, runtime face/visibility checks and mechanical roots, regenerate every affected output and prove touched packages.
 - [x] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
 - [x] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
 - [x] I.3.1 Complete format, Rust/Python/repository checks, protocol drift, four-SDK conformance, manager/access/status journeys, existing hosting/listener/certificate stories, guest System selection, storage unit/integration proof and the Tests producer. Manager/access/status journeys passed repeated runs; the earlier catalog-entry fixture failure is resolved in I.3.2.
@@ -183,7 +182,7 @@ combined source closure and hosted validation are not claimed here.
 
 ### Storage Convergence
 
-- [x] I.5 Merge `feat/gp-grammar-storage` through `8babe0a5` into the existing integration branch; retain storage behavior, stories, benchmarks and measurement records, core wire identity validation and descriptor-derived audience generators. Resolve source contracts and regenerate outputs rather than merging generated bytes.
+- [x] I.5 Merge `feat/gp-grammar-storage` through `8babe0a5` into the existing integration branch; retain storage behavior, stories, benchmarks and measurement records, core wire identity validation and descriptor-derived complete SDK generators. Resolve source contracts and regenerate outputs rather than merging generated bytes.
 - [x] I.6 Join runtime registration in `crates/harmos-runtime/src/operations/manager/registration.rs`: one typed set of explicit operation identities suppresses inferred context projections, retaining storage's independently authorized context handlers without duplicate registration.
 - [x] I.7 Reconcile the combined descriptor census with the locked inventory: 19 services, 103 wire methods, 206 face wrappers and eight native hook wrappers; enumerate shared/domain/imported payloads separately in design.md.
 - [ ] I.8 Complete log-line Append under 3.4. `proto/harmos/v1/status/logs.proto` exposes List/Watch; `crates/harmos-runtime/src/services/status/mod.rs::Status::record_log` accepts one in-memory redacted event with no request identity or durable receipt. A bounded immutable Append needs a declared owner/face, mutation identity retention and persisted original outcomes plus lost-reply/restart proof. Adding a method or forwarding to `record_log` would not supply those semantics; this is beyond a mechanical merge join.
@@ -246,7 +245,7 @@ failures remain explicit in the design and A.6 is not checked off.
 ## Owner Amendments of 2026-11-13
 
 - [x] O.1 Replace paging for bounded catalogs, plugin entries and pairings in proto, operations, runtime, generated SDKs, consumers, examples, stories and guides; preserve paging and issued positions for unbounded data. Record the bounded/unbounded inventory and scenarios.
-- [ ] O.2 Ship one SDK package per language; delete audience build selection, generated-stub guards and their tests/tooling; add four copyable self-install client journeys and migrate package consumers/guides. Preserve runtime face/visibility enforcement.
+- [x] O.2 Ship one SDK package per language; delete audience build selection, generated-stub guards and their tests/tooling; add four copyable self-install client journeys and migrate package consumers/guides. Preserve runtime face/visibility enforcement.
 - [ ] O.3 Keep unary transfers with one storage-owned 4 MiB default; derive carrier ceilings including framing, refuse incompatible startup settings, delete streaming transfer declarations/handlers/SDKs/stories and benchmark cases, record and rerun the default benchmark.
 - [ ] O.4 Accept measured durable lag without a failing threshold or accepted-data snapshot; replace superseded requirements/guides and close the lag acceptance tasks.
 - [ ] O.5 Run final-head format, Rust/Python/repository checks, protocol drift, four-SDK conformance, self-install/storage/manager/access/status/wire identity/guest stories, Tests build and clean committed locked offline metadata. Keep every decision in a separate local building commit; do not push.

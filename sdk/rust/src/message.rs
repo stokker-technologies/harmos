@@ -21,7 +21,6 @@
 use prost_types::FileDescriptorSet;
 
 // Local Imports
-#[cfg(feature = "plugin")]
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -78,14 +77,12 @@ impl Message for () {
 
 /* === Public Functions === */
 
-#[cfg(feature = "plugin")]
 pub fn fingerprint<Q: Message, R: Message>(id: &str) -> Result<Vec<u8>> {
     let mut types = Q::types();
     merge_descriptor_types(&mut types, R::types());
     harmos_protocol::schema::fingerprint(id, &types, &Q::name(), &R::name()).map_err(|error| Error::Invalid(error.to_string()))
 }
 
-#[cfg(feature = "plugin")]
 pub(crate) fn request_fingerprint<Q: OperationRequest>() -> Result<Vec<u8>> {
     if !Q::WATCH {
         return fingerprint::<Q, Q::Response>(Q::ID);
@@ -135,7 +132,6 @@ pub fn merge_descriptor_types(target: &mut FileDescriptorSet, source: FileDescri
     }
 }
 
-#[cfg(feature = "plugin")]
 pub(crate) fn merge_types(target: &mut FileDescriptorSet, source: FileDescriptorSet) -> Result<()> {
     merge_descriptor_types(target, source);
     let mut files = std::collections::HashSet::new();

@@ -7,9 +7,9 @@
 # ***
 
 [project]
-name = "harmos-plugin"
+name = "harmos-sdk"
 version = "0.1.14"
-description = "Typed Python plugins over the Harmos v1 gRPC protocol"
+description = "Harmos plugin authoring and host clients"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = ["grpcio>=1.85.1", "protobuf>=7.35.1,<8"]
@@ -43,6 +43,3 @@ python-version = "3.13"
 
 [tool.ty.src]
 exclude = ["src/harmos/**/v1/*_pb2*", "src/harmos/v1/*_pb2*", "tests/fixtures/client/**/*_pb2*"]
-
-[tool.hatch.build.hooks.custom]
-path = "hatch_build.py"

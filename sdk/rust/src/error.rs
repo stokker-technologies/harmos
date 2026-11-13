@@ -77,7 +77,6 @@ impl Error {
         .into()
     }
 
-    #[cfg(feature = "plugin")]
     pub(crate) fn response(self, operation: &str, plugin: &str) -> std::result::Result<v1::response::Result, tonic::Status> {
         match self {
             Self::Transport(status) => Err(status),

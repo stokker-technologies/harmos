@@ -63,28 +63,26 @@ their parent sub-packages and bare verbs within their face.
 - **WHEN** a product declares an exported Protected or Public operation its plugin performs
 - **THEN** the operation uses its product plugin-face package and catalog visibility, is carried by Instance.Invoke and is not declared as a client service
 
-### Requirement: Generate Only Required Faces
+### Requirement: One SDK Package per Language
 
-All four SDK build generators SHALL select faces by audience: a plugin SDK SHALL
-generate protocol serving and context calling; a client SHALL generate the client
-API; a host SHALL generate all three. Imported shared payloads SHALL NOT cause
-another face's service stubs or roots to be generated. This SHALL NOT settle the
-open semantic plugin-parity or generic managed-client language scope questions.
+Amended by the owner on 2026-11-13: each language SHALL ship one SDK package
+containing plugin authoring, the client root and its host protocol needs:
+Python `harmos-sdk` (import `harmos`), Rust `harmos`, C# `Harmos`, and C++
+`HarmosCpp` (`Harmos::Cpp`). Audience-specific builds, source-slicing hooks,
+selector environment variables/features/switches and generated-stub guards/tests
+SHALL be removed. The host SHALL enforce faces and visibility at runtime;
+SDK-local Private calls SHALL retain their existing policy and wire isolation.
 
-#### Scenario: Plugin Bindings
+#### Scenario: Plugin Codebase Installs Itself
 
-- **WHEN** Rust, Python, C# or C++ plugin bindings are generated
-- **THEN** they serve Instance and call context methods, with no client API service stubs
+- **WHEN** a Rust, Python, C# or C++ plugin codebase runs its client entry program against a running host
+- **THEN** the same SDK package registers and starts its own instance through Plugins, awaits Ready, and invokes its Public operation through the host
+- **AND** each language has one flat, copyable example and one deterministic journey
 
-#### Scenario: Client Bindings
+#### Scenario: Binding Possession Grants No Authority
 
-- **WHEN** client bindings are generated
-- **THEN** they contain only client API service stubs and roots, with no context callers or Instance server
-
-#### Scenario: Host Bindings
-
-- **WHEN** host bindings are generated
-- **THEN** they contain all three faces, with each service registered only for its declared audience
+- **WHEN** a client or plugin possesses bindings for another face or a Protected operation
+- **THEN** the host still refuses unauthorized calls naming the action, and Private remains local and absent from the wire
 
 ### Requirement: Self-Sufficient Library SDK Ownership
 

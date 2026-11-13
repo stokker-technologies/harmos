@@ -80,7 +80,7 @@ retaining requirement, descriptor, fingerprint and digest validation.
 #### Scenario: Private Is Not Remotely Invocable
 
 - **WHEN** the host, another plugin or a client attempts to invoke a plugin's Private operation
-- **THEN** no exported operation or route exists and the handler is not invoked
+- **THEN** no exported operation or gRPC method exists and the handler is not invoked
 
 #### Scenario: Protected Host and Owner Invocation
 

@@ -4,7 +4,6 @@ using Harmos.Context.V1;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
-using Harmos.V1;
 using Xunit;
 using Plugin = Harmos.Sdk.Plugin;
 

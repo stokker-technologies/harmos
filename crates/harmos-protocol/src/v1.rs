@@ -586,7 +586,7 @@ pub struct CatalogEntriesListResponse {
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod catalog_entries_client {
     #![allow(
         unused_variables,
@@ -704,7 +704,7 @@ pub mod catalog_entries_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod catalog_entries_server {
     #![allow(
         unused_variables,
@@ -1128,7 +1128,7 @@ pub struct InvocationsInvokeResponse {
     pub payload: ::prost::alloc::vec::Vec<u8>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod invocations_client {
     #![allow(
         unused_variables,
@@ -1317,7 +1317,7 @@ pub mod invocations_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod invocations_server {
     #![allow(
         unused_variables,
@@ -1941,7 +1941,7 @@ impl PluginState {
     }
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugins_client {
     #![allow(
         unused_variables,
@@ -2185,7 +2185,7 @@ pub mod plugins_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugins_server {
     #![allow(
         unused_variables,
@@ -2777,7 +2777,7 @@ impl ComponentState {
     }
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod status_client {
     #![allow(
         unused_variables,
@@ -2913,7 +2913,7 @@ pub mod status_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod status_server {
     #![allow(
         unused_variables,
@@ -3803,7 +3803,7 @@ pub struct StorageGetObjectResponse {
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod storage_client {
     #![allow(
         unused_variables,
@@ -4675,7 +4675,7 @@ pub mod storage_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod storage_server {
     #![allow(
         unused_variables,
@@ -6582,7 +6582,7 @@ pub struct TimeGetResponse {
     pub now: ::core::option::Option<::prost_types::Timestamp>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod time_client {
     #![allow(
         unused_variables,
@@ -6718,7 +6718,7 @@ pub mod time_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod time_server {
     #![allow(
         unused_variables,

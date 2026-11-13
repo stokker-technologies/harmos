@@ -13,9 +13,8 @@
 
 /* === Re-Exports === */
 
-#[cfg(all(feature = "client", not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub use crate::client::{Client, ClientSettings, Method};
-#[cfg(feature = "plugin")]
 pub use crate::{Context, Observer, Operation, Plugin, Publisher, Stream};
 pub use crate::{Error, Message, OperationRequest, Result, Visibility};
 

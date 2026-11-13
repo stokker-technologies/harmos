@@ -9,7 +9,7 @@ pub struct CertificatesCreateResponse {
     pub certificate_pem: ::prost::alloc::string::String,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod certificates_client {
     #![allow(
         unused_variables,
@@ -127,7 +127,7 @@ pub mod certificates_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod certificates_server {
     #![allow(
         unused_variables,
@@ -351,7 +351,7 @@ pub struct ListenerSetResponse {
     pub bound_endpoint: ::prost::alloc::string::String,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod listener_client {
     #![allow(
         unused_variables,
@@ -493,7 +493,7 @@ pub mod listener_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod listener_server {
     #![allow(
         unused_variables,
@@ -777,7 +777,7 @@ pub struct PairingsDeleteRequest {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PairingsDeleteResponse {}
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "client", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod pairings_client {
     #![allow(
         unused_variables,
@@ -943,7 +943,7 @@ pub mod pairings_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod pairings_server {
     #![allow(
         unused_variables,

@@ -110,7 +110,7 @@ pub struct InstanceSamplesResponse {
     pub samples: ::prost::alloc::vec::Vec<crate::v1::Sample>,
 }
 /// Generated client implementations.
-#[cfg(all(not(target_arch = "wasm32"), feature = "host"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod instance_client {
     #![allow(
         unused_variables,
@@ -316,7 +316,7 @@ pub mod instance_client {
     }
 }
 /// Generated server implementations.
-#[cfg(all(not(target_arch = "wasm32"), any(feature = "plugin", feature = "host")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod instance_server {
     #![allow(
         unused_variables,

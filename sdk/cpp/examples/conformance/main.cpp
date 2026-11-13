@@ -35,6 +35,8 @@ using harmos::Context;
 
 /* === Public Functions === */
 
+int install_itself(int argc, char** argv);
+
 /* === Private Functions === */
 
 Value value(std::string bytes) {
@@ -67,6 +69,7 @@ harmos::wire::Failure failure() {
 
 int main(int argc, char** argv) {
     try {
+        if (argc > 1 && std::string(argv[1]) == "--install-itself") return install_itself(argc, argv);
         // Compose Typed Operations and Their Required Host Contracts.
         const Operation echo("conformance.host.echo", harmos::wire::VISIBILITY_PUBLIC);
         const Operation pending("conformance.host.pending", harmos::wire::VISIBILITY_PUBLIC);

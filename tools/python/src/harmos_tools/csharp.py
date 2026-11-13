@@ -33,9 +33,7 @@ from .process import spawn_flags
 # === Public Functions === #
 
 
-def run(
-    root: Path, command: str, profile: str = "dev", *, check: bool = False, dependencies: bool = False, audience: str | None = None
-) -> int:
+def run(root: Path, command: str, profile: str = "dev", *, check: bool = False, dependencies: bool = False) -> int:
     from .build.resource_roots import generate
 
     generate(root)
@@ -79,14 +77,9 @@ def run(
 
     # Build the SDK, Managed Fixture and Story as Explicit Producer Outputs.
     if command == "build":
-        selections = (
-            [("Harmos/Harmos.csproj", audience.title())]
-            if audience
-            else [(project, "Plugin") for project in projects] + [("Harmos/Harmos.csproj", "Client"), ("Harmos/Harmos.csproj", "Host")]
-        )
-        for project, selected_audience in selections:
+        for project in projects:
             result = subprocess.run(
-                [dotnet, "restore", project, "--locked-mode", f"-p:HarmosAudience={selected_audience}"],
+                [dotnet, "restore", project, "--locked-mode"],
                 cwd=directory,
                 env=environment,
                 stdout=subprocess.PIPE,
@@ -97,7 +90,7 @@ def run(
             print(result.stdout, flush=True)
             result.check_returncode()
             result = subprocess.run(
-                [dotnet, "build", project, "--no-restore", "--configuration", configuration, f"-p:HarmosAudience={selected_audience}"],
+                [dotnet, "build", project, "--no-restore", "--configuration", configuration],
                 cwd=directory,
                 env=environment,
                 stdout=subprocess.PIPE,

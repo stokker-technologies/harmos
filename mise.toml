@@ -285,7 +285,7 @@ description = "Test Repository Tooling and Python SDK"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
   "uv run --locked --no-sync --project tools/python python -m unittest discover -s tools/python/tests/integration -v",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks test --language python --package harmos-plugin --target integration --profile {{usage.profile}}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks test --language python --package harmos-sdk --target integration --profile {{usage.profile}}",
 ]
 
 [tasks."check:python:sdk"]

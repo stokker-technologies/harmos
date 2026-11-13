@@ -60,26 +60,20 @@
 
 /* === Modules === */
 
-#[cfg(all(feature = "client", not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod client;
-#[cfg(feature = "plugin")]
 pub mod clock;
-#[cfg(feature = "plugin")]
 mod context;
 mod error;
 mod message;
-#[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 mod native;
-#[cfg(feature = "plugin")]
 mod operation;
-#[cfg(feature = "plugin")]
 mod plugin;
 pub mod prelude;
-#[cfg(all(feature = "plugin", not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 mod server;
-#[cfg(feature = "plugin")]
 mod storage_contracts;
-#[cfg(feature = "plugin")]
 mod stream;
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -88,20 +82,16 @@ pub mod wasm;
 
 extern crate self as harmos;
 
-#[cfg(all(feature = "client", not(target_arch = "wasm32")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub use client::{Client, ClientSettings};
-#[cfg(feature = "plugin")]
 pub use context::Context;
 pub use error::{Error, Result};
-pub use harmos_protocol::storage;
 pub use harmos_protocol::v1::{Classification, Failure, OperationPolicy, RetryPolicy, Section, Visibility};
+pub use harmos_protocol::{storage, v1};
 pub use harmos_sdk_derive::Message;
 pub use message::{Message, OperationRequest};
-#[cfg(feature = "plugin")]
 pub use operation::Operation;
-#[cfg(feature = "plugin")]
 pub use plugin::Plugin;
-#[cfg(feature = "plugin")]
 pub use stream::{Observer, Publisher, Stream};
 
 // Dependencies Used by the Data Derive and Generated Protobuf Consumers.

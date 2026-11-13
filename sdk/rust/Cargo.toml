@@ -25,16 +25,12 @@ publish.workspace = true
 
 [[example]]
 name = "client"
-required-features = ["client"]
 
 # === Features === #
 
 [features]
-default = ["plugin"]
-plugin = ["harmos-protocol/plugin"]
-client = ["harmos-protocol/client"]
-host = ["plugin", "client", "harmos-protocol/host"]
-wasm = ["plugin", "dep:wit-bindgen"]
+default = []
+wasm = ["dep:wit-bindgen"]
 
 # === Dependencies === #
 
@@ -74,7 +70,7 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 
 [dev-dependencies]
 # Local
-harmos-protocol = { workspace = true, features = ["host"] }
+harmos-protocol = { workspace = true }
 schematic-protocol = { path = "../../examples/schematic/protocol" }
 
 # Serialization

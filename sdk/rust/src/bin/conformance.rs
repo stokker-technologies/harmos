@@ -11,6 +11,8 @@
 
 /* === Modules === */
 
+mod install_itself;
+
 #[path = "../../../../tools/conformance/src/schema_fixture.rs"]
 mod schema_fixture;
 
@@ -157,6 +159,10 @@ impl OperationRequest for HostFail {
 /* === Private Functions === */
 
 fn main() -> Result<()> {
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    if arguments.first().is_some_and(|argument| argument == "--install-itself") {
+        return install_itself::run(&arguments[1..]);
+    }
     let ticks = Stream::<Value>::new("conformance.ticks");
     let observer = Observer::new(&ticks, tick).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let device = Stream::<Value>::new("conformance.device").publish_on(device);

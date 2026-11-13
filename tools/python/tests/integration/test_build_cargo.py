@@ -170,7 +170,7 @@ class FocusedCargoTests(unittest.TestCase):
         selections = [
             ["build", "--lib"],
             ["build", "--package", "example", "--example", "fixture", "--lib"],
-            ["build", "--package", "harmos-plugin", "--lib"],
+            ["build", "--package", "harmos-sdk", "--lib"],
             ["build", "--language", "cpp", "--package", "example", "--lib"],
             ["build", "--manifest-path", "nested/Cargo.toml"],
             ["test", "--manifest-path", "nested/Cargo.toml", "--target", "lib"],
@@ -253,7 +253,7 @@ class WorkflowTaskTests(unittest.TestCase):
 
     def test_sdk_tests_use_their_project_and_preserve_selection(self):
         for exact in (None, "tests.integration.example.Story.test_behavior"):
-            arguments = ["test", "--language", "python", "--package", "harmos-plugin", "--target", "integration", "--profile", "release"]
+            arguments = ["test", "--language", "python", "--package", "harmos-sdk", "--target", "integration", "--profile", "release"]
             selected = ["discover", "-s", "tests/integration", "-v"]
             if exact:
                 arguments += ["--exact", exact]

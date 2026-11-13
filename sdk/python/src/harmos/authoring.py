@@ -188,7 +188,7 @@ class _Service(InstanceServicer):
             catalog=catalog,
             revision=1,
             sdk="harmos_python",
-            sdk_version=version("harmos-plugin"),
+            sdk_version=version("harmos-sdk"),
         )
         operations, streams, self.cleanup = plugin._registrations()
         self.local = {

@@ -623,7 +623,7 @@ fn main() -> Result<()> {
 ## Language SDKs
 
 The pilot covers Rust (`sdk/rust`), Python (`sdk/python`), C# (`sdk/csharp`) and C++
-(`sdk/cpp`). Go is outside the pilot. Python publishes as `harmos-plugin` and imports as `harmos`.
+(`sdk/cpp`). Go is outside the pilot. Python publishes as `harmos-sdk` and imports as `harmos`.
 The Rust SDK at `sdk/rust` is the public package and library `harmos`. Plugin and client
 authors depend on it and use `harmos::prelude::*;` without compiling host code.
 Its normal dependency closure contains protocol and SDK support, with no host crates.
@@ -855,7 +855,7 @@ Guest migration (7.1) follows Guest Lifecycle and Child Control above. Windows g
 - Default policy on the new path: no deadline, zero cancellation grace and no retries.
 - `interval_setting` as a qualified protobuf section field of type `google.protobuf.Duration`.
 - Required consumer-owned `PlacementSettings.stream_window`.
-- Python package `harmos-plugin` / import `harmos`. The Rust public entry point is settled in Language SDKs.
+- Python package `harmos-sdk` / import `harmos`. The Rust public entry point is settled in Language SDKs.
 - The Python, C# and C++ authoring shapes in Language SDKs.
 - Deferral of client survival across transient drops until Harmos request deduplication and watch replay are specified.
 

@@ -238,6 +238,11 @@ def plugin() -> Plugin:
 
 
 async def _main() -> None:
+    if sys.argv[1:2] == ["--install-itself"]:
+        from .install_itself import run
+
+        await run(sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
     parser.add_argument("--clock-only", action="store_true", help="Serve Only the Host Clock Journey")

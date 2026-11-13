@@ -44,7 +44,7 @@ wheels = [
 ]
 
 [[package]]
-name = "harmos-plugin"
+name = "harmos-sdk"
 version = "0.1.14"
 source = { editable = "." }
 dependencies = [

@@ -346,7 +346,7 @@ Shared storage payloads live under `harmos.storage.v1`. The Rust client wrappers
 in `harmos_protocol::v1`, and context wrappers in `harmos_protocol::context`. Each face's
 generated methods use its own descriptors and fingerprints. Python's client service is
 `harmos.v1.storage_pb2_grpc.StorageStub`; the context declarations are under
-`harmos.context.v1`. SDK root generation and audience-specific stubs follow the protocol
+`harmos.context.v1`. SDK roots and complete language packages follow the protocol
 owner's descriptor table.
 
 Client storage uses `harmos.v1.Storage`; invocation context uses

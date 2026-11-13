@@ -96,26 +96,14 @@ pub fn generate(
                 config.extern_path(format!(".{external}"), format!("crate::{module}"));
             }
         }
-        let (client_attributes, server_attributes) = if package.starts_with("harmos.plugin.") {
-            (
-                "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"host\"))]",
-                "#[cfg(all(not(target_arch = \"wasm32\"), any(feature = \"plugin\", feature = \"host\")))]",
-            )
-        } else if package.starts_with("harmos.context.") {
-            ("#[cfg(any())]", "#[cfg(any())]")
-        } else {
-            (
-                "#[cfg(all(not(target_arch = \"wasm32\"), any(feature = \"client\", feature = \"host\")))]",
-                "#[cfg(all(not(target_arch = \"wasm32\"), feature = \"host\"))]",
-            )
-        };
+        let services = !package.starts_with("harmos.context.");
         let package_output = output.join(package);
         std::fs::create_dir_all(&package_output)?;
         tonic_prost_build::configure()
-            .client_mod_attribute(package, client_attributes)
-            .server_mod_attribute(package, server_attributes)
-            .build_client(true)
-            .build_server(true)
+            .client_mod_attribute(package, "#[cfg(not(target_arch = \"wasm32\"))]")
+            .server_mod_attribute(package, "#[cfg(not(target_arch = \"wasm32\"))]")
+            .build_client(services)
+            .build_server(services)
             .out_dir(&package_output)
             .compile_with_config(config, files, &[proto.clone(), includes.into()])?;
         let filename = format!("{package}.rs");

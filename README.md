@@ -68,9 +68,8 @@ target/build/dev/linux-x86_64/bin/schematic-cli --guest
 
 ### Python
 
-Applications can generate Python clients from their operation contracts.
-The application owns the generated package, connection and authentication;
-Harmos does not ship a separate general-purpose PyPI client.
+Install `harmos-sdk` (import `harmos`) for plugin authoring and the host client root.
+Applications generate their own protobuf messages and own connection and authentication.
 
 #### Examples
 

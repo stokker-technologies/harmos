@@ -38,11 +38,10 @@ and caller-face authorization remain independent checks.
    Face-Local Contracts; requirement: Audience-Separated Service Packages in
    `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
    **Proof:** `service_packages_separate_audiences_and_only_declared_methods_stream`
-   checks face-local service and wrapper descriptors. SDK audience generation probes
-   reject leaked stubs. `plugin_cannot_call_a_client_face_even_with_its_declared_contract`
+   checks face-local service and wrapper descriptors. `plugin_cannot_call_a_client_face_even_with_its_declared_contract`
    and `client_invokes_public_plugin_through_the_host_and_protected_is_refused`
    guard native admission, including absence of Instance/context on the client listener.
-   Storage and management descriptors use the same audience-filtered generator;
+   Storage and management descriptors use the same complete SDK generator;
    the combined descriptor inventory matches the locked 19 services/103 methods.
    **Status:** landed for protocol/SDK declarations and storage handlers; broader guards remain open.
 
@@ -310,7 +309,12 @@ and caller-face authorization remain independent checks.
     target production dependencies across all six libraries, excluding derive support.
     **Status:** landed.
 
-17. **Generic Library SDKs.** Keep all four language SDKs in this repository, with
+17. **Generic Library SDKs.** One SDK package per language, amended by the owner on
+    2026-11-13: Python `harmos-sdk` (import `harmos`), Rust `harmos`, NuGet `Harmos`
+    and CMake `HarmosCpp` (`Harmos::Cpp`) include authoring, client roots and host
+    protocol needs. Audience-specific builds and stub guards are removed. The host
+    enforces faces and visibility at runtime, regardless of available bindings.
+    Keep all four SDKs in this repository, with
     the same concepts named consistently using each language's normal casing;
     product SDKs compose them. Library contracts, conformance and guides use generic
     vocabulary without product objects or private identities.

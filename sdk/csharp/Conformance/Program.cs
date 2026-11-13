@@ -9,6 +9,8 @@ using Graph = Harmos.Conformance.V1.Graph;
 using Value = Harmos.Conformance.V1.Value;
 using Plugin = Harmos.Sdk.Plugin;
 
+if (args.FirstOrDefault() == "--install-itself") { await InstallItself.Run(args[1..]); return; }
+
 var fixture = new ConformancePlugin();
 await fixture.Build().ServeAsync(remote: args.Contains("--remote"));
 
