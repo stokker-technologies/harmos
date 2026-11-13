@@ -30,7 +30,7 @@ pub mod v1 {
 mod client_reflection {
     include!("../fixtures/client/client-reflection.rs");
 }
-mod composed_resources {
+pub mod composed_resources {
     include!("../fixtures/client/resources.rs");
 }
 mod client_call_context;

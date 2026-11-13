@@ -31,7 +31,7 @@ compiler environment. Linux requires a C++20 compiler and the vcpkg system prere
 The prepare operation bootstraps vcpkg 2026.05.25 at immutable commit
 `d015e31e90838a4c9dfa3eed45979bc70d9357fc` under `mise cache path`/`vcpkg/d015e31e9083`,
 outside the checkout. The same manifest baseline provides gRPC 1.76.0#1 and
-protobuf 6.33.4#2. Runtime, `protoc` and `grpc_cpp_plugin` use those packages.
+protobuf 6.33.4#2; tests use Catch2 3.15.0. Runtime, `protoc` and `grpc_cpp_plugin` use those packages.
 Dependencies are required config packages; CMake never fetches gRPC sources.
 Native vcpkg binary caching reuses dependencies between builds and checkouts;
 GitHub persists that cache between runs. Compiler-cache settings are workstation-owned.

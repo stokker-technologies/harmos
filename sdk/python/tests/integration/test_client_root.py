@@ -71,9 +71,18 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
             ("harmos.v1.Status", status.StatusGetRequest, status.StatusGetResponse, get_status),
             ("harmos.v1.status.Diagnostics", diagnostics.DiagnosticsGetRequest, diagnostics.DiagnosticsGetResponse, get_diagnostics),
         ]:
-            server.add_generic_rpc_handlers((grpc.method_handlers_generic_handler(service, {
-                "Get": grpc.unary_unary_rpc_method_handler(handler, request_deserializer=request.FromString, response_serializer=response.SerializeToString)
-            }),))
+            server.add_generic_rpc_handlers(
+                (
+                    grpc.method_handlers_generic_handler(
+                        service,
+                        {
+                            "Get": grpc.unary_unary_rpc_method_handler(
+                                handler, request_deserializer=request.FromString, response_serializer=response.SerializeToString
+                            )
+                        },
+                    ),
+                )
+            )
 
         async def watch(request, context):
             yield progress.ProgressWatchResponse(value="opened:" + request.value)
@@ -100,7 +109,9 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
                 table = json.loads((Path(__file__).resolve().parents[3] / "tests/fixtures/client/resources.json").read_text())
                 client = Client(channel, table)
                 self.assertEqual((await client.status.get(status.StatusGetRequest())).status.identity.application_name, "selection")
-                self.assertEqual((await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection")
+                self.assertEqual(
+                    (await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection"
+                )
                 self.assertEqual((await client.jobs.start(jobs.JobsStartRequest(value="selection"))).value, "selection")
                 self.assertEqual(
                     [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],

@@ -40,7 +40,7 @@
 pub fn generate_conformance(
     compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/conformance/proto");
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
     config.out_dir(output);
@@ -246,11 +246,7 @@ pub fn generate_client_fixture(
     compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
-    let files = [
-        "application/v1/jobs.proto",
-        "application/v1/jobs/progress.proto",
-    ]
-    .map(|file| proto.join(file));
+    let files = ["application/v1/jobs.proto", "application/v1/jobs/progress.proto"].map(|file| proto.join(file));
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
     config.file_descriptor_set_path(output.join("client-descriptors.bin"));

@@ -112,17 +112,12 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(fs::read(output.path().join(generated))?, fs::read(root.join("examples/schematic/protocol/src").join(committed))?);
     }
     codegen::generate_client_fixture(&compiler, &includes, output.path())?;
-    for name in [
-        "application.v1.rs",
-        "application.v1.jobs.rs",
-        "client-descriptors.bin",
-        "client-reflection.rs",
-    ] {
+    for name in ["application.v1.rs", "application.v1.jobs.rs", "client-descriptors.bin", "client-reflection.rs"] {
         assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
     }
     codegen::generate_conformance(&compiler, &includes, output.path())?;
     for (source, target) in [("harmos.conformance.v1.rs", "generated.rs"), ("conformance-descriptors.bin", "descriptors.bin")] {
-        assert_eq!(fs::read(output.path().join(source))?, fs::read(root.join("sdk/rust/src/conformance").join(target))?);
+        assert_eq!(fs::read(output.path().join(source))?, fs::read(root.join("sdk/rust/tests/fixtures/conformance").join(target))?);
     }
     Ok(())
 }

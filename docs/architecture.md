@@ -350,7 +350,9 @@ and caller-face authorization remain independent checks.
     Native plugin semantic parity is agreed; generic managed application clients remain
     Rust-only, while other languages use their generated application gRPC clients.
     C++ installs `Harmos::Cpp` with config-package dependencies; its conformance
-    implementation belongs to example support, outside the installed library.
+    implementation belongs to example support, outside the installed library. Conformance
+    protocol input lives under `sdk/tests/fixtures/conformance/proto/`; generated fixture
+    messages and implementations belong only to test and conformance targets in every SDK.
 
     **Status:** landed for these SDK contracts; Wasm is Rust-only.
 

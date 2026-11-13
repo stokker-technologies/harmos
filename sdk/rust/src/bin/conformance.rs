@@ -9,6 +9,8 @@
 
 /* === Modules === */
 
+#[path = "../../tests/fixtures/conformance/mod.rs"]
+pub mod conformance;
 mod install_itself;
 
 /* === Re-Exports === */
@@ -38,7 +40,7 @@ fn main() -> harmos::Result<()> {
     if arguments.first().is_some_and(|argument| argument == "--install-itself") {
         return install_itself::run(&arguments[1..]);
     }
-    let plugin = harmos::conformance::plugin();
+    let plugin = conformance::plugin();
     if arguments.iter().any(|argument| argument == "--remote") { plugin.remote().serve() } else { plugin.serve() }
 }
 

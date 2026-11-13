@@ -7,12 +7,13 @@
 # ***
 
 
-"""Published Rust Crates Serve Their Importable Conformance Fixture"""
+"""Published Rust Crates Serve a Test-Owned Conformance Fixture"""
 
 # === Imports === #
 
 # Standard Library Imports
 import os
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -74,13 +75,14 @@ class PackagedRustConformance(unittest.TestCase):
             # Build an Independent Consumer Whose Only Product Dependency Is the Packaged SDK.
             consumer = scratch / "consumer"
             (consumer / "src").mkdir(parents=True)
-            manifest = f'[package]\nname = "packaged-conformance"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nharmos = "={version}"\n[patch.crates-io]\n'
+            shutil.copytree(root / "sdk/rust/tests/fixtures/conformance", consumer / "src/conformance")
+            manifest = f'[package]\nname = "packaged-conformance"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nharmos = "={version}"\nprost = "0.14"\nprost-types = "0.14"\nfutures-util = "0.3"\n[patch.crates-io]\n'
             for package in packages:
                 manifest += f'{package} = {{ path = "../{package}-{version}" }}\n'
             manifest += '[profile.dev]\ndebug = "line-tables-only"\n[profile.dev.package."*"]\ndebug = false\n'
             (consumer / "Cargo.toml").write_text(manifest, encoding="utf-8")
             (consumer / "src/main.rs").write_text(
-                "fn main() -> harmos::Result<()> { harmos::conformance::plugin().serve() }\n", encoding="utf-8"
+                "mod conformance;\nfn main() -> harmos::Result<()> { conformance::plugin().serve() }\n", encoding="utf-8"
             )
             result = subprocess.run(
                 ["cargo", "build", "--offline", "--manifest-path", str(consumer / "Cargo.toml")],

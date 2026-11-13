@@ -19,7 +19,4 @@
   <ItemGroup>
     <Protobuf Include="../../../proto/harmos/v1/**/*.proto" Exclude="../../../proto/harmos/v1/types.proto;../../../proto/harmos/v1/guest.proto;../../../proto/harmos/v1/storage_types.proto" ProtoRoot="../../../proto" GrpcServices="Both" />
   </ItemGroup>
-  <ItemGroup>
-    <Protobuf Include="../../../proto/harmos/conformance/v1/fixture.proto" ProtoRoot="../../../proto" GrpcServices="None" />
-  </ItemGroup>
 </Project>

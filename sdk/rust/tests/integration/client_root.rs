@@ -43,10 +43,15 @@ struct Endpoint;
 
 #[tonic::async_trait]
 impl harmos_protocol::v1::status_server::Status for Endpoint {
-    async fn get(&self, _: Request<harmos_protocol::v1::StatusGetRequest>) -> Result<Response<harmos_protocol::v1::StatusGetResponse>, Status> {
+    async fn get(
+        &self, _: Request<harmos_protocol::v1::StatusGetRequest>,
+    ) -> Result<Response<harmos_protocol::v1::StatusGetResponse>, Status> {
         Ok(Response::new(harmos_protocol::v1::StatusGetResponse {
             status: Some(harmos_protocol::v1::HostStatus {
-                identity: Some(harmos_protocol::v1::HostIdentity { application_name: "status:selection".into(), ..Default::default() }),
+                identity: Some(harmos_protocol::v1::HostIdentity {
+                    application_name: "status:selection".into(),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }),
             ..Default::default()
@@ -59,9 +64,12 @@ impl harmos_protocol::v1::status_server::Status for Endpoint {
 }
 #[tonic::async_trait]
 impl harmos_protocol::v1::status::diagnostics_server::Diagnostics for Endpoint {
-    async fn get(&self, request: Request<harmos_protocol::v1::status::DiagnosticsGetRequest>) -> Result<Response<harmos_protocol::v1::status::DiagnosticsGetResponse>, Status> {
+    async fn get(
+        &self, request: Request<harmos_protocol::v1::status::DiagnosticsGetRequest>,
+    ) -> Result<Response<harmos_protocol::v1::status::DiagnosticsGetResponse>, Status> {
         Ok(Response::new(harmos_protocol::v1::status::DiagnosticsGetResponse {
-            name: format!("diagnostics:{}", request.into_inner().name), ..Default::default()
+            name: format!("diagnostics:{}", request.into_inner().name),
+            ..Default::default()
         }))
     }
 }
@@ -123,11 +131,31 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     assert!(matches!(Client::new(channel.clone(), incompatible), Err(error) if error.code() == tonic::Code::InvalidArgument));
     let client = Root::new(Client::new(channel, settings).unwrap().transport_handle());
     assert_eq!(
-        client.status.get(Request::new(harmos_protocol::v1::StatusGetRequest {})).await.unwrap().into_inner().status.unwrap().identity.unwrap().application_name,
+        client
+            .status
+            .get(Request::new(harmos_protocol::v1::StatusGetRequest {}))
+            .await
+            .unwrap()
+            .into_inner()
+            .status
+            .unwrap()
+            .identity
+            .unwrap()
+            .application_name,
         "status:selection"
     );
     assert_eq!(
-        client.status.diagnostics.get(Request::new(harmos_protocol::v1::status::DiagnosticsGetRequest { name: "selection".into(), ..Default::default() })).await.unwrap().into_inner().name,
+        client
+            .status
+            .diagnostics
+            .get(Request::new(harmos_protocol::v1::status::DiagnosticsGetRequest {
+                name: "selection".into(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner()
+            .name,
         "diagnostics:selection"
     );
     assert_eq!(

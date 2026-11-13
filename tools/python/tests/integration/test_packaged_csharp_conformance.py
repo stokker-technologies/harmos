@@ -13,6 +13,7 @@
 
 # Standard Library Imports
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -47,7 +48,7 @@ class PackagedCSharpConformance(unittest.TestCase):
         with tempfile.TemporaryDirectory() as name:
             scratch = Path(name)
             feed = scratch / "feed"
-            # Pack the SDK Assembly and Its Generated Conformance Messages.
+            # Pack Only the SDK Assembly and Product Messages.
             result = subprocess.run(
                 [dotnet, "pack", str(root / "sdk/csharp/Harmos/Harmos.csproj"), "--configuration", "Debug", "--output", str(feed)],
                 cwd=root,
@@ -63,9 +64,11 @@ class PackagedCSharpConformance(unittest.TestCase):
             consumer.mkdir()
             project = consumer / "Consumer.csproj"
             project.write_text(
-                '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><PackageReference Include="Harmos" Version="0.1.0" /></ItemGroup></Project>',
+                '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><PackageReference Include="Harmos" Version="0.1.0" /><PackageReference Include="Grpc.Tools" Version="2.76.0" PrivateAssets="All" /><Protobuf Include="proto/harmos/conformance/v1/fixture.proto" ProtoRoot="proto" GrpcServices="None" /></ItemGroup></Project>',
                 encoding="utf-8",
             )
+            shutil.copyfile(root / "sdk/csharp/Conformance/Fixture.cs", consumer / "Fixture.cs")
+            shutil.copytree(root / "sdk/tests/fixtures/conformance/proto", consumer / "proto")
             (consumer / "Program.cs").write_text("await new Harmos.Conformance.Fixture().Build().ServeAsync();\n", encoding="utf-8")
             config = consumer / "NuGet.Config"
             config.write_text(

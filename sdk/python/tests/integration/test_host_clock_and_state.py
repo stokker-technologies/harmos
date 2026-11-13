@@ -19,7 +19,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 # Local Imports
 from harmos import GET_TIME, SLEEP, Plugin
-from harmos.conformance.v1.fixture_pb2 import Value
+from tests.fixtures.conformance.v1.fixture_pb2 import Value
 from harmos.v1 import types_pb2 as wire
 from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
 from tests.support import calls

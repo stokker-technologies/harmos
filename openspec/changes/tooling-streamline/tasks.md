@@ -105,5 +105,9 @@ cold-build concurrency remain unmeasured.
 - [x] 8.1 Align dispatcher expectations with root-only preparation and per-SDK test delegation.
 - [x] 8.2 Replace the five C++ cases and runner with Catch2 v3 and automatic discovery.
 - [x] 8.3 Move shared client inputs under SDK tests and compose real library roots in all four SDKs.
-- [ ] 8.4 Move the unchanged conformance protocol to test inputs and exclude generated fixtures from shipping packages.
-- [ ] 8.5 Run the requested final checks and focused SDK proofs on the committed head; retain local commits only.
+- [x] 8.4 Move the unchanged conformance protocol to test inputs and exclude generated fixtures from shipping packages.
+
+Final proof runs on the committed candidate: root format; Rust, Python and repository
+checks; C++ configure/build/CTest presets; the Rust generated-protocol test; C# tests;
+and Python client tests. The tree must remain clean, commits local and C: above 40 GB.
+Windows-only local evidence does not close the existing cross-platform/hosted task 4.1.

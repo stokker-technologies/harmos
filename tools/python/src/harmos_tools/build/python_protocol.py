@@ -13,6 +13,7 @@
 # Standard Library Imports
 import argparse
 import filecmp
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,7 +39,7 @@ PROTOCOLS = tuple(
         for path in (ROOT / "proto/harmos" / face).rglob("*.proto")
         if path.name != "guest.proto"
     )
-) + ("harmos/conformance/v1/fixture.proto",)
+)
 GENERATED = tuple(name.removesuffix(".proto") + suffix for name in PROTOCOLS for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))
 
 # === Types === #
@@ -85,6 +86,30 @@ def generate_client_fixture(output: Path) -> None:
     )
 
 
+def generate_conformance(output: Path) -> None:
+    proto = ROOT / "sdk/tests/fixtures/conformance/proto"
+    with tempfile.TemporaryDirectory() as scratch:
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "grpc_tools.protoc",
+                f"-I{proto}",
+                f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
+                f"--python_out={scratch}",
+                f"--pyi_out={scratch}",
+                f"--grpc_python_out={scratch}",
+                "harmos/conformance/v1/fixture.proto",
+            ],
+            check=True,
+            cwd=ROOT,
+            creationflags=spawn_flags(),
+        )
+        output.mkdir(parents=True, exist_ok=True)
+        for source in (Path(scratch) / "harmos/conformance/v1").iterdir():
+            shutil.copyfile(source, output / source.name)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
@@ -93,6 +118,7 @@ def main() -> None:
     if not options.check:
         generate(committed)
         generate_client_fixture(ROOT / "sdk/python/tests/fixtures/client")
+        generate_conformance(ROOT / "sdk/python/tests/fixtures/conformance/v1")
         return
 
     with tempfile.TemporaryDirectory() as scratch:
@@ -100,6 +126,14 @@ def main() -> None:
         generate(output)
         changed = [
             name for name in GENERATED if not (committed / name).exists() or not filecmp.cmp(output / name, committed / name, shallow=False)
+        ]
+        fixture = ROOT / "sdk/python/tests/fixtures/conformance/v1"
+        generated_fixture = output / "conformance"
+        generate_conformance(generated_fixture)
+        changed += [
+            str(path.relative_to(output))
+            for path in generated_fixture.iterdir()
+            if not (fixture / path.name).exists() or not filecmp.cmp(path, fixture / path.name, shallow=False)
         ]
         if changed:
             raise SystemExit(f"Generated Python Differs: {', '.join(changed)}; Run mise run generate -- --sdk python")

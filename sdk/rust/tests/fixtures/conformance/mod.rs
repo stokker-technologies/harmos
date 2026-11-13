@@ -22,7 +22,7 @@ pub mod v1;
 // Third Party Imports
 
 // Local Imports
-use crate::{
+use harmos::{
     Classification, Context, Failure, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility,
 };
 use v1::{Graph, graph::Nested};
@@ -180,7 +180,7 @@ pub fn plugin() -> Plugin {
         .operation(Operation::new("conformance.nested", nested).visibility(Visibility::Public))
         .operation(Operation::new("conformance.projected", projected).visibility(Visibility::Public))
         .operation(Operation::new("conformance.clock", clock).visibility(Visibility::Public))
-        .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos_protocol::v1::Visibility::Protected))
+        .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos::v1::Visibility::Protected))
         .operation(Operation::new("example.plugin.v1.Steps/Execute", resources).visibility(Visibility::Public).replay_safe())
         .operation(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))
         .operation(Operation::new("conformance.watch", watch).visibility(Visibility::Public))
@@ -194,8 +194,8 @@ pub fn plugin() -> Plugin {
         .requires::<HostPending>()
         .requires::<HostFail>()
         .requires::<Graph>()
-        .requires::<crate::clock::TimeSleepRequest>()
-        .requires::<crate::clock::TimeGetRequest>()
+        .requires::<harmos::clock::TimeSleepRequest>()
+        .requires::<harmos::clock::TimeGetRequest>()
         .stream(ticks)
         .stream(device)
         .stream(settings)
@@ -209,8 +209,8 @@ pub fn plugin() -> Plugin {
 
 async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
     let policy = match request.value.as_slice() {
-        b"retry" => Some(harmos_protocol::v1::OperationPolicy {
-            retries: Some(harmos_protocol::v1::RetryPolicy {
+        b"retry" => Some(harmos::v1::OperationPolicy {
+            retries: Some(harmos::v1::RetryPolicy {
                 total_attempts: 2,
                 initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
                 maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
@@ -218,26 +218,26 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
             }),
             ..Default::default()
         }),
-        b"deadline" => Some(harmos_protocol::v1::OperationPolicy {
+        b"deadline" => Some(harmos::v1::OperationPolicy {
             timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
             attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
             ..Default::default()
         }),
-        b"overall" => Some(harmos_protocol::v1::OperationPolicy {
+        b"overall" => Some(harmos::v1::OperationPolicy {
             timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
             cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
-        b"retry-bound" => Some(harmos_protocol::v1::OperationPolicy {
+        b"retry-bound" => Some(harmos::v1::OperationPolicy {
             timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-            retries: Some(harmos_protocol::v1::RetryPolicy {
+            retries: Some(harmos::v1::RetryPolicy {
                 total_attempts: 2,
                 initial: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
                 ..Default::default()
             }),
             ..Default::default()
         }),
-        b"cancel" => Some(harmos_protocol::v1::OperationPolicy {
+        b"cancel" => Some(harmos::v1::OperationPolicy {
             cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
@@ -259,8 +259,8 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
     let first = ctx
         .call_with(
             HostEcho { value: request.value },
-            Some(harmos_protocol::v1::OperationPolicy {
-                retries: Some(harmos_protocol::v1::RetryPolicy {
+            Some(harmos::v1::OperationPolicy {
+                retries: Some(harmos::v1::RetryPolicy {
                     total_attempts: 3,
                     initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
                     maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
@@ -389,7 +389,7 @@ async fn local(context: &Context, request: Value) -> Result<Value> {
         return Ok(request);
     }
     if context.attempt == 1 {
-        return Err(crate::Error::failure(Classification::Transient, "retry", "Retry", "Invoke Again"));
+        return Err(harmos::Error::failure(Classification::Transient, "retry", "Retry", "Invoke Again"));
     }
     Ok(Value {
         value: context.attempt.to_string().into_bytes(),

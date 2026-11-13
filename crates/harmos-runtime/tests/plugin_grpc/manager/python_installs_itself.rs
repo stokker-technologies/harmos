@@ -46,5 +46,6 @@ async fn python_installs_itself() {
     let root = crate::support::fixtures::workspace();
     let program =
         root.join(if cfg!(target_os = "windows") { "sdk/python/.venv/Scripts/python.exe" } else { "sdk/python/.venv/bin/python" });
-    super::support::installs_itself(&program, &["-m", "harmos.conformance"]).await;
+    let fixture = root.join("sdk/python/tests/fixtures/conformance/__main__.py");
+    super::support::installs_itself(&program, &[fixture.to_str().unwrap()]).await;
 }

@@ -18,7 +18,7 @@ from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
 from harmos import GET_TIME, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
-from harmos.conformance.v1.fixture_pb2 import Graph, PayloadOnly, Value
+from .v1.fixture_pb2 import Graph, PayloadOnly, Value
 from harmos.v1 import types_pb2 as wire
 
 # Type Checking Imports

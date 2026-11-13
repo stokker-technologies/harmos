@@ -12,11 +12,18 @@
 
 import argparse
 import asyncio
+import importlib
 import sys
 
 from harmos import GET_TIME, SLEEP, Plugin
-import harmos.conformance as conformance
-from .fixture import ClockFixture
+from pathlib import Path
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    __package__ = "tests.fixtures.conformance"
+
+conformance_plugin = importlib.import_module(__package__).plugin
+ClockFixture = importlib.import_module(__package__ + ".fixture").ClockFixture
 
 # === Public Exports === #
 
@@ -45,7 +52,7 @@ async def _main() -> None:
     selected = (
         Plugin(ClockFixture(), id="conformance", version="1.0.0", requires=[SLEEP, GET_TIME])
         if options.clock_only
-        else conformance.plugin()
+        else conformance_plugin()
     )
     endpoint = await selected.start(options.address)
     print(f"harmos listening {endpoint.address}", flush=True)

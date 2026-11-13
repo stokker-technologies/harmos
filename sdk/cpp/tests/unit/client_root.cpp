@@ -66,7 +66,7 @@ struct Progress final : application::v1::jobs::Progress::Service {
 /* === Public Functions === */
 
 TEST_CASE("A client composes services and their nested resources") {
-    SECTION("A client composes services and their nested resources") {
+    SECTION("Library and Application Resources Share One Channel") {
         Status status; Diagnostics diagnostics; Jobs jobs; Progress progress;
         grpc::ServerBuilder builder;
         int port = 0;

@@ -36,7 +36,7 @@ using Value = harmos::conformance::v1::Value;
 /* === Public Functions === */
 
 TEST_CASE("A catalog refuses duplicate operations") {
-    SECTION("A catalog refuses duplicate operations") {
+    SECTION("Duplicate Registrations Are Refused") {
         harmos::Operation<Value, Value> echo("example.echo", harmos::wire::VISIBILITY_PUBLIC, [](harmos::Context&, Value request) { return request; });
         harmos::Plugin plugin("example", "1.0.0");
         plugin.operation(echo).operation(echo);
@@ -45,7 +45,7 @@ TEST_CASE("A catalog refuses duplicate operations") {
 }
 
 TEST_CASE("An observer preserves its stream contract") {
-    SECTION("An observer preserves its stream contract") {
+    SECTION("Row Types Stay Stable and Incompatible Rows Are Refused") {
         harmos::Stream<Value> stream("example.samples");
         harmos::Observer<Value> observer(stream, [](harmos::Context&) { return Value{}; });
         google::protobuf::Duration interval;
@@ -55,7 +55,7 @@ TEST_CASE("An observer preserves its stream contract") {
         plugin.stream(stream).observer(observer);
         auto catalog = plugin.catalog();
         REQUIRE(catalog.streams(0).row() == Value::descriptor()->full_name());
-    
+
         harmos::Stream<harmos::context::v1::TimeGetRequest> different_row("example.samples");
         harmos::Observer<harmos::context::v1::TimeGetRequest> incompatible(different_row, [](harmos::Context&) { return harmos::context::v1::TimeGetRequest{}; });
         incompatible.every(interval);
@@ -66,7 +66,7 @@ TEST_CASE("An observer preserves its stream contract") {
 }
 
 TEST_CASE("A catalog preserves typed sections and their dependencies") {
-    SECTION("A catalog preserves typed sections and their dependencies") {
+    SECTION("Typed Sections Retain Their Values and Resolve Dependencies") {
         harmos::context::v1::TimeSleepRequest setting;
         setting.mutable_duration()->set_seconds(37);
         harmos::Plugin plugin("example", "1.0.0");
@@ -75,7 +75,7 @@ TEST_CASE("A catalog preserves typed sections and their dependencies") {
         const auto catalog = plugin.catalog();
         const auto decoded = harmos::decode<harmos::context::v1::TimeSleepRequest>(catalog.sections(0).payload());
         REQUIRE(decoded.duration().seconds() == 37);
-    
+
         google::protobuf::SimpleDescriptorDatabase database;
         for (const auto& file : catalog.types().file()) {
             REQUIRE(database.Add(file));

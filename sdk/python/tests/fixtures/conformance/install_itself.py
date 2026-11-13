@@ -12,7 +12,7 @@
 # === Imports === #
 
 from harmos import Client, Context, Plugin, operation
-from harmos.conformance.v1.fixture_pb2 import Value
+from .v1.fixture_pb2 import Value
 from harmos.v1 import plugins_pb2 as plugins, invocations_pb2 as invocations, types_pb2 as wire
 from harmos.v1.storage_settings_pb2 import StorageTransferSettings
 

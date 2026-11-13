@@ -73,7 +73,7 @@ struct Progress final : application::v1::jobs::Progress::CallbackService {
 /* === Public Functions === */
 
 TEST_CASE("One call preserves metadata deadline override and cancellation") {
-    SECTION("One call preserves metadata deadline override and cancellation") {
+    SECTION("Caller Controls Reach a Watch and Cancel It") {
         // Serve a Watch That Waits for the Caller to Cancel Its Context.
         Progress progress;
         auto cancelled = progress.cancelled.get_future();
