@@ -169,6 +169,15 @@ Plugin& Plugin::on_stop(std::function<void()> cleanup) {
     return *this;
 }
 
+Plugin& Plugin::setting(wire::SettingDeclaration declaration) {
+    if (declaration.name().empty() || !declaration.has_default_() || declaration.default_().value_case() == wire::SettingValue::VALUE_NOT_SET)
+        throw std::invalid_argument("Declare Setting " + declaration.name() + ": Name and Typed Default Are Required");
+    for (const auto& existing : settings_.values())
+        if (existing.name() == declaration.name()) throw std::invalid_argument("Declare Setting " + declaration.name() + ": Duplicate Name");
+    *settings_.add_values() = std::move(declaration);
+    return *this;
+}
+
 wire::Catalog Plugin::catalog() const {
     wire::Catalog catalog;
     *catalog.mutable_types() = messages_;
@@ -211,6 +220,14 @@ wire::Catalog Plugin::catalog() const {
         if (!sections.insert(section.type()).second) throw std::invalid_argument("Duplicate Section");
         *catalog.add_sections() = section;
         detail::merge(*catalog.mutable_types(), types);
+    }
+    if (!settings_.values().empty()) {
+        const std::string type(wire::SettingsDeclarations::descriptor()->full_name());
+        if (!sections.insert(type).second) throw std::invalid_argument("Declare Settings: Duplicate Section");
+        auto* section = catalog.add_sections();
+        section->set_type(type);
+        section->set_payload(detail::encode(settings_));
+        detail::merge(*catalog.mutable_types(), detail::types(wire::SettingsDeclarations::descriptor()));
     }
     catalog.set_digest(detail::sha256(detail::encode(catalog)));
     return catalog;

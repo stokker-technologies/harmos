@@ -30,8 +30,14 @@ endif()
 install(TARGETS harmos_cpp harmos_cpp_protocol EXPORT HarmosTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated/harmos"
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
+foreach(protocol IN LISTS HARMOS_PROTOCOLS)
+    get_filename_component(directory "${protocol}" DIRECTORY)
+    string(REPLACE ".proto" ".pb.h" message_header "${protocol}")
+    string(REPLACE ".proto" ".grpc.pb.h" service_header "${protocol}")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/${message_header}"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/${service_header}"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${directory}")
+endforeach()
 configure_package_config_file(cmake/HarmosConfig.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/HarmosConfig.cmake"
     INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Harmos")
@@ -48,3 +54,6 @@ if(HARMOS_BUILD_TESTS)
     add_subdirectory(tests)
     add_subdirectory(examples/conformance)
 endif()
+
+add_subdirectory(examples/client)
+add_subdirectory(examples/plugin)

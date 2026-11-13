@@ -15,7 +15,6 @@
 import os
 import shutil
 import subprocess
-import tarfile
 import unittest
 from pathlib import Path
 
@@ -54,8 +53,7 @@ class PackagedConformance(unittest.TestCase):
                 raise RuntimeError("Package Conformance: extracted sources escaped the owned directory")
             if owned.exists():
                 shutil.rmtree(owned)
-        with tarfile.open(package) as bundle:
-            bundle.extractall(source, filter="data")
+        shutil.unpack_archive(package, source, format="gztar", filter="data")
         # Compile the Packaged Example Against the Installed SDK, Without Its Sources.
         selected = "tests" if profile == "dev" else "release"
         prefix = root / "target/cpp" / selected / "installed"
@@ -77,7 +75,8 @@ class PackagedConformance(unittest.TestCase):
             "-DVCPKG_MANIFEST_INSTALL=OFF",
         ]
         build.mkdir(parents=True, exist_ok=True)
-        with (build / "configure.log").open("w", encoding="utf-8") as log:
+        log = (build / "configure.log").open("w", encoding="utf-8")
+        try:
             result = subprocess.run(
                 configure,
                 env=child_environment,
@@ -86,8 +85,11 @@ class PackagedConformance(unittest.TestCase):
                 stderr=subprocess.STDOUT,
                 creationflags=spawn_flags(),
             )
+        finally:
+            log.close()
         self.assertEqual(result.returncode, 0, (build / "configure.log").read_text(errors="replace"))
-        with (build / "build.log").open("w", encoding="utf-8") as log:
+        log = (build / "build.log").open("w", encoding="utf-8")
+        try:
             result = subprocess.run(
                 [
                     "cmake",
@@ -104,6 +106,8 @@ class PackagedConformance(unittest.TestCase):
                 stderr=subprocess.STDOUT,
                 creationflags=spawn_flags(),
             )
+        finally:
+            log.close()
         self.assertEqual(
             result.returncode,
             0,
@@ -126,7 +130,7 @@ class PackagedConformance(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout)
         rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
-        self.assertEqual(len(rows), 31, result.stdout)
+        self.assertEqual(len(rows), 36, result.stdout)
 
 
 # === Public Functions === #

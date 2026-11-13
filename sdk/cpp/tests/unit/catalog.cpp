@@ -18,7 +18,7 @@
 // Local Imports
 #include "harmos/harmos.hpp"
 #include "harmos/generated/client.hpp"
-#include "harmos/context/v1/time.pb.h"
+#include "harmos/plugin/host/v1/time.pb.h"
 #include "harmos/conformance/v1/fixture.pb.h"
 
 /* === Macros === */
@@ -56,8 +56,8 @@ TEST_CASE("An observer preserves its stream contract") {
         auto catalog = plugin.catalog();
         REQUIRE(catalog.streams(0).row() == Value::descriptor()->full_name());
 
-        harmos::Stream<harmos::context::v1::TimeGetRequest> different_row("example.samples");
-        harmos::Observer<harmos::context::v1::TimeGetRequest> incompatible(different_row, [](harmos::Context&) { return harmos::context::v1::TimeGetRequest{}; });
+        harmos::Stream<harmos::plugin::host::v1::TimeGetRequest> different_row("example.samples");
+        harmos::Observer<harmos::plugin::host::v1::TimeGetRequest> incompatible(different_row, [](harmos::Context&) { return harmos::plugin::host::v1::TimeGetRequest{}; });
         incompatible.every(interval);
         harmos::Plugin invalid("example", "1.0.0");
         invalid.stream(stream);
@@ -67,13 +67,13 @@ TEST_CASE("An observer preserves its stream contract") {
 
 TEST_CASE("A catalog preserves typed sections and their dependencies") {
     SECTION("Typed Sections Retain Their Values and Resolve Dependencies") {
-        harmos::context::v1::TimeSleepRequest setting;
+        harmos::plugin::host::v1::TimeSleepRequest setting;
         setting.mutable_duration()->set_seconds(37);
         harmos::Plugin plugin("example", "1.0.0");
         plugin.requires_operation(harmos::GET_TIME).requires_operation(harmos::SLEEP).section(setting);
         setting.mutable_duration()->set_seconds(99);
         const auto catalog = plugin.catalog();
-        const auto decoded = harmos::decode<harmos::context::v1::TimeSleepRequest>(catalog.sections(0).payload());
+        const auto decoded = harmos::decode<harmos::plugin::host::v1::TimeSleepRequest>(catalog.sections(0).payload());
         REQUIRE(decoded.duration().seconds() == 37);
 
         google::protobuf::SimpleDescriptorDatabase database;
@@ -81,11 +81,35 @@ TEST_CASE("A catalog preserves typed sections and their dependencies") {
             REQUIRE(database.Add(file));
         }
         google::protobuf::DescriptorPool pool(&database);
-        for (const auto* name : {"harmos.context.v1.TimeSleepRequest", "harmos.context.v1.TimeSleepResponse", "harmos.context.v1.TimeGetRequest", "harmos.context.v1.TimeGetResponse"}) {
+        for (const auto* name : {"harmos.plugin.host.v1.TimeSleepRequest", "harmos.plugin.host.v1.TimeSleepResponse", "harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse"}) {
             REQUIRE(pool.FindMessageTypeByName(name));
         }
         REQUIRE(pool.FindMessageTypeByName(catalog.sections(0).type()));
     }
+}
+
+TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
+    harmos::wire::SettingDeclaration flag;
+    flag.set_name("enabled");
+    flag.mutable_default_()->set_flag(false);
+    harmos::wire::SettingDeclaration interval;
+    interval.set_name("interval");
+    interval.mutable_default_()->mutable_duration()->set_seconds(2);
+    harmos::Plugin plugin("example", "1.0.0");
+    plugin.setting(flag).setting(interval).requires_operation(harmos::LIST_SETTINGS);
+    const auto catalog = plugin.catalog();
+    const auto settings = harmos::decode<harmos::wire::SettingsDeclarations>(catalog.sections(0).payload());
+    REQUIRE(settings.values(0).default_().has_flag());
+    REQUIRE_FALSE(settings.values(0).default_().flag());
+    REQUIRE(settings.values(1).default_().duration().seconds() == 2);
+    REQUIRE_THROWS_AS(plugin.setting(flag), std::invalid_argument);
+    interval.clear_default_();
+    REQUIRE_THROWS_AS(harmos::Plugin("invalid", "1.0.0").setting(interval), std::invalid_argument);
+    google::protobuf::SimpleDescriptorDatabase database;
+    for (const auto& file : catalog.types().file()) REQUIRE(database.Add(file));
+    google::protobuf::DescriptorPool pool(&database);
+    REQUIRE(pool.FindMessageTypeByName("harmos.v1.SettingValue"));
+    REQUIRE(pool.FindMessageTypeByName("harmos.plugin.host.v1.SettingsListResponse"));
 }
 
 /* === Private Functions === */
