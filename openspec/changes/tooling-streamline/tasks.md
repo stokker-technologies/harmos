@@ -28,7 +28,7 @@
 - [ ] 4.3 Verify the installed repository checker accepts the entry-point task model and generated protocol declarations; hand remaining checker defects to its owner.
 - [x] 4.4 Prove the Committed C++ Presets from Clean Output, the Installed Consumer and Integration Stories on Windows; Record Cold and Cached Build Durations in the Final Report.
 - [x] 4.5 Run Root Format and Repository Checks, Per-SDK C# and Python Build/Unit Tasks, and Verify Clean Git Status on the Committed Candidate.
-- [ ] 4.6 After Ownership Authorization, Update the Two Tooling Dispatcher Expectations in `tools/python/tests/integration/test_build_cargo.py` and Rerun `mise run check -- --language python`.
+- [x] 4.6 After Ownership Authorization, Update the Two Tooling Dispatcher Expectations in `tools/python/tests/integration/test_build_cargo.py` and Rerun `mise run check -- --language python`.
 
 ## 5. Developer Build Feedback
 
@@ -99,3 +99,11 @@ cold-build concurrency remain unmeasured.
 
 - [x] 5.5 Merge build-speed tooling with SDK guest profiles and focused test selectors;
   retain benchmark fixture separation and move measurements out of the usage guide.
+
+## 8. Locked SDK Test Migration
+
+- [x] 8.1 Align dispatcher expectations with root-only preparation and per-SDK test delegation.
+- [ ] 8.2 Replace the five C++ cases and runner with Catch2 v3 and automatic discovery.
+- [ ] 8.3 Move shared client inputs under SDK tests and compose real library roots in all four SDKs.
+- [ ] 8.4 Move the unchanged conformance protocol to test inputs and exclude generated fixtures from shipping packages.
+- [ ] 8.5 Run the requested final checks and focused SDK proofs on the committed head; retain local commits only.
