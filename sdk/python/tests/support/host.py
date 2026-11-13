@@ -36,12 +36,12 @@ ROOT = Path(__file__).resolve().parents[4]
 # === Public Functions === #
 
 
-async def run(address: str) -> tuple[int, str, str]:
+async def run(address: str, *, binary: Path | None = None) -> tuple[int, str, str]:
     name = "harmos-conformance.exe" if os.name == "nt" else "harmos-conformance"
     profile = os.environ.get("TEST_PROFILE", "dev")
     exported = output(ROOT, "build", profile) / "bin" / name
     local = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug" / name
-    binary = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.exists() else local))
+    binary = binary if binary is not None else Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.exists() else local))
     if not binary.is_file():
         raise FileNotFoundError("Build the Reference Host: mise run build -- --package harmos-conformance")
     process = await asyncio.create_subprocess_exec(

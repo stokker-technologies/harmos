@@ -177,7 +177,10 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.p
 hide = true
 description = "Format Python"
 usage = 'flag "--check"'
-run = "uv run --locked --no-sync --project tools/python ruff format tools/python tools/packaging sdk/python{% if usage.check %} --check{% endif %}"
+run = [
+  "uv run --locked --no-sync --project tools/python ruff format tools/python tools/packaging sdk/python{% if usage.check %} --check{% endif %}",
+  "uv run --locked --no-sync --project tools/python ruff format --config tools/python/ruff.toml sdk/cpp/tests{% if usage.check %} --check{% endif %}",
+]
 
 [tasks."format:rust"]
 hide = true
@@ -200,6 +203,7 @@ hide = true
 description = "Lint Python"
 run = [
   "uv run --locked --no-sync --project tools/python ruff check tools/python tools/packaging sdk/python",
+  "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml sdk/cpp/tests",
   "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python",
   "uv run --locked --no-sync --project tools/python ty check --project sdk/python sdk/python",
 ]

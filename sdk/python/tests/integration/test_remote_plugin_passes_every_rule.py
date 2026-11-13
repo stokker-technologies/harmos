@@ -16,7 +16,7 @@ import unittest
 # Third Party Imports
 
 # Local Imports
-from harmos.conformance.__main__ import plugin
+from harmos.conformance import plugin
 from tests.support import host
 
 # Type Checking Imports

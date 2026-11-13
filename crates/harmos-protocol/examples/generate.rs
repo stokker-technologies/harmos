@@ -92,6 +92,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         std::fs::copy(output.path().join(name), destination.join(name))?;
     }
+    codegen::generate_conformance(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
+    let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/src/conformance");
+    std::fs::create_dir_all(&destination)?;
+    for (source, target) in [("harmos.conformance.v1.rs", "generated.rs"), ("conformance-descriptors.bin", "descriptors.bin")] {
+        std::fs::copy(output.path().join(source), destination.join(target))?;
+    }
     Ok(())
 }
 

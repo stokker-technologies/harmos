@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use super::Value;
+use harmos::conformance::v1::Value;
 use harmos::{Client, ClientSettings, Context, Operation, Plugin, Result, Visibility, v1};
 use prost::Message;
 use std::num::NonZeroUsize;

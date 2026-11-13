@@ -15,7 +15,6 @@ mod error;
 mod fixture;
 mod managed;
 mod reference;
-mod schema_fixture;
 mod suite;
 
 /* === Re-Exports === */

@@ -9,7 +9,7 @@ include(cmake/Dependencies.cmake)
 set(HARMOS_PROTO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../proto")
 set(HARMOS_GENERATED "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${HARMOS_GENERATED}")
-set(HARMOS_PROTOCOLS harmos/v1/types harmos/v1/storage_types)
+set(HARMOS_PROTOCOLS harmos/v1/types harmos/v1/storage_types harmos/conformance/v1/fixture)
 file(GLOB_RECURSE HARMOS_PLUGIN_PROTOCOLS CONFIGURE_DEPENDS "${HARMOS_PROTO_ROOT}/harmos/plugin/v1/*.proto" "${HARMOS_PROTO_ROOT}/harmos/context/v1/*.proto")
 foreach(protocol IN LISTS HARMOS_PLUGIN_PROTOCOLS)
     file(RELATIVE_PATH relative "${HARMOS_PROTO_ROOT}" "${protocol}")
@@ -47,7 +47,7 @@ add_library(harmos_cpp_protocol STATIC ${HARMOS_PROTO_OUTPUTS})
 
 target_include_directories(harmos_cpp_protocol SYSTEM PUBLIC "${HARMOS_GENERATED}")
 target_link_libraries(harmos_cpp_protocol PUBLIC grpc++ libprotobuf)
-add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp)
+add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp src/conformance.cpp)
 add_library(Harmos::Cpp ALIAS harmos_cpp)
 target_compile_features(harmos_cpp PUBLIC cxx_std_20)
 target_include_directories(harmos_cpp PUBLIC include)
@@ -62,19 +62,10 @@ else()
     target_compile_options(harmos_cpp PRIVATE -Wall -Wextra -Werror)
 endif()
 
-option(HARMOS_BUILD_TESTS "Build SDK Unit Tests and the Conformance Plugin" ${PROJECT_IS_TOP_LEVEL})
+option(HARMOS_BUILD_TESTS "Build SDK Unit Tests and the Conformance Plugin" OFF)
 if(HARMOS_BUILD_TESTS)
-    add_custom_command(
-        OUTPUT "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.cc" "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.h"
-        COMMAND $<TARGET_FILE:protoc> --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
-            --proto_path=${grpc_SOURCE_DIR}/third_party/protobuf/src
-            --cpp_out=${HARMOS_GENERATED} "${CMAKE_CURRENT_SOURCE_DIR}/proto/harmos/conformance/v1/fixture.proto"
-        DEPENDS protoc "${CMAKE_CURRENT_SOURCE_DIR}/proto/harmos/conformance/v1/fixture.proto"
-        VERBATIM)
-    add_library(harmos_cpp_fixture STATIC "${HARMOS_GENERATED}/harmos/conformance/v1/fixture.pb.cc")
-    target_link_libraries(harmos_cpp_fixture PUBLIC Harmos::Cpp)
     add_executable(harmos-cpp-conformance examples/conformance/main.cpp examples/conformance/install_itself.cpp)
-    target_link_libraries(harmos-cpp-conformance PRIVATE harmos_cpp_fixture)
+    target_link_libraries(harmos-cpp-conformance PRIVATE Harmos::Cpp)
 
     set(HARMOS_CLIENT_FIXTURE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/client/proto")
     set(HARMOS_CLIENT_FIXTURE_PROTOCOLS library/v1/plugins library/v1/plugins/settings application/v1/jobs application/v1/jobs/progress)
@@ -95,7 +86,7 @@ if(HARMOS_BUILD_TESTS)
 
     enable_testing()
     add_executable(harmos-cpp-tests tests/unit/catalog.cpp tests/unit/client_root.cpp)
-    target_link_libraries(harmos-cpp-tests PRIVATE harmos_cpp_fixture harmos_client_fixture)
+    target_link_libraries(harmos-cpp-tests PRIVATE Harmos::Cpp harmos_client_fixture)
     foreach(case client_roots_compose_services catalog_rejects_duplicate_operations observer_preserves_its_stream_contract catalog_preserves_typed_sections_and_dependencies)
         add_test(NAME ${case} COMMAND harmos-cpp-tests ${case})
     endforeach()

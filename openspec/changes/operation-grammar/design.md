@@ -1758,6 +1758,17 @@ default; affected configuration details live in the architecture and storage gui
 The conformance fixture becomes a public SDK definition, with a thin executable
 caller and packaged generated fixture messages. Each language's isolated package
 journey must construct it using only the installed SDK and run the reference host.
+The public shapes are `harmos::conformance::plugin() -> harmos::Plugin`,
+Python `harmos.conformance.plugin() -> Plugin`, C#
+`new Harmos.Conformance.Fixture().Build() -> Harmos.Sdk.Plugin`, and C++
+`harmos::conformance::plugin() -> harmos::Plugin` from `harmos/conformance.hpp`.
+One `proto/harmos/conformance/v1/fixture.proto` generates all fixture bindings.
+Rust ships its generated source/descriptors in the crate; Python ships generated
+modules in the wheel; C# compiles messages into the SDK assembly; C++ builds them
+unconditionally into `Harmos::Cpp`, including with tests disabled. C++ Build stages
+the source distribution with `sdk/cpp` and `proto`; no new release asset is added.
+The four package stories use actual Cargo archives, a wheel, a NuGet package and
+that source distribution, with no workspace product sources in the consumer.
 The generated C++ resource methods take `grpc::ClientContext&` supplied by the caller;
 Watch readers borrow that same caller-owned context until the reader finishes.
 The matching Rust request, Python call options and C# CallOptions retain per-call

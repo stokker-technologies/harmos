@@ -149,6 +149,7 @@ On Windows, run the corresponding executable under
 
 The conformance tool package lives in `tools/conformance`; build and generation tooling
 lives in `tools/packaging`, outside the core libraries.
+Every SDK includes an importable fixture for [layered SDK conformance](docs/tooling.md#conformance-for-a-layered-sdk).
 
 [Releases](https://github.com/stokker-technologies/harmos/releases) attach
 `harmos-proto-<version>.zip`, one `harmos-conformance-<version>-<platform>.zip|tar.gz`

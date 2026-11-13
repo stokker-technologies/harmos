@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 from pathlib import Path
 
@@ -74,13 +75,14 @@ def main() -> None:
     sys.stdout.write(result.stdout)
     (directory / "configure.log").write_text(result.stdout, encoding="utf-8")
     result.check_returncode()
+
     if options.check:
         return
 
     if options.generate:
         for path in (directory / "generated").rglob("*.pb.*"):
             path.unlink()
-    targets = ("harmos_cpp_protocol", "harmos_cpp_fixture") if options.generate else ("harmos-cpp-conformance", "harmos-cpp-tests")
+    targets = ("harmos_cpp_protocol",) if options.generate else ("harmos-cpp-conformance", "harmos-cpp-tests")
 
     # Compile the Runtime and Code Generator with Bounded Parallelism.
     log = directory / "build.log"
@@ -115,6 +117,17 @@ def main() -> None:
         print("\n".join(lines[-5:]))
     print(f"C++ Build: {time.perf_counter() - started:.1f} s; Complete Compiler Output: {log}", flush=True)
     result.check_returncode()
+
+    if not options.generate:
+        # Ship the Complete SDK Source Package, Independent of This Checkout's Tests.
+        from .paths import output as build_output
+
+        destination = build_output(root, "build", options.profile) / "cpp"
+        destination.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(destination / "harmos-cpp.tar.gz", "w:gz") as package:
+            for name in ("CMakeLists.txt", "include", "src", "cmake"):
+                package.add(root / "sdk/cpp" / name, arcname=f"sdk/cpp/{name}")
+            package.add(root / "proto", arcname="proto")
 
 
 # === Private Functions === #

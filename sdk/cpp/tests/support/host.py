@@ -40,26 +40,12 @@ def run_managed() -> subprocess.CompletedProcess[str]:
     configuration = "Debug" if profile == "dev" else "Release"
     suffix = ".exe" if os.name == "nt" else ""
     exported = output(ROOT, "build", profile) / "bin" / f"harmos-conformance{suffix}"
-    local = (
-        Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target"))
-        / "debug"
-        / f"harmos-conformance{suffix}"
-    )
-    host = Path(
-        os.environ.get(
-            "HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local
-        )
-    )
+    local = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug" / f"harmos-conformance{suffix}"
+    host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local))
     directory = ROOT / "target/cpp" / profile
-    plugin = (
-        directory / configuration / f"harmos-cpp-conformance{suffix}"
-        if os.name == "nt"
-        else directory / "harmos-cpp-conformance"
-    )
+    plugin = directory / configuration / f"harmos-cpp-conformance{suffix}" if os.name == "nt" else directory / "harmos-cpp-conformance"
     if not host.is_file():
-        raise FileNotFoundError(
-            "Build the Host: mise run build -- --package harmos-conformance"
-        )
+        raise FileNotFoundError("Build the Host: mise run build -- --package harmos-conformance")
     if not plugin.is_file():
         raise FileNotFoundError("Build the SDK: mise run build -- --language cpp")
     environment = dict(os.environ)

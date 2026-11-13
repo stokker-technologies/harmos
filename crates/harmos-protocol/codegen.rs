@@ -37,6 +37,24 @@
 
 /* === Public Functions === */
 
+pub fn generate_conformance(
+    compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+    let mut config = prost_build::Config::new();
+    config.protoc_executable(compiler);
+    config.out_dir(output);
+    config.skip_source_info();
+    config.file_descriptor_set_path(output.join("conformance-descriptors.bin"));
+    config.compile_protos(&[proto.join("harmos/conformance/v1/fixture.proto")], &[proto, includes.into()])?;
+    let descriptors: prost_types::FileDescriptorSet =
+        prost::Message::decode(std::fs::read(output.join("conformance-descriptors.bin"))?.as_slice())?;
+    let descriptors =
+        harmos_protocol::schema::operation_types(&descriptors, &["harmos.conformance.v1.Graph", "harmos.conformance.v1.PayloadOnly"])?;
+    std::fs::write(output.join("conformance-descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
+    Ok(())
+}
+
 pub fn generate(
     compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
 ) -> Result<(), Box<dyn std::error::Error>> {

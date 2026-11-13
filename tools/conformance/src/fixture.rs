@@ -23,7 +23,6 @@ use prost::Message;
 use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
 
 // Local Imports
-use crate::schema_fixture;
 use harmos_protocol::v1::*;
 
 /* === Constants === */
@@ -159,7 +158,7 @@ pub fn catalog() -> Catalog {
             request: request.into(),
             response: response.into(),
             visibility: Visibility::Public as i32,
-            fingerprint: harmos_protocol::schema::fingerprint(id, &schema_fixture::types(), request, response)
+            fingerprint: harmos_protocol::schema::fingerprint(id, &harmos::conformance::v1::types(), request, response)
                 .expect("fixture schema resolves"),
             ..Default::default()
         });
@@ -175,7 +174,7 @@ pub fn catalog() -> Catalog {
         id: "conformance.host.schema".into(),
         fingerprint: harmos_protocol::schema::fingerprint(
             "conformance.host.schema",
-            &schema_fixture::types(),
+            &harmos::conformance::v1::types(),
             "harmos.conformance.v1.Graph",
             ROW,
         )
@@ -223,10 +222,7 @@ pub fn catalog() -> Catalog {
             fingerprint: fingerprint(id),
         });
     }
-    let mut types = schema_fixture::types();
-    let mut standalone = self::types().file.remove(0).message_type.remove(0);
-    standalone.name = Some("PayloadOnly".into());
-    types.file.iter_mut().find(|file| file.package.as_deref() == Some("harmos.conformance.v1")).unwrap().message_type.push(standalone);
+    let mut types = harmos::conformance::v1::types();
     for file in harmos_protocol::clock::catalog_types().file {
         if !types.file.iter().any(|existing| existing.name == file.name) {
             types.file.push(file);
@@ -239,7 +235,7 @@ pub fn catalog() -> Catalog {
         types: Some(types),
         sections: vec![Section {
             r#type: "harmos.conformance.v1.Graph".into(),
-            payload: schema_fixture::Graph {
+            payload: harmos::conformance::v1::Graph {
                 interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
                 ..Default::default()
             }

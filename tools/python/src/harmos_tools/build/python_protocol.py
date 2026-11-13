@@ -55,7 +55,6 @@ def generate(output: Path) -> None:
         "-m",
         "grpc_tools.protoc",
         f"-I{ROOT / 'proto'}",
-        f"-I{ROOT / 'sdk/python/proto'}",
         f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
         f"--python_out={output}",
         f"--pyi_out={output}",

@@ -35,9 +35,7 @@ class ManagedPlugin(unittest.TestCase):
 
         # Check Every Rule and the Managed Process's Successful Cleanup and Exit.
         self.assertEqual(result.returncode, 0, result.stdout)
-        rows = [
-            line for line in result.stdout.splitlines() if line.endswith("| PASS |")
-        ]
+        rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
         self.assertEqual(len(rows), 31, result.stdout)
 
 

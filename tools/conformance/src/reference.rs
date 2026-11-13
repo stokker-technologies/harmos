@@ -29,10 +29,8 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
-use crate::{
-    Result, fixture,
-    schema_fixture::{Graph, Nested},
-};
+use crate::{Result, fixture};
+use harmos::conformance::v1::{Graph, graph::Nested};
 use harmos_protocol::plugin::{
     instance_invoke_request, instance_invoke_response, instance_samples_request,
     instance_server::{Instance, InstanceServer},
@@ -430,7 +428,7 @@ async fn invoke(
             response::Result::Payload(
                 Nested {
                     count: Some(graph.items.len() as i32),
-                    next: Some(Box::new(graph)),
+                    next: Some(graph),
                 }
                 .encode_to_vec(),
             )

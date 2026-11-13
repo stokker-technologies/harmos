@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use tonic::{Code, Streaming, transport::Channel};
 
 // Local Imports
-use crate::{Error, Result, fixture, schema_fixture};
+use crate::{Error, Result, fixture};
 use harmos_protocol::plugin::{
     instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request,
 };
@@ -597,7 +597,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Schema Fingerprints / Retain Options, Optional Presence, Recursion and Imports.
             let actual = harmos_protocol::schema::message_types(types, "harmos.conformance.v1.Graph.Nested")
                 .map_err(|error| Error::Invalid(error.to_string()))?;
-            require(actual == schema_fixture::types(), "Reachable Schema Definitions Differ")?;
+            let expected = harmos_protocol::schema::message_types(&harmos::conformance::v1::types(), "harmos.conformance.v1.Graph.Nested")
+                .map_err(|error| Error::Invalid(error.to_string()))?;
+            require(actual == expected, "Reachable Schema Definitions Differ")?;
             // Schema Fingerprints / Round Trip a Nested Optional Zero Through the Graph.
             let graph = vec![0x0a, 2, 8, 0];
             let (send, mut input) = invoke(&mut client, "conformance.schema", graph.clone()).await?;
