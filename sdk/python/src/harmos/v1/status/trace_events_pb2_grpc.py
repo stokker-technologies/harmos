@@ -27,7 +27,10 @@ if _version_not_supported:
 
 
 class TraceEventsStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Services === //
+
+    Exposes retained redacted trace history and bounded live delivery.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -48,16 +51,21 @@ class TraceEventsStub:
 
 
 class TraceEventsServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Services === //
+
+    Exposes retained redacted trace history and bounded live delivery.
+    """
 
     def List(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read bounded retained redacted trace events at an issued boundary; expired tokens/positions and responses too small for one event refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Watch(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Emit an opening boundary then bounded trace batches after it; positive bounds are required and a history gap refuses with resynchronization guidance.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -84,7 +92,10 @@ def add_TraceEventsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class TraceEvents:
-    """Missing associated documentation comment in .proto file."""
+    """=== Services === //
+
+    Exposes retained redacted trace history and bounded live delivery.
+    """
 
     @staticmethod
     def List(request,

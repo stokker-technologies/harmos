@@ -27,7 +27,10 @@ if _version_not_supported:
 
 
 class DiagnosticsStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Services === //
+
+    Exposes bounded ranges of the host's retained redacted diagnostics archive.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -43,10 +46,14 @@ class DiagnosticsStub:
 
 
 class DiagnosticsServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Services === //
+
+    Exposes bounded ranges of the host's retained redacted diagnostics archive.
+    """
 
     def Get(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Create a redacted diagnostics archive on an empty name at offset zero, or read bounded ranges of the retained archive; unknown/expired names refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -68,7 +75,10 @@ def add_DiagnosticsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Diagnostics:
-    """Missing associated documentation comment in .proto file."""
+    """=== Services === //
+
+    Exposes bounded ranges of the host's retained redacted diagnostics archive.
+    """
 
     @staticmethod
     def Get(request,

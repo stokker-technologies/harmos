@@ -1,7 +1,7 @@
 import datetime
 
-from harmos.v1 import types_pb2 as _types_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from harmos.v1 import types_pb2 as _types_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -21,6 +21,32 @@ COMPONENT_STATE_UNSPECIFIED: ComponentState
 COMPONENT_STATE_HEALTHY: ComponentState
 COMPONENT_STATE_DEGRADED: ComponentState
 COMPONENT_STATE_UNAVAILABLE: ComponentState
+
+class StatusGetRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class StatusGetResponse(_message.Message):
+    __slots__ = ("status", "resolved_at")
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    status: HostStatus
+    resolved_at: _types_pb2.Position
+    def __init__(self, status: _Optional[_Union[HostStatus, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
+
+class StatusWatchRequest(_message.Message):
+    __slots__ = ("at",)
+    AT_FIELD_NUMBER: _ClassVar[int]
+    at: _types_pb2.Position
+    def __init__(self, at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
+
+class StatusWatchResponse(_message.Message):
+    __slots__ = ("status", "resolved_at")
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    status: HostStatus
+    resolved_at: _types_pb2.Position
+    def __init__(self, status: _Optional[_Union[HostStatus, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
 
 class HostIdentity(_message.Message):
     __slots__ = ("application_name", "application_version", "library_version", "process_started_at", "host_id")
@@ -55,29 +81,3 @@ class HostStatus(_message.Message):
     available: bool
     components: _containers.RepeatedCompositeFieldContainer[HealthComponent]
     def __init__(self, identity: _Optional[_Union[HostIdentity, _Mapping]] = ..., available: _Optional[bool] = ..., components: _Optional[_Iterable[_Union[HealthComponent, _Mapping]]] = ...) -> None: ...
-
-class StatusGetRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class StatusGetResponse(_message.Message):
-    __slots__ = ("status", "resolved_at")
-    STATUS_FIELD_NUMBER: _ClassVar[int]
-    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
-    status: HostStatus
-    resolved_at: _types_pb2.Position
-    def __init__(self, status: _Optional[_Union[HostStatus, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
-
-class StatusWatchRequest(_message.Message):
-    __slots__ = ("at",)
-    AT_FIELD_NUMBER: _ClassVar[int]
-    at: _types_pb2.Position
-    def __init__(self, at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
-
-class StatusWatchResponse(_message.Message):
-    __slots__ = ("status", "resolved_at")
-    STATUS_FIELD_NUMBER: _ClassVar[int]
-    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
-    status: HostStatus
-    resolved_at: _types_pb2.Position
-    def __init__(self, status: _Optional[_Union[HostStatus, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...

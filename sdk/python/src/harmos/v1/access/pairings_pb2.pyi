@@ -7,14 +7,6 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class Pairing(_message.Message):
-    __slots__ = ("id", "label")
-    ID_FIELD_NUMBER: _ClassVar[int]
-    LABEL_FIELD_NUMBER: _ClassVar[int]
-    id: str
-    label: str
-    def __init__(self, id: _Optional[str] = ..., label: _Optional[str] = ...) -> None: ...
-
 class PairingsCreateRequest(_message.Message):
     __slots__ = ("label",)
     LABEL_FIELD_NUMBER: _ClassVar[int]
@@ -56,3 +48,11 @@ class PairingsDeleteRequest(_message.Message):
 class PairingsDeleteResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
+
+class Pairing(_message.Message):
+    __slots__ = ("id", "label")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    LABEL_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    label: str
+    def __init__(self, id: _Optional[str] = ..., label: _Optional[str] = ...) -> None: ...

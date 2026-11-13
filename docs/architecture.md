@@ -39,6 +39,75 @@ return the complete set without page requests, tokens or application byte bounds
 The carrier message ceiling is their sole response guard; overflow names the action.
 Records, samples, log lines, trace events, files and rows retain position-resolved paging.
 
+## Protocol Source Convention
+
+Author maintained files under `proto/harmos/` with this skeleton, including empty
+sections. Titles use Title Case. Buf owns canonical layout and preserves these
+detached section comments without formatter configuration. Empty messages have
+no interior comments; Buf renders their bodies as `{}`.
+
+```proto
+// SPDX-License-Identifier: Apache-2.0
+
+// <Title>
+//
+// <One or two lines describing the resource's purpose.>
+
+syntax = "proto3";
+
+package <package>;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //
+```
+
+Keep each request directly before its response in service method order, shared
+payloads in Resources and enums last. Use one field per line. Keep one service
+per file; a layout-only change must preserve existing file boundaries even when
+that prevents meeting this convention. `storage_settings.proto` intentionally
+retains proto2: its field presence and explicit defaults are protocol contracts.
+Formatting never changes packages, declarations, names, numbers, types or options.
+Layout-only descriptor comparisons remove source information, sort each file's
+imports and sort only its top-level messages and enums by name. All other
+descriptor bytes must match, including service method order, message field order,
+nested declaration order, enum values and options. Compare the complete file-name
+set before comparing each normalized file descriptor.
+
+Every service, call and message has a contract comment. Document opaque identities,
+revisions, positions, cuts, continuations, capabilities, limits, optional/unset
+behavior and discriminated variants. Explain refusal and replay where the owning
+handler defines them. Derive comments from implemented handlers and consumers,
+their deterministic stories, and the maintained design; a design decision alone
+does not establish that behavior has landed. When a handler only forwards metadata,
+describe that boundary rather than inventing the downstream owner's defaults.
+Request and response comments describe their payloads rather than repeating the
+call's instructions; an empty payload needs only the call name. File purposes name
+the audience: applications or tools call the host through `harmos/v1`, the host
+calls a plugin through `harmos/plugin/v1`, and a running plugin calls back to the
+host from inside an invocation through `harmos/context/v1`, answered for that plugin.
+For example, `Samples.Append` forwards absent sequence/context/timestamp metadata;
+its handler does not assign defaults or interpret following-row duration metadata.
+
+The root `buf.yaml` selects only maintained Harmos inputs, excluding application
+and third-party sources. `mise run format` formats them and honors `--check`;
+`mise run check -- --repository` checks formatting and runs Buf lint. Standard
+lint plus required service/call/message comments keeps the locked request/response
+grammar; each exception in `buf.yaml` names the incompatible existing declaration
+shape. Regenerate Rust and Python outputs with `mise run generate -- --sdk rust`
+and `mise run generate -- --sdk python`; build the Rust generator example through
+the focused build task when its executable is absent. The focused
+`generated_code_matches_proto::generated_code_matches_proto` protocol integration
+test compares the committed Rust sources and descriptor projections byte for byte.
+
 ## Invariants
 
 Wire operation admission uses the protocol-owned validator in

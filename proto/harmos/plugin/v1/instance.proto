@@ -1,9 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
-syntax = "proto3";
-package harmos.plugin.v1;
-import "harmos/v1/types.proto";
-import "google/protobuf/timestamp.proto";
 
+// Plugin Instance
+//
+// Calls the host makes to a running plugin.
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+import "google/protobuf/timestamp.proto";
+import "harmos/v1/types.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
 service Instance {
   // Identity, start time and catalog. Called once per connection, first.
   rpc Get(InstanceGetRequest) returns (InstanceGetResponse);
@@ -26,6 +40,9 @@ service Instance {
   rpc Stop(InstanceStopRequest) returns (InstanceStopResponse);
 }
 
+// === Requests and Responses === //
+
+// Carries the protocol revision, host name and host version for Instance.Get.
 message InstanceGetRequest {
   // Highest revision of harmos.v1 the host implements. Starts at 1 and grows
   // with each additive release.
@@ -35,6 +52,7 @@ message InstanceGetRequest {
   string host_version = 3;
 }
 
+// Supplies process identity, startup time, complete catalog and carrier limits for connection admission.
 message InstanceGetResponse {
   // Stable plugin identifier, lowercase with dots or underscores.
   string id = 1;
@@ -49,16 +67,13 @@ message InstanceGetResponse {
   // Name and version of the SDK that built the plugin, for logs.
   string sdk = 6;
   string sdk_version = 7;
+  // Plugin-advertised carrier message ceiling; the host checks compatibility with its configured chunk/framing requirements.
   uint64 message_bytes = 8;
 }
 
-message InstanceStopRequest {
-  string reason = 1;
-}
-
-message InstanceStopResponse {}
-
+// Carries an opening request, child reply or cancellation frame for Instance.Invoke.
 message InstanceInvokeRequest {
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof frame {
     harmos.v1.Request request = 1;
     harmos.v1.ChildResponse child = 2;
@@ -66,7 +81,9 @@ message InstanceInvokeRequest {
   }
 }
 
+// Carries plugin-originated child traffic or the single terminal result for this attempt.
 message InstanceInvokeResponse {
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof frame {
     harmos.v1.ChildRequest child = 1;
     harmos.v1.ChildCancel child_cancel = 2;
@@ -75,7 +92,9 @@ message InstanceInvokeResponse {
   }
 }
 
+// Carries a stream selection or clock tick for Instance.Samples.
 message InstanceSamplesRequest {
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof frame {
     // First frame.
     harmos.v1.SamplesSelection open = 1;
@@ -83,6 +102,19 @@ message InstanceSamplesRequest {
   }
 }
 
+// Carries one or more declared stream rows within the active demand call.
 message InstanceSamplesResponse {
   repeated harmos.v1.Sample samples = 1;
 }
+
+// Carries the reason text for Instance.Stop.
+message InstanceStopRequest {
+  string reason = 1;
+}
+
+// Acknowledges that plugin stop and cleanup hooks have completed.
+message InstanceStopResponse {}
+
+// === Resources === //
+
+// === Enums === //

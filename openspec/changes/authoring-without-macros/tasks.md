@@ -4,13 +4,6 @@
 
 - [x] 1.1 After authoritative host protobuf adoption under `grpc-plugins`, lock the source inventory per macro: uses in Harmos source, examples and tests, and in the external application, with the typed projections each use depends on.
 
-The locked starting [source inventory](proposal.md#source-inventory) records every textual
-attribute site, dependent projection, live alias export and excluded-path dependency.
-The host protobuf cutover is complete. This worktree owns all Rust consumers,
-manifests, fixture tooling and guides; external application adoption remains the
-follow-up below. Replacements follow the proposal's eleven-step order, with a
-local commit and focused proof for each complete macro family.
-
 ## 2. Simple Declarations
 
 - [x] 2.1 Inventory live `domain_catalog`, `runtime_catalog`, `domain_operation` and `runtime_operation` consumers and re-exports in domain, runtime, operations, examples and fixtures. Keep aliases until their families migrate in 3.1/3.2; only genuinely unreferenced variants may be deleted now.

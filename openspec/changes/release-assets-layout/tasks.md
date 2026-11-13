@@ -23,12 +23,6 @@
 
 - Dokime carries the same layout in its change `release-layout`.
 
-- Source inventory, in dependency order: release layout/staging and package compliance
-  (`tools/python/src/harmos_tools/{release,package}/`, `tools/project.toml`); shared
-  channel dispatch (`ci/tasks.py`, `mise.toml`); Nightly reports and benchmark export
-  (`release/reports.py`, `ci/workflow.py`, `test/run.py`); release rehearsal and
-  affected README/product/tooling guides; reusable validation/publication/verification
-  workflows (`.github/workflows/`); focused tooling stories under `tools/python/tests/`.
 - Preserve 1.7 freshness, noncancelling runs, publication identity and digest checks.
 - Shared review inputs use `build-run`, `build-sha` and `build-version`; validation
   keeps Harmos's single `selection` dispatcher. All suite evidence uses `results-*`.
@@ -46,12 +40,8 @@
   Nightly publication waits only for Product and Package. Registry publication stays
   in the protected Release workflow. Run-owned report updates replace a complete draft
   inventory, including reports, index and checksums, under the publication concurrency group.
-- Clean-tree tooling stories prove both channel inventories, manifest fields, archive
-  members, ABI refusal, wrong directory shapes, locked license hashes, report reruns,
-  stale publication refusal and benchmark export after runner failure.
 - Native release dry-run/rehearsal still requires `target/package/<profile>/<target>/`;
-  this worktree has no Product/package outputs. The complete Python check also needs
-  Product-generated Python clients. These remain real-input proof, not source closure.
+  the complete Python check also needs Product-generated Python clients.
 - Provider follow-ups from the workflow audit remain owner work: main's required
   checks, unused full-validation/mirror environments and mirror credential scope.
 - Draft-review routing, release completion predicates and compiler-cache saver

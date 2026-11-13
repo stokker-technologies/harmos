@@ -27,7 +27,12 @@ if _version_not_supported:
 
 
 class InvocationsStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes lifecycle controls only for invocation instances owned by the caller.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -58,28 +63,37 @@ class InvocationsStub:
 
 
 class InvocationsServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes lifecycle controls only for invocation instances owned by the caller.
+    """
 
     def Invoke(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Invoke an admitted operation using its expected fingerprint and encoded request; returns its encoded unary result under normal admission and execution policy.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Get(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Cancel(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Watch(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -116,7 +130,12 @@ def add_InvocationsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Invocations:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes lifecycle controls only for invocation instances owned by the caller.
+    """
 
     @staticmethod
     def Invoke(request,

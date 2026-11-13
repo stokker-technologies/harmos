@@ -71,6 +71,35 @@ The reported Hub check rejection of this declaration, the missing protocol error
 the entry-point task model remains a tooling-owner follow-up until the installed check accepts them.
 Do not restore task families or edit generated bindings merely to satisfy obsolete checks.
 
+## Protocol Contract Comments
+
+The owner locked a comment/layout-only protocol pass on 2026-11-13. Its inventory
+is `proto/harmos/**`, root `buf.yaml`, the Buf tool pin and its generated lock
+entry, format/repository-check mise entries, comment/layout-derived generated
+outputs, `docs/architecture.md` and this change. No SDK implementation, build
+configuration, workflow, declaration identity or file boundary belongs to this pass.
+
+Contract evidence comes from `crates/harmos-operations/src/{storage,access,status,
+lifecycle,host,streams,clock}`, the matching runtime managers/ports, the domain's
+storage protobuf conversions and query contracts, SDK consumers and the plugin
+behavior/conformance stories. The root README's product claims and usage remain
+unchanged; the architecture guide owns the protocol authoring convention.
+
+Unverified downstream semantics are deliberately restricted to the publication
+owner's interpretation of `SamplesAppendRequest.sequence`, `published_at`,
+`context`, `following` and `FollowingRow.published_delta`. The implemented Append
+handler validates/converts a supplied timestamp and forwards these values to
+`PublicationHost`; its deterministic native-publication story proves forwarding,
+not assignment defaults or interpretation of the following-row duration.
+
+The raw descriptor-byte requirement conflicts with canonical source ordering:
+Buf sorts imports, changing `FileDescriptorProto.dependency`, and pairing messages
+in service order changes `FileDescriptorProto.message_type`. Source-info removal
+does not remove these ordered lists. The comparison policy needs an owner decision
+before applying declaration reordering or claiming final descriptor proof; names,
+fields, numbers, types, options, file boundaries and service method order remain
+locked regardless of that decision.
+
 ## Impact
 
 - `mise.toml`, `tools/python`, `.github/workflows` and actions, and the contributor guide. No

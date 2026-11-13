@@ -22,11 +22,11 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import types_pb2 as harmos_dot_v1_dot_types__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
+from harmos.v1 import types_pb2 as harmos_dot_v1_dot_types__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/context/v1/samples.proto\x12\x11harmos.context.v1\x1a\x15harmos/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdb\x01\n\x14SamplesAppendRequest\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\x15\n\x08sequence\x18\x03 \x01(\x04H\x00\x88\x01\x01\x12\x30\n\x0cpublished_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x14\n\x07\x63ontext\x18\x05 \x01(\tH\x01\x88\x01\x01\x12\x0f\n\x07payload\x18\x06 \x01(\x0c\x12*\n\tfollowing\x18\x07 \x03(\x0b\x32\x17.harmos.v1.FollowingRowB\x0b\n\t_sequenceB\n\n\x08_context\"\x17\n\x15SamplesAppendResponse2f\n\x07Samples\x12[\n\x06\x41ppend\x12\'.harmos.context.v1.SamplesAppendRequest\x1a(.harmos.context.v1.SamplesAppendResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/context/v1/samples.proto\x12\x11harmos.context.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15harmos/v1/types.proto\"\xdb\x01\n\x14SamplesAppendRequest\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\x15\n\x08sequence\x18\x03 \x01(\x04H\x00\x88\x01\x01\x12\x30\n\x0cpublished_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x14\n\x07\x63ontext\x18\x05 \x01(\tH\x01\x88\x01\x01\x12\x0f\n\x07payload\x18\x06 \x01(\x0c\x12*\n\tfollowing\x18\x07 \x03(\x0b\x32\x17.harmos.v1.FollowingRowB\x0b\n\t_sequenceB\n\n\x08_context\"\x17\n\x15SamplesAppendResponse2f\n\x07Samples\x12[\n\x06\x41ppend\x12\'.harmos.context.v1.SamplesAppendRequest\x1a(.harmos.context.v1.SamplesAppendResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)

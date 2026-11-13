@@ -137,14 +137,11 @@ separate from response limits.
 
 ### Requirement: Position-Resolved Watch Boundary
 
-Watch SHALL use the corresponding read selector and optional at, resolving absent
-at to latest durable without waiting and reporting resolved_at. WatchRows SHALL first report its selected boundary, then exclusive
-committed events in storage-position order and progress through filtered data.
-Initial state SHALL use ListRows. The same retention owner SHALL cover opening
-races and the tail. Retention loss SHALL emit resync_required and end observation;
-the caller SHALL list a fresh image and reopen from its issued cut. Accepted facts
-SHALL remain distinct from durable observation. External file/directory watches
-SHALL preserve their own replacement, truncation, production and scan guarantees.
+Watch SHALL use the corresponding read selector and optional at, resolving absent at to
+latest durable without waiting and reporting resolved_at. WatchRows SHALL first report
+its selected boundary, then exclusive committed events in storage-position order and
+progress through filtered data. Initial state SHALL use ListRows. Accepted facts SHALL
+remain distinct from durable observation.
 
 #### Scenario: Watch Selection
 
@@ -155,3 +152,25 @@ SHALL preserve their own replacement, truncation, production and scan guarantees
 
 - **WHEN** a watch supplies at
 - **THEN** it accepts only a previously returned position or the product terminal boundary, never an arbitrary earlier position
+
+### Requirement: Watch Retention and Resynchronization
+
+The same retention owner SHALL cover opening races and the tail. Retention loss SHALL
+emit resync_required and end observation; the caller SHALL list a fresh image and reopen
+from its issued cut.
+
+#### Scenario: Lost Watch Retention
+
+- **WHEN** retention covering a watch's opening race or tail is lost
+- **THEN** observation emits resync_required and ends
+- **AND** the caller lists a fresh image and reopens from its issued cut
+
+### Requirement: External Watch Guarantees
+
+External file/directory watches SHALL preserve their own replacement, truncation,
+production and scan guarantees.
+
+#### Scenario: External File or Directory Watch
+
+- **WHEN** an external file/directory watch observes replacement, truncation, production or a scan
+- **THEN** its own replacement, truncation, production and scan guarantees remain in force

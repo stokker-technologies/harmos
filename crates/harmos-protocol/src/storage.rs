@@ -3,32 +3,43 @@
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StoreHistory {
+    /// Native store identity that owns this sequence space.
     #[prost(string, tag = "1")]
     pub store: ::prost::alloc::string::String,
+    /// Store incarnation; reopening or replacing a history must not make foreign cursors valid.
     #[prost(string, tag = "2")]
     pub epoch: ::prost::alloc::string::String,
 }
+/// Addresses a sequence within one native store history; a foreign history cannot select a local snapshot.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCursor {
+    /// Required store incarnation for this native cursor.
     #[prost(message, optional, tag = "1")]
     pub history: ::core::option::Option<StoreHistory>,
+    /// Progress in this store history, not an offset into file bytes.
     #[prost(uint64, tag = "2")]
     pub sequence: u64,
 }
+/// Defines the store-owned validity window in which mutation keys can be replayed.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MutationWindow {
+    /// History for which this mutation window was issued.
     #[prost(message, optional, tag = "1")]
     pub history: ::core::option::Option<StoreHistory>,
+    /// Store-issued window identity carried in MutationId.window.
     #[prost(string, tag = "2")]
     pub id: ::prost::alloc::string::String,
+    /// Owner-clock expiry after which this window cannot admit new mutation replays.
     #[prost(message, optional, tag = "3")]
     pub expires_at: ::core::option::Option<::prost_types::Timestamp>,
 }
+/// Request for the native storage Info operation.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageInfoRequest {}
+/// Carries accepted and saved frontiers, a mutation window and a file byte budget.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageInfoResponse {
@@ -36,87 +47,113 @@ pub struct StorageInfoResponse {
     pub accepted: ::core::option::Option<StorageCursor>,
     #[prost(message, optional, tag = "2")]
     pub saved: ::core::option::Option<StorageCursor>,
+    /// Current mutation replay window when supported; absent means no window is advertised.
     #[prost(message, optional, tag = "3")]
     pub mutations: ::core::option::Option<MutationWindow>,
+    /// Owner-configured default/maximum transfer chunk budget in bytes.
     #[prost(uint64, tag = "4")]
     pub file_batch_bytes: u64,
 }
+/// Deduplicates one mutation within its issued window; resend the original identity and payload after a lost reply.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MutationId {
+    /// Issued mutation-window identity; obtain it from storage capabilities/info.
     #[prost(string, tag = "1")]
     pub window: ::prost::alloc::string::String,
+    /// Caller-chosen identity within the window. Keep it and the complete original input unchanged when resending.
     #[prost(string, tag = "2")]
     pub key: ::prost::alloc::string::String,
 }
+/// Declares a file's identity, optional scope and optional publication expectations before producing its bytes.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileMetadata {
+    /// File identity used for storage and resource-grant admission.
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+    /// Optional stored scope metadata; unset records no scope.
     #[prost(string, optional, tag = "2")]
     pub scope: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, tag = "3")]
     pub media_type: ::prost::alloc::string::String,
+    /// If present, publication must match this byte length; unset imposes no declared length expectation.
     #[prost(uint64, optional, tag = "4")]
     pub expected_length: ::core::option::Option<u64>,
+    /// If present, publication must match this 32-byte digest; unset imposes no declared digest expectation.
     #[prost(bytes = "vec", optional, tag = "5")]
     pub expected_sha256: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
 }
+/// Identifies a production independently of the current writer generation.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StagedFile {
     #[prost(message, optional, tag = "1")]
     pub history: ::core::option::Option<StoreHistory>,
+    /// Production identity within the named storage history, independent of file byte offsets.
     #[prost(string, tag = "2")]
     pub id: ::prost::alloc::string::String,
 }
+/// Authorizes one writer generation; resuming production fences the previous generation.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileSession {
     #[prost(message, optional, tag = "1")]
     pub history: ::core::option::Option<StoreHistory>,
+    /// Production identity within the named storage history, independent of file byte offsets.
     #[prost(string, tag = "2")]
     pub id: ::prost::alloc::string::String,
+    /// Writer fence returned by create/resume; the previous generation loses append/publish authority after resume.
     #[prost(uint64, tag = "3")]
     pub generation: u64,
 }
+/// Returns the current writer session and acknowledged production length.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileProducer {
+    /// Required current writer capability; an older generation is fenced after another writer resumes production.
     #[prost(message, optional, tag = "1")]
     pub session: ::core::option::Option<FileSession>,
+    /// Acknowledged byte length for the returned writer; resume appends from this offset.
     #[prost(uint64, tag = "2")]
     pub length: u64,
 }
+/// Addresses published immutable content with its storage position, metadata, length and SHA-256 digest.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileReference {
+    /// Storage position of published content; application-owned content uses its provider's reference identity.
     #[prost(message, optional, tag = "1")]
     pub position: ::core::option::Option<StorageCursor>,
     #[prost(message, optional, tag = "2")]
     pub metadata: ::core::option::Option<FileMetadata>,
     #[prost(uint64, tag = "3")]
     pub length: u64,
+    /// SHA-256 of the complete immutable file, encoded as 32 bytes.
     #[prost(bytes = "vec", tag = "4")]
     pub sha256: ::prost::alloc::vec::Vec<u8>,
 }
+/// Reports a production's byte length and whether it is still producing, finished or abandoned.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileProgress {
+    /// Observed production length in bytes; consult the operation's separate accepted/durable lengths where present.
     #[prost(uint64, tag = "1")]
     pub length: u64,
     #[prost(enumeration = "FilePhase", tag = "2")]
     pub phase: i32,
 }
+/// Carries the staged file identity and mutation identity for native file deletion.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageDeleteFileRequest {
+    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
     #[prost(message, optional, tag = "1")]
     pub mutation: ::core::option::Option<MutationId>,
     #[prost(message, optional, tag = "2")]
     pub file: ::core::option::Option<StagedFile>,
 }
+/// Carries the staged file identity and deletion receipt.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageDeleteFileResponse {
@@ -125,14 +162,17 @@ pub struct StorageDeleteFileResponse {
     #[prost(message, optional, tag = "2")]
     pub receipt: ::core::option::Option<crate::v1::Receipt>,
 }
+/// Applies an include/exclude pattern while selecting local directory entries.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectoryRule {
+    /// Glob with literal path separators and no backslash escaping; malformed patterns refuse selection.
     #[prost(string, tag = "1")]
     pub pattern: ::prost::alloc::string::String,
     #[prost(bool, tag = "2")]
     pub include: bool,
 }
+/// Selects entries under a local root with recursion and ordered inclusion rules.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DirectorySelection {
@@ -140,9 +180,11 @@ pub struct DirectorySelection {
     pub root: ::prost::alloc::string::String,
     #[prost(bool, tag = "2")]
     pub recursive: bool,
+    /// Glob rules evaluated in order; the last match wins and a path with no match is excluded.
     #[prost(message, repeated, tag = "3")]
     pub rules: ::prost::alloc::vec::Vec<DirectoryRule>,
 }
+/// Describes an observed relative path and its file/directory metadata.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectoryEntry {
@@ -153,12 +195,14 @@ pub struct DirectoryEntry {
     #[prost(uint64, tag = "3")]
     pub length: u64,
 }
+/// Reports the number of entries traversed by a directory operation.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectoryCompletion {
     #[prost(uint64, tag = "1")]
     pub entries: u64,
 }
+/// Relates the old and new paths of an observed rename.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectoryRename {
@@ -167,17 +211,21 @@ pub struct DirectoryRename {
     #[prost(string, tag = "2")]
     pub to: ::prost::alloc::string::String,
 }
+/// Marks a selected event or variant.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Empty {}
+/// Distinguishes initial entries, scan completion and later filesystem changes; a rescan event requires a new scan.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectoryEvent {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "directory_event::Event", tags = "1, 2, 3, 4, 5, 6, 7")]
     pub event: ::core::option::Option<directory_event::Event>,
 }
 /// Nested message and enum types in `DirectoryEvent`.
 pub mod directory_event {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Event {
@@ -197,14 +245,17 @@ pub mod directory_event {
         RescanRequired(super::Empty),
     }
 }
+/// Selects either published storage content or a local filesystem path under the caller's access policy.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileSource {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "file_source::Source", tags = "1, 2")]
     pub source: ::core::option::Option<file_source::Source>,
 }
 /// Nested message and enum types in `FileSource`.
 pub mod file_source {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Source {
@@ -214,44 +265,58 @@ pub mod file_source {
         Local(::prost::alloc::string::String),
     }
 }
+/// Selects bytes from an offset, optionally limiting the number read.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ByteRange {
+    /// Zero-based byte offset from the beginning of the source.
     #[prost(uint64, tag = "1")]
     pub offset: u64,
+    /// Maximum bytes to read; unset reads the remaining selected source range.
     #[prost(uint64, optional, tag = "2")]
     pub limit: ::core::option::Option<u64>,
 }
+/// Carries a contiguous byte chunk and its offset in the source.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileBatch {
+    /// Zero-based byte offset of this contiguous batch.
     #[prost(uint64, tag = "1")]
     pub offset: u64,
+    /// Raw bytes at offset, rather than an encoded row batch.
     #[prost(bytes = "vec", tag = "2")]
     pub bytes: ::prost::alloc::vec::Vec<u8>,
 }
+/// Reports the total byte count for a completed file read.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileCompletion {
+    /// Total bytes emitted by the completed read.
     #[prost(uint64, tag = "1")]
     pub bytes: u64,
 }
+/// Reports the bytes actually read and their SHA-256 digest for the selected range.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileHash {
+    /// Number of bytes included in the returned digest, which may be only a selected range.
     #[prost(uint64, tag = "1")]
     pub bytes_read: u64,
+    /// SHA-256 of the bytes actually read, encoded as 32 bytes.
     #[prost(bytes = "vec", tag = "2")]
     pub sha256: ::prost::alloc::vec::Vec<u8>,
 }
+/// Chooses whether a local file follower begins at zero, the current end or an explicit byte offset.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FollowStart {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "follow_start::Start", tags = "1, 2, 3")]
     pub start: ::core::option::Option<follow_start::Start>,
 }
 /// Nested message and enum types in `FollowStart`.
 pub mod follow_start {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Start {
@@ -259,68 +324,85 @@ pub mod follow_start {
         Beginning(super::Empty),
         #[prost(message, tag = "2")]
         End(super::Empty),
+        /// Explicit zero-based byte offset; beginning selects zero and end selects the current file length.
         #[prost(uint64, tag = "3")]
         At(u64),
     }
 }
+/// Carries following bytes or signals that the local file was truncated or replaced.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileEvent {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "file_event::Event", tags = "1, 2, 3")]
     pub event: ::core::option::Option<file_event::Event>,
 }
 /// Nested message and enum types in `FileEvent`.
 pub mod file_event {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Event {
         #[prost(message, tag = "1")]
         Data(super::FileBatch),
+        /// New file length in bytes after observed truncation.
         #[prost(uint64, tag = "2")]
         Truncated(u64),
         #[prost(message, tag = "3")]
         Replaced(super::Empty),
     }
 }
+/// Identifies a persisted schema revision and its payload encoding; version numbers are identity, not a conversion request.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SchemaKey {
+    /// Persistent schema identity; a type change does not silently reinterpret previously stored payloads.
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+    /// Opaque schema revision identity, including derived stream revisions; numeric ordering does not select current.
     #[prost(uint32, tag = "2")]
     pub version: u32,
     #[prost(enumeration = "PayloadEncoding", tag = "3")]
     pub payload_encoding: i32,
 }
+/// Describes a persisted field's name, tag, scalar kind, cardinality and optional referenced definition.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SchemaField {
+    /// Persisted field name used by schema traversal and query field paths.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
+    /// Field/variant tag retained by the persisted schema.
     #[prost(uint32, tag = "2")]
     pub tag: u32,
     #[prost(enumeration = "SchemaKind", tag = "3")]
     pub kind: i32,
     #[prost(enumeration = "SchemaCardinality", tag = "4")]
     pub cardinality: i32,
+    /// Index into SchemaGraph.definitions for MESSAGE fields; required for messages and refused on scalar fields.
     #[prost(uint64, optional, tag = "5")]
     pub definition: ::core::option::Option<u64>,
 }
+/// Keeps a definition's fields in payload order; reordering can change Postcard decoding.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SchemaDefinition {
     #[prost(message, repeated, tag = "1")]
     pub fields: ::prost::alloc::vec::Vec<SchemaField>,
 }
+/// Retains serialization form, tagging and omission metadata for one schema definition.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SchemaRepresentation {
+    /// Index of the definition described by this representation.
     #[prost(uint64, tag = "1")]
     pub definition: u64,
     #[prost(enumeration = "SchemaForm", tag = "2")]
     pub form: i32,
+    /// Serialization tag name when present; unset supplies no explicit tag.
     #[prost(string, optional, tag = "3")]
     pub tag: ::core::option::Option<::prost::alloc::string::String>,
+    /// Serialization content-field name when present; unset supplies no explicit content field.
     #[prost(string, optional, tag = "4")]
     pub content: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(map = "string, enumeration(SchemaOmission)", tag = "5")]
@@ -328,9 +410,11 @@ pub struct SchemaRepresentation {
     #[prost(string, repeated, tag = "6")]
     pub maps: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+/// Owns a finite, indexed schema graph with an explicit root and serialization representations.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SchemaGraph {
+    /// Index into definitions of the graph's root definition.
     #[prost(uint64, tag = "1")]
     pub root: u64,
     #[prost(message, repeated, tag = "2")]
@@ -338,128 +422,169 @@ pub struct SchemaGraph {
     #[prost(message, repeated, tag = "3")]
     pub representations: ::prost::alloc::vec::Vec<SchemaRepresentation>,
 }
+/// Binds a persisted schema identity to its complete definition graph.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SchemaInput {
+    /// Required persisted schema identity, revision and payload encoding for this definition graph.
     #[prost(message, optional, tag = "1")]
     pub key: ::core::option::Option<SchemaKey>,
     #[prost(message, optional, tag = "2")]
     pub graph: ::core::option::Option<SchemaGraph>,
 }
+/// Carries a schema graph, expected revision, creation control and mutation identity.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageSetSchemaRequest {
+    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
     #[prost(message, optional, tag = "1")]
     pub mutation: ::core::option::Option<MutationId>,
     #[prost(message, optional, tag = "2")]
     pub schema: ::core::option::Option<SchemaInput>,
+    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input. Empty is valid only with explicit create_if_absent.
     #[prost(bytes = "vec", tag = "3")]
     pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+    /// True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
     #[prost(bool, tag = "4")]
     pub create_if_absent: bool,
 }
+/// Carries the stored schema, its revision and the mutation receipt.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageSetSchemaResponse {
     #[prost(message, optional, tag = "1")]
     pub schema: ::core::option::Option<SchemaInput>,
+    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
     #[prost(bytes = "vec", tag = "2")]
     pub revision: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
     pub receipt: ::core::option::Option<crate::v1::Receipt>,
 }
+/// Selects a schema key and read boundary for a native schema read.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetSchemaRequest {
+    /// Required schema identity and revision to read.
     #[prost(message, optional, tag = "1")]
     pub key: ::core::option::Option<SchemaKey>,
+    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
     #[prost(message, optional, tag = "2")]
     pub at: ::core::option::Option<crate::v1::ReadCut>,
 }
+/// Carries the schema, revision, presence flag and selected read boundary.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetSchemaResponse {
     #[prost(message, optional, tag = "1")]
     pub schema: ::core::option::Option<SchemaInput>,
+    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
     #[prost(bytes = "vec", tag = "2")]
     pub revision: ::prost::alloc::vec::Vec<u8>,
+    /// False denotes an absent value; the corresponding value and revision are then empty.
     #[prost(bool, tag = "3")]
     pub exists: bool,
+    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
     #[prost(message, optional, tag = "4")]
     pub resolved_at: ::core::option::Option<crate::v1::ReadCut>,
 }
+/// Skips rows and optionally bounds the number returned after transforms.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RowSlice {
+    /// Number of transformed rows to skip before emitting output.
     #[prost(uint64, tag = "1")]
     pub offset: u64,
+    /// Maximum transformed rows to emit; unset leaves the output count unbounded by this slice.
     #[prost(uint64, optional, tag = "2")]
     pub limit: ::core::option::Option<u64>,
 }
+/// Selects one or all object keys and either latest values or their retained revisions.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ObjectSelection {
+    /// Unset selects across schemas; present restricts objects to this schema identity.
     #[prost(message, optional, tag = "1")]
     pub schema: ::core::option::Option<SchemaKey>,
+    /// Unset includes all object keys; present selects this exact key.
     #[prost(string, optional, tag = "2")]
     pub key: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(enumeration = "ObjectVersions", tag = "3")]
     pub versions: i32,
 }
+/// Selects retained records by schema, optional scope/item and source-time bounds.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct RecordSelection {
     #[prost(message, optional, tag = "1")]
     pub schema: ::core::option::Option<SchemaKey>,
+    /// Unset leaves scope unfiltered; present selects that stored scope.
     #[prost(string, optional, tag = "2")]
     pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    /// Unset leaves item unfiltered; present selects that item identity.
     #[prost(string, optional, tag = "3")]
     pub item: ::core::option::Option<::prost::alloc::string::String>,
+    /// Inclusive source-time lower bound. Both bounds must be set and increasing, or both unset to disable source-time filtering.
     #[prost(message, optional, tag = "4")]
     pub source_start: ::core::option::Option<::prost_types::Timestamp>,
+    /// Exclusive source-time upper bound. Both bounds must be set and increasing; bounded selection excludes records without source_time.
     #[prost(message, optional, tag = "5")]
     pub source_end: ::core::option::Option<::prost_types::Timestamp>,
 }
+/// Selects retained stream rows by schema, optional scope/item/stream, source-time bounds and progress.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StreamSelection {
     #[prost(message, optional, tag = "1")]
     pub schema: ::core::option::Option<SchemaKey>,
+    /// Unset leaves scope unfiltered; present selects that stored scope.
     #[prost(string, optional, tag = "2")]
     pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    /// Unset leaves item unfiltered; present selects that item identity.
     #[prost(string, optional, tag = "3")]
     pub item: ::core::option::Option<::prost::alloc::string::String>,
+    /// Unset leaves stream unfiltered; present selects that stream identity.
     #[prost(string, optional, tag = "4")]
     pub stream: ::core::option::Option<::prost::alloc::string::String>,
+    /// Inclusive source-time lower bound. Both bounds must be set and increasing, or both unset to disable source-time filtering.
     #[prost(message, optional, tag = "5")]
     pub source_start: ::core::option::Option<::prost_types::Timestamp>,
+    /// Exclusive source-time upper bound. Both bounds must be set and increasing; bounded selection excludes records without source_time.
     #[prost(message, optional, tag = "6")]
     pub source_end: ::core::option::Option<::prost_types::Timestamp>,
+    /// Exclusive storage-history sequence boundary for stream records; zero begins at the start of the history.
     #[prost(uint64, tag = "7")]
     pub after: u64,
 }
+/// Selects stored schema definitions under a schema identity.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SchemaSelection {
+    /// Unset includes all stored schemas; present restricts the schema identity.
     #[prost(message, optional, tag = "1")]
     pub schema: ::core::option::Option<SchemaKey>,
 }
+/// Selects published files by optional scope and item filters.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileSelection {
+    /// Unset leaves scope unfiltered; present selects that stored scope.
     #[prost(string, optional, tag = "1")]
     pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    /// Unset leaves item unfiltered; present selects that file identity.
     #[prost(string, optional, tag = "2")]
     pub item: ::core::option::Option<::prost::alloc::string::String>,
 }
+/// Chooses the persisted resource family for one query.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct QuerySource {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "query_source::Source", tags = "1, 2, 3, 4, 5")]
     pub source: ::core::option::Option<query_source::Source>,
 }
 /// Nested message and enum types in `QuerySource`.
 pub mod query_source {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Source {
@@ -467,6 +592,7 @@ pub mod query_source {
         Objects(super::ObjectSelection),
         #[prost(message, tag = "2")]
         Records(super::RecordSelection),
+        /// Identity of the declared stream, resolved under the current caller/activation.
         #[prost(message, tag = "3")]
         Stream(super::StreamSelection),
         #[prost(message, tag = "4")]
@@ -475,6 +601,7 @@ pub mod query_source {
         Files(super::FileSelection),
     }
 }
+/// Reports a query's selected storage position and emitted row count.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct QueryCompletion {
@@ -483,14 +610,17 @@ pub struct QueryCompletion {
     #[prost(uint64, tag = "2")]
     pub rows: u64,
 }
+/// Separates encoded output schema from encoded result batches.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct QueryOutput {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "query_output::Output", tags = "1, 2")]
     pub output: ::core::option::Option<query_output::Output>,
 }
 /// Nested message and enum types in `QueryOutput`.
 pub mod query_output {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Output {
@@ -500,6 +630,7 @@ pub mod query_output {
         Batch(::prost::alloc::vec::Vec<u8>),
     }
 }
+/// Traverses named fields in a persisted payload schema.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FieldPath {
@@ -510,10 +641,13 @@ pub struct FieldPath {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ExactNumber {
+    /// Sign of the exact fraction; zero must not carry a negative sign.
     #[prost(bool, tag = "1")]
     pub negative: bool,
+    /// Magnitude in minimal base-10 integer notation without a plus sign; negative is represented separately.
     #[prost(string, tag = "2")]
     pub numerator: ::prost::alloc::string::String,
+    /// Positive nonzero base-10 denominator; numerator/denominator must be reduced.
     #[prost(string, tag = "3")]
     pub denominator: ::prost::alloc::string::String,
 }
@@ -522,11 +656,13 @@ pub struct ExactNumber {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScalarValue {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "scalar_value::Value", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
     pub value: ::core::option::Option<scalar_value::Value>,
 }
 /// Nested message and enum types in `ScalarValue`.
 pub mod scalar_value {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Value {
@@ -540,16 +676,19 @@ pub mod scalar_value {
         Signed(i64),
         #[prost(uint64, tag = "5")]
         Unsigned(u64),
+        /// Finite floating-point operand; NaN and infinities are invalid.
         #[prost(double, tag = "6")]
         Floating(f64),
         #[prost(string, tag = "7")]
         Text(::prost::alloc::string::String),
+        /// Signed nanoseconds since the Unix epoch in canonical base-10 text, preserving values beyond int64.
         #[prost(string, tag = "8")]
         Datetime(::prost::alloc::string::String),
         #[prost(message, tag = "9")]
         Exact(super::ExactNumber),
     }
 }
+/// Compares a selected scalar against one typed operand.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Comparison {
@@ -558,20 +697,24 @@ pub struct Comparison {
     #[prost(message, optional, tag = "2")]
     pub value: ::core::option::Option<ScalarValue>,
 }
+/// Carries the candidate operands for a membership condition.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScalarValues {
     #[prost(message, repeated, tag = "1")]
     pub values: ::prost::alloc::vec::Vec<ScalarValue>,
 }
+/// Selects comparison, membership or null testing for a filter term.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Condition {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "condition::Condition", tags = "1, 2, 3")]
     pub condition: ::core::option::Option<condition::Condition>,
 }
 /// Nested message and enum types in `Condition`.
 pub mod condition {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Condition {
@@ -583,6 +726,7 @@ pub mod condition {
         IsNull(super::Empty),
     }
 }
+/// Tests one field and optionally negates the result.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Term {
@@ -593,40 +737,48 @@ pub struct Term {
     #[prost(bool, tag = "3")]
     pub negate: bool,
 }
+/// Combines its filter terms as a conjunction.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Clause {
     #[prost(message, repeated, tag = "1")]
     pub terms: ::prost::alloc::vec::Vec<Term>,
 }
+/// Combines its clauses as a disjunction.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Filter {
     #[prost(message, repeated, tag = "1")]
     pub clauses: ::prost::alloc::vec::Vec<Clause>,
 }
+/// Maps an input field path to an output column name.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Projection {
     #[prost(message, optional, tag = "1")]
     pub field: ::core::option::Option<FieldPath>,
+    /// Output column name assigned to this field path.
     #[prost(string, tag = "2")]
     pub name: ::prost::alloc::string::String,
 }
+/// Selects and names output fields in declared order.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Project {
     #[prost(message, repeated, tag = "1")]
     pub fields: ::prost::alloc::vec::Vec<Projection>,
 }
+/// Chooses the reduction applied to a measure's field.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Statistic {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "statistic::Statistic", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
     pub statistic: ::core::option::Option<statistic::Statistic>,
 }
 /// Nested message and enum types in `Statistic`.
 pub mod statistic {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Statistic {
@@ -646,10 +798,12 @@ pub mod statistic {
         Rms(super::Empty),
         #[prost(message, tag = "8")]
         Std(super::Empty),
+        /// Percentile rank from 0 through 100 inclusive; larger values refuse conversion.
         #[prost(uint32, tag = "9")]
         Percentile(u32),
     }
 }
+/// Names a statistic over one selected field.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Measure {
@@ -657,9 +811,11 @@ pub struct Measure {
     pub field: ::core::option::Option<FieldPath>,
     #[prost(message, optional, tag = "2")]
     pub statistic: ::core::option::Option<Statistic>,
+    /// Output column name assigned to this aggregate measure.
     #[prost(string, tag = "3")]
     pub name: ::prost::alloc::string::String,
 }
+/// Groups rows by projected keys and computes the requested measures.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Aggregate {
@@ -668,6 +824,7 @@ pub struct Aggregate {
     #[prost(message, repeated, tag = "2")]
     pub measures: ::prost::alloc::vec::Vec<Measure>,
 }
+/// Bins numeric values using the supplied ordered edges.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Histogram {
@@ -676,9 +833,11 @@ pub struct Histogram {
     #[prost(double, repeated, tag = "2")]
     pub edges: ::prost::alloc::vec::Vec<f64>,
 }
+/// Reduces selected rows with a bounded algorithm and explicit value/axis fields.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Downsample {
+    /// Maximum rows selected by the algorithm; this is an output bound rather than a source-work budget.
     #[prost(uint64, tag = "1")]
     pub max_rows: u64,
     #[prost(enumeration = "DownsampleAlgorithm", tag = "2")]
@@ -688,6 +847,7 @@ pub struct Downsample {
     #[prost(message, optional, tag = "4")]
     pub axis: ::core::option::Option<FieldPath>,
 }
+/// Defines one field's ordering direction and null placement.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SortKey {
@@ -698,20 +858,24 @@ pub struct SortKey {
     #[prost(bool, tag = "3")]
     pub nulls_first: bool,
 }
+/// Orders query rows by the declared sequence of sort keys.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Sort {
     #[prost(message, repeated, tag = "1")]
     pub keys: ::prost::alloc::vec::Vec<SortKey>,
 }
+/// Selects one transformation in a query's ordered transform pipeline.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Transform {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "transform::Transform", tags = "1, 2, 3, 4, 5, 6, 7")]
     pub transform: ::core::option::Option<transform::Transform>,
 }
 /// Nested message and enum types in `Transform`.
 pub mod transform {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Transform {
@@ -731,11 +895,14 @@ pub mod transform {
         TimeBuckets(super::TimeBucketPlan),
     }
 }
+/// Combines a storage boundary, source, ordered transforms and output slice.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Query {
+    /// Selected native storage history position for this query.
     #[prost(message, optional, tag = "1")]
     pub at: ::core::option::Option<StorageCursor>,
+    /// Required selected resource family; an unset source refuses protobuf conversion.
     #[prost(message, optional, tag = "2")]
     pub source: ::core::option::Option<QuerySource>,
     #[prost(message, repeated, tag = "3")]
@@ -743,71 +910,93 @@ pub struct Query {
     #[prost(message, optional, tag = "4")]
     pub slice: ::core::option::Option<RowSlice>,
 }
+/// Preserves a payload's schema, storage position, item and optional source/scope metadata.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StoredRecord {
+    /// Native storage-history position at which this record was accepted.
     #[prost(message, optional, tag = "1")]
     pub position: ::core::option::Option<StorageCursor>,
     #[prost(message, optional, tag = "2")]
     pub schema: ::core::option::Option<SchemaKey>,
+    /// Optional persisted scope metadata; unset records no scope.
     #[prost(string, optional, tag = "3")]
     pub scope: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(string, tag = "4")]
     pub item: ::prost::alloc::string::String,
+    /// Optional source identity; unset records no source identity.
     #[prost(string, optional, tag = "5")]
     pub source: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional source timestamp; unset records no source time and does not fabricate a device timestamp.
     #[prost(message, optional, tag = "6")]
     pub source_time: ::core::option::Option<::prost_types::Timestamp>,
+    /// Bytes encoded under the referenced persisted schema's payload encoding.
     #[prost(bytes = "vec", tag = "7")]
     pub payload: ::prost::alloc::vec::Vec<u8>,
 }
+/// Adds stream identity and stream sequence to a stored record.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StoredRow {
     #[prost(message, optional, tag = "1")]
     pub record: ::core::option::Option<StoredRecord>,
+    /// Identity of the declared stream, resolved under the current caller/activation.
     #[prost(string, tag = "2")]
     pub stream: ::prost::alloc::string::String,
+    /// Sequence within the named stream, distinct from the storage history sequence.
     #[prost(uint64, tag = "3")]
     pub sequence: u64,
 }
+/// Identifies a conditional object revision within its store history; carry it unchanged for comparison.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ObjectVersionToken {
+    /// History owning this object revision; tokens from another incarnation are invalid.
     #[prost(message, optional, tag = "1")]
     pub history: ::core::option::Option<StoreHistory>,
+    /// Object compare-and-exchange revision, not a stream schema version.
     #[prost(uint64, tag = "2")]
     pub revision: u64,
 }
+/// Binds an encoded object payload to its schema identity and object key.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ObjectValue {
     #[prost(message, optional, tag = "1")]
     pub schema: ::core::option::Option<SchemaKey>,
+    /// Object key within the referenced schema identity.
     #[prost(string, tag = "2")]
     pub item: ::prost::alloc::string::String,
+    /// Bytes encoded under the referenced persisted schema's payload encoding.
     #[prost(bytes = "vec", tag = "3")]
     pub payload: ::prost::alloc::vec::Vec<u8>,
 }
+/// Associates a persisted object value with its storage position and conditional version token.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ObjectEntry {
+    /// Native storage-history position of this object revision.
     #[prost(message, optional, tag = "1")]
     pub position: ::core::option::Option<StorageCursor>,
+    /// Conditional object version token used by compare-and-exchange, separate from storage progress.
     #[prost(message, optional, tag = "2")]
     pub version: ::core::option::Option<ObjectVersionToken>,
     #[prost(message, optional, tag = "3")]
     pub value: ::core::option::Option<ObjectValue>,
 }
+/// Carries an Arrow IPC batch for one destination and schema under an append sequence.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DataBatch {
+    /// Sequence of this append batch as supplied by its producer.
     #[prost(uint64, tag = "1")]
     pub sequence: u64,
+    /// Destination identity interpreted by the selected append operation.
     #[prost(string, tag = "2")]
     pub destination: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "3")]
     pub schema: ::core::option::Option<SchemaKey>,
+    /// Encoded Arrow IPC batch; it is not a protobuf row payload.
     #[prost(bytes = "vec", tag = "4")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
 }
@@ -815,11 +1004,14 @@ pub struct DataBatch {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ReadLimits {
+    /// Positive maximum source rows inspected by this work step.
     #[prost(uint64, tag = "1")]
     pub rows: u64,
+    /// Positive maximum source bytes inspected by this work step.
     #[prost(uint64, tag = "2")]
     pub bytes: u64,
 }
+/// Advertises backend facilities; a false capability does not authorize a fallback with weaker guarantees.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCapabilities {
@@ -838,6 +1030,7 @@ pub struct StorageCapabilities {
     #[prost(bool, tag = "7")]
     pub mutation_receipts: bool,
 }
+/// Selects a persisted object, record or stream schema for native columnar access.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ColumnSource {
@@ -846,94 +1039,125 @@ pub struct ColumnSource {
     #[prost(message, optional, tag = "2")]
     pub schema: ::core::option::Option<SchemaKey>,
 }
+/// Optionally bounds the numeric values of one column.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ColumnPredicate {
     #[prost(string, tag = "1")]
     pub column: ::prost::alloc::string::String,
+    /// Inclusive finite numeric bound; unset adds no constraint on this side. Present bounds must increase.
     #[prost(double, optional, tag = "2")]
     pub lower: ::core::option::Option<f64>,
+    /// Exclusive finite numeric bound; unset adds no constraint on this side. Present bounds must increase.
     #[prost(double, optional, tag = "3")]
     pub upper: ::core::option::Option<f64>,
 }
+/// Bounds one timestamp column in signed Unix nanoseconds.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TimeBounds {
     #[prost(string, tag = "1")]
     pub column: ::prost::alloc::string::String,
+    /// Inclusive lower timestamp bound in Unix nanoseconds; must be less than upper_ns.
     #[prost(int64, tag = "2")]
     pub lower_ns: i64,
+    /// Exclusive upper timestamp bound in Unix nanoseconds.
     #[prost(int64, tag = "3")]
     pub upper_ns: i64,
 }
+/// Selects native columns, optional predicates, starting progress and caller-owned source-work bounds.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ColumnSelection {
+    /// Required persisted resource kind and schema for the native columnar read.
     #[prost(message, optional, tag = "1")]
     pub source: ::core::option::Option<ColumnSource>,
     #[prost(string, repeated, tag = "2")]
     pub columns: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Unset adds no numeric column predicate.
     #[prost(message, optional, tag = "3")]
     pub predicate: ::core::option::Option<ColumnPredicate>,
+    /// Unset adds no timestamp-column bound.
     #[prost(message, optional, tag = "4")]
     pub time: ::core::option::Option<TimeBounds>,
+    /// Exclusive storage-history sequence from which the bounded native scan starts; zero begins at the start of the history.
     #[prost(uint64, tag = "5")]
     pub start: u64,
+    /// Required positive source-work bounds, separate from output page bounds.
     #[prost(message, optional, tag = "6")]
     pub work: ::core::option::Option<ReadLimits>,
 }
+/// Returns Arrow IPC output and measured source work, with an explicit completion flag.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ArrowPage {
+    /// Encoded Arrow IPC output for this page.
     #[prost(bytes = "vec", tag = "1")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
     #[prost(bool, tag = "2")]
     pub complete: bool,
+    /// Source rows inspected, including rows omitted by predicates.
     #[prost(uint64, tag = "3")]
     pub scanned: u64,
+    /// Source bytes inspected while producing this page.
     #[prost(uint64, tag = "4")]
     pub bytes_read: u64,
     #[prost(string, repeated, tag = "5")]
     pub columns_read: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Payload rows decoded while producing this page.
     #[prost(uint64, tag = "6")]
     pub payload_rows: u64,
 }
+/// Binds an index name and version to ordered columns of one source.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct IndexDefinition {
+    /// Registered index identity used together with its source during grant and definition checks.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
+    /// Declared definition version, distinct from the conditional revision returned by Set.
     #[prost(uint32, tag = "2")]
     pub version: u32,
+    /// Required persisted resource kind/schema; read requests must match this source.
     #[prost(message, optional, tag = "3")]
     pub source: ::core::option::Option<ColumnSource>,
     #[prost(string, repeated, tag = "4")]
     pub columns: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+/// Associates an encoded index key with a source row position.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct IndexEntry {
+    /// Backend index-key encoding; carry it as opaque bytes in selections.
     #[prost(bytes = "vec", tag = "1")]
     pub key: ::prost::alloc::vec::Vec<u8>,
+    /// Source row position associated with this index entry.
     #[prost(uint64, tag = "2")]
     pub position: u64,
 }
+/// Selects an index key range or prefix, ordering and source-work budget.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct IndexSelection {
+    /// Registered index identity; the operation separately checks its source and selected revision.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
+    /// Inclusive encoded-key bound; unset adds no constraint on this side. Present bounds must increase.
     #[prost(bytes = "vec", optional, tag = "2")]
     pub lower: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+    /// Exclusive encoded-key bound; unset adds no constraint on this side. Present bounds must increase.
     #[prost(bytes = "vec", optional, tag = "3")]
     pub upper: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+    /// Encoded key prefix; empty adds no prefix restriction.
     #[prost(bytes = "vec", tag = "4")]
     pub prefix: ::prost::alloc::vec::Vec<u8>,
     #[prost(bool, tag = "5")]
     pub descending: bool,
+    /// Required positive source-work bounds for this step.
     #[prost(message, optional, tag = "6")]
     pub work: ::core::option::Option<ReadLimits>,
 }
+/// Carries index entries and whether the bounded traversal completed.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct IndexPage {
@@ -942,11 +1166,14 @@ pub struct IndexPage {
     #[prost(bool, tag = "2")]
     pub complete: bool,
 }
+/// Defines fixed-width time buckets with grouping, sample and byte budgets supplied by the consumer.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TimeBucketPlan {
+    /// Signed Unix-nanosecond origin from which fixed-width buckets are aligned.
     #[prost(int64, tag = "1")]
     pub origin_ns: i64,
+    /// Positive bucket width in nanoseconds.
     #[prost(uint64, tag = "2")]
     pub width_ns: u64,
     #[prost(string, tag = "3")]
@@ -957,31 +1184,40 @@ pub struct TimeBucketPlan {
     pub identity: ::prost::alloc::string::String,
     #[prost(string, repeated, tag = "6")]
     pub group: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Consumer-owned bound on samples retained for bucket work.
     #[prost(uint64, tag = "7")]
     pub max_samples: u64,
+    /// Consumer-owned byte budget for bucket work.
     #[prost(uint64, tag = "8")]
     pub max_bytes: u64,
 }
+/// Names the source columns retained by a durable projection.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SelectColumns {
     #[prost(string, repeated, tag = "1")]
     pub columns: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+/// Binds a named durable projection to one source and one supported transform.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ProjectionDefinition {
+    /// Registered durable projection identity.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
+    /// Declared definition version, distinct from the conditional revision returned by Set.
     #[prost(uint32, tag = "2")]
     pub version: u32,
+    /// Required persisted resource kind/schema; reads and advancement must match this source.
     #[prost(message, optional, tag = "3")]
     pub source: ::core::option::Option<ColumnSource>,
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "projection_definition::Transform", tags = "4, 5")]
     pub transform: ::core::option::Option<projection_definition::Transform>,
 }
 /// Nested message and enum types in `ProjectionDefinition`.
 pub mod projection_definition {
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Transform {
@@ -991,29 +1227,39 @@ pub mod projection_definition {
         TimeBuckets(super::TimeBucketPlan),
     }
 }
+/// Selects a durable projection revision under source-work bounds.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ProjectionSelection {
+    /// Registered projection identity used together with its checked source.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
+    /// Opaque selected projection revision; empty requests the operation's default revision selection.
     #[prost(bytes = "vec", tag = "2")]
     pub revision: ::prost::alloc::vec::Vec<u8>,
+    /// Required positive source-work bounds for this step.
     #[prost(message, optional, tag = "3")]
     pub work: ::core::option::Option<ReadLimits>,
 }
+/// Carries projected Arrow IPC rows and changed-key identities.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ProjectionPage {
+    /// Encoded Arrow IPC projection output.
     #[prost(bytes = "vec", tag = "1")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
+    /// Opaque identities of keys changed in the selected projection output.
     #[prost(bytes = "vec", repeated, tag = "2")]
     pub changed_keys: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+/// Reports the durable projection's source frontier, revision and retained row/key counts.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ProjectionStatus {
+    /// Storage position through which the projection has consumed its source.
     #[prost(message, optional, tag = "1")]
     pub frontier: ::core::option::Option<StorageCursor>,
+    /// Backend projection progress revision, distinct from its authored definition version.
     #[prost(uint64, tag = "2")]
     pub revision: u64,
     #[prost(uint64, tag = "3")]
@@ -1025,23 +1271,29 @@ pub struct ProjectionStatus {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SavedSnapshot {
+    /// Opaque, instance-scoped retained snapshot handle; preserve it with at and explicitly release it.
     #[prost(bytes = "vec", tag = "1")]
     pub token: ::prost::alloc::vec::Vec<u8>,
+    /// Original storage position belonging to token; a mismatched position refuses.
     #[prost(message, optional, tag = "2")]
     pub at: ::core::option::Option<StorageCursor>,
 }
+/// Carries the backend's revision for a stored index or projection definition.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DefinitionRevision {
+    /// Backend-owned definition revision, distinct from an authored definition version.
     #[prost(uint64, tag = "1")]
     pub revision: u64,
 }
+/// Wraps the backend's persisted projection progress.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ProjectionState {
     #[prost(message, optional, tag = "1")]
     pub status: ::core::option::Option<ProjectionStatus>,
 }
+/// Carries a storage failure category and human-readable explanation for resynchronization.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageFailure {
@@ -1473,6 +1725,7 @@ impl StorageFailureKind {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageTransferSettings {
+    /// Maximum bytes per default transfer chunk; unset uses the declared 4 MiB proto2 default.
     #[prost(uint64, optional, tag = "1", default = "4194304")]
     pub chunk_bytes: ::core::option::Option<u64>,
 }
@@ -1480,6 +1733,7 @@ pub struct StorageTransferSettings {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MessageSettings {
+    /// Carrier message ceiling; unset uses the declared 8 MiB proto2 default. Startup refuses a ceiling smaller than configured chunks plus framing.
     #[prost(uint64, optional, tag = "1", default = "8388608")]
     pub message_bytes: ::core::option::Option<u64>,
 }

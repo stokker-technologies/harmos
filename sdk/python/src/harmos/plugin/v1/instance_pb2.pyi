@@ -1,7 +1,7 @@
 import datetime
 
-from harmos.v1 import types_pb2 as _types_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from harmos.v1 import types_pb2 as _types_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -40,16 +40,6 @@ class InstanceGetResponse(_message.Message):
     message_bytes: int
     def __init__(self, id: _Optional[str] = ..., version: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., catalog: _Optional[_Union[_types_pb2.Catalog, _Mapping]] = ..., revision: _Optional[int] = ..., sdk: _Optional[str] = ..., sdk_version: _Optional[str] = ..., message_bytes: _Optional[int] = ...) -> None: ...
 
-class InstanceStopRequest(_message.Message):
-    __slots__ = ("reason",)
-    REASON_FIELD_NUMBER: _ClassVar[int]
-    reason: str
-    def __init__(self, reason: _Optional[str] = ...) -> None: ...
-
-class InstanceStopResponse(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
 class InstanceInvokeRequest(_message.Message):
     __slots__ = ("request", "child", "cancel")
     REQUEST_FIELD_NUMBER: _ClassVar[int]
@@ -85,3 +75,13 @@ class InstanceSamplesResponse(_message.Message):
     SAMPLES_FIELD_NUMBER: _ClassVar[int]
     samples: _containers.RepeatedCompositeFieldContainer[_types_pb2.Sample]
     def __init__(self, samples: _Optional[_Iterable[_Union[_types_pb2.Sample, _Mapping]]] = ...) -> None: ...
+
+class InstanceStopRequest(_message.Message):
+    __slots__ = ("reason",)
+    REASON_FIELD_NUMBER: _ClassVar[int]
+    reason: str
+    def __init__(self, reason: _Optional[str] = ...) -> None: ...
+
+class InstanceStopResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...

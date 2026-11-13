@@ -1,9 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Context Host Values
+//
+// Calls a running plugin makes back to the host from inside an invocation.
+// The host answers for the calling plugin.
+
 syntax = "proto3";
+
 package harmos.context.v1;
 
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// Exposes product-owned values declared in the calling plugin's catalog without assigning storage ownership to Harmos.
 service HostValues {
+  // Resolve a declared value through the product's registered resolver; missing declarations/resolvers and a mismatched returned type refuse.
   rpc Get(HostValuesGetRequest) returns (HostValuesGetResponse);
 }
-message HostValuesGetRequest { string name = 1; }
-message HostValuesGetResponse { string type = 1; bytes payload = 2; }
+
+// === Requests and Responses === //
+
+// Carries the resource name for HostValues.Get.
+message HostValuesGetRequest {
+  // Must exactly match a value declaration in the calling plugin's frozen catalog.
+  string name = 1;
+}
+
+// Returns a product-resolved encoded value only when its type matches the caller's declaration.
+message HostValuesGetResponse {
+  // Must equal the declared protobuf type; mismatch refuses resolution.
+  string type = 1;
+  // Encoded product-resolved value of type; Harmos does not choose its storage or contents.
+  bytes payload = 2;
+}
+
+// === Resources === //
+
+// === Enums === //

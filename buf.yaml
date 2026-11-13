@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+version: v2
+modules:
+  - path: proto
+    # Only maintained Harmos contracts; application and vendored inputs are outside this module.
+    includes:
+      - proto/harmos
+lint:
+  use:
+    - STANDARD
+    - COMMENT_SERVICE
+    - COMMENT_RPC
+    - COMMENT_MESSAGE
+  except:
+    # Resource grammar uses names such as Storage and Instance without a Service suffix.
+    - SERVICE_SUFFIX
+    # Locked native storage enums retain their existing unprefixed value names.
+    - ENUM_VALUE_PREFIX
+    # Locked storage enums and CatalogKind use meaningful zero values without UNSPECIFIED.
+    - ENUM_ZERO_VALUE_SUFFIX
+    # Locked storage payload files share harmos/v1 with the harmos.v1 wrappers.
+    - DIRECTORY_SAME_PACKAGE
+    # Locked storage payload file paths do not mirror harmos.storage.v1.
+    - PACKAGE_DIRECTORY_MATCH
+    # Locked shared types and storage wrappers reference each other's packages, without file cycles.
+    - PACKAGE_NO_IMPORT_CYCLE
+    # Locked nested resource packages end in access/status after their v1 segment.
+    - PACKAGE_VERSION_SUFFIX
+  disallow_comment_ignores: true

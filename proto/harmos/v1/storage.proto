@@ -1,111 +1,652 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Client Storage
+//
+// Calls an application or tool makes to the host.
+
 syntax = "proto3";
+
 package harmos.v1;
 
-import "harmos/v1/types.proto";
+// === Imports === //
+
 import "harmos/v1/storage_types.proto";
+import "harmos/v1/types.proto";
 
-message StorageCreateFileProductionRequest { .harmos.storage.v1.FileMetadata metadata = 1; .harmos.storage.v1.MutationId mutation = 2; }
-message StorageCreateFileProductionResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
-message StorageGetFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; .harmos.v1.ReadCut at = 2; }
-message StorageGetFileProductionResponse { .harmos.storage.v1.FileProgress production = 1; uint64 writer_generation = 2; .harmos.v1.ReadCut resolved_at = 3; uint64 accepted_length = 4; uint64 durable_length = 5; }
-message StorageAppendFileBytesRequest { .harmos.storage.v1.FileSession session = 1; uint64 offset = 2; bytes data = 3; .harmos.storage.v1.MutationId mutation = 4; }
-message StorageAppendFileBytesResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
-message StorageCreateFileWriterRequest { .harmos.storage.v1.FileSession session = 1; .harmos.storage.v1.MutationId mutation = 2; }
-message StorageCreateFileWriterResponse { .harmos.storage.v1.FileProducer production = 1; .harmos.v1.Receipt receipt = 2; }
-message StoragePublishFileProductionRequest { .harmos.storage.v1.FileSession session = 1; uint64 length = 2; bytes sha256 = 3; .harmos.storage.v1.MutationId mutation = 4; }
-message StoragePublishFileProductionResponse { .harmos.storage.v1.FileReference file = 1; .harmos.v1.Receipt receipt = 2; }
-message StorageDeleteFileProductionRequest { .harmos.storage.v1.FileSession session = 1; .harmos.storage.v1.MutationId mutation = 2; }
-message StorageDeleteFileProductionResponse { .harmos.storage.v1.FileProgress production = 1; .harmos.v1.Receipt receipt = 2; }
-message StorageGetFileBytesRequest { .harmos.storage.v1.FileReference file = 1; uint64 offset = 2; uint64 max_bytes = 3; .harmos.v1.ReadCut at = 4; }
-message StorageGetFileBytesResponse { bytes data = 1; uint64 total_length = 2; bytes sha256 = 3; .harmos.v1.ReadCut resolved_at = 4; }
+// === Options === //
 
-message StorageCapabilitiesRequest {  }
-message StorageCapabilitiesResponse { .harmos.storage.v1.StorageCapabilities capabilities = 1; .harmos.storage.v1.MutationWindow mutations = 2; uint64 file_batch_bytes = 3; }
-message StorageCreateSnapshotRequest { .harmos.v1.ReadCut at = 1; }
-message StorageCreateSnapshotResponse { .harmos.storage.v1.SavedSnapshot snapshot = 1; .harmos.v1.ReadCut resolved_at = 2; }
-message StorageDeleteSnapshotRequest { .harmos.storage.v1.SavedSnapshot snapshot = 1; }
-message StorageDeleteSnapshotResponse {  }
-message StorageListColumnRowsRequest { .harmos.storage.v1.ColumnSelection selection = 1; .harmos.v1.ReadCut at = 2; .harmos.v1.PageRequest page = 3; }
-message StorageListColumnRowsResponse { .harmos.storage.v1.ArrowPage page = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
-message StorageListIndexEntriesRequest { .harmos.storage.v1.IndexSelection selection = 1; .harmos.v1.ReadCut at = 2; .harmos.v1.PageRequest page = 3; .harmos.storage.v1.ColumnSource source = 4; }
-message StorageListIndexEntriesResponse { .harmos.storage.v1.IndexPage page = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
-message StorageSetIndexDefinitionRequest { .harmos.storage.v1.IndexDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; .harmos.storage.v1.ReadLimits work = 5; .harmos.storage.v1.MutationId mutation = 6; }
-message StorageSetIndexDefinitionResponse { .harmos.storage.v1.IndexDefinition definition = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
-message StorageSetProjectionDefinitionRequest { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes expected_revision = 2; bool create_if_absent = 3; bool rebuild = 4; .harmos.storage.v1.MutationId mutation = 5; }
-message StorageSetProjectionDefinitionResponse { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
-message StorageAdvanceProjectionRequest { .harmos.storage.v1.SavedSnapshot snapshot = 1; string name = 2; .harmos.storage.v1.ReadLimits work = 3; .harmos.storage.v1.ColumnSource source = 4; }
-message StorageAdvanceProjectionResponse { bytes revision = 1; .harmos.v1.ReadCut resolved_at = 2; }
-message StorageListProjectionRowsRequest { .harmos.storage.v1.ProjectionSelection selection = 1; .harmos.v1.ReadCut at = 2; .harmos.v1.PageRequest page = 3; .harmos.storage.v1.ColumnSource source = 4; }
-message StorageListProjectionRowsResponse { .harmos.storage.v1.ProjectionPage page = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
-message StorageGetProjectionStatusRequest { string name = 1; bytes revision = 2; .harmos.v1.ReadCut at = 3; .harmos.storage.v1.ColumnSource source = 4; }
-message StorageGetProjectionStatusResponse { .harmos.storage.v1.ProjectionStatus status = 1; .harmos.v1.ReadCut resolved_at = 2; }
-message StorageSetObjectRequest { .harmos.storage.v1.MutationId mutation = 1; bytes expected_revision = 2; bool create_if_absent = 3; .harmos.storage.v1.SchemaInput schema = 4; .harmos.storage.v1.ObjectValue value = 5; }
-message StorageSetObjectResponse {
-  message Applied { .harmos.storage.v1.ObjectValue value = 1; bytes revision = 2; .harmos.v1.Receipt receipt = 3; }
-  message Conflict { bytes current_revision = 1; string action = 2; }
-  oneof outcome { Applied applied = 1; Conflict conflict = 2; }
-}
-message StorageListRowsRequest { .harmos.storage.v1.QuerySource source = 1; .harmos.v1.ReadCut at = 2; repeated .harmos.storage.v1.Transform transforms = 3; .harmos.v1.PageRequest page = 4; }
-message StorageListRowsResponse { repeated .harmos.storage.v1.QueryOutput rows = 1; .harmos.v1.ReadCut resolved_at = 2; string next_page_token = 3; }
-message StorageWatchRowsRequest { .harmos.storage.v1.QuerySource source = 1; .harmos.v1.ReadCut at = 2; }
-message StorageWatchRowsResponse { .harmos.v1.ReadCut resolved_at = 1; oneof event { .harmos.storage.v1.Empty boundary = 2; .harmos.storage.v1.StoredRecord record = 3; .harmos.storage.v1.StoredRow sample = 4; .harmos.storage.v1.ObjectEntry object = 5; .harmos.storage.v1.Empty durable_progress = 6; .harmos.storage.v1.StorageFailure resync_required = 7; } }
-message StorageAppendRecordsRequest { .harmos.storage.v1.MutationId mutation = 1; optional string scope = 2; .harmos.storage.v1.DataBatch batch = 3; }
-message StorageAppendRecordsResponse { .harmos.v1.Receipt receipt = 1; }
-message StorageAppendSamplesRequest { .harmos.storage.v1.MutationId mutation = 1; optional string scope = 2; .harmos.storage.v1.DataBatch batch = 3; }
-message StorageAppendSamplesResponse { .harmos.v1.Receipt receipt = 1; }
-message StorageAppendObjectRevisionsRequest { .harmos.storage.v1.MutationId mutation = 1; optional string scope = 2; .harmos.storage.v1.DataBatch batch = 3; }
-message StorageAppendObjectRevisionsResponse { .harmos.v1.Receipt receipt = 1; }
-message StorageGetFileHashRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.ByteRange range = 2; .harmos.v1.ReadCut at = 3; }
-message StorageGetFileHashResponse { .harmos.storage.v1.FileHash hash = 1; .harmos.v1.ReadCut resolved_at = 2; }
-message StorageCaptureFileRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.ByteRange range = 2; .harmos.storage.v1.FileMetadata metadata = 3; .harmos.storage.v1.CaptureConsistency consistency = 4; }
-message StorageCaptureFileResponse { .harmos.storage.v1.FileReference file = 1; .harmos.v1.Receipt receipt = 2; }
-message StorageWatchFileBytesRequest { .harmos.storage.v1.FileSource source = 1; .harmos.storage.v1.FollowStart start = 2; }
-message StorageWatchFileBytesResponse { .harmos.storage.v1.FileEvent event = 1; .harmos.storage.v1.FileCompletion completion = 2; }
-message StorageWatchFileProductionRequest { .harmos.storage.v1.StagedFile file = 1; uint64 offset = 2; }
-message StorageWatchFileProductionResponse { oneof event { .harmos.storage.v1.FileBatch data = 1; .harmos.storage.v1.FileProgress progress = 2; } }
-message StorageListDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; .harmos.v1.PageRequest page = 2; .harmos.v1.ReadCut at = 3; }
-message StorageListDirectoryEntriesResponse { repeated .harmos.storage.v1.DirectoryEntry entries = 1; string next_page_token = 2; .harmos.v1.ReadCut resolved_at = 3; }
-message StorageWatchDirectoryEntriesRequest { .harmos.storage.v1.DirectorySelection selection = 1; bool include_existing = 2; }
-message StorageWatchDirectoryEntriesResponse { .harmos.storage.v1.DirectoryEvent event = 1; }
-message StorageGetIndexDefinitionRequest { string name = 1; .harmos.storage.v1.ColumnSource source = 2; .harmos.v1.ReadCut at = 3; }
-message StorageGetIndexDefinitionResponse { .harmos.storage.v1.IndexDefinition definition = 1; bytes revision = 2; .harmos.v1.ReadCut resolved_at = 3; }
-message StorageGetProjectionDefinitionRequest { string name = 1; .harmos.storage.v1.ColumnSource source = 2; .harmos.v1.ReadCut at = 3; }
-message StorageGetProjectionDefinitionResponse { .harmos.storage.v1.ProjectionDefinition definition = 1; bytes revision = 2; .harmos.v1.ReadCut resolved_at = 3; }
-message StorageGetObjectRequest { .harmos.storage.v1.SchemaKey schema = 1; string item = 2; .harmos.v1.ReadCut at = 3; }
-message StorageGetObjectResponse { .harmos.storage.v1.ObjectValue value = 1; bytes revision = 2; bool exists = 3; .harmos.v1.ReadCut resolved_at = 4; }
+// === Services === //
 
+// Exposes bounded storage reads, conditional mutations and fenced file production under the caller's checked grants.
 service Storage {
+  // Begin resumable file production. Replaying the same mutation and input returns its original outcome; changed input is refused.
   rpc CreateFileProduction(StorageCreateFileProductionRequest) returns (StorageCreateFileProductionResponse);
+  // Observe production progress and writer generation at a retained cut, separating accepted from durable byte lengths.
   rpc GetFileProduction(StorageGetFileProductionRequest) returns (StorageGetFileProductionResponse);
+  // Append at the expected byte offset using the current writer. Replays preserve the original result; stale writers and mismatched input refuse.
   rpc AppendFileBytes(StorageAppendFileBytesRequest) returns (StorageAppendFileBytesResponse);
+  // Resume a production with a new writer generation, fencing the previous writer. Replaying the mutation returns the same resumed writer.
   rpc CreateFileWriter(StorageCreateFileWriterRequest) returns (StorageCreateFileWriterResponse);
+  // Validate the current writer, complete length and 32-byte SHA-256, then publish and flush the reference before acknowledging; replay returns the original publication.
   rpc PublishFileProduction(StoragePublishFileProductionRequest) returns (StoragePublishFileProductionResponse);
+  // Abandon unfinished production using the current writer; replaying its mutation retains the original abandonment outcome.
   rpc DeleteFileProduction(StorageDeleteFileProductionRequest) returns (StorageDeleteFileProductionResponse);
+  // Read a bounded range of immutable published content; resend the returned cut to retain the same selected content.
   rpc GetFileBytes(StorageGetFileBytesRequest) returns (StorageGetFileBytesResponse);
+  // Inspect backend facilities, the current mutation window and the file chunk budget before choosing storage operations.
   rpc Capabilities(StorageCapabilitiesRequest) returns (StorageCapabilitiesResponse);
+  // Pin a retained read image at an issued cut, or the current durable position when unset; capacity exhaustion refuses creation.
   rpc CreateSnapshot(StorageCreateSnapshotRequest) returns (StorageCreateSnapshotResponse);
+  // Release an explicit snapshot handle; repeating release is harmless unless the supplied position mismatches an existing handle.
   rpc DeleteSnapshot(StorageDeleteSnapshotRequest) returns (StorageDeleteSnapshotResponse);
+  // Read Arrow columns at a retained cut within output and source-work bounds; the storage owner uses native access or its schema-aware fallback.
   rpc ListColumnRows(StorageListColumnRowsRequest) returns (StorageListColumnRowsResponse);
+  // Read a bounded index page for the checked source; continuation retains the original selection and cut.
   rpc ListIndexEntries(StorageListIndexEntriesRequest) returns (StorageListIndexEntriesResponse);
+  // Conditionally create or replace a source-bound index. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
   rpc SetIndexDefinition(StorageSetIndexDefinitionRequest) returns (StorageSetIndexDefinitionResponse);
+  // Conditionally create or replace a durable projection. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
   rpc SetProjectionDefinition(StorageSetProjectionDefinitionRequest) returns (StorageSetProjectionDefinitionResponse);
+  // Advance a durable projection using a retained snapshot and positive caller-owned work bounds; mismatched sources refuse.
   rpc AdvanceProjection(StorageAdvanceProjectionRequest) returns (StorageAdvanceProjectionResponse);
+  // Read a bounded durable projection page with its selected revision and source checked against the definition.
   rpc ListProjectionRows(StorageListProjectionRowsRequest) returns (StorageListProjectionRowsResponse);
+  // Observe durable projection progress, optionally selecting a revision and issued read cut; incompatible revision selections refuse.
   rpc GetProjectionStatus(StorageGetProjectionStatusRequest) returns (StorageGetProjectionStatusResponse);
+  // Compare and exchange an object using an issued revision or explicit create-if-absent. Replay retains the original applied/conflict result.
   rpc SetObject(StorageSetObjectRequest) returns (StorageSetObjectResponse);
+  // Read a retained query with ordered transforms and bounded pages. An identical continuation can replay its cached page; changed or expired continuation refuses.
   rpc ListRows(StorageListRowsRequest) returns (StorageListRowsResponse);
+  // Follow durable source changes after an opening boundary; gaps require resynchronization rather than silently skipping rows.
   rpc WatchRows(StorageWatchRowsRequest) returns (stream StorageWatchRowsResponse);
+  // Append one encoded record batch under a mutation identity; resending identical input replays its receipt rather than appending again.
   rpc AppendRecords(StorageAppendRecordsRequest) returns (StorageAppendRecordsResponse);
+  // Append one encoded stream batch under a mutation identity; resending identical input replays its receipt rather than appending again.
   rpc AppendSamples(StorageAppendSamplesRequest) returns (StorageAppendSamplesResponse);
+  // Append one encoded object-revision batch under a mutation identity; identical replay preserves its original receipt.
   rpc AppendObjectRevisions(StorageAppendObjectRevisionsRequest) returns (StorageAppendObjectRevisionsResponse);
+  // Hash a selected byte range, returning the byte count and selected cut; local source reads retain their observed image through the issued cut.
   rpc GetFileHash(StorageGetFileHashRequest) returns (StorageGetFileHashResponse);
+  // Capture a selected source range as published storage content under the requested consistency mode.
   rpc CaptureFile(StorageCaptureFileRequest) returns (StorageCaptureFileResponse);
+  // Follow local file bytes from a selected starting offset, reporting truncation and replacement explicitly.
   rpc WatchFileBytes(StorageWatchFileBytesRequest) returns (stream StorageWatchFileBytesResponse);
+  // Follow the bytes and phase of an identified production from a byte offset without creating a new writer.
   rpc WatchFileProduction(StorageWatchFileProductionRequest) returns (stream StorageWatchFileProductionResponse);
+  // List bounded local directory entries, retaining the observed selection through its cut and continuation.
   rpc ListDirectoryEntries(StorageListDirectoryEntriesRequest) returns (StorageListDirectoryEntriesResponse);
+  // Observe local directory changes, optionally including an initial scan; rescan signals require the caller to rebuild its view.
   rpc WatchDirectoryEntries(StorageWatchDirectoryEntriesRequest) returns (stream StorageWatchDirectoryEntriesResponse);
+  // Read an index definition and revision for its checked source, adding that revision to the returned cut.
   rpc GetIndexDefinition(StorageGetIndexDefinitionRequest) returns (StorageGetIndexDefinitionResponse);
+  // Read a projection definition and revision for its checked source, retaining the selected revision in the returned cut.
   rpc GetProjectionDefinition(StorageGetProjectionDefinitionRequest) returns (StorageGetProjectionDefinitionResponse);
+  // Read one object at an issued cut or the current durable position; absence is explicit and does not create a value.
   rpc GetObject(StorageGetObjectRequest) returns (StorageGetObjectResponse);
 }
+
+// === Requests and Responses === //
+
+// Carries file metadata and a mutation identity for Storage.CreateFileProduction.
+message StorageCreateFileProductionRequest {
+  .harmos.storage.v1.FileMetadata metadata = 1;
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 2;
+}
+
+// Returns the writer session, accepted byte length and replay receipt for the new production.
+message StorageCreateFileProductionResponse {
+  .harmos.storage.v1.FileProducer production = 1;
+  .harmos.v1.Receipt receipt = 2;
+}
+
+// Selects a file production and read boundary for Storage.GetFileProduction.
+message StorageGetFileProductionRequest {
+  .harmos.storage.v1.StagedFile file = 1;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 2;
+}
+
+// Separates observed production phase, writer fence, accepted/durable byte lengths and the retained read cut.
+message StorageGetFileProductionResponse {
+  .harmos.storage.v1.FileProgress production = 1;
+  // Current production writer fence, observed without granting writer authority.
+  uint64 writer_generation = 2;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 3;
+  // Bytes accepted into production; this is not a crash-safe byte acknowledgement.
+  uint64 accepted_length = 4;
+  // Production byte length acknowledged persisted by the storage owner.
+  uint64 durable_length = 5;
+}
+
+// Carries bytes, their expected offset, the writer session and mutation identity for Storage.AppendFileBytes.
+message StorageAppendFileBytesRequest {
+  // Required current writer capability; an older generation is fenced after another writer resumes production.
+  .harmos.storage.v1.FileSession session = 1;
+  // Zero-based byte offset in the selected file/production; append must match the current writer length.
+  uint64 offset = 2;
+  bytes data = 3;
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 4;
+}
+
+// Returns the writer session and acknowledged length associated with the original append mutation.
+message StorageAppendFileBytesResponse {
+  .harmos.storage.v1.FileProducer production = 1;
+  .harmos.v1.Receipt receipt = 2;
+}
+
+// Carries the writer session and mutation identity for Storage.CreateFileWriter.
+message StorageCreateFileWriterRequest {
+  // Writer session used to identify the production and expected generation for resumption; replay retains the originally issued replacement writer.
+  .harmos.storage.v1.FileSession session = 1;
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 2;
+}
+
+// Returns the resumed writer and length; replaying the same mutation retains this original writer generation.
+message StorageCreateFileWriterResponse {
+  .harmos.storage.v1.FileProducer production = 1;
+  .harmos.v1.Receipt receipt = 2;
+}
+
+// Carries the writer session, completed length, digest and mutation identity for Storage.PublishFileProduction.
+message StoragePublishFileProductionRequest {
+  // Required current writer capability; an older generation is fenced after another writer resumes production.
+  .harmos.storage.v1.FileSession session = 1;
+  // Exact completed byte length to verify before publication.
+  uint64 length = 2;
+  // SHA-256 digest of the complete selected file, encoded as 32 bytes.
+  bytes sha256 = 3;
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 4;
+}
+
+// Returns the immutable file reference and receipt after publication has been flushed to the file position.
+message StoragePublishFileProductionResponse {
+  .harmos.storage.v1.FileReference file = 1;
+  .harmos.v1.Receipt receipt = 2;
+}
+
+// Carries the writer session and mutation identity for Storage.DeleteFileProduction.
+message StorageDeleteFileProductionRequest {
+  // Required current writer capability; an older generation is fenced after another writer resumes production.
+  .harmos.storage.v1.FileSession session = 1;
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 2;
+}
+
+// Returns the abandoned production's progress and the original mutation receipt.
+message StorageDeleteFileProductionResponse {
+  .harmos.storage.v1.FileProgress production = 1;
+  .harmos.v1.Receipt receipt = 2;
+}
+
+// Selects a file, byte range and read boundary for Storage.GetFileBytes.
+message StorageGetFileBytesRequest {
+  .harmos.storage.v1.FileReference file = 1;
+  // Zero-based byte offset in the selected file or production.
+  uint64 offset = 2;
+  // Maximum data bytes requested; zero uses the configured transfer chunk budget. Carrier framing and content-lease bounds can reduce returned data.
+  uint64 max_bytes = 3;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 4;
+}
+
+// Carries a bounded contiguous byte range, complete file metadata and the cut that retains its read image.
+message StorageGetFileBytesResponse {
+  bytes data = 1;
+  uint64 total_length = 2;
+  // SHA-256 digest of the complete selected file, encoded as 32 bytes.
+  bytes sha256 = 3;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 4;
+}
+
+// Request for Storage.Capabilities.
+message StorageCapabilitiesRequest {}
+
+// Advertises backend facilities, any current mutation replay window and the configured file chunk budget.
+message StorageCapabilitiesResponse {
+  .harmos.storage.v1.StorageCapabilities capabilities = 1;
+  // Current mutation replay window when supported; absent means no window is advertised.
+  .harmos.storage.v1.MutationWindow mutations = 2;
+  // Owner-configured default/maximum transfer chunk budget in bytes.
+  uint64 file_batch_bytes = 3;
+}
+
+// Selects the read boundary for Storage.CreateSnapshot.
+message StorageCreateSnapshotRequest {
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 1;
+}
+
+// Returns an explicitly retained snapshot handle and the cut it pins until release.
+message StorageCreateSnapshotResponse {
+  // Required retained snapshot handle issued by this owner; preserve its token and original position.
+  .harmos.storage.v1.SavedSnapshot snapshot = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+}
+
+// Carries the snapshot handle for Storage.DeleteSnapshot.
+message StorageDeleteSnapshotRequest {
+  // Required retained snapshot handle issued by this owner; preserve its token and original position.
+  .harmos.storage.v1.SavedSnapshot snapshot = 1;
+}
+
+// Acknowledges release without adding response payload fields.
+message StorageDeleteSnapshotResponse {}
+
+// Carries a column selection, read boundary and page bounds for Storage.ListColumnRows.
+message StorageListColumnRowsRequest {
+  .harmos.storage.v1.ColumnSelection selection = 1;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 2;
+  // Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
+  .harmos.v1.PageRequest page = 3;
+}
+
+// Returns a bounded Arrow page, its selected read cut and any opaque continuation.
+message StorageListColumnRowsResponse {
+  .harmos.storage.v1.ArrowPage page = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+  // Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
+  string next_page_token = 3;
+}
+
+// Carries an index selection, source, read boundary and page bounds for Storage.ListIndexEntries.
+message StorageListIndexEntriesRequest {
+  .harmos.storage.v1.IndexSelection selection = 1;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 2;
+  // Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
+  .harmos.v1.PageRequest page = 3;
+  // Required source kind/schema; must match the registered definition and the caller's resource grant.
+  .harmos.storage.v1.ColumnSource source = 4;
+}
+
+// Returns bounded index entries with their selected definition/read cut and continuation.
+message StorageListIndexEntriesResponse {
+  .harmos.storage.v1.IndexPage page = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+  // Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
+  string next_page_token = 3;
+}
+
+// Carries an index definition, expected revision, creation/rebuild controls, work bounds and mutation identity.
+message StorageSetIndexDefinitionRequest {
+  .harmos.storage.v1.IndexDefinition definition = 1;
+  // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input. Empty is valid only with explicit create_if_absent.
+  bytes expected_revision = 2;
+  // True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
+  bool create_if_absent = 3;
+  // Requests rebuilding the definition rather than silently reusing incompatible derived data.
+  bool rebuild = 4;
+  // Required positive source row and byte work limits; these do not replace output page limits.
+  .harmos.storage.v1.ReadLimits work = 5;
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 6;
+}
+
+// Returns the stored index definition, conditional revision and replay receipt.
+message StorageSetIndexDefinitionResponse {
+  .harmos.storage.v1.IndexDefinition definition = 1;
+  // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
+  bytes revision = 2;
+  .harmos.v1.Receipt receipt = 3;
+}
+
+// Carries a projection definition, expected revision, creation/rebuild controls and mutation identity.
+message StorageSetProjectionDefinitionRequest {
+  .harmos.storage.v1.ProjectionDefinition definition = 1;
+  // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input. Empty is valid only with explicit create_if_absent.
+  bytes expected_revision = 2;
+  // True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
+  bool create_if_absent = 3;
+  // Requests rebuilding the definition rather than silently reusing incompatible derived data.
+  bool rebuild = 4;
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 5;
+}
+
+// Returns the stored projection definition, conditional revision and replay receipt.
+message StorageSetProjectionDefinitionResponse {
+  .harmos.storage.v1.ProjectionDefinition definition = 1;
+  // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
+  bytes revision = 2;
+  .harmos.v1.Receipt receipt = 3;
+}
+
+// Carries the snapshot, projection name, source and work bounds for Storage.AdvanceProjection.
+message StorageAdvanceProjectionRequest {
+  // Required retained snapshot handle issued by this owner; preserve its token and original position.
+  .harmos.storage.v1.SavedSnapshot snapshot = 1;
+  // Registered index or projection identity, resolved together with the checked source.
+  string name = 2;
+  // Required positive source row and byte work limits; these do not replace output page limits.
+  .harmos.storage.v1.ReadLimits work = 3;
+  // Required source kind/schema; must match the registered definition and the caller's resource grant.
+  .harmos.storage.v1.ColumnSource source = 4;
+}
+
+// Returns the advanced projection revision and the source/projection cut selected together.
+message StorageAdvanceProjectionResponse {
+  // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
+  bytes revision = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+}
+
+// Carries a projection selection, source, read boundary and page bounds for Storage.ListProjectionRows.
+message StorageListProjectionRowsRequest {
+  .harmos.storage.v1.ProjectionSelection selection = 1;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 2;
+  // Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
+  .harmos.v1.PageRequest page = 3;
+  // Required source kind/schema; must match the registered definition and the caller's resource grant.
+  .harmos.storage.v1.ColumnSource source = 4;
+}
+
+// Returns bounded projection IPC output, its retained cut and any continuation.
+message StorageListProjectionRowsResponse {
+  .harmos.storage.v1.ProjectionPage page = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+  // Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
+  string next_page_token = 3;
+}
+
+// Selects a projection name, revision, source and read boundary for Storage.GetProjectionStatus.
+message StorageGetProjectionStatusRequest {
+  // Registered index or projection identity, resolved together with the checked source.
+  string name = 1;
+  // Empty selects the backend's default projection revision; a supplied revision must agree with any issued cut.
+  bytes revision = 2;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 3;
+  // Required source kind/schema; must match the registered definition and the caller's resource grant.
+  .harmos.storage.v1.ColumnSource source = 4;
+}
+
+// Returns available projection progress and its selected cut; absence of progress is distinct from an error.
+message StorageGetProjectionStatusResponse {
+  .harmos.storage.v1.ProjectionStatus status = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+}
+
+// Carries an object value, schema, expected revision, creation control and mutation identity for Storage.SetObject.
+message StorageSetObjectRequest {
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 1;
+  // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input. Empty is valid only with explicit create_if_absent.
+  bytes expected_revision = 2;
+  // True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
+  bool create_if_absent = 3;
+  .harmos.storage.v1.SchemaInput schema = 4;
+  .harmos.storage.v1.ObjectValue value = 5;
+}
+
+// Distinguishes an applied compare-and-exchange with receipt from a conflict requiring a fresh read.
+message StorageSetObjectResponse {
+  // Returns the conditional object's written value, new revision and mutation receipt.
+  message Applied {
+    .harmos.storage.v1.ObjectValue value = 1;
+    // Opaque new object compare-and-exchange revision; preserve its bytes for a later conditional write.
+    bytes revision = 2;
+    .harmos.v1.Receipt receipt = 3;
+  }
+  // Reports the current conditional object revision so the caller can read again before a new attempt.
+  message Conflict {
+    // Current object revision on conflict, or empty when no current value exists; read again before submitting changed input.
+    bytes current_revision = 1;
+    string action = 2;
+  }
+  // Selects one variant; an unset discriminator carries no selected value.
+  oneof outcome {
+    Applied applied = 1;
+    Conflict conflict = 2;
+  }
+}
+
+// Carries the source, read boundary, transforms and page bounds for Storage.ListRows.
+message StorageListRowsRequest {
+  // Required query resource family and selection; determines the resource grant checked before reading.
+  .harmos.storage.v1.QuerySource source = 1;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 2;
+  repeated .harmos.storage.v1.Transform transforms = 3;
+  // Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
+  .harmos.v1.PageRequest page = 4;
+}
+
+// Returns encoded query output, its retained cut and continuation; an empty output batch can still have more work.
+message StorageListRowsResponse {
+  repeated .harmos.storage.v1.QueryOutput rows = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+  // Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
+  string next_page_token = 3;
+}
+
+// Selects a source and read boundary for Storage.WatchRows.
+message StorageWatchRowsRequest {
+  // Required query resource family and selection; determines the resource grant checked before reading.
+  .harmos.storage.v1.QuerySource source = 1;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 2;
+}
+
+// Separates opening boundary, durable row changes/progress and a resynchronization requirement.
+message StorageWatchRowsResponse {
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 1;
+  // Selects one variant; an unset discriminator carries no selected value.
+  oneof event {
+    .harmos.storage.v1.Empty boundary = 2;
+    .harmos.storage.v1.StoredRecord record = 3;
+    .harmos.storage.v1.StoredRow sample = 4;
+    .harmos.storage.v1.ObjectEntry object = 5;
+    .harmos.storage.v1.Empty durable_progress = 6;
+    // Continuity is unavailable; open a fresh read instead of treating this event as a successful continuation.
+    .harmos.storage.v1.StorageFailure resync_required = 7;
+  }
+}
+
+// Carries an encoded record batch, scope and mutation identity for Storage.AppendRecords.
+message StorageAppendRecordsRequest {
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 1;
+  // Optional persisted scope metadata; unset records no scope.
+  optional string scope = 2;
+  .harmos.storage.v1.DataBatch batch = 3;
+}
+
+// Returns the receipt of the original deduplicated record append.
+message StorageAppendRecordsResponse {
+  .harmos.v1.Receipt receipt = 1;
+}
+
+// Carries an encoded sample batch, scope and mutation identity for Storage.AppendSamples.
+message StorageAppendSamplesRequest {
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 1;
+  // Optional persisted scope metadata; unset records no scope.
+  optional string scope = 2;
+  .harmos.storage.v1.DataBatch batch = 3;
+}
+
+// Returns the receipt of the original deduplicated sample append.
+message StorageAppendSamplesResponse {
+  .harmos.v1.Receipt receipt = 1;
+}
+
+// Carries an encoded object-revision batch, scope and mutation identity for Storage.AppendObjectRevisions.
+message StorageAppendObjectRevisionsRequest {
+  // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
+  .harmos.storage.v1.MutationId mutation = 1;
+  // Optional persisted scope metadata; unset records no scope.
+  optional string scope = 2;
+  .harmos.storage.v1.DataBatch batch = 3;
+}
+
+// Returns the receipt of the original deduplicated object-revision append.
+message StorageAppendObjectRevisionsResponse {
+  .harmos.v1.Receipt receipt = 1;
+}
+
+// Selects a source, byte range and read boundary for Storage.GetFileHash.
+message StorageGetFileHashRequest {
+  // Required stored-reference or local-path variant checked under the caller's file grant.
+  .harmos.storage.v1.FileSource source = 1;
+  .harmos.storage.v1.ByteRange range = 2;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 3;
+}
+
+// Returns the selected range's byte count and SHA-256 with the cut retaining the observed read.
+message StorageGetFileHashResponse {
+  .harmos.storage.v1.FileHash hash = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 2;
+}
+
+// Carries the source range, file metadata and consistency selection for Storage.CaptureFile.
+message StorageCaptureFileRequest {
+  // Required stored-reference or local-path variant checked under the caller's file grant.
+  .harmos.storage.v1.FileSource source = 1;
+  .harmos.storage.v1.ByteRange range = 2;
+  .harmos.storage.v1.FileMetadata metadata = 3;
+  .harmos.storage.v1.CaptureConsistency consistency = 4;
+}
+
+// Returns the published captured file reference and its mutation receipt.
+message StorageCaptureFileResponse {
+  .harmos.storage.v1.FileReference file = 1;
+  .harmos.v1.Receipt receipt = 2;
+}
+
+// Selects a source and starting position for Storage.WatchFileBytes.
+message StorageWatchFileBytesRequest {
+  // Required stored-reference or local-path variant checked under the caller's file grant.
+  .harmos.storage.v1.FileSource source = 1;
+  // Required beginning, current-end or explicit byte-offset variant; an unset variant refuses conversion.
+  .harmos.storage.v1.FollowStart start = 2;
+}
+
+// Carries a local file-follow event and any completion reported by the native reader.
+message StorageWatchFileBytesResponse {
+  .harmos.storage.v1.FileEvent event = 1;
+  .harmos.storage.v1.FileCompletion completion = 2;
+}
+
+// Selects a file production and byte offset for Storage.WatchFileProduction.
+message StorageWatchFileProductionRequest {
+  .harmos.storage.v1.StagedFile file = 1;
+  // Zero-based byte offset in the selected file or production.
+  uint64 offset = 2;
+}
+
+// Distinguishes available production bytes from production phase/length progress.
+message StorageWatchFileProductionResponse {
+  // Selects one variant; an unset discriminator carries no selected value.
+  oneof event {
+    .harmos.storage.v1.FileBatch data = 1;
+    .harmos.storage.v1.FileProgress progress = 2;
+  }
+}
+
+// Carries a directory selection, page bounds and read boundary for Storage.ListDirectoryEntries.
+message StorageListDirectoryEntriesRequest {
+  .harmos.storage.v1.DirectorySelection selection = 1;
+  // Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
+  .harmos.v1.PageRequest page = 2;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 3;
+}
+
+// Returns bounded observed directory entries with the cut and continuation retaining that selection.
+message StorageListDirectoryEntriesResponse {
+  repeated .harmos.storage.v1.DirectoryEntry entries = 1;
+  // Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
+  string next_page_token = 2;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 3;
+}
+
+// Carries a directory selection and initial-scan choice for Storage.WatchDirectoryEntries.
+message StorageWatchDirectoryEntriesRequest {
+  .harmos.storage.v1.DirectorySelection selection = 1;
+  bool include_existing = 2;
+}
+
+// Carries one directory observation, including scan completion or a rescan requirement.
+message StorageWatchDirectoryEntriesResponse {
+  .harmos.storage.v1.DirectoryEvent event = 1;
+}
+
+// Selects an index name, source and read boundary for Storage.GetIndexDefinition.
+message StorageGetIndexDefinitionRequest {
+  // Registered index or projection identity, resolved together with the checked source.
+  string name = 1;
+  // Required source kind/schema; must match the registered definition and the caller's resource grant.
+  .harmos.storage.v1.ColumnSource source = 2;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 3;
+}
+
+// Returns the checked-source index definition and revision included in the selected cut.
+message StorageGetIndexDefinitionResponse {
+  .harmos.storage.v1.IndexDefinition definition = 1;
+  // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
+  bytes revision = 2;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 3;
+}
+
+// Selects a projection name, source and read boundary for Storage.GetProjectionDefinition.
+message StorageGetProjectionDefinitionRequest {
+  // Registered index or projection identity, resolved together with the checked source.
+  string name = 1;
+  // Required source kind/schema; must match the registered definition and the caller's resource grant.
+  .harmos.storage.v1.ColumnSource source = 2;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 3;
+}
+
+// Returns the checked-source projection definition and revision included in the selected cut.
+message StorageGetProjectionDefinitionResponse {
+  .harmos.storage.v1.ProjectionDefinition definition = 1;
+  // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
+  bytes revision = 2;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 3;
+}
+
+// Selects a schema, item and read boundary for Storage.GetObject.
+message StorageGetObjectRequest {
+  .harmos.storage.v1.SchemaKey schema = 1;
+  string item = 2;
+  // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
+  .harmos.v1.ReadCut at = 3;
+}
+
+// Distinguishes an absent object from an encoded value and conditional revision at the selected cut.
+message StorageGetObjectResponse {
+  .harmos.storage.v1.ObjectValue value = 1;
+  // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
+  bytes revision = 2;
+  // False denotes an absent value; the corresponding value and revision are then empty.
+  bool exists = 3;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  .harmos.v1.ReadCut resolved_at = 4;
+}
+
+// === Resources === //
+
+// === Enums === //
