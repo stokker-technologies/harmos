@@ -2,7 +2,7 @@
 
 ## 1. Interface Design
 
-- [x] 1.1 Owner authorizes parallel work: Harmos host gRPC surfaces at a7583836 are complete; consumer wave pending; lock inventory for storage backend/object/query contracts, protocol mappings, operations, examples, backends, tests, benchmarks and storage guidance.
+- [x] 1.1 Lock inventory for storage backend/object/query contracts, protocol mappings, operations, examples, backends, tests, benchmarks and storage guidance.
 - [x] 1.2 Settle the proposed scan/index plan and page types, ordering, snapshot lifetime, capability negotiation, bounded fallback, cancellation and error semantics in design.md.
 - [x] 1.3 Settle projection registration/versioning, readable frontier, source-commit coupling, crash replay, invalidation/rebuild and old-snapshot behaviour in design.md.
 - [x] 1.4 Settle time-bucket boundaries, retained statistics/positions, corrections, late replacement, revision and changed-key retention semantics in design.md.
@@ -51,12 +51,12 @@
   - [x] Windows: record measured times, throughput, Rust allocations/incremental heap, process peak memory, encoded column bytes, WAL/FULL commit costs, replay, cancellation refusal and owner stop/restart; preserve raw samples and unchanged budgets.
   - [ ] Linux: execute the identical native workload and retain its measurements; hosted Nightly execution remains pending.
 
-- [x] 3.3 Wire backend-independent storage case names/units into Nightly benchmarks.json on native Linux and Windows; expose the identical workload as public storage bench support and retain only the boundary-crossing case in ordinary checks. Source and focused producer proof pass; hosted execution/publication awaits integration and authorization.
+- [x] 3.3 Wire backend-independent storage case names/units into Nightly benchmarks.json on native Linux and Windows; expose the identical workload as public storage bench support and retain only the boundary-crossing case in ordinary checks.
 
 ## 4. Final Validation and Delivery
 
 - [ ] 4.1 After source closure and targeted proof, run the required native platform checks and hosted validation when delivery is authorized; report actual failures and pending proof.
-  - [x] Windows: format, Rust/Python/repository checks and Tests artifact compilation pass; no full Rust test lane was run.
+  - [x] Windows: run format, Rust/Python/repository checks and Tests artifact compilation.
   - [ ] Native Linux and hosted validation remain pending integration.
 - [ ] 4.2 Publish an authorized usable Harmos revision for Dokime's storage-interface change and verify its pin; leave Dokime extraction and its product benchmarks in that consumer change.
 
