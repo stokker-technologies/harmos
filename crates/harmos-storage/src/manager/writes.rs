@@ -109,8 +109,8 @@ impl StorageManager {
         Ok(rows)
     }
 
-    #[tracing::instrument(name = "storage.manager.writes.write_records", level = "debug", skip_all)]
-    pub async fn write_records(&self, records: Vec<RecordInput>) -> Result<StorageCursor> {
+    #[tracing::instrument(name = "storage.manager.writes.append_records", level = "debug", skip_all)]
+    pub async fn append_records(&self, records: Vec<RecordInput>) -> Result<StorageCursor> {
         self.admit_records(records, None).await
     }
 
@@ -120,7 +120,7 @@ impl StorageManager {
             return Ok(self.status().accepted);
         }
         let bytes = records.iter().try_fold(0usize, |bytes, record| {
-            bytes.checked_add(record.encoded_bytes(self.inner.primary.history())?).ok_or(Error::InvalidInput {
+            bytes.checked_add(record.encoded_bytes(self.inner.primary.get_history())?).ok_or(Error::InvalidInput {
                 field: "storage admission",
                 reason: "size overflow",
             })
@@ -135,8 +135,8 @@ impl StorageManager {
         Ok(self.position(sequence))
     }
 
-    #[tracing::instrument(name = "storage.manager.writes.write_stream", level = "debug", skip_all)]
-    pub async fn write_stream(&self, rows: Vec<StreamInput>) -> Result<StorageCursor> {
+    #[tracing::instrument(name = "storage.manager.writes.append_samples", level = "debug", skip_all)]
+    pub async fn append_samples(&self, rows: Vec<StreamInput>) -> Result<StorageCursor> {
         self.admit_stream(rows, None).await
     }
 
@@ -147,7 +147,7 @@ impl StorageManager {
         }
         let bytes = rows.iter().try_fold(0usize, |bytes, row| {
             bytes
-                .checked_add(row.record.encoded_bytes(self.inner.primary.history())?)
+                .checked_add(row.record.encoded_bytes(self.inner.primary.get_history())?)
                 .and_then(|bytes| bytes.checked_add(std::mem::size_of::<StoredRow>() - std::mem::size_of::<StoredRecord>()))
                 .and_then(|bytes| bytes.checked_add(row.stream.as_str().len()))
                 .ok_or(Error::InvalidInput {

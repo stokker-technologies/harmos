@@ -48,11 +48,13 @@ type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Rec
 #[derive(Default)]
 pub struct Control {
     pub record_rows_examined: AtomicUsize,
+    pub record_page_rows: AtomicUsize,
     pub record_rows_copied: AtomicUsize,
     pub snapshot_rows_copied: AtomicUsize,
     pub date: Mutex<Option<std::time::SystemTime>>,
     pub fail_projection: AtomicBool,
     pub unsupported_conditional: AtomicBool,
+    pub unsupported_sessions: AtomicBool,
     pub block_chunk_file: Mutex<Option<String>>,
     pub permanent_chunk_file: Mutex<Option<String>>,
     pub chunk_active: Mutex<BTreeMap<String, usize>>,
@@ -70,6 +72,13 @@ pub struct Control {
     pub delete_release: Notify,
     pub checkpoint_failures: AtomicUsize,
     pub receipt_failures: AtomicUsize,
+    pub block_receipt: AtomicBool,
+    pub receipt_entered: Notify,
+    pub receipt_release: Notify,
+    pub definition_lost_replies: AtomicUsize,
+    pub block_definition: AtomicBool,
+    pub definition_entered: Notify,
+    pub definition_release: Notify,
     pub fence_failures: AtomicUsize,
     pub block_fence: AtomicBool,
     pub fence_entered: Notify,
@@ -101,6 +110,7 @@ pub struct Control {
     pub chunk_release: Notify,
     pub chunk_failures: AtomicUsize,
     pub chunk_sizes: Mutex<Vec<usize>>,
+    pub production_read_bytes: AtomicUsize,
     pub chunk_offsets: Mutex<Vec<u64>>,
     pub block_finish: AtomicBool,
     pub finish_entered: Notify,
@@ -154,6 +164,7 @@ pub struct Control {
     pub closes: AtomicUsize,
     pub writes: Mutex<Vec<u64>>,
     pub write_sizes: Mutex<Vec<usize>>,
+    pub committed_bytes: Mutex<Vec<usize>>,
     pub flushes: Mutex<Vec<u64>>,
 }
 
@@ -324,7 +335,7 @@ impl Data {
 }
 
 impl StorageBackend for Data {
-    fn compare_exchange<'a>(&'a self, exchange: &'a ObjectExchange) -> StorageFuture<'a, CompareExchange> {
+    fn set_object<'a>(&'a self, exchange: &'a ObjectExchange) -> StorageFuture<'a, CompareExchange> {
         Box::pin(async move {
             exchange.validate()?;
             self.history.check(&exchange.value.position.history)?;
@@ -373,7 +384,7 @@ impl StorageBackend for Data {
             Ok(outcome)
         })
     }
-    fn retire_object_receipts<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+    fn delete_object_receipts<'a>(&'a self, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.history.check(&through.history)?;
             if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
@@ -388,38 +399,82 @@ impl StorageBackend for Data {
 
     fn capabilities(&self) -> harmos_storage::query::columnar::StorageCapabilities {
         harmos_storage::query::columnar::StorageCapabilities {
+            file_sessions: !self.control.unsupported_sessions.load(Ordering::Acquire),
+            file_deletion: true,
+            mutation_receipts: true,
             durable_projections: true,
             conditional_objects: !self.control.unsupported_conditional.load(Ordering::Acquire),
             ..Default::default()
         }
     }
-    fn register_projection<'a>(
-        &'a self, definition: &'a harmos_storage::query::projection::ProjectionDefinition, rebuild: bool,
-    ) -> StorageFuture<'a, u64> {
-        Box::pin(async move { self.projections.lock().unwrap().register(definition, rebuild) })
-    }
-    fn projection_definition<'a>(
-        &'a self, name: &'a Identifier,
-    ) -> StorageFuture<'a, (harmos_storage::query::projection::ProjectionDefinition, u64)> {
-        Box::pin(async move { self.projections.lock().unwrap().definition(name) })
-    }
-    fn projection_definition_at<'a>(
-        &'a self, name: &'a Identifier, revision: u64,
-    ) -> StorageFuture<'a, harmos_storage::query::projection::ProjectionDefinition> {
-        Box::pin(async move { self.projections.lock().unwrap().definition_at(name, revision) })
-    }
-    fn projection_status<'a>(
-        &'a self, name: &'a Identifier, revision: u64, frontier: &'a StorageCursor,
-    ) -> StorageFuture<'a, Option<harmos_storage::query::projection::ProjectionStatus>> {
+    fn set_projection_definition<'a>(
+        &'a self, definition: &'a harmos_storage::query::projection::ProjectionDefinition, expected: Option<u64>, rebuild: bool,
+        mutation: Option<&'a harmos_storage::MutationHeader>,
+    ) -> StorageFuture<'a, harmos_storage::DefinitionOutcome> {
         Box::pin(async move {
-            self.history.check(&frontier.history)?;
-            self.projections.lock().unwrap().status(name, revision, frontier)
+            if self.control.block_definition.load(Ordering::Acquire) {
+                self.control.definition_entered.notify_one();
+                self.control.definition_release.notified().await;
+            }
+            let mut ledger = self.mutation_receipts.lock().unwrap();
+            let mut definitions = self.projections.lock().unwrap();
+            if let Some(header) = mutation
+                && let Some(prior) = ledger.get(&header.mutation)
+            {
+                return header.replay_definition(prior, harmos_storage::DefinitionKind::Projection, &definition.name);
+            }
+
+            let outcome = harmos_storage::DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
+            if let Some(header) = mutation {
+                ledger.insert(
+                    header.mutation.clone(),
+                    header.definition(harmos_storage::DefinitionKind::Projection, definition.name.clone(), outcome.clone()),
+                );
+            }
+            drop(definitions);
+            drop(ledger);
+            if mutation.is_some()
+                && self
+                    .control
+                    .definition_lost_replies
+                    .try_update(Ordering::AcqRel, Ordering::Acquire, |remaining| remaining.checked_sub(1))
+                    .is_ok()
+            {
+                return Err(failure(BackendFailure::Transient));
+            }
+            Ok(outcome)
         })
     }
-    fn projection_frontier<'a>(&'a self, name: &'a Identifier, revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
-        Box::pin(async move { self.projections.lock().unwrap().frontier(name, revision) })
+    fn get_projection_definition<'a>(
+        &'a self, name: &'a Identifier, revision: Option<u64>,
+    ) -> StorageFuture<'a, (harmos_storage::query::projection::ProjectionDefinition, u64)> {
+        Box::pin(async move {
+            let projections = self.projections.lock().unwrap();
+            match revision {
+                Some(revision) => Ok((projections.definition_at(name, revision)?, revision)),
+                None => projections.definition(name),
+            }
+        })
     }
-    fn publish_projection(&self, publication: harmos_storage::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+
+    fn get_projection_status<'a>(
+        &'a self, name: &'a Identifier, revision: u64, frontier: Option<&'a StorageCursor>,
+    ) -> StorageFuture<'a, Option<harmos_storage::query::projection::ProjectionStatus>> {
+        Box::pin(async move {
+            let projections = self.projections.lock().unwrap();
+            let frontier = match frontier {
+                Some(frontier) => frontier.clone(),
+                None => match projections.frontier(name, revision)? {
+                    Some(frontier) => frontier,
+                    None => return Ok(None),
+                },
+            };
+            self.history.check(&frontier.history)?;
+            projections.status(name, revision, &frontier)
+        })
+    }
+
+    fn set_projection_output(&self, publication: harmos_storage::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             self.image(publication.snapshot())?;
             if self.control.fail_projection.load(Ordering::SeqCst) {
@@ -428,7 +483,7 @@ impl StorageBackend for Data {
             self.projections.lock().unwrap().publish(&publication)
         })
     }
-    fn read_projection<'a>(
+    fn list_projection_rows<'a>(
         &'a self, read: &'a harmos_storage::query::projection::ProjectionRead,
     ) -> StorageFuture<'a, harmos_storage::query::projection::ProjectionPage> {
         Box::pin(async move {
@@ -436,7 +491,7 @@ impl StorageBackend for Data {
             self.projections.lock().unwrap().read(read)
         })
     }
-    fn retire_projection<'a>(&'a self, name: &'a Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+    fn delete_projection_history<'a>(&'a self, name: &'a Identifier, revision: u64, through: &'a StorageCursor) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.history.check(&through.history)?;
             if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
@@ -446,20 +501,49 @@ impl StorageBackend for Data {
         })
     }
 
-    fn register_index<'a>(
-        &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, rebuild: bool, _work: ReadLimits,
-        cancel: &'a harmos_storage::query::columnar::Cancellation,
-    ) -> StorageFuture<'a, u64> {
+    fn set_index_definition<'a>(
+        &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits,
+        cancel: &'a harmos_storage::query::columnar::Cancellation, mutation: Option<&'a harmos_storage::MutationHeader>,
+    ) -> StorageFuture<'a, harmos_storage::DefinitionOutcome> {
         Box::pin(async move {
+            if self.control.block_definition.load(Ordering::Acquire) {
+                self.control.definition_entered.notify_one();
+                self.control.definition_release.notified().await;
+            }
+            let mut ledger = self.mutation_receipts.lock().unwrap();
+            let mut definitions = self.indexes.lock().unwrap();
+            if let Some(header) = mutation
+                && let Some(prior) = ledger.get(&header.mutation)
+            {
+                return header.replay_definition(prior, harmos_storage::DefinitionKind::Index, &definition.name);
+            }
             cancel.check()?;
-            self.indexes.lock().unwrap().register(definition, rebuild)
+            let outcome = harmos_storage::DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
+            if let Some(header) = mutation {
+                ledger.insert(
+                    header.mutation.clone(),
+                    header.definition(harmos_storage::DefinitionKind::Index, definition.name.clone(), outcome.clone()),
+                );
+            }
+            drop(definitions);
+            drop(ledger);
+            if mutation.is_some()
+                && self
+                    .control
+                    .definition_lost_replies
+                    .try_update(Ordering::AcqRel, Ordering::Acquire, |remaining| remaining.checked_sub(1))
+                    .is_ok()
+            {
+                return Err(failure(BackendFailure::Transient));
+            }
+            Ok(outcome)
         })
     }
-    fn index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_storage::query::index::IndexDefinition, u64)> {
+    fn get_index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_storage::query::index::IndexDefinition, u64)> {
         Box::pin(async move { self.indexes.lock().unwrap().definition(name) })
     }
 
-    fn release_object_history<'a>(
+    fn delete_object_history<'a>(
         &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
     ) -> StorageFuture<'a, ()> {
         Box::pin(async move {
@@ -476,12 +560,14 @@ impl StorageBackend for Data {
             Ok(())
         })
     }
-    fn read_record_views<'a>(
+    fn list_record_views<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Option<Vec<RecordView>>> {
         Box::pin(async move {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
+            let limit = self.control.record_page_rows.load(Ordering::Relaxed);
+            let rows = if limit == 0 { page.rows.get() } else { page.rows.get().min(limit) };
             let mut entries = Vec::new();
             let mut bytes = 0usize;
             for view in image.records.selected_views(&selection.schema, page.after, snapshot.at.sequence) {
@@ -492,7 +578,7 @@ impl StorageBackend for Data {
                 {
                     continue;
                 }
-                if entries.len() == page.rows.get() || (!entries.is_empty() && bytes + view.encoded_bytes() > page.bytes.get()) {
+                if entries.len() == rows || (!entries.is_empty() && bytes + view.encoded_bytes() > page.bytes.get()) {
                     break;
                 }
                 bytes += view.encoded_bytes();
@@ -507,7 +593,7 @@ impl StorageBackend for Data {
         })
     }
 
-    fn seek_records<'a>(
+    fn get_record_position<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, offset: u64,
     ) -> StorageFuture<'a, Option<u64>> {
         Box::pin(async move {
@@ -519,10 +605,10 @@ impl StorageBackend for Data {
         })
     }
 
-    fn history(&self) -> &StoreHistory {
+    fn get_history(&self) -> &StoreHistory {
         &self.history
     }
-    fn open(&self) -> StorageFuture<'_, StorageCursor> {
+    fn create_session(&self) -> StorageFuture<'_, StorageCursor> {
         Box::pin(async move {
             self.control.open.store(true, Ordering::SeqCst);
             if self.control.block_open.load(Ordering::SeqCst) {
@@ -535,7 +621,7 @@ impl StorageBackend for Data {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn cursor_saved(&self) -> StorageFuture<'_, StorageCursor> {
+    fn get_saved_position(&self) -> StorageFuture<'_, StorageCursor> {
         Box::pin(async move {
             if self.control.regressed_saved.load(Ordering::SeqCst) {
                 return Ok(self.at(0));
@@ -543,10 +629,10 @@ impl StorageBackend for Data {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn write_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
+    fn append_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor> {
         self.persist(batch, &self.schemas, |value| &value.position, |_| Ok(()))
     }
-    fn write_objects(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
+    fn append_object_revisions(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor> {
         self.persist(
             batch,
             &self.objects,
@@ -566,13 +652,25 @@ impl StorageBackend for Data {
             },
         )
     }
-    fn write_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor> {
-        self.persist(batch, &self.records, |value| &value.position, |_| Ok(()))
+    fn append_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor> {
+        let bytes = batch.as_slice().iter().map(|value| harmos_storage::encoded_size(value).unwrap()).sum();
+        let committing = self.persist(batch, &self.records, |value| &value.position, |_| Ok(()));
+        Box::pin(async move {
+            let saved = committing.await?;
+            self.control.committed_bytes.lock().unwrap().push(bytes);
+            Ok(saved)
+        })
     }
-    fn write_stream(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
-        self.persist(batch, &self.rows, |value| &value.record.position, |_| Ok(()))
+    fn append_samples(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
+        let bytes = batch.as_slice().iter().map(|value| harmos_storage::encoded_size(value).unwrap()).sum();
+        let committing = self.persist(batch, &self.rows, |value| &value.record.position, |_| Ok(()));
+        Box::pin(async move {
+            let saved = committing.await?;
+            self.control.committed_bytes.lock().unwrap().push(bytes);
+            Ok(saved)
+        })
     }
-    fn write_files(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor> {
+    fn append_file_references(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor> {
         self.persist(
             batch,
             &self.files,
@@ -585,7 +683,7 @@ impl StorageBackend for Data {
             },
         )
     }
-    fn prune_objects<'a>(
+    fn delete_expired_object_revisions<'a>(
         &'a self, through: &'a StorageCursor, max_entries: NonZeroUsize, retention: &'a ObjectCatalog,
     ) -> StorageFuture<'a, bool> {
         Box::pin(async move {
@@ -652,66 +750,61 @@ impl StorageBackend for Data {
             Ok(done)
         })
     }
-    fn close(&self) -> StorageFuture<'_, ()> {
+    fn delete_session(&self) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             self.control.close()?;
             self.snapshots.lock().unwrap().clear();
             Ok(())
         })
     }
-    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
+    fn create_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         self.fixture_open_snapshot(at)
     }
-    fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+    fn delete_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
         Box::pin(async move { self.fixture_release_snapshot(snapshot).await })
     }
-    fn read_schemas<'a>(
+    fn list_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
         self.fixture_read_schemas(snapshot, selection, page)
     }
-    fn read_objects<'a>(
+    fn list_object_revisions<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         self.fixture_read_objects(snapshot, selection, page)
     }
-    fn read_records<'a>(
+    fn list_records<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         self.fixture_read_records(snapshot, selection, page)
     }
-    fn read_stream<'a>(
+    fn list_samples<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         self.fixture_read_stream(snapshot, selection, page)
     }
-    fn read_files<'a>(
+    fn list_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>> {
         self.fixture_read_files(snapshot, selection, page)
     }
-    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
+    fn get_object<'a>(&'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>> {
         self.fixture_read_object(snapshot, query)
     }
-    fn supports_file_sessions(&self) -> bool {
-        self.fixture_supports_file_sessions()
-    }
-    fn supports_mutation_receipts(&self) -> bool {
-        self.fixture_supports_mutation_receipts()
-    }
-    fn save_mutations(&self, receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
+
+    fn append_mutation_receipts(&self, receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
         Box::pin(async move { self.fixture_save_mutations(receipts.as_slice()).await })
     }
-    fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    fn list_mutation_receipts(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         self.fixture_recover_mutations(limits)
     }
-    fn create_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+    fn create_file_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         Box::pin(async move { self.fixture_create_production(metadata).await })
     }
-    fn fence_production<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
+    fn set_file_writer_generation<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
         Box::pin(async move { self.fixture_fence_production(file, expected, next).await })
     }
-    fn save_production(&self, checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
+    fn set_file_production_checkpoints(&self, checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             for checkpoint in checkpoint.as_slice() {
                 self.fixture_save_production(checkpoint).await?;
@@ -719,41 +812,38 @@ impl StorageBackend for Data {
             Ok(())
         })
     }
-    fn recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    fn list_file_production_checkpoints(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         self.fixture_recover_productions(limits)
     }
-    fn file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
+    fn get_file_production<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         self.fixture_file_progress(file)
     }
-    fn read_production<'a>(&'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
+    fn get_file_production_bytes<'a>(&'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_production(file, offset, max_bytes)
     }
 
-    fn supports_file_deletion(&self) -> bool {
-        self.fixture_supports_file_deletion()
-    }
     fn delete_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move { self.fixture_delete_file(file).await })
     }
 
-    fn abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+    fn delete_file_production<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move { self.fixture_abandon_file(staging).await })
     }
-    fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+    fn create_file_staging<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         Box::pin(async move { self.fixture_create_file(metadata).await })
     }
-    fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
+    fn append_file_bytes<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
         self.fixture_write_file(staging, offset, bytes)
     }
-    fn finish_file<'a>(
+    fn publish_file_production<'a>(
         &'a self, staging: &'a StagedFile, position: &'a StorageCursor, length: u64, sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference> {
         Box::pin(async move { self.fixture_finish_file(staging, position, length, sha256).await })
     }
-    fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+    fn delete_file_staging<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move { self.fixture_abort_file(staging).await })
     }
-    fn read_file<'a>(
+    fn get_file_bytes<'a>(
         &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
         self.fixture_read_file(snapshot, file, offset, max_bytes)
@@ -843,10 +933,10 @@ impl Recovery {
 }
 
 impl StateBackend for Recovery {
-    fn history(&self) -> &StoreHistory {
+    fn get_history(&self) -> &StoreHistory {
         &self.history
     }
-    fn open(&self) -> StorageFuture<'_, RecoveryPosition> {
+    fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition> {
         Box::pin(async {
             self.control.open.store(true, Ordering::SeqCst);
             if self.control.block_open.load(Ordering::SeqCst) {
@@ -859,7 +949,7 @@ impl StateBackend for Recovery {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
+    fn append_recovery_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             if self.control.retain_recovery.load(Ordering::SeqCst) {
                 *self.control.retained_recovery.lock().unwrap() = Some(entries.clone());
@@ -872,7 +962,7 @@ impl StateBackend for Recovery {
             Ok(())
         })
     }
-    fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
+    fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             if self.control.retain_snapshot.load(Ordering::SeqCst) {
                 *self.control.retained_snapshot.lock().unwrap() = Some(snapshot.clone());
@@ -889,7 +979,7 @@ impl StateBackend for Recovery {
             Ok(())
         })
     }
-    fn read_snapshot(&self, _: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
+    fn get_recovery_snapshot(&self, _: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
         Box::pin(async {
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
@@ -898,7 +988,7 @@ impl StateBackend for Recovery {
             Ok(self.snapshot.lock().unwrap().clone())
         })
     }
-    fn read_entries<'a>(
+    fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(async move {
@@ -938,7 +1028,7 @@ impl StateBackend for Recovery {
             Ok(through.clone())
         })
     }
-    fn close(&self) -> StorageFuture<'_, ()> {
+    fn delete_recovery_session(&self) -> StorageFuture<'_, ()> {
         Box::pin(async { self.control.close() })
     }
 }

@@ -22,7 +22,7 @@ use std::num::{NonZeroU32, NonZeroUsize};
 use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
 use harmos_storage::query::columnar::{Cancellation, ColumnKind, ColumnSource};
-use harmos_storage::query::index::{IndexDefinition, IndexRead, encode_key, scan_index};
+use harmos_storage::query::index::{IndexDefinition, IndexRead, encode_key, list_index_entries};
 use harmos_storage::query::scalar::ScalarValue;
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
@@ -101,16 +101,39 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     };
     let work = ReadLimits { rows: nz(32), bytes: nz(1024 * 1024) };
     let cancel = Cancellation::default();
+    let mutation = MutationHeader {
+        mutation: MutationId {
+            window: Identifier::new("definition-window").unwrap(),
+            key: Identifier::new("create-index").unwrap(),
+        },
+        fingerprint: DefinitionInput::Index {
+            value: definition.clone(),
+            expected: None,
+            rebuild: false,
+            work,
+        }
+        .fingerprint()
+        .unwrap(),
+        expires_at: std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1),
+    };
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.open().await.unwrap();
-        backend.write_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
-        backend.write_records(StorageBatch::new(records.clone())).await.unwrap();
-        let before = backend.work().await.unwrap();
+        backend.create_session().await.unwrap();
+        backend.append_schemas(StorageBatch::new(vec![descriptor.clone()])).await.unwrap();
+        backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
+        let before = backend.get_work().await.unwrap();
         assert_eq!(
-            backend.register_index(&definition, false, work, &cancel).await.unwrap(),
-            backend.register_index(&definition, false, work, &cancel).await.unwrap()
+            backend
+                .set_index_definition(&definition, None, false, work, &cancel, Some(&mutation))
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
+                .unwrap(),
+            backend
+                .set_index_definition(&definition, Some(1), false, work, &cancel, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
+                .unwrap()
         );
-        let after = backend.work().await.unwrap();
+        let after = backend.get_work().await.unwrap();
         if backend.capabilities().native_index {
             assert_eq!(after.source_rows - before.source_rows, records.len() as u64);
             assert_eq!(after.decoded_chunks - before.decoded_chunks, (records.len() / settings.chunk_rows.get()) as u64);
@@ -118,8 +141,8 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         }
     }
     let cut = StorageCursor { history: history.clone(), sequence: 9 };
-    let saved = native.open_snapshot(&cut).await.unwrap();
-    let saved_fallback = fallback.open_snapshot(&cut).await.unwrap();
+    let saved = native.create_snapshot(&cut).await.unwrap();
+    let saved_fallback = fallback.create_snapshot(&cut).await.unwrap();
     let read = IndexRead {
         name: definition.name.clone(),
         lower: None,
@@ -130,7 +153,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         limits: ReadLimits { rows: nz(2), bytes: nz(4096) },
         work,
     };
-    let first = scan_index(&native, &saved, &read, &cancel).await.unwrap();
+    let first = list_index_entries(&native, &saved, &read, &cancel).await.unwrap();
     assert_eq!(first.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(), vec![3, 4]);
 
     // Append A New Leading Key And Finish Both Saved Seek Journeys.
@@ -138,13 +161,13 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     late.position.sequence = 10;
     late.payload = Sample { key: 0 }.encode();
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        backend.write_records(StorageBatch::new(vec![late.clone()])).await.unwrap();
+        backend.append_records(StorageBatch::new(vec![late.clone()])).await.unwrap();
     }
     for (backend, snapshot) in [(&native as &dyn StorageBackend, &saved), (&fallback as &dyn StorageBackend, &saved_fallback)] {
         let mut page_read = read.clone();
         let mut positions = vec![];
         loop {
-            let page = scan_index(backend, snapshot, &page_read, &cancel).await.unwrap();
+            let page = list_index_entries(backend, snapshot, &page_read, &cancel).await.unwrap();
             positions.extend(page.entries.iter().map(|entry| entry.position));
             if page.complete {
                 break;
@@ -155,12 +178,12 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         let mut descending = read.clone();
         descending.descending = true;
         descending.limits = work;
-        let page = scan_index(backend, snapshot, &descending, &cancel).await.unwrap();
+        let page = list_index_entries(backend, snapshot, &descending, &cancel).await.unwrap();
         assert_eq!(page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(), vec![9, 5, 8, 7, 2, 6, 4, 3]);
         descending.limits = read.limits;
         let mut positions = Vec::new();
         loop {
-            let page = scan_index(backend, snapshot, &descending, &cancel).await.unwrap();
+            let page = list_index_entries(backend, snapshot, &descending, &cancel).await.unwrap();
             positions.extend(page.entries.iter().map(|entry| entry.position));
             if page.complete {
                 break;
@@ -171,45 +194,92 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         let mut prefix = read.clone();
         prefix.prefix = encode_key(&[ScalarValue::Unsigned(1)]).unwrap();
         prefix.limits = work;
-        let page = scan_index(backend, snapshot, &prefix, &cancel).await.unwrap();
+        let page = list_index_entries(backend, snapshot, &prefix, &cancel).await.unwrap();
         assert_eq!(page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(), vec![3, 4, 6]);
         let mut empty = read.clone();
         empty.lower = Some(encode_key(&[ScalarValue::Unsigned(100)]).unwrap());
-        assert!(scan_index(backend, snapshot, &empty, &cancel).await.unwrap().entries.is_empty());
+        assert!(list_index_entries(backend, snapshot, &empty, &cancel).await.unwrap().entries.is_empty());
         let mut missing = read.clone();
         missing.name = Identifier::new("missing").unwrap();
-        assert!(matches!(scan_index(backend, snapshot, &missing, &cancel).await, Err(Error::IndexNotFound { .. })));
+        assert!(matches!(list_index_entries(backend, snapshot, &missing, &cancel).await, Err(Error::IndexNotFound { .. })));
     }
 
     // Invalidate Continuations Explicitly And Rebuild Both Index Owners.
     let mut resumed = read.clone();
     resumed.after = first.next.clone();
     resumed.descending = true;
-    assert!(scan_index(&native, &saved, &resumed, &cancel).await.is_err());
+    assert!(list_index_entries(&native, &saved, &resumed, &cancel).await.is_err());
     let mut rebuilt = definition.clone();
     rebuilt.version += 1;
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
-        assert!(backend.register_index(&rebuilt, false, work, &cancel).await.is_err());
-        backend.register_index(&rebuilt, true, work, &cancel).await.unwrap();
+        assert!(
+            backend
+                .set_index_definition(&rebuilt, Some(1), false, work, &cancel, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
+                .is_err()
+        );
+        backend
+            .set_index_definition(&rebuilt, Some(1), true, work, &cancel, None)
+            .await
+            .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
+            .unwrap();
+        assert!(matches!(
+            backend
+                .set_index_definition(&rebuilt, Some(1), true, work, &cancel, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
+                .unwrap_err()
+                .backend_failure(),
+            Some(BackendFailure::Conflict)
+        ));
+        assert!(
+            backend
+                .set_index_definition(&rebuilt, None, true, work, &cancel, None)
+                .await
+                .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
+                .is_err()
+        );
+        assert_eq!(backend.get_index_definition(&rebuilt.name).await.unwrap().0, rebuilt);
     }
     resumed.descending = false;
-    assert!(scan_index(&native, &saved, &resumed, &cancel).await.is_err());
-    native.close().await.unwrap();
+    assert!(list_index_entries(&native, &saved, &resumed, &cancel).await.is_err());
+    native.delete_session().await.unwrap();
     drop(native);
 
     // Reopen The Durable Catalog And Acquire A Fresh Saved-Cut Token.
     let native = SqliteBackend::new(root.path().join("index.sqlite"), history, settings).unwrap();
-    native.open().await.unwrap();
-    assert_eq!(native.index_definition(&definition.name).await.unwrap().0, rebuilt);
-    assert!(scan_index(&native, &saved, &read, &cancel).await.is_err());
-    let fresh = native.open_snapshot(&cut).await.unwrap();
+    native.create_session().await.unwrap();
+    assert_eq!(native.get_index_definition(&definition.name).await.unwrap().0, rebuilt);
+    // The Durable Receipt Keeps The Original Result After A Later Rebuild And Restart.
+    assert_eq!(
+        native.set_index_definition(&definition, None, false, work, &cancel, Some(&mutation)).await.unwrap(),
+        DefinitionOutcome::Applied { revision: 1 }
+    );
+    assert_eq!(native.get_index_definition(&definition.name).await.unwrap().0, rebuilt);
+    let mut changed_identity = mutation.clone();
+    changed_identity.fingerprint = DefinitionInput::Index {
+        value: rebuilt.clone(),
+        expected: None,
+        rebuild: false,
+        work,
+    }
+    .fingerprint()
+    .unwrap();
+    assert_eq!(
+        native.set_index_definition(&rebuilt, None, false, work, &cancel, Some(&changed_identity)).await.unwrap_err().backend_failure(),
+        Some(BackendFailure::Conflict)
+    );
+
+    assert!(list_index_entries(&native, &saved, &read, &cancel).await.is_err());
+    let fresh = native.create_snapshot(&cut).await.unwrap();
     resumed.after = first.next;
-    assert!(scan_index(&native, &fresh, &resumed, &cancel).await.is_err());
+    assert!(list_index_entries(&native, &fresh, &resumed, &cancel).await.is_err());
     let mut all = read;
     all.limits = work;
-    assert_eq!(scan_index(&native, &fresh, &all, &cancel).await.unwrap().entries.len(), records.len());
-    native.release_snapshot(&fresh).await.unwrap();
-    native.close().await.unwrap();
-    fallback.release_snapshot(&saved_fallback).await.unwrap();
-    fallback.close().await.unwrap();
+    assert_eq!(list_index_entries(&native, &fresh, &all, &cancel).await.unwrap().entries.len(), records.len());
+    native.delete_snapshot(&fresh).await.unwrap();
+    native.delete_session().await.unwrap();
+    fallback.delete_snapshot(&saved_fallback).await.unwrap();
+    fallback.delete_session().await.unwrap();
 }

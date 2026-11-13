@@ -101,8 +101,11 @@ impl IndexDefinition {
 }
 
 impl IndexCatalog {
-    pub fn register(&mut self, definition: &IndexDefinition, rebuild: bool) -> Result<u64> {
+    pub fn register(&mut self, definition: &IndexDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
         definition.validate()?;
+        if self.definitions.get(&definition.name).map(|(_, revision)| *revision) != expected {
+            return Err(conflict("set index definition: get again and retry"));
+        }
         let mut revision = 1;
         if let Some((prior, current)) = self.definitions.get(&definition.name) {
             if prior == definition {
@@ -155,14 +158,14 @@ impl IndexRead {
 
 /* === Public Functions === */
 
-pub async fn scan_index(
+pub async fn list_index_entries(
     backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read: &IndexRead, cancel: &Cancellation,
 ) -> Result<IndexPage> {
     cancel.check()?;
-    let (definition, revision) = backend.index_definition(&read.name).await?;
+    let (definition, revision) = backend.get_index_definition(&read.name).await?;
     read.validate(snapshot, &definition, revision)?;
     if backend.capabilities().native_index {
-        return backend.scan_index(snapshot, read, cancel).await;
+        return backend.list_index_entries(snapshot, read, cancel).await;
     }
     let mut scan = ArrowScan {
         source: definition.source.clone(),
@@ -190,7 +193,7 @@ pub async fn scan_index(
             bytes: std::num::NonZeroUsize::new(read.work.bytes.get() - bytes).unwrap(),
         };
         scan.limits = scan.work;
-        let page = columnar::scan_arrow(backend, snapshot, &scan, cancel).await?;
+        let page = columnar::list_column_rows(backend, snapshot, &scan, cancel).await?;
         rows += page.scanned;
         bytes = bytes.saturating_add(page.bytes_read);
         for row in 0..page.batch.num_rows() {

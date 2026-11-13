@@ -16,9 +16,8 @@
 /* === Imports === */
 
 use super::{
-    AbandonFile, AppendFile, CaptureFile, CreateFile, DeleteFile, FinishFile, FollowFile, FollowObjects, FollowProduction, FollowRecords,
-    FollowStream, HashFile, ListDirectory, Query, ReadFile, ResumeFile, StorageStatus, WatchDirectory, WriteFile, WriteObjects,
-    WriteRecords, WriteSchema, WriteStreams,
+    CaptureFile, DeleteFile, FollowFile, FollowObjects, FollowProduction, FollowRecords, FollowStream, HashFile, ListDirectory, ReadFile,
+    StorageStatus, WatchDirectory, WriteFile, WriteSchema,
 };
 
 // Standard Library Imports
@@ -48,38 +47,87 @@ pub fn storage_catalog() -> crate::execution::operations::Catalog {
 pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
     let mut batch = crate::execution::__private::Catalog::new();
     batch.operations.extend([
-        crate::execution::operations::OperationFactory::protobuf::<super::Capabilities>().expect("Capabilities declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::OpenSnapshot>().expect("OpenSnapshot declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::ReleaseSnapshot>().expect("ReleaseSnapshot declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::ScanArrow>().expect("ScanArrow declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::ScanIndex>().expect("ScanIndex declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::RegisterIndex>().expect("RegisterIndex declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::RegisterProjection>().expect("RegisterProjection declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AppendRecords>().expect("AppendRecords declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AppendSamples>().expect("AppendSamples declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AppendObjectRevisions>()
+            .expect("AppendObjectRevisions declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AppendRecords>().expect("AppendRecords declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AppendSamples>().expect("AppendSamples declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AppendObjectRevisions>()
+            .expect("AppendObjectRevisions declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::ListProjectionRows>()
+            .expect("ListProjectionRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ListProjectionRows>().expect("ListProjectionRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetProjectionStatus>()
+            .expect("GetProjectionStatus declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetProjectionStatus>().expect("GetProjectionStatus declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AdvanceProjection>()
+            .expect("AdvanceProjection declaration"),
         crate::execution::operations::OperationFactory::protobuf::<super::AdvanceProjection>().expect("AdvanceProjection declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::ReadProjection>().expect("ReadProjection declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::InspectProjection>().expect("InspectProjection declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<super::CompareExchangeObject>()
-            .expect("CompareExchangeObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::ListIndexEntries>()
+            .expect("ListIndexEntries declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ListIndexEntries>().expect("ListIndexEntries declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::ListColumnRows>().expect("ListColumnRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ListColumnRows>().expect("ListColumnRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::DeleteSnapshot>().expect("DeleteSnapshot declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::DeleteSnapshot>().expect("DeleteSnapshot declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::CreateSnapshot>().expect("CreateSnapshot declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::CreateSnapshot>().expect("CreateSnapshot declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::Capabilities>().expect("Capabilities declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::Capabilities>().expect("Capabilities declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::ListRows>().expect("ListRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::ListRows>().expect("ListRows declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::SetProjectionDefinition>()
+            .expect("SetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::SetProjectionDefinition>()
+            .expect("SetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetProjectionDefinition>()
+            .expect("GetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetProjectionDefinition>()
+            .expect("GetProjectionDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::SetIndexDefinition>()
+            .expect("SetIndexDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::SetIndexDefinition>().expect("SetIndexDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetIndexDefinition>()
+            .expect("GetIndexDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetIndexDefinition>().expect("GetIndexDefinition declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::CreateFileProduction>()
+            .expect("CreateFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetFileProduction>().expect("GetFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::AppendFileBytes>().expect("AppendFileBytes declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::CreateFileWriter>().expect("CreateFileWriter declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::PublishFileProduction>()
+            .expect("PublishFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::DeleteFileProduction>()
+            .expect("DeleteFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetFileBytes>().expect("GetFileBytes declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::CreateFileProduction>()
+            .expect("CreateFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetFileProduction>()
+            .expect("GetFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::AppendFileBytes>().expect("AppendFileBytes declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::CreateFileWriter>()
+            .expect("CreateFileWriter declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::PublishFileProduction>()
+            .expect("PublishFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::DeleteFileProduction>()
+            .expect("DeleteFileProduction declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetFileBytes>().expect("GetFileBytes declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::GetObject>().expect("GetObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::SetObject>().expect("SetObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::GetObject>().expect("GetObject declaration"),
+        crate::execution::operations::OperationFactory::protobuf::<super::context::SetObject>().expect("SetObject declaration"),
         crate::execution::operations::OperationFactory::protobuf::<HashFile>().expect("HashFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteFile>().expect("WriteFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteRecords>().expect("WriteRecords declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteStreams>().expect("WriteStreams declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<WriteObjects>().expect("WriteObjects declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowRecords>().expect("FollowRecords declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowStream>().expect("FollowStream declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowObjects>().expect("FollowObjects declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<Query>().expect("Query declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WriteSchema>().expect("WriteSchema declaration"),
         crate::execution::operations::OperationFactory::protobuf::<ReadFile>().expect("ReadFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<CaptureFile>().expect("CaptureFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowFile>().expect("FollowFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<FollowProduction>().expect("FollowProduction declaration"),
         crate::execution::operations::OperationFactory::protobuf::<StorageStatus>().expect("StorageStatus declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<CreateFile>().expect("CreateFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<AppendFile>().expect("AppendFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<ResumeFile>().expect("ResumeFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<FinishFile>().expect("FinishFile declaration"),
-        crate::execution::operations::OperationFactory::protobuf::<AbandonFile>().expect("AbandonFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<DeleteFile>().expect("DeleteFile declaration"),
         crate::execution::operations::OperationFactory::protobuf::<ListDirectory>().expect("ListDirectory declaration"),
         crate::execution::operations::OperationFactory::protobuf::<WatchDirectory>().expect("WatchDirectory declaration"),

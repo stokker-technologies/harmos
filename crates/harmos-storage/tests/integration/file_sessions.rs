@@ -45,7 +45,7 @@ impl WorkerOwner for Task {
 
 /* === Private Functions === */
 
-async fn storage(primary: &Arc<Data>) -> StorageManager {
+pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
     let pending = NonZeroUsize::new(1024 * 1024).unwrap();
     let batch = NonZeroUsize::new(4096).unwrap();
     let settings = StorageSettings {
@@ -86,7 +86,7 @@ async fn storage(primary: &Arc<Data>) -> StorageManager {
     storage
 }
 
-fn mutation(storage: &StorageManager, key: &str) -> MutationId {
+pub(super) fn mutation(storage: &StorageManager, key: &str) -> MutationId {
     MutationId {
         window: storage.mutation_window().unwrap().id,
         key: Identifier::new(key).unwrap(),
@@ -95,7 +95,7 @@ fn mutation(storage: &StorageManager, key: &str) -> MutationId {
 
 /* === Tests === */
 
-fn metadata(id: &str) -> FileMetadata {
+pub(super) fn metadata(id: &str) -> FileMetadata {
     FileMetadata {
         id: Identifier::new(id).unwrap(),
         scope: None,
@@ -350,7 +350,7 @@ async fn sessions_survive_reopen() {
     // Reopen The Finished Publication And Verify Every Stored Byte.
     let third = storage(&data).await;
     assert_eq!(
-        third.file_progress(&file).await.unwrap(),
+        third.get_file_production(&file).await.unwrap(),
         FileProgress {
             length: expected.len() as u64,
             phase: FilePhase::Finished
@@ -379,14 +379,14 @@ async fn sessions_survive_reopen() {
     let deletion = mutation(&third, "delete");
     assert_eq!(third.delete_file_once(&deletion, &file).await.unwrap(), file);
     assert_eq!(third.delete_file_once(&deletion, &file).await.unwrap(), file);
-    assert!(third.file_progress(&file).await.is_err());
+    assert!(third.get_file_production(&file).await.is_err());
     third.close().await.unwrap();
 
     // Deletion And Earlier Terminal Replies Keep Their Original Identities.
     let fourth = storage(&data).await;
     assert_eq!(fourth.delete_file_once(&deletion, &file).await.unwrap(), file);
     assert_eq!(fourth.finish_file_once(&finish, &resumed.session).await.unwrap(), reference);
-    assert!(fourth.file_progress(&file).await.is_err());
+    assert!(fourth.get_file_production(&file).await.is_err());
     fourth.close().await.unwrap();
 }
 

@@ -3,7 +3,7 @@ syntax = "proto3";
 package harmos.v1;
 
 import "harmos/v1/types.proto";
-import "harmos/v1/storage.proto";
+import "harmos/v1/storage_types.proto";
 import "google/protobuf/timestamp.proto";
 
 // Client-facing management of hosted entries, distinct from Instance.

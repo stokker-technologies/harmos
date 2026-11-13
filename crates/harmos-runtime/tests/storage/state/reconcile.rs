@@ -85,7 +85,7 @@ impl Store {
             .await
             .unwrap();
         let payload = harmos_runtime::Message::encode(&Balance { value: 8 });
-        storage.write_records(vec![record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
+        storage.append_records(vec![record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
         runtime.state.commit(deposit(3)).await.unwrap();
         crate::support::app::shutdown(&runtime).await.unwrap();
     }
@@ -115,7 +115,7 @@ async fn restore(journal: harmos_runtime::state::StateManager<Bank>, storage: St
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_runtime::storage::Query {
-            at: storage.cursor_saved(),
+            at: storage.get_saved_position(),
             source: Source::Records(RecordSelection {
                 schema: schema(),
                 scope: None,
@@ -211,7 +211,7 @@ async fn reconciliation_precedes_services() {
                 journal_tail: 1024,
             })
             .reconcile(|journal, storage| async move {
-                storage.write_records(vec![record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
+                storage.append_records(vec![record(&schema(), &Identifier::new("repair-marker").unwrap(), b"saved")]).await?;
                 restore(journal, storage).await
             })
             .service("application", move |_context: ServiceContext<Bank>| {

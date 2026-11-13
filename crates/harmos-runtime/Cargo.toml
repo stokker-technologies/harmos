@@ -28,6 +28,8 @@ bench = false
 default = ["grpc"]
 # Benchmark Servers Are Not Inputs to Product or Test Builds.
 benchmark-fixtures = ["grpc"]
+# Focused Storage Transfer Measurements Use the Reusable Test Workload Only.
+storage-benchmarks = ["grpc", "harmos-storage/testing"]
 plugin-guest = ["dep:wasmtime"]
 grpc = [
   "dep:heck",
@@ -255,6 +257,13 @@ name = "system"
 path = "tests/system/main.rs"
 
 # === Bench Targets === #
+
+[[bench]]
+name = "integration-file-transfer"
+path = "benches/file_transfer/main.rs"
+harness = false
+required-features = ["storage-benchmarks"]
+
 
 [[bench]]
 name = "integration-runtime"

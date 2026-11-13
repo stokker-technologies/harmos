@@ -55,15 +55,23 @@ async fn query_operation_batches() {
             payload: (payload).to_vec(),
         })
         .collect::<Vec<_>>();
-    fixture.storage.write_records((records).to_vec()).await.unwrap();
+    fixture.storage.append_records((records).to_vec()).await.unwrap();
     let at = fixture.storage.flush().await.unwrap();
+
+    let retained = fixture
+        .runtime
+        .operations
+        .call_protobuf::<harmos_operations::storage::CreateSnapshot>(harmos_protocol::v1::StorageCreateSnapshotRequest { at: None })
+        .await
+        .unwrap();
+    let cut = retained.resolved_at.unwrap();
 
     // A Later Durable Row Must Not Advance The Requested Query Boundary.
     let late_item = Identifier::new("later").unwrap();
     let late_payload = Reading { value: 100 }.encode();
     fixture
         .storage
-        .write_records(vec![RecordInput {
+        .append_records(vec![RecordInput {
             schema: schema.clone(),
             scope: None,
             item: late_item.clone(),
@@ -118,42 +126,71 @@ async fn query_operation_batches() {
         ],
         slice: RowSlice { offset: 1, limit: Some(4) },
     };
-    let stream = harmos_runtime::operations::StreamSettings {
-        items: NonZeroUsize::MIN,
-        bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
+    let wire: harmos_protocol::storage::Query = request.try_into().unwrap();
+    let mut request = harmos_protocol::v1::StorageListRowsRequest {
+        source: wire.source,
+        transforms: wire.transforms,
+        at: Some(cut.clone()),
+        page: Some(harmos_protocol::v1::PageRequest {
+            page_size: 2,
+            max_bytes: 65536,
+            page_token: String::new(),
+        }),
     };
-    let mut response = fixture.runtime.operations.download_protobuf::<Query>(request.try_into().unwrap(), stream).unwrap();
-
-    // One Invocation Announces One Schema, Then Bounded Batches.
-    let first = QueryArrow::try_from(response.next().await.unwrap().unwrap()).unwrap();
-    let QueryArrow::Schema(header) = &first else {
-        panic!("query must announce schema first");
-    };
-    assert_eq!(header.as_schema().fields().iter().map(|field| field.name().as_str()).collect::<Vec<_>>(), vec!["value", "item"]);
-    let announced = header.as_schema().clone();
-    drop(first);
+    let mut announced = None;
     let mut received = Vec::new();
     let mut identities = Vec::new();
     let mut batches = 0;
-    while let Some(item) = response.next().await.unwrap() {
-        let item = QueryArrow::try_from(item).unwrap();
-        let QueryArrow::Batch(batch) = &item else {
-            panic!("schema may only be announced once");
-        };
-        batch.validate_schema(&announced).unwrap();
-        let batch = batch.as_record_batch();
-        assert!((1..=2).contains(&batch.num_rows()));
-        let values = batch.column_by_name("value").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
-        let items = batch.column_by_name("item").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
-        received.extend(values.values().iter().copied());
-        identities.extend(items.iter().map(|value| value.unwrap().to_owned()));
-        batches += 1;
+    let mut skip = 1;
+    loop {
+        let page = fixture.runtime.operations.call_protobuf::<ListRows>(request.clone()).await.unwrap();
+        assert_eq!(page.resolved_at, Some(cut.clone()));
+        assert_eq!(page.resolved_at.as_ref().unwrap().positions[0].sequence, at.sequence);
+        for output in page.rows {
+            match QueryArrow::try_from(output).unwrap() {
+                QueryArrow::Schema(header) => {
+                    assert_eq!(
+                        header.as_schema().fields().iter().map(|field| field.name().as_str()).collect::<Vec<_>>(),
+                        vec!["value", "item"]
+                    );
+                    if let Some(schema) = &announced {
+                        assert_eq!(header.as_schema(), schema);
+                    }
+                    announced = Some(header.as_schema().clone());
+                }
+                QueryArrow::Batch(batch) => {
+                    batch.validate_schema(announced.as_ref().unwrap()).unwrap();
+                    let batch = batch.as_record_batch();
+                    assert!((1..=2).contains(&batch.num_rows()));
+                    let values = batch.column_by_name("value").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
+                    let items = batch.column_by_name("item").unwrap().as_any().downcast_ref::<StringArray>().unwrap();
+                    for row in 0..batch.num_rows() {
+                        if skip > 0 {
+                            skip -= 1;
+                            continue;
+                        }
+                        received.push(values.value(row));
+                        identities.push(items.value(row).to_owned());
+                    }
+                    batches += 1;
+                }
+            }
+        }
+        if page.next_page_token.is_empty() {
+            break;
+        }
+        request.page.as_mut().unwrap().page_token = page.next_page_token;
     }
-    let completion = response.join().await.unwrap();
-    assert_eq!(completion.at, Some(at.into()));
-    assert_eq!(completion.rows, 4);
-    assert_eq!(batches, 2);
+    assert_eq!(batches, 3);
     assert_eq!(received, vec![4, 7, 8, 9]);
     assert_eq!(identities, vec!["row-3", "row-2", "row-5", "row-0"]);
+    fixture
+        .runtime
+        .operations
+        .call_protobuf::<harmos_operations::storage::DeleteSnapshot>(harmos_protocol::v1::StorageDeleteSnapshotRequest {
+            snapshot: retained.snapshot,
+        })
+        .await
+        .unwrap();
     fixture.finish().await;
 }

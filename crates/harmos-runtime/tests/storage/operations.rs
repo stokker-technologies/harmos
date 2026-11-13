@@ -72,7 +72,7 @@ fn catalog_serves_operations() {
     let served: Vec<_> =
         contracts.iter().filter(|contract| contract.grpc().is_some()).map(|contract| contract.operation().id.to_string()).collect();
     for required in [
-        "storage.query",
+        "harmos.v1.Storage/ListRows",
         "storage.read_file",
         "storage.write_records",
         "storage.write_streams",

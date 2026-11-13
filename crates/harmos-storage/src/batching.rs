@@ -50,13 +50,13 @@ enum Kind {
 /* === Implementations === */
 
 impl Batch {
-    #[tracing::instrument(name = "storage.batching.write", parent = None, level = "trace", skip_all, fields(entries = self.entries.len(), store = %inner.primary.history().store, epoch = %inner.primary.history().epoch, domain = if self.entries[0].operation.domain() == Domain::Data { "data" } else { "recovery" }, first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index, through = self.target.sequence, outcome = "cancelled"))]
+    #[tracing::instrument(name = "storage.batching.write", parent = None, level = "trace", skip_all, fields(entries = self.entries.len(), store = %inner.primary.get_history().store, epoch = %inner.primary.get_history().epoch, domain = if self.entries[0].operation.domain() == Domain::Data { "data" } else { "recovery" }, first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index, through = self.target.sequence, outcome = "cancelled"))]
     pub(super) async fn trace<T>(&self, inner: &Inner, future: impl std::future::Future<Output = Result<T>>) -> Result<T> {
         let mut contributions = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
             contributions.push(entry.context.sync(|| {
                 let span = tracing::trace_span!("storage.batch.contribution",
-                    store = %inner.primary.history().store, epoch = %inner.primary.history().epoch,
+                    store = %inner.primary.get_history().store, epoch = %inner.primary.get_history().epoch,
                     domain = if entry.operation.domain() == Domain::Data { "data" } else { "recovery" },
                     request_domain = if entry.operation.domain() == Domain::Data { "data" } else { "recovery" },
                     first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index,
@@ -164,8 +164,8 @@ pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation) -> Res
                 let mut state = inner.state.lock().unwrap();
                 state.data_attempted = state.data_attempted.max(through.sequence);
             }
-            inner.bounded("primary.compare_exchange", inner.primary.compare_exchange(exchange)).await?;
-            let saved = inner.bounded("primary.cursor_saved", inner.primary.cursor_saved()).await?;
+            inner.bounded("primary.set_object", inner.primary.set_object(exchange)).await?;
+            let saved = inner.bounded("primary.get_saved_position", inner.primary.get_saved_position()).await?;
             let mut state = inner.state.lock().unwrap();
             if !saved.covers(through)? || saved.sequence > state.data_attempted {
                 return Err(invalid("conditional outcome does not cover its admitted frontier"));
@@ -173,14 +173,14 @@ pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation) -> Res
             state.status.saved = saved.clone();
             Ok(saved)
         }
-        Operation::Schema(values) => persist(inner, values, |batch| inner.primary.write_schemas(batch)).await,
-        Operation::File(values) => persist(inner, values, |batch| inner.primary.write_files(batch)).await,
-        Operation::Records(values) => persist(inner, values, |batch| inner.primary.write_records(batch)).await,
-        Operation::Stream(values) => persist(inner, values, |batch| inner.primary.write_stream(batch)).await,
+        Operation::Schema(values) => persist(inner, values, |batch| inner.primary.append_schemas(batch)).await,
+        Operation::File(values) => persist(inner, values, |batch| inner.primary.append_file_references(batch)).await,
+        Operation::Records(values) => persist(inner, values, |batch| inner.primary.append_records(batch)).await,
+        Operation::Stream(values) => persist(inner, values, |batch| inner.primary.append_samples(batch)).await,
         Operation::ObjectGroup { schemas, objects, .. } => {
             for index in 0..objects.len() {
-                persist(inner, &schemas.slice(index..index + 1), |batch| inner.primary.write_schemas(batch)).await?;
-                persist(inner, &objects.slice(index..index + 1), |batch| inner.primary.write_objects(batch)).await?;
+                persist(inner, &schemas.slice(index..index + 1), |batch| inner.primary.append_schemas(batch)).await?;
+                persist(inner, &objects.slice(index..index + 1), |batch| inner.primary.append_object_revisions(batch)).await?;
             }
             Ok(inner.state.lock().unwrap().status.saved.clone())
         }
@@ -210,12 +210,12 @@ fn merge<T>(state: &mut State, indices: &[u64], select: fn(&mut Operation) -> &m
 }
 
 async fn persist<'a, T: Entry>(
-    inner: &'a Arc<Inner>, values: &StorageBatch<T>, write: impl FnOnce(StorageBatch<T>) -> super::StorageFuture<'a, StorageCursor>,
+    inner: &'a Arc<Inner>, values: &StorageBatch<T>, mut write: impl FnMut(StorageBatch<T>) -> super::StorageFuture<'a, StorageCursor>,
 ) -> Result<StorageCursor> {
     let first = values.as_slice().first().ok_or_else(|| invalid("typed batch is empty"))?.position();
     let through = values.as_slice().last().expect("nonempty batch").position();
     tracing::Span::current().record("through", through.sequence);
-    inner.primary.history().check(&first.history)?;
+    inner.primary.get_history().check(&first.history)?;
     let mut previous = first.sequence;
     for value in &values.as_slice()[1..] {
         first.history.check(&value.position().history)?;
@@ -225,7 +225,7 @@ async fn persist<'a, T: Entry>(
         previous = value.position().sequence;
     }
     let start = {
-        let mut state = inner.state.lock().unwrap();
+        let state = inner.state.lock().unwrap();
         let saved = &state.status.saved;
         if saved.covers(through)? {
             return Ok(saved.clone());
@@ -234,17 +234,43 @@ async fn persist<'a, T: Entry>(
         if values.as_slice()[start].position().sequence != saved.sequence.checked_add(1).ok_or_else(|| invalid("position overflow"))? {
             return Err(invalid("typed write would skip the durable frontier"));
         }
-        state.data_attempted = state.data_attempted.max(through.sequence);
         start
     };
-    let saved = inner.bounded("primary.write", write(values.slice(start..values.len()))).await?;
-    tracing::Span::current().record("saved", saved.sequence);
-    let mut state = inner.state.lock().unwrap();
-    if !saved.covers(through)? || saved.sequence > state.data_attempted {
-        return Err(invalid("receipt does not cover the typed write within its attempted frontier"));
+    let mut offset = start;
+    let mut saved = inner.state.lock().unwrap().status.saved.clone();
+    while offset < values.len() {
+        // Split At Entry Boundaries; An Indivisible Entry Keeps The Admission Ceiling.
+        let mut end = offset;
+        let mut bytes = 0usize;
+        for value in &values.as_slice()[offset..] {
+            let size = super::manager::encoded_size(value)?;
+            if size > inner.settings.max_batch_bytes().get() {
+                return Err(invalid("entry exceeds the configured commit byte ceiling"));
+            }
+            if end > offset && size > inner.settings.flush_batch_bytes().saturating_sub(bytes) {
+                break;
+            }
+            bytes += size;
+            end += 1;
+        }
+        let through = values.as_slice()[end - 1].position();
+        {
+            let mut state = inner.state.lock().unwrap();
+            state.data_attempted = state.data_attempted.max(through.sequence);
+        }
+        saved = inner.bounded("primary.write", write(values.slice(offset..end))).await?;
+        tracing::Span::current().record("saved", saved.sequence);
+        {
+            let mut state = inner.state.lock().unwrap();
+            if !saved.covers(through)? || saved.sequence > state.data_attempted {
+                return Err(invalid("receipt does not cover the typed write within its attempted frontier"));
+            }
+            // Keep Each Durable Prefix If A Later Piece Fails.
+            state.status.saved = saved.clone();
+        }
+        inner.notify();
+        offset = end;
     }
-    // Each Typed Call Is Durable Independently; Retain Its Prefix If A Later Type Fails.
-    state.status.saved = saved.clone();
     Ok(saved)
 }
 

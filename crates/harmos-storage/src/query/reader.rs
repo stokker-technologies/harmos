@@ -61,7 +61,7 @@ pub struct QueryReader {
     context: crate::execution::Context,
     inner: Arc<Inner>,
     query: Query,
-    snapshot: Option<Snapshot>,
+    snapshot: Option<Arc<Snapshot>>,
     active: Option<OwnedSemaphorePermit>,
     schema: Option<StorageSchema>,
     objects: Option<NormalizedObjects>,
@@ -69,6 +69,7 @@ pub struct QueryReader {
     projection: Option<(Project, Arc<arrow_schema::Schema>)>,
     after: u64,
     rows: NonZeroUsize,
+    output: crate::StorageResponseSettings,
     source_done: bool,
     pending: Option<RecordBatch>,
     pending_offset: usize,
@@ -86,6 +87,13 @@ struct CancelWork(Arc<AtomicBool>);
 pub enum QueryArrow {
     Schema(ArrowSchema),
     Batch(ArrowBatch),
+}
+
+/// One Bounded Source/Output Step Of A Retained Query.
+pub enum QueryStep {
+    Output(QueryArrow),
+    Progress,
+    Complete,
 }
 
 enum Rows {
@@ -185,13 +193,25 @@ impl StorageManager {
     #[tracing::instrument(name = "storage.manager.query", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn query(&self, query: Query) -> Result<QueryReader> {
         let result = async {
+            let snapshot = Arc::new(self.snapshot(&query.at).await?);
+            self.query_snapshot(query, snapshot).await
+        }
+        .await;
+        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        result
+    }
+
+    /// Query An Already Retained Image Owned By This Manager.
+    pub async fn query_snapshot(&self, query: Query, snapshot: Arc<Snapshot>) -> Result<QueryReader> {
+        let result = async {
             query.validate()?;
-            self.inner.primary.history().check(&query.at.history)?;
-
+            if !Arc::ptr_eq(&self.inner, &snapshot.inner) || snapshot.at() != &query.at {
+                return Err(Error::InvalidInput {
+                    field: "storage snapshot",
+                    reason: "query must use its retained owner's exact cut",
+                });
+            }
             let active = query_slot(&self.inner).await?;
-
-            // Pin The Requested Image For The Whole Invocation.
-            let snapshot = self.snapshot(&query.at).await?;
             let after = match &query.source {
                 Source::Stream(selection) => selection.after,
                 _ => 0,
@@ -208,6 +228,7 @@ impl StorageManager {
                 projection: None,
                 after,
                 rows: SCAN_ROWS,
+                output: self.inner.settings.response,
                 source_done: false,
                 pending: None,
                 pending_offset: 0,
@@ -224,7 +245,28 @@ impl StorageManager {
 }
 
 impl QueryReader {
+    pub fn configure_page(&mut self, rows: NonZeroUsize, bytes: NonZeroUsize) {
+        self.context = crate::execution::Context::current();
+        self.output.batch_rows = rows.min(self.inner.settings.response.batch_rows);
+        self.output.batch_bytes = bytes.min(self.inner.settings.response.batch_bytes);
+    }
+
+    /// A Retained Page Plan Does Not Occupy Active Execution Between Calls.
+    pub fn suspend_page(&mut self) {
+        self.active = None;
+    }
+
     pub async fn next(&mut self) -> Result<Option<QueryArrow>> {
+        loop {
+            match self.step().await? {
+                QueryStep::Output(output) => return Ok(Some(output)),
+                QueryStep::Progress => {}
+                QueryStep::Complete => return Ok(None),
+            }
+        }
+    }
+
+    pub async fn step(&mut self) -> Result<QueryStep> {
         let context = self.context.clone();
         let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
         let future = async {
@@ -235,7 +277,7 @@ impl QueryReader {
                 });
             }
             self.inflight = true;
-            let result = self.advance().await;
+            let result = self.advance_step().await;
             self.inflight = false;
             if result.is_err() {
                 self.fail();
@@ -273,33 +315,33 @@ impl QueryReader {
     }
 
     #[tracing::instrument(name = "storage.query.reader.advance", level = "trace", skip_all)]
-    async fn advance(&mut self) -> Result<Option<QueryArrow>> {
+    async fn advance_step(&mut self) -> Result<QueryStep> {
         if self.exhausted {
-            return Ok(None);
+            return Ok(QueryStep::Complete);
+        }
+        if self.active.is_none() {
+            self.active = Some(query_slot(&self.inner).await?);
         }
         if self.plan.is_none() {
-            let schema = self.prepare().await?;
-            return Ok(Some(QueryArrow::Schema(schema)));
+            return Ok(QueryStep::Output(QueryArrow::Schema(self.prepare().await?)));
         }
-        loop {
-            if let Some(batch) = self.deliver().await? {
-                return Ok(Some(QueryArrow::Batch(batch)));
-            }
-            let plan = self.plan.as_ref().expect("prepared plan");
-            if plan.is_satisfied() {
-                self.source_done = true;
-            }
-            if !self.source_done {
-                self.next_page().await?;
-                continue;
-            }
-            self.snapshot = None;
-            if !self.finish().await? {
-                self.release();
-                self.exhausted = true;
-                return Ok(None);
-            }
+        if let Some(batch) = self.deliver().await? {
+            return Ok(QueryStep::Output(QueryArrow::Batch(batch)));
         }
+        if self.plan.as_ref().expect("prepared plan").is_satisfied() {
+            self.source_done = true;
+        }
+        if !self.source_done {
+            self.next_page().await?;
+            return Ok(QueryStep::Progress);
+        }
+        self.snapshot = None;
+        if self.finish().await? {
+            return Ok(QueryStep::Progress);
+        }
+        self.release();
+        self.exhausted = true;
+        Ok(QueryStep::Complete)
     }
 
     // Resolve Source Schemas, Validate The Plan And Fix The Output Schema.
@@ -341,7 +383,7 @@ impl QueryReader {
         if slice.offset > 0
             && transforms.iter().all(|transform| matches!(transform, Transform::Project(_)))
             && let Source::Records(selection) = &self.query.source
-            && let Some(position) = snapshot.seek_records(selection, slice.offset).await?
+            && let Some(position) = snapshot.get_record_position(selection, slice.offset).await?
         {
             self.after = position;
             slice.offset = 0;
@@ -458,7 +500,7 @@ impl QueryReader {
             self.pending_offset = 0;
             return Ok(None);
         }
-        let settings = self.inner.settings.response;
+        let settings = self.output;
         let mut rows = settings.batch_rows.get().min(batch.num_rows() - self.pending_offset);
         loop {
             let slice = batch.slice(self.pending_offset, rows);

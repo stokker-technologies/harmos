@@ -56,7 +56,7 @@ impl Nominal {
         let inputs = waveforms::inputs(&samples);
         for inputs in inputs.chunks(192) {
             let batch: Vec<_> = inputs.to_vec();
-            storage.write_stream((batch).to_vec()).await.unwrap();
+            storage.append_samples((batch).to_vec()).await.unwrap();
         }
         let durable = storage.flush().await.unwrap();
         Self { storage, schema, samples, durable }

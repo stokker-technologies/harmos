@@ -166,6 +166,11 @@ path = "tests/integration/main.rs"
 # === Bench Targets === #
 
 [[bench]]
+name = "integration-durable-lag"
+path = "benches/durable_lag/main.rs"
+harness = false
+
+[[bench]]
 name = "integration-multi-day"
 path = "benches/multi_day/main.rs"
 harness = false

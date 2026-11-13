@@ -34,65 +34,212 @@ class StorageStub:
         Args:
             channel: A grpc.Channel.
         """
+        self.CreateFileProduction = channel.unary_unary(
+                '/harmos.v1.Storage/CreateFileProduction',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileProductionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileProductionResponse.FromString,
+                _registered_method=True)
+        self.GetFileProduction = channel.unary_unary(
+                '/harmos.v1.Storage/GetFileProduction',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileProductionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileProductionResponse.FromString,
+                _registered_method=True)
+        self.AppendFileBytes = channel.unary_unary(
+                '/harmos.v1.Storage/AppendFileBytes',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendFileBytesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendFileBytesResponse.FromString,
+                _registered_method=True)
+        self.CreateFileWriter = channel.unary_unary(
+                '/harmos.v1.Storage/CreateFileWriter',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileWriterRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileWriterResponse.FromString,
+                _registered_method=True)
+        self.PublishFileProduction = channel.unary_unary(
+                '/harmos.v1.Storage/PublishFileProduction',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StoragePublishFileProductionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StoragePublishFileProductionResponse.FromString,
+                _registered_method=True)
+        self.DeleteFileProduction = channel.unary_unary(
+                '/harmos.v1.Storage/DeleteFileProduction',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteFileProductionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteFileProductionResponse.FromString,
+                _registered_method=True)
+        self.GetFileBytes = channel.unary_unary(
+                '/harmos.v1.Storage/GetFileBytes',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileBytesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileBytesResponse.FromString,
+                _registered_method=True)
         self.Capabilities = channel.unary_unary(
-                '/harmos.storage.v1.Storage/Capabilities',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.Capabilities.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCapabilities.FromString,
+                '/harmos.v1.Storage/Capabilities',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageCapabilitiesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCapabilitiesResponse.FromString,
                 _registered_method=True)
-        self.OpenSnapshot = channel.unary_unary(
-                '/harmos.storage.v1.Storage/OpenSnapshot',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.OpenSnapshot.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.SavedSnapshot.FromString,
+        self.CreateSnapshot = channel.unary_unary(
+                '/harmos.v1.Storage/CreateSnapshot',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageCreateSnapshotRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCreateSnapshotResponse.FromString,
                 _registered_method=True)
-        self.ReleaseSnapshot = channel.unary_unary(
-                '/harmos.storage.v1.Storage/ReleaseSnapshot',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.ReleaseSnapshot.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.Empty.FromString,
+        self.DeleteSnapshot = channel.unary_unary(
+                '/harmos.v1.Storage/DeleteSnapshot',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteSnapshotRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteSnapshotResponse.FromString,
                 _registered_method=True)
-        self.ScanArrow = channel.unary_unary(
-                '/harmos.storage.v1.Storage/ScanArrow',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.ScanArrow.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.ArrowPage.FromString,
+        self.ListColumnRows = channel.unary_unary(
+                '/harmos.v1.Storage/ListColumnRows',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageListColumnRowsRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListColumnRowsResponse.FromString,
                 _registered_method=True)
-        self.ScanIndex = channel.unary_unary(
-                '/harmos.storage.v1.Storage/ScanIndex',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.ScanIndex.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.IndexPage.FromString,
+        self.ListIndexEntries = channel.unary_unary(
+                '/harmos.v1.Storage/ListIndexEntries',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageListIndexEntriesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListIndexEntriesResponse.FromString,
                 _registered_method=True)
-        self.RegisterIndex = channel.unary_unary(
-                '/harmos.storage.v1.Storage/RegisterIndex',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.RegisterIndex.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.DefinitionRevision.FromString,
+        self.SetIndexDefinition = channel.unary_unary(
+                '/harmos.v1.Storage/SetIndexDefinition',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageSetIndexDefinitionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageSetIndexDefinitionResponse.FromString,
                 _registered_method=True)
-        self.RegisterProjection = channel.unary_unary(
-                '/harmos.storage.v1.Storage/RegisterProjection',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.RegisterProjection.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.DefinitionRevision.FromString,
+        self.SetProjectionDefinition = channel.unary_unary(
+                '/harmos.v1.Storage/SetProjectionDefinition',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageSetProjectionDefinitionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageSetProjectionDefinitionResponse.FromString,
                 _registered_method=True)
         self.AdvanceProjection = channel.unary_unary(
-                '/harmos.storage.v1.Storage/AdvanceProjection',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.AdvanceProjection.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.DefinitionRevision.FromString,
+                '/harmos.v1.Storage/AdvanceProjection',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageAdvanceProjectionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAdvanceProjectionResponse.FromString,
                 _registered_method=True)
-        self.ReadProjection = channel.unary_unary(
-                '/harmos.storage.v1.Storage/ReadProjection',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.ReadProjection.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.ProjectionPage.FromString,
+        self.ListProjectionRows = channel.unary_unary(
+                '/harmos.v1.Storage/ListProjectionRows',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageListProjectionRowsRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListProjectionRowsResponse.FromString,
                 _registered_method=True)
-        self.InspectProjection = channel.unary_unary(
-                '/harmos.storage.v1.Storage/InspectProjection',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.InspectProjection.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.ProjectionState.FromString,
+        self.GetProjectionStatus = channel.unary_unary(
+                '/harmos.v1.Storage/GetProjectionStatus',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionStatusRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionStatusResponse.FromString,
                 _registered_method=True)
-        self.CompareExchangeObject = channel.unary_unary(
-                '/harmos.storage.v1.Storage/CompareExchangeObject',
-                request_serializer=harmos_dot_v1_dot_storage__pb2.CompareExchangeObject.SerializeToString,
-                response_deserializer=harmos_dot_v1_dot_storage__pb2.CompareExchangeOutcome.FromString,
+        self.SetObject = channel.unary_unary(
+                '/harmos.v1.Storage/SetObject',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageSetObjectRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageSetObjectResponse.FromString,
+                _registered_method=True)
+        self.ListRows = channel.unary_unary(
+                '/harmos.v1.Storage/ListRows',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageListRowsRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListRowsResponse.FromString,
+                _registered_method=True)
+        self.WatchRows = channel.unary_stream(
+                '/harmos.v1.Storage/WatchRows',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchRowsRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchRowsResponse.FromString,
+                _registered_method=True)
+        self.AppendRecords = channel.unary_unary(
+                '/harmos.v1.Storage/AppendRecords',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendRecordsRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendRecordsResponse.FromString,
+                _registered_method=True)
+        self.AppendSamples = channel.unary_unary(
+                '/harmos.v1.Storage/AppendSamples',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendSamplesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendSamplesResponse.FromString,
+                _registered_method=True)
+        self.AppendObjectRevisions = channel.unary_unary(
+                '/harmos.v1.Storage/AppendObjectRevisions',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendObjectRevisionsRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendObjectRevisionsResponse.FromString,
+                _registered_method=True)
+        self.GetFileHash = channel.unary_unary(
+                '/harmos.v1.Storage/GetFileHash',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileHashRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileHashResponse.FromString,
+                _registered_method=True)
+        self.CaptureFile = channel.unary_unary(
+                '/harmos.v1.Storage/CaptureFile',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageCaptureFileRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCaptureFileResponse.FromString,
+                _registered_method=True)
+        self.WatchFileBytes = channel.unary_stream(
+                '/harmos.v1.Storage/WatchFileBytes',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileBytesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileBytesResponse.FromString,
+                _registered_method=True)
+        self.WatchFileProduction = channel.unary_stream(
+                '/harmos.v1.Storage/WatchFileProduction',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileProductionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileProductionResponse.FromString,
+                _registered_method=True)
+        self.ListDirectoryEntries = channel.unary_unary(
+                '/harmos.v1.Storage/ListDirectoryEntries',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageListDirectoryEntriesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListDirectoryEntriesResponse.FromString,
+                _registered_method=True)
+        self.WatchDirectoryEntries = channel.unary_stream(
+                '/harmos.v1.Storage/WatchDirectoryEntries',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchDirectoryEntriesRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchDirectoryEntriesResponse.FromString,
+                _registered_method=True)
+        self.GetIndexDefinition = channel.unary_unary(
+                '/harmos.v1.Storage/GetIndexDefinition',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetIndexDefinitionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetIndexDefinitionResponse.FromString,
+                _registered_method=True)
+        self.GetProjectionDefinition = channel.unary_unary(
+                '/harmos.v1.Storage/GetProjectionDefinition',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionDefinitionRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionDefinitionResponse.FromString,
+                _registered_method=True)
+        self.GetObject = channel.unary_unary(
+                '/harmos.v1.Storage/GetObject',
+                request_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetObjectRequest.SerializeToString,
+                response_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetObjectResponse.FromString,
                 _registered_method=True)
 
 
 class StorageServicer:
     """Missing associated documentation comment in .proto file."""
+
+    def CreateFileProduction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetFileProduction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AppendFileBytes(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateFileWriter(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PublishFileProduction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteFileProduction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetFileBytes(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def Capabilities(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -100,37 +247,37 @@ class StorageServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def OpenSnapshot(self, request, context):
+    def CreateSnapshot(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ReleaseSnapshot(self, request, context):
+    def DeleteSnapshot(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ScanArrow(self, request, context):
+    def ListColumnRows(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ScanIndex(self, request, context):
+    def ListIndexEntries(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def RegisterIndex(self, request, context):
+    def SetIndexDefinition(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def RegisterProjection(self, request, context):
+    def SetProjectionDefinition(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -142,19 +289,103 @@ class StorageServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ReadProjection(self, request, context):
+    def ListProjectionRows(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def InspectProjection(self, request, context):
+    def GetProjectionStatus(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def CompareExchangeObject(self, request, context):
+    def SetObject(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListRows(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def WatchRows(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AppendRecords(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AppendSamples(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AppendObjectRevisions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetFileHash(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CaptureFile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def WatchFileBytes(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def WatchFileProduction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDirectoryEntries(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def WatchDirectoryEntries(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetIndexDefinition(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetProjectionDefinition(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetObject(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -163,71 +394,365 @@ class StorageServicer:
 
 def add_StorageServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'CreateFileProduction': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateFileProduction,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileProductionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileProductionResponse.SerializeToString,
+            ),
+            'GetFileProduction': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFileProduction,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileProductionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileProductionResponse.SerializeToString,
+            ),
+            'AppendFileBytes': grpc.unary_unary_rpc_method_handler(
+                    servicer.AppendFileBytes,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendFileBytesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendFileBytesResponse.SerializeToString,
+            ),
+            'CreateFileWriter': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateFileWriter,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileWriterRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageCreateFileWriterResponse.SerializeToString,
+            ),
+            'PublishFileProduction': grpc.unary_unary_rpc_method_handler(
+                    servicer.PublishFileProduction,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StoragePublishFileProductionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StoragePublishFileProductionResponse.SerializeToString,
+            ),
+            'DeleteFileProduction': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteFileProduction,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteFileProductionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteFileProductionResponse.SerializeToString,
+            ),
+            'GetFileBytes': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFileBytes,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileBytesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileBytesResponse.SerializeToString,
+            ),
             'Capabilities': grpc.unary_unary_rpc_method_handler(
                     servicer.Capabilities,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.Capabilities.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageCapabilities.SerializeToString,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCapabilitiesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageCapabilitiesResponse.SerializeToString,
             ),
-            'OpenSnapshot': grpc.unary_unary_rpc_method_handler(
-                    servicer.OpenSnapshot,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.OpenSnapshot.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.SavedSnapshot.SerializeToString,
+            'CreateSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateSnapshot,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCreateSnapshotRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageCreateSnapshotResponse.SerializeToString,
             ),
-            'ReleaseSnapshot': grpc.unary_unary_rpc_method_handler(
-                    servicer.ReleaseSnapshot,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.ReleaseSnapshot.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.Empty.SerializeToString,
+            'DeleteSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteSnapshot,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteSnapshotRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageDeleteSnapshotResponse.SerializeToString,
             ),
-            'ScanArrow': grpc.unary_unary_rpc_method_handler(
-                    servicer.ScanArrow,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.ScanArrow.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.ArrowPage.SerializeToString,
+            'ListColumnRows': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListColumnRows,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListColumnRowsRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageListColumnRowsResponse.SerializeToString,
             ),
-            'ScanIndex': grpc.unary_unary_rpc_method_handler(
-                    servicer.ScanIndex,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.ScanIndex.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.IndexPage.SerializeToString,
+            'ListIndexEntries': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListIndexEntries,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListIndexEntriesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageListIndexEntriesResponse.SerializeToString,
             ),
-            'RegisterIndex': grpc.unary_unary_rpc_method_handler(
-                    servicer.RegisterIndex,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.RegisterIndex.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.DefinitionRevision.SerializeToString,
+            'SetIndexDefinition': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetIndexDefinition,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageSetIndexDefinitionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageSetIndexDefinitionResponse.SerializeToString,
             ),
-            'RegisterProjection': grpc.unary_unary_rpc_method_handler(
-                    servicer.RegisterProjection,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.RegisterProjection.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.DefinitionRevision.SerializeToString,
+            'SetProjectionDefinition': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetProjectionDefinition,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageSetProjectionDefinitionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageSetProjectionDefinitionResponse.SerializeToString,
             ),
             'AdvanceProjection': grpc.unary_unary_rpc_method_handler(
                     servicer.AdvanceProjection,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.AdvanceProjection.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.DefinitionRevision.SerializeToString,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAdvanceProjectionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageAdvanceProjectionResponse.SerializeToString,
             ),
-            'ReadProjection': grpc.unary_unary_rpc_method_handler(
-                    servicer.ReadProjection,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.ReadProjection.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.ProjectionPage.SerializeToString,
+            'ListProjectionRows': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListProjectionRows,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListProjectionRowsRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageListProjectionRowsResponse.SerializeToString,
             ),
-            'InspectProjection': grpc.unary_unary_rpc_method_handler(
-                    servicer.InspectProjection,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.InspectProjection.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.ProjectionState.SerializeToString,
+            'GetProjectionStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetProjectionStatus,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionStatusRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionStatusResponse.SerializeToString,
             ),
-            'CompareExchangeObject': grpc.unary_unary_rpc_method_handler(
-                    servicer.CompareExchangeObject,
-                    request_deserializer=harmos_dot_v1_dot_storage__pb2.CompareExchangeObject.FromString,
-                    response_serializer=harmos_dot_v1_dot_storage__pb2.CompareExchangeOutcome.SerializeToString,
+            'SetObject': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetObject,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageSetObjectRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageSetObjectResponse.SerializeToString,
+            ),
+            'ListRows': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListRows,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListRowsRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageListRowsResponse.SerializeToString,
+            ),
+            'WatchRows': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchRows,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchRowsRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchRowsResponse.SerializeToString,
+            ),
+            'AppendRecords': grpc.unary_unary_rpc_method_handler(
+                    servicer.AppendRecords,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendRecordsRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendRecordsResponse.SerializeToString,
+            ),
+            'AppendSamples': grpc.unary_unary_rpc_method_handler(
+                    servicer.AppendSamples,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendSamplesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendSamplesResponse.SerializeToString,
+            ),
+            'AppendObjectRevisions': grpc.unary_unary_rpc_method_handler(
+                    servicer.AppendObjectRevisions,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageAppendObjectRevisionsRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageAppendObjectRevisionsResponse.SerializeToString,
+            ),
+            'GetFileHash': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFileHash,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileHashRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetFileHashResponse.SerializeToString,
+            ),
+            'CaptureFile': grpc.unary_unary_rpc_method_handler(
+                    servicer.CaptureFile,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageCaptureFileRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageCaptureFileResponse.SerializeToString,
+            ),
+            'WatchFileBytes': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchFileBytes,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileBytesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileBytesResponse.SerializeToString,
+            ),
+            'WatchFileProduction': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchFileProduction,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileProductionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchFileProductionResponse.SerializeToString,
+            ),
+            'ListDirectoryEntries': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDirectoryEntries,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageListDirectoryEntriesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageListDirectoryEntriesResponse.SerializeToString,
+            ),
+            'WatchDirectoryEntries': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchDirectoryEntries,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageWatchDirectoryEntriesRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageWatchDirectoryEntriesResponse.SerializeToString,
+            ),
+            'GetIndexDefinition': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetIndexDefinition,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetIndexDefinitionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetIndexDefinitionResponse.SerializeToString,
+            ),
+            'GetProjectionDefinition': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetProjectionDefinition,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionDefinitionRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetProjectionDefinitionResponse.SerializeToString,
+            ),
+            'GetObject': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetObject,
+                    request_deserializer=harmos_dot_v1_dot_storage__pb2.StorageGetObjectRequest.FromString,
+                    response_serializer=harmos_dot_v1_dot_storage__pb2.StorageGetObjectResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'harmos.storage.v1.Storage', rpc_method_handlers)
+            'harmos.v1.Storage', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('harmos.storage.v1.Storage', rpc_method_handlers)
+    server.add_registered_method_handlers('harmos.v1.Storage', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
 class Storage:
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def CreateFileProduction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/CreateFileProduction',
+            harmos_dot_v1_dot_storage__pb2.StorageCreateFileProductionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageCreateFileProductionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetFileProduction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/GetFileProduction',
+            harmos_dot_v1_dot_storage__pb2.StorageGetFileProductionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageGetFileProductionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AppendFileBytes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/AppendFileBytes',
+            harmos_dot_v1_dot_storage__pb2.StorageAppendFileBytesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageAppendFileBytesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateFileWriter(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/CreateFileWriter',
+            harmos_dot_v1_dot_storage__pb2.StorageCreateFileWriterRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageCreateFileWriterResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PublishFileProduction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/PublishFileProduction',
+            harmos_dot_v1_dot_storage__pb2.StoragePublishFileProductionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StoragePublishFileProductionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteFileProduction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/DeleteFileProduction',
+            harmos_dot_v1_dot_storage__pb2.StorageDeleteFileProductionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageDeleteFileProductionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetFileBytes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/GetFileBytes',
+            harmos_dot_v1_dot_storage__pb2.StorageGetFileBytesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageGetFileBytesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def Capabilities(request,
@@ -243,9 +768,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/Capabilities',
-            harmos_dot_v1_dot_storage__pb2.Capabilities.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.StorageCapabilities.FromString,
+            '/harmos.v1.Storage/Capabilities',
+            harmos_dot_v1_dot_storage__pb2.StorageCapabilitiesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageCapabilitiesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -257,7 +782,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def OpenSnapshot(request,
+    def CreateSnapshot(request,
             target,
             options=(),
             channel_credentials=None,
@@ -270,9 +795,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/OpenSnapshot',
-            harmos_dot_v1_dot_storage__pb2.OpenSnapshot.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.SavedSnapshot.FromString,
+            '/harmos.v1.Storage/CreateSnapshot',
+            harmos_dot_v1_dot_storage__pb2.StorageCreateSnapshotRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageCreateSnapshotResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -284,7 +809,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def ReleaseSnapshot(request,
+    def DeleteSnapshot(request,
             target,
             options=(),
             channel_credentials=None,
@@ -297,9 +822,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/ReleaseSnapshot',
-            harmos_dot_v1_dot_storage__pb2.ReleaseSnapshot.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.Empty.FromString,
+            '/harmos.v1.Storage/DeleteSnapshot',
+            harmos_dot_v1_dot_storage__pb2.StorageDeleteSnapshotRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageDeleteSnapshotResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -311,7 +836,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def ScanArrow(request,
+    def ListColumnRows(request,
             target,
             options=(),
             channel_credentials=None,
@@ -324,9 +849,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/ScanArrow',
-            harmos_dot_v1_dot_storage__pb2.ScanArrow.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.ArrowPage.FromString,
+            '/harmos.v1.Storage/ListColumnRows',
+            harmos_dot_v1_dot_storage__pb2.StorageListColumnRowsRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageListColumnRowsResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -338,7 +863,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def ScanIndex(request,
+    def ListIndexEntries(request,
             target,
             options=(),
             channel_credentials=None,
@@ -351,9 +876,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/ScanIndex',
-            harmos_dot_v1_dot_storage__pb2.ScanIndex.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.IndexPage.FromString,
+            '/harmos.v1.Storage/ListIndexEntries',
+            harmos_dot_v1_dot_storage__pb2.StorageListIndexEntriesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageListIndexEntriesResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -365,7 +890,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def RegisterIndex(request,
+    def SetIndexDefinition(request,
             target,
             options=(),
             channel_credentials=None,
@@ -378,9 +903,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/RegisterIndex',
-            harmos_dot_v1_dot_storage__pb2.RegisterIndex.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.DefinitionRevision.FromString,
+            '/harmos.v1.Storage/SetIndexDefinition',
+            harmos_dot_v1_dot_storage__pb2.StorageSetIndexDefinitionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageSetIndexDefinitionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -392,7 +917,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def RegisterProjection(request,
+    def SetProjectionDefinition(request,
             target,
             options=(),
             channel_credentials=None,
@@ -405,9 +930,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/RegisterProjection',
-            harmos_dot_v1_dot_storage__pb2.RegisterProjection.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.DefinitionRevision.FromString,
+            '/harmos.v1.Storage/SetProjectionDefinition',
+            harmos_dot_v1_dot_storage__pb2.StorageSetProjectionDefinitionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageSetProjectionDefinitionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -432,9 +957,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/AdvanceProjection',
-            harmos_dot_v1_dot_storage__pb2.AdvanceProjection.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.DefinitionRevision.FromString,
+            '/harmos.v1.Storage/AdvanceProjection',
+            harmos_dot_v1_dot_storage__pb2.StorageAdvanceProjectionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageAdvanceProjectionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -446,7 +971,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def ReadProjection(request,
+    def ListProjectionRows(request,
             target,
             options=(),
             channel_credentials=None,
@@ -459,9 +984,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/ReadProjection',
-            harmos_dot_v1_dot_storage__pb2.ReadProjection.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.ProjectionPage.FromString,
+            '/harmos.v1.Storage/ListProjectionRows',
+            harmos_dot_v1_dot_storage__pb2.StorageListProjectionRowsRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageListProjectionRowsResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -473,7 +998,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def InspectProjection(request,
+    def GetProjectionStatus(request,
             target,
             options=(),
             channel_credentials=None,
@@ -486,9 +1011,9 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/InspectProjection',
-            harmos_dot_v1_dot_storage__pb2.InspectProjection.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.ProjectionState.FromString,
+            '/harmos.v1.Storage/GetProjectionStatus',
+            harmos_dot_v1_dot_storage__pb2.StorageGetProjectionStatusRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageGetProjectionStatusResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -500,7 +1025,7 @@ class Storage:
             _registered_method=True)
 
     @staticmethod
-    def CompareExchangeObject(request,
+    def SetObject(request,
             target,
             options=(),
             channel_credentials=None,
@@ -513,9 +1038,387 @@ class Storage:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/harmos.storage.v1.Storage/CompareExchangeObject',
-            harmos_dot_v1_dot_storage__pb2.CompareExchangeObject.SerializeToString,
-            harmos_dot_v1_dot_storage__pb2.CompareExchangeOutcome.FromString,
+            '/harmos.v1.Storage/SetObject',
+            harmos_dot_v1_dot_storage__pb2.StorageSetObjectRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageSetObjectResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListRows(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/ListRows',
+            harmos_dot_v1_dot_storage__pb2.StorageListRowsRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageListRowsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchRows(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/harmos.v1.Storage/WatchRows',
+            harmos_dot_v1_dot_storage__pb2.StorageWatchRowsRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageWatchRowsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AppendRecords(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/AppendRecords',
+            harmos_dot_v1_dot_storage__pb2.StorageAppendRecordsRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageAppendRecordsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AppendSamples(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/AppendSamples',
+            harmos_dot_v1_dot_storage__pb2.StorageAppendSamplesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageAppendSamplesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AppendObjectRevisions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/AppendObjectRevisions',
+            harmos_dot_v1_dot_storage__pb2.StorageAppendObjectRevisionsRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageAppendObjectRevisionsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetFileHash(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/GetFileHash',
+            harmos_dot_v1_dot_storage__pb2.StorageGetFileHashRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageGetFileHashResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CaptureFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/CaptureFile',
+            harmos_dot_v1_dot_storage__pb2.StorageCaptureFileRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageCaptureFileResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchFileBytes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/harmos.v1.Storage/WatchFileBytes',
+            harmos_dot_v1_dot_storage__pb2.StorageWatchFileBytesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageWatchFileBytesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchFileProduction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/harmos.v1.Storage/WatchFileProduction',
+            harmos_dot_v1_dot_storage__pb2.StorageWatchFileProductionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageWatchFileProductionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDirectoryEntries(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/ListDirectoryEntries',
+            harmos_dot_v1_dot_storage__pb2.StorageListDirectoryEntriesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageListDirectoryEntriesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchDirectoryEntries(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/harmos.v1.Storage/WatchDirectoryEntries',
+            harmos_dot_v1_dot_storage__pb2.StorageWatchDirectoryEntriesRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageWatchDirectoryEntriesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetIndexDefinition(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/GetIndexDefinition',
+            harmos_dot_v1_dot_storage__pb2.StorageGetIndexDefinitionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageGetIndexDefinitionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetProjectionDefinition(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/GetProjectionDefinition',
+            harmos_dot_v1_dot_storage__pb2.StorageGetProjectionDefinitionRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageGetProjectionDefinitionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetObject(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/harmos.v1.Storage/GetObject',
+            harmos_dot_v1_dot_storage__pb2.StorageGetObjectRequest.SerializeToString,
+            harmos_dot_v1_dot_storage__pb2.StorageGetObjectResponse.FromString,
             options,
             channel_credentials,
             insecure,

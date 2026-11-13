@@ -37,8 +37,8 @@ incompatible data. Application owners choose backup and migration policy.
 let capabilities = storage.capabilities();
 let snapshot = storage.snapshot(&saved_cursor).await?;
 let saved = snapshot.at();
-let page = snapshot.scan_arrow(&read, &cancel).await?;
-let ordered = snapshot.scan_index(&index_read, &cancel).await?;
+let page = snapshot.list_column_rows(&read, &cancel).await?;
+let ordered = snapshot.list_index_entries(&index_read, &cancel).await?;
 ```
 
 A manager snapshot captures a saved admission cut, not pending writes. It retains
@@ -48,13 +48,14 @@ that token unusable. Later writes do not alter the retained answer. Readers must
 release snapshots before expecting retention to reclaim their rows.
 
 `StorageCapabilities` advertises `native_arrow`, `native_index`,
-`durable_projections` and `conditional_objects`. `scan_arrow` and `scan_index`
+`durable_projections`, `conditional_objects`, `file_sessions`, `file_deletion` and
+`mutation_receipts`. `list_column_rows` and `list_index_entries`
 choose native execution or the common bounded executor. A backend without native
 Arrow scans supplies typed row reads; it still receives the same predicates and
 saved-cut semantics. A backend without a native index stores its declarations and
 uses bounded source scanning. It refuses insufficient work rather than returning
 an incomplete globally sorted answer. Durable projections require an atomic
-publication primitive and immutable `projection_definition_at(name, revision)` lookup
+publication primitive and immutable `get_projection_definition(name, Some(revision))` lookup
 for source authorization of retained revisions; conditional objects require an atomic compare/exchange
 primitive. Defaults for unavailable primitives return `Unsupported`, never pretend
 an empty result or successful write. Independent read-then-write calls cannot
@@ -78,7 +79,7 @@ column loading. `ArrowPage` reports source rows scanned, encoded column bytes re
 columns fetched and payload rows reconstructed for measurement. These counters
 are evidence, not admission policy or timing assertions.
 
-For a record query containing only projections, `StorageBackend::seek_records`
+For a record query containing only projections, `StorageBackend::get_record_position`
 may locate the exclusive position after the requested number of selected records.
 It binds the same snapshot and selection; an exhausted selection returns the saved
 cut, and `None` keeps sequential execution. The query executor then decodes only
@@ -92,7 +93,7 @@ return `Some(Vec<RecordView>)` instead of copying owned record payloads per read
 Construct each `RecordView` once with `RecordView::new(record)?`; clones share the
 immutable row, and `encoded_bytes()` retains its exact checked serialized size.
 The snapshot reader still validates history, position order, cut, selection and
-row/byte ceilings. Returning `None` keeps the existing `read_records` path.
+row/byte ceilings. Returning `None` keeps the existing `list_records` path.
 Payload validation and decoding still run on selected rows. No backend-provided
 unchecked byte count can bypass the page bound.
 
@@ -104,11 +105,21 @@ without cancelling the caller's shared token.
 ## Ordered Indexes
 
 ```rust,ignore
-storage.register_index(&definition, rebuild, work, &cancel).await?;
+storage.set_index_definition(&definition, expected_revision, rebuild, work, &cancel).await?;
 ```
 
 An `IndexDefinition` owns a name, nonzero semantic version, source and ordered
-columns. Registration is idempotent for the same definition. A changed definition
+columns. Set requires the revision returned by Get; `None` explicitly creates an absent definition.
+The provider compares the expected revision atomically before accepting even an unchanged value.
+Both audience faces require a mutation identity from `Capabilities.mutations` for
+Set. The manager owns admitted work through caller cancellation; the provider commits the
+complete replacement or refusal and its receipt atomically. Replaying the normalized request
+returns the original result even after a later revision or source change. Replacing a source
+requires authority over both the old and new source. Native callers use
+`set_index_definition_once` or `set_projection_definition_once` for the same guarantee.
+Definition receipts name a completed metadata revision; they carry no primary-data position.
+
+Stale revisions conflict with the action “get again and retry”. A changed definition
 requires explicit rebuild and creates a new revision. SQLite builds history under
 one immediate transaction and updates entries in the source write transaction.
 Construction decodes each physical source chunk once, orders encoded entries and
@@ -127,11 +138,11 @@ invalidates old index continuations; changed plans and foreign cuts refuse.
 ## Durable Projections
 
 ```rust,ignore
-let revision = storage.register_projection(&definition, rebuild).await?;
-snapshot.advance_projection(&definition.name, work, &cancel).await?;
-let frontier = storage.projection_frontier(&definition.name, revision).await?;
-let status = storage.projection_status(&definition.name, revision, snapshot.at()).await?;
-let page = storage.read_projection(&read).await?;
+let revision = storage.set_projection_definition(&definition, expected_revision, rebuild).await?;
+snapshot.advance_projection(&definition.name, None, work, &cancel).await?;
+let frontier = storage.get_projection_status(&definition.name, revision, None).await?.map(|status| status.frontier);
+let status = storage.get_projection_status(&definition.name, revision, Some(snapshot.at())).await?;
+let page = storage.list_projection_rows(&read).await?;
 ```
 
 Definitions select columns or generic grouped time buckets. Registration and
@@ -167,8 +178,7 @@ values plus signed bucket ordinal identify a bucket; SHA-256 revisions identify
 its retained content. Catch-up emits sorted changed and removed keys relative
 to the preceding published cut. Late input replaces affected buckets; old saved
 outputs remain readable. `Transform::TimeBuckets` and projection execution use
-the same bounded reduction. The current protobuf transform mapping explicitly
-refuses this variant pending the separate consumer adoption pass.
+the same bounded reduction. The protobuf mapping carries the same bounded time-bucket transform.
 
 For record and stream projections, SQLite checkpoints the latest sample for each
 logical identity and indexes its bucket membership. Advancement reads source rows
@@ -195,9 +205,18 @@ frontier, with no schema or object change. Manager results are durable outcomes;
 a caller cancelled after admission may have committed and should replay its
 mutation ID. Reusing an ID with a changed fingerprint refuses.
 
+The client and context `GetObject` methods return the complete value, opaque revision,
+existence flag and resolved cut. Omitted `at` selects the latest durable cut immediately;
+an issued retained `at` reads that exact image. `SetObject` takes the complete candidate,
+its schema, a mutation identity and either that revision or explicit create-if-absent.
+Stale candidates return a typed conflict with the current revision and the action
+“SetObject: get again and retry”. The
+successful reply carries the original value, revision and durable receipt. Client and
+context handlers share the native atomic primitive.
+
 Accepted positions replay their original success or conflict after later writes
 and restart. Consumers explicitly retire receipts with
-`retire_object_receipts(through)`; retrying a retired outcome reports `Gap` rather
+`delete_object_receipts(through)`; retrying a retired outcome reports `Gap` rather
 than applying again. Object pruning preserves rows protected by live snapshots
 and explicit catalog retention. Exact or revision reads crossing reclaimed rows
 report `Gap` rather than silently truncating history.
@@ -211,55 +230,90 @@ content. Optional resumable sessions and deletion remain separate advertised
 capabilities; they are not implied by `sqlite`. The existing file state/recovery
 backend and its journal/checkpoint format are retained.
 
-The native storage interface and `harmos.storage.v1.Storage` operations expose all five
+The native storage interface and the two face-local Storage services expose these
 capabilities. Register `builtins::storage_catalog()` and supply a storage manager with
 `setup.settings().storage(&storage)`. The runtime supplies the retained snapshot registry,
 bounded by the consumer's `StorageRequestSettings.max_active_queries`; backend construction
 and every row/byte/work allowance remain consumer-owned. Embedders composing resources
 directly also supply `harmos_operations::storage::SavedSnapshots::new(capacity)`.
 
-Ordinary `storage.query` retains its bounded row fallback and existing query behavior.
-`WriteObjects`, `WriteRecords` and `WriteStreams` retain streamed batch admission and
-accepted-before-durable receipts. Conditional updates use the separate
-`storage.compare_exchange_object` operation, which validates the declared object catalog,
+Ordinary native queries retain their bounded row fallback. Public `ListRows` uses
+bounded unary pages. `AppendRecords`, `AppendSamples` and `AppendObjectRevisions` take
+one bounded immutable batch and a mutation identity. Their replies report the original
+accepted position immediately. Resend the same normalized request to observe completion:
+`durable_at` appears only after the data and its replay receipt are acknowledged durable.
+The storage worker owns both stages after caller loss; latest reads never request them.
+The identity and accepted position stay fixed as completion advances. Native consumers can
+wait passively with `wait_mutation_durable`; client resending stays client-owned.
+Changing data under the identity conflicts. Receipt capacity eviction retires unknown IDs
+from that retry window; retained IDs still replay, while new work obtains a current window
+from Capabilities. Conditional updates use the separate
+`Storage.SetObject` operation, which validates the declared object catalog,
 schema graph, payload and object key before one atomic admission. Independent calls do not
 form a cross-method transaction. File sessions, recovery and receipt retention remain intact.
 
 ## Generated Storage Clients
 
-Rust exposes generated messages at `harmos::storage`; each new request implements
-`OperationRequest` and works with the existing invocation context. External clients bind
-`client::Method<Request, Response>` to the discovered operation contract, then use
-`Client::start` for managed cancellation and settlement. The generated unary gRPC client is
-also available at `harmos::storage::storage_client::StorageClient`. Python uses
-`harmos.v1.storage_pb2` and `storage_pb2_grpc.StorageStub`; C# generates
-`Harmos.Storage.V1.Storage.StorageClient`; C++ generates `harmos::storage::v1::Storage`.
-The SDKs depend only on protocol and transport support.
+Shared storage payloads live under `harmos.storage.v1`. The Rust client wrappers are
+in `harmos_protocol::v1`, and context wrappers in `harmos_protocol::context`. Each face's
+generated methods use its own descriptors and fingerprints. Python's client service is
+`harmos.v1.storage_pb2_grpc.StorageStub`; the context declarations are under
+`harmos.context.v1`. SDK root generation and audience-specific stubs follow the protocol
+owner's descriptor table.
 
-| RPC / Operation | Result |
+Client storage uses `harmos.v1.Storage`; invocation context uses
+`harmos.context.v1.Storage`. Each face owns its service-qualified method wrappers
+and grant identity. Both faces delegate to the same storage handlers.
+
+| gRPC Method | Result |
 | --- | --- |
-| `Capabilities` / `storage.capabilities` | Native acceleration and correctness capabilities |
-| `OpenSnapshot` / `storage.open_snapshot` | Opaque retained saved cut |
-| `ReleaseSnapshot` / `storage.release_snapshot` | Idempotent release |
-| `ScanArrow` / `storage.scan_arrow` | Arrow IPC batch and source-position continuation |
-| `RegisterIndex` / `storage.register_index` | Durable definition revision |
-| `ScanIndex` / `storage.scan_index` | Ordered key/position seek page |
-| `RegisterProjection` / `storage.register_projection` | Idempotent definition or explicit rebuild |
-| `AdvanceProjection` / `storage.advance_projection` | Atomic durable frontier advancement |
-| `InspectProjection` / `storage.inspect_projection` | Exact-cut status, absent while unpublished |
-| `ReadProjection` / `storage.read_projection` | Exact revision/frontier, IPC and changed keys |
-| `CompareExchangeObject` / `storage.compare_exchange_object` | Durable applied receipt or conflict |
+| Capabilities | Native acceleration and correctness capabilities |
+| CreateSnapshot / DeleteSnapshot | Explicit retained durable lease and release |
+| ListRows | Bounded unary query page, issued cut and continuation token |
+| ListColumnRows | Arrow IPC and source-position continuation |
+| ListIndexEntries | Ordered key/position seek page |
+| GetIndexDefinition / SetIndexDefinition | Complete definition and atomic revision guard |
+| GetProjectionDefinition / SetProjectionDefinition | Complete definition and atomic revision guard |
+| AdvanceProjection | Checked materialization at a retained cut |
+| GetProjectionStatus | Selected revision and newest readable or issued exact frontier |
+| ListProjectionRows | Bounded exact-frontier page and composite cut |
+| GetObject / SetObject | Complete object, opaque revision and atomic applied/conflict outcome |
+| AppendRecords / AppendSamples / AppendObjectRevisions | Bounded immutable ingestion and accepted/durable receipts |
 
-`OpenSnapshot.at` must be a saved cursor, including store history. Return the whole
-`SavedSnapshot` unchanged with each scan or advancement. Return continuation bytes unchanged;
-changing the plan requires starting again. An empty incomplete Arrow page advances source
-work, not output-row offset. Release a saved handle explicitly when the query journey ends;
-cancellation or failure after a saved-page read acquires its cut releases that handle. Successful reads retain it so
-several plans can share one cut. Released, foreign and restarted handles refuse explicitly.
-Concurrent reads already holding a snapshot settle before its backend resource is reclaimed.
+A missing `at` selects the current durable position immediately. Projection status
+without a frontier selects its newest readable materialization; an explicit frontier
+must match a retained composite cut for the requested revision. Reads never flush
+or wait for accepted writes. A supplied cut must equal a retained cut this owner
+has returned; arbitrary older positions, changed composites and foreign histories
+refuse. Automatic cuts use the existing saved-read capacity and evict the oldest
+idle cut when needed. `CreateSnapshot` pins its lease until `DeleteSnapshot` or
+storage retirement. Active reads retain their image through completion. A failed
+or cancelled page does not release an explicit lease.
+
+Return the whole `SavedSnapshot` unchanged for column/index reads or advancement.
+Arrow/index seek bytes bind that retained image and their plan. ListRows tokens
+bind the retained image, selector, transforms, ordering and query progress with an
+owner-local HMAC; page size may change within consumer bounds. The most recent continuation request/result remains replayable with the same bounds;
+consuming its next token expires older requests. Each call advances one bounded source
+or output step, so an empty page can carry a continuation without claiming end-of-source.
+Idle query plans share the existing retained-read capacity and can expire when another
+read needs it. Paused plans release active execution slots and reacquire them per call. Row-window skipping and stopping belong to the
+caller across bounded pages. Responses include their complete encoded envelope in
+the byte bound. An indivisible row or metadata that cannot fit refuses explicitly.
+
+Read-lease issuance and page-token keys are not persisted. A retained mutation receipt
+can reissue its exact position after the saved frontier proves it durable, including
+a recovered durable receipt. Pending receipt positions refuse without flushing;
+expired receipts or unavailable provider images refuse explicitly. Released, evicted, foreign and
+restarted leases/tokens refuse explicitly; restart the read with no `at`. A durable
+position may be returned again as a newly issued cut if it is still the current
+readable image, but that does not restore an old page token. Composite cuts retain
+the exact returned storage position and provider revisions; callers cannot invent
+or combine a different tuple. These leases pin existing durable backend snapshots;
+no accepted-data snapshot is constructed.
 
 Both output `limits` and source `work` are required, nonzero row/byte bounds.
-Wire page bounds include IPC schema metadata, changed-key buffers and continuation metadata. Scan and index
+Wire page bounds include IPC schema metadata, changed-key buffers and continuation metadata. Column and index
 requests name a schema source; named index/projection requests also carry that source so the
 host can check it against the registered definition. Grants use `objects:schema:<id>`,
 `records:schema:<id>` or `streams:schema:<id>` with the corresponding operation ID. Reading
@@ -299,15 +353,15 @@ no concrete database or host engine is required. For JSON, consume its `STORAGE_
 and `STORAGE_COUNTER`/`STORAGE_WORK` lines; the repository producer's `storage_bench.measurements(lines,
 revision, system, backend="reference")` emits the release schema for another backend.
 
-`StorageBackend::work()` optionally returns cumulative `StorageWork` counters.
+`StorageBackend::get_work()` optionally returns cumulative `StorageWork` counters.
 Differences around an isolated call report decoded source rows/bytes/chunks,
 bucket members and buckets recomputed, index entries visited, SQLite VM steps
 and prepared index statements. Counters belong to an owner and include repeated
 physical decoding; encoded bytes are not unique device I/O. Unsupported counters
-remain zero. `advance_projection_native` is an optional backend hook; returning
+remain zero. `advance_projection` is an optional backend hook; returning
 `None` selects the shared bounded executor without changing existing implementers.
-Revision-checked `Snapshot::advance_projection_at` uses the optional
-`advance_projection_native_at` hook. A native implementation must check the expected
+`Snapshot::advance_projection` accepts an optional expected revision and forwards it
+to that same hook. A native implementation must check the expected
 active revision atomically with publication; SQLite holds its state lock across both.
 Returning `None` retains the shared executor's revision and publication checks.
 
@@ -360,3 +414,124 @@ runs it on Linux and Windows and adds platform/backend-qualified suites to the p
 ordinary benchmark lanes. Ordinary tests retain one 16,385-row journey crossing the
 physical chunk boundary on both native and fallback backends. Consumer reports should
 record their own backend/durability mode while retaining these names, units and inputs.
+
+## Durable-Lag Benchmark
+
+Run `mise run bench -- --storage --filter durable_lag` for the Nightly
+`integration/durable_lag/{small_high_rate,multi_megabyte,mixed}` cases. Each reports
+acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admission wait,
+and synchronous SQLite commit count/time. Compare each p95 independently with 250 ms;
+a successful benchmark process does not assert that latency bound. Windows measurements
+are recorded in the operation-grammar design; native Linux and hosted evidence remain pending.
+
+Consumers enable `testing`, persist `bench_support::durable_lag::Payload`'s schema,
+and call `bench_support::durable_lag::run(&manager, &schema, load)` on their started
+manager. Supply the ordinary backend, worker owner, settings and durability mode.
+The observer only subscribes to saved progress; it never requests a flush.
+
+The worker starts flushing on its cadence or when queued bytes reach the existing
+size threshold. Typed provider writes split at entry boundaries around
+`StorageSettings::flush_batch_bytes()`. A single indivisible entry may use the larger
+`max_batch_bytes()` ceiling; admission refuses entries beyond that ceiling. Each
+successful piece publishes its saved frontier independently, and retry skips its
+already durable prefix. Splitting changes no stored encoding, durability setting or
+atomic conditional-object replacement.
+
+## Native Provider Hooks
+
+`StorageBackend` has 52 hooks and `StateBackend` has eight. Implement the names in
+`crates/harmos-storage/src/backend.rs` and `src/state/mod.rs`; there are no old-name
+aliases. Storage and recovery sessions have distinct Create/Delete hooks. Appends
+retain their assigned-position replay and durable-receipt contracts. Private flush
+remains an explicit recovery barrier.
+
+`capabilities()` owns `file_sessions`, `file_deletion` and
+`mutation_receipts` alongside query capabilities. Unsupported capabilities refuse
+explicitly. `get_projection_definition(name, revision)` returns a definition and
+revision, selecting current when revision is absent. `get_projection_status` accepts
+an optional exact frontier; absence returns the newest readable durable status for
+that revision. `advance_projection` accepts an optional expected revision, preserving
+atomic checked native publication and the checked shared fallback.
+
+An append wholly inside an accepted file-production prefix verifies the original
+bytes. Identical bytes succeed with a new request identifier without extending or
+rehashing the file; different bytes conflict. A batch crossing the accepted end
+or leaving a gap is refused. Reusing an existing request identifier still requires
+the identical request and returns its original receipt.
+
+## Unary File Transfers
+
+Clients call `harmos.v1.Storage`; plugins make child calls to
+`harmos.context.v1.Storage`. Each face owns its request and response wrappers;
+`harmos_operations::storage` and its `context` module declare them, sharing the
+StorageManager production owner and handlers. Every action requires its own
+operation/file grant. Providers without `file_sessions` and `mutation_receipts`
+refuse creation explicitly.
+
+```rust
+use harmos_operations::storage::{CreateFileProduction, AppendFileBytes,
+    GetFileProduction, CreateFileWriter, PublishFileProduction,
+    DeleteFileProduction, GetFileBytes};
+use harmos_protocol::{v1, storage};
+
+let production = operations.call_protobuf::<CreateFileProduction>(
+    v1::StorageCreateFileProductionRequest {
+        metadata: Some(metadata),
+        mutation: Some(mutation),
+    },
+).await?.production.unwrap();
+let appended = operations.call_protobuf::<AppendFileBytes>(
+    v1::StorageAppendFileBytesRequest {
+        session: production.session,
+        offset: 0,
+        data: bytes,
+        mutation: Some(next_mutation),
+    },
+).await?;
+```
+
+Obtain mutation identities from `StorageManager::mutation_window()`; retain the
+window and key when retrying a lost reply. An identical normalized request
+returns its original outcome; changing it conflicts, and expired windows refuse.
+Chunks are bounded by the configured response batch byte limit and pending write
+budget. Appends require contiguous offsets. Replaying an identical retained
+prefix under a new key succeeds; different bytes conflict without modifying it.
+`GetFileProduction` observes retained length, phase and current writer generation
+without acquiring a writer. `accepted_length` includes an admitted in-flight
+append; the production length includes completed backend appends.
+`durable_length` advances only after the existing production recovery checkpoint
+acknowledges its prefix, and is restored from that checkpoint after reopening. `CreateFileWriter` advances the generation and fences the
+previous writer. Terminal productions have no live writer (generation zero).
+
+`PublishFileProduction` supplies the exact length and SHA-256. It validates both
+and awaits persistence of the immutable reference and its receipt before returning
+`file` and `receipt.durable_at`. Prefix/session completion does not invent a global
+history position: its receipt has `completed`, while its status carries the retained
+prefix length. Delete abandons unpublished production; losing an observer does
+neither. Published-file deletion retains its separate contract.
+
+`GetFileBytes` takes the immutable reference, offset, positive `max_bytes` and
+optional `at`; it returns `data`, `total_length`, SHA-256 and `resolved_at`.
+Absent `at` selects saved progress without requesting a flush. Repeat with the
+returned cut and the next offset; verify the complete reconstructed digest.
+An offset at the end returns an empty range, an offset beyond it refuses, and
+configuration bounds oversized ranges. Native embedders can call
+`StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Streaming
+transfers remain for the required throughput comparison before their removal.
+
+## File-Transfer Benchmark
+
+`mise run bench -- --storage --filter file_transfer` builds only the runtime's
+`integration-file-transfer` target. The reusable workload transfers a deterministic
+30 MiB file with the configured 64 KiB chunks/ranges, checks its length and digest,
+and reports three repetitions for each available carrier/mode. Client unary and
+streaming calls cross a host socket; plugin unary calls cross the host/plugin
+carrier as context child calls. The existing plugin carrier cannot call streaming
+host operations, so it reports that comparison unavailable.
+
+The benchmark composes the existing reference memory backend. Its saved snapshots
+copy file blobs, which disproportionately costs repeated unary ranges; the figures
+are not a claim about durable filesystem throughput. Consumer backends can reuse
+`harmos_storage::bench_support::file_transfer::{Carrier, run}`. Nightly retains raw
+native output and median throughput with bytes, call counts and configured range
+sizes. Streaming remains available for owner review of that evidence.

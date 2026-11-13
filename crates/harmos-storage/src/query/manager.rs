@@ -43,55 +43,58 @@ impl StorageManager {
     pub fn query_capacity(&self) -> std::num::NonZeroUsize {
         self.inner.settings.request.max_active_queries
     }
-    pub async fn index_definition(&self, name: &Identifier) -> Result<(IndexDefinition, u64)> {
+    pub async fn get_index_definition(&self, name: &Identifier) -> Result<(IndexDefinition, u64)> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.index_definition", self.inner.primary.index_definition(name)).await
+        self.inner.bounded("primary.get_index_definition", self.inner.primary.get_index_definition(name)).await
     }
-    pub async fn projection_definition(&self, name: &Identifier) -> Result<(ProjectionDefinition, u64)> {
+    pub async fn get_projection_definition(&self, name: &Identifier, revision: Option<u64>) -> Result<(ProjectionDefinition, u64)> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.projection_definition", self.inner.primary.projection_definition(name)).await
+        self.inner.bounded("primary.get_projection_definition", self.inner.primary.get_projection_definition(name, revision)).await
     }
     pub fn capabilities(&self) -> StorageCapabilities {
         self.inner.primary.capabilities()
     }
-    pub async fn register_index(
-        &self, definition: &IndexDefinition, rebuild: bool, work: ReadLimits, cancel: &Cancellation,
+    pub async fn set_index_definition(
+        &self, definition: &IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits, cancel: &Cancellation,
     ) -> Result<u64> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.register_index", self.inner.primary.register_index(definition, rebuild, work, cancel)).await
+        self.inner
+            .bounded(
+                "primary.set_index_definition",
+                self.inner.primary.set_index_definition(definition, expected, rebuild, work, cancel, None),
+            )
+            .await?
+            .into_result(crate::DefinitionKind::Index)
     }
-    pub async fn register_projection(&self, definition: &ProjectionDefinition, rebuild: bool) -> Result<u64> {
+    pub async fn set_projection_definition(&self, definition: &ProjectionDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.register_projection", self.inner.primary.register_projection(definition, rebuild)).await
+        self.inner
+            .bounded("primary.set_projection_definition", self.inner.primary.set_projection_definition(definition, expected, rebuild, None))
+            .await?
+            .into_result(crate::DefinitionKind::Projection)
     }
-    pub async fn projection_definition_at(&self, name: &Identifier, revision: u64) -> Result<ProjectionDefinition> {
+
+    pub async fn get_projection_status(
+        &self, name: &Identifier, revision: u64, frontier: Option<&StorageCursor>,
+    ) -> Result<Option<ProjectionStatus>> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.projection_definition_at", self.inner.primary.projection_definition_at(name, revision)).await
+        self.inner.bounded("primary.get_projection_status", self.inner.primary.get_projection_status(name, revision, frontier)).await
     }
-    pub async fn projection_status(&self, name: &Identifier, revision: u64, frontier: &StorageCursor) -> Result<Option<ProjectionStatus>> {
+
+    pub async fn list_projection_rows(&self, read: &ProjectionRead) -> Result<ProjectionPage> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.projection_status", self.inner.primary.projection_status(name, revision, frontier)).await
+        self.inner.bounded("primary.list_projection_rows", self.inner.primary.list_projection_rows(read)).await
     }
-    pub async fn projection_frontier(&self, name: &Identifier, revision: u64) -> Result<Option<StorageCursor>> {
+    pub async fn delete_projection_history(&self, name: &Identifier, revision: u64, through: &StorageCursor) -> Result<()> {
         let _lifecycle = self.inner.lifecycle.read().await;
         crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.projection_frontier", self.inner.primary.projection_frontier(name, revision)).await
-    }
-    pub async fn read_projection(&self, read: &ProjectionRead) -> Result<ProjectionPage> {
-        let _lifecycle = self.inner.lifecycle.read().await;
-        crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.read_projection", self.inner.primary.read_projection(read)).await
-    }
-    pub async fn retire_projection(&self, name: &Identifier, revision: u64, through: &StorageCursor) -> Result<()> {
-        let _lifecycle = self.inner.lifecycle.read().await;
-        crate::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
-        self.inner.bounded("primary.retire_projection", self.inner.primary.retire_projection(name, revision, through)).await
+        self.inner.bounded("primary.delete_projection_history", self.inner.primary.delete_projection_history(name, revision, through)).await
     }
 }
 

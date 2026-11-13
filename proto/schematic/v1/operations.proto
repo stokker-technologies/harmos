@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package schematic.v1;
-import "harmos/v1/storage.proto";
+import "harmos/v1/storage_types.proto";
 message Connection { uint64 from = 1; uint64 to = 2; }
 message Snapshot { repeated uint64 symbols = 1; repeated Connection connections = 2; }
 message Point { int32 x = 1; int32 y = 2; }

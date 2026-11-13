@@ -40,6 +40,7 @@ pub(crate) struct FileSnapshot {
 }
 
 struct CheckpointSource {
+    file_id: Option<u64>,
     context: crate::execution::Context,
     queued: std::sync::Mutex<Option<tracing::Span>>,
 }
@@ -77,7 +78,7 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.staging.checkpoint.recover_files", level = "debug", skip_all)]
     pub(crate) async fn recover_files(&self) -> Result<()> {
-        if !self.inner.primary.supports_file_sessions() {
+        if !self.inner.primary.capabilities().file_sessions {
             return Ok(());
         }
         // Recover The Complete Bounded Checkpoint Set.
@@ -86,7 +87,10 @@ impl StorageManager {
             rows: crate::storage::config::MAX_FILES,
             bytes: NonZeroUsize::new(bytes).ok_or_else(size_error)?,
         };
-        let checkpoints = self.inner.bounded("primary.recover_productions", self.inner.primary.recover_productions(limits)).await?;
+        let checkpoints = self
+            .inner
+            .bounded("primary.list_file_production_checkpoints", self.inner.primary.list_file_production_checkpoints(limits))
+            .await?;
         if checkpoints.len() > limits.rows.get()
             || checkpoints.iter().try_fold(0usize, |total, checkpoint| encoded_size(checkpoint).map(|size| total.saturating_add(size)))?
                 > bytes
@@ -99,7 +103,7 @@ impl StorageManager {
         let mut restored = std::collections::BTreeMap::new();
         let mut names = std::collections::BTreeSet::new();
         for checkpoint in checkpoints {
-            self.inner.primary.history().check(&checkpoint.session.history)?;
+            self.inner.primary.get_history().check(&checkpoint.session.history)?;
             let hash = checkpoint.restore_hash()?;
             if !names.insert(checkpoint.session.id.clone()) {
                 return Err(Error::InvalidInput {
@@ -136,6 +140,7 @@ impl StorageManager {
                 progress,
                 hash,
                 length: checkpoint.length,
+                durable_length: checkpoint.length,
                 ticket: 0,
                 command: None,
                 abandoned: false,
@@ -181,9 +186,10 @@ impl State {
         self.collect();
         let mut checkpoints = Vec::with_capacity(count);
         let mut sources = Vec::with_capacity(count);
-        for file in self.files.values().filter(selected) {
+        for (&file_id, file) in self.files.iter().filter(|(_, file)| selected(file)) {
             let queued = file.context.sync(|| tracing::debug_span!("storage.file.checkpoint.queue", file = %file.staging.id));
             sources.push(CheckpointSource {
+                file_id: Some(file_id),
                 context: file.context.clone(),
                 queued: std::sync::Mutex::new(Some(queued)),
             });
@@ -203,6 +209,7 @@ impl State {
         for receipt in &receipts {
             let span = tracing::debug_span!("storage.receipt.checkpoint.queue", mutation = %receipt.mutation.key, window = %receipt.mutation.window);
             sources.push(CheckpointSource {
+                file_id: None,
                 context: crate::execution::Context::current(),
                 queued: std::sync::Mutex::new(Some(span)),
             });
@@ -222,19 +229,19 @@ impl FileSnapshot {
     #[tracing::instrument(name = "storage.staging.checkpoint.persist", level = "debug", skip_all)]
     pub(crate) async fn persist(&self, inner: &Arc<super::super::manager::Inner>) -> Result<()> {
         let context = self.context.clone();
-        let span = context.sync(|| tracing::debug_span!(parent: None, "storage.file.checkpoint.batch", store = %inner.primary.history().store, epoch = %inner.primary.history().epoch, frontier = self.frontier, checkpoints = self.checkpoints.len(), receipts = self.receipts.len(), outcome = "cancelled"));
+        let span = context.sync(|| tracing::debug_span!(parent: None, "storage.file.checkpoint.batch", store = %inner.primary.get_history().store, epoch = %inner.primary.get_history().epoch, frontier = self.frontier, checkpoints = self.checkpoints.len(), receipts = self.receipts.len(), outcome = "cancelled"));
         let future = async {
             let mut contributions = Vec::with_capacity(self.sources.len());
             for (index, source) in self.sources.iter().enumerate() {
                 contributions.push(source.context.sync(|| {
                     let span = if let Some(checkpoint) = self.checkpoints.as_slice().get(index) {
-                        tracing::trace_span!("storage.file.checkpoint.contribution", store = %inner.primary.history().store,
-                            epoch = %inner.primary.history().epoch, frontier = self.frontier, checkpoints = self.checkpoints.len(), receipts = self.receipts.len(),
+                        tracing::trace_span!("storage.file.checkpoint.contribution", store = %inner.primary.get_history().store,
+                            epoch = %inner.primary.get_history().epoch, frontier = self.frontier, checkpoints = self.checkpoints.len(), receipts = self.receipts.len(),
                             file = %checkpoint.session.id, generation = checkpoint.session.generation, offset = checkpoint.length, outcome = "cancelled")
                     } else {
                         let receipt = &self.receipts.as_slice()[index - self.checkpoints.len()];
-                        tracing::trace_span!("storage.receipt.checkpoint.contribution", store = %inner.primary.history().store,
-                            epoch = %inner.primary.history().epoch, frontier = self.frontier, checkpoints = self.checkpoints.len(), receipts = self.receipts.len(),
+                        tracing::trace_span!("storage.receipt.checkpoint.contribution", store = %inner.primary.get_history().store,
+                            epoch = %inner.primary.get_history().epoch, frontier = self.frontier, checkpoints = self.checkpoints.len(), receipts = self.receipts.len(),
                             mutation = %receipt.mutation.key, window = %receipt.mutation.window, outcome = "cancelled")
                     };
                     if let Some(queued) = source.queued.lock().unwrap().take() {
@@ -246,10 +253,24 @@ impl FileSnapshot {
 
             let result = async {
                 if !self.checkpoints.is_empty() {
-                    inner.bounded("primary.save_production", inner.primary.save_production(self.checkpoints.clone())).await?;
+                    inner
+                        .bounded(
+                            "primary.set_file_production_checkpoints",
+                            inner.primary.set_file_production_checkpoints(self.checkpoints.clone()),
+                        )
+                        .await?;
+                    // Publish Only the Prefix Whose Recovery Checkpoint Was Acknowledged.
+                    let mut state = inner.state.lock().unwrap();
+                    for (checkpoint, source) in self.checkpoints.as_slice().iter().zip(&self.sources) {
+                        if let Some(file) = source.file_id.and_then(|id| state.files.get_mut(&id)) {
+                            file.durable_length = file.durable_length.max(checkpoint.length);
+                        }
+                    }
                 }
                 if !self.receipts.is_empty() {
-                    inner.bounded("primary.save_mutations", inner.primary.save_mutations(self.receipts.clone())).await?;
+                    inner
+                        .bounded("primary.append_mutation_receipts", inner.primary.append_mutation_receipts(self.receipts.clone()))
+                        .await?;
                     inner.state.lock().unwrap().receipts.saved(self.receipts.as_slice());
                 }
                 Ok(())

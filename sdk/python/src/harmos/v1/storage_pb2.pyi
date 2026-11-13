@@ -1,8 +1,6 @@
-import datetime
-
-from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from harmos.v1 import types_pb2 as _types_pb2
+from harmos.v1 import storage_types_pb2 as _storage_types_pb2
 from google.protobuf.internal import containers as _containers
-from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from collections.abc import Iterable as _Iterable, Mapping as _Mapping
@@ -10,1355 +8,297 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class FilePhase(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    PRODUCING: _ClassVar[FilePhase]
-    FINISHED: _ClassVar[FilePhase]
-    ABANDONED: _ClassVar[FilePhase]
+class StorageCreateFileProductionRequest(_message.Message):
+    __slots__ = ("metadata", "mutation")
+    METADATA_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    metadata: _storage_types_pb2.FileMetadata
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, metadata: _Optional[_Union[_storage_types_pb2.FileMetadata, _Mapping]] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
-class CaptureConsistency(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    BOUNDED: _ClassVar[CaptureConsistency]
-    STABLE: _ClassVar[CaptureConsistency]
+class StorageCreateFileProductionResponse(_message.Message):
+    __slots__ = ("production", "receipt")
+    PRODUCTION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    production: _storage_types_pb2.FileProducer
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
-class PayloadEncoding(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    PAYLOAD_ENCODING_UNSPECIFIED: _ClassVar[PayloadEncoding]
-    POSTCARD_V1: _ClassVar[PayloadEncoding]
+class StorageGetFileProductionRequest(_message.Message):
+    __slots__ = ("file",)
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    file: _storage_types_pb2.StagedFile
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.StagedFile, _Mapping]] = ...) -> None: ...
 
-class SchemaCardinality(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    REQUIRED: _ClassVar[SchemaCardinality]
-    OPTIONAL: _ClassVar[SchemaCardinality]
-    REPEATED: _ClassVar[SchemaCardinality]
-    VARIANT: _ClassVar[SchemaCardinality]
+class StorageGetFileProductionResponse(_message.Message):
+    __slots__ = ("production", "writer_generation", "resolved_at", "accepted_length", "durable_length")
+    PRODUCTION_FIELD_NUMBER: _ClassVar[int]
+    WRITER_GENERATION_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    ACCEPTED_LENGTH_FIELD_NUMBER: _ClassVar[int]
+    DURABLE_LENGTH_FIELD_NUMBER: _ClassVar[int]
+    production: _storage_types_pb2.FileProgress
+    writer_generation: int
+    resolved_at: _types_pb2.ReadCut
+    accepted_length: int
+    durable_length: int
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., writer_generation: _Optional[int] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., accepted_length: _Optional[int] = ..., durable_length: _Optional[int] = ...) -> None: ...
 
-class SchemaKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    BOOL: _ClassVar[SchemaKind]
-    UINT32: _ClassVar[SchemaKind]
-    UINT64: _ClassVar[SchemaKind]
-    INT32: _ClassVar[SchemaKind]
-    INT64: _ClassVar[SchemaKind]
-    FLOAT32: _ClassVar[SchemaKind]
-    FLOAT64: _ClassVar[SchemaKind]
-    STRING: _ClassVar[SchemaKind]
-    BYTES: _ClassVar[SchemaKind]
-    MESSAGE: _ClassVar[SchemaKind]
+class StorageAppendFileBytesRequest(_message.Message):
+    __slots__ = ("session", "offset", "data", "mutation")
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    session: _storage_types_pb2.FileSession
+    offset: int
+    data: bytes
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, session: _Optional[_Union[_storage_types_pb2.FileSession, _Mapping]] = ..., offset: _Optional[int] = ..., data: _Optional[bytes] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
-class SchemaForm(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    OBJECT: _ClassVar[SchemaForm]
-    UNIT: _ClassVar[SchemaForm]
-    VALUE: _ClassVar[SchemaForm]
-    TUPLE: _ClassVar[SchemaForm]
-    EXTERNAL: _ClassVar[SchemaForm]
-    INTERNAL: _ClassVar[SchemaForm]
-    ADJACENT: _ClassVar[SchemaForm]
-    UNTAGGED: _ClassVar[SchemaForm]
+class StorageAppendFileBytesResponse(_message.Message):
+    __slots__ = ("production", "receipt")
+    PRODUCTION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    production: _storage_types_pb2.FileProducer
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
-class SchemaOmission(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    OMIT_NONE: _ClassVar[SchemaOmission]
-    OMIT_EMPTY: _ClassVar[SchemaOmission]
+class StorageCreateFileWriterRequest(_message.Message):
+    __slots__ = ("session", "mutation")
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    session: _storage_types_pb2.FileSession
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, session: _Optional[_Union[_storage_types_pb2.FileSession, _Mapping]] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
-class ObjectVersions(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    LATEST: _ClassVar[ObjectVersions]
-    REVISIONS: _ClassVar[ObjectVersions]
+class StorageCreateFileWriterResponse(_message.Message):
+    __slots__ = ("production", "receipt")
+    PRODUCTION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    production: _storage_types_pb2.FileProducer
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProducer, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
-class Compare(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    EQ: _ClassVar[Compare]
-    NE: _ClassVar[Compare]
-    LT: _ClassVar[Compare]
-    LE: _ClassVar[Compare]
-    GT: _ClassVar[Compare]
-    GE: _ClassVar[Compare]
+class StoragePublishFileProductionRequest(_message.Message):
+    __slots__ = ("session", "length", "sha256", "mutation")
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    LENGTH_FIELD_NUMBER: _ClassVar[int]
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    session: _storage_types_pb2.FileSession
+    length: int
+    sha256: bytes
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, session: _Optional[_Union[_storage_types_pb2.FileSession, _Mapping]] = ..., length: _Optional[int] = ..., sha256: _Optional[bytes] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
-class DownsampleAlgorithm(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    DECIMATE: _ClassVar[DownsampleAlgorithm]
-    EXTREMA: _ClassVar[DownsampleAlgorithm]
-    LTTB: _ClassVar[DownsampleAlgorithm]
-    LTTB_LOG: _ClassVar[DownsampleAlgorithm]
+class StoragePublishFileProductionResponse(_message.Message):
+    __slots__ = ("file", "receipt")
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    file: _storage_types_pb2.FileReference
+    receipt: _types_pb2.Receipt
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.FileReference, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
-class ColumnKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    COLUMN_KIND_OBJECTS: _ClassVar[ColumnKind]
-    COLUMN_KIND_RECORDS: _ClassVar[ColumnKind]
-    COLUMN_KIND_STREAM: _ClassVar[ColumnKind]
+class StorageDeleteFileProductionRequest(_message.Message):
+    __slots__ = ("session", "mutation")
+    SESSION_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    session: _storage_types_pb2.FileSession
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, session: _Optional[_Union[_storage_types_pb2.FileSession, _Mapping]] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
-class StorageFailureKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
-    __slots__ = ()
-    STORAGE_FAILURE_UNSPECIFIED: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_UNSUPPORTED: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_CONFLICT: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_EXPIRED: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_NOT_READY: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_GAP: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_EXHAUSTED: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_INVALID: _ClassVar[StorageFailureKind]
-    STORAGE_FAILURE_MISSING_INDEX: _ClassVar[StorageFailureKind]
-PRODUCING: FilePhase
-FINISHED: FilePhase
-ABANDONED: FilePhase
-BOUNDED: CaptureConsistency
-STABLE: CaptureConsistency
-PAYLOAD_ENCODING_UNSPECIFIED: PayloadEncoding
-POSTCARD_V1: PayloadEncoding
-REQUIRED: SchemaCardinality
-OPTIONAL: SchemaCardinality
-REPEATED: SchemaCardinality
-VARIANT: SchemaCardinality
-BOOL: SchemaKind
-UINT32: SchemaKind
-UINT64: SchemaKind
-INT32: SchemaKind
-INT64: SchemaKind
-FLOAT32: SchemaKind
-FLOAT64: SchemaKind
-STRING: SchemaKind
-BYTES: SchemaKind
-MESSAGE: SchemaKind
-OBJECT: SchemaForm
-UNIT: SchemaForm
-VALUE: SchemaForm
-TUPLE: SchemaForm
-EXTERNAL: SchemaForm
-INTERNAL: SchemaForm
-ADJACENT: SchemaForm
-UNTAGGED: SchemaForm
-OMIT_NONE: SchemaOmission
-OMIT_EMPTY: SchemaOmission
-LATEST: ObjectVersions
-REVISIONS: ObjectVersions
-EQ: Compare
-NE: Compare
-LT: Compare
-LE: Compare
-GT: Compare
-GE: Compare
-DECIMATE: DownsampleAlgorithm
-EXTREMA: DownsampleAlgorithm
-LTTB: DownsampleAlgorithm
-LTTB_LOG: DownsampleAlgorithm
-COLUMN_KIND_OBJECTS: ColumnKind
-COLUMN_KIND_RECORDS: ColumnKind
-COLUMN_KIND_STREAM: ColumnKind
-STORAGE_FAILURE_UNSPECIFIED: StorageFailureKind
-STORAGE_FAILURE_UNSUPPORTED: StorageFailureKind
-STORAGE_FAILURE_CONFLICT: StorageFailureKind
-STORAGE_FAILURE_EXPIRED: StorageFailureKind
-STORAGE_FAILURE_NOT_READY: StorageFailureKind
-STORAGE_FAILURE_GAP: StorageFailureKind
-STORAGE_FAILURE_EXHAUSTED: StorageFailureKind
-STORAGE_FAILURE_INVALID: StorageFailureKind
-STORAGE_FAILURE_MISSING_INDEX: StorageFailureKind
+class StorageDeleteFileProductionResponse(_message.Message):
+    __slots__ = ("production", "receipt")
+    PRODUCTION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    production: _storage_types_pb2.FileProgress
+    receipt: _types_pb2.Receipt
+    def __init__(self, production: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
-class StoreHistory(_message.Message):
-    __slots__ = ("store", "epoch")
-    STORE_FIELD_NUMBER: _ClassVar[int]
-    EPOCH_FIELD_NUMBER: _ClassVar[int]
-    store: str
-    epoch: str
-    def __init__(self, store: _Optional[str] = ..., epoch: _Optional[str] = ...) -> None: ...
+class StorageGetFileBytesRequest(_message.Message):
+    __slots__ = ("file", "offset", "max_bytes", "at")
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    MAX_BYTES_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    file: _storage_types_pb2.FileReference
+    offset: int
+    max_bytes: int
+    at: _types_pb2.ReadCut
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.FileReference, _Mapping]] = ..., offset: _Optional[int] = ..., max_bytes: _Optional[int] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
-class StorageCursor(_message.Message):
-    __slots__ = ("history", "sequence")
-    HISTORY_FIELD_NUMBER: _ClassVar[int]
-    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
-    history: StoreHistory
-    sequence: int
-    def __init__(self, history: _Optional[_Union[StoreHistory, _Mapping]] = ..., sequence: _Optional[int] = ...) -> None: ...
+class StorageGetFileBytesResponse(_message.Message):
+    __slots__ = ("data", "total_length", "sha256", "resolved_at")
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_LENGTH_FIELD_NUMBER: _ClassVar[int]
+    SHA256_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    data: bytes
+    total_length: int
+    sha256: bytes
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, data: _Optional[bytes] = ..., total_length: _Optional[int] = ..., sha256: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
-class MutationWindow(_message.Message):
-    __slots__ = ("history", "id", "expires_at")
-    HISTORY_FIELD_NUMBER: _ClassVar[int]
-    ID_FIELD_NUMBER: _ClassVar[int]
-    EXPIRES_AT_FIELD_NUMBER: _ClassVar[int]
-    history: StoreHistory
-    id: str
-    expires_at: _timestamp_pb2.Timestamp
-    def __init__(self, history: _Optional[_Union[StoreHistory, _Mapping]] = ..., id: _Optional[str] = ..., expires_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
-
-class StorageStatus(_message.Message):
+class StorageCapabilitiesRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class StorageInfo(_message.Message):
-    __slots__ = ("accepted", "saved", "mutations", "file_batch_bytes")
-    ACCEPTED_FIELD_NUMBER: _ClassVar[int]
-    SAVED_FIELD_NUMBER: _ClassVar[int]
+class StorageCapabilitiesResponse(_message.Message):
+    __slots__ = ("capabilities", "mutations", "file_batch_bytes")
+    CAPABILITIES_FIELD_NUMBER: _ClassVar[int]
     MUTATIONS_FIELD_NUMBER: _ClassVar[int]
     FILE_BATCH_BYTES_FIELD_NUMBER: _ClassVar[int]
-    accepted: StorageCursor
-    saved: StorageCursor
-    mutations: MutationWindow
+    capabilities: _storage_types_pb2.StorageCapabilities
+    mutations: _storage_types_pb2.MutationWindow
     file_batch_bytes: int
-    def __init__(self, accepted: _Optional[_Union[StorageCursor, _Mapping]] = ..., saved: _Optional[_Union[StorageCursor, _Mapping]] = ..., mutations: _Optional[_Union[MutationWindow, _Mapping]] = ..., file_batch_bytes: _Optional[int] = ...) -> None: ...
+    def __init__(self, capabilities: _Optional[_Union[_storage_types_pb2.StorageCapabilities, _Mapping]] = ..., mutations: _Optional[_Union[_storage_types_pb2.MutationWindow, _Mapping]] = ..., file_batch_bytes: _Optional[int] = ...) -> None: ...
 
-class MutationId(_message.Message):
-    __slots__ = ("window", "key")
-    WINDOW_FIELD_NUMBER: _ClassVar[int]
-    KEY_FIELD_NUMBER: _ClassVar[int]
-    window: str
-    key: str
-    def __init__(self, window: _Optional[str] = ..., key: _Optional[str] = ...) -> None: ...
-
-class FileMetadata(_message.Message):
-    __slots__ = ("id", "scope", "media_type", "expected_length", "expected_sha256")
-    ID_FIELD_NUMBER: _ClassVar[int]
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    MEDIA_TYPE_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_LENGTH_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_SHA256_FIELD_NUMBER: _ClassVar[int]
-    id: str
-    scope: str
-    media_type: str
-    expected_length: int
-    expected_sha256: bytes
-    def __init__(self, id: _Optional[str] = ..., scope: _Optional[str] = ..., media_type: _Optional[str] = ..., expected_length: _Optional[int] = ..., expected_sha256: _Optional[bytes] = ...) -> None: ...
-
-class StagedFile(_message.Message):
-    __slots__ = ("history", "id")
-    HISTORY_FIELD_NUMBER: _ClassVar[int]
-    ID_FIELD_NUMBER: _ClassVar[int]
-    history: StoreHistory
-    id: str
-    def __init__(self, history: _Optional[_Union[StoreHistory, _Mapping]] = ..., id: _Optional[str] = ...) -> None: ...
-
-class FileSession(_message.Message):
-    __slots__ = ("history", "id", "generation")
-    HISTORY_FIELD_NUMBER: _ClassVar[int]
-    ID_FIELD_NUMBER: _ClassVar[int]
-    GENERATION_FIELD_NUMBER: _ClassVar[int]
-    history: StoreHistory
-    id: str
-    generation: int
-    def __init__(self, history: _Optional[_Union[StoreHistory, _Mapping]] = ..., id: _Optional[str] = ..., generation: _Optional[int] = ...) -> None: ...
-
-class FileProducer(_message.Message):
-    __slots__ = ("session", "length")
-    SESSION_FIELD_NUMBER: _ClassVar[int]
-    LENGTH_FIELD_NUMBER: _ClassVar[int]
-    session: FileSession
-    length: int
-    def __init__(self, session: _Optional[_Union[FileSession, _Mapping]] = ..., length: _Optional[int] = ...) -> None: ...
-
-class FileReference(_message.Message):
-    __slots__ = ("position", "metadata", "length", "sha256")
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    METADATA_FIELD_NUMBER: _ClassVar[int]
-    LENGTH_FIELD_NUMBER: _ClassVar[int]
-    SHA256_FIELD_NUMBER: _ClassVar[int]
-    position: StorageCursor
-    metadata: FileMetadata
-    length: int
-    sha256: bytes
-    def __init__(self, position: _Optional[_Union[StorageCursor, _Mapping]] = ..., metadata: _Optional[_Union[FileMetadata, _Mapping]] = ..., length: _Optional[int] = ..., sha256: _Optional[bytes] = ...) -> None: ...
-
-class FileProgress(_message.Message):
-    __slots__ = ("length", "phase")
-    LENGTH_FIELD_NUMBER: _ClassVar[int]
-    PHASE_FIELD_NUMBER: _ClassVar[int]
-    length: int
-    phase: FilePhase
-    def __init__(self, length: _Optional[int] = ..., phase: _Optional[_Union[FilePhase, str]] = ...) -> None: ...
-
-class CreateFile(_message.Message):
-    __slots__ = ("mutation", "metadata")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    METADATA_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    metadata: FileMetadata
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., metadata: _Optional[_Union[FileMetadata, _Mapping]] = ...) -> None: ...
-
-class AppendFile(_message.Message):
-    __slots__ = ("mutation", "session", "offset", "bytes")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    SESSION_FIELD_NUMBER: _ClassVar[int]
-    OFFSET_FIELD_NUMBER: _ClassVar[int]
-    BYTES_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    session: FileSession
-    offset: int
-    bytes: bytes
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., session: _Optional[_Union[FileSession, _Mapping]] = ..., offset: _Optional[int] = ..., bytes: _Optional[bytes] = ...) -> None: ...
-
-class ResumeFile(_message.Message):
-    __slots__ = ("mutation", "session")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    SESSION_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    session: FileSession
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., session: _Optional[_Union[FileSession, _Mapping]] = ...) -> None: ...
-
-class FinishFile(_message.Message):
-    __slots__ = ("mutation", "session")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    SESSION_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    session: FileSession
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., session: _Optional[_Union[FileSession, _Mapping]] = ...) -> None: ...
-
-class AbandonFile(_message.Message):
-    __slots__ = ("mutation", "session")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    SESSION_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    session: FileSession
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., session: _Optional[_Union[FileSession, _Mapping]] = ...) -> None: ...
-
-class DeleteFile(_message.Message):
-    __slots__ = ("mutation", "file")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    FILE_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    file: StagedFile
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., file: _Optional[_Union[StagedFile, _Mapping]] = ...) -> None: ...
-
-class DirectoryRule(_message.Message):
-    __slots__ = ("pattern", "include")
-    PATTERN_FIELD_NUMBER: _ClassVar[int]
-    INCLUDE_FIELD_NUMBER: _ClassVar[int]
-    pattern: str
-    include: bool
-    def __init__(self, pattern: _Optional[str] = ..., include: _Optional[bool] = ...) -> None: ...
-
-class DirectorySelection(_message.Message):
-    __slots__ = ("root", "recursive", "rules")
-    ROOT_FIELD_NUMBER: _ClassVar[int]
-    RECURSIVE_FIELD_NUMBER: _ClassVar[int]
-    RULES_FIELD_NUMBER: _ClassVar[int]
-    root: str
-    recursive: bool
-    rules: _containers.RepeatedCompositeFieldContainer[DirectoryRule]
-    def __init__(self, root: _Optional[str] = ..., recursive: _Optional[bool] = ..., rules: _Optional[_Iterable[_Union[DirectoryRule, _Mapping]]] = ...) -> None: ...
-
-class DirectoryEntry(_message.Message):
-    __slots__ = ("path", "directory", "length")
-    PATH_FIELD_NUMBER: _ClassVar[int]
-    DIRECTORY_FIELD_NUMBER: _ClassVar[int]
-    LENGTH_FIELD_NUMBER: _ClassVar[int]
-    path: str
-    directory: bool
-    length: int
-    def __init__(self, path: _Optional[str] = ..., directory: _Optional[bool] = ..., length: _Optional[int] = ...) -> None: ...
-
-class DirectoryCompletion(_message.Message):
-    __slots__ = ("entries",)
-    ENTRIES_FIELD_NUMBER: _ClassVar[int]
-    entries: int
-    def __init__(self, entries: _Optional[int] = ...) -> None: ...
-
-class DirectoryRename(_message.Message):
-    __slots__ = ("to",)
-    FROM_FIELD_NUMBER: _ClassVar[int]
-    TO_FIELD_NUMBER: _ClassVar[int]
-    to: str
-    def __init__(self, to: _Optional[str] = ..., **kwargs) -> None: ...
-
-class Empty(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class DirectoryEvent(_message.Message):
-    __slots__ = ("existing", "initial_scan_complete", "created", "modified", "removed", "renamed", "rescan_required")
-    EXISTING_FIELD_NUMBER: _ClassVar[int]
-    INITIAL_SCAN_COMPLETE_FIELD_NUMBER: _ClassVar[int]
-    CREATED_FIELD_NUMBER: _ClassVar[int]
-    MODIFIED_FIELD_NUMBER: _ClassVar[int]
-    REMOVED_FIELD_NUMBER: _ClassVar[int]
-    RENAMED_FIELD_NUMBER: _ClassVar[int]
-    RESCAN_REQUIRED_FIELD_NUMBER: _ClassVar[int]
-    existing: DirectoryEntry
-    initial_scan_complete: Empty
-    created: DirectoryEntry
-    modified: DirectoryEntry
-    removed: str
-    renamed: DirectoryRename
-    rescan_required: Empty
-    def __init__(self, existing: _Optional[_Union[DirectoryEntry, _Mapping]] = ..., initial_scan_complete: _Optional[_Union[Empty, _Mapping]] = ..., created: _Optional[_Union[DirectoryEntry, _Mapping]] = ..., modified: _Optional[_Union[DirectoryEntry, _Mapping]] = ..., removed: _Optional[str] = ..., renamed: _Optional[_Union[DirectoryRename, _Mapping]] = ..., rescan_required: _Optional[_Union[Empty, _Mapping]] = ...) -> None: ...
-
-class ListDirectory(_message.Message):
-    __slots__ = ("selection",)
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    selection: DirectorySelection
-    def __init__(self, selection: _Optional[_Union[DirectorySelection, _Mapping]] = ...) -> None: ...
-
-class WatchDirectory(_message.Message):
-    __slots__ = ("selection", "include_existing")
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    INCLUDE_EXISTING_FIELD_NUMBER: _ClassVar[int]
-    selection: DirectorySelection
-    include_existing: bool
-    def __init__(self, selection: _Optional[_Union[DirectorySelection, _Mapping]] = ..., include_existing: _Optional[bool] = ...) -> None: ...
-
-class FileSource(_message.Message):
-    __slots__ = ("stored", "local")
-    STORED_FIELD_NUMBER: _ClassVar[int]
-    LOCAL_FIELD_NUMBER: _ClassVar[int]
-    stored: FileReference
-    local: str
-    def __init__(self, stored: _Optional[_Union[FileReference, _Mapping]] = ..., local: _Optional[str] = ...) -> None: ...
-
-class ByteRange(_message.Message):
-    __slots__ = ("offset", "limit")
-    OFFSET_FIELD_NUMBER: _ClassVar[int]
-    LIMIT_FIELD_NUMBER: _ClassVar[int]
-    offset: int
-    limit: int
-    def __init__(self, offset: _Optional[int] = ..., limit: _Optional[int] = ...) -> None: ...
-
-class FileBatch(_message.Message):
-    __slots__ = ("offset", "bytes")
-    OFFSET_FIELD_NUMBER: _ClassVar[int]
-    BYTES_FIELD_NUMBER: _ClassVar[int]
-    offset: int
-    bytes: bytes
-    def __init__(self, offset: _Optional[int] = ..., bytes: _Optional[bytes] = ...) -> None: ...
-
-class FileCompletion(_message.Message):
-    __slots__ = ("bytes",)
-    BYTES_FIELD_NUMBER: _ClassVar[int]
-    bytes: int
-    def __init__(self, bytes: _Optional[int] = ...) -> None: ...
-
-class FileHash(_message.Message):
-    __slots__ = ("bytes_read", "sha256")
-    BYTES_READ_FIELD_NUMBER: _ClassVar[int]
-    SHA256_FIELD_NUMBER: _ClassVar[int]
-    bytes_read: int
-    sha256: bytes
-    def __init__(self, bytes_read: _Optional[int] = ..., sha256: _Optional[bytes] = ...) -> None: ...
-
-class FollowStart(_message.Message):
-    __slots__ = ("beginning", "end", "at")
-    BEGINNING_FIELD_NUMBER: _ClassVar[int]
-    END_FIELD_NUMBER: _ClassVar[int]
-    AT_FIELD_NUMBER: _ClassVar[int]
-    beginning: Empty
-    end: Empty
-    at: int
-    def __init__(self, beginning: _Optional[_Union[Empty, _Mapping]] = ..., end: _Optional[_Union[Empty, _Mapping]] = ..., at: _Optional[int] = ...) -> None: ...
-
-class FileEvent(_message.Message):
-    __slots__ = ("data", "truncated", "replaced")
-    DATA_FIELD_NUMBER: _ClassVar[int]
-    TRUNCATED_FIELD_NUMBER: _ClassVar[int]
-    REPLACED_FIELD_NUMBER: _ClassVar[int]
-    data: FileBatch
-    truncated: int
-    replaced: Empty
-    def __init__(self, data: _Optional[_Union[FileBatch, _Mapping]] = ..., truncated: _Optional[int] = ..., replaced: _Optional[_Union[Empty, _Mapping]] = ...) -> None: ...
-
-class ReadFile(_message.Message):
-    __slots__ = ("source", "range")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    RANGE_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    range: ByteRange
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ...) -> None: ...
-
-class HashFile(_message.Message):
-    __slots__ = ("source", "range")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    RANGE_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    range: ByteRange
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ...) -> None: ...
-
-class CaptureFile(_message.Message):
-    __slots__ = ("source", "range", "metadata", "consistency")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    RANGE_FIELD_NUMBER: _ClassVar[int]
-    METADATA_FIELD_NUMBER: _ClassVar[int]
-    CONSISTENCY_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    range: ByteRange
-    metadata: FileMetadata
-    consistency: CaptureConsistency
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ..., metadata: _Optional[_Union[FileMetadata, _Mapping]] = ..., consistency: _Optional[_Union[CaptureConsistency, str]] = ...) -> None: ...
-
-class FollowFile(_message.Message):
-    __slots__ = ("source", "start")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    START_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    start: FollowStart
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., start: _Optional[_Union[FollowStart, _Mapping]] = ...) -> None: ...
-
-class FollowProduction(_message.Message):
-    __slots__ = ("file", "offset")
-    FILE_FIELD_NUMBER: _ClassVar[int]
-    OFFSET_FIELD_NUMBER: _ClassVar[int]
-    file: StagedFile
-    offset: int
-    def __init__(self, file: _Optional[_Union[StagedFile, _Mapping]] = ..., offset: _Optional[int] = ...) -> None: ...
-
-class SchemaKey(_message.Message):
-    __slots__ = ("id", "version", "payload_encoding")
-    ID_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    PAYLOAD_ENCODING_FIELD_NUMBER: _ClassVar[int]
-    id: str
-    version: int
-    payload_encoding: PayloadEncoding
-    def __init__(self, id: _Optional[str] = ..., version: _Optional[int] = ..., payload_encoding: _Optional[_Union[PayloadEncoding, str]] = ...) -> None: ...
-
-class SchemaField(_message.Message):
-    __slots__ = ("name", "tag", "kind", "cardinality", "definition")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    TAG_FIELD_NUMBER: _ClassVar[int]
-    KIND_FIELD_NUMBER: _ClassVar[int]
-    CARDINALITY_FIELD_NUMBER: _ClassVar[int]
-    DEFINITION_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    tag: int
-    kind: SchemaKind
-    cardinality: SchemaCardinality
-    definition: int
-    def __init__(self, name: _Optional[str] = ..., tag: _Optional[int] = ..., kind: _Optional[_Union[SchemaKind, str]] = ..., cardinality: _Optional[_Union[SchemaCardinality, str]] = ..., definition: _Optional[int] = ...) -> None: ...
-
-class SchemaDefinition(_message.Message):
-    __slots__ = ("fields",)
-    FIELDS_FIELD_NUMBER: _ClassVar[int]
-    fields: _containers.RepeatedCompositeFieldContainer[SchemaField]
-    def __init__(self, fields: _Optional[_Iterable[_Union[SchemaField, _Mapping]]] = ...) -> None: ...
-
-class SchemaRepresentation(_message.Message):
-    __slots__ = ("definition", "form", "tag", "content", "omissions", "maps")
-    class OmissionsEntry(_message.Message):
-        __slots__ = ("key", "value")
-        KEY_FIELD_NUMBER: _ClassVar[int]
-        VALUE_FIELD_NUMBER: _ClassVar[int]
-        key: str
-        value: SchemaOmission
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[SchemaOmission, str]] = ...) -> None: ...
-    DEFINITION_FIELD_NUMBER: _ClassVar[int]
-    FORM_FIELD_NUMBER: _ClassVar[int]
-    TAG_FIELD_NUMBER: _ClassVar[int]
-    CONTENT_FIELD_NUMBER: _ClassVar[int]
-    OMISSIONS_FIELD_NUMBER: _ClassVar[int]
-    MAPS_FIELD_NUMBER: _ClassVar[int]
-    definition: int
-    form: SchemaForm
-    tag: str
-    content: str
-    omissions: _containers.ScalarMap[str, SchemaOmission]
-    maps: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, definition: _Optional[int] = ..., form: _Optional[_Union[SchemaForm, str]] = ..., tag: _Optional[str] = ..., content: _Optional[str] = ..., omissions: _Optional[_Mapping[str, SchemaOmission]] = ..., maps: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class SchemaGraph(_message.Message):
-    __slots__ = ("root", "definitions", "representations")
-    ROOT_FIELD_NUMBER: _ClassVar[int]
-    DEFINITIONS_FIELD_NUMBER: _ClassVar[int]
-    REPRESENTATIONS_FIELD_NUMBER: _ClassVar[int]
-    root: int
-    definitions: _containers.RepeatedCompositeFieldContainer[SchemaDefinition]
-    representations: _containers.RepeatedCompositeFieldContainer[SchemaRepresentation]
-    def __init__(self, root: _Optional[int] = ..., definitions: _Optional[_Iterable[_Union[SchemaDefinition, _Mapping]]] = ..., representations: _Optional[_Iterable[_Union[SchemaRepresentation, _Mapping]]] = ...) -> None: ...
-
-class SchemaInput(_message.Message):
-    __slots__ = ("key", "graph")
-    KEY_FIELD_NUMBER: _ClassVar[int]
-    GRAPH_FIELD_NUMBER: _ClassVar[int]
-    key: SchemaKey
-    graph: SchemaGraph
-    def __init__(self, key: _Optional[_Union[SchemaKey, _Mapping]] = ..., graph: _Optional[_Union[SchemaGraph, _Mapping]] = ...) -> None: ...
-
-class WriteSchema(_message.Message):
-    __slots__ = ("mutation", "schema")
-    MUTATION_FIELD_NUMBER: _ClassVar[int]
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    schema: SchemaInput
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., schema: _Optional[_Union[SchemaInput, _Mapping]] = ...) -> None: ...
-
-class RowSlice(_message.Message):
-    __slots__ = ("offset", "limit")
-    OFFSET_FIELD_NUMBER: _ClassVar[int]
-    LIMIT_FIELD_NUMBER: _ClassVar[int]
-    offset: int
-    limit: int
-    def __init__(self, offset: _Optional[int] = ..., limit: _Optional[int] = ...) -> None: ...
-
-class ObjectSelection(_message.Message):
-    __slots__ = ("schema", "key", "versions")
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    KEY_FIELD_NUMBER: _ClassVar[int]
-    VERSIONS_FIELD_NUMBER: _ClassVar[int]
-    schema: SchemaKey
-    key: str
-    versions: ObjectVersions
-    def __init__(self, schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., key: _Optional[str] = ..., versions: _Optional[_Union[ObjectVersions, str]] = ...) -> None: ...
-
-class RecordSelection(_message.Message):
-    __slots__ = ("schema", "scope", "item", "source_start", "source_end")
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    ITEM_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_START_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_END_FIELD_NUMBER: _ClassVar[int]
-    schema: SchemaKey
-    scope: str
-    item: str
-    source_start: _timestamp_pb2.Timestamp
-    source_end: _timestamp_pb2.Timestamp
-    def __init__(self, schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., scope: _Optional[str] = ..., item: _Optional[str] = ..., source_start: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., source_end: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
-
-class StreamSelection(_message.Message):
-    __slots__ = ("schema", "scope", "item", "stream", "source_start", "source_end", "after")
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    ITEM_FIELD_NUMBER: _ClassVar[int]
-    STREAM_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_START_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_END_FIELD_NUMBER: _ClassVar[int]
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    schema: SchemaKey
-    scope: str
-    item: str
-    stream: str
-    source_start: _timestamp_pb2.Timestamp
-    source_end: _timestamp_pb2.Timestamp
-    after: int
-    def __init__(self, schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., scope: _Optional[str] = ..., item: _Optional[str] = ..., stream: _Optional[str] = ..., source_start: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., source_end: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., after: _Optional[int] = ...) -> None: ...
-
-class SchemaSelection(_message.Message):
-    __slots__ = ("schema",)
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    schema: SchemaKey
-    def __init__(self, schema: _Optional[_Union[SchemaKey, _Mapping]] = ...) -> None: ...
-
-class FileSelection(_message.Message):
-    __slots__ = ("scope", "item")
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    ITEM_FIELD_NUMBER: _ClassVar[int]
-    scope: str
-    item: str
-    def __init__(self, scope: _Optional[str] = ..., item: _Optional[str] = ...) -> None: ...
-
-class QuerySource(_message.Message):
-    __slots__ = ("objects", "records", "stream", "schemas", "files")
-    OBJECTS_FIELD_NUMBER: _ClassVar[int]
-    RECORDS_FIELD_NUMBER: _ClassVar[int]
-    STREAM_FIELD_NUMBER: _ClassVar[int]
-    SCHEMAS_FIELD_NUMBER: _ClassVar[int]
-    FILES_FIELD_NUMBER: _ClassVar[int]
-    objects: ObjectSelection
-    records: RecordSelection
-    stream: StreamSelection
-    schemas: SchemaSelection
-    files: FileSelection
-    def __init__(self, objects: _Optional[_Union[ObjectSelection, _Mapping]] = ..., records: _Optional[_Union[RecordSelection, _Mapping]] = ..., stream: _Optional[_Union[StreamSelection, _Mapping]] = ..., schemas: _Optional[_Union[SchemaSelection, _Mapping]] = ..., files: _Optional[_Union[FileSelection, _Mapping]] = ...) -> None: ...
-
-class QueryCompletion(_message.Message):
-    __slots__ = ("at", "rows")
-    AT_FIELD_NUMBER: _ClassVar[int]
-    ROWS_FIELD_NUMBER: _ClassVar[int]
-    at: StorageCursor
-    rows: int
-    def __init__(self, at: _Optional[_Union[StorageCursor, _Mapping]] = ..., rows: _Optional[int] = ...) -> None: ...
-
-class QueryOutput(_message.Message):
-    __slots__ = ("schema", "batch")
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    BATCH_FIELD_NUMBER: _ClassVar[int]
-    schema: bytes
-    batch: bytes
-    def __init__(self, schema: _Optional[bytes] = ..., batch: _Optional[bytes] = ...) -> None: ...
-
-class FieldPath(_message.Message):
-    __slots__ = ("fields",)
-    FIELDS_FIELD_NUMBER: _ClassVar[int]
-    fields: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, fields: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class ExactNumber(_message.Message):
-    __slots__ = ("negative", "numerator", "denominator")
-    NEGATIVE_FIELD_NUMBER: _ClassVar[int]
-    NUMERATOR_FIELD_NUMBER: _ClassVar[int]
-    DENOMINATOR_FIELD_NUMBER: _ClassVar[int]
-    negative: bool
-    numerator: str
-    denominator: str
-    def __init__(self, negative: _Optional[bool] = ..., numerator: _Optional[str] = ..., denominator: _Optional[str] = ...) -> None: ...
-
-class ScalarValue(_message.Message):
-    __slots__ = ("missing", "null", "boolean", "signed", "unsigned", "floating", "text", "datetime", "exact")
-    MISSING_FIELD_NUMBER: _ClassVar[int]
-    NULL_FIELD_NUMBER: _ClassVar[int]
-    BOOLEAN_FIELD_NUMBER: _ClassVar[int]
-    SIGNED_FIELD_NUMBER: _ClassVar[int]
-    UNSIGNED_FIELD_NUMBER: _ClassVar[int]
-    FLOATING_FIELD_NUMBER: _ClassVar[int]
-    TEXT_FIELD_NUMBER: _ClassVar[int]
-    DATETIME_FIELD_NUMBER: _ClassVar[int]
-    EXACT_FIELD_NUMBER: _ClassVar[int]
-    missing: Empty
-    null: Empty
-    boolean: bool
-    signed: int
-    unsigned: int
-    floating: float
-    text: str
-    datetime: str
-    exact: ExactNumber
-    def __init__(self, missing: _Optional[_Union[Empty, _Mapping]] = ..., null: _Optional[_Union[Empty, _Mapping]] = ..., boolean: _Optional[bool] = ..., signed: _Optional[int] = ..., unsigned: _Optional[int] = ..., floating: _Optional[float] = ..., text: _Optional[str] = ..., datetime: _Optional[str] = ..., exact: _Optional[_Union[ExactNumber, _Mapping]] = ...) -> None: ...
-
-class Comparison(_message.Message):
-    __slots__ = ("op", "value")
-    OP_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    op: Compare
-    value: ScalarValue
-    def __init__(self, op: _Optional[_Union[Compare, str]] = ..., value: _Optional[_Union[ScalarValue, _Mapping]] = ...) -> None: ...
-
-class ScalarValues(_message.Message):
-    __slots__ = ("values",)
-    VALUES_FIELD_NUMBER: _ClassVar[int]
-    values: _containers.RepeatedCompositeFieldContainer[ScalarValue]
-    def __init__(self, values: _Optional[_Iterable[_Union[ScalarValue, _Mapping]]] = ...) -> None: ...
-
-class Condition(_message.Message):
-    __slots__ = ("compare", "in_values", "is_null")
-    COMPARE_FIELD_NUMBER: _ClassVar[int]
-    IN_VALUES_FIELD_NUMBER: _ClassVar[int]
-    IS_NULL_FIELD_NUMBER: _ClassVar[int]
-    compare: Comparison
-    in_values: ScalarValues
-    is_null: Empty
-    def __init__(self, compare: _Optional[_Union[Comparison, _Mapping]] = ..., in_values: _Optional[_Union[ScalarValues, _Mapping]] = ..., is_null: _Optional[_Union[Empty, _Mapping]] = ...) -> None: ...
-
-class Term(_message.Message):
-    __slots__ = ("field", "condition", "negate")
-    FIELD_FIELD_NUMBER: _ClassVar[int]
-    CONDITION_FIELD_NUMBER: _ClassVar[int]
-    NEGATE_FIELD_NUMBER: _ClassVar[int]
-    field: FieldPath
-    condition: Condition
-    negate: bool
-    def __init__(self, field: _Optional[_Union[FieldPath, _Mapping]] = ..., condition: _Optional[_Union[Condition, _Mapping]] = ..., negate: _Optional[bool] = ...) -> None: ...
-
-class Clause(_message.Message):
-    __slots__ = ("terms",)
-    TERMS_FIELD_NUMBER: _ClassVar[int]
-    terms: _containers.RepeatedCompositeFieldContainer[Term]
-    def __init__(self, terms: _Optional[_Iterable[_Union[Term, _Mapping]]] = ...) -> None: ...
-
-class Filter(_message.Message):
-    __slots__ = ("clauses",)
-    CLAUSES_FIELD_NUMBER: _ClassVar[int]
-    clauses: _containers.RepeatedCompositeFieldContainer[Clause]
-    def __init__(self, clauses: _Optional[_Iterable[_Union[Clause, _Mapping]]] = ...) -> None: ...
-
-class Projection(_message.Message):
-    __slots__ = ("field", "name")
-    FIELD_FIELD_NUMBER: _ClassVar[int]
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    field: FieldPath
-    name: str
-    def __init__(self, field: _Optional[_Union[FieldPath, _Mapping]] = ..., name: _Optional[str] = ...) -> None: ...
-
-class Project(_message.Message):
-    __slots__ = ("fields",)
-    FIELDS_FIELD_NUMBER: _ClassVar[int]
-    fields: _containers.RepeatedCompositeFieldContainer[Projection]
-    def __init__(self, fields: _Optional[_Iterable[_Union[Projection, _Mapping]]] = ...) -> None: ...
-
-class Statistic(_message.Message):
-    __slots__ = ("count", "sum", "mean", "median", "min", "max", "rms", "std", "percentile")
-    COUNT_FIELD_NUMBER: _ClassVar[int]
-    SUM_FIELD_NUMBER: _ClassVar[int]
-    MEAN_FIELD_NUMBER: _ClassVar[int]
-    MEDIAN_FIELD_NUMBER: _ClassVar[int]
-    MIN_FIELD_NUMBER: _ClassVar[int]
-    MAX_FIELD_NUMBER: _ClassVar[int]
-    RMS_FIELD_NUMBER: _ClassVar[int]
-    STD_FIELD_NUMBER: _ClassVar[int]
-    PERCENTILE_FIELD_NUMBER: _ClassVar[int]
-    count: Empty
-    sum: Empty
-    mean: Empty
-    median: Empty
-    min: Empty
-    max: Empty
-    rms: Empty
-    std: Empty
-    percentile: int
-    def __init__(self, count: _Optional[_Union[Empty, _Mapping]] = ..., sum: _Optional[_Union[Empty, _Mapping]] = ..., mean: _Optional[_Union[Empty, _Mapping]] = ..., median: _Optional[_Union[Empty, _Mapping]] = ..., min: _Optional[_Union[Empty, _Mapping]] = ..., max: _Optional[_Union[Empty, _Mapping]] = ..., rms: _Optional[_Union[Empty, _Mapping]] = ..., std: _Optional[_Union[Empty, _Mapping]] = ..., percentile: _Optional[int] = ...) -> None: ...
-
-class Measure(_message.Message):
-    __slots__ = ("field", "statistic", "name")
-    FIELD_FIELD_NUMBER: _ClassVar[int]
-    STATISTIC_FIELD_NUMBER: _ClassVar[int]
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    field: FieldPath
-    statistic: Statistic
-    name: str
-    def __init__(self, field: _Optional[_Union[FieldPath, _Mapping]] = ..., statistic: _Optional[_Union[Statistic, _Mapping]] = ..., name: _Optional[str] = ...) -> None: ...
-
-class Aggregate(_message.Message):
-    __slots__ = ("groups", "measures")
-    GROUPS_FIELD_NUMBER: _ClassVar[int]
-    MEASURES_FIELD_NUMBER: _ClassVar[int]
-    groups: _containers.RepeatedCompositeFieldContainer[Projection]
-    measures: _containers.RepeatedCompositeFieldContainer[Measure]
-    def __init__(self, groups: _Optional[_Iterable[_Union[Projection, _Mapping]]] = ..., measures: _Optional[_Iterable[_Union[Measure, _Mapping]]] = ...) -> None: ...
-
-class Histogram(_message.Message):
-    __slots__ = ("field", "edges")
-    FIELD_FIELD_NUMBER: _ClassVar[int]
-    EDGES_FIELD_NUMBER: _ClassVar[int]
-    field: FieldPath
-    edges: _containers.RepeatedScalarFieldContainer[float]
-    def __init__(self, field: _Optional[_Union[FieldPath, _Mapping]] = ..., edges: _Optional[_Iterable[float]] = ...) -> None: ...
-
-class Downsample(_message.Message):
-    __slots__ = ("max_rows", "algorithm", "value", "axis")
-    MAX_ROWS_FIELD_NUMBER: _ClassVar[int]
-    ALGORITHM_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    AXIS_FIELD_NUMBER: _ClassVar[int]
-    max_rows: int
-    algorithm: DownsampleAlgorithm
-    value: FieldPath
-    axis: FieldPath
-    def __init__(self, max_rows: _Optional[int] = ..., algorithm: _Optional[_Union[DownsampleAlgorithm, str]] = ..., value: _Optional[_Union[FieldPath, _Mapping]] = ..., axis: _Optional[_Union[FieldPath, _Mapping]] = ...) -> None: ...
-
-class SortKey(_message.Message):
-    __slots__ = ("field", "descending", "nulls_first")
-    FIELD_FIELD_NUMBER: _ClassVar[int]
-    DESCENDING_FIELD_NUMBER: _ClassVar[int]
-    NULLS_FIRST_FIELD_NUMBER: _ClassVar[int]
-    field: FieldPath
-    descending: bool
-    nulls_first: bool
-    def __init__(self, field: _Optional[_Union[FieldPath, _Mapping]] = ..., descending: _Optional[bool] = ..., nulls_first: _Optional[bool] = ...) -> None: ...
-
-class Sort(_message.Message):
-    __slots__ = ("keys",)
-    KEYS_FIELD_NUMBER: _ClassVar[int]
-    keys: _containers.RepeatedCompositeFieldContainer[SortKey]
-    def __init__(self, keys: _Optional[_Iterable[_Union[SortKey, _Mapping]]] = ...) -> None: ...
-
-class Transform(_message.Message):
-    __slots__ = ("filter", "project", "aggregate", "histogram", "downsample", "sort", "time_buckets")
-    FILTER_FIELD_NUMBER: _ClassVar[int]
-    PROJECT_FIELD_NUMBER: _ClassVar[int]
-    AGGREGATE_FIELD_NUMBER: _ClassVar[int]
-    HISTOGRAM_FIELD_NUMBER: _ClassVar[int]
-    DOWNSAMPLE_FIELD_NUMBER: _ClassVar[int]
-    SORT_FIELD_NUMBER: _ClassVar[int]
-    TIME_BUCKETS_FIELD_NUMBER: _ClassVar[int]
-    filter: Filter
-    project: Project
-    aggregate: Aggregate
-    histogram: Histogram
-    downsample: Downsample
-    sort: Sort
-    time_buckets: TimeBucketPlan
-    def __init__(self, filter: _Optional[_Union[Filter, _Mapping]] = ..., project: _Optional[_Union[Project, _Mapping]] = ..., aggregate: _Optional[_Union[Aggregate, _Mapping]] = ..., histogram: _Optional[_Union[Histogram, _Mapping]] = ..., downsample: _Optional[_Union[Downsample, _Mapping]] = ..., sort: _Optional[_Union[Sort, _Mapping]] = ..., time_buckets: _Optional[_Union[TimeBucketPlan, _Mapping]] = ...) -> None: ...
-
-class Query(_message.Message):
-    __slots__ = ("at", "source", "transforms", "slice")
-    AT_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    TRANSFORMS_FIELD_NUMBER: _ClassVar[int]
-    SLICE_FIELD_NUMBER: _ClassVar[int]
-    at: StorageCursor
-    source: QuerySource
-    transforms: _containers.RepeatedCompositeFieldContainer[Transform]
-    slice: RowSlice
-    def __init__(self, at: _Optional[_Union[StorageCursor, _Mapping]] = ..., source: _Optional[_Union[QuerySource, _Mapping]] = ..., transforms: _Optional[_Iterable[_Union[Transform, _Mapping]]] = ..., slice: _Optional[_Union[RowSlice, _Mapping]] = ...) -> None: ...
-
-class StoredRecord(_message.Message):
-    __slots__ = ("position", "schema", "scope", "item", "source", "source_time", "payload")
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    ITEM_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_TIME_FIELD_NUMBER: _ClassVar[int]
-    PAYLOAD_FIELD_NUMBER: _ClassVar[int]
-    position: StorageCursor
-    schema: SchemaKey
-    scope: str
-    item: str
-    source: str
-    source_time: _timestamp_pb2.Timestamp
-    payload: bytes
-    def __init__(self, position: _Optional[_Union[StorageCursor, _Mapping]] = ..., schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., scope: _Optional[str] = ..., item: _Optional[str] = ..., source: _Optional[str] = ..., source_time: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., payload: _Optional[bytes] = ...) -> None: ...
-
-class StoredRow(_message.Message):
-    __slots__ = ("record", "stream", "sequence")
-    RECORD_FIELD_NUMBER: _ClassVar[int]
-    STREAM_FIELD_NUMBER: _ClassVar[int]
-    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
-    record: StoredRecord
-    stream: str
-    sequence: int
-    def __init__(self, record: _Optional[_Union[StoredRecord, _Mapping]] = ..., stream: _Optional[str] = ..., sequence: _Optional[int] = ...) -> None: ...
-
-class FollowBoundaries(_message.Message):
-    __slots__ = ("saved", "accepted")
-    SAVED_FIELD_NUMBER: _ClassVar[int]
-    ACCEPTED_FIELD_NUMBER: _ClassVar[int]
-    saved: StorageCursor
-    accepted: StorageCursor
-    def __init__(self, saved: _Optional[_Union[StorageCursor, _Mapping]] = ..., accepted: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class Followed(_message.Message):
-    __slots__ = ("boundaries", "record")
-    BOUNDARIES_FIELD_NUMBER: _ClassVar[int]
-    RECORD_FIELD_NUMBER: _ClassVar[int]
-    boundaries: FollowBoundaries
-    record: StoredRecord
-    def __init__(self, boundaries: _Optional[_Union[FollowBoundaries, _Mapping]] = ..., record: _Optional[_Union[StoredRecord, _Mapping]] = ...) -> None: ...
-
-class FollowRecords(_message.Message):
-    __slots__ = ("after", "selection")
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    after: StorageCursor
-    selection: RecordSelection
-    def __init__(self, after: _Optional[_Union[StorageCursor, _Mapping]] = ..., selection: _Optional[_Union[RecordSelection, _Mapping]] = ...) -> None: ...
-
-class FollowStream(_message.Message):
-    __slots__ = ("after", "selection")
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    after: StorageCursor
-    selection: StreamSelection
-    def __init__(self, after: _Optional[_Union[StorageCursor, _Mapping]] = ..., selection: _Optional[_Union[StreamSelection, _Mapping]] = ...) -> None: ...
-
-class ObjectVersionToken(_message.Message):
-    __slots__ = ("history", "revision")
-    HISTORY_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    history: StoreHistory
-    revision: int
-    def __init__(self, history: _Optional[_Union[StoreHistory, _Mapping]] = ..., revision: _Optional[int] = ...) -> None: ...
-
-class ObjectValue(_message.Message):
-    __slots__ = ("schema", "item", "payload")
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    ITEM_FIELD_NUMBER: _ClassVar[int]
-    PAYLOAD_FIELD_NUMBER: _ClassVar[int]
-    schema: SchemaKey
-    item: str
-    payload: bytes
-    def __init__(self, schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., item: _Optional[str] = ..., payload: _Optional[bytes] = ...) -> None: ...
-
-class ObjectEntry(_message.Message):
-    __slots__ = ("position", "version", "value")
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    position: StorageCursor
-    version: ObjectVersionToken
-    value: ObjectValue
-    def __init__(self, position: _Optional[_Union[StorageCursor, _Mapping]] = ..., version: _Optional[_Union[ObjectVersionToken, _Mapping]] = ..., value: _Optional[_Union[ObjectValue, _Mapping]] = ...) -> None: ...
-
-class FollowObjects(_message.Message):
-    __slots__ = ("after", "selection")
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    after: StorageCursor
-    selection: ObjectSelection
-    def __init__(self, after: _Optional[_Union[StorageCursor, _Mapping]] = ..., selection: _Optional[_Union[ObjectSelection, _Mapping]] = ...) -> None: ...
-
-class DataBatch(_message.Message):
-    __slots__ = ("sequence", "destination", "schema", "ipc")
-    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
-    DESTINATION_FIELD_NUMBER: _ClassVar[int]
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    IPC_FIELD_NUMBER: _ClassVar[int]
-    sequence: int
-    destination: str
-    schema: SchemaKey
-    ipc: bytes
-    def __init__(self, sequence: _Optional[int] = ..., destination: _Optional[str] = ..., schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., ipc: _Optional[bytes] = ...) -> None: ...
-
-class BatchReceipt(_message.Message):
-    __slots__ = ("sequence", "cursor")
-    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
-    CURSOR_FIELD_NUMBER: _ClassVar[int]
-    sequence: int
-    cursor: StorageCursor
-    def __init__(self, sequence: _Optional[int] = ..., cursor: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class WriteReceipt(_message.Message):
-    __slots__ = ("accepted", "durable")
-    ACCEPTED_FIELD_NUMBER: _ClassVar[int]
-    DURABLE_FIELD_NUMBER: _ClassVar[int]
-    accepted: BatchReceipt
-    durable: BatchReceipt
-    def __init__(self, accepted: _Optional[_Union[BatchReceipt, _Mapping]] = ..., durable: _Optional[_Union[BatchReceipt, _Mapping]] = ...) -> None: ...
-
-class WriteCompletion(_message.Message):
-    __slots__ = ("batches", "cursor")
-    BATCHES_FIELD_NUMBER: _ClassVar[int]
-    CURSOR_FIELD_NUMBER: _ClassVar[int]
-    batches: int
-    cursor: StorageCursor
-    def __init__(self, batches: _Optional[int] = ..., cursor: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class WriteRecords(_message.Message):
-    __slots__ = ("scope",)
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    scope: str
-    def __init__(self, scope: _Optional[str] = ...) -> None: ...
-
-class WriteStreams(_message.Message):
-    __slots__ = ("scope",)
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    scope: str
-    def __init__(self, scope: _Optional[str] = ...) -> None: ...
-
-class WriteObjects(_message.Message):
-    __slots__ = ("scope",)
-    SCOPE_FIELD_NUMBER: _ClassVar[int]
-    scope: str
-    def __init__(self, scope: _Optional[str] = ...) -> None: ...
-
-class WriteFile(_message.Message):
-    __slots__ = ("metadata",)
-    METADATA_FIELD_NUMBER: _ClassVar[int]
-    metadata: FileMetadata
-    def __init__(self, metadata: _Optional[_Union[FileMetadata, _Mapping]] = ...) -> None: ...
-
-class ReadLimits(_message.Message):
-    __slots__ = ("rows", "bytes")
-    ROWS_FIELD_NUMBER: _ClassVar[int]
-    BYTES_FIELD_NUMBER: _ClassVar[int]
-    rows: int
-    bytes: int
-    def __init__(self, rows: _Optional[int] = ..., bytes: _Optional[int] = ...) -> None: ...
-
-class StorageCapabilities(_message.Message):
-    __slots__ = ("native_arrow", "native_index", "durable_projections", "conditional_objects")
-    NATIVE_ARROW_FIELD_NUMBER: _ClassVar[int]
-    NATIVE_INDEX_FIELD_NUMBER: _ClassVar[int]
-    DURABLE_PROJECTIONS_FIELD_NUMBER: _ClassVar[int]
-    CONDITIONAL_OBJECTS_FIELD_NUMBER: _ClassVar[int]
-    native_arrow: bool
-    native_index: bool
-    durable_projections: bool
-    conditional_objects: bool
-    def __init__(self, native_arrow: _Optional[bool] = ..., native_index: _Optional[bool] = ..., durable_projections: _Optional[bool] = ..., conditional_objects: _Optional[bool] = ...) -> None: ...
-
-class ColumnSource(_message.Message):
-    __slots__ = ("kind", "schema")
-    KIND_FIELD_NUMBER: _ClassVar[int]
-    SCHEMA_FIELD_NUMBER: _ClassVar[int]
-    kind: ColumnKind
-    schema: SchemaKey
-    def __init__(self, kind: _Optional[_Union[ColumnKind, str]] = ..., schema: _Optional[_Union[SchemaKey, _Mapping]] = ...) -> None: ...
-
-class ColumnPredicate(_message.Message):
-    __slots__ = ("column", "lower", "upper")
-    COLUMN_FIELD_NUMBER: _ClassVar[int]
-    LOWER_FIELD_NUMBER: _ClassVar[int]
-    UPPER_FIELD_NUMBER: _ClassVar[int]
-    column: str
-    lower: float
-    upper: float
-    def __init__(self, column: _Optional[str] = ..., lower: _Optional[float] = ..., upper: _Optional[float] = ...) -> None: ...
-
-class TimeBounds(_message.Message):
-    __slots__ = ("column", "lower_ns", "upper_ns")
-    COLUMN_FIELD_NUMBER: _ClassVar[int]
-    LOWER_NS_FIELD_NUMBER: _ClassVar[int]
-    UPPER_NS_FIELD_NUMBER: _ClassVar[int]
-    column: str
-    lower_ns: int
-    upper_ns: int
-    def __init__(self, column: _Optional[str] = ..., lower_ns: _Optional[int] = ..., upper_ns: _Optional[int] = ...) -> None: ...
-
-class ArrowSeek(_message.Message):
-    __slots__ = ("snapshot", "plan", "position")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    PLAN_FIELD_NUMBER: _ClassVar[int]
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    snapshot: bytes
-    plan: bytes
-    position: int
-    def __init__(self, snapshot: _Optional[bytes] = ..., plan: _Optional[bytes] = ..., position: _Optional[int] = ...) -> None: ...
-
-class ArrowScan(_message.Message):
-    __slots__ = ("source", "columns", "predicate", "time", "start", "after", "limits", "work")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    COLUMNS_FIELD_NUMBER: _ClassVar[int]
-    PREDICATE_FIELD_NUMBER: _ClassVar[int]
-    TIME_FIELD_NUMBER: _ClassVar[int]
-    START_FIELD_NUMBER: _ClassVar[int]
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    LIMITS_FIELD_NUMBER: _ClassVar[int]
-    WORK_FIELD_NUMBER: _ClassVar[int]
-    source: ColumnSource
-    columns: _containers.RepeatedScalarFieldContainer[str]
-    predicate: ColumnPredicate
-    time: TimeBounds
-    start: int
-    after: ArrowSeek
-    limits: ReadLimits
-    work: ReadLimits
-    def __init__(self, source: _Optional[_Union[ColumnSource, _Mapping]] = ..., columns: _Optional[_Iterable[str]] = ..., predicate: _Optional[_Union[ColumnPredicate, _Mapping]] = ..., time: _Optional[_Union[TimeBounds, _Mapping]] = ..., start: _Optional[int] = ..., after: _Optional[_Union[ArrowSeek, _Mapping]] = ..., limits: _Optional[_Union[ReadLimits, _Mapping]] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
-
-class ArrowPage(_message.Message):
-    __slots__ = ("ipc", "next", "complete", "scanned", "bytes_read", "columns_read", "payload_rows")
-    IPC_FIELD_NUMBER: _ClassVar[int]
-    NEXT_FIELD_NUMBER: _ClassVar[int]
-    COMPLETE_FIELD_NUMBER: _ClassVar[int]
-    SCANNED_FIELD_NUMBER: _ClassVar[int]
-    BYTES_READ_FIELD_NUMBER: _ClassVar[int]
-    COLUMNS_READ_FIELD_NUMBER: _ClassVar[int]
-    PAYLOAD_ROWS_FIELD_NUMBER: _ClassVar[int]
-    ipc: bytes
-    next: ArrowSeek
-    complete: bool
-    scanned: int
-    bytes_read: int
-    columns_read: _containers.RepeatedScalarFieldContainer[str]
-    payload_rows: int
-    def __init__(self, ipc: _Optional[bytes] = ..., next: _Optional[_Union[ArrowSeek, _Mapping]] = ..., complete: _Optional[bool] = ..., scanned: _Optional[int] = ..., bytes_read: _Optional[int] = ..., columns_read: _Optional[_Iterable[str]] = ..., payload_rows: _Optional[int] = ...) -> None: ...
-
-class IndexDefinition(_message.Message):
-    __slots__ = ("name", "version", "source", "columns")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    COLUMNS_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    version: int
-    source: ColumnSource
-    columns: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, name: _Optional[str] = ..., version: _Optional[int] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ..., columns: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class IndexEntry(_message.Message):
-    __slots__ = ("key", "position")
-    KEY_FIELD_NUMBER: _ClassVar[int]
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    key: bytes
-    position: int
-    def __init__(self, key: _Optional[bytes] = ..., position: _Optional[int] = ...) -> None: ...
-
-class IndexSeek(_message.Message):
-    __slots__ = ("snapshot", "plan", "revision", "key", "position")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    PLAN_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    KEY_FIELD_NUMBER: _ClassVar[int]
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    snapshot: bytes
-    plan: bytes
-    revision: int
-    key: bytes
-    position: int
-    def __init__(self, snapshot: _Optional[bytes] = ..., plan: _Optional[bytes] = ..., revision: _Optional[int] = ..., key: _Optional[bytes] = ..., position: _Optional[int] = ...) -> None: ...
-
-class IndexRead(_message.Message):
-    __slots__ = ("name", "lower", "upper", "prefix", "descending", "after", "limits", "work")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    LOWER_FIELD_NUMBER: _ClassVar[int]
-    UPPER_FIELD_NUMBER: _ClassVar[int]
-    PREFIX_FIELD_NUMBER: _ClassVar[int]
-    DESCENDING_FIELD_NUMBER: _ClassVar[int]
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    LIMITS_FIELD_NUMBER: _ClassVar[int]
-    WORK_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    lower: bytes
-    upper: bytes
-    prefix: bytes
-    descending: bool
-    after: IndexSeek
-    limits: ReadLimits
-    work: ReadLimits
-    def __init__(self, name: _Optional[str] = ..., lower: _Optional[bytes] = ..., upper: _Optional[bytes] = ..., prefix: _Optional[bytes] = ..., descending: _Optional[bool] = ..., after: _Optional[_Union[IndexSeek, _Mapping]] = ..., limits: _Optional[_Union[ReadLimits, _Mapping]] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
-
-class IndexPage(_message.Message):
-    __slots__ = ("entries", "next", "complete")
-    ENTRIES_FIELD_NUMBER: _ClassVar[int]
-    NEXT_FIELD_NUMBER: _ClassVar[int]
-    COMPLETE_FIELD_NUMBER: _ClassVar[int]
-    entries: _containers.RepeatedCompositeFieldContainer[IndexEntry]
-    next: IndexSeek
-    complete: bool
-    def __init__(self, entries: _Optional[_Iterable[_Union[IndexEntry, _Mapping]]] = ..., next: _Optional[_Union[IndexSeek, _Mapping]] = ..., complete: _Optional[bool] = ...) -> None: ...
-
-class TimeBucketPlan(_message.Message):
-    __slots__ = ("origin_ns", "width_ns", "time", "value", "identity", "group", "max_samples", "max_bytes")
-    ORIGIN_NS_FIELD_NUMBER: _ClassVar[int]
-    WIDTH_NS_FIELD_NUMBER: _ClassVar[int]
-    TIME_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    IDENTITY_FIELD_NUMBER: _ClassVar[int]
-    GROUP_FIELD_NUMBER: _ClassVar[int]
-    MAX_SAMPLES_FIELD_NUMBER: _ClassVar[int]
-    MAX_BYTES_FIELD_NUMBER: _ClassVar[int]
-    origin_ns: int
-    width_ns: int
-    time: str
-    value: str
-    identity: str
-    group: _containers.RepeatedScalarFieldContainer[str]
-    max_samples: int
-    max_bytes: int
-    def __init__(self, origin_ns: _Optional[int] = ..., width_ns: _Optional[int] = ..., time: _Optional[str] = ..., value: _Optional[str] = ..., identity: _Optional[str] = ..., group: _Optional[_Iterable[str]] = ..., max_samples: _Optional[int] = ..., max_bytes: _Optional[int] = ...) -> None: ...
-
-class SelectColumns(_message.Message):
-    __slots__ = ("columns",)
-    COLUMNS_FIELD_NUMBER: _ClassVar[int]
-    columns: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, columns: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class ProjectionDefinition(_message.Message):
-    __slots__ = ("name", "version", "source", "select", "time_buckets")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    SELECT_FIELD_NUMBER: _ClassVar[int]
-    TIME_BUCKETS_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    version: int
-    source: ColumnSource
-    select: SelectColumns
-    time_buckets: TimeBucketPlan
-    def __init__(self, name: _Optional[str] = ..., version: _Optional[int] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ..., select: _Optional[_Union[SelectColumns, _Mapping]] = ..., time_buckets: _Optional[_Union[TimeBucketPlan, _Mapping]] = ...) -> None: ...
-
-class ProjectionRead(_message.Message):
-    __slots__ = ("name", "revision", "frontier", "after", "limits", "work")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    FRONTIER_FIELD_NUMBER: _ClassVar[int]
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    LIMITS_FIELD_NUMBER: _ClassVar[int]
-    WORK_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    revision: int
-    frontier: StorageCursor
-    after: int
-    limits: ReadLimits
-    work: ReadLimits
-    def __init__(self, name: _Optional[str] = ..., revision: _Optional[int] = ..., frontier: _Optional[_Union[StorageCursor, _Mapping]] = ..., after: _Optional[int] = ..., limits: _Optional[_Union[ReadLimits, _Mapping]] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
-
-class ProjectionPage(_message.Message):
-    __slots__ = ("ipc", "frontier", "revision", "changed_keys", "next")
-    IPC_FIELD_NUMBER: _ClassVar[int]
-    FRONTIER_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    CHANGED_KEYS_FIELD_NUMBER: _ClassVar[int]
-    NEXT_FIELD_NUMBER: _ClassVar[int]
-    ipc: bytes
-    frontier: StorageCursor
-    revision: int
-    changed_keys: _containers.RepeatedScalarFieldContainer[bytes]
-    next: int
-    def __init__(self, ipc: _Optional[bytes] = ..., frontier: _Optional[_Union[StorageCursor, _Mapping]] = ..., revision: _Optional[int] = ..., changed_keys: _Optional[_Iterable[bytes]] = ..., next: _Optional[int] = ...) -> None: ...
-
-class ProjectionStatus(_message.Message):
-    __slots__ = ("frontier", "revision", "rows", "changed_keys")
-    FRONTIER_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    ROWS_FIELD_NUMBER: _ClassVar[int]
-    CHANGED_KEYS_FIELD_NUMBER: _ClassVar[int]
-    frontier: StorageCursor
-    revision: int
-    rows: int
-    changed_keys: int
-    def __init__(self, frontier: _Optional[_Union[StorageCursor, _Mapping]] = ..., revision: _Optional[int] = ..., rows: _Optional[int] = ..., changed_keys: _Optional[int] = ...) -> None: ...
-
-class SavedSnapshot(_message.Message):
-    __slots__ = ("token", "at")
-    TOKEN_FIELD_NUMBER: _ClassVar[int]
-    AT_FIELD_NUMBER: _ClassVar[int]
-    token: bytes
-    at: StorageCursor
-    def __init__(self, token: _Optional[bytes] = ..., at: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class OpenSnapshot(_message.Message):
+class StorageCreateSnapshotRequest(_message.Message):
     __slots__ = ("at",)
     AT_FIELD_NUMBER: _ClassVar[int]
-    at: StorageCursor
-    def __init__(self, at: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
+    at: _types_pb2.ReadCut
+    def __init__(self, at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
-class ReleaseSnapshot(_message.Message):
+class StorageCreateSnapshotResponse(_message.Message):
+    __slots__ = ("snapshot", "resolved_at")
+    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    snapshot: _storage_types_pb2.SavedSnapshot
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, snapshot: _Optional[_Union[_storage_types_pb2.SavedSnapshot, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageDeleteSnapshotRequest(_message.Message):
     __slots__ = ("snapshot",)
     SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ...) -> None: ...
+    snapshot: _storage_types_pb2.SavedSnapshot
+    def __init__(self, snapshot: _Optional[_Union[_storage_types_pb2.SavedSnapshot, _Mapping]] = ...) -> None: ...
 
-class Capabilities(_message.Message):
+class StorageDeleteSnapshotResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
-class ScanArrow(_message.Message):
+class StorageListColumnRowsRequest(_message.Message):
     __slots__ = ("snapshot", "read")
     SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
     READ_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
-    read: ArrowScan
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[ArrowScan, _Mapping]] = ...) -> None: ...
+    snapshot: _storage_types_pb2.SavedSnapshot
+    read: _storage_types_pb2.ArrowScan
+    def __init__(self, snapshot: _Optional[_Union[_storage_types_pb2.SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[_storage_types_pb2.ArrowScan, _Mapping]] = ...) -> None: ...
 
-class ScanIndex(_message.Message):
+class StorageListColumnRowsResponse(_message.Message):
+    __slots__ = ("page", "resolved_at")
+    PAGE_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    page: _storage_types_pb2.ArrowPage
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, page: _Optional[_Union[_storage_types_pb2.ArrowPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageListIndexEntriesRequest(_message.Message):
     __slots__ = ("snapshot", "read", "source")
     SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
     READ_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
-    read: IndexRead
-    source: ColumnSource
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[IndexRead, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
+    snapshot: _storage_types_pb2.SavedSnapshot
+    read: _storage_types_pb2.IndexRead
+    source: _storage_types_pb2.ColumnSource
+    def __init__(self, snapshot: _Optional[_Union[_storage_types_pb2.SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[_storage_types_pb2.IndexRead, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
 
-class RegisterIndex(_message.Message):
-    __slots__ = ("definition", "rebuild", "work")
+class StorageListIndexEntriesResponse(_message.Message):
+    __slots__ = ("page", "resolved_at")
+    PAGE_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    page: _storage_types_pb2.IndexPage
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, page: _Optional[_Union[_storage_types_pb2.IndexPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageSetIndexDefinitionRequest(_message.Message):
+    __slots__ = ("definition", "expected_revision", "create_if_absent", "rebuild", "work", "mutation")
     DEFINITION_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    CREATE_IF_ABSENT_FIELD_NUMBER: _ClassVar[int]
     REBUILD_FIELD_NUMBER: _ClassVar[int]
     WORK_FIELD_NUMBER: _ClassVar[int]
-    definition: IndexDefinition
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    definition: _storage_types_pb2.IndexDefinition
+    expected_revision: bytes
+    create_if_absent: bool
     rebuild: bool
-    work: ReadLimits
-    def __init__(self, definition: _Optional[_Union[IndexDefinition, _Mapping]] = ..., rebuild: _Optional[bool] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
+    work: _storage_types_pb2.ReadLimits
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., rebuild: _Optional[bool] = ..., work: _Optional[_Union[_storage_types_pb2.ReadLimits, _Mapping]] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
 
-class RegisterProjection(_message.Message):
-    __slots__ = ("definition", "rebuild")
+class StorageSetIndexDefinitionResponse(_message.Message):
+    __slots__ = ("definition", "revision", "receipt")
     DEFINITION_FIELD_NUMBER: _ClassVar[int]
-    REBUILD_FIELD_NUMBER: _ClassVar[int]
-    definition: ProjectionDefinition
-    rebuild: bool
-    def __init__(self, definition: _Optional[_Union[ProjectionDefinition, _Mapping]] = ..., rebuild: _Optional[bool] = ...) -> None: ...
-
-class DefinitionRevision(_message.Message):
-    __slots__ = ("revision",)
     REVISION_FIELD_NUMBER: _ClassVar[int]
-    revision: int
-    def __init__(self, revision: _Optional[int] = ...) -> None: ...
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    definition: _storage_types_pb2.IndexDefinition
+    revision: bytes
+    receipt: _types_pb2.Receipt
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
 
-class AdvanceProjection(_message.Message):
+class StorageSetProjectionDefinitionRequest(_message.Message):
+    __slots__ = ("definition", "expected_revision", "create_if_absent", "rebuild", "mutation")
+    DEFINITION_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    CREATE_IF_ABSENT_FIELD_NUMBER: _ClassVar[int]
+    REBUILD_FIELD_NUMBER: _ClassVar[int]
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    definition: _storage_types_pb2.ProjectionDefinition
+    expected_revision: bytes
+    create_if_absent: bool
+    rebuild: bool
+    mutation: _storage_types_pb2.MutationId
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.ProjectionDefinition, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., rebuild: _Optional[bool] = ..., mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ...) -> None: ...
+
+class StorageSetProjectionDefinitionResponse(_message.Message):
+    __slots__ = ("definition", "revision", "receipt")
+    DEFINITION_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    definition: _storage_types_pb2.ProjectionDefinition
+    revision: bytes
+    receipt: _types_pb2.Receipt
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.ProjectionDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class StorageAdvanceProjectionRequest(_message.Message):
     __slots__ = ("snapshot", "name", "work", "source")
     SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     WORK_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
-    snapshot: SavedSnapshot
+    snapshot: _storage_types_pb2.SavedSnapshot
     name: str
-    work: ReadLimits
-    source: ColumnSource
-    def __init__(self, snapshot: _Optional[_Union[SavedSnapshot, _Mapping]] = ..., name: _Optional[str] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
+    work: _storage_types_pb2.ReadLimits
+    source: _storage_types_pb2.ColumnSource
+    def __init__(self, snapshot: _Optional[_Union[_storage_types_pb2.SavedSnapshot, _Mapping]] = ..., name: _Optional[str] = ..., work: _Optional[_Union[_storage_types_pb2.ReadLimits, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
 
-class ReadProjection(_message.Message):
+class StorageAdvanceProjectionResponse(_message.Message):
+    __slots__ = ("revision", "resolved_at")
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    revision: bytes
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, revision: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageListProjectionRowsRequest(_message.Message):
     __slots__ = ("read", "source")
     READ_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
-    read: ProjectionRead
-    source: ColumnSource
-    def __init__(self, read: _Optional[_Union[ProjectionRead, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
+    read: _storage_types_pb2.ProjectionRead
+    source: _storage_types_pb2.ColumnSource
+    def __init__(self, read: _Optional[_Union[_storage_types_pb2.ProjectionRead, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
 
-class InspectProjection(_message.Message):
+class StorageListProjectionRowsResponse(_message.Message):
+    __slots__ = ("page", "resolved_at")
+    PAGE_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    page: _storage_types_pb2.ProjectionPage
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, page: _Optional[_Union[_storage_types_pb2.ProjectionPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageGetProjectionStatusRequest(_message.Message):
     __slots__ = ("name", "revision", "frontier", "source")
     NAME_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
@@ -1366,54 +306,306 @@ class InspectProjection(_message.Message):
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     name: str
     revision: int
-    frontier: StorageCursor
-    source: ColumnSource
-    def __init__(self, name: _Optional[str] = ..., revision: _Optional[int] = ..., frontier: _Optional[_Union[StorageCursor, _Mapping]] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ...) -> None: ...
+    frontier: _storage_types_pb2.StorageCursor
+    source: _storage_types_pb2.ColumnSource
+    def __init__(self, name: _Optional[str] = ..., revision: _Optional[int] = ..., frontier: _Optional[_Union[_storage_types_pb2.StorageCursor, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
 
-class ProjectionState(_message.Message):
-    __slots__ = ("status",)
+class StorageGetProjectionStatusResponse(_message.Message):
+    __slots__ = ("status", "resolved_at")
     STATUS_FIELD_NUMBER: _ClassVar[int]
-    status: ProjectionStatus
-    def __init__(self, status: _Optional[_Union[ProjectionStatus, _Mapping]] = ...) -> None: ...
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    status: _storage_types_pb2.ProjectionStatus
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, status: _Optional[_Union[_storage_types_pb2.ProjectionStatus, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
-class CompareExchangeObject(_message.Message):
-    __slots__ = ("mutation", "expected", "schema", "value")
+class StorageSetObjectRequest(_message.Message):
+    __slots__ = ("mutation", "expected_revision", "create_if_absent", "schema", "value")
     MUTATION_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    CREATE_IF_ABSENT_FIELD_NUMBER: _ClassVar[int]
     SCHEMA_FIELD_NUMBER: _ClassVar[int]
     VALUE_FIELD_NUMBER: _ClassVar[int]
-    mutation: MutationId
-    expected: ObjectVersionToken
-    schema: SchemaInput
-    value: ObjectValue
-    def __init__(self, mutation: _Optional[_Union[MutationId, _Mapping]] = ..., expected: _Optional[_Union[ObjectVersionToken, _Mapping]] = ..., schema: _Optional[_Union[SchemaInput, _Mapping]] = ..., value: _Optional[_Union[ObjectValue, _Mapping]] = ...) -> None: ...
+    mutation: _storage_types_pb2.MutationId
+    expected_revision: bytes
+    create_if_absent: bool
+    schema: _storage_types_pb2.SchemaInput
+    value: _storage_types_pb2.ObjectValue
+    def __init__(self, mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ..., expected_revision: _Optional[bytes] = ..., create_if_absent: _Optional[bool] = ..., schema: _Optional[_Union[_storage_types_pb2.SchemaInput, _Mapping]] = ..., value: _Optional[_Union[_storage_types_pb2.ObjectValue, _Mapping]] = ...) -> None: ...
 
-class ObjectReceipt(_message.Message):
-    __slots__ = ("position", "version")
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    VERSION_FIELD_NUMBER: _ClassVar[int]
-    position: StorageCursor
-    version: ObjectVersionToken
-    def __init__(self, position: _Optional[_Union[StorageCursor, _Mapping]] = ..., version: _Optional[_Union[ObjectVersionToken, _Mapping]] = ...) -> None: ...
-
-class ObjectConflict(_message.Message):
-    __slots__ = ("current",)
-    CURRENT_FIELD_NUMBER: _ClassVar[int]
-    current: ObjectVersionToken
-    def __init__(self, current: _Optional[_Union[ObjectVersionToken, _Mapping]] = ...) -> None: ...
-
-class CompareExchangeOutcome(_message.Message):
+class StorageSetObjectResponse(_message.Message):
     __slots__ = ("applied", "conflict")
+    class Applied(_message.Message):
+        __slots__ = ("value", "revision", "receipt")
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        REVISION_FIELD_NUMBER: _ClassVar[int]
+        RECEIPT_FIELD_NUMBER: _ClassVar[int]
+        value: _storage_types_pb2.ObjectValue
+        revision: bytes
+        receipt: _types_pb2.Receipt
+        def __init__(self, value: _Optional[_Union[_storage_types_pb2.ObjectValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+    class Conflict(_message.Message):
+        __slots__ = ("current_revision", "action")
+        CURRENT_REVISION_FIELD_NUMBER: _ClassVar[int]
+        ACTION_FIELD_NUMBER: _ClassVar[int]
+        current_revision: bytes
+        action: str
+        def __init__(self, current_revision: _Optional[bytes] = ..., action: _Optional[str] = ...) -> None: ...
     APPLIED_FIELD_NUMBER: _ClassVar[int]
     CONFLICT_FIELD_NUMBER: _ClassVar[int]
-    applied: ObjectReceipt
-    conflict: ObjectConflict
-    def __init__(self, applied: _Optional[_Union[ObjectReceipt, _Mapping]] = ..., conflict: _Optional[_Union[ObjectConflict, _Mapping]] = ...) -> None: ...
+    applied: StorageSetObjectResponse.Applied
+    conflict: StorageSetObjectResponse.Conflict
+    def __init__(self, applied: _Optional[_Union[StorageSetObjectResponse.Applied, _Mapping]] = ..., conflict: _Optional[_Union[StorageSetObjectResponse.Conflict, _Mapping]] = ...) -> None: ...
 
-class StorageFailure(_message.Message):
-    __slots__ = ("kind", "message")
-    KIND_FIELD_NUMBER: _ClassVar[int]
-    MESSAGE_FIELD_NUMBER: _ClassVar[int]
-    kind: StorageFailureKind
-    message: str
-    def __init__(self, kind: _Optional[_Union[StorageFailureKind, str]] = ..., message: _Optional[str] = ...) -> None: ...
+class StorageListRowsRequest(_message.Message):
+    __slots__ = ("source", "at", "transforms", "page")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    TRANSFORMS_FIELD_NUMBER: _ClassVar[int]
+    PAGE_FIELD_NUMBER: _ClassVar[int]
+    source: _storage_types_pb2.QuerySource
+    at: _types_pb2.ReadCut
+    transforms: _containers.RepeatedCompositeFieldContainer[_storage_types_pb2.Transform]
+    page: _types_pb2.PageRequest
+    def __init__(self, source: _Optional[_Union[_storage_types_pb2.QuerySource, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., transforms: _Optional[_Iterable[_Union[_storage_types_pb2.Transform, _Mapping]]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ...) -> None: ...
+
+class StorageListRowsResponse(_message.Message):
+    __slots__ = ("rows", "resolved_at", "next_page_token")
+    ROWS_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
+    rows: _containers.RepeatedCompositeFieldContainer[_storage_types_pb2.QueryOutput]
+    resolved_at: _types_pb2.ReadCut
+    next_page_token: str
+    def __init__(self, rows: _Optional[_Iterable[_Union[_storage_types_pb2.QueryOutput, _Mapping]]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
+
+class StorageWatchRowsRequest(_message.Message):
+    __slots__ = ("source", "at")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    source: _storage_types_pb2.QuerySource
+    at: _types_pb2.ReadCut
+    def __init__(self, source: _Optional[_Union[_storage_types_pb2.QuerySource, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageWatchRowsResponse(_message.Message):
+    __slots__ = ("resolved_at", "boundary", "record", "sample", "object", "durable_progress", "resync_required")
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    BOUNDARY_FIELD_NUMBER: _ClassVar[int]
+    RECORD_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_FIELD_NUMBER: _ClassVar[int]
+    OBJECT_FIELD_NUMBER: _ClassVar[int]
+    DURABLE_PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    RESYNC_REQUIRED_FIELD_NUMBER: _ClassVar[int]
+    resolved_at: _types_pb2.ReadCut
+    boundary: _storage_types_pb2.Empty
+    record: _storage_types_pb2.StoredRecord
+    sample: _storage_types_pb2.StoredRow
+    object: _storage_types_pb2.ObjectEntry
+    durable_progress: _storage_types_pb2.Empty
+    resync_required: _storage_types_pb2.StorageFailure
+    def __init__(self, resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., boundary: _Optional[_Union[_storage_types_pb2.Empty, _Mapping]] = ..., record: _Optional[_Union[_storage_types_pb2.StoredRecord, _Mapping]] = ..., sample: _Optional[_Union[_storage_types_pb2.StoredRow, _Mapping]] = ..., object: _Optional[_Union[_storage_types_pb2.ObjectEntry, _Mapping]] = ..., durable_progress: _Optional[_Union[_storage_types_pb2.Empty, _Mapping]] = ..., resync_required: _Optional[_Union[_storage_types_pb2.StorageFailure, _Mapping]] = ...) -> None: ...
+
+class StorageAppendRecordsRequest(_message.Message):
+    __slots__ = ("mutation", "scope", "batch")
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    SCOPE_FIELD_NUMBER: _ClassVar[int]
+    BATCH_FIELD_NUMBER: _ClassVar[int]
+    mutation: _storage_types_pb2.MutationId
+    scope: str
+    batch: _storage_types_pb2.DataBatch
+    def __init__(self, mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ..., scope: _Optional[str] = ..., batch: _Optional[_Union[_storage_types_pb2.DataBatch, _Mapping]] = ...) -> None: ...
+
+class StorageAppendRecordsResponse(_message.Message):
+    __slots__ = ("receipt",)
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    receipt: _types_pb2.Receipt
+    def __init__(self, receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class StorageAppendSamplesRequest(_message.Message):
+    __slots__ = ("mutation", "scope", "batch")
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    SCOPE_FIELD_NUMBER: _ClassVar[int]
+    BATCH_FIELD_NUMBER: _ClassVar[int]
+    mutation: _storage_types_pb2.MutationId
+    scope: str
+    batch: _storage_types_pb2.DataBatch
+    def __init__(self, mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ..., scope: _Optional[str] = ..., batch: _Optional[_Union[_storage_types_pb2.DataBatch, _Mapping]] = ...) -> None: ...
+
+class StorageAppendSamplesResponse(_message.Message):
+    __slots__ = ("receipt",)
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    receipt: _types_pb2.Receipt
+    def __init__(self, receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class StorageAppendObjectRevisionsRequest(_message.Message):
+    __slots__ = ("mutation", "scope", "batch")
+    MUTATION_FIELD_NUMBER: _ClassVar[int]
+    SCOPE_FIELD_NUMBER: _ClassVar[int]
+    BATCH_FIELD_NUMBER: _ClassVar[int]
+    mutation: _storage_types_pb2.MutationId
+    scope: str
+    batch: _storage_types_pb2.DataBatch
+    def __init__(self, mutation: _Optional[_Union[_storage_types_pb2.MutationId, _Mapping]] = ..., scope: _Optional[str] = ..., batch: _Optional[_Union[_storage_types_pb2.DataBatch, _Mapping]] = ...) -> None: ...
+
+class StorageAppendObjectRevisionsResponse(_message.Message):
+    __slots__ = ("receipt",)
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    receipt: _types_pb2.Receipt
+    def __init__(self, receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class StorageGetFileHashRequest(_message.Message):
+    __slots__ = ("source", "range", "at")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    RANGE_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    source: _storage_types_pb2.FileSource
+    range: _storage_types_pb2.ByteRange
+    at: _types_pb2.ReadCut
+    def __init__(self, source: _Optional[_Union[_storage_types_pb2.FileSource, _Mapping]] = ..., range: _Optional[_Union[_storage_types_pb2.ByteRange, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageGetFileHashResponse(_message.Message):
+    __slots__ = ("hash", "resolved_at")
+    HASH_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    hash: _storage_types_pb2.FileHash
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, hash: _Optional[_Union[_storage_types_pb2.FileHash, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageCaptureFileRequest(_message.Message):
+    __slots__ = ("source", "range", "metadata", "consistency")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    RANGE_FIELD_NUMBER: _ClassVar[int]
+    METADATA_FIELD_NUMBER: _ClassVar[int]
+    CONSISTENCY_FIELD_NUMBER: _ClassVar[int]
+    source: _storage_types_pb2.FileSource
+    range: _storage_types_pb2.ByteRange
+    metadata: _storage_types_pb2.FileMetadata
+    consistency: _storage_types_pb2.CaptureConsistency
+    def __init__(self, source: _Optional[_Union[_storage_types_pb2.FileSource, _Mapping]] = ..., range: _Optional[_Union[_storage_types_pb2.ByteRange, _Mapping]] = ..., metadata: _Optional[_Union[_storage_types_pb2.FileMetadata, _Mapping]] = ..., consistency: _Optional[_Union[_storage_types_pb2.CaptureConsistency, str]] = ...) -> None: ...
+
+class StorageCaptureFileResponse(_message.Message):
+    __slots__ = ("file", "receipt")
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    file: _storage_types_pb2.FileReference
+    receipt: _types_pb2.Receipt
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.FileReference, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class StorageWatchFileBytesRequest(_message.Message):
+    __slots__ = ("source", "start")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    START_FIELD_NUMBER: _ClassVar[int]
+    source: _storage_types_pb2.FileSource
+    start: _storage_types_pb2.FollowStart
+    def __init__(self, source: _Optional[_Union[_storage_types_pb2.FileSource, _Mapping]] = ..., start: _Optional[_Union[_storage_types_pb2.FollowStart, _Mapping]] = ...) -> None: ...
+
+class StorageWatchFileBytesResponse(_message.Message):
+    __slots__ = ("event",)
+    EVENT_FIELD_NUMBER: _ClassVar[int]
+    event: _storage_types_pb2.FileEvent
+    def __init__(self, event: _Optional[_Union[_storage_types_pb2.FileEvent, _Mapping]] = ...) -> None: ...
+
+class StorageWatchFileProductionRequest(_message.Message):
+    __slots__ = ("file", "offset")
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    file: _storage_types_pb2.StagedFile
+    offset: int
+    def __init__(self, file: _Optional[_Union[_storage_types_pb2.StagedFile, _Mapping]] = ..., offset: _Optional[int] = ...) -> None: ...
+
+class StorageWatchFileProductionResponse(_message.Message):
+    __slots__ = ("data", "progress")
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    data: _storage_types_pb2.FileBatch
+    progress: _storage_types_pb2.FileProgress
+    def __init__(self, data: _Optional[_Union[_storage_types_pb2.FileBatch, _Mapping]] = ..., progress: _Optional[_Union[_storage_types_pb2.FileProgress, _Mapping]] = ...) -> None: ...
+
+class StorageListDirectoryEntriesRequest(_message.Message):
+    __slots__ = ("selection", "page")
+    SELECTION_FIELD_NUMBER: _ClassVar[int]
+    PAGE_FIELD_NUMBER: _ClassVar[int]
+    selection: _storage_types_pb2.DirectorySelection
+    page: _types_pb2.PageRequest
+    def __init__(self, selection: _Optional[_Union[_storage_types_pb2.DirectorySelection, _Mapping]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ...) -> None: ...
+
+class StorageListDirectoryEntriesResponse(_message.Message):
+    __slots__ = ("entries", "next_page_token", "resolved_at")
+    ENTRIES_FIELD_NUMBER: _ClassVar[int]
+    NEXT_PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    entries: _containers.RepeatedCompositeFieldContainer[_storage_types_pb2.DirectoryEntry]
+    next_page_token: str
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, entries: _Optional[_Iterable[_Union[_storage_types_pb2.DirectoryEntry, _Mapping]]] = ..., next_page_token: _Optional[str] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageWatchDirectoryEntriesRequest(_message.Message):
+    __slots__ = ("selection", "include_existing")
+    SELECTION_FIELD_NUMBER: _ClassVar[int]
+    INCLUDE_EXISTING_FIELD_NUMBER: _ClassVar[int]
+    selection: _storage_types_pb2.DirectorySelection
+    include_existing: bool
+    def __init__(self, selection: _Optional[_Union[_storage_types_pb2.DirectorySelection, _Mapping]] = ..., include_existing: _Optional[bool] = ...) -> None: ...
+
+class StorageWatchDirectoryEntriesResponse(_message.Message):
+    __slots__ = ("event",)
+    EVENT_FIELD_NUMBER: _ClassVar[int]
+    event: _storage_types_pb2.DirectoryEvent
+    def __init__(self, event: _Optional[_Union[_storage_types_pb2.DirectoryEvent, _Mapping]] = ...) -> None: ...
+
+class StorageGetIndexDefinitionRequest(_message.Message):
+    __slots__ = ("name", "source")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    source: _storage_types_pb2.ColumnSource
+    def __init__(self, name: _Optional[str] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
+
+class StorageGetIndexDefinitionResponse(_message.Message):
+    __slots__ = ("definition", "revision", "resolved_at")
+    DEFINITION_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    definition: _storage_types_pb2.IndexDefinition
+    revision: bytes
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageGetProjectionDefinitionRequest(_message.Message):
+    __slots__ = ("name", "source")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    source: _storage_types_pb2.ColumnSource
+    def __init__(self, name: _Optional[str] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
+
+class StorageGetProjectionDefinitionResponse(_message.Message):
+    __slots__ = ("definition", "revision", "resolved_at")
+    DEFINITION_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    definition: _storage_types_pb2.ProjectionDefinition
+    revision: bytes
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, definition: _Optional[_Union[_storage_types_pb2.ProjectionDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageGetObjectRequest(_message.Message):
+    __slots__ = ("schema", "item", "at")
+    SCHEMA_FIELD_NUMBER: _ClassVar[int]
+    ITEM_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    schema: _storage_types_pb2.SchemaKey
+    item: str
+    at: _types_pb2.ReadCut
+    def __init__(self, schema: _Optional[_Union[_storage_types_pb2.SchemaKey, _Mapping]] = ..., item: _Optional[str] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class StorageGetObjectResponse(_message.Message):
+    __slots__ = ("value", "revision", "exists", "resolved_at")
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    REVISION_FIELD_NUMBER: _ClassVar[int]
+    EXISTS_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    value: _storage_types_pb2.ObjectValue
+    revision: bytes
+    exists: bool
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, value: _Optional[_Union[_storage_types_pb2.ObjectValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., exists: _Optional[bool] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...

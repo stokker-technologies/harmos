@@ -240,38 +240,101 @@ impl Storage {
             client,
         }
     }
-    pub async fn capabilities(&self, request: tonic::Request<harmos_protocol::storage::Capabilities>) -> Result<tonic::Response<harmos_protocol::storage::StorageCapabilities>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/Capabilities"), request, harmos_protocol::storage::StorageCapabilities::default().descriptor()).await
+    pub async fn create_file_production(&self, request: tonic::Request<harmos_protocol::v1::StorageCreateFileProductionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageCreateFileProductionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/CreateFileProduction"), request, harmos_protocol::v1::StorageCreateFileProductionResponse::default().descriptor()).await
     }
-    pub async fn open_snapshot(&self, request: tonic::Request<harmos_protocol::storage::OpenSnapshot>) -> Result<tonic::Response<harmos_protocol::storage::SavedSnapshot>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/OpenSnapshot"), request, harmos_protocol::storage::SavedSnapshot::default().descriptor()).await
+    pub async fn get_file_production(&self, request: tonic::Request<harmos_protocol::v1::StorageGetFileProductionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageGetFileProductionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/GetFileProduction"), request, harmos_protocol::v1::StorageGetFileProductionResponse::default().descriptor()).await
     }
-    pub async fn release_snapshot(&self, request: tonic::Request<harmos_protocol::storage::ReleaseSnapshot>) -> Result<tonic::Response<harmos_protocol::storage::Empty>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/ReleaseSnapshot"), request, harmos_protocol::storage::Empty::default().descriptor()).await
+    pub async fn append_file_bytes(&self, request: tonic::Request<harmos_protocol::v1::StorageAppendFileBytesRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageAppendFileBytesResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/AppendFileBytes"), request, harmos_protocol::v1::StorageAppendFileBytesResponse::default().descriptor()).await
     }
-    pub async fn scan_arrow(&self, request: tonic::Request<harmos_protocol::storage::ScanArrow>) -> Result<tonic::Response<harmos_protocol::storage::ArrowPage>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/ScanArrow"), request, harmos_protocol::storage::ArrowPage::default().descriptor()).await
+    pub async fn create_file_writer(&self, request: tonic::Request<harmos_protocol::v1::StorageCreateFileWriterRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageCreateFileWriterResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/CreateFileWriter"), request, harmos_protocol::v1::StorageCreateFileWriterResponse::default().descriptor()).await
     }
-    pub async fn scan_index(&self, request: tonic::Request<harmos_protocol::storage::ScanIndex>) -> Result<tonic::Response<harmos_protocol::storage::IndexPage>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/ScanIndex"), request, harmos_protocol::storage::IndexPage::default().descriptor()).await
+    pub async fn publish_file_production(&self, request: tonic::Request<harmos_protocol::v1::StoragePublishFileProductionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StoragePublishFileProductionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/PublishFileProduction"), request, harmos_protocol::v1::StoragePublishFileProductionResponse::default().descriptor()).await
     }
-    pub async fn register_index(&self, request: tonic::Request<harmos_protocol::storage::RegisterIndex>) -> Result<tonic::Response<harmos_protocol::storage::DefinitionRevision>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/RegisterIndex"), request, harmos_protocol::storage::DefinitionRevision::default().descriptor()).await
+    pub async fn delete_file_production(&self, request: tonic::Request<harmos_protocol::v1::StorageDeleteFileProductionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageDeleteFileProductionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/DeleteFileProduction"), request, harmos_protocol::v1::StorageDeleteFileProductionResponse::default().descriptor()).await
     }
-    pub async fn register_projection(&self, request: tonic::Request<harmos_protocol::storage::RegisterProjection>) -> Result<tonic::Response<harmos_protocol::storage::DefinitionRevision>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/RegisterProjection"), request, harmos_protocol::storage::DefinitionRevision::default().descriptor()).await
+    pub async fn get_file_bytes(&self, request: tonic::Request<harmos_protocol::v1::StorageGetFileBytesRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageGetFileBytesResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/GetFileBytes"), request, harmos_protocol::v1::StorageGetFileBytesResponse::default().descriptor()).await
     }
-    pub async fn advance_projection(&self, request: tonic::Request<harmos_protocol::storage::AdvanceProjection>) -> Result<tonic::Response<harmos_protocol::storage::DefinitionRevision>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/AdvanceProjection"), request, harmos_protocol::storage::DefinitionRevision::default().descriptor()).await
+    pub async fn capabilities(&self, request: tonic::Request<harmos_protocol::v1::StorageCapabilitiesRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageCapabilitiesResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/Capabilities"), request, harmos_protocol::v1::StorageCapabilitiesResponse::default().descriptor()).await
     }
-    pub async fn read_projection(&self, request: tonic::Request<harmos_protocol::storage::ReadProjection>) -> Result<tonic::Response<harmos_protocol::storage::ProjectionPage>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/ReadProjection"), request, harmos_protocol::storage::ProjectionPage::default().descriptor()).await
+    pub async fn create_snapshot(&self, request: tonic::Request<harmos_protocol::v1::StorageCreateSnapshotRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageCreateSnapshotResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/CreateSnapshot"), request, harmos_protocol::v1::StorageCreateSnapshotResponse::default().descriptor()).await
     }
-    pub async fn inspect_projection(&self, request: tonic::Request<harmos_protocol::storage::InspectProjection>) -> Result<tonic::Response<harmos_protocol::storage::ProjectionState>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/InspectProjection"), request, harmos_protocol::storage::ProjectionState::default().descriptor()).await
+    pub async fn delete_snapshot(&self, request: tonic::Request<harmos_protocol::v1::StorageDeleteSnapshotRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageDeleteSnapshotResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/DeleteSnapshot"), request, harmos_protocol::v1::StorageDeleteSnapshotResponse::default().descriptor()).await
     }
-    pub async fn compare_exchange_object(&self, request: tonic::Request<harmos_protocol::storage::CompareExchangeObject>) -> Result<tonic::Response<harmos_protocol::storage::CompareExchangeOutcome>, tonic::Status> {
-        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/CompareExchangeObject"), request, harmos_protocol::storage::CompareExchangeOutcome::default().descriptor()).await
+    pub async fn list_column_rows(&self, request: tonic::Request<harmos_protocol::v1::StorageListColumnRowsRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageListColumnRowsResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/ListColumnRows"), request, harmos_protocol::v1::StorageListColumnRowsResponse::default().descriptor()).await
+    }
+    pub async fn list_index_entries(&self, request: tonic::Request<harmos_protocol::v1::StorageListIndexEntriesRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageListIndexEntriesResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/ListIndexEntries"), request, harmos_protocol::v1::StorageListIndexEntriesResponse::default().descriptor()).await
+    }
+    pub async fn set_index_definition(&self, request: tonic::Request<harmos_protocol::v1::StorageSetIndexDefinitionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageSetIndexDefinitionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/SetIndexDefinition"), request, harmos_protocol::v1::StorageSetIndexDefinitionResponse::default().descriptor()).await
+    }
+    pub async fn set_projection_definition(&self, request: tonic::Request<harmos_protocol::v1::StorageSetProjectionDefinitionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageSetProjectionDefinitionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/SetProjectionDefinition"), request, harmos_protocol::v1::StorageSetProjectionDefinitionResponse::default().descriptor()).await
+    }
+    pub async fn advance_projection(&self, request: tonic::Request<harmos_protocol::v1::StorageAdvanceProjectionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageAdvanceProjectionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/AdvanceProjection"), request, harmos_protocol::v1::StorageAdvanceProjectionResponse::default().descriptor()).await
+    }
+    pub async fn list_projection_rows(&self, request: tonic::Request<harmos_protocol::v1::StorageListProjectionRowsRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageListProjectionRowsResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/ListProjectionRows"), request, harmos_protocol::v1::StorageListProjectionRowsResponse::default().descriptor()).await
+    }
+    pub async fn get_projection_status(&self, request: tonic::Request<harmos_protocol::v1::StorageGetProjectionStatusRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageGetProjectionStatusResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/GetProjectionStatus"), request, harmos_protocol::v1::StorageGetProjectionStatusResponse::default().descriptor()).await
+    }
+    pub async fn set_object(&self, request: tonic::Request<harmos_protocol::v1::StorageSetObjectRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageSetObjectResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/SetObject"), request, harmos_protocol::v1::StorageSetObjectResponse::default().descriptor()).await
+    }
+    pub async fn list_rows(&self, request: tonic::Request<harmos_protocol::v1::StorageListRowsRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageListRowsResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/ListRows"), request, harmos_protocol::v1::StorageListRowsResponse::default().descriptor()).await
+    }
+    pub async fn watch_rows(&self, request: tonic::Request<harmos_protocol::v1::StorageWatchRowsRequest>) -> Result<Watching<harmos_protocol::v1::StorageWatchRowsResponse>, tonic::Status> {
+        self.client.watch_known(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/WatchRows"), request, harmos_protocol::v1::StorageWatchRowsResponse::default().descriptor()).await
+    }
+    pub async fn append_records(&self, request: tonic::Request<harmos_protocol::v1::StorageAppendRecordsRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageAppendRecordsResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/AppendRecords"), request, harmos_protocol::v1::StorageAppendRecordsResponse::default().descriptor()).await
+    }
+    pub async fn append_samples(&self, request: tonic::Request<harmos_protocol::v1::StorageAppendSamplesRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageAppendSamplesResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/AppendSamples"), request, harmos_protocol::v1::StorageAppendSamplesResponse::default().descriptor()).await
+    }
+    pub async fn append_object_revisions(&self, request: tonic::Request<harmos_protocol::v1::StorageAppendObjectRevisionsRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageAppendObjectRevisionsResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/AppendObjectRevisions"), request, harmos_protocol::v1::StorageAppendObjectRevisionsResponse::default().descriptor()).await
+    }
+    pub async fn get_file_hash(&self, request: tonic::Request<harmos_protocol::v1::StorageGetFileHashRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageGetFileHashResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/GetFileHash"), request, harmos_protocol::v1::StorageGetFileHashResponse::default().descriptor()).await
+    }
+    pub async fn capture_file(&self, request: tonic::Request<harmos_protocol::v1::StorageCaptureFileRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageCaptureFileResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/CaptureFile"), request, harmos_protocol::v1::StorageCaptureFileResponse::default().descriptor()).await
+    }
+    pub async fn watch_file_bytes(&self, request: tonic::Request<harmos_protocol::v1::StorageWatchFileBytesRequest>) -> Result<Watching<harmos_protocol::v1::StorageWatchFileBytesResponse>, tonic::Status> {
+        self.client.watch_known(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/WatchFileBytes"), request, harmos_protocol::v1::StorageWatchFileBytesResponse::default().descriptor()).await
+    }
+    pub async fn watch_file_production(&self, request: tonic::Request<harmos_protocol::v1::StorageWatchFileProductionRequest>) -> Result<Watching<harmos_protocol::v1::StorageWatchFileProductionResponse>, tonic::Status> {
+        self.client.watch_known(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/WatchFileProduction"), request, harmos_protocol::v1::StorageWatchFileProductionResponse::default().descriptor()).await
+    }
+    pub async fn list_directory_entries(&self, request: tonic::Request<harmos_protocol::v1::StorageListDirectoryEntriesRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageListDirectoryEntriesResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/ListDirectoryEntries"), request, harmos_protocol::v1::StorageListDirectoryEntriesResponse::default().descriptor()).await
+    }
+    pub async fn watch_directory_entries(&self, request: tonic::Request<harmos_protocol::v1::StorageWatchDirectoryEntriesRequest>) -> Result<Watching<harmos_protocol::v1::StorageWatchDirectoryEntriesResponse>, tonic::Status> {
+        self.client.watch_known(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/WatchDirectoryEntries"), request, harmos_protocol::v1::StorageWatchDirectoryEntriesResponse::default().descriptor()).await
+    }
+    pub async fn get_index_definition(&self, request: tonic::Request<harmos_protocol::v1::StorageGetIndexDefinitionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageGetIndexDefinitionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/GetIndexDefinition"), request, harmos_protocol::v1::StorageGetIndexDefinitionResponse::default().descriptor()).await
+    }
+    pub async fn get_projection_definition(&self, request: tonic::Request<harmos_protocol::v1::StorageGetProjectionDefinitionRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageGetProjectionDefinitionResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/GetProjectionDefinition"), request, harmos_protocol::v1::StorageGetProjectionDefinitionResponse::default().descriptor()).await
+    }
+    pub async fn get_object(&self, request: tonic::Request<harmos_protocol::v1::StorageGetObjectRequest>) -> Result<tonic::Response<harmos_protocol::v1::StorageGetObjectResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.v1.Storage/GetObject"), request, harmos_protocol::v1::StorageGetObjectResponse::default().descriptor()).await
     }
 }
 #[derive(Clone)]

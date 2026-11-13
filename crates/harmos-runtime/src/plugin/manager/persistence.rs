@@ -113,7 +113,7 @@ impl Registry {
 impl Store {
     pub async fn open(storage: StorageManager, settings: &PluginManagerSettings) -> Result<(Self, Registry), Error> {
         let saved = storage
-            .read_object::<RegistryObject>(&settings.namespace, ObjectVersion::Latest)
+            .get_object::<RegistryObject>(&settings.namespace, ObjectVersion::Latest)
             .await
             .map_err(|error| problem("Restore Plugin Registry", error))?;
         let (version, registry) = match saved {

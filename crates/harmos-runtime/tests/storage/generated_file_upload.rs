@@ -50,7 +50,7 @@ async fn uploaded_file_is_durable_and_readable() {
     upload.send(wire::FileBatch { offset: 6, bytes: b"second".to_vec() }).await.unwrap();
     let reference = upload.finish().await.unwrap();
     assert_eq!(reference.length, 12);
-    assert_eq!(reference.position, Some(fixture.storage.cursor_saved().into()));
+    assert_eq!(reference.position, Some(fixture.storage.get_saved_position().into()));
     let file = harmos_runtime::storage::FileReference::try_from(reference).unwrap();
     let mut reader = fixture
         .storage

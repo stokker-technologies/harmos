@@ -37,14 +37,32 @@ use super::*;
 impl StorageManager {
     #[tracing::instrument(name = "storage.staging.mutations.end.finish_file_once", level = "debug", skip_all)]
     pub async fn finish_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileReference> {
-        self.inner.primary.history().check(&token.history)?;
-        let fingerprint = fingerprint("storage.finish_file:v1", token);
+        self.finish_file_checked(mutation, token, None).await
+    }
+
+    pub async fn publish_file_production_once(
+        &self, mutation: &MutationId, token: &FileSession, length: u64, sha256: [u8; 32],
+    ) -> Result<FileReference> {
+        self.finish_file_checked(mutation, token, Some((length, sha256))).await
+    }
+
+    async fn finish_file_checked(
+        &self, mutation: &MutationId, token: &FileSession, expected: Option<(u64, [u8; 32])>,
+    ) -> Result<FileReference> {
+        self.inner.primary.get_history().check(&token.history)?;
+        let mut hash = Sha256::new();
+        hash.update(fingerprint("storage.finish_file:v1", token));
+        if let Some((length, digest)) = expected {
+            hash.update(length.to_le_bytes());
+            hash.update(digest);
+        }
+        let fingerprint = if expected.is_some() { hash.finalize().into() } else { fingerprint("storage.finish_file:v1", token) };
         self.mutate_file(mutation, fingerprint, |state| {
             let (id, file) = active(state, token)?;
             file.check_session(Some(token))?;
             if file.command.is_some() || file.in_flight { return Ok(false); }
             let digest: [u8; 32] = file.hash.clone().finalize().into();
-            let valid = file.metadata.expected_length.is_none_or(|length| length == file.length) && file.metadata.expected_sha256.is_none_or(|expected| expected == digest);
+            let valid = expected.is_none_or(|(length, sha256)| length == file.length && sha256 == digest) && file.metadata.expected_length.is_none_or(|length| length == file.length) && file.metadata.expected_sha256.is_none_or(|expected| expected == digest);
             let bytes = file.reference_bytes;
             reserve(state, mutation, fingerprint, bytes, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
@@ -66,7 +84,7 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.staging.mutations.end.abandon_file_once", level = "debug", skip_all)]
     pub async fn abandon_file_once(&self, mutation: &MutationId, token: &FileSession) -> Result<FileProgress> {
-        self.inner.primary.history().check(&token.history)?;
+        self.inner.primary.get_history().check(&token.history)?;
         let fingerprint = fingerprint("storage.abandon_file:v1", token);
         self.mutate_file(mutation, fingerprint, |state| {
             let (id, file) = active(state, token)?;

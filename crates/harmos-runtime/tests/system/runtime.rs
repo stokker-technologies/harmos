@@ -39,7 +39,7 @@ struct Reading {
 // Every Saved Record of One Schema as (Item, Value), Through the Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
     let query = harmos_runtime::storage::Query {
-        at: storage.cursor_saved(),
+        at: storage.get_saved_position(),
         source: Source::Records(RecordSelection {
             schema: schema.clone(),
             scope: None,
@@ -122,9 +122,9 @@ async fn runtime_baseline_walks() {
     let low = Message::encode(&Reading { value: -3 });
     let high = Message::encode(&Reading { value: 8 });
     let records = [record(&schema, &first, &low), record(&schema, &second, &high)];
-    let written = storage.write_records((records).to_vec()).await.unwrap();
+    let written = storage.append_records((records).to_vec()).await.unwrap();
     storage.flush().await.unwrap();
-    assert!(storage.cursor_saved().sequence >= written.sequence);
+    assert!(storage.get_saved_position().sequence >= written.sequence);
     let expected = saved(&storage, &schema).await;
     assert_eq!(expected, [("first".to_owned(), -3), ("second".to_owned(), 8)]);
 

@@ -13,19 +13,25 @@
 /* === Modules === */
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod abandon_file;
+mod definitions;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod append_file;
+mod pages;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod views;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod client;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub mod context;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod transfers;
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+pub(crate) mod append;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod capture_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod create_file;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod delete_file;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub(crate) mod exchange;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod finish_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod follow_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -41,13 +47,9 @@ mod hash_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod list_directory;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod query;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod read_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod registration;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod resume_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod storage_status;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -55,80 +57,33 @@ mod watch_directory;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod write_objects;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod write_records;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod write_schema;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod write_streams;
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod advance_projection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod capabilities;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod compare_exchange;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod inspect_projection;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod native;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod open_snapshot;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod read_projection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod register_index;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod register_projection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod release_snapshot;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod scan_arrow;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod scan_index;
+mod object;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod snapshot;
 
 /* === Re-Exports === */
 
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use advance_projection::AdvanceProjection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use capabilities::Capabilities;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use compare_exchange::CompareExchangeObject;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use inspect_projection::InspectProjection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use open_snapshot::OpenSnapshot;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use read_projection::ReadProjection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use register_index::RegisterIndex;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use register_projection::RegisterProjection;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use release_snapshot::ReleaseSnapshot;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use scan_arrow::ScanArrow;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use scan_index::ScanIndex;
+pub use client::{
+    AdvanceProjection, AppendFileBytes, AppendObjectRevisions, AppendRecords, AppendSamples, Capabilities, CreateFileProduction,
+    CreateFileWriter, CreateSnapshot, DeleteFileProduction, DeleteSnapshot, GetFileBytes, GetFileProduction, GetIndexDefinition, GetObject,
+    GetProjectionDefinition, GetProjectionStatus, ListColumnRows, ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction,
+    SetIndexDefinition, SetObject, SetProjectionDefinition,
+};
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use snapshot::SavedSnapshots;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use abandon_file::AbandonFile;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use append_file::AppendFile;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use capture_file::CaptureFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use create_file::CreateFile;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use delete_file::DeleteFile;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use finish_file::FinishFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use follow_file::FollowFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -144,13 +99,9 @@ pub use hash_file::HashFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use list_directory::ListDirectory;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use query::Query;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use read_file::ReadFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use registration::storage_catalog;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use resume_file::ResumeFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use storage_status::StorageStatus;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
@@ -158,13 +109,7 @@ pub use watch_directory::WatchDirectory;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_file::WriteFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use write_objects::WriteObjects;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use write_records::WriteRecords;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use write_schema::WriteSchema;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use write_streams::WriteStreams;
 
 /* === Imports === */
 

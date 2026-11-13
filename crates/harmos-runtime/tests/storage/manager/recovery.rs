@@ -279,10 +279,10 @@ async fn receipts_replay_restart() {
         bytes: std::num::NonZeroUsize::new(1024 * 1024).unwrap(),
     };
     *f.data.control.date.lock().unwrap() = Some(expiry - Duration::from_millis(1));
-    let retained = harmos_storage::StorageBackend::recover_mutations(&*f.data, limits).await.unwrap();
+    let retained = harmos_storage::StorageBackend::list_mutation_receipts(&*f.data, limits).await.unwrap();
     assert!(retained.iter().any(|receipt| receipt.mutation == first));
     *f.data.control.date.lock().unwrap() = Some(expiry);
-    assert!(harmos_storage::StorageBackend::recover_mutations(&*f.data, limits).await.unwrap().is_empty());
+    assert!(harmos_storage::StorageBackend::list_mutation_receipts(&*f.data, limits).await.unwrap().is_empty());
     f.finish().await;
 }
 

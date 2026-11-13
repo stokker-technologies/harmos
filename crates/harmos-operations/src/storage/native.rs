@@ -101,3 +101,9 @@ pub(super) fn page_bytes(bytes: usize, limit: usize) -> crate::Result<()> {
     }
     Ok(())
 }
+
+pub(super) fn read_response<T: prost::Message>(context: &ExecutionContext, response: T) -> Result<T, ServingError> {
+    let storage = context.resource::<harmos_storage::StorageManager>().map_err(|_| ServingError::Catalog)?;
+    page_bytes(response.encoded_len(), storage.settings().response.batch_bytes.get()).map_err(failure)?;
+    Ok(response)
+}

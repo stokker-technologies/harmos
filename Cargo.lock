@@ -1204,6 +1204,7 @@ dependencies = [
  "prost",
  "prost-reflect",
  "prost-types",
+ "ring",
  "semver",
  "serde",
  "serde_json",

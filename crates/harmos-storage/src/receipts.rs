@@ -45,6 +45,14 @@ pub struct MutationReceipt {
     pub value: MutationValue,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MutationHeader {
+    pub mutation: MutationId,
+    pub fingerprint: [u8; 32],
+    pub expires_at: SystemTime,
+}
+
 pub(super) struct Receipts {
     execution: crate::execution::Execution,
     window: Identifier,
@@ -73,6 +81,7 @@ pub(super) struct Completion(Arc<()>);
 #[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MutationValue {
     Cursor(super::StorageCursor),
+    Definition { kind: super::DefinitionKind, name: Identifier, outcome: super::DefinitionOutcome },
     Deleted(super::StagedFile),
     Producer(FileProducer),
     Reference(Box<super::FileReference>),
@@ -112,6 +121,18 @@ impl Receipts {
         })
     }
 
+    pub(super) fn issued_position(&self, position: &super::StorageCursor) -> bool {
+        let now = self.execution.now();
+        self.entries.values().any(|entry| {
+            entry.deadline > now
+                && match entry.value.as_ref() {
+                    Some(MutationValue::Cursor(cursor)) => cursor == position,
+                    Some(MutationValue::Reference(file)) => &file.position == position,
+                    _ => false,
+                }
+        })
+    }
+
     pub(super) fn recovery_limits(&self) -> super::ReadLimits {
         super::ReadLimits {
             rows: super::config::MAX_MUTATIONS,
@@ -145,10 +166,11 @@ impl Receipts {
             }
             if entry.fingerprint != *fingerprint {
                 tracing::error!(window = %id.window, mutation = %id.key, reason = "identity reused with different request", "storage mutation rejected");
-                return Err(Error::InvalidInput {
-                    field: "storage mutation",
-                    reason: "identity reused with different request",
-                });
+                return Err(Error::backend(
+                    "replay storage mutation",
+                    crate::BackendFailure::Conflict,
+                    std::io::Error::other("request identifier reused with different normalized payload"),
+                ));
             }
             return Ok(match &entry.value {
                 Some(value) => ReceiptState::Complete(value.clone()),
@@ -192,6 +214,15 @@ impl Receipts {
         Ok(())
     }
 
+    pub(super) fn header(&self, id: &MutationId) -> MutationHeader {
+        let entry = self.entries.get(id).expect("admitted receipt");
+        MutationHeader {
+            mutation: id.clone(),
+            fingerprint: entry.fingerprint,
+            expires_at: entry.expires_at,
+        }
+    }
+
     pub(super) fn prepared(&self, id: &MutationId, value: MutationValue) -> MutationReceipt {
         let entry = self.entries.get(id).expect("admitted receipt");
         MutationReceipt {
@@ -211,6 +242,22 @@ impl Receipts {
         self.unsaved.insert(id.clone());
     }
 
+    pub(super) fn pending_positions(&self, through: &super::StorageCursor) -> Vec<MutationReceipt> {
+        self.snapshot(Some(through)).into_iter().filter(|receipt| matches!(receipt.value, MutationValue::Cursor(_))).collect()
+    }
+    fn position_saved(&self, id: &MutationId, position: &super::StorageCursor) -> Result<bool> {
+        let Some(entry) = self.entries.get(id) else { return Err(expired()) };
+        if self.execution.now() >= entry.deadline {
+            return Err(expired());
+        }
+        if !matches!(&entry.value, Some(MutationValue::Cursor(saved)) if saved == position) {
+            return Err(Error::InvalidInput {
+                field: "Append receipt",
+                reason: "mutation owns a different accepted position",
+            });
+        }
+        Ok(!self.unsaved.contains(id))
+    }
     pub(super) fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -223,8 +270,19 @@ impl Receipts {
 
     // Drop The Oldest Completed Receipt; Pending Receipts Still Await Their Outcome.
     fn evict_oldest(&mut self) -> Result<()> {
-        let index = self.order.iter().position(|id| self.entries.get(id).is_some_and(Entry::reclaimable)).ok_or_else(exhausted)?;
+        let index = self
+            .order
+            .iter()
+            .position(|id| {
+                self.entries.get(id).is_some_and(|entry| {
+                    entry.reclaimable() && !(self.unsaved.contains(id) && matches!(entry.value, Some(MutationValue::Cursor(_))))
+                })
+            })
+            .ok_or_else(exhausted)?;
+        // Retained IDs Still Replay; An Evicted ID Must Never Become Fresh Work.
+        let next_window = epoch()?;
         let id = self.order.remove(index).expect("ordered receipt");
+        self.window = next_window;
         self.entries.remove(&id).expect("ordered receipt");
         self.unsaved.remove(&id);
 
@@ -333,13 +391,54 @@ impl Receipts {
 
 impl StorageManager {
     #[tracing::instrument(name = "storage.receipts.recover_receipts", level = "debug", skip_all)]
+    pub fn mutation_durable(&self, mutation: &MutationId, position: &super::StorageCursor) -> Result<bool> {
+        let state = self.inner.state.lock().unwrap();
+        Ok(state.status.saved.covers(position)? && state.receipts.position_saved(mutation, position)?)
+    }
+    pub async fn wait_mutation_durable(&self, mutation: &MutationId, position: &super::StorageCursor) -> Result<()> {
+        let mut changed = self.inner.changed.subscribe();
+        loop {
+            {
+                let state = self.inner.state.lock().unwrap();
+                if state.status.saved.covers(position)? && state.receipts.position_saved(mutation, position)? {
+                    return Ok(());
+                }
+                if let Some(source) = &state.status.failure {
+                    return Err(Error::Persistence { source: source.clone() });
+                }
+                if !state.status.running {
+                    return Err(Error::NotReady { domain: "Append receipt worker" });
+                }
+            }
+            changed.changed().await.map_err(|_| Error::Closing { domain: "Append receipt" })?;
+        }
+    }
+    pub(super) async fn settle_mutation_receipts(&self) -> Result<()> {
+        let mut changed = self.inner.changed.subscribe();
+        loop {
+            {
+                let state = self.inner.state.lock().unwrap();
+                if !state.persisting_receipts && state.receipts.pending_positions(&state.status.saved).is_empty() {
+                    return Ok(());
+                }
+                if let Some(source) = &state.status.failure {
+                    return Err(Error::Persistence { source: source.clone() });
+                }
+                if !state.status.running {
+                    return Err(Error::NotReady { domain: "Append receipt worker" });
+                }
+            }
+            self.inner.notify();
+            changed.changed().await.map_err(|_| Error::Closing { domain: "Append receipts" })?;
+        }
+    }
     pub(super) async fn recover_receipts(&self) -> Result<()> {
-        if !self.inner.primary.supports_mutation_receipts() {
+        if !self.inner.primary.capabilities().mutation_receipts {
             return Ok(());
         }
         let limits = self.inner.state.lock().unwrap().receipts.recovery_limits();
         let bytes = limits.bytes.get();
-        let receipts = self.inner.bounded("primary.recover_mutations", self.inner.primary.recover_mutations(limits)).await?;
+        let receipts = self.inner.bounded("primary.list_mutation_receipts", self.inner.primary.list_mutation_receipts(limits)).await?;
         if receipts.len() > limits.rows.get()
             || receipts
                 .iter()
@@ -352,8 +451,11 @@ impl StorageManager {
             });
         }
         for receipt in &receipts {
+            if let MutationValue::Definition { outcome, .. } = &receipt.value {
+                outcome.validate()?;
+            }
             if let MutationValue::Deleted(file) = &receipt.value {
-                self.inner.primary.history().check(&file.history)?;
+                self.inner.primary.get_history().check(&file.history)?;
             }
             if let MutationValue::Cursor(cursor) = &receipt.value {
                 let state = self.inner.state.lock().unwrap();
@@ -365,7 +467,7 @@ impl StorageManager {
                 }
             }
             if let MutationValue::Producer(producer) = &receipt.value {
-                self.inner.primary.history().check(&producer.session.history)?;
+                self.inner.primary.get_history().check(&producer.session.history)?;
                 if producer.session.generation == 0 {
                     return Err(Error::InvalidInput {
                         field: "mutation recovery",
@@ -376,7 +478,7 @@ impl StorageManager {
         }
         for receipt in &receipts {
             if let MutationValue::Reference(reference) = &receipt.value {
-                self.inner.primary.history().check(&reference.position.history)?;
+                self.inner.primary.get_history().check(&reference.position.history)?;
                 reference.check_native().map_err(|_| Error::InvalidInput {
                     field: "mutation recovery",
                     reason: "invalid completed file reference",
@@ -394,8 +496,8 @@ impl StorageManager {
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage" });
         }
-        let mutations = if self.inner.primary.supports_mutation_receipts() {
-            Some(state.receipts.window(self.inner.primary.history(), MUTATION_RETENTION)?)
+        let mutations = if self.inner.primary.capabilities().mutation_receipts {
+            Some(state.receipts.window(self.inner.primary.get_history(), MUTATION_RETENTION)?)
         } else {
             None
         };
@@ -407,8 +509,24 @@ impl StorageManager {
         })
     }
 
+    /// A Retained Mutation Receipt Can Reissue Its Exact Position Once Durability Is Proven.
+    pub fn check_receipt_position(&self, position: &super::StorageCursor) -> Result<bool> {
+        self.inner.primary.get_history().check(&position.history)?;
+        let state = self.inner.state.lock().unwrap();
+        super::capacity::admitting(&state, false)?;
+        if !state.receipts.issued_position(position) {
+            return Ok(false);
+        }
+        if !state.status.saved.covers(position)? {
+            return Err(Error::NotReady {
+                domain: "read at storage mutation receipt before durability",
+            });
+        }
+        Ok(true)
+    }
+
     pub fn mutation_window(&self) -> Result<MutationWindow> {
-        if !self.inner.primary.supports_mutation_receipts() {
+        if !self.inner.primary.capabilities().mutation_receipts {
             return Err(Error::InvalidInput {
                 field: "storage mutations",
                 reason: "backend does not support mutation receipts",
@@ -418,7 +536,7 @@ impl StorageManager {
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage mutations" });
         }
-        let window = state.receipts.window(self.inner.primary.history(), MUTATION_RETENTION)?;
+        let window = state.receipts.window(self.inner.primary.get_history(), MUTATION_RETENTION)?;
         state.collect();
         Ok(window)
     }
@@ -469,6 +587,7 @@ impl MemorySize for MutationValue {
                 Self::Cursor(value) => value.memory_size() - std::mem::size_of::<super::StorageCursor>(),
                 Self::Producer(value) => value.memory_size() - std::mem::size_of::<FileProducer>(),
                 Self::Reference(value) => value.as_ref().memory_size(),
+                Self::Definition { name, outcome, .. } => name.memory_size() - std::mem::size_of::<Identifier>() + outcome.heap_bytes(),
                 Self::Progress(_) | Self::Rejected => 0,
             }
     }
@@ -477,6 +596,38 @@ impl MemorySize for MutationReceipt {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>() + self.mutation.memory_size() - std::mem::size_of::<MutationId>() + self.value.memory_size()
             - std::mem::size_of::<MutationValue>()
+    }
+}
+
+impl MutationHeader {
+    pub fn definition(&self, kind: super::DefinitionKind, name: Identifier, outcome: super::DefinitionOutcome) -> MutationReceipt {
+        self.complete(MutationValue::Definition { kind, name, outcome })
+    }
+    pub fn replay_definition(
+        &self, prior: &MutationReceipt, owner: super::DefinitionKind, name: &Identifier,
+    ) -> Result<super::DefinitionOutcome> {
+        if prior.mutation != self.mutation || prior.fingerprint != self.fingerprint {
+            return Err(Error::backend(
+                owner.action(),
+                super::BackendFailure::Conflict,
+                std::io::Error::other("mutation identity has a different payload"),
+            ));
+        }
+        match &prior.value {
+            MutationValue::Definition { kind, name: current, outcome } if *kind == owner && current == name => Ok(outcome.clone()),
+            _ => Err(Error::InvalidInput {
+                field: "storage definition receipt",
+                reason: "mutation identity owns a different result",
+            }),
+        }
+    }
+    pub fn complete(&self, value: MutationValue) -> MutationReceipt {
+        MutationReceipt {
+            mutation: self.mutation.clone(),
+            fingerprint: self.fingerprint,
+            expires_at: self.expires_at,
+            value,
+        }
     }
 }
 
@@ -557,8 +708,16 @@ mod tests {
             receipts.insert(id, [1; 32]).unwrap();
         }
         let owned = receipts.completion(&ids[1]);
+        let position = super::super::StorageCursor {
+            history: super::super::StoreHistory {
+                store: Identifier::new("records").unwrap(),
+                epoch: Identifier::new("generation").unwrap(),
+            },
+            sequence: 7,
+        };
         for id in &ids[1..ids.len() - 1] {
-            receipts.complete(id, MutationValue::Rejected);
+            let value = if id == &ids[2] { MutationValue::Cursor(position.clone()) } else { MutationValue::Rejected };
+            receipts.complete(id, value);
         }
 
         // Admission Skips The Pending Receipt And The Completed Receipt Still Owned.
@@ -567,9 +726,12 @@ mod tests {
         receipts.complete(newest, MutationValue::Rejected);
         assert!(matches!(receipts.lookup(&ids[0], &[1; 32], None).unwrap(), ReceiptState::Pending));
         assert!(matches!(receipts.lookup(&ids[1], &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
-        assert!(matches!(receipts.lookup(&ids[2], &[1; 32], None).unwrap(), ReceiptState::Missing));
+        assert!(
+            matches!(receipts.lookup(&ids[2], &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Cursor(cursor)) if cursor == position)
+        );
+        assert!(receipts.lookup(&ids[3], &[1; 32], None).is_err());
         assert!(matches!(receipts.lookup(newest, &[1; 32], None).unwrap(), ReceiptState::Complete(MutationValue::Rejected)));
-        assert!(!receipts.snapshot(None).iter().any(|receipt| receipt.mutation == ids[2]));
+        assert!(!receipts.snapshot(None).iter().any(|receipt| receipt.mutation == ids[3]));
         drop(owned);
     }
 

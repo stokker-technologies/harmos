@@ -37,7 +37,7 @@ async fn ipc_admission_retains() {
     fixture.storage.write_schema(schema.clone(), graph).await.unwrap();
     fixture
         .storage
-        .write_records(vec![RecordInput {
+        .append_records(vec![RecordInput {
             schema: schema.clone(),
             scope: None,
             item: Identifier::new("row").unwrap(),
@@ -52,7 +52,7 @@ async fn ipc_admission_retains() {
         let mut reader = fixture
             .storage
             .query(harmos_runtime::storage::Query {
-                at: fixture.storage.cursor_saved(),
+                at: fixture.storage.get_saved_position(),
                 source: Source::Records(RecordSelection {
                     schema: schema.clone(),
                     scope: None,

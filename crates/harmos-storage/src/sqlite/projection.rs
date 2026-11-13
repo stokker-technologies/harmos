@@ -59,33 +59,48 @@ pub(super) fn definition_at(connection: &Connection, name: &crate::Identifier, r
     decode(&data.ok_or(Error::NotReady { domain: "projection revision" })?)
 }
 
-pub(super) fn register(state: &mut State, value: &ProjectionDefinition, rebuild: bool) -> Result<u64> {
+pub(super) fn register(
+    state: &mut State, value: &ProjectionDefinition, expected: Option<u64>, rebuild: bool, mutation: Option<&crate::MutationHeader>,
+) -> Result<crate::DefinitionOutcome> {
     state.check()?;
     value.validate()?;
-    let tx = state.connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(db)?;
-    let prior=tx.query_row("SELECT d.definition,a.revision FROM projection_active a JOIN projection_definitions d ON d.name=a.name AND d.revision=a.revision WHERE a.name=?1",[value.name.as_str()],|row|Ok((row.get::<_,Vec<u8>>(0)?,unsigned(row,1)?))).optional().map_err(db)?;
-    let mut revision = 1;
-    if let Some((data, current)) = prior {
-        if decode::<ProjectionDefinition>(&data)? == *value {
-            return Ok(current);
-        }
-        if !rebuild {
-            return Err(conflict("changed projection requires explicit rebuild"));
-        }
-        revision = current.checked_add(1).ok_or_else(|| invalid("projection revision overflow"))?;
+    let mut tx = rusqlite::Transaction::new_unchecked(&state.connection, rusqlite::TransactionBehavior::Immediate).map_err(db)?;
+    if let Some(outcome) = super::definition_mutations::replay(&tx, mutation, crate::DefinitionKind::Projection, &value.name)? {
+        return Ok(outcome);
     }
-    tx.execute(
-        "INSERT INTO projection_definitions VALUES(?1,?2,?3,NULL)",
-        params![value.name.as_str(), integer(revision)?, encode(value)?],
-    )
-    .map_err(db)?;
-    tx.execute(
-        "INSERT INTO projection_active VALUES(?1,?2) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision",
-        params![value.name.as_str(), integer(revision)?],
-    )
-    .map_err(db)?;
+    let result = (|| -> Result<u64> {
+        let edit = tx.savepoint().map_err(db)?;
+        let prior=edit.query_row("SELECT d.definition,a.revision FROM projection_active a JOIN projection_definitions d ON d.name=a.name AND d.revision=a.revision WHERE a.name=?1",[value.name.as_str()],|row|Ok((row.get::<_,Vec<u8>>(0)?,unsigned(row,1)?))).optional().map_err(db)?;
+        if prior.as_ref().map(|(_, revision)| *revision) != expected {
+            return Err(conflict("set projection definition: get again and retry"));
+        }
+        let mut revision = 1;
+        if let Some((data, current)) = prior {
+            if decode::<ProjectionDefinition>(&data)? == *value {
+                return Ok(current);
+            }
+            if !rebuild {
+                return Err(conflict("changed projection requires explicit rebuild"));
+            }
+            revision = current.checked_add(1).ok_or_else(|| invalid("projection revision overflow"))?;
+        }
+        edit.execute(
+            "INSERT INTO projection_definitions VALUES(?1,?2,?3,NULL)",
+            params![value.name.as_str(), integer(revision)?, encode(value)?],
+        )
+        .map_err(db)?;
+        edit.execute(
+            "INSERT INTO projection_active VALUES(?1,?2) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision",
+            params![value.name.as_str(), integer(revision)?],
+        )
+        .map_err(db)?;
+        edit.commit().map_err(db)?;
+        Ok(revision)
+    })();
+    let outcome = crate::DefinitionOutcome::capture(result)?;
+    super::definition_mutations::write(&tx, mutation, crate::DefinitionKind::Projection, &value.name, &outcome)?;
     tx.commit().map_err(db)?;
-    Ok(revision)
+    Ok(outcome)
 }
 
 pub(super) fn status(state: &State, name: &crate::Identifier, revision: u64, cut: &StorageCursor) -> Result<Option<ProjectionStatus>> {

@@ -27,6 +27,7 @@ mod file_ranges;
 mod files;
 #[path = "../../support/fixture.rs"]
 pub(crate) mod fixture;
+mod large_batches_preserve_committed_prefixes;
 mod mapping;
 #[path = "../../support/mapping.rs"]
 pub(crate) mod mapping_fixture;

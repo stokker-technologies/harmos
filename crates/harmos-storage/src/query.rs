@@ -45,7 +45,7 @@ pub use harmos_domain::model::storage::query::{
 };
 pub use harmos_protocol::storage::QueryOutput;
 pub(crate) use reader::schema_at;
-pub use reader::{Query, QueryArrow, QueryReader};
+pub use reader::{Query, QueryArrow, QueryReader, QueryStep};
 pub use table::{Table, TableReader, TableWriter};
 pub use typed::{ObjectRead, ObjectReader, RecordRead, RecordReader, StreamRead, StreamReader};
 

@@ -60,15 +60,15 @@ async fn dropped_write_retained() {
 
     // A Controlled Backend Gate Separates Acceptance From Durability.
     data.control.block_write.store(true, Ordering::SeqCst);
-    let accepted = storage.write_records(vec![record(&first)]).await.unwrap();
+    let accepted = storage.append_records(vec![record(&first)]).await.unwrap();
     let flushing = {
         let storage = storage.clone();
         tokio::spawn(async move { storage.flush().await })
     };
     data.control.write_entered.notified().await;
-    assert_eq!(storage.cursor_saved().sequence, 0);
+    assert_eq!(storage.get_saved_position().sequence, 0);
     let batch = [record(&second)];
-    let mut waiting = Box::pin(storage.write_records((batch).to_vec()));
+    let mut waiting = Box::pin(storage.append_records((batch).to_vec()));
     assert!(
         std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(waiting.as_mut(), context).is_pending())).await
     );

@@ -53,7 +53,7 @@ async fn stream_follow_sequence() {
     let mut instance = fixture.runtime.operations.download_protobuf::<FollowStream>(request, limits).unwrap();
     fixture
         .storage
-        .write_stream(vec![StreamInput {
+        .append_samples(vec![StreamInput {
             stream: stream.clone(),
             sequence: 17,
             record: crate::storage::record(&key, &item, b"sample"),

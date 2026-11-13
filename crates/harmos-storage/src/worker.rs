@@ -60,6 +60,8 @@ enum Action {
     Snapshot(SnapshotAction),
     File(FileAction),
     Delete(Arc<super::deletion::DeleteWork>),
+    Definition(Arc<super::definitions::DefinitionWork>),
+    Receipts(crate::StorageBatch<crate::MutationReceipt>),
     Recovery(Target),
     Prune(super::StorageCursor),
 }
@@ -70,6 +72,8 @@ enum Completed {
     Released(u64),
     File(FileCompleted),
     Deleted,
+    Definition(crate::MutationReceipt),
+    Receipts(crate::StorageBatch<crate::MutationReceipt>),
     Recovery(RecoveryPosition),
     Pruned(bool),
 }
@@ -127,8 +131,9 @@ impl Worker {
                 }
                 state.expire_files();
                 state.request_deletions();
+                state.request_definitions();
                 state.collect();
-                if state.queue.bytes() >= inner.settings.target_batch_bytes() {
+                if state.queue.bytes() >= inner.settings.flush_batch_bytes() {
                     state.request_flush();
                 }
                 let retry = failures.iter().find_map(|(&id, failure)| {
@@ -213,6 +218,18 @@ impl Worker {
                         None
                     };
                     let data = data.or(prune);
+                    let definition = (!ordered_running && !snapshot_running && state.status.failure.is_none())
+                        .then(|| state.definition_action())
+                        .flatten()
+                        .map(Action::Definition);
+                    let receipts = if !ordered_running && state.ready && state.status.failure.is_none() {
+                        let pending = state.receipts.pending_positions(&state.status.saved);
+                        (!pending.is_empty()).then(|| Action::Receipts(crate::StorageBatch::new(pending)))
+                    } else {
+                        None
+                    };
+                    let control = definition.or(receipts);
+                    let data = if prefer_control { control.or(data) } else { data.or(control) };
                     // Alternate persistence with bounded control work; rotate files
                     // and views so neither producer churn nor reads can starve a peer.
                     if prefer_control || data.is_none() {
@@ -262,6 +279,9 @@ impl Worker {
                     }
                     action => action,
                 };
+                if matches!(selected, Some(Action::Receipts(_))) {
+                    state.persisting_receipts = true;
+                }
                 if matches!(selected, Some(Action::Prune(_))) {
                     state.pruning_objects = true;
                     state.objects_prune_owed = false;
@@ -273,7 +293,7 @@ impl Worker {
                     prefer_state = entry.operation.domain() != Domain::Recovery;
                 }
                 prefer_pruning = !matches!(action, Action::Prune(_));
-                prefer_control = !matches!(action, Action::Snapshot(_) | Action::File(_));
+                prefer_control = !matches!(action, Action::Snapshot(_) | Action::File(_) | Action::Definition(_) | Action::Receipts(_));
                 if matches!(action, Action::Snapshot(_)) {
                     snapshot_running = true;
                 } else if action.independent() {
@@ -295,6 +315,7 @@ impl Worker {
                             .map(|held| (Some(held.context.clone()), held.queued.take()))
                             .unwrap_or((None, None)),
                         Action::Delete(work) => (Some(work.context.clone()), work.queued.lock().unwrap().take()),
+                        Action::Definition(work) => (Some(work.context.clone()), work.queued.lock().unwrap().take()),
                         _ => (None, None),
                     }
                 };
@@ -351,6 +372,9 @@ impl Worker {
                 ordered_running = false;
                 snapshot_blocked = false;
             }
+            if matches!(action, Action::Receipts(_)) {
+                inner.state.lock().unwrap().persisting_receipts = false;
+            }
             if matches!(action, Action::Prune(_)) {
                 inner.state.lock().unwrap().pruning_objects = false;
             }
@@ -374,6 +398,12 @@ impl Worker {
                     // A Peer Completion Cannot Clear Another Action's Failure.
                     state.status.failure = failures.values().next().map(|failure| Arc::clone(&failure.source));
                     match (action, completed) {
+                        (Action::Receipts(_), Completed::Receipts(receipts)) => {
+                            state.receipts.saved(receipts.as_slice());
+                        }
+                        (Action::Definition(work), Completed::Definition(receipt)) => {
+                            state.definition_completed(&work, receipt)?;
+                        }
                         (Action::Delete(work), Completed::Deleted) => {
                             state.receipts.complete(&work.receipt().mutation, work.receipt().value.clone());
                             state.deletions.remove(&work.receipt().mutation);
@@ -465,9 +495,11 @@ impl Worker {
                         state.file_failed(file, Arc::clone(&source), retry_at.is_some());
                     }
                     match &action {
+                        Action::Definition(work) => state.definition_failed(&work.header.mutation, Arc::clone(&source), retry_at.is_some()),
                         Action::Delete(work) => state.deletion_failed(&work.receipt().mutation, Arc::clone(&source)),
                         Action::Write(pending, _) if pending.operation.domain() == Domain::Data => {
                             state.deletion_data_failed(pending.index, Arc::clone(&source));
+                            state.definition_data_failed(pending.index, Arc::clone(&source));
                         }
                         _ => {}
                     }
@@ -511,6 +543,7 @@ impl Drop for Running {
         let mut state = self.0.state.lock().unwrap();
         state.status.running = false;
         state.pruning_objects = false;
+        state.persisting_receipts = false;
         if !state.status.closed {
             state.status.failure = Some(Arc::new(Error::NotReady { domain: "storage worker" }));
         }
@@ -611,18 +644,26 @@ impl Operation {
 async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
     match action {
         Action::Delete(work) => work.perform(inner).await.map(|()| Completed::Deleted),
+        Action::Definition(work) => work.perform(inner).await.map(Completed::Definition),
+        Action::Receipts(receipts) => {
+            inner.bounded("primary.append_mutation_receipts", inner.primary.append_mutation_receipts(receipts.clone())).await?;
+            Ok(Completed::Receipts(receipts.clone()))
+        }
         Action::Prune(through) => inner
-            .bounded("primary.prune_objects", inner.primary.prune_objects(through, super::config::OBJECT_PRUNE_ENTRIES, &inner.catalog))
+            .bounded(
+                "primary.delete_expired_object_revisions",
+                inner.primary.delete_expired_object_revisions(through, super::config::OBJECT_PRUNE_ENTRIES, &inner.catalog),
+            )
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
         Action::Snapshot(SnapshotAction::Open(id, at)) => {
-            let opened = inner.bounded("primary.open_snapshot", inner.primary.open_snapshot(at)).await;
+            let opened = inner.bounded("primary.create_snapshot", inner.primary.create_snapshot(at)).await;
             Ok(Completed::Opened(*id, opened))
         }
         Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {
             if let Some(snapshot) = snapshot {
-                inner.bounded("primary.release_snapshot", inner.primary.release_snapshot(snapshot)).await?;
+                inner.bounded("primary.delete_snapshot", inner.primary.delete_snapshot(snapshot)).await?;
             }
             Ok(Completed::Released(*id))
         }
@@ -647,7 +688,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                                 });
                             }
                         }
-                        inner.bounded("recovery.write_entries", inner.recovery.write_entries(entries.clone())).await?;
+                        inner.bounded("recovery.append_recovery_entries", inner.recovery.append_recovery_entries(entries.clone())).await?;
                         Ok(Completed::Write {
                             data: None,
                             saved: None,
@@ -667,7 +708,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
                                 reason: "snapshot cannot precede required primary persistence",
                             });
                         }
-                        inner.bounded("recovery.write_snapshot", inner.recovery.write_snapshot(snapshot.clone())).await?;
+                        inner.bounded("recovery.set_recovery_snapshot", inner.recovery.set_recovery_snapshot(snapshot.clone())).await?;
                         Ok(Completed::Write {
                             data: None,
                             saved: None,
@@ -696,7 +737,7 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
 
         Action::Recovery(target) => {
             let through = RecoveryPosition {
-                history: inner.recovery.history().clone(),
+                history: inner.recovery.get_history().clone(),
                 sequence: target.sequence,
             };
             let saved = inner.bounded("recovery.flush", inner.recovery.flush(&through)).await?;

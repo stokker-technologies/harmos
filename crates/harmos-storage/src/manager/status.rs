@@ -43,7 +43,7 @@ impl StorageManager {
     #[tracing::instrument(name = "storage.manager.status.wait_saved_after", level = "debug", skip_all, fields(after = cursor.sequence, saved = tracing::field::Empty, outcome = "cancelled"))]
     pub async fn wait_saved_after(&self, cursor: &StorageCursor) -> Result<StorageCursor> {
         let result = async {
-            self.inner.primary.history().check(&cursor.history)?;
+            self.inner.primary.get_history().check(&cursor.history)?;
             self.inner
                 .wait(None, |state| {
                     if state.status.saved.sequence > cursor.sequence {
@@ -75,7 +75,7 @@ impl StorageManager {
     }
 
     pub fn check_state_dependency(&self, required: &StorageCursor) -> Result<()> {
-        if !self.cursor_saved().covers(required)? {
+        if !self.get_saved_position().covers(required)? {
             return Err(Error::InvalidInput {
                 field: "state evidence dependency",
                 reason: "required primary evidence is not durable",
@@ -116,20 +116,20 @@ impl StorageManager {
 
     #[tracing::instrument(name = "storage.manager.status.await_durable", level = "debug", skip_all)]
     pub async fn await_durable(&self, cursor: &StorageCursor) -> Result<()> {
-        self.inner.primary.history().check(&cursor.history)?;
+        self.inner.primary.get_history().check(&cursor.history)?;
         self.flush_domain(Domain::Data, Some(cursor)).await
     }
 
-    #[tracing::instrument(name = "storage.manager.status.release_object_history", level = "debug", skip_all)]
-    pub async fn release_object_history(&self, schema: &SchemaKey, item: &crate::ObjectKey, through: &StorageCursor) -> Result<()> {
-        self.inner.primary.history().check(&through.history)?;
+    #[tracing::instrument(name = "storage.manager.status.delete_object_history", level = "debug", skip_all)]
+    pub async fn delete_object_history(&self, schema: &SchemaKey, item: &crate::ObjectKey, through: &StorageCursor) -> Result<()> {
+        self.inner.primary.get_history().check(&through.history)?;
         if !self.status().saved.covers(through)? {
             return Err(Error::InvalidInput {
                 field: "object retention",
                 reason: "release exceeds durable frontier",
             });
         }
-        self.inner.bounded("primary.release_object_history", self.inner.primary.release_object_history(schema, item, through)).await?;
+        self.inner.bounded("primary.delete_object_history", self.inner.primary.delete_object_history(schema, item, through)).await?;
         self.inner.state.lock().unwrap().objects_pruned = 0;
         self.inner.notify();
         Ok(())
@@ -139,14 +139,14 @@ impl StorageManager {
 impl StorageManager {
     pub(crate) fn position(&self, sequence: u64) -> StorageCursor {
         StorageCursor {
-            history: self.inner.primary.history().clone(),
+            history: self.inner.primary.get_history().clone(),
             sequence,
         }
     }
 
     pub(super) fn recovery_position(&self, sequence: u64) -> RecoveryPosition {
         RecoveryPosition {
-            history: self.inner.recovery.history().clone(),
+            history: self.inner.recovery.get_history().clone(),
             sequence,
         }
     }
@@ -187,7 +187,7 @@ mod tests {
             state.status.running = true;
             state.retry = 41;
         }
-        let before = storage.cursor_saved();
+        let before = storage.get_saved_position();
         let future = StorageCursor { sequence: 42, ..before.clone() };
         let revision = *storage.inner.changed.borrow();
         let subscribers = storage.inner.changed.receiver_count();
@@ -216,7 +216,7 @@ mod tests {
     #[tokio::test]
     async fn saved_wait_errors() {
         let storage = storage();
-        let cursor = storage.cursor_saved();
+        let cursor = storage.get_saved_position();
         assert!(matches!(storage.wait_saved_after(&cursor).await, Err(Error::NotReady { .. })));
         let failure = Arc::new(Error::NotReady { domain: "injected persistence" });
         {

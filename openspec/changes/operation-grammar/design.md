@@ -1519,3 +1519,225 @@ migrate and Nightly large-file throughput is measured. No compatibility aliases,
 second long-lived authorities, implicit data migration or stored-data reset.
 Rollback uses a matched prior host/SDK revision. Final validation remains separate
 from source closure.
+
+## Storage Implementation Ownership
+
+`feat/gp-grammar-storage` owns `proto/harmos/v1/storage.proto`, `crates/harmos-storage/**`,
+`crates/harmos-operations/src/storage/**`, storage handlers/tests/benches in runtime,
+storage benchmark tooling and Nightly wiring, `docs/storage.md`, and the storage tasks/design
+in this change. Shared protocol primitives and SDK bindings belong to the parallel core worker.
+Streaming transfers remain until task 5.2; no accepted-data snapshot is implemented.
+
+### Windows Durable-Lag Measurements
+
+Measured on 2026-11-12 in the bench profile, SQLite WAL with `synchronous=FULL`.
+Each load opens an empty store and a native worker. Small load offers 1,000 single
+32-byte samples separated by 1 ms; large load offers 128 logical 4 MiB batches
+(64 samples of 64 KiB); mixed load offers 1,000 batches with every sixteenth batch
+large. Existing admission bounds split a logical batch when needed, without changing
+its bytes. An independent observer measures admission-return to passive saved-frontier
+notification; scheduler observation delay is included. Admission backpressure is separate.
+These are local measurements, not assertions or native Linux/hosted proof.
+
+The before run uses whole admitted provider batches; the after run splits at entry
+boundaries around the existing 1 MiB target, retaining the existing 16 MiB admission
+ceiling and size-triggered flushing. An indivisible row retains that ceiling. Durability
+mode, cadence, workload, pending-write budget and deadlines are unchanged.
+
+| Load | Before p50 / p95 / Maximum (ms) | After p50 / p95 / Maximum (ms) | Before / After Maximum Backlog (Bytes) | Before / After Commit Count | Before / After Synchronous Commit Total (ms) |
+| --- | --- | --- | --- | --- | --- |
+| `small_high_rate` | 53.96 / 99.11 / 104.45 | 53.10 / 98.69 / 103.67 | 18,032 / 18,032 | 24 / 23 | 19.00 / 17.70 |
+| `multi_megabyte` | 141.18 / 149.83 / 157.95 | 175.54 / 229.27 / 258.32 | 12,602,304 / 12,602,304 | 128 / 1664 | 9459.83 / 11553.25 |
+| `mixed` | 257.81 / 301.59 / 331.38 | 174.14 / 198.77 / 233.64 | 12,614,064 / 12,614,064 | 82 / 833 | 4778.64 / 5261.50 |
+
+Mixed p95 missed 250 ms before splitting. All three after-run p95 values meet it;
+the large-load maximum exceeds 250 ms, which is not a maximum-latency promise.
+The increased commit count and total commit contribution remain visible. Accepted-data
+snapshots were not built. The benchmark emits backlog positions and admission wait as
+well as this table; Nightly retains the raw observations and platform-qualified metrics.
+
+A fresh Windows confirmation on the same workload after the provider migration measured
+`small_high_rate` 54.76 / 98.76 / 104.70 ms, `multi_megabyte`
+272.72 / 359.90 / 702.77 ms, and `mixed` 333.83 / 427.73 / 486.73 ms
+(p50 / p95 / maximum). Commit counts were 23 / 1664 / 827 and synchronous commit
+totals 19.77 / 17809.58 / 9791.44 ms; maximum backlogs were 18,816 / 12,602,304 /
+12,614,064 bytes. Large and mixed p95 **miss 250 ms after task 3.7**. The earlier
+passing measurement does not establish acceptance; the bound remains unmet in this
+confirmation. No budget, deadline or workload was changed and no accepted-data
+snapshot was built. The owner decides the fallback.
+
+The upload owner now verifies a replayed accepted prefix under the file's serialized
+command ownership, including short backend reads. Matching bytes under a different
+request identifier return the unchanged producer state; different bytes retain a
+rejected receipt and never alter the length or hash. Focused proof is
+`replayed_file_bytes_preserve_the_accepted_prefix::replayed_file_bytes_preserve_the_accepted_prefix`,
+including fencing, restart and terminal digest integrity. This closes only the
+file-byte replay part of task 3.4; the task stays open for the other Append families.
+
+### Native Storage Migration
+
+The 52 storage and eight recovery hooks are implemented with no old-name aliases;
+projection definition/status/advancement pairs use optional retained revision/frontier
+arguments and capability flags have one owner. Stored encodings and atomic publication
+are unchanged. Focused Windows proof covers projection rebuild/restart, finished-file
+and mutation replay, and recovery checkpoint/journal restoration.
+
+Required call-site edits outside the storage split are confined to
+`crates/harmos-runtime/tests/{streams/revisions.rs,support/storage_fixture.rs,system/runtime.rs}`.
+The required Rust check also needed the example guest's one-attempt policy literal
+migrated to `retries: None` in `examples/schematic/guest/src/lib.rs`, preserving its
+budgets. The required formatter wrapped one Python conformance-fixture policy call.
+Protocol Rust, example descriptor and Python storage outputs were regenerated from
+`storage.proto` to expose the three capability flags; generated files were not edited by hand.
+
+### Unary Transfer Implementation
+
+Both face services own seven independent wrappers in `proto/harmos/{v1,context/v1}/storage.proto`.
+Shared domain payloads retain their owner in `harmos.storage.v1`, now declared in
+`storage_types.proto`; they do not import another face's wrappers. The storage operation
+owner declares client methods and context-only methods with shared handlers in
+`crates/harmos-operations/src/storage/`. Native operation identifiers mechanically use
+`<package>.storage.<snake_case_method>` because native identifiers are lowercase dotted
+names; the gRPC full method retains `<package>.Storage/<Method>`. Reserved declarations
+are checked against their authoritative face descriptors before host registration.
+
+`StorageManager::get_file_bytes` reads bounded immutable ranges at saved progress.
+`publish_file_production_once` adds explicit publication length/digest validation using
+the existing production, receipt and durability owners. Its public operation waits for
+the reference/receipt barrier. Existing native streaming publication fingerprints and
+stored encodings remain unchanged. Status excludes in-flight appends and observes the
+committed writer generation without creating a writer. Session status and completion
+carry retained prefix progress without inventing a primary-history position.
+
+Focused proof: `storage::unary_transfers::resume_fence_publish_and_range_across_faces`
+passes through a real socket client and a real plugin child carrier, including fenced
+resume, byte replay/conflict, grants, unsupported sessions, integrity, abandonment and
+exact ranges. Issued-position retention and complete paging/Watch remain their separate
+tasks. Streaming upload/download remain for the throughput comparison.
+
+Coupling edits: protobuf generation/reflection includes both storage faces and the
+shared payload file move (including import-only edits and generated consumers). Native
+host registration uses factory validation, matching the core worker's existing fix,
+and child fingerprinting reads native protobuf descriptors without requiring a client
+gRPC projection. README links the new transfer API; no other runtime subsystem changes.
+
+### Recoverable Upload Progress
+
+Status exposes admitted bytes separately from the last acknowledged production
+recovery checkpoint. Pending and completed but uncheckpointed appends never become
+`durable_length`; reopening restores that length from the persisted checkpoint.
+Publication still requires its separate reference/receipt barrier. A lost checkpoint
+reply retains the prior acknowledged length until the same checkpoint is retried.
+The cross-face transfer story controls a blocked append and a failed checkpoint reply,
+then checks exact ranges, corruption refusal and the complete encoded response ceiling.
+Structured transient failures retain retry classification, and replay payload/prefix
+conflicts retain the conflict classification. The existing lost-reply/cancellation
+receipt story passes without changing its retry budget or durability guarantees.
+
+### Windows Unary Transfer Measurements
+
+The focused `integration/file_transfer` case uses the existing resumable reference
+memory backend, real client sockets and a real plugin child-call carrier. Each of
+three repetitions transfers the same deterministic 30 MiB file using the existing
+64 KiB response/chunk configuration, verifies its published length/digest and checks
+every downloaded byte. Setup and final verification are outside timing; session
+creation and publication are included. No workload, consumer budget or deadline was
+changed. The reusable workload accepts consumer-supplied carrier/backend composition.
+
+Local measurements after transfer progress/range proof on 2026-11-12 (MiB/s; median and minimum–maximum of three):
+
+| Carrier and Direction | Unary | Retained Streaming |
+| --- | ---: | ---: |
+| Client Upload | 73.16 (70.72–89.61) | 341.38 (218.21–360.01) |
+| Client Download | 7.13 (7.10–7.96) | 270.61 (166.60–305.41) |
+| Plugin Upload | 46.96 (33.67–48.74) | Unavailable |
+| Plugin Download | 6.11 (5.85–6.37) | Unavailable |
+
+These are transport/reference-backend measurements, not disk throughput or hosted
+Windows/Linux evidence. The reference backend copies all file blobs when opening
+its saved snapshot. A unary range currently opens a snapshot per call, so download
+pays that whole-file copy repeatedly while streaming opens it once. This limits any
+cross-backend interpretation; it is not a reason to alter the benchmark or remove
+streaming. Plugin child calls are unary and refuse streaming host operations: there
+is no existing plugin-carrier streaming baseline to measure. That absence is reported
+explicitly rather than represented by zero throughput or a native-call substitute.
+Raw native output and compiler evidence remain under `target/benchmarks/storage/`;
+Nightly runs the same focused case and exports its medians.
+
+### Face Generator Integration
+
+Merged core checkpoint `8b5ed431` and regenerated independent storage face bindings.
+The transfer fixture now serves `harmos.plugin.v1.Instance`; the focused cross-face
+resume story passes. Coupling repairs update SDK Wasm host imports to shared/context
+owners, fix the runtime guest host import, remove a duplicated generator input scan,
+and retain storage package flattening. No compatibility module or carrier alias remains.
+
+### Definition Compare and Exchange
+
+Index and projection definitions use their provider-owned revision. Native Set takes
+`expected: Option<u64>`: `None` explicitly creates an absent definition; `Some(revision)`
+compares the current revision inside the same provider transaction or catalog mutex.
+The wire uses the Get revision as eight opaque big-endian bytes and a mutually exclusive
+create-if-absent flag. Validation covers the complete definition before replacement;
+rebuild remains explicit. Even an unchanged candidate with a stale revision conflicts,
+naming the Set action and “get again and retry”. The two faces share these handlers,
+while each declaration and grant retains its own identity. Retired RegisterIndex and
+RegisterProjection operations, request types and SDK bindings are removed. Native
+bench/provider consumers now supply expected revisions. Object/schema mirrors and
+issued-cut retention remain separate open work.
+
+### Issued Storage Cut Lifetime
+
+Storage read cuts retain existing durable provider snapshots through the existing
+`SavedSnapshots` owner. Omitted `at` immediately selects the current saved position,
+without requesting persistence. A supplied complete cut must match a retained tuple
+that this owner returned. The existing consumer-supplied saved-read capacity bounds
+issuance: oldest idle automatic cuts may expire; explicit CreateSnapshot leases stay
+pinned until DeleteSnapshot or storage retirement. Active readers retain their image.
+Failure/cancellation of one page does not discard an explicit lease. Capacity refusal
+is explicit when pinned or active readers occupy every slot.
+
+ListRows tokens are HMAC-authenticated with an owner-local key and bind the retained
+image, normalized source/transforms/order and query progress. Page size may change
+within consumer bounds. The latest continuation request/result is cached for replay with identical bounds;
+consuming its next token expires older requests. Retained query plans advance one
+bounded source/output step per call, including empty progress pages. Idle plans may
+expire under the existing retained-read capacity. They release active execution
+between calls and bind each resumed step to the current invocation context. Positions and definition revisions are retained as one exact composite;
+callers cannot synthesize another combination. There is no arbitrary historical
+fallback. A provider unable to retain the exact requested revision refuses rather
+than selecting a newer definition or frontier. A selection involving a different
+storage history is unavailable on this owner.
+
+Read-lease issuance and signing keys are not recovered across manager retirement/restart.
+Retained mutation receipts may reissue their exact position after the primary saved
+frontier proves durability, including recovered receipts. Pending positions refuse
+without requesting persistence, and expired receipts or lost provider retention
+refuse explicitly. Receipt identity lifetime and a separately retained read lease
+have independent expiry: losing an idempotency key does not silently reclaim a
+still-pinned durable image.
+Expired/foreign/changed leases or tokens require restarting the read with no `at`.
+A still-readable durable position can later be issued again as the same value;
+this does not revive its old opaque page token. Provider/recovery internals retain
+their explicit durable-cut APIs; public client/context continuations use this issuer.
+There is no snapshot of accepted data. The file-range handler now reuses the same
+retained durable snapshot for all ranges instead of opening/copying it per call.
+
+### Append Receipt Completion and Capacity Retirement
+
+The three storage Append families admit one bounded immutable batch and return
+its fixed request identity and accepted position immediately. Replaying the same
+normalized input observes the same admission; durable completion advances only
+after both the primary data and the replay ledger have acknowledged persistence.
+The storage worker owns this second stage after caller loss. No read requests it.
+Native `wait_mutation_durable` observes that owner without scheduling a flush;
+wire callers resend their original Append. An unacknowledged ledger response
+cannot populate `durable_at`, even if the data frontier already covers the batch.
+
+Unsaved cursor receipts are retained until this stage settles. At capacity,
+evicting a completed replay entry rotates the issuance window: retained identities
+continue to replay, while an absent identity from the retired window refuses
+rather than becoming fresh work. New mutations obtain the current window from
+Capabilities. Restart restores retained acknowledged receipts; missing identities
+from a previous manager window refuse. This preserves explicit expiry and the
+consumer's bounded receipt capacity without an unbounded tombstone collection.

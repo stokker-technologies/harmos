@@ -30,7 +30,7 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, history};
 use super::{Fixture, config};
-use harmos_operations::storage::Query;
+use harmos_operations::storage::ListRows;
 use harmos_runtime::storage::Query as Request;
 use harmos_runtime::storage::query::scalar::ScalarValue;
 use harmos_runtime::storage::query::transform::{

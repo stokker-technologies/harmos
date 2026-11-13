@@ -372,7 +372,7 @@ async fn historical_plugin_values(storage: &StorageManager, schema: &harmos_runt
     ] {
         let mut reader = storage
             .query(harmos_runtime::storage::Query {
-                at: storage.cursor_saved(),
+                at: storage.get_saved_position(),
                 source,
                 transforms: vec![],
                 slice: RowSlice::default(),
@@ -410,7 +410,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         let receipt = disk.write_object(&value).await.unwrap();
         let encoded = plugin_objects_catalog().encode(&value, NonZeroUsize::new(4096).unwrap()).unwrap();
         let schema = encoded.schema;
-        disk.write_records(vec![RecordInput {
+        disk.append_records(vec![RecordInput {
             schema: schema.clone(),
             scope: None,
             item: Identifier::new("plugin-row").unwrap(),
@@ -441,7 +441,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         };
         assert_ne!(PluginObject::definition().1, NewPluginObject::definition().1);
         // A Typed Read Must Never Interpret Old Bytes As The New Definition.
-        assert!(disk.read_object::<NewPluginObject>(&value.id, ObjectVersion::Exact(receipt.version)).await.is_err());
+        assert!(disk.get_object::<NewPluginObject>(&value.id, ObjectVersion::Exact(receipt.version)).await.is_err());
         disk.write_object(&current).await.unwrap();
         disk.write_object(&NewPluginObject {
             id: value.id.clone(),
@@ -450,7 +450,7 @@ async fn plugin_history_survives_shape_change_and_absence_on_one_root() {
         .await
         .unwrap();
         disk.flush().await.unwrap();
-        assert_eq!(disk.read_object::<NewPluginObject>(&value.id, ObjectVersion::Latest).await.unwrap().unwrap().value.value, "latest");
+        assert_eq!(disk.get_object::<NewPluginObject>(&value.id, ObjectVersion::Latest).await.unwrap().unwrap().value.value, "latest");
         let next = SystemFact::encode(FactSource::Sidecar("probe".into()), "reading".into(), &current).unwrap();
         assert_ne!(old.identify().1, next.identify().1);
         runtime.records.publish_system(next.clone()).await.unwrap();

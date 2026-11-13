@@ -45,6 +45,9 @@ impl From<StorageCapabilities> for wire::StorageCapabilities {
             native_index: v.native_index,
             durable_projections: v.durable_projections,
             conditional_objects: v.conditional_objects,
+            file_sessions: v.file_sessions,
+            file_deletion: v.file_deletion,
+            mutation_receipts: v.mutation_receipts,
         }
     }
 }
@@ -244,23 +247,6 @@ impl From<ProjectionStatus> for wire::ProjectionStatus {
         }
     }
 }
-impl From<crate::CompareExchange> for wire::CompareExchangeOutcome {
-    fn from(v: crate::CompareExchange) -> Self {
-        use wire::compare_exchange_outcome::Outcome;
-        Self {
-            outcome: Some(match v {
-                crate::CompareExchange::Applied(r) => Outcome::Applied(wire::ObjectReceipt {
-                    position: Some(r.position.into()),
-                    version: Some(r.version.into()),
-                }),
-                crate::CompareExchange::Conflict { current } => {
-                    Outcome::Conflict(wire::ObjectConflict { current: current.map(Into::into) })
-                }
-            }),
-        }
-    }
-}
-
 /* === Public Functions === */
 
 pub fn required<T>(v: Option<T>) -> Result<T> {

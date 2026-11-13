@@ -1,0 +1,168 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package harmos.storage.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Histories and positions are native storage identities, independent of transport.
+message StoreHistory { string store = 1; string epoch = 2; }
+message StorageCursor { StoreHistory history = 1; uint64 sequence = 2; }
+message MutationWindow {
+  StoreHistory history = 1;
+  string id = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+message StorageStatus {}
+message StorageInfo {
+  StorageCursor accepted = 1;
+  StorageCursor saved = 2;
+  MutationWindow mutations = 3;
+  uint64 file_batch_bytes = 4;
+}
+
+message MutationId { string window = 1; string key = 2; }
+message FileMetadata {
+  string id = 1;
+  optional string scope = 2;
+  string media_type = 3;
+  optional uint64 expected_length = 4;
+  optional bytes expected_sha256 = 5;
+}
+message StagedFile { StoreHistory history = 1; string id = 2; }
+message FileSession { StoreHistory history = 1; string id = 2; uint64 generation = 3; }
+message FileProducer { FileSession session = 1; uint64 length = 2; }
+message FileReference { StorageCursor position = 1; FileMetadata metadata = 2; uint64 length = 3; bytes sha256 = 4; }
+enum FilePhase { PRODUCING = 0; FINISHED = 1; ABANDONED = 2; }
+message FileProgress { uint64 length = 1; FilePhase phase = 2; }
+message DeleteFile { MutationId mutation = 1; StagedFile file = 2; }
+
+message DirectoryRule { string pattern = 1; bool include = 2; }
+message DirectorySelection { string root = 1; bool recursive = 2; repeated DirectoryRule rules = 3; }
+message DirectoryEntry { string path = 1; bool directory = 2; uint64 length = 3; }
+message DirectoryCompletion { uint64 entries = 1; }
+message DirectoryRename { string from = 1; string to = 2; }
+message Empty {}
+message DirectoryEvent {
+  oneof event {
+    DirectoryEntry existing = 1;
+    Empty initial_scan_complete = 2;
+    DirectoryEntry created = 3;
+    DirectoryEntry modified = 4;
+    string removed = 5;
+    DirectoryRename renamed = 6;
+    Empty rescan_required = 7;
+  }
+}
+message ListDirectory { DirectorySelection selection = 1; }
+message WatchDirectory { DirectorySelection selection = 1; bool include_existing = 2; }
+
+message FileSource { oneof source { FileReference stored = 1; string local = 2; } }
+message ByteRange { uint64 offset = 1; optional uint64 limit = 2; }
+message FileBatch { uint64 offset = 1; bytes bytes = 2; }
+message FileCompletion { uint64 bytes = 1; }
+message FileHash { uint64 bytes_read = 1; bytes sha256 = 2; }
+message FollowStart { oneof start { Empty beginning = 1; Empty end = 2; uint64 at = 3; } }
+message FileEvent { oneof event { FileBatch data = 1; uint64 truncated = 2; Empty replaced = 3; } }
+enum CaptureConsistency { BOUNDED = 0; STABLE = 1; }
+message ReadFile { FileSource source = 1; ByteRange range = 2; }
+message HashFile { FileSource source = 1; ByteRange range = 2; }
+message CaptureFile { FileSource source = 1; ByteRange range = 2; FileMetadata metadata = 3; CaptureConsistency consistency = 4; }
+message FollowFile { FileSource source = 1; FollowStart start = 2; }
+message FollowProduction { StagedFile file = 1; uint64 offset = 2; }
+
+// Storage schema graphs describe persisted payloads; they do not change their encoding.
+enum PayloadEncoding { PAYLOAD_ENCODING_UNSPECIFIED = 0; POSTCARD_V1 = 1; }
+message SchemaKey { string id = 1; uint32 version = 2; PayloadEncoding payload_encoding = 3; }
+enum SchemaCardinality { REQUIRED = 0; OPTIONAL = 1; REPEATED = 2; VARIANT = 3; }
+enum SchemaKind { BOOL = 0; UINT32 = 1; UINT64 = 2; INT32 = 3; INT64 = 4; FLOAT32 = 5; FLOAT64 = 6; STRING = 7; BYTES = 8; MESSAGE = 9; }
+message SchemaField { string name = 1; uint32 tag = 2; SchemaKind kind = 3; SchemaCardinality cardinality = 4; optional uint64 definition = 5; }
+message SchemaDefinition { repeated SchemaField fields = 1; }
+enum SchemaForm { OBJECT = 0; UNIT = 1; VALUE = 2; TUPLE = 3; EXTERNAL = 4; INTERNAL = 5; ADJACENT = 6; UNTAGGED = 7; }
+enum SchemaOmission { OMIT_NONE = 0; OMIT_EMPTY = 1; }
+message SchemaRepresentation {
+  uint64 definition = 1;
+  SchemaForm form = 2;
+  optional string tag = 3;
+  optional string content = 4;
+  map<string, SchemaOmission> omissions = 5;
+  repeated string maps = 6;
+}
+message SchemaGraph { uint64 root = 1; repeated SchemaDefinition definitions = 2; repeated SchemaRepresentation representations = 3; }
+message SchemaInput { SchemaKey key = 1; SchemaGraph graph = 2; }
+message WriteSchema { MutationId mutation = 1; SchemaInput schema = 2; }
+
+message RowSlice { uint64 offset = 1; optional uint64 limit = 2; }
+enum ObjectVersions { LATEST = 0; REVISIONS = 1; }
+message ObjectSelection { SchemaKey schema = 1; optional string key = 2; ObjectVersions versions = 3; }
+message RecordSelection { SchemaKey schema = 1; optional string scope = 2; optional string item = 3; google.protobuf.Timestamp source_start = 4; google.protobuf.Timestamp source_end = 5; }
+message StreamSelection { SchemaKey schema = 1; optional string scope = 2; optional string item = 3; optional string stream = 4; google.protobuf.Timestamp source_start = 5; google.protobuf.Timestamp source_end = 6; uint64 after = 7; }
+message SchemaSelection { SchemaKey schema = 1; }
+message FileSelection { optional string scope = 1; optional string item = 2; }
+message QuerySource { oneof source { ObjectSelection objects = 1; RecordSelection records = 2; StreamSelection stream = 3; SchemaSelection schemas = 4; FileSelection files = 5; } }
+message QueryCompletion { StorageCursor at = 1; uint64 rows = 2; }
+message QueryOutput { oneof output { bytes schema = 1; bytes batch = 2; } }
+message FieldPath { repeated string fields = 1; }
+// Wide integer strings use minimal base-10 notation without a leading plus sign.
+message ExactNumber { bool negative = 1; string numerator = 2; string denominator = 3; }
+// Datetime is signed nanoseconds since the Unix epoch. Floats must be finite.
+// Exact fractions must be reduced; their positive denominator is nonzero and zero has no negative sign.
+message ScalarValue { oneof value { Empty missing = 1; Empty null = 2; bool boolean = 3; int64 signed = 4; uint64 unsigned = 5; double floating = 6; string text = 7; string datetime = 8; ExactNumber exact = 9; } }
+enum Compare { EQ = 0; NE = 1; LT = 2; LE = 3; GT = 4; GE = 5; }
+message Comparison { Compare op = 1; ScalarValue value = 2; }
+message ScalarValues { repeated ScalarValue values = 1; }
+message Condition { oneof condition { Comparison compare = 1; ScalarValues in_values = 2; Empty is_null = 3; } }
+message Term { FieldPath field = 1; Condition condition = 2; bool negate = 3; }
+message Clause { repeated Term terms = 1; }
+message Filter { repeated Clause clauses = 1; }
+message Projection { FieldPath field = 1; string name = 2; }
+message Project { repeated Projection fields = 1; }
+message Statistic { oneof statistic { Empty count = 1; Empty sum = 2; Empty mean = 3; Empty median = 4; Empty min = 5; Empty max = 6; Empty rms = 7; Empty std = 8; uint32 percentile = 9; } }
+message Measure { FieldPath field = 1; Statistic statistic = 2; string name = 3; }
+message Aggregate { repeated Projection groups = 1; repeated Measure measures = 2; }
+message Histogram { FieldPath field = 1; repeated double edges = 2; }
+enum DownsampleAlgorithm { DECIMATE = 0; EXTREMA = 1; LTTB = 2; LTTB_LOG = 3; }
+message Downsample { uint64 max_rows = 1; DownsampleAlgorithm algorithm = 2; FieldPath value = 3; FieldPath axis = 4; }
+message SortKey { FieldPath field = 1; bool descending = 2; bool nulls_first = 3; }
+message Sort { repeated SortKey keys = 1; }
+message Transform { oneof transform { Filter filter = 1; Project project = 2; Aggregate aggregate = 3; Histogram histogram = 4; Downsample downsample = 5; Sort sort = 6; TimeBucketPlan time_buckets = 7; } }
+message Query { StorageCursor at = 1; QuerySource source = 2; repeated Transform transforms = 3; RowSlice slice = 4; }
+message StoredRecord { StorageCursor position = 1; SchemaKey schema = 2; optional string scope = 3; string item = 4; optional string source = 5; google.protobuf.Timestamp source_time = 6; bytes payload = 7; }
+message StoredRow { StoredRecord record = 1; string stream = 2; uint64 sequence = 3; }
+message FollowBoundaries { StorageCursor saved = 1; StorageCursor accepted = 2; }
+message Followed { oneof followed { FollowBoundaries boundaries = 1; StoredRecord record = 2; } }
+message FollowRecords { StorageCursor after = 1; RecordSelection selection = 2; }
+message FollowStream { StorageCursor after = 1; StreamSelection selection = 2; }
+message ObjectVersionToken { StoreHistory history = 1; uint64 revision = 2; }
+message ObjectValue { SchemaKey schema = 1; string item = 2; bytes payload = 3; }
+message ObjectEntry { StorageCursor position = 1; ObjectVersionToken version = 2; ObjectValue value = 3; }
+message FollowObjects { StorageCursor after = 1; ObjectSelection selection = 2; }
+message DataBatch { uint64 sequence = 1; string destination = 2; SchemaKey schema = 3; bytes ipc = 4; }
+message WriteFile { FileMetadata metadata = 1; }
+
+// Native plans use separate output and source-work bounds supplied by the caller.
+message ReadLimits { uint64 rows = 1; uint64 bytes = 2; }
+message StorageCapabilities { bool native_arrow = 1; bool native_index = 2; bool durable_projections = 3; bool conditional_objects = 4; bool file_sessions = 5; bool file_deletion = 6; bool mutation_receipts = 7; }
+enum ColumnKind { COLUMN_KIND_OBJECTS = 0; COLUMN_KIND_RECORDS = 1; COLUMN_KIND_STREAM = 2; }
+message ColumnSource { ColumnKind kind = 1; SchemaKey schema = 2; }
+message ColumnPredicate { string column = 1; optional double lower = 2; optional double upper = 3; }
+message TimeBounds { string column = 1; int64 lower_ns = 2; int64 upper_ns = 3; }
+message ArrowSeek { bytes snapshot = 1; bytes plan = 2; uint64 position = 3; }
+message ArrowScan { ColumnSource source = 1; repeated string columns = 2; ColumnPredicate predicate = 3; TimeBounds time = 4; uint64 start = 5; ArrowSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
+message ArrowPage { bytes ipc = 1; ArrowSeek next = 2; bool complete = 3; uint64 scanned = 4; uint64 bytes_read = 5; repeated string columns_read = 6; uint64 payload_rows = 7; }
+message IndexDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; repeated string columns = 4; }
+message IndexEntry { bytes key = 1; uint64 position = 2; }
+message IndexSeek { bytes snapshot = 1; bytes plan = 2; uint64 revision = 3; bytes key = 4; uint64 position = 5; }
+message IndexRead { string name = 1; optional bytes lower = 2; optional bytes upper = 3; bytes prefix = 4; bool descending = 5; IndexSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
+message IndexPage { repeated IndexEntry entries = 1; IndexSeek next = 2; bool complete = 3; }
+message TimeBucketPlan { int64 origin_ns = 1; uint64 width_ns = 2; string time = 3; string value = 4; string identity = 5; repeated string group = 6; uint64 max_samples = 7; uint64 max_bytes = 8; }
+message SelectColumns { repeated string columns = 1; }
+message ProjectionDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; oneof transform { SelectColumns select = 4; TimeBucketPlan time_buckets = 5; } }
+message ProjectionRead { string name = 1; uint64 revision = 2; StorageCursor frontier = 3; uint64 after = 4; ReadLimits limits = 5; ReadLimits work = 6; }
+message ProjectionPage { bytes ipc = 1; StorageCursor frontier = 2; uint64 revision = 3; repeated bytes changed_keys = 4; optional uint64 next = 5; }
+message ProjectionStatus { StorageCursor frontier = 1; uint64 revision = 2; uint64 rows = 3; uint64 changed_keys = 4; }
+// A saved snapshot is explicitly released. Its handle is opaque and instance scoped.
+message SavedSnapshot { bytes token = 1; StorageCursor at = 2; }
+message DefinitionRevision { uint64 revision = 1; }
+message ProjectionState { ProjectionStatus status = 1; }
+enum StorageFailureKind { STORAGE_FAILURE_UNSPECIFIED = 0; STORAGE_FAILURE_UNSUPPORTED = 1; STORAGE_FAILURE_CONFLICT = 2; STORAGE_FAILURE_EXPIRED = 3; STORAGE_FAILURE_NOT_READY = 4; STORAGE_FAILURE_GAP = 5; STORAGE_FAILURE_EXHAUSTED = 6; STORAGE_FAILURE_INVALID = 7; STORAGE_FAILURE_MISSING_INDEX = 8; }
+message StorageFailure { StorageFailureKind kind = 1; string message = 2; }

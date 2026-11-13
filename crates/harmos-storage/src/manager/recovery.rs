@@ -35,20 +35,20 @@ use super::*;
 /* === Implementations === */
 
 impl StorageManager {
-    #[tracing::instrument(name = "storage.manager.recovery.write_recovery", level = "debug", skip_all)]
-    pub async fn write_recovery(&self, payloads: Vec<Vec<u8>>) -> Result<RecoveryPosition> {
+    #[tracing::instrument(name = "storage.manager.recovery.append_recovery_entries", level = "debug", skip_all)]
+    pub async fn append_recovery_entries(&self, payloads: Vec<Vec<u8>>) -> Result<RecoveryPosition> {
         self.check_raw_recovery()?;
         if payloads.is_empty() {
             return Ok(self.status().recovery_accepted);
         }
-        let required_data = self.cursor_saved();
+        let required_data = self.get_saved_position();
         let bytes = payloads.iter().try_fold(0usize, |bytes, payload| {
-            bytes.checked_add(recovery_encoded_bound(payload.len(), self.inner.recovery.history(), self.inner.primary.history())?).ok_or(
-                Error::InvalidInput {
+            bytes
+                .checked_add(recovery_encoded_bound(payload.len(), self.inner.recovery.get_history(), self.inner.primary.get_history())?)
+                .ok_or(Error::InvalidInput {
                     field: "storage admission",
                     reason: "size overflow",
-                },
-            )
+                })
         })?;
         let sequence = self
             .admit(Domain::Recovery, bytes, payloads.len(), |first| {
@@ -68,10 +68,10 @@ impl StorageManager {
         Ok(self.recovery_position(sequence))
     }
 
-    #[tracing::instrument(name = "storage.manager.recovery.write_snapshot", level = "debug", skip_all)]
-    pub async fn write_snapshot(&self, snapshot: RecoverySnapshot) -> Result<()> {
+    #[tracing::instrument(name = "storage.manager.recovery.set_recovery_snapshot", level = "debug", skip_all)]
+    pub async fn set_recovery_snapshot(&self, snapshot: RecoverySnapshot) -> Result<()> {
         self.check_raw_recovery()?;
-        self.inner.recovery.history().check(&snapshot.through.history)?;
+        self.inner.recovery.get_history().check(&snapshot.through.history)?;
         self.check_state_dependency(&snapshot.required_data)?;
         let bytes = recovery_encoded_bound(snapshot.payload.segment_bytes(), &snapshot.through.history, &snapshot.required_data.history)?;
         self.admit(Domain::Recovery, bytes, 0, |_| Ok(Operation::Snapshot(StorageBatch::new(vec![snapshot])))).await?;
@@ -100,7 +100,7 @@ impl StorageManager {
             }
             self.persist_files(files).await?;
         }
-        Ok(self.cursor_saved())
+        Ok(self.get_saved_position())
     }
 
     #[tracing::instrument(name = "storage.manager.recovery.flush_recovery", level = "debug", skip_all)]
@@ -121,7 +121,8 @@ impl StorageManager {
                 reason: "frontier is not durable",
             });
         }
-        let page = self.inner.bounded("recovery.read_entries", self.inner.recovery.read_entries(after, through, limits)).await?;
+        let page =
+            self.inner.bounded("recovery.list_recovery_entries", self.inner.recovery.list_recovery_entries(after, through, limits)).await?;
         page.check(after, through, limits, |entry| encoded_size(entry).unwrap_or(usize::MAX))?;
         for entry in &page.entries {
             self.check_state_dependency(&entry.required_data)?;
@@ -129,10 +130,10 @@ impl StorageManager {
         Ok(crate::ReadBatch::new(page))
     }
 
-    #[tracing::instrument(name = "storage.manager.recovery.read_snapshot", level = "debug", skip_all)]
-    pub async fn read_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> Result<Option<crate::ReadBatch<RecoverySnapshot>>> {
+    #[tracing::instrument(name = "storage.manager.recovery.get_recovery_snapshot", level = "debug", skip_all)]
+    pub async fn get_recovery_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> Result<Option<crate::ReadBatch<RecoverySnapshot>>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
-        let snapshot = self.inner.bounded("recovery.read_snapshot", self.inner.recovery.read_snapshot(max_bytes)).await?;
+        let snapshot = self.inner.bounded("recovery.get_recovery_snapshot", self.inner.recovery.get_recovery_snapshot(max_bytes)).await?;
         if let Some(snapshot) = &snapshot
             && (!self.status().recovery_saved.covers(&snapshot.through)?
                 || !self.status().saved.covers(&snapshot.required_data)?

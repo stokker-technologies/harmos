@@ -59,7 +59,7 @@ async fn file_roundtrip_recovers() {
         let mut durable = f
             .storage
             .query(harmos_storage::Query {
-                at: f.storage.cursor_saved(),
+                at: f.storage.get_saved_position(),
                 source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
                 transforms: Vec::new(),
                 slice: harmos_storage::query::RowSlice::default(),

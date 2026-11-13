@@ -10,6 +10,14 @@ This worktree owns access/status runtime trees, client protos and operations,
 stories and guides, and the required gRPC/service-manager extensions.
 Grammar-core, storage and plugin-manager changes remain with their assigned owners.
 
+Implementation is authorized under the combined `grpc-plugins` marker. Storage ownership:
+`proto/harmos/**/storage*.proto`, `crates/harmos-storage/**`,
+`crates/harmos-operations/src/storage/**`, storage runtime handlers/tests/benches,
+storage benchmark tooling/Nightly wiring, `docs/storage.md`, and storage tasks/design.
+Core owns shared protocol primitives, generators, SDKs and non-storage runtime.
+The task numbers below supersede the earlier inventory: durable lag is 1.5
+(formerly 1.2), file transfer is 1.6 (formerly 1.3), storage declarations are 1.4.
+
 The locked source inventory covers library proto/protocol/operations/storage,
 runtime managers and projection, all four SDKs and their build generators,
 conformance, examples, tests and maintained guides. Before later implementation, record
@@ -41,8 +49,8 @@ compile-time consumers atomically.
 - [ ] 1.2 Implement shared positions/cuts, bounded paging, Timestamp/Duration, Failure, retry policy and receipts; declare separate face-local service/method request and response wrappers and regenerate IDs/fingerprints in crates/harmos-protocol/. Verify focused schema checks after the file moves; do not reuse another face's wrappers.
 - [ ] 1.3 Lock design.md's inventory: protocol 1 service/4 operations/4 gRPC methods/4 request-response pairs; context 6/40/40 descriptor methods (0 standalone)/40 pairs; client 12 (6 nested)/59/59/59 pairs. Retain four native-only storage hooks/pairs separately: 19 services, 107 inventory operations, 103 descriptor methods (63 standalone), 107 requests and 107 responses overall. Verify all 38 shared capabilities have independent context/client declarations and authorization; census shared/domain/imported types separately.
 - [ ] 1.4 Replace automatic RunMethod twins with explicit face-filtered projection. Generate the 32 Storage declarations independently on context and client faces from their respective declaration owners, sharing handlers while preserving native-only/grant boundaries. Use nested parent packages, bare part verbs and one proto per service. Move/update protocol behaviour guidance with its face owner; streams remain Watch/plugin carriers or a promised final-result replacement.
-- [ ] 1.5 Add reusable Nightly integration/durable_lag with small_high_rate, multi_megabyte and mixed backend loads; report acceptance-to-durability p50/p95/maximum, backlog and synchronous commit contribution per load. Compare each p95 with 250 ms independently of payload size; try smaller/earlier size-triggered flushes first if missed, then remeasure. Accepted-data snapshots remain the named fallback, not built; no timing assertions.
-- [ ] 1.6 Add Nightly integration/file_transfer for large unary client/plugin uploads and downloads; record bytes, chunk/range configuration and throughput before deleting streaming transfers, without timing assertions or new consumer budgets.
+- [x] 1.5 Add reusable Nightly integration/durable_lag with small_high_rate, multi_megabyte and mixed backend loads; report acceptance-to-durability p50/p95/maximum, backlog and synchronous commit contribution per load. Compare each p95 with 250 ms independently of payload size; try smaller/earlier size-triggered flushes first if missed, then remeasure. Accepted-data snapshots remain the named fallback, not built; no timing assertions.
+- [x] 1.6 Add Nightly integration/file_transfer for large unary client/plugin uploads and downloads; record bytes, chunk/range configuration and throughput before deleting streaming transfers, without timing assertions or new consumer budgets.
 
 ## 2. Library Owners and Generic Services
 
@@ -55,13 +63,13 @@ compile-time consumers atomically.
 
 ## 3. Storage Handlers, Native Providers and Transfers
 
-- [ ] 3.1 Migrate backend.rs, state recovery and provider/manager consumers through the 66-present/60-target hook mapping while preserving encodings, atomic publication and recovery; verify focused backend/restart tests and contract guidance.
+- [x] 3.1 Migrate backend.rs, state recovery and provider/manager consumers through the 66-present/60-target hook mapping while preserving encodings, atomic publication and recovery; verify focused backend/restart tests and contract guidance.
 - [ ] 3.2 Implement latest-durable resolution without read-triggered flush/wait, issued-position continuation and bounded paging; verify controlled-backend visibility, exact continuation and foreign/expired-position refusal, and update docs/storage.md.
 - [ ] 3.3 Implement whole-value revision-guarded Get/Set mirrors, complete-candidate validation, atomic compare/exchange, explicit create-if-absent and conflicts naming “get again and retry”. Preserve immutable schemas; large writable parts use nested resource Get/Set and their own revisions.
 - [ ] 3.4 Migrate records, samples, log lines and upload bytes to bounded immutable Append and accepted/durable receipts; verify client-owned resending, original receipts, changed payload/expired-key refusal and immutable prefixes, including identical-byte offset replay and different-byte conflicts regardless of request identity.
-- [ ] 3.5 Reuse StorageManager's production owner for CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter, PublishFileProduction and DeleteFileProduction; verify shared client/plugin resume, fencing, integrity, grants, publication and abandonment. Unsupported providers refuse explicitly.
-- [ ] 3.6 Implement bounded unary Storage.GetFileBytes with offset, maximum bytes, total length, digest, optional at and resolved_at; preserve WatchFileBytes replacement/truncation semantics and distinct directory/production watches. Migrate affected query/transfer consumers and examples in compiling slices.
-- [ ] 3.7 Bound flushes in bytes and split large input; prove committed byte counts with deterministic controlled-backend tests and reuse Nightly cases for lag/throughput verification.
+- [x] 3.5 Reuse StorageManager's production owner for CreateFileProduction, GetFileProduction, AppendFileBytes, CreateFileWriter, PublishFileProduction and DeleteFileProduction; verify shared client/plugin resume, fencing, integrity, grants, publication and abandonment. Unsupported providers refuse explicitly.
+- [x] 3.6 Implement bounded unary Storage.GetFileBytes with offset, maximum bytes, total length, digest, optional at and resolved_at; preserve WatchFileBytes replacement/truncation semantics and distinct directory/production watches. Migrate affected query/transfer consumers and examples in compiling slices.
+- [x] 3.7 Bound flushes in bytes and split large input; prove committed byte counts with deterministic controlled-backend tests and reuse Nightly cases for lag/throughput verification.
 - [ ] 3.8 Settle issued-position/page-token lifetime, provenance, composite retention and restart behavior at this task, record it in design.md, and implement explicit expiry/unavailability without arbitrary earlier reads.
 - [ ] 3.9 Settle exact Watch opening/events/progress/gaps/resynchronization, record it in design.md, and implement one WatchRows selector for records/samples/object revisions with deterministic opening-race/filter-progress/gap proof. Keep accepted facts distinct from durable facts.
 - [ ] 3.10 Settle retained-reader lifetime/reclamation before DeleteFile changes, record it in design.md and prove supported backends without implicit data loss.
@@ -163,3 +171,92 @@ combined source closure and hosted validation are not claimed here.
 - [x] AS.4 Implement service-owned identity/health, bounded redacted event histories/watches and ranged diagnostics with contributions.
 - [x] AS.5 Add five deterministic client journeys, Rust client bindings and adoption guidance.
 - [ ] AS.6 Run required format, Rust/Python/repository checks, stories twice, existing listener/certificate tests and Tests build; repair findings.
+
+### Storage Follow-Up
+
+- Storage implementation commits remain local on `feat/gp-grammar-storage`; no push or specification lifecycle commands.
+- Transfer source/proof: `storage::unary_transfers::resume_fence_publish_and_range_across_faces` exercises the socket client and plugin child carrier. Remaining read-provenance, paging and Watch work stays in 3.2, 3.8 and 3.9.
+
+- Storage generation join: the core branch now supplies face-aware generation. Storage uses `crates/harmos-protocol/codegen.rs`
+  and its generate example for both storage faces and reflection. The merged generator
+  retains these inputs, `context` Rust module, shared `storage_types.proto`
+  imports and independently owned context/client operation declarations when joined.
+
+- Storage descriptor inventory: both face-local Storage services now declare all 32
+  locked method pairs; the shared payload file declares no service. Rust/Python bindings
+  regenerate through the joined core generator. Focused proof:
+  `generated_code_matches_proto::generated_code_matches_proto` (1 passed). Task 1.4
+  remains open until every declaration is bound to its migrated shared handler.
+
+- Task 3.3 partial: index/projection Get/Set pairs are served independently on both
+  faces with shared handlers and atomic expected-revision checks in SQLite and the
+  reference catalogs. Explicit create-if-absent and stale unchanged values are covered.
+  Focused proofs: `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`,
+  `projection_replay::projection_frontiers_survive_interrupted_publication_rebuild_and_restart`,
+  and `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
+  (one passed each). Object/schema mirrors and issued composite cuts remain open.
+
+- Tasks 3.2/3.8 partial: issued saved cuts, HMAC-bound ListRows pages and retained
+  ranged-file reads share the existing saved-snapshot owner on both faces.
+  Capabilities/CreateSnapshot/DeleteSnapshot/ListColumnRows/ListIndexEntries replace
+  their retired declarations; the streaming Query operation and consumers are removed.
+  Focused proofs (one passed each):
+  `storage::issued_pages::issued_pages_keep_their_cut_while_newer_writes_are_blocked`,
+  `storage::issued_cut_lifetime::cached_cuts_expire_while_explicit_leases_pin_their_image`,
+  `storage::operations::queries::batches::query_operation_batches`,
+  `storage::operations::plugins::query_grants_enforced`,
+  `storage::operations::schemas::schema_registry_roundtrip`,
+  plus the existing unary-transfer and native-journey stories. Projection/status,
+  object/directory reads and Watch joins still need their migrated cut semantics.
+  Coupling: one native-only operations dependency on the already locked ring version
+  provides HMAC; the lockfile gains only that dependency edge. Retired Rust SDK
+  request bindings are deleted with their operation owners.
+
+- Projection read migration: independent AdvanceProjection/GetProjectionStatus/
+  ListProjectionRows declarations share revision/source/cut validation. Omitted
+  frontiers select the newest readable materialization; explicit frontiers require
+  an issued composite, without flush or latest substitution. Retired declarations,
+  request types and SDK bindings are removed. Focused proof:
+  `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
+  (one passed). Complete unary reply envelopes enforce the storage response ceiling.
+
+- Bounded query progress now retains QueryReader state instead of rescanning prefixes.
+  Source/output steps return bounded data or empty progress pages; latest-token replay,
+  capacity eviction, current invocation binding and active-slot release are implemented.
+  Durable receipt positions can open retained exact reads after saved-frontier proof.
+  Focused proof: `storage::filtered_pages::filtered_physical_pages_return_progress_without_rescanning_the_prefix`
+  plus both issued-cut stories, query batches/grants/schema, unary transfer and native
+  journey stories (eight named focused tests passed). The controlled provider records
+  source work; replay does not rescan it. Receipt-position proof uses the publication
+  receipt directly on the first ranged read. Remaining common paging across the native
+  list mechanisms, metadata/object mirrors, other file/directory methods and Watch
+  still keep 3.2/3.8 open.
+
+- Definition Set receipts now commit atomically with the complete index/projection
+  candidate or refusal. The manager owns admitted work through caller loss; retries
+  preserve the original outcome after later revisions, and source replacement checks
+  both sources. Capabilities exposes the shared mutation window. Focused proofs:
+  `storage::definition_receipts::definition_receipts_survive_caller_loss_and_preserve_source_authority`
+  and `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`
+  (one passed each). Tasks 3.3/3.4 remain open for the other mutation families.
+
+- Object mirrors now use face-local GetObject/SetObject wrappers and one atomic
+  handler. Set returns a typed applied/conflict outcome, opaque revisions and
+  original durable receipts; Get returns existence and an issued exact cut.
+  The old CompareExchangeObject wire declaration/bindings are removed. Focused
+  proof: `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
+  (one passed), including socket/client and plugin-child replay and old-cut reads.
+  Schema mirrors and common list paging still keep 3.3/3.2 open.
+
+- Storage Append migration: separate client/context AppendRecords, AppendSamples
+  and AppendObjectRevisions declarations share bounded unary handlers. Superseded
+  streaming declarations, exchange implementation, DTOs and consumers are removed.
+  Durable completion includes acknowledged replay-ledger persistence; admitted
+  data/receipts survive lost delivery. Capacity retirement refuses removed IDs.
+  Focused proofs (one each):
+  `storage::operations::writes::records::record_append_receipts`,
+  `storage::operations::writes::cancellation::admitted_samples_survive_lost_delivery`,
+  `storage::operations::objects::exchange::object_append_saves`,
+  `storage::operations::plugins::write_grants_enforced`, and
+  `receipts::tests::admission_evicts_completed_receipts_without_losing_active_owners`.
+  Log-line Append belongs to its core service owner; task 3.4 stays open for that join.

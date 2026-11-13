@@ -96,8 +96,8 @@ struct Pages<E: Entry> {
 /* === Implementations === */
 
 impl StorageManager {
-    #[tracing::instrument(name = "storage.manager.read_objects", level = "trace", skip_all)]
-    pub async fn read_objects<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>> {
+    #[tracing::instrument(name = "storage.manager.list_object_revisions", level = "trace", skip_all)]
+    pub async fn list_object_revisions<T: StoredObject>(&self, read: ObjectRead<'_, T>) -> Result<ObjectReader<T>> {
         self.inner.catalog.handle::<T>()?;
         let schema = object_schema::<T>()?;
         let key = read.key.map(|key| object_key(key, self.inner.settings.scan_bytes())).transpose()?;
@@ -112,8 +112,8 @@ impl StorageManager {
 }
 
 impl StorageManager {
-    #[tracing::instrument(name = "storage.manager.read_records", level = "trace", skip_all)]
-    pub async fn read_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
+    #[tracing::instrument(name = "storage.manager.list_records", level = "trace", skip_all)]
+    pub async fn list_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
         super::Source::Records(read.selection.clone()).validate()?;
 
         let mut pages = Pages::open(self, read.at, read.selection).await?;
@@ -123,7 +123,7 @@ impl StorageManager {
 }
 
 impl StorageManager {
-    pub async fn read_stream(&self, read: StreamRead) -> Result<StreamReader> {
+    pub async fn list_samples(&self, read: StreamRead) -> Result<StreamReader> {
         super::Source::Stream(read.selection.clone()).validate()?;
 
         let after = read.selection.after;

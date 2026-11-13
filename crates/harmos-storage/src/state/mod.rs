@@ -69,16 +69,16 @@ pub struct RecoveryPage {
 /* === Traits === */
 
 pub trait StateBackend: Send + Sync + 'static {
-    fn history(&self) -> &StoreHistory;
-    fn open(&self) -> StorageFuture<'_, RecoveryPosition>;
-    fn read_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
-    fn write_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
-    fn read_entries<'a>(
+    fn get_history(&self) -> &StoreHistory;
+    fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition>;
+    fn get_recovery_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
+    fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
+    fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage>;
-    fn write_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()>;
+    fn append_recovery_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()>;
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition>;
-    fn close(&self) -> StorageFuture<'_, ()>;
+    fn delete_recovery_session(&self) -> StorageFuture<'_, ()>;
 }
 
 /* === Implementations === */

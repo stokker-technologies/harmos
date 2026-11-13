@@ -42,7 +42,7 @@ static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 /* === Structs === */
 
 pub struct Snapshot {
-    inner: Arc<Inner>,
+    pub(super) inner: Arc<Inner>,
     id: u64,
     backend: BackendSnapshot,
 }
@@ -77,7 +77,7 @@ impl StorageManager {
     #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
         let result = async {
-            self.inner.primary.history().check(&at.history)?;
+            self.inner.primary.get_history().check(&at.history)?;
             let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
             {
                 let mut state = self.inner.state.lock().unwrap();
@@ -154,59 +154,56 @@ impl StorageManager {
 }
 
 impl Snapshot {
+    pub fn is_available(&self) -> bool {
+        self.check().is_ok()
+    }
+
     pub fn at(&self) -> &StorageCursor {
         &self.backend.at
     }
 
-    pub async fn scan_arrow(
+    pub async fn list_column_rows(
         &self, read: &crate::query::columnar::ArrowScan, cancel: &crate::query::columnar::Cancellation,
     ) -> Result<crate::query::columnar::ArrowPage> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
-        let future = crate::query::columnar::scan_arrow(self.inner.primary.as_ref(), &self.backend, read, cancel);
-        let page = self.inner.bounded("primary.scan_arrow", Box::pin(future)).await?;
+        let future = crate::query::columnar::list_column_rows(self.inner.primary.as_ref(), &self.backend, read, cancel);
+        let page = self.inner.bounded("primary.list_column_rows", Box::pin(future)).await?;
         self.check()?;
         Ok(page)
     }
 
-    pub async fn scan_index(
+    pub async fn list_index_entries(
         &self, read: &crate::query::index::IndexRead, cancel: &crate::query::columnar::Cancellation,
     ) -> Result<crate::query::index::IndexPage> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
-        let future = crate::query::index::scan_index(self.inner.primary.as_ref(), &self.backend, read, cancel);
-        let page = self.inner.bounded("primary.scan_index", Box::pin(future)).await?;
+        let future = crate::query::index::list_index_entries(self.inner.primary.as_ref(), &self.backend, read, cancel);
+        let page = self.inner.bounded("primary.list_index_entries", Box::pin(future)).await?;
         self.check()?;
         Ok(page)
     }
 
     pub async fn advance_projection(
-        &self, name: &crate::Identifier, work: super::ReadLimits, cancel: &crate::query::columnar::Cancellation,
+        &self, name: &crate::Identifier, expected_revision: Option<u64>, work: super::ReadLimits,
+        cancel: &crate::query::columnar::Cancellation,
     ) -> Result<u64> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
-        let revision = crate::query::projection::advance_projection(self.inner.primary.as_ref(), &self.backend, name, work, cancel).await?;
+        let revision =
+            crate::query::projection::advance_projection(self.inner.primary.as_ref(), &self.backend, name, expected_revision, work, cancel)
+                .await?;
         self.check()?;
         Ok(revision)
     }
 
-    pub async fn advance_projection_at(
-        &self, name: &crate::Identifier, revision: u64, work: super::ReadLimits, cancel: &crate::query::columnar::Cancellation,
-    ) -> Result<u64> {
+    pub(super) async fn get_record_position(&self, selection: &super::query::RecordSelection, offset: u64) -> Result<Option<u64>> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
-        let result =
-            crate::query::projection::advance_projection_at(self.inner.primary.as_ref(), &self.backend, name, revision, work, cancel)
-                .await?;
-        self.check()?;
-        Ok(result)
-    }
-
-    pub(super) async fn seek_records(&self, selection: &super::query::RecordSelection, offset: u64) -> Result<Option<u64>> {
-        let _lifecycle = self.inner.lifecycle.read().await;
-        self.check()?;
-        let position =
-            self.inner.bounded("primary.seek_records", self.inner.primary.seek_records(&self.backend, selection, offset)).await?;
+        let position = self
+            .inner
+            .bounded("primary.get_record_position", self.inner.primary.get_record_position(&self.backend, selection, offset))
+            .await?;
         self.check()?;
         if position.is_some_and(|position| position > self.backend.at.sequence) {
             return Err(invalid("backend seek is outside the saved cut"));
@@ -220,7 +217,7 @@ impl Snapshot {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         let views =
-            self.inner.bounded("primary.read_record_views", self.inner.primary.read_record_views(&self.backend, selection, page)).await?;
+            self.inner.bounded("primary.list_record_views", self.inner.primary.list_record_views(&self.backend, selection, page)).await?;
         self.check()?;
         let Some(views) = views else {
             return Ok(None);
@@ -265,11 +262,11 @@ impl Snapshot {
         Ok((entries, bytes))
     }
 
-    #[tracing::instrument(name = "storage.snapshot.read_object", level = "trace", skip_all)]
-    pub(super) async fn read_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
+    #[tracing::instrument(name = "storage.snapshot.get_object", level = "trace", skip_all)]
+    pub async fn get_object(&self, point: &ObjectPoint) -> Result<Option<ObjectEntry>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let object = self.inner.bounded("primary.read_object", self.inner.primary.read_object(&self.backend, point)).await?;
+        let object = self.inner.bounded("primary.get_object", self.inner.primary.get_object(&self.backend, point)).await?;
         self.check()?;
         if let Some(object) = &object {
             object.version.check_position(&object.position)?;
@@ -288,7 +285,8 @@ impl Snapshot {
     pub(super) async fn read_file(&self, file: &FileReference, offset: u64, max_bytes: NonZeroUsize) -> Result<Vec<u8>> {
         let _lifecycle = tracing::Instrument::instrument(self.inner.lifecycle.read(), tracing::trace_span!("storage.lock.wait")).await;
         self.check()?;
-        let bytes = self.inner.bounded("primary.read_file", self.inner.primary.read_file(&self.backend, file, offset, max_bytes)).await?;
+        let bytes =
+            self.inner.bounded("primary.get_file_bytes", self.inner.primary.get_file_bytes(&self.backend, file, offset, max_bytes)).await?;
         self.check()?;
         Ok(bytes)
     }

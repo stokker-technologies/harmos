@@ -143,6 +143,8 @@ pub(super) struct State {
     pub(super) followers: BTreeMap<u64, super::follow::Following>,
     pub(super) files: BTreeMap<u64, super::staging::FileState>,
     pub(super) receipts: super::receipts::Receipts,
+    pub(super) persisting_receipts: bool,
+    pub(super) definition_mutations: BTreeMap<super::MutationId, super::definitions::DefinitionPending>,
     pub(super) deletions: BTreeMap<super::MutationId, super::deletion::Deletion>,
     pub(super) file_cursor: u64,
     pub(super) finishing: Option<u64>,
@@ -273,8 +275,8 @@ impl StorageManager {
         catalog.validate()?;
         settings.validate()?;
         let StorageBackends { primary, state: state_backend } = backends;
-        primary.history().check(state_backend.history())?;
-        let history = primary.history().clone();
+        primary.get_history().check(state_backend.get_history())?;
+        let history = primary.get_history().clone();
         let position = StorageCursor { history: history.clone(), sequence: 0 };
         let recovery_position = RecoveryPosition { history, sequence: 0 };
         let receipts = super::receipts::Receipts::new(MUTATION_RETENTION, execution.clone())?;
@@ -335,7 +337,9 @@ impl StorageManager {
                     followers: BTreeMap::new(),
                     files: BTreeMap::new(),
                     deletions: BTreeMap::new(),
+                    definition_mutations: BTreeMap::new(),
                     receipts,
+                    persisting_receipts: false,
                     file_cursor: 0,
                     finishing: None,
                 }),

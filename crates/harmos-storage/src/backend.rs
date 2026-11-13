@@ -69,6 +69,8 @@ pub struct ReadLimits {
 /// Cumulative physical work on one backend owner; differences describe an isolated operation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct StorageWork {
+    pub synchronous_commits: u64,
+    pub synchronous_commit_ns: u64,
     pub source_rows: u64,
     pub source_bytes: u64,
     pub decoded_chunks: u64,
@@ -86,7 +88,7 @@ pub struct StorageWork {
 
 pub trait StorageBackend: Send + Sync + 'static {
     /// Optional immutable record pages. Views retain their data and checked encoded size.
-    fn read_record_views<'a>(
+    fn list_record_views<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a RecordSelection, _page: ScanPage,
     ) -> StorageFuture<'a, Option<Vec<crate::RecordView>>> {
         Box::pin(async { Ok(None) })
@@ -94,96 +96,83 @@ pub trait StorageBackend: Send + Sync + 'static {
 
     /// Optionally locate the exclusive source position after skipping selected records.
     /// None retains sequential execution; an exhausted selection returns the saved cut.
-    fn seek_records<'a>(
+    fn get_record_position<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a RecordSelection, _offset: u64,
     ) -> StorageFuture<'a, Option<u64>> {
         Box::pin(async { Ok(None) })
     }
 
     /// Optional work evidence. Backends without instrumentation return zero counters.
-    fn work(&self) -> StorageFuture<'_, StorageWork> {
+    fn get_work(&self) -> StorageFuture<'_, StorageWork> {
         Box::pin(async { Ok(StorageWork::default()) })
     }
 
     /// Advance natively when supported, or return None for the shared bounded executor.
-    fn advance_projection_native<'a>(
-        &'a self, _snapshot: &'a BackendSnapshot, _name: &'a crate::Identifier, _work: ReadLimits,
+    /// None Retains The Shared Executor; Expected Revision Is Checked Atomically.
+    fn advance_projection<'a>(
+        &'a self, _snapshot: &'a BackendSnapshot, _name: &'a crate::Identifier, _expected_revision: Option<u64>, _work: ReadLimits,
         _cancel: &'a crate::query::columnar::Cancellation,
     ) -> StorageFuture<'a, Option<u64>> {
         Box::pin(async { Ok(None) })
     }
 
-    /// Advance only if the active revision still matches, atomically with native publication.
-    /// None retains the revision-checked shared executor.
-    fn advance_projection_native_at<'a>(
-        &'a self, _snapshot: &'a BackendSnapshot, _name: &'a crate::Identifier, _revision: u64, _work: ReadLimits,
-        _cancel: &'a crate::query::columnar::Cancellation,
-    ) -> StorageFuture<'a, Option<u64>> {
-        Box::pin(async { Ok(None) })
-    }
-
-    fn compare_exchange<'a>(&'a self, _exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
+    fn set_object<'a>(&'a self, _exchange: &'a crate::ObjectExchange) -> StorageFuture<'a, crate::CompareExchange> {
         unsupported("conditional objects")
     }
 
-    fn retire_object_receipts<'a>(&'a self, _through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+    fn delete_object_receipts<'a>(&'a self, _through: &'a StorageCursor) -> StorageFuture<'a, ()> {
         unsupported("conditional object receipt retention")
     }
 
-    fn register_projection<'a>(
-        &'a self, _definition: &'a crate::query::projection::ProjectionDefinition, _rebuild: bool,
-    ) -> StorageFuture<'a, u64> {
+    fn set_projection_definition<'a>(
+        &'a self, _definition: &'a crate::query::projection::ProjectionDefinition, _expected: Option<u64>, _rebuild: bool,
+        _mutation: Option<&'a crate::MutationHeader>,
+    ) -> StorageFuture<'a, crate::DefinitionOutcome> {
         unsupported("projection registration")
     }
 
-    fn projection_definition<'a>(
-        &'a self, _name: &'a crate::Identifier,
+    /// Resolve The Current Definition Or An Explicit Retained Revision.
+    fn get_projection_definition<'a>(
+        &'a self, _name: &'a crate::Identifier, _revision: Option<u64>,
     ) -> StorageFuture<'a, (crate::query::projection::ProjectionDefinition, u64)> {
-        unsupported("projection definition")
+        unsupported("get projection definition")
     }
 
-    fn projection_definition_at<'a>(
-        &'a self, _name: &'a crate::Identifier, _revision: u64,
-    ) -> StorageFuture<'a, crate::query::projection::ProjectionDefinition> {
-        unsupported("projection revision definition")
-    }
-
-    fn projection_status<'a>(
-        &'a self, _name: &'a crate::Identifier, _revision: u64, _frontier: &'a StorageCursor,
+    /// None Selects The Newest Readable Durable Frontier For This Revision.
+    fn get_projection_status<'a>(
+        &'a self, _name: &'a crate::Identifier, _revision: u64, _frontier: Option<&'a StorageCursor>,
     ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {
-        unsupported("projection status")
+        unsupported("get projection status")
     }
 
-    fn projection_frontier<'a>(&'a self, _name: &'a crate::Identifier, _revision: u64) -> StorageFuture<'a, Option<StorageCursor>> {
-        unsupported("projection frontier")
-    }
-
-    fn publish_projection(&self, _publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+    fn set_projection_output(&self, _publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
         unsupported("projection publication")
     }
 
-    fn read_projection<'a>(
+    fn list_projection_rows<'a>(
         &'a self, _read: &'a crate::query::projection::ProjectionRead,
     ) -> StorageFuture<'a, crate::query::projection::ProjectionPage> {
         unsupported("projection read")
     }
 
-    fn retire_projection<'a>(&'a self, _name: &'a crate::Identifier, _revision: u64, _through: &'a StorageCursor) -> StorageFuture<'a, ()> {
+    fn delete_projection_history<'a>(
+        &'a self, _name: &'a crate::Identifier, _revision: u64, _through: &'a StorageCursor,
+    ) -> StorageFuture<'a, ()> {
         unsupported("projection retention")
     }
 
-    fn register_index<'a>(
-        &'a self, _definition: &'a crate::query::index::IndexDefinition, _rebuild: bool, _work: ReadLimits,
-        _cancel: &'a crate::query::columnar::Cancellation,
-    ) -> StorageFuture<'a, u64> {
+    fn set_index_definition<'a>(
+        &'a self, _definition: &'a crate::query::index::IndexDefinition, _expected: Option<u64>, _rebuild: bool, _work: ReadLimits,
+        _cancel: &'a crate::query::columnar::Cancellation, _mutation: Option<&'a crate::MutationHeader>,
+    ) -> StorageFuture<'a, crate::DefinitionOutcome> {
         unsupported("storage index registration")
     }
 
-    fn index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
+    fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
         Box::pin(async move { Err(Error::IndexNotFound { name: name.clone() }) })
     }
 
-    fn scan_index<'a>(
+    fn list_index_entries<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::index::IndexRead,
         _cancel: &'a crate::query::columnar::Cancellation,
     ) -> StorageFuture<'a, crate::query::index::IndexPage> {
@@ -194,7 +183,7 @@ pub trait StorageBackend: Send + Sync + 'static {
         crate::query::columnar::StorageCapabilities::default()
     }
 
-    fn scan_arrow<'a>(
+    fn list_column_rows<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::columnar::ArrowScan,
         _cancel: &'a crate::query::columnar::Cancellation,
     ) -> StorageFuture<'a, crate::query::columnar::ArrowPage> {
@@ -202,104 +191,99 @@ pub trait StorageBackend: Send + Sync + 'static {
     }
 
     // Lifecycle
-    fn history(&self) -> &StoreHistory;
-    fn open(&self) -> StorageFuture<'_, StorageCursor>;
-    fn cursor_saved(&self) -> StorageFuture<'_, StorageCursor>;
-    fn close(&self) -> StorageFuture<'_, ()>;
+    fn get_history(&self) -> &StoreHistory;
+    fn create_session(&self) -> StorageFuture<'_, StorageCursor>;
+    fn get_saved_position(&self) -> StorageFuture<'_, StorageCursor>;
+    fn delete_session(&self) -> StorageFuture<'_, ()>;
 
     // Independent Durable Writes; Replayed Positions Must Be Idempotent.
-    fn write_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor>;
-    fn write_objects(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor>;
-    fn write_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor>;
-    fn write_stream(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor>;
-    fn write_files(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor>;
+    fn append_schemas(&self, batch: StorageBatch<StorageSchema>) -> StorageFuture<'_, StorageCursor>;
+    fn append_object_revisions(&self, batch: StorageBatch<ObjectEntry>) -> StorageFuture<'_, StorageCursor>;
+    fn append_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor>;
+    fn append_samples(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor>;
+    fn append_file_references(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor>;
 
     // Historical Reads
-    fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot>;
-    fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()>;
-    fn read_schemas<'a>(
+    fn create_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot>;
+    fn delete_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()>;
+    fn list_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>>;
-    fn read_objects<'a>(
+    fn list_object_revisions<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>>;
-    fn read_records<'a>(
+    fn list_records<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>>;
-    fn read_stream<'a>(
+    fn list_samples<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>>;
-    fn read_files<'a>(
+    fn list_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>>;
-    fn read_object<'a>(&'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>>;
-    fn read_file<'a>(
+    fn get_object<'a>(&'a self, snapshot: &'a BackendSnapshot, point: &'a ObjectPoint) -> StorageFuture<'a, Option<ObjectEntry>>;
+    fn get_file_bytes<'a>(
         &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>>;
 
     // Object Lifecycle Retention
-    fn release_object_history<'a>(
-        &'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor,
-    ) -> StorageFuture<'a, ()>;
+    fn delete_object_history<'a>(&'a self, schema: &'a SchemaKey, item: &'a ObjectKey, through: &'a StorageCursor)
+    -> StorageFuture<'a, ()>;
 
-    fn prune_objects<'a>(
+    fn delete_expired_object_revisions<'a>(
         &'a self, through: &'a StorageCursor, max_entries: NonZeroUsize, retention: &'a ObjectCatalog,
     ) -> StorageFuture<'a, bool>;
 
     // Finished File Publication
-    fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile>;
-    fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()>;
-    fn finish_file<'a>(
+    fn create_file_staging<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile>;
+    fn append_file_bytes<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()>;
+    fn publish_file_production<'a>(
         &'a self, staging: &'a StagedFile, position: &'a StorageCursor, length: u64, sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference>;
-    fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()>;
+    fn delete_file_staging<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()>;
 
     // Resumable File Sessions
-    fn supports_file_sessions(&self) -> bool {
-        false
-    }
-    fn create_production<'a>(&'a self, _metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+
+    fn create_file_production<'a>(&'a self, _metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         unsupported("file session")
     }
-    fn fence_production<'a>(&'a self, _file: &'a StagedFile, _expected: u64, _next: u64) -> StorageFuture<'a, ()> {
+    fn set_file_writer_generation<'a>(&'a self, _file: &'a StagedFile, _expected: u64, _next: u64) -> StorageFuture<'a, ()> {
         unsupported("file session")
     }
-    fn save_production(&self, _checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
+    fn set_file_production_checkpoints(&self, _checkpoint: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
         unsupported("file checkpoint")
     }
-    fn recover_productions(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    fn list_file_production_checkpoints(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         unsupported("file recovery")
     }
-    fn file_progress<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
+    fn get_file_production<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         unsupported("file following")
     }
-    fn read_production<'a>(&'a self, _file: &'a StagedFile, _offset: u64, _max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
+    fn get_file_production_bytes<'a>(
+        &'a self, _file: &'a StagedFile, _offset: u64, _max_bytes: NonZeroUsize,
+    ) -> StorageFuture<'a, Vec<u8>> {
         unsupported("file following")
     }
-    fn abandon_file<'a>(&'a self, _staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+    fn delete_file_production<'a>(&'a self, _staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         unsupported("file session")
     }
-    fn supports_file_deletion(&self) -> bool {
-        false
-    }
+
     fn delete_file<'a>(&'a self, _file: &'a StagedFile) -> StorageFuture<'a, ()> {
         unsupported("file deletion")
     }
 
     // Idempotent Mutation Receipts
-    fn supports_mutation_receipts(&self) -> bool {
-        false
-    }
-    fn save_mutations(&self, _receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
+
+    fn append_mutation_receipts(&self, _receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
         unsupported("storage mutations")
     }
 
-    fn recover_mutations(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    fn list_mutation_receipts(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         unsupported("storage mutations")
     }
 
     // Stored Identity Catalog
-    fn read_identities<'a>(
+    fn list_identities<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a IdentitySelection, _page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredIdentity>> {
         unsupported("storage identity catalog")

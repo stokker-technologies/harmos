@@ -48,6 +48,9 @@ use crate::{BackendSnapshot, Error, ReadLimits, Result, ScanPage, SchemaKey, Sto
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StorageCapabilities {
+    pub file_sessions: bool,
+    pub file_deletion: bool,
+    pub mutation_receipts: bool,
     pub native_arrow: bool,
     pub native_index: bool,
     pub durable_projections: bool,
@@ -218,13 +221,13 @@ impl ArrowScan {
 
 /* === Public Functions === */
 
-pub async fn scan_arrow(
+pub async fn list_column_rows(
     backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation,
 ) -> Result<ArrowPage> {
     cancel.check()?;
     read.position(snapshot)?;
     if backend.capabilities().native_arrow {
-        return backend.scan_arrow(snapshot, read, cancel).await;
+        return backend.list_column_rows(snapshot, read, cancel).await;
     }
     fallback(backend, snapshot, read, cancel).await
 }
@@ -234,7 +237,7 @@ pub async fn scan_arrow(
 async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation) -> Result<ArrowPage> {
     let after = read.position(snapshot)?;
     let schemas = backend
-        .read_schemas(
+        .list_schemas(
             snapshot,
             &SchemaSelection { schema: Some(read.source.schema.clone()) },
             ScanPage {
@@ -259,7 +262,7 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
                 source_start: None,
                 source_end: None,
             };
-            let rows = backend.read_records(snapshot, &selection, page).await?;
+            let rows = backend.list_records(snapshot, &selection, page).await?;
             let bytes = rows.iter().try_fold(0usize, |total, row| Ok::<_, Error>(total.saturating_add(crate::encoded_size(row)?)))?;
             (super::source::records(schema, rows.iter())?, bytes, rows.len())
         }
@@ -273,7 +276,7 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
                 source_end: None,
                 after: 0,
             };
-            let rows = backend.read_stream(snapshot, &selection, page).await?;
+            let rows = backend.list_samples(snapshot, &selection, page).await?;
             let bytes = rows.iter().try_fold(0usize, |total, row| Ok::<_, Error>(total.saturating_add(crate::encoded_size(row)?)))?;
             (super::source::stream(schema, &rows)?, bytes, rows.len())
         }
@@ -283,7 +286,7 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
                 key: None,
                 versions: ObjectVersions::Latest,
             };
-            let rows = backend.read_objects(snapshot, &selection, page).await?;
+            let rows = backend.list_object_revisions(snapshot, &selection, page).await?;
             let bytes = rows.iter().try_fold(0usize, |total, row| Ok::<_, Error>(total.saturating_add(crate::encoded_size(row)?)))?;
             (super::source::objects(schema, &rows)?, bytes, rows.len())
         }

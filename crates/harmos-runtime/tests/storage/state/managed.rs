@@ -450,11 +450,11 @@ async fn owner_refuses_raw() {
     let store = Store::new();
     let storage = store.manager(config());
     let runtime = store.boot(&storage).await;
-    assert!(storage.write_recovery(vec![b"foreign".to_vec()]).await.is_err());
+    assert!(storage.append_recovery_entries(vec![b"foreign".to_vec()]).await.is_err());
     assert!(
         storage
-            .write_snapshot(harmos_runtime::storage::state::RecoverySnapshot {
-                required_data: storage.cursor_saved(),
+            .set_recovery_snapshot(harmos_runtime::storage::state::RecoverySnapshot {
+                required_data: storage.get_saved_position(),
                 through: storage.status().recovery_accepted,
                 payload: harmos_storage::state::SnapshotPayload::from_bytes(
                     &[],

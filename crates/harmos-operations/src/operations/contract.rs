@@ -397,7 +397,7 @@ impl Contract {
         Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.v1", "Time", method)), settings)
     }
 
-    fn generated(
+    pub(crate) fn generated(
         mut operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         let schema = protobuf.schema()?;

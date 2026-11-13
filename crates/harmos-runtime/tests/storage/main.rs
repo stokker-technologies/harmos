@@ -9,21 +9,25 @@
 
 /* === Modules === */
 
+mod definition_receipts;
 mod generated_example_hash;
 mod generated_native_journey;
 
+mod filtered_pages;
 #[path = "generated_capture.rs"]
 mod generated_capture;
 #[path = "generated_directory.rs"]
 mod generated_directory;
 #[path = "generated_file_framing.rs"]
 mod generated_file_framing;
-#[path = "generated_file_mutations.rs"]
-mod generated_file_mutations;
 #[path = "generated_file_upload.rs"]
 mod generated_file_upload;
 #[path = "generated_status.rs"]
 mod generated_status;
+mod issued_cut_lifetime;
+mod issued_pages;
+mod transfer_plugin;
+mod unary_transfers;
 
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
