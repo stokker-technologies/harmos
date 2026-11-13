@@ -120,6 +120,7 @@ def main() -> None:
     parser.add_argument("--preset", choices=("development", "release", "tests"))
     parser.add_argument("--prepare", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--fresh", action="store_true")
     parser.add_argument("--generate", action="store_true")
     parser.add_argument("--test", action="store_true")
     parser.add_argument("--consumer", action="store_true")
@@ -196,6 +197,8 @@ def main() -> None:
     directory.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
     configure = ["cmake", "--preset", selected, f"-DPython3_EXECUTABLE={sys.executable}"]
+    if options.fresh:
+        configure.append("--fresh")
     result = subprocess.run(
         configure, cwd=sdk, env=child_environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=spawn_flags()
     )
