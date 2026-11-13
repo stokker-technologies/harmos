@@ -162,7 +162,9 @@ combined source closure and hosted validation are not claimed here.
 - [x] I.1 Merge the committed core, plugin-manager, access/status and storage branches in order; retain core audience generation, visibility and mechanical roots, regenerate every affected output and prove touched packages.
 - [x] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
 - [ ] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
-- [ ] I.4 Commit the candidate locally, verify clean status and locked offline metadata; document consumer adoption and pending proof without pushing.
+- [x] I.3.1 Complete format, Rust/Python/repository checks, protocol drift, four-SDK conformance, manager/access/status journeys, existing hosting/listener/certificate stories, guest System selection, storage unit/integration proof and the Tests producer. Manager/access/status journeys passed repeated runs; the broader native selection retains the one failure below.
+- [ ] I.3.2 Resolve `operations::wire::grpc_manager::grpc_network::external_authority_parity`: the complete catalog entry exceeds the unchanged 2,048-byte page budget. The incompatible requirements and measured entry size are recorded under design.md's Open Questions; neither the assertion nor the budget is weakened. This finding keeps I.3, 8.8 and AS.6 open.
+- [x] I.4 Commit the candidate locally, verify clean status and locked offline metadata; document consumer adoption and pending proof without pushing.
 
 ## Access and Status Implementation
 
