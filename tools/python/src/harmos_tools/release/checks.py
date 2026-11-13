@@ -14,10 +14,12 @@
 import os
 import re
 import time
+from collections.abc import Callable
 
 # Third Party Imports
 # Local Imports
 from . import review
+
 # Type Checking Imports
 
 # === Public Exports === #
@@ -31,7 +33,7 @@ from . import review
 # === Public Functions === #
 
 
-def green(sha: str, pages) -> bool:
+def green(sha: str, pages: Callable[..., list[dict]]) -> bool:
     """Select The Latest Dev Push And Its Required Gate, Never A Prior Run Or PR."""
     if re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", sha) is None:
         raise ValueError("invalid target revision")
@@ -92,7 +94,9 @@ def green(sha: str, pages) -> bool:
     return True
 
 
-def wait(sha: str, pages, *, sleep=time.sleep, clock=time.monotonic) -> None:
+def wait(
+    sha: str, pages: Callable[..., list[dict]], *, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic
+) -> None:
     deadline = clock() + 1800
     while not green(sha, pages):
         if clock() >= deadline:

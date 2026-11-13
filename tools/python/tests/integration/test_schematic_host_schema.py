@@ -18,7 +18,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.build import fixtures
 
@@ -34,7 +33,7 @@ from harmos_tools.build import fixtures
 
 
 class SchematicHostSchemaTests(unittest.TestCase):
-    def test_collects_host_schema_and_refuses_changed_capture(self):
+    def test_collects_host_schema_and_refuses_changed_capture(self) -> None:
         # Capture a Host Schema Beside a Native Plugin Without Generated Schemas
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

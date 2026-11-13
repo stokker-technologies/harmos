@@ -21,14 +21,13 @@ import sys
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from ... import csharp, temporary
 from ...ci import summary
 from ...test import archive
-from .. import fixtures as staging
 from .. import cargo, paths
-from ..fixtures import ROOT, TARGET, GUESTS
+from .. import fixtures as staging
+from ..fixtures import GUESTS, ROOT, TARGET
 
 # Type Checking Imports
 
@@ -79,7 +78,9 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
         fixture = Path(message["manifest_path"]) == ROOT / "tools/conformance/Cargo.toml"
         if not fixture or message["target"]["kind"] != ["bin"] or not message.get("executable"):
             continue
-        source = Path(message["executable"])
+        executable = message["executable"]
+        assert executable is not None
+        source = Path(executable)
         destination = fixtures / "bin" / source.name
         staging.copy(source, destination, files)
         binaries[message["target"]["name"]] = destination.relative_to(fixtures).as_posix()

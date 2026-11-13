@@ -361,10 +361,10 @@ def publish(directory: Path, settings: dict) -> None:
     state = {"sha": sha, "tag": tag, "name": tag, "files": {}}
     if settings["provider"] == "github":
         release = registry.draft(settings, tag, sha, notes(directory, tag, tagged=True))
-        state["release_id"] = release["id"]
+        state["release_id"] = (release or {})["id"]
         for item in files:
             data = _bytes(directory, item)
-            state["files"][item["name"]] = {**item, "endpoint": registry.upload(settings, release["id"], item, data)}
+            state["files"][item["name"]] = {**item, "endpoint": registry.upload(settings, (release or {})["id"], item, data)}
             policy.write_json(root / SHARED / STATE, state)
     else:
         if registry.document(settings, "releases/" + _quote(tag)):
@@ -707,6 +707,8 @@ def _commit_review(directory: Path, settings: dict, branch: str, title: str) -> 
                 "allow_empty": True,
             },
         )
+        if commit is None:
+            raise policy.ToolError("preparation commit returned no document")
         signature = registry.document(settings, "repository/commits/" + _quote(commit["id"]) + "/signature")
         verified = signature and signature.get("verification_status") in {"verified", "verified_system"}
         if not verified:

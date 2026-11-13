@@ -19,15 +19,13 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 # Local Imports
 from harmos import GET_TIME, SLEEP, Plugin
-from tests.fixtures.conformance.v1.fixture_pb2 import Value
-from harmos.v1 import types_pb2 as wire
+from harmos.context.v1 import time_pb2 as clock
+from harmos.plugin.v1 import instance_pb2 as carrier
 from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos.v1 import types_pb2 as wire
+from tests.fixtures.conformance.v1.fixture_pb2 import Value
 from tests.support import calls
 from tests.support.author import Author
-
-from harmos.plugin.v1 import instance_pb2 as carrier
-
-from harmos.context.v1 import time_pb2 as clock
 
 # Type Checking Imports
 
@@ -41,7 +39,7 @@ from harmos.context.v1 import time_pb2 as clock
 
 
 class HostClockAndState(unittest.IsolatedAsyncioTestCase):
-    async def test_host_clock_and_state(self):
+    async def test_host_clock_and_state(self) -> None:
         # Serve an Instance with Clock Requirements and a Typed Settings Section.
         author = Author()
         plugin = Plugin(author, id="author", version="1.0.0", requires=[SLEEP, GET_TIME], sections=[Value(value=b"settings")])

@@ -17,10 +17,9 @@ import os
 import subprocess
 import sys
 import tomllib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 # Third Party Imports
 # Local Imports
@@ -54,11 +53,11 @@ def root() -> Path:
     raise ToolError("no project policy file found")
 
 
-def config(directory: Path) -> dict[str, Any]:
+def config(directory: Path) -> dict[str, dict]:
     return tomllib.loads((directory / "tools/project.toml").read_text(encoding="utf-8"))
 
 
-def policy(directory: Path, name: str) -> dict[str, Any]:
+def policy(directory: Path, name: str) -> dict:
     value = config(directory).get(name, {})
     if not isinstance(value, dict):
         raise ToolError(f"[{name}] must be a table")
@@ -140,7 +139,7 @@ def write_json(path: Path, value: object) -> None:
 
 
 @contextmanager
-def credential_free(settings: dict, *, profile: str = "release"):
+def credential_free(settings: dict, *, profile: str = "release") -> Generator[None]:
     """Temporarily Remove Publishing Credentials And Select The Requested Package Profile."""
     declared = {name for lane in settings.get("package_signing", []) for name in lane.get("secrets", [])}
     names = {name for name in os.environ if name.endswith(("_TOKEN", "_PASSWORD", "_SECRET")) or name in declared}

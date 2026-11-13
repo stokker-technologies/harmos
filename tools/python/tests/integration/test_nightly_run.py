@@ -22,7 +22,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.ci import tasks, workflow
 from harmos_tools.release import nightly, review
@@ -40,7 +39,7 @@ from harmos_tools.release import nightly, review
 
 
 class NightlyRunTests(unittest.TestCase):
-    def test_revision_is_built_once_and_receives_only_its_own_results(self):
+    def test_revision_is_built_once_and_receives_only_its_own_results(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "output"
             environment = {

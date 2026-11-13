@@ -20,7 +20,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.test import focused, policy
 
@@ -36,7 +35,7 @@ from harmos_tools.test import focused, policy
 
 
 class TestSelection(unittest.TestCase):
-    def test_package_runs_system_serially_and_propagates_failure(self):
+    def test_package_runs_system_serially_and_propagates_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             targets = [{"kind": ["test"], "name": name} for name in ("integration", "system")]
@@ -48,7 +47,7 @@ class TestSelection(unittest.TestCase):
                 SimpleNamespace(returncode=7),
             ]
 
-            def run(command, **options):
+            def run(command: list[str], **options: object) -> SimpleNamespace:
                 result = results.pop(0)
                 if "--config-file" in command:
                     config = tomllib.loads(Path(command[command.index("--config-file") + 1]).read_text())
@@ -69,7 +68,7 @@ class TestSelection(unittest.TestCase):
             self.assertEqual(commands[2][-5:], ["--test-threads", "1", "--", "case", "--exact"])
 
             # Empty Intermediate Binaries Cannot Turn an Empty Selection Into Proof.
-            def empty(command, **options):
+            def empty(command: list[str], **options: object) -> SimpleNamespace:
                 if "metadata" in command:
                     return SimpleNamespace(returncode=0, stdout=json.dumps(metadata), stderr="")
                 config = tomllib.loads(Path(command[command.index("--config-file") + 1]).read_text())

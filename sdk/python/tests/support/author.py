@@ -18,10 +18,9 @@ from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
 from harmos import Context, observer, on_stop, operation
-from tests.fixtures.conformance.v1.fixture_pb2 import Value
-from harmos.v1 import types_pb2 as wire
-
 from harmos.context.v1 import time_pb2 as clock
+from harmos.v1 import types_pb2 as wire
+from tests.fixtures.conformance.v1.fixture_pb2 import Value
 
 # Type Checking Imports
 
@@ -35,7 +34,7 @@ from harmos.context.v1 import time_pb2 as clock
 
 
 class Author:
-    def __init__(self):
+    def __init__(self) -> None:
         self.calls = 0
         self.cleaned = 0
         self.reading = asyncio.Event()

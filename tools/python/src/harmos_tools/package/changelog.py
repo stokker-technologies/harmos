@@ -13,6 +13,7 @@
 import json
 import re
 import tomllib
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def notes(directory: Path, tag: str, *, tagged: bool | None = None) -> str:
 
 
 @contextmanager
-def staged(directory: Path, packages: dict):
+def staged(directory: Path, packages: dict) -> Generator[None]:
     """Temporarily Include Generated Notes In Every Published Crate, Restoring All Inputs."""
     originals = {}
     try:

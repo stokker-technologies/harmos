@@ -14,6 +14,7 @@ import contextlib
 import json
 import os
 import time
+from collections.abc import Generator
 from pathlib import Path
 
 # Third Party Imports
@@ -79,7 +80,7 @@ def render(label: str, elapsed: float | None, statistics: dict | None, *, phases
 
 
 @contextlib.contextmanager
-def phase(name: str):
+def phase(name: str) -> Generator[None]:
     started = time.monotonic()
     try:
         yield

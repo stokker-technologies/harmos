@@ -21,8 +21,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from harmos_tools.process import spawn_flags
 from harmos_tools.build.paths import output
+from harmos_tools.process import spawn_flags
 
 # Third Party Imports
 
@@ -41,7 +41,7 @@ from harmos_tools.build.paths import output
 
 
 class PackagedRustConformance(unittest.TestCase):
-    def test_published_crates_serve_the_public_fixture(self):
+    def test_published_crates_serve_the_public_fixture(self) -> None:
         root = Path(__file__).resolve().parents[4]
         version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
         environment = dict(os.environ, CARGO_TARGET_DIR=str(root / "target"), CARGO_BUILD_WARNINGS="deny")

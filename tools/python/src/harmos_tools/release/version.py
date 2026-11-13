@@ -166,7 +166,7 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
                         + r"\x27)\s*=\s*\{)(.*?)(\})"
                     )
 
-                    def replace(match, expected=expected):
+                    def replace(match: re.Match[str], expected: str = expected) -> str:
                         updated = re.sub(
                             r'(\bversion\s*=\s*)["\x27][^"\x27]*["\x27]', lambda value: value[1] + json.dumps(expected), match[2]
                         )

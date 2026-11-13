@@ -41,7 +41,6 @@ import math
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 # Third Party Imports
 
@@ -159,7 +158,7 @@ def lanes(directory: Path) -> list[tuple[str, str]]:
 # === Private Functions === #
 
 
-def _toml(path: Path) -> dict[str, Any]:
+def _toml(path: Path) -> dict[str, dict]:
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as error:

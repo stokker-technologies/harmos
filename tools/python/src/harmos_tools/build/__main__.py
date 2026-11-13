@@ -21,11 +21,10 @@ import sys
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from .. import temporary
 from . import cargo, fixtures, paths
-from .fixtures import ROOT, TARGET, SCHEMATIC
+from .fixtures import ROOT, SCHEMATIC, TARGET
 
 # Type Checking Imports
 

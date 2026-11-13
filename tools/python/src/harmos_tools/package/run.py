@@ -100,7 +100,10 @@ def regular(root: Path, relative: str) -> Path:
 
 def assemble(directory: Path, language: str, profile: str, target: str, staging: Path) -> None:
     build = paths.output(directory, "build", profile, target)
-    substitutions = {"profile": profile, "target": target, "version": policy.config(directory).get("version", {}).get("value")}
+    version = policy.config(directory).get("version", {}).get("value")
+    if not isinstance(version, str):
+        raise policy.ToolError("package version must be a string")
+    substitutions = {"profile": profile, "target": target, "version": version}
     if language in {"python", "typescript"}:
         source = build / {"python": "python", "typescript": "web"}[language]
         canonical = policy.config(directory).get("languages", {}).get("python", {}).get("build_target") == "any"

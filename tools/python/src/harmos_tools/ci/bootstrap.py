@@ -31,7 +31,10 @@ import tomllib
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable, Generator, Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
+from typing import BinaryIO
 
 # Third Party Imports
 # Local Imports
@@ -60,7 +63,7 @@ EXPORTED = {}
 
 
 @contextlib.contextmanager
-def group(title):
+def group(title: str) -> Generator[None]:
     print(f"::group::{title}", flush=True)
     try:
         yield
@@ -68,7 +71,7 @@ def group(title):
         print("::endgroup::", flush=True)
 
 
-def roots(environment, workspace, home):
+def roots(environment: Mapping[str, str], workspace: Path, home: Path) -> dict[str, str]:
     """Keep Installation Identity Independent Of The Runner's Per-Job Temp Directory."""
     data = Path(environment.get("MISE_DATA_DIR") or home / ".local/share/mise")
     cargo = Path(environment.get("CARGO_HOME") or home / ".cargo")
@@ -85,7 +88,7 @@ def roots(environment, workspace, home):
     }
 
 
-def export(values):
+def export(values: dict[str, str]) -> None:
     EXPORTED.update(values)
     os.environ.update(values)
     if destination := os.environ.get("GITHUB_ENV"):
@@ -96,7 +99,13 @@ def export(values):
                 stream.write(f"{name}={value}\n")
 
 
-def download(url, checksum, destination, opener=urllib.request.urlopen, sleep=time.sleep):
+def download(
+    url: str,
+    checksum: str,
+    destination: Path,
+    opener: Callable[..., AbstractContextManager[BinaryIO]] = urllib.request.urlopen,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bytes:
     """Fetch A Pinned Archive, Retrying Transient Release CDN Failures With Bounded Backoff."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_file() and hashlib.sha256(destination.read_bytes()).hexdigest() == checksum:
@@ -130,7 +139,7 @@ def download(url, checksum, destination, opener=urllib.request.urlopen, sleep=ti
     return content
 
 
-def windows(workspace):
+def windows(workspace: Path) -> None:
     vswhere = Path(os.environ["ProgramFiles(x86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"
     installation = subprocess.check_output(
         [
@@ -209,7 +218,7 @@ def windows(workspace):
         )
 
 
-def unix():
+def unix() -> None:
     tools = os.environ.get("MISE_ENABLE_TOOLS", "rust,node").split(",")
     compiler = "rust" in tools or any(tool.startswith("cargo:") for tool in tools)
     required = ["tar", "zstd", "unzip", "zip"] + (["cc", "c++", "make", "pkg-config"] if compiler else [])
@@ -244,7 +253,7 @@ def unix():
         raise RuntimeError("GNU tar is required")
 
 
-def atomic_available():
+def atomic_available() -> bool:
     if shutil.which("ldconfig"):
         result = subprocess.run(["ldconfig", "-p"], check=False, capture_output=True, text=True, creationflags=spawn_flags())
         if "libatomic.so.1" in result.stdout:
@@ -253,7 +262,7 @@ def atomic_available():
     return any((directory / "libatomic.so.1").is_file() or any(directory.glob("*/libatomic.so.1")) for directory in directories)
 
 
-def rustup():
+def rustup() -> None:
     # Mise Reuses The Existing Rustup Installation Instead Of Bootstrapping A Competing One.
     proxies = Path(os.environ["CARGO_HOME"]) / "bin"
     found = shutil.which("rustup")
@@ -271,7 +280,7 @@ def rustup():
     export({"PATH": os.pathsep.join([str(proxies), os.environ["PATH"]])})
 
 
-def glab(version):
+def glab(version: str) -> None:
     if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
         raise ValueError("GitLab CLI bootstrap requires an exact version")
     # This Explicit CI Tool Is Outside The Project Lock; Project Installs Remain Locked.
@@ -285,7 +294,7 @@ def glab(version):
     export({"MISE_GLAB_VERSION": version})
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--platform", choices=("unix", "windows"), default=os.environ.get("SETUP_PLATFORM", "windows" if os.name == "nt" else "unix")

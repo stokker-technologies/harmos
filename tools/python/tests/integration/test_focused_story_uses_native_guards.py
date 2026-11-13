@@ -19,7 +19,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.test import focused, nextest, policy
 
@@ -35,19 +34,21 @@ from harmos_tools.test import focused, nextest, policy
 
 
 class TestSelection(unittest.TestCase):
-    def test_focused_story_keeps_deadlines_and_does_not_build_an_archive(self):
+    def test_focused_story_keeps_deadlines_and_does_not_build_an_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             rules = policy.Policy({}, dict(policy.DEADLINES), ())
             commands = []
 
-            def execute(command, **options):
+            def execute(command: list[str], **options: object) -> SimpleNamespace:
                 commands.append(command)
                 config = Path(command[command.index("--config-file") + 1]).read_text()
                 configured = tomllib.loads(config)["profile"]["project"]["overrides"]
                 integration = next(item for item in configured if item["filter"] == nextest.layer("integration", ["integration"]))
                 self.assertEqual(integration["slow-timeout"]["period"], f"{rules.deadline('integration')}s")
-                self.assertEqual(options["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
+                environment = options["env"]
+                assert isinstance(environment, dict)
+                self.assertEqual(environment["CARGO_TARGET_DIR"], str(directory / "target"))
                 junit = Path(tomllib.loads(config)["store"]["dir"]) / "project/junit.xml"
                 junit.parent.mkdir(parents=True, exist_ok=True)
                 junit.write_text('<testsuites><testsuite><testcase name="story"/></testsuite></testsuites>')

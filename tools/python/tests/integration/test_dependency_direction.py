@@ -33,7 +33,7 @@ from pathlib import Path
 
 
 class DependencyDirection(unittest.TestCase):
-    def test_production_edges_follow_domain_ownership(self):
+    def test_production_edges_follow_domain_ownership(self) -> None:
         root = Path(__file__).resolve().parents[4]
         owners = {
             "harmos-protocol": set(),

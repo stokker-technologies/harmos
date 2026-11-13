@@ -40,10 +40,10 @@ class RunTests(unittest.TestCase):
     runners: list[ModuleType]
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         cls.runners = [run]
 
-    def test_completed_story_measurements_preserve_results(self):
+    def test_completed_story_measurements_preserve_results(self) -> None:
         for runner in self.runners:
             for language in ("python", "typescript", "javascript"):
                 for instrumented in (False, True):
@@ -77,7 +77,7 @@ class RunTests(unittest.TestCase):
                             json.loads((destination / "durations.json").read_text()), {"fixture": {"passes": {"seconds": seconds}}}
                         )
 
-    def test_script_hang_kills_owned_process_tree(self):
+    def test_script_hang_kills_owned_process_tree(self) -> None:
         for runner in self.runners:
             with self.subTest(runner=runner.__file__), tempfile.TemporaryDirectory() as temporary:
                 directory = Path(temporary).resolve()

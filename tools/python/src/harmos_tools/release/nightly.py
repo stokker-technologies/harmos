@@ -175,7 +175,7 @@ def report(directory: Path, results: dict, url: str) -> bool:
     uploads = layout.uploads(directory, staged=True)
     # The Workflow Serializes This Update With Publication; Recheck Identity Before Mutating Assets.
     latest = registry.document(settings, "releases/tags/nightly", channel=True)
-    if latest["id"] != current["id"] or identity not in latest["body"].splitlines():
+    if latest is None or latest["id"] != current["id"] or identity not in latest["body"].splitlines():
         print("A Newer Run Replaced Nightly; Leaving Its Reports Unchanged")
         return False
     return _github(directory, settings, uploads, sha, identifier, notes)
@@ -328,13 +328,15 @@ def _github(
         },
         channel=True,
     )
+    if staged is None:
+        raise policy.ToolError("release creation returned no document")
     endpoint = f"releases/{staged['id']}"
     try:
         for item in files:
             _upload(directory, settings, endpoint, item)
         _verify_assets(settings, endpoint, files, "upload inventory is incomplete")
     except Exception:
-        _discard(settings, staged["id"])
+        _discard(settings, (staged or {})["id"])
         raise
 
     # Swap: Move The Tag, Release It From The Previous Channel, Then Publish The Staged Draft.
@@ -356,7 +358,7 @@ def _github(
         published = registry.document(settings, f"releases/tags/{TAG}", channel=True)
         if (
             not published
-            or published.get("id") != staged["id"]
+            or published.get("id") != (staged or {})["id"]
             or published.get("tag_name") != TAG
             or published.get("target_commitish") != sha
             or published.get("draft") is not False
@@ -365,26 +367,29 @@ def _github(
             raise policy.ToolError(f"{TAG} publication could not be verified at releases/tags/{TAG}")
         _verify_assets(settings, f"releases/{published['id']}", files, "published asset inventory differs from the staged downloads")
     except Exception:
-        _restore(settings, staged["id"], previous, original)
+        _restore(settings, (staged or {})["id"], previous, original)
         raise
     if published.get("immutable"):
         raise policy.ToolError(IMMUTABLE)
 
     # Retire The Replaced Release And Every Draft Interrupted Runs Left Behind.
     for release in registry.pages(settings, "releases", channel=True):
-        if release.get("id") != staged["id"] and (release.get("draft") is True and release.get("name") == TITLE):
+        if release.get("id") != (staged or {})["id"] and (release.get("draft") is True and release.get("name") == TITLE):
             registry.request(settings, f"releases/{release['id']}", "DELETE", channel=True)
     return True
 
 
 def _workflows_moved(settings: dict, sha: str) -> bool:
     """Whether Dev's Head Now Carries Different Workflow Files Than The Build Commit."""
-    head = registry.document(settings, "git/ref/heads/dev", channel=True)["object"]["sha"]
+    reference = registry.document(settings, "git/ref/heads/dev", channel=True)
+    if reference is None:
+        raise policy.ToolError("dev reference unavailable")
+    head = reference["object"]["sha"]
     return head != sha and _workflows(settings, head) != _workflows(settings, sha)
 
 
 def _workflows(settings: dict, revision: str) -> str | None:
-    entries = registry.document(settings, f"contents/.github?ref={revision}", channel=True) or []
+    entries = registry.document(settings, f"contents/.github?ref={revision}", channel=True, collection=True) or []
     return next((entry["sha"] for entry in entries if entry["name"] == "workflows" and entry["type"] == "dir"), None)
 
 

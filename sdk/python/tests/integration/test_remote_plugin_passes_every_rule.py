@@ -14,7 +14,6 @@
 import unittest
 
 # Third Party Imports
-
 # Local Imports
 from tests.fixtures.conformance import plugin
 from tests.support import host
@@ -31,7 +30,7 @@ from tests.support import host
 
 
 class RemotePlugin(unittest.IsolatedAsyncioTestCase):
-    async def test_remote_plugin_passes_every_rule(self):
+    async def test_remote_plugin_passes_every_rule(self) -> None:
         # Serve the Author's Instance at an Explicit Remote Address.
         endpoint = await plugin().start("127.0.0.1:0")
         self.addAsyncCleanup(endpoint.close)

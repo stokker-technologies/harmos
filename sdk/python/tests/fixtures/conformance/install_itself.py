@@ -12,9 +12,12 @@
 # === Imports === #
 
 from harmos import Client, Context, Plugin, operation
-from .v1.fixture_pb2 import Value
-from harmos.v1 import plugins_pb2 as plugins, invocations_pb2 as invocations, types_pb2 as wire
+from harmos.v1 import invocations_pb2 as invocations
+from harmos.v1 import plugins_pb2 as plugins
+from harmos.v1 import types_pb2 as wire
 from harmos.v1.storage_settings_pb2 import StorageTransferSettings
+
+from .v1.fixture_pb2 import Value
 
 # === Public Exports === #
 
@@ -34,7 +37,7 @@ class Echo:
 # === Public Functions === #
 
 
-async def run(arguments):
+async def run(arguments: list[str]) -> None:
     if arguments == ["serve"]:
         endpoint = await Plugin(Echo(), id="example", version="1.0.0").start("127.0.0.1:0")
         print(f"harmos listening {endpoint.address}", flush=True)

@@ -10,15 +10,17 @@
 
 # === Imports === #
 
-# Standard Library Imports
+import grpc
 
+# Standard Library Imports
 # Third Party Imports
 from google.protobuf.message import Message
 
+from harmos.plugin.v1 import instance_pb2 as carrier
+from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
+
 # Local Imports
 from harmos.v1 import types_pb2 as wire
-
-from harmos.plugin.v1 import instance_pb2 as carrier
 
 # Type Checking Imports
 
@@ -33,7 +35,9 @@ from harmos.plugin.v1 import instance_pb2 as carrier
 # === Public Functions === #
 
 
-async def invoke(client, operation: str, request: Message):
+async def invoke(
+    client: InstanceStub, operation: str, request: Message
+) -> grpc.aio.StreamStreamCall[carrier.InstanceInvokeRequest, carrier.InstanceInvokeResponse]:
     call = client.Invoke()
     await call.write(
         carrier.InstanceInvokeRequest(
@@ -43,7 +47,11 @@ async def invoke(client, operation: str, request: Message):
     return call
 
 
-async def reply(call, child: wire.ChildRequest, response: Message) -> None:
+async def reply(
+    call: grpc.aio.StreamStreamCall[carrier.InstanceInvokeRequest, carrier.InstanceInvokeResponse],
+    child: wire.ChildRequest,
+    response: Message,
+) -> None:
     await call.write(carrier.InstanceInvokeRequest(child=wire.ChildResponse(call=child.call, payload=response.SerializeToString())))
 
 

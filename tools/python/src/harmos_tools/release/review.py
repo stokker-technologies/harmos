@@ -10,6 +10,8 @@
 
 # === Imports === #
 
+import http.client
+
 # Standard Library Imports
 import io
 import json
@@ -20,13 +22,16 @@ import tomllib
 import urllib.parse
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import IO, Literal, overload
 
 # Third Party Imports
 # Local Imports
 from ..process import spawn_flags
 from . import policy
+
 # Type Checking Imports
 
 # === Public Exports === #
@@ -42,7 +47,9 @@ OID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
 
 class ProviderRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str, headers: http.client.HTTPMessage, newurl: str
+    ) -> urllib.request.Request | None:
         redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
         origin = urllib.parse.urlsplit(req.full_url)
         destination = urllib.parse.urlsplit(newurl)
@@ -56,30 +63,58 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 # === Public Functions === #
 
 
-def command(*args):
+def command(*args: str) -> str:
     return subprocess.run(args, check=True, capture_output=True, text=True, timeout=120, creationflags=spawn_flags()).stdout.strip()
 
 
-def request(endpoint, *, binary=False):
+@overload
+def request(endpoint: str, *, binary: Literal[True]) -> bytes: ...
+
+
+@overload
+def request(endpoint: str, *, collection: Literal[True]) -> list[dict]: ...
+
+
+@overload
+def request(endpoint: str, *, binary: Literal[False] = False, collection: Literal[False] = False) -> dict: ...
+
+
+def request(endpoint: str, *, binary: bool = False, collection: bool = False) -> dict | list[dict] | bytes:
     if os.environ.get("GITHUB_ACTIONS"):
-        return json.loads(command("gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/{endpoint}"))
-    token = os.environ["RELEASE_TOKEN"]
-    if not token:
-        raise ValueError("provider token unavailable")
-    base = os.environ["CI_API_V4_URL"]
-    project = urllib.parse.quote(os.environ["CI_PROJECT_ID"], safe="")
-    native = urllib.request.Request(f"{base}/projects/{project}/{endpoint}", headers={"PRIVATE-TOKEN": token})
-    with urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60) as response:
-        data = response.read()
-    return data if binary else json.loads(data)
+        data = command("gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/{endpoint}").encode()
+    else:
+        token = os.environ["RELEASE_TOKEN"]
+        if not token:
+            raise ValueError("provider token unavailable")
+        base = os.environ["CI_API_V4_URL"]
+        project = urllib.parse.quote(os.environ["CI_PROJECT_ID"], safe="")
+        native = urllib.request.Request(f"{base}/projects/{project}/{endpoint}", headers={"PRIVATE-TOKEN": token})
+        response = urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60)
+        try:
+            data = response.read()
+        finally:
+            response.close()
+    if binary:
+        return data
+    document = json.loads(data)
+    if collection:
+        if not isinstance(document, list) or any(not isinstance(item, dict) for item in document):
+            raise TypeError("provider collection must contain objects")
+        return document
+    if not isinstance(document, dict):
+        raise TypeError("provider response must be an object")
+    return document
 
 
-def pages(endpoint, key=None):
+def pages(endpoint: str, key: str | None = None) -> list[dict]:
     values = []
     for page in range(1, 101):
         separator = "&" if "?" in endpoint else "?"
-        response = request(f"{endpoint}{separator}per_page=100&page={page}")
-        batch = response[key] if key else response
+        address = f"{endpoint}{separator}per_page=100&page={page}"
+        response = request(address) if key is not None else request(address, collection=True)
+        if key is not None and not isinstance(response, dict):
+            raise TypeError("provider page must be an object")
+        batch = response[key] if key is not None and isinstance(response, dict) else response
         if not isinstance(batch, list):
             raise TypeError("invalid provider page")
         values.extend(batch)
@@ -88,14 +123,14 @@ def pages(endpoint, key=None):
     raise ValueError("provider pagination limit")
 
 
-def same_tree(head, tree):
+def same_tree(head: object, tree: str) -> bool:
     if not isinstance(head, str) or OID.fullmatch(head) is None:
         return False
     command("git", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", head)
     return command("git", "rev-parse", "--verify", head + "^{tree}") == tree
 
 
-def github_review_run(run, review):
+def github_review_run(run: dict, review: dict) -> bool:
     if run.get("head_sha") != review["head"]["sha"]:
         return False
     associations = run.get("pull_requests")
@@ -115,7 +150,7 @@ def github_review_run(run, review):
     )
 
 
-def github_validation_run(runs, jobs_for):
+def github_validation_run(runs: list[dict], jobs_for: Callable[[int], list[dict]]) -> tuple[dict, list[dict]]:
     for run in sorted(runs, key=lambda item: item["id"], reverse=True):
         if run.get("display_title") in ("CI / Closed Review", "CI / Draft Review"):
             continue
@@ -131,7 +166,7 @@ def github_validation_run(runs, jobs_for):
     raise ValueError("review has no validation run")
 
 
-def github_merged_reviews(sha):
+def github_merged_reviews(sha: str) -> list[dict]:
     return [
         review
         for review in pages(f"commits/{sha}/pulls")
@@ -139,7 +174,7 @@ def github_merged_reviews(sha):
     ]
 
 
-def github_release_mode():
+def github_release_mode() -> dict[str, str]:
     sha = command("git", "rev-parse", "HEAD")
     if sha != os.environ["GITHUB_SHA"]:
         raise ValueError("release decision checkout differs from event revision")
@@ -184,7 +219,7 @@ def github_release_mode():
     return {"mode": "tag", "sha": target}
 
 
-def lookup():
+def lookup() -> dict:
     sha = command("git", "rev-parse", "HEAD")
     tree = command("git", "rev-parse", "HEAD^{tree}")
     if OID.fullmatch(tree) is None:
@@ -275,7 +310,7 @@ def lookup():
     }
 
 
-def restore():
+def restore() -> None:
     if os.environ.get("validated") != "true":
         return
     run = os.environ["review_run"]

@@ -24,6 +24,7 @@ import tomllib
 import unittest
 import urllib.error
 import urllib.parse
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -49,7 +50,7 @@ LATER = "c" * 40
 
 
 class ReleaseTagTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.action = vars(review)
         self.project = (ROOT / "tools/project.toml").read_text(encoding="utf-8")
         self.tag = "v" + tomllib.loads(self.project)["version"]["value"]
@@ -69,7 +70,7 @@ class ReleaseTagTests(unittest.TestCase):
             "GITHUB_WORKFLOW_REF": "owner/product/.github/workflows/release.yml@refs/heads/dev",
         }
 
-    def command(self, *args):
+    def command(self, *args: str) -> str:
         if args == ("git", "rev-parse", "HEAD"):
             return LATER
         if args == ("git", "ls-remote", "--tags", "origin", "refs/tags/" + self.tag):
@@ -80,7 +81,7 @@ class ReleaseTagTests(unittest.TestCase):
             return self.project
         raise AssertionError(args)
 
-    def test_release_review_validation_completion_tags_target(self):
+    def test_release_review_validation_completion_tags_target(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             event = Path(temporary) / "event.json"
             event.write_text(json.dumps({"workflow_run": {"head_sha": OLD, "event": "pull_request", "conclusion": "success"}}))
@@ -93,7 +94,7 @@ class ReleaseTagTests(unittest.TestCase):
                 with patch.dict(os.environ, GITHUB_EVENT_NAME="workflow_dispatch"):
                     self.assertEqual(self.action["github_release_mode"](), {"mode": "tag", "sha": NEW})
 
-    def test_unrelated_ci_completion_skips(self):
+    def test_unrelated_ci_completion_skips(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             event = Path(temporary) / "event.json"
             with (
@@ -109,7 +110,7 @@ class ReleaseTagTests(unittest.TestCase):
                         event.write_text(json.dumps({"workflow_run": completion}))
                         self.assertEqual(self.action["github_release_mode"](), {"mode": "skip", "sha": ""})
 
-    def test_dispatch_without_prepared_release_prepares(self):
+    def test_dispatch_without_prepared_release_prepares(self) -> None:
         with (
             patch.dict(os.environ, {**self.environment, "GITHUB_EVENT_NAME": "workflow_dispatch"}),
             patch.dict(self.action["github_release_mode"].__globals__, command=self.command, pages=lambda *args: []),
@@ -118,7 +119,7 @@ class ReleaseTagTests(unittest.TestCase):
             with patch.dict(self.action["github_release_mode"].__globals__, command=lambda *args: LATER):
                 self.assertEqual(self.action["github_release_mode"](), {"mode": "prepare", "sha": ""})
 
-    def test_prepared_release_events_require_exact_merged_review(self):
+    def test_prepared_release_events_require_exact_merged_review(self) -> None:
         settings = {"provider": "github", "repository": "owner/product"}
         for event in ("workflow_run", "workflow_dispatch"):
             for event_sha in (NEW, LATER):
@@ -165,7 +166,7 @@ class ReleaseTagTests(unittest.TestCase):
 
 
 class ReleaseChecksTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.guard = runpy.run_module("harmos_tools.release.checks")
         self.sha = "a" * 40
         self.ci_run: dict = {
@@ -190,7 +191,7 @@ class ReleaseChecksTests(unittest.TestCase):
         self.rules = []
         self.statuses = []
 
-    def pages(self, endpoint, key=None):
+    def pages(self, endpoint: str, key: str | None = None) -> list[dict]:
         if endpoint.startswith("actions/"):
             return self.runs
         if "/check-runs?" in endpoint:
@@ -201,7 +202,7 @@ class ReleaseChecksTests(unittest.TestCase):
             return self.statuses
         raise AssertionError(endpoint)
 
-    def test_exact_commit(self):
+    def test_exact_commit(self) -> None:
         self.assertTrue(self.guard["green"](self.sha, self.pages))
         self.ci_run["head_sha"] = "b" * 40
         self.assertFalse(self.guard["green"](self.sha, self.pages))
@@ -209,14 +210,14 @@ class ReleaseChecksTests(unittest.TestCase):
         self.gate["check_suite"]["id"] += 1
         self.assertFalse(self.guard["green"](self.sha, self.pages))
 
-    def test_latest_failure(self):
+    def test_latest_failure(self) -> None:
         self.runs.append({**self.ci_run, "id": self.ci_run["id"] + 1, "conclusion": "failure"})
         with self.assertRaises(ValueError):
             self.guard["green"](self.sha, self.pages)
         self.runs[-1]["status"] = "in_progress"
         self.assertFalse(self.guard["green"](self.sha, self.pages))
 
-    def test_required_contexts(self):
+    def test_required_contexts(self) -> None:
         self.rules = [{"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "security"}]}}]
         self.assertFalse(self.guard["green"](self.sha, self.pages))
         self.statuses = [{"id": 1, "context": "security", "state": "success"}]
@@ -234,10 +235,10 @@ class ReleaseChecksTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.guard["green"](self.sha, self.pages)
 
-    def test_wait_and_timeout(self):
+    def test_wait_and_timeout(self) -> None:
         self.runs = []
 
-        def completed(_):
+        def completed(_: object) -> None:
             self.runs = [self.ci_run]
 
         self.guard["wait"](self.sha, self.pages, sleep=completed, clock=lambda: 0)
@@ -248,7 +249,7 @@ class ReleaseChecksTests(unittest.TestCase):
 
 
 class PinTests(unittest.TestCase):
-    def test_release_and_nightly(self):
+    def test_release_and_nightly(self) -> None:
         packages = [
             {"name": "direct", "source": "git+https://example.test/direct#123"},
             {"name": "transitive", "source": "git+https://example.test/transitive#456"},
@@ -260,7 +261,7 @@ class PinTests(unittest.TestCase):
         with patch.object(policy, "execute", return_value=json.dumps({"packages": [{"name": "local", "source": None}]})):
             self.assertTrue(pins.check(ROOT))
 
-    def test_nightly_skips(self):
+    def test_nightly_skips(self) -> None:
         with (
             patch.object(pins, "check", return_value=False) as check,
             patch.dict(os.environ, {"GITHUB_WORKFLOW_REF": "owner/repo/.github/workflows/nightly.yml@refs/heads/dev"}, clear=True),
@@ -270,7 +271,7 @@ class PinTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
-    def test_publication_replaces_previous(self):
+    def test_publication_replaces_previous(self) -> None:
         for previous, metadata in ((True, True), (False, True), (True, False)):
             with self.subTest(previous=previous, metadata=metadata), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
@@ -287,7 +288,7 @@ class PublicationTests(unittest.TestCase):
                 self.assertEqual({asset["name"] for asset in github.assets[published["id"]]}, {item["name"] for item in files})
                 self.assertEqual(set(github.releases), {3, published["id"]})
 
-    def test_failure_before_swap_keeps_previous(self):
+    def test_failure_before_swap_keeps_previous(self) -> None:
         for fault in ("create", "upload:linux.zip", "upload:SHA256SUMS", "size", "pending", "digest", "bytes"):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
@@ -297,7 +298,7 @@ class PublicationTests(unittest.TestCase):
                     nightly._github(directory, {}, files, NEW, "7", "notes")
                 self.assertEqual((github.releases, github.assets, github.tag), before)
 
-    def test_transient_upload_failure_retries(self):
+    def test_transient_upload_failure_retries(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory, files = _staged_files(Path(temporary))
             github = FakeGitHub(previous=True, faults={"partial:windows.zip"})
@@ -306,7 +307,7 @@ class PublicationTests(unittest.TestCase):
             names = [asset["name"] for asset in github.assets[github.published()["id"]]]
             self.assertEqual(sorted(names), sorted(item["name"] for item in files))
 
-    def test_failure_during_swap_restores_previous(self):
+    def test_failure_during_swap_restores_previous(self) -> None:
         for fault in ("tag-create", "draft-previous", "publish", "lookup", "public-bytes"):
             with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
@@ -316,7 +317,7 @@ class PublicationTests(unittest.TestCase):
                     nightly._github(directory, {}, files, NEW, "7", "notes")
                 self.assertEqual((github.releases, github.assets, github.tag), before)
 
-    def test_superseded_and_immutable_previous(self):
+    def test_superseded_and_immutable_previous(self) -> None:
         for state in ("superseded", "immutable"):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
@@ -334,7 +335,7 @@ class PublicationTests(unittest.TestCase):
                             nightly._github(directory, {}, files, NEW, "7", "notes")
                 self.assertEqual((github.releases, github.assets, github.tag), before)
 
-    def test_dev_workflow_change_supersedes(self):
+    def test_dev_workflow_change_supersedes(self) -> None:
         for workflows, published in (("changed", False), ("same", True)):
             with self.subTest(workflows=workflows), tempfile.TemporaryDirectory() as temporary:
                 directory, files = _staged_files(Path(temporary))
@@ -349,7 +350,7 @@ class PublicationTests(unittest.TestCase):
                 else:
                     self.assertEqual((github.releases, github.assets, github.tag), before)
 
-    def test_repository_immutability_is_reported(self):
+    def test_repository_immutability_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory, files = _staged_files(Path(temporary))
             github = FakeGitHub(previous=True, immutable=True)
@@ -359,7 +360,7 @@ class PublicationTests(unittest.TestCase):
 
 
 class ProviderRetryTests(unittest.TestCase):
-    def test_transient_responses(self):
+    def test_transient_responses(self) -> None:
         cases = (
             ("DELETE", [502, 404], None, 2),
             ("GET", [503, 503, 200], b"{}", 3),
@@ -388,7 +389,7 @@ class ProviderRetryTests(unittest.TestCase):
 
 
 class CompilerCacheKeyTests(unittest.TestCase):
-    def test_tool_changes_preserve_compiler_cache_and_lock_changes_restore(self):
+    def test_tool_changes_preserve_compiler_cache_and_lock_changes_restore(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             output = root / "outputs"
@@ -435,13 +436,13 @@ class SetupDownloadTests(unittest.TestCase):
     URL = "https://example.com/archive.zip"
     CHECKSUM = hashlib.sha256(b"archive").hexdigest()
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.download = runpy.run_path(str(ROOT / "tools/python/src/harmos_tools/ci/bootstrap.py"))["download"]
         self.calls: list[str] = []
         self.pauses: list[float] = []
 
-    def fetch(self, codes, checksum=CHECKSUM):
-        def opener(url, timeout):
+    def fetch(self, codes: list[int], checksum: str = CHECKSUM) -> bytes:
+        def opener(url: str, timeout: float) -> io.BytesIO:
             self.calls.append(url)
             code = codes.pop(0)
             if code != 200:
@@ -457,22 +458,22 @@ class SetupDownloadTests(unittest.TestCase):
             finally:
                 self.assertEqual([path.name for path in Path(directory).iterdir() if path != destination], [])
 
-    def test_transient_status_retries_then_returns_bytes(self):
+    def test_transient_status_retries_then_returns_bytes(self) -> None:
         self.assertEqual(self.fetch([503, 200]), b"archive")
         self.assertEqual(len(self.calls), 2)
         self.assertEqual(len(self.pauses), 1)
 
-    def test_missing_archive_fails_without_retry(self):
+    def test_missing_archive_fails_without_retry(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
             self.fetch([404])
         self.assertEqual(self.calls, [self.URL])
 
-    def test_checksum_mismatch_fails_without_retry(self):
+    def test_checksum_mismatch_fails_without_retry(self) -> None:
         with self.assertRaisesRegex(ValueError, "checksum mismatch"):
             self.fetch([200, 200], checksum="0" * 64)
         self.assertEqual(self.calls, [self.URL])
 
-    def test_exhausted_attempts_name_url_and_count(self):
+    def test_exhausted_attempts_name_url_and_count(self) -> None:
         with self.assertRaises(RuntimeError) as raised:
             self.fetch([504] * 6)
         self.assertEqual(len(self.calls), 6)
@@ -484,11 +485,11 @@ class SetupDownloadTests(unittest.TestCase):
 class FakeOpener:
     """Answer Each Provider Request With The Next Scripted Status."""
 
-    def __init__(self, codes: list[int]):
+    def __init__(self, codes: list[int]) -> None:
         self.codes = list(codes)
         self.methods: list[str] = []
 
-    def open(self, request, timeout):
+    def open(self, request: urllib.request.Request, timeout: float) -> io.BytesIO:
         self.methods.append(request.get_method())
         code = self.codes.pop(0)
         if code != 200:
@@ -499,7 +500,7 @@ class FakeOpener:
 class FakeGitHub:
     """An In-Memory Release Provider With GitHub's Draft, Tag And Asset Semantics And Injectable Faults."""
 
-    def __init__(self, *, previous: bool, faults: set[str] | None = None, immutable: bool = False):
+    def __init__(self, *, previous: bool, faults: set[str] | None = None, immutable: bool = False) -> None:
         self.faults = set(faults or ())
         self.immutable = immutable
         self.tag = OLD if previous else None
@@ -538,7 +539,9 @@ class FakeGitHub:
                 self.faults.discard(name)
             raise policy.ToolError(f"injected {name}")
 
-    def document(self, settings, endpoint, method="GET", body=None, **kwargs):
+    def document(
+        self, settings: dict, endpoint: str, method: str = "GET", body: dict | None = None, **kwargs: object
+    ) -> dict | list[dict] | None:
         body = copy.deepcopy(body or {})
         if endpoint == f"releases/tags/{nightly.TAG}":
             matches = [item for item in self.releases.values() if item["tag_name"] == nightly.TAG and item["draft"] is False]
@@ -585,7 +588,7 @@ class FakeGitHub:
             return {}
         raise AssertionError((endpoint, method))
 
-    def pages(self, settings, endpoint, **kwargs):
+    def pages(self, settings: dict, endpoint: str, **kwargs: object) -> list[dict]:
         if endpoint == "releases":
             return copy.deepcopy(list(self.releases.values()))
         assets = copy.deepcopy(self.assets[int(endpoint.split("/")[1])])
@@ -597,7 +600,7 @@ class FakeGitHub:
                 asset.pop("digest", None)
         return assets
 
-    def request(self, settings, endpoint, method="GET", data=None, **kwargs):
+    def request(self, settings: dict, endpoint: str, method: str = "GET", data: object = None, **kwargs: object) -> bytes | None:
         if endpoint == f"git/refs/tags/{nightly.TAG}" and method == "DELETE":
             self.tag = None
             return
@@ -641,7 +644,7 @@ class FakeGitHub:
 
 
 class NightlyTests(unittest.TestCase):
-    def test_source_eligibility(self):
+    def test_source_eligibility(self) -> None:
         base = {"GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "41", "GITHUB_REPOSITORY": "owner/repo", "GITHUB_SERVER_URL": "https://github.com"}
         for event, ref, eligible in (
             ("schedule", "refs/heads/dev", True),
