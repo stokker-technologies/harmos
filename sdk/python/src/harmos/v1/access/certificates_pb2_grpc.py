@@ -27,7 +27,14 @@ if _version_not_supported:
 
 
 class CertificatesStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Owns TLS certificate rotation and the associated revocation of durable client pairings.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -43,10 +50,18 @@ class CertificatesStub:
 
 
 class CertificatesServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Owns TLS certificate rotation and the associated revocation of durable client pairings.
+    """
 
     def Create(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Generate and persist a new TLS certificate, rotate the live listener and revoke all existing pairings; repeating the call rotates again.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -68,7 +83,14 @@ def add_CertificatesServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Certificates:
-    """Missing associated documentation comment in .proto file."""
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Owns TLS certificate rotation and the associated revocation of durable client pairings.
+    """
 
     @staticmethod
     def Create(request,

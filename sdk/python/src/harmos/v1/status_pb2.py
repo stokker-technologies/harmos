@@ -22,11 +22,11 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import types_pb2 as harmos_dot_v1_dot_types__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
+from harmos.v1 import types_pb2 as harmos_dot_v1_dot_types__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16harmos/v1/status.proto\x12\tharmos.v1\x1a\x15harmos/v1/types.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa7\x01\n\x0cHostIdentity\x12\x18\n\x10\x61pplication_name\x18\x01 \x01(\t\x12\x1b\n\x13\x61pplication_version\x18\x02 \x01(\t\x12\x17\n\x0flibrary_version\x18\x03 \x01(\t\x12\x36\n\x12process_started_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07host_id\x18\x05 \x01(\t\"Y\n\x0fHealthComponent\x12\x0c\n\x04name\x18\x01 \x01(\t\x12(\n\x05state\x18\x02 \x01(\x0e\x32\x19.harmos.v1.ComponentState\x12\x0e\n\x06reason\x18\x03 \x01(\t\"z\n\nHostStatus\x12)\n\x08identity\x18\x01 \x01(\x0b\x32\x17.harmos.v1.HostIdentity\x12\x11\n\tavailable\x18\x02 \x01(\x08\x12.\n\ncomponents\x18\x03 \x03(\x0b\x32\x1a.harmos.v1.HealthComponent\"\x12\n\x10StatusGetRequest\"d\n\x11StatusGetResponse\x12%\n\x06status\x18\x01 \x01(\x0b\x32\x15.harmos.v1.HostStatus\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"5\n\x12StatusWatchRequest\x12\x1f\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.Position\"f\n\x13StatusWatchResponse\x12%\n\x06status\x18\x01 \x01(\x0b\x32\x15.harmos.v1.HostStatus\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position*\x8d\x01\n\x0e\x43omponentState\x12\x1f\n\x1b\x43OMPONENT_STATE_UNSPECIFIED\x10\x00\x12\x1b\n\x17\x43OMPONENT_STATE_HEALTHY\x10\x01\x12\x1c\n\x18\x43OMPONENT_STATE_DEGRADED\x10\x02\x12\x1f\n\x1b\x43OMPONENT_STATE_UNAVAILABLE\x10\x03\x32\x94\x01\n\x06Status\x12@\n\x03Get\x12\x1b.harmos.v1.StatusGetRequest\x1a\x1c.harmos.v1.StatusGetResponse\x12H\n\x05Watch\x12\x1d.harmos.v1.StatusWatchRequest\x1a\x1e.harmos.v1.StatusWatchResponse0\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16harmos/v1/status.proto\x12\tharmos.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15harmos/v1/types.proto\"\x12\n\x10StatusGetRequest\"d\n\x11StatusGetResponse\x12%\n\x06status\x18\x01 \x01(\x0b\x32\x15.harmos.v1.HostStatus\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"5\n\x12StatusWatchRequest\x12\x1f\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.Position\"f\n\x13StatusWatchResponse\x12%\n\x06status\x18\x01 \x01(\x0b\x32\x15.harmos.v1.HostStatus\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"\xa7\x01\n\x0cHostIdentity\x12\x18\n\x10\x61pplication_name\x18\x01 \x01(\t\x12\x1b\n\x13\x61pplication_version\x18\x02 \x01(\t\x12\x17\n\x0flibrary_version\x18\x03 \x01(\t\x12\x36\n\x12process_started_at\x18\x04 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07host_id\x18\x05 \x01(\t\"Y\n\x0fHealthComponent\x12\x0c\n\x04name\x18\x01 \x01(\t\x12(\n\x05state\x18\x02 \x01(\x0e\x32\x19.harmos.v1.ComponentState\x12\x0e\n\x06reason\x18\x03 \x01(\t\"z\n\nHostStatus\x12)\n\x08identity\x18\x01 \x01(\x0b\x32\x17.harmos.v1.HostIdentity\x12\x11\n\tavailable\x18\x02 \x01(\x08\x12.\n\ncomponents\x18\x03 \x03(\x0b\x32\x1a.harmos.v1.HealthComponent*\x8d\x01\n\x0e\x43omponentState\x12\x1f\n\x1b\x43OMPONENT_STATE_UNSPECIFIED\x10\x00\x12\x1b\n\x17\x43OMPONENT_STATE_HEALTHY\x10\x01\x12\x1c\n\x18\x43OMPONENT_STATE_DEGRADED\x10\x02\x12\x1f\n\x1b\x43OMPONENT_STATE_UNAVAILABLE\x10\x03\x32\x94\x01\n\x06Status\x12@\n\x03Get\x12\x1b.harmos.v1.StatusGetRequest\x1a\x1c.harmos.v1.StatusGetResponse\x12H\n\x05Watch\x12\x1d.harmos.v1.StatusWatchRequest\x1a\x1e.harmos.v1.StatusWatchResponse0\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,20 +35,20 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_COMPONENTSTATE']._serialized_start=760
   _globals['_COMPONENTSTATE']._serialized_end=901
-  _globals['_HOSTIDENTITY']._serialized_start=94
-  _globals['_HOSTIDENTITY']._serialized_end=261
-  _globals['_HEALTHCOMPONENT']._serialized_start=263
-  _globals['_HEALTHCOMPONENT']._serialized_end=352
-  _globals['_HOSTSTATUS']._serialized_start=354
-  _globals['_HOSTSTATUS']._serialized_end=476
-  _globals['_STATUSGETREQUEST']._serialized_start=478
-  _globals['_STATUSGETREQUEST']._serialized_end=496
-  _globals['_STATUSGETRESPONSE']._serialized_start=498
-  _globals['_STATUSGETRESPONSE']._serialized_end=598
-  _globals['_STATUSWATCHREQUEST']._serialized_start=600
-  _globals['_STATUSWATCHREQUEST']._serialized_end=653
-  _globals['_STATUSWATCHRESPONSE']._serialized_start=655
-  _globals['_STATUSWATCHRESPONSE']._serialized_end=757
+  _globals['_STATUSGETREQUEST']._serialized_start=93
+  _globals['_STATUSGETREQUEST']._serialized_end=111
+  _globals['_STATUSGETRESPONSE']._serialized_start=113
+  _globals['_STATUSGETRESPONSE']._serialized_end=213
+  _globals['_STATUSWATCHREQUEST']._serialized_start=215
+  _globals['_STATUSWATCHREQUEST']._serialized_end=268
+  _globals['_STATUSWATCHRESPONSE']._serialized_start=270
+  _globals['_STATUSWATCHRESPONSE']._serialized_end=372
+  _globals['_HOSTIDENTITY']._serialized_start=375
+  _globals['_HOSTIDENTITY']._serialized_end=542
+  _globals['_HEALTHCOMPONENT']._serialized_start=544
+  _globals['_HEALTHCOMPONENT']._serialized_end=633
+  _globals['_HOSTSTATUS']._serialized_start=635
+  _globals['_HOSTSTATUS']._serialized_end=757
   _globals['_STATUS']._serialized_start=904
   _globals['_STATUS']._serialized_end=1052
 # @@protoc_insertion_point(module_scope)

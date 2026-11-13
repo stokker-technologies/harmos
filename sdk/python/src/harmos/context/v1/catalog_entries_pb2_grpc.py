@@ -27,7 +27,12 @@ if _version_not_supported:
 
 
 class CatalogEntriesStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes operation discovery and persisted resource catalogs under the admitted caller's visibility and grants.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -43,10 +48,16 @@ class CatalogEntriesStub:
 
 
 class CatalogEntriesServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes operation discovery and persisted resource catalogs under the admitted caller's visibility and grants.
+    """
 
     def List(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Discover admitted operations or persisted schema/stream/object catalog entries, applying the caller's grants and optional schema filter.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -68,7 +79,12 @@ def add_CatalogEntriesServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class CatalogEntries:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes operation discovery and persisted resource catalogs under the admitted caller's visibility and grants.
+    """
 
     @staticmethod
     def List(request,

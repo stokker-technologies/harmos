@@ -27,7 +27,12 @@ if _version_not_supported:
 
 
 class StorageStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes bounded storage reads, conditional mutations and fenced file production under the caller's checked grants.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -198,196 +203,233 @@ class StorageStub:
 
 
 class StorageServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes bounded storage reads, conditional mutations and fenced file production under the caller's checked grants.
+    """
 
     def CreateFileProduction(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Begin resumable file production. Replaying the same mutation and input returns its original outcome; changed input is refused.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetFileProduction(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Observe production progress and writer generation at a retained cut, separating accepted from durable byte lengths.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def AppendFileBytes(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Append at the expected byte offset using the current writer. Replays preserve the original result; stale writers and mismatched input refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def CreateFileWriter(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Resume a production with a new writer generation, fencing the previous writer. Replaying the mutation returns the same resumed writer.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def PublishFileProduction(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Validate the current writer, complete length and 32-byte SHA-256, then publish and flush the reference before acknowledging; replay returns the original publication.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def DeleteFileProduction(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Abandon unfinished production using the current writer; replaying its mutation retains the original abandonment outcome.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetFileBytes(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read a bounded range of immutable published content; resend the returned cut to retain the same selected content.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Capabilities(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Inspect backend facilities, the current mutation window and the file chunk budget before choosing storage operations.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def CreateSnapshot(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Pin a retained read image at an issued cut, or the current durable position when unset; capacity exhaustion refuses creation.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def DeleteSnapshot(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Release an explicit snapshot handle; repeating release is harmless unless the supplied position mismatches an existing handle.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListColumnRows(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read Arrow columns at a retained cut within output and source-work bounds; the storage owner uses native access or its schema-aware fallback.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListIndexEntries(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read a bounded index page for the checked source; continuation retains the original selection and cut.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def SetIndexDefinition(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Conditionally create or replace a source-bound index. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def SetProjectionDefinition(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Conditionally create or replace a durable projection. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def AdvanceProjection(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Advance a durable projection using a retained snapshot and positive caller-owned work bounds; mismatched sources refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListProjectionRows(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read a bounded durable projection page with its selected revision and source checked against the definition.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetProjectionStatus(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Observe durable projection progress, optionally selecting a revision and issued read cut; incompatible revision selections refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def SetObject(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Compare and exchange an object using an issued revision or explicit create-if-absent. Replay retains the original applied/conflict result.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListRows(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read a retained query with ordered transforms and bounded pages. An identical continuation can replay its cached page; changed or expired continuation refuses.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def WatchRows(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Follow durable source changes after an opening boundary; gaps require resynchronization rather than silently skipping rows.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def AppendRecords(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Append one encoded record batch under a mutation identity; resending identical input replays its receipt rather than appending again.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def AppendSamples(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Append one encoded stream batch under a mutation identity; resending identical input replays its receipt rather than appending again.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def AppendObjectRevisions(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Append one encoded object-revision batch under a mutation identity; identical replay preserves its original receipt.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetFileHash(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Hash a selected byte range, returning the byte count and selected cut; local source reads retain their observed image through the issued cut.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def CaptureFile(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Capture a selected source range as published storage content under the requested consistency mode.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def WatchFileBytes(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Follow local file bytes from a selected starting offset, reporting truncation and replacement explicitly.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def WatchFileProduction(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Follow the bytes and phase of an identified production from a byte offset without creating a new writer.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def ListDirectoryEntries(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """List bounded local directory entries, retaining the observed selection through its cut and continuation.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def WatchDirectoryEntries(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Observe local directory changes, optionally including an initial scan; rescan signals require the caller to rebuild its view.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetIndexDefinition(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read an index definition and revision for its checked source, adding that revision to the returned cut.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetProjectionDefinition(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read a projection definition and revision for its checked source, retaining the selected revision in the returned cut.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def GetObject(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read one object at an issued cut or the current durable position; absence is explicit and does not create a value.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -564,7 +606,12 @@ def add_StorageServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Storage:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Exposes bounded storage reads, conditional mutations and fenced file production under the caller's checked grants.
+    """
 
     @staticmethod
     def CreateFileProduction(request,

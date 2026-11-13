@@ -27,7 +27,12 @@ if _version_not_supported:
 
 
 class SamplesStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Forwards encoded stream publication to the registered publication owner.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -43,10 +48,16 @@ class SamplesStub:
 
 
 class SamplesServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Forwards encoded stream publication to the registered publication owner.
+    """
 
     def Append(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Validate the optional publication timestamp and forward sequence, context, row bytes and following rows to the registered publication owner.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -68,7 +79,12 @@ def add_SamplesServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Samples:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Forwards encoded stream publication to the registered publication owner.
+    """
 
     @staticmethod
     def Append(request,

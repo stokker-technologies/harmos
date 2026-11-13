@@ -24,23 +24,23 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/v1/access/listener.proto\x12\x10harmos.v1.access\"M\n\rListenerValue\x12\x0f\n\x07\x65nabled\x18\x01 \x01(\x08\x12\x10\n\x08\x65ndpoint\x18\x02 \x01(\t\x12\x19\n\x11\x63\x65rtificate_names\x18\x03 \x03(\t\"\x14\n\x12ListenerGetRequest\"o\n\x13ListenerGetResponse\x12.\n\x05value\x18\x01 \x01(\x0b\x32\x1f.harmos.v1.access.ListenerValue\x12\x10\n\x08revision\x18\x02 \x01(\x0c\x12\x16\n\x0e\x62ound_endpoint\x18\x03 \x01(\t\"_\n\x12ListenerSetRequest\x12.\n\x05value\x18\x01 \x01(\x0b\x32\x1f.harmos.v1.access.ListenerValue\x12\x19\n\x11\x65xpected_revision\x18\x02 \x01(\x0c\"o\n\x13ListenerSetResponse\x12.\n\x05value\x18\x01 \x01(\x0b\x32\x1f.harmos.v1.access.ListenerValue\x12\x10\n\x08revision\x18\x02 \x01(\x0c\x12\x16\n\x0e\x62ound_endpoint\x18\x03 \x01(\t2\xb2\x01\n\x08Listener\x12R\n\x03Get\x12$.harmos.v1.access.ListenerGetRequest\x1a%.harmos.v1.access.ListenerGetResponse\x12R\n\x03Set\x12$.harmos.v1.access.ListenerSetRequest\x1a%.harmos.v1.access.ListenerSetResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/v1/access/listener.proto\x12\x10harmos.v1.access\"\x14\n\x12ListenerGetRequest\"o\n\x13ListenerGetResponse\x12.\n\x05value\x18\x01 \x01(\x0b\x32\x1f.harmos.v1.access.ListenerValue\x12\x10\n\x08revision\x18\x02 \x01(\x0c\x12\x16\n\x0e\x62ound_endpoint\x18\x03 \x01(\t\"_\n\x12ListenerSetRequest\x12.\n\x05value\x18\x01 \x01(\x0b\x32\x1f.harmos.v1.access.ListenerValue\x12\x19\n\x11\x65xpected_revision\x18\x02 \x01(\x0c\"o\n\x13ListenerSetResponse\x12.\n\x05value\x18\x01 \x01(\x0b\x32\x1f.harmos.v1.access.ListenerValue\x12\x10\n\x08revision\x18\x02 \x01(\x0c\x12\x16\n\x0e\x62ound_endpoint\x18\x03 \x01(\t\"M\n\rListenerValue\x12\x0f\n\x07\x65nabled\x18\x01 \x01(\x08\x12\x10\n\x08\x65ndpoint\x18\x02 \x01(\t\x12\x19\n\x11\x63\x65rtificate_names\x18\x03 \x03(\t2\xb2\x01\n\x08Listener\x12R\n\x03Get\x12$.harmos.v1.access.ListenerGetRequest\x1a%.harmos.v1.access.ListenerGetResponse\x12R\n\x03Set\x12$.harmos.v1.access.ListenerSetRequest\x1a%.harmos.v1.access.ListenerSetResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.v1.access.listener_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_LISTENERVALUE']._serialized_start=53
-  _globals['_LISTENERVALUE']._serialized_end=130
-  _globals['_LISTENERGETREQUEST']._serialized_start=132
-  _globals['_LISTENERGETREQUEST']._serialized_end=152
-  _globals['_LISTENERGETRESPONSE']._serialized_start=154
-  _globals['_LISTENERGETRESPONSE']._serialized_end=265
-  _globals['_LISTENERSETREQUEST']._serialized_start=267
-  _globals['_LISTENERSETREQUEST']._serialized_end=362
-  _globals['_LISTENERSETRESPONSE']._serialized_start=364
-  _globals['_LISTENERSETRESPONSE']._serialized_end=475
+  _globals['_LISTENERGETREQUEST']._serialized_start=53
+  _globals['_LISTENERGETREQUEST']._serialized_end=73
+  _globals['_LISTENERGETRESPONSE']._serialized_start=75
+  _globals['_LISTENERGETRESPONSE']._serialized_end=186
+  _globals['_LISTENERSETREQUEST']._serialized_start=188
+  _globals['_LISTENERSETREQUEST']._serialized_end=283
+  _globals['_LISTENERSETRESPONSE']._serialized_start=285
+  _globals['_LISTENERSETRESPONSE']._serialized_end=396
+  _globals['_LISTENERVALUE']._serialized_start=398
+  _globals['_LISTENERVALUE']._serialized_end=475
   _globals['_LISTENER']._serialized_start=478
   _globals['_LISTENER']._serialized_end=656
 # @@protoc_insertion_point(module_scope)

@@ -35,6 +35,14 @@
 - [x] 5.3 Repeat the measurements, evaluate independent build concurrency and document the supported workstation layout and unmeasured platforms in `docs/tooling.md`.
 - [x] 5.4 Run formatting, Rust/Python/repository checks and the Tests producer; repair owned failures and report external blockers precisely.
 
+## 6. Protocol Skeleton and Contract Comments
+
+- [x] 6.1 Own `proto/harmos/**` layout/comments, root Buf configuration and mise entries (including the generated Buf lock entry), comment/layout-derived generated outputs, `docs/architecture.md` and this change. Derive contract comments from handlers, SDK consumers, stories and design contracts; record unresolved semantics narrowly in proposal.md.
+- [x] 6.2 Add Buf formatting and lint with documented grammar exceptions, excluding application/third-party inputs; apply the complete symmetric skeleton to the 13 files requiring no message reordering and retain the locked proto2 settings grammar.
+- [x] 6.3 Regenerate committed protocol outputs through `generate`, review README impact and document the maintained protocol authoring convention.
+- [ ] 6.4 On the committed candidate, prove descriptor equivalence against the baseline, run format, repository and Rust checks, the focused generated-code drift test and protocol Cargo check, and leave a clean local commit without pushing.
+- [ ] 6.5 Resolve the raw-descriptor versus Buf import/declaration ordering conflict with the owner, then apply the remaining skeleton/pairing to `v1/{invocations,plugins,status,storage_types,time}.proto`, `v1/access/{listener,pairings}.proto`, `v1/status/logs.proto`, `plugin/v1/instance.proto` and `context/v1/{invocations,time}.proto`. All declarations and file boundaries remain locked.
+
 ## Workflow Follow-Up
 
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.
