@@ -1,8 +1,9 @@
-using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 
+using Harmos.Plugin.V1;
 using System.Net;
 using System.Security.Cryptography;
+using System.Threading.Channels;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Harmos.V1;
@@ -16,9 +17,9 @@ using Microsoft.Extensions.Logging;
 namespace Harmos.Sdk;
 
 /// <summary>A plugin assembled from typed async methods, including instance methods with shared state.</summary>
-public sealed class Plugin(string id, string version, global::Harmos.Storage.V1.StorageTransferSettings? transfer = null)
+public sealed class Plugin(string id, string version, StorageTransferSettings? transfer = null)
 {
-  private readonly global::Harmos.Storage.V1.StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
+  private readonly StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
   private static readonly Timestamp StartedAt = Timestamp.FromDateTime(DateTime.UtcNow);
   private readonly Catalog catalog = new() { Types_ = new() };
   private readonly Dictionary<string, Handler> operations = [];
@@ -100,6 +101,30 @@ public sealed class Plugin(string id, string version, global::Harmos.Storage.V1.
     return this;
   }
 
+  /// <summary>Declare a library-stored setting with an explicit typed default.</summary>
+  public Plugin Setting(string name, SettingValue defaultValue, string title = "", string description = "")
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(name);
+    ArgumentNullException.ThrowIfNull(defaultValue);
+    if (defaultValue.ValueCase == SettingValue.ValueOneofCase.None)
+      throw new ArgumentException($"Declare Setting {name}: Select a Typed Default", nameof(defaultValue));
+    var section = catalog.Sections.SingleOrDefault(item => item.Type == SettingsDeclarations.Descriptor.FullName);
+    var declarations = section is null ? new SettingsDeclarations() : SettingsDeclarations.Parser.ParseFrom(section.Payload);
+    if (declarations.Values.Any(item => item.Name == name))
+      throw new ArgumentException($"Declare Setting {name}: Duplicate Name", nameof(name));
+    declarations.Values.Add(new SettingDeclaration
+    {
+      Name = name,
+      Title = title,
+      Description = description,
+      Default = defaultValue.Clone()
+    });
+    if (section is null)
+      return Section(declarations);
+    section.Payload = declarations.ToByteString();
+    return this;
+  }
+
   public Plugin OnStop(Func<Task> hook)
   {
     cleanup.Add(hook);
@@ -165,4 +190,4 @@ public sealed class Plugin(string id, string version, global::Harmos.Storage.V1.
 internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute, OperationContract Contract);
 
 internal sealed record Publication(Func<Context, Task<ByteString>>? Observer,
-    Func<Context, System.Threading.Channels.ChannelWriter<Sample>, Task>? Producer);
+    Func<Context, ChannelWriter<Sample>, Task>? Producer);

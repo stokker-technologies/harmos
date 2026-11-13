@@ -358,7 +358,7 @@ def csharp(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
         lines += ["  }"]
         if builtin:
             lines += [
-                "  public static Client Connect(string address, global::Harmos.Storage.V1.StorageTransferSettings? transfer = null, int? messageBytes = null)",
+                "  public static Client Connect(string address, global::Harmos.V1.StorageTransferSettings? transfer = null, int? messageBytes = null)",
                 "  {",
                 "    var maximum = Transfer.MessageBytes(transfer, messageBytes);",
                 "    var channel = global::Grpc.Net.Client.GrpcChannel.ForAddress(address, new() { MaxSendMessageSize = maximum, MaxReceiveMessageSize = maximum });",

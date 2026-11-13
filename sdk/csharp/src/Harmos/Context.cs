@@ -1,12 +1,15 @@
-using Status = Grpc.Core.Status;
-using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 
+using Status = Grpc.Core.Status;
+using Harmos.Plugin.V1;
 using System.Threading.Channels;
+using System.Runtime.CompilerServices;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Harmos.V1;
+using Harmos.Plugin.Host.V1;
+using Type = System.Type;
 
 namespace Harmos.Sdk;
 
@@ -18,7 +21,7 @@ public sealed class Context
   private readonly IReadOnlyDictionary<string, ByteString> requires;
   private readonly CancellationTokenSource cancellation;
   private readonly TaskCompletionSource<string> cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-  private readonly Dictionary<System.Type, object> resources = [];
+  private readonly Dictionary<Type, object> resources = [];
   private readonly IReadOnlyDictionary<string, Handler> local;
   private Context root;
   private readonly HashSet<ulong> owned = [];
@@ -86,7 +89,7 @@ public sealed class Context
       where TResponse : IMessage<TResponse>, new()
   {
     if (output is null)
-      throw new InvalidOperationException("Observers Cannot Call Operations");
+      throw new InvalidOperationException($"Call {operation.Contract.Id}: An Unanswered Tick or Invocation Is Required");
     var contract = operation.Contract;
     if (operation.IsWatch) throw new InvalidOperationException($"Call {contract.Id}: Use Watch for a Streaming Contract");
     if (local.TryGetValue(contract.Id, out var handler) && handler.Contract.Visibility == Visibility.Private)
@@ -147,7 +150,7 @@ public sealed class Context
   }
 
   public async IAsyncEnumerable<TResponse> WatchAsync<TRequest, TResponse>(Operation<TRequest, TResponse> operation,
-      TRequest request, ulong maxItemBytes, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+      TRequest request, ulong maxItemBytes, [EnumeratorCancellation] CancellationToken cancellationToken = default)
       where TRequest : IMessage<TRequest>, new() where TResponse : IMessage<TResponse>, new()
   {
     var contract = operation.Contract;
@@ -155,7 +158,12 @@ public sealed class Context
       throw new InvalidOperationException($"Watch {contract.Id}: Declared Requirement and Positive Item Limit Required");
     var channel = Channel.CreateBounded<ChildResponse>(1);
     ulong call;
-    lock (pending) { call = ++root.nextCall; root.watches.Add(call, (channel, maxItemBytes, this)); }
+    lock (pending)
+    {
+      if (cancelReason is not null) throw CancelFailure(cancelReason);
+      call = ++root.nextCall;
+      root.watches.Add(call, (channel, maxItemBytes, this));
+    }
     try
     {
       await output.WriteAsync(new InstanceInvokeResponse
@@ -225,7 +233,7 @@ public sealed class Context
         lock (pending) children.Add(context);
         using var timerStopped = new CancellationTokenSource();
         var executing = handler.Execute(context, request);
-        var timer = bound.HasValue ? guard.CallAsync(Clock.Sleep, new Harmos.Context.V1.TimeSleepRequest { Duration = DurationNanos(bound.Value) }, cancellationToken: timerStopped.Token) : Task.Delay(Timeout.Infinite, timerStopped.Token);
+        var timer = bound.HasValue ? guard.CallAsync(Clock.Sleep, new TimeSleepRequest { Duration = DurationNanos(bound.Value) }, cancellationToken: timerStopped.Token) : Task.Delay(Timeout.Infinite, timerStopped.Token);
         try
         {
           var completed = await Task.WhenAny(executing, timer, CancelledAsync());
@@ -237,7 +245,7 @@ public sealed class Context
             var deadlineReached = completed == timer;
             if (grace > 0 && !deadlineReached)
             {
-              var settling = guard.CallAsync(Clock.Sleep, new Harmos.Context.V1.TimeSleepRequest { Duration = DurationNanos(grace) }, cancellationToken: timerStopped.Token);
+              var settling = guard.CallAsync(Clock.Sleep, new TimeSleepRequest { Duration = DurationNanos(grace) }, cancellationToken: timerStopped.Token);
               deadlineReached = await Task.WhenAny(executing, settling, timer) == timer;
             }
             if (grace == 0 || deadlineReached || !executing.IsCompleted) throw Interrupted(completed == timer ? Classification.TimedOut : Classification.Cancelled, contract.Id, reason);
@@ -292,11 +300,14 @@ public sealed class Context
     Action = "Invoke Again If Safe"
   });
 
-  public Task<Harmos.Context.V1.TimeSleepResponse> SleepAsync(Duration duration) => CallAsync(Clock.Sleep, new Harmos.Context.V1.TimeSleepRequest { Duration = duration });
+  public Task<TimeSleepResponse> SleepAsync(Duration duration) => CallAsync(Clock.Sleep, new TimeSleepRequest { Duration = duration });
+
+  /// <summary>Read this plugin entry's complete library-stored settings.</summary>
+  public Task<SettingsListResponse> SettingsAsync(ReadCut? at = null) => CallAsync(Settings.List, new SettingsListRequest { At = at?.Clone() });
 
   public async Task<Timestamp> NowAsync()
   {
-    var time = await CallAsync(Clock.GetTime, new Harmos.Context.V1.TimeGetRequest());
+    var time = await CallAsync(Clock.GetTime, new TimeGetRequest());
     return time.Now;
   }
 
@@ -305,6 +316,8 @@ public sealed class Context
     (Channel<ChildResponse> Channel, ulong Limit, Context Owner) watching;
     lock (pending)
     {
+      if (child.ResultCase == ChildResponse.ResultOneofCase.None)
+        throw new RpcException(new Status(StatusCode.InvalidArgument, "Reply to Child: Result Is Required"));
       if (root.retired.Contains(child.Call)) return;
       root.watches.TryGetValue(child.Call, out watching);
       if (watching.Channel is not null && child.ResultCase != ChildResponse.ResultOneofCase.Item) root.watches.Remove(child.Call);
@@ -371,6 +384,7 @@ public sealed class Context
   {
     lock (pending)
     {
+      cancelReason ??= "Connection Closed";
       foreach (var completion in pending.Values)
         completion.TrySetException(new RpcException(new Status(StatusCode.Unavailable, "Host Closed")));
       pending.Clear();
@@ -382,6 +396,8 @@ public sealed class Context
   }
 
   internal bool HasPendingCalls { get { lock (pending) return pending.Count != 0 || root.watches.Count != 0; } }
+
+  internal ulong LastCall { get => root.nextCall; set => root.nextCall = value; }
 
   internal PluginFailureException CancelFailure(string reason) => new(new Failure
   {
@@ -399,6 +415,12 @@ public sealed class Context
 /// <summary>Declare these typed requirements before using Context.SleepAsync or Context.NowAsync.</summary>
 public static class Clock
 {
-  public static Operation<Harmos.Context.V1.TimeSleepRequest, Harmos.Context.V1.TimeSleepResponse> Sleep { get; } = new("harmos.context.v1.Time/Sleep", Visibility.Public);
-  public static Operation<Harmos.Context.V1.TimeGetRequest, Harmos.Context.V1.TimeGetResponse> GetTime { get; } = new("harmos.context.v1.Time/Get", Visibility.Public);
+  public static Operation<TimeSleepRequest, TimeSleepResponse> Sleep { get; } = new("harmos.plugin.host.v1.Time/Sleep", Visibility.Public);
+  public static Operation<TimeGetRequest, TimeGetResponse> GetTime { get; } = new("harmos.plugin.host.v1.Time/Get", Visibility.Public);
+}
+
+/// <summary>Declare this requirement before reading the calling plugin's settings.</summary>
+public static class Settings
+{
+  public static Operation<SettingsListRequest, SettingsListResponse> List { get; } = new("harmos.plugin.host.v1.Settings/List", Visibility.Public);
 }

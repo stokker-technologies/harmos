@@ -4,6 +4,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using Harmos.Sdk;
 using Harmos.V1;
+using Harmos.Client.V1;
 using Value = Harmos.Conformance.V1.Value;
 
 internal static class InstallItself
@@ -17,7 +18,7 @@ internal static class InstallItself
           .ServeAsync("127.0.0.1:0", remote: true);
       return;
     }
-    var transfer = new global::Harmos.Storage.V1.StorageTransferSettings();
+    var transfer = new StorageTransferSettings();
     using var client = Client.Connect(arguments[0], transfer);
     // Install and Start This Codebase's Running Instance
     await client.Plugins.Create(new PluginsCreateRequest

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Harmos.Context.V1;
+using Harmos.Plugin.Host.V1;
 using Visibility = Harmos.V1.Visibility;
 using Harmos.Sdk;
 using SdkPlugin = Harmos.Sdk.Plugin;
