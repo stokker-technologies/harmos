@@ -38,24 +38,24 @@ schemas, indexes and projections; the library SHALL own shared storage mechanism
 - **WHEN** a selection depends on several histories or resource revisions
 - **THEN** the response identifies all components needed to repeat that selection atomically
 
-### Requirement: Payload-Size-Independent Durable Lag
+### Requirement: Accepted Measured Durable Lag
 
-The newest durable position SHALL trail the newest accepted data by no more than
-250 ms at the 95th percentile, independent of payload size. If the bound is missed,
-smaller flush pieces and size-triggered flushing SHALL be tried first; accepted-
-data snapshot reads SHALL be the named fallback if insufficient, not built here.
+Amended by the owner on 2026-11-13: the measured p95 lag SHALL be accepted:
+small about 99 ms; large median 391 ms (178–570); mixed median 346 ms (173–493).
+Latest SHALL select saved progress without waiting for newer accepted data. No
+accepted-data snapshot SHALL be built. Nightly SHALL keep reporting p50, p95 and
+maximum per load as measurements with no failing threshold.
 
-#### Scenario: Lag Bound Review
+#### Scenario: Measured Lag Review
 
-- **WHEN** verification for the latest-durable decision is reviewed
-- **THEN** the 100 ms cadence alone is insufficient proof: flush duration adds to it and grows with written data, with synchronous batches targeting 1 MB and capped at 16 MB
-- **AND** because nothing measures durable lag today, the three-load benchmark must demonstrate each load's p95 meets the owner's bound
+- **WHEN** Nightly reports lag for small, large and mixed loads
+- **THEN** p50, p95 and maximum remain recorded measurements and no lag threshold fails the run
+- **AND** a p95 above the former limit does not require an accepted-data snapshot
 
-#### Scenario: Bound Missed
+#### Scenario: Latest During Pending Durability
 
-- **WHEN** any load's measured p95 exceeds the owner's stated bound
-- **THEN** review requires smaller flush pieces and flushing as soon as a size threshold is reached, alongside the cadence, to be tried first and all three loads remeasured
-- **AND** if those are insufficient, reads resolving against a snapshot of accepted data remain the named fallback, without claiming it is built or the latest-durable decision is proven
+- **WHEN** a caller omits at while newer accepted data awaits persistence
+- **THEN** the read immediately selects latest durable data and reports that selection without exposing accepted data as durable
 
 ### Requirement: Reusable Durable-Lag Benchmark
 

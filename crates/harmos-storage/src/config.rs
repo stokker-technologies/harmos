@@ -137,7 +137,8 @@ impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
         if harmos_protocol::transfer::message_bytes(&self.transfer).is_none_or(|bytes| bytes.get() > u32::MAX as usize) {
             return Err(crate::Error::InvalidInput {
-                field: "StorageSettings.transfer.chunk_bytes", reason: "Configure Storage: chunk and framing must fit a transport message",
+                field: "StorageSettings.transfer.chunk_bytes",
+                reason: "Configure Storage: chunk and framing must fit a transport message",
             });
         }
         if self.policy.io_timeout.is_zero()

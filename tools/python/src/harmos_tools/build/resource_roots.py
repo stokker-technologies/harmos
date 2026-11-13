@@ -294,7 +294,7 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
     ]
     builtin = namespace == "harmos" and target is None
     if builtin:
-        lines += ['#include "harmos/transfer.hpp"', '#include <string>']
+        lines += ['#include "harmos/transfer.hpp"', "#include <string>"]
     # Preserve Platform Macros While Declaring and Calling Wire Method Names.
     macro_names = sorted({method["method"] for method in methods})
     lines += [line for name in macro_names for line in (f'#pragma push_macro("{name}")', f"#undef {name}")]

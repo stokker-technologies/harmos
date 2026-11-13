@@ -146,7 +146,10 @@ impl GrpcManager {
                 ("GrpcSettings.operations.encode.message_bytes", settings.operations.encode.message_bytes.get()),
             ] {
                 if bytes < required {
-                    return Err(Error::InvalidInput { field, reason: "Start gRPC: ceiling cannot carry StorageSettings.transfer.chunk_bytes plus framing" });
+                    return Err(Error::InvalidInput {
+                        field,
+                        reason: "Start gRPC: ceiling cannot carry StorageSettings.transfer.chunk_bytes plus framing",
+                    });
                 }
             }
         }

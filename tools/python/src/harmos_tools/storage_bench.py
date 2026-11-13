@@ -288,7 +288,7 @@ def _row(name: str, value: float, unit: str, revision: str, system: str, backend
         "value": value,
         "baseline_value": None,
         "revision": revision,
-        "threshold_percent": 20,
+        "threshold_percent": None if name.startswith("integration/durable_lag/") else 20,
     }
 
 

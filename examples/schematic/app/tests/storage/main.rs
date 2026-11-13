@@ -62,7 +62,7 @@ async fn saved_preview_survives_atomic_replacement() {
         epoch: harmos_runtime::Identifier::new("first").unwrap(),
     };
     let settings = StorageSettings {
-            transfer: Default::default(),
+        transfer: Default::default(),
         policy: Default::default(),
         request: StorageRequestSettings {
             max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),

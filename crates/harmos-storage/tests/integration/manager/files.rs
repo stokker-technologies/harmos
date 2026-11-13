@@ -304,6 +304,7 @@ async fn bounded_file_parallelism() {
     let mut policy = config();
     policy.request.max_active_file_operations = NonZeroUsize::new(2).unwrap();
     policy.response.batch_bytes = NonZeroUsize::new(3).unwrap();
+    policy.transfer.chunk_bytes = Some(3);
     let f = Fixture::new(policy).await;
     let mut producers = Vec::new();
     for id in 0..3 {
@@ -355,6 +356,7 @@ async fn pressure_preserves_owner() {
     policy.request.max_pending_write_bytes = NonZeroUsize::new(40_000).unwrap();
     policy.request.max_pending_write_batches = NonZeroUsize::MIN;
     policy.response.batch_bytes = NonZeroUsize::new(1024).unwrap();
+    policy.transfer.chunk_bytes = Some(1024);
     let f = Fixture::new(policy).await;
     let bytes = vec![42; 16_000];
     let pointer = bytes.as_ptr() as usize;
@@ -545,6 +547,7 @@ async fn opened_capture_keeps_source_identity() {
 async fn opened_deleted_capture() {
     let mut policy = config();
     policy.response.batch_bytes = NonZeroUsize::new(8).unwrap();
+    policy.transfer.chunk_bytes = Some(8);
     let directory = tempfile::tempdir().unwrap();
     let expected = b"retained opened bytes";
     for late_delete in [false, true] {
@@ -769,6 +772,7 @@ async fn opened_capture_interrupts_only_accepted_cancelled_step() {
     use std::io::Write;
     let mut policy = config();
     policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
+    policy.transfer.chunk_bytes = Some(31);
     let f = Fixture::new(policy).await;
     let bytes: Vec<_> = (0..96).map(|value| value as u8).collect();
     let (_source_owner, mut source) = shareable_tempfile();

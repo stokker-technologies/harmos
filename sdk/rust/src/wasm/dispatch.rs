@@ -41,7 +41,6 @@ use tokio::sync::watch;
 
 /* === Constants === */
 
-
 /* === Macros === */
 
 /* === Type Aliases === */

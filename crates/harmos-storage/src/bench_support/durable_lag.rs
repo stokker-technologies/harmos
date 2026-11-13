@@ -28,8 +28,6 @@ use crate::{Identifier, Message, RecordInput, Result, SchemaKey, StorageCursor, 
 
 /* === Constants === */
 
-pub const P95_BOUND_MS: f64 = 250.0;
-
 /* === Macros === */
 
 /* === Type Aliases === */

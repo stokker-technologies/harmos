@@ -215,9 +215,12 @@ and caller-face authorization remain independent checks.
 11. **Position-Resolved Reads.** One read path takes optional `at`: absent selects
     latest durable data without requesting a flush or waiting for newer durability;
     every reply reports `resolved_at`. Continue only with issued positions/cuts and
-    bound page tokens; durable lag is at most 250 ms p95 independent of payload size.
+    bound page tokens. Durable lag is accepted as measured, amended by the owner on
+    2026-11-13: small about 99 ms; large median 391 ms (178–570); mixed median
+    346 ms (173–493) at p95. No accepted-data snapshot is built; Nightly reports
+    p50, p95 and maximum per load without a failing threshold.
     **Why:** repeatable reads and read-your-write receipts must not hide a persistence
-    barrier. The lag target is measured, never asserted against real time in a test.
+    barrier. Lag remains measurement, never an assertion against real time in a test.
     **Where:** `openspec/changes/operation-grammar/specs/storage-visibility/spec.md`.
     **Proof:** Issued-page, native-list and cut-lifetime stories in
     `crates/harmos-runtime/tests/storage/` cover durable selection and continuation.
@@ -227,8 +230,8 @@ and caller-face authorization remain independent checks.
     in the native storage manager tests covers committed-prefix gating.
     `filesystem_metadata_cuts_repeat_results_and_pin_directory_continuations`
     covers metadata observations, pinned continuation, eviction and restart refusal.
-    The measured lag bound remains open in the repeated benchmark investigation.
-    **Status:** partially landed; no complete lag-bound proof.
+    The owner accepted the repeated benchmark measurements on 2026-11-13.
+    **Status:** landed; native Linux/hosted measurements remain pending.
 
 12. **Stable Receipts After Lost Replies.** The caller resends; the same request
     identifier and normalized payload return the original receipt, while a changed

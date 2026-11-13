@@ -16,6 +16,7 @@ async fn file_roundtrip_recovers() {
     for (id, bytes) in cases {
         let mut policy = config();
         policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
+        policy.transfer.chunk_bytes = Some(31);
         let f = Fixture::new(policy).await;
         let mut file = f.storage.create_file(metadata(id, &bytes)).await.unwrap();
         f.data.control.chunk_failures.store(1, Ordering::SeqCst);

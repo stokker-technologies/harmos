@@ -189,7 +189,11 @@ impl TransferPlugin {
         };
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(plugin::instance_server::InstanceServer::new(service).max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get()).max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()))
+                .add_service(
+                    plugin::instance_server::InstanceServer::new(service)
+                        .max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get())
+                        .max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()),
+                )
                 .serve_with_incoming_shutdown(incoming, async {
                     let _ = stopped.await;
                 })

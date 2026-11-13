@@ -198,15 +198,12 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   for consistency, or a product-defined terminal boundary. Arbitrary earlier
   positions are not offered. The product decides what latest and its terminal
   boundary mean; the library does not define product lifecycles.
-- **Latest and durability (Owner):** latest resolves once, at read/watch
-  opening, to the latest durable position without waiting. It does not wait for
-  accepted data that is not yet saved. A caller that needs its own write visible
-  passes the durable position from that write's receipt as `at`. The newest durable
-  position must trail the newest accepted data by no more than a stated p95 bound,
-  independent of payload size: 250 ms at the 95th percentile.
-  Prove it with the Nightly durable-lag benchmark below. Try smaller flush pieces
-  and size-triggered flushing first if it is missed; resolving reads against a
-  snapshot of accepted data is the named fallback, not built.
+- **Latest and durability (amended by the owner on 2026-11-13):** latest resolves
+  once at read/watch opening to the latest durable position without waiting for
+  accepted data. A caller requiring its own write passes its receipt's durable
+  position as `at`. The owner accepts measured p95 lag: small about 99 ms; large
+  median 391 ms (178–570); mixed median 346 ms (173–493). No accepted-data snapshot
+  is built. Nightly reports p50, p95 and maximum per load without a failing threshold.
 - **SDK ownership (Owner):** language SDKs stay in the library because other
   products will also host plugins on it; product SDKs keep building on them.
   Protocol, SDKs and conformance remain self-sufficient without product vocabulary.
@@ -357,7 +354,7 @@ file/directory and runtime sources retain their own contracts.
 | 11 static Storage methods | `proto/harmos/v1/storage.proto:service Storage` is a subset of 34 declarations. Rust `sdk/rust/src/storage_contracts.rs` also binds 11 requests. |
 | Automatic twins | `crates/harmos-runtime/src/grpc/projection.rs` emits `Run{method}` and managed envelopes unconditionally. |
 | Durable snapshots | `crates/harmos-storage/src/snapshot.rs` and `docs/storage.md` reject positions beyond saved progress; follows also join accepted data today. That is not an existing durable-watch contract. |
-| Flush cadence and commits | `crates/harmos-storage/src/config.rs` defines 100 ms, a 1 MB batch target and a 16 MB cap; `worker.rs` schedules flushes; `sqlite/mod.rs` sets WAL and `synchronous=FULL`. Each batch commits synchronously under `backend.rs`; flush duration adds to the cadence and grows with bytes written. Nothing measures durable lag today. |
+| Flush cadence and commits | `crates/harmos-storage/src/config.rs` defines 100 ms, a 1 MB batch target and a 16 MB cap; `worker.rs` schedules flushes; `sqlite/mod.rs` sets WAL and `synchronous=FULL`. Each batch commits synchronously under `backend.rs`; flush duration adds to the cadence and grows with bytes written. The three-load benchmark below measures durable lag. |
 | Native inventory | `StorageBackend` in `backend.rs` has 58 hooks; `StateBackend` in `state/mod.rs` has 8. Other methods in that module are implementations, not extra provider hooks. |
 
 The library report's present-operation totals agree with this tree. Its suggested
@@ -377,11 +374,11 @@ rewriting that unrelated migration.
 
 ### Durability Choice and Alternatives
 
-**Owner, 2026-11-12:** latest resolves to the
-latest durable position without waiting; a live view may lag newest accepted data
-only if that lag stays small for large payloads as well as small ones. The newest
-durable position must trail newest accepted data by no more than 250 ms
-at p95, independent of payload size.
+**Amended by the owner on 2026-11-13:** latest resolves to the latest durable
+position without waiting. Durable lag is accepted as measured: small about 99 ms,
+large median 391 ms (178–570), mixed median 346 ms (173–493) at p95. There is no
+failing lag threshold and no accepted-data snapshot is built. Nightly continues
+reporting p50, p95 and maximum for each load as measurements.
 
 The 100 ms cadence and existing 1 MiB early-flush trigger are unchanged. Each
 commit retains the existing atomic admission ceiling (at most 16 MiB within the
@@ -404,14 +401,14 @@ assert real time in tests. Reads select an issued saved position without request
 a flush or a newer durability barrier. Persistence failures remain visible.
 
 The small-pieces/early-flush experiment has therefore been performed. Repeated
-results below keep the 250 ms target distinct from the observed floor. Accepted-data
+results below record the accepted observed floor. Accepted-data
 snapshots remain unbuilt: they would require a new retention/read-image mechanism,
 could expose accepted data independently of writer I/O, and would not make a FULL
 commit finish sooner or justify acknowledging durability before it.
 
 | Alternative | Cost and Disposition |
 | --- | --- |
-| Latest durable without waiting | Owner: coherent saved data and no new persistence wait; requires payload-size-independent p95 lag within 250 ms, proven by the three-load Nightly benchmark. |
+| Latest durable without waiting | Owner amendment of 2026-11-13: coherent saved data without a new persistence wait; measured lag is accepted, and the three-load Nightly benchmark continues reporting without a failing threshold. |
 | Barrier on every latest read | Not chosen: latency depends on queued data and a synchronous commit; a passive read requests persistence. An explicit durability wait remains available to writers. |
 | Snapshot of accepted data | Owner decision after the measured floor: not built. Requires retention/read images spanning accepted data and mutable state; existing saved snapshots cannot provide it. It can decouple read visibility from persistence, not accelerate durable acknowledgement. |
 
@@ -1498,13 +1495,10 @@ ServerCertificate resolver themselves are reused unchanged.
 
 - Receipt/position renames change fingerprints and admission: migrate descriptors,
   requirements and callers as one revision; never add silent compatibility aliases.
-- Latest durable deliberately omits newer accepted data, and synchronous flush
-  duration grows with payload size on top of the 100 ms cadence. The owner accepts
-  this only within the stated payload-size-independent p95 bound (250 ms), not yet
-  measured. Run the three-load Nightly benchmark;
-  try smaller flush pieces and size-triggered flushing first if it misses the bound,
-  then consider the named accepted-data snapshot fallback, not built here. Expose
-  durability explicitly and retain writer barriers.
+- Latest durable deliberately omits newer accepted data. Synchronous flush duration
+  grows with payload size on top of cadence. The owner accepted the measured lag on
+  2026-11-13; no accepted-data snapshot is built. Continue per-load measurements
+  without a failing threshold, expose durability explicitly and retain writer barriers.
 - Current follows can emit accepted data: changing them requires explicit durable
   boundaries and deterministic gap/reconnect proof, not a name-only edit.
 - Unary sessions add round trips and remove the one-shot path on providers lacking
@@ -1631,7 +1625,8 @@ from source closure.
 `crates/harmos-operations/src/storage/**`, storage handlers/tests/benches in runtime,
 storage benchmark tooling and Nightly wiring, `docs/storage.md`, and the storage tasks/design
 in this change. Shared protocol primitives and SDK bindings belong to the parallel core worker.
-Streaming transfers remain until task 5.2; no accepted-data snapshot is implemented.
+Streaming transfers were deleted by the owner's 2026-11-13 amendment; no
+accepted-data snapshot is implemented.
 
 ### Windows Durable-Lag Measurements
 
@@ -1654,11 +1649,11 @@ also showed cargo/rustc/link and cl/cmake work from other sessions. Baseline lat
 runs likewise overlapped compilation. Even a compiler-free endpoint pair did not
 guarantee a low-latency FULL commit.
 
-| Load | Before p95 Median (Minimum–Maximum), ms | Final p95 Values, ms | Final p95 Median (Minimum–Maximum), ms | 250 ms Result |
+| Load | Before p95 Median (Minimum–Maximum), ms | Final p95 Values, ms | Final p95 Median (Minimum–Maximum), ms | Owner Disposition on 2026-11-13 |
 | --- | ---: | --- | ---: | --- |
-| `small_high_rate` | 100.49 (98.36–142.69) | 98.17, 98.77, 105.23, 103.49, 99.07 | 99.07 (98.17–105.23) | 5/5 runs meet it |
-| `multi_megabyte` | 789.01 (207.37–2358.97) | 177.80, 288.81, 570.00, 391.28, 457.40 | 391.28 (177.80–570.00) | 1/5 runs meet it |
-| `mixed` | 744.14 (225.92–1702.05) | 172.86, 321.45, 492.84, 346.45, 396.80 | 346.45 (172.86–492.84) | 1/5 runs meet it |
+| `small_high_rate` | 100.49 (98.36–142.69) | 98.17, 98.77, 105.23, 103.49, 99.07 | 99.07 (98.17–105.23) | Accepted |
+| `multi_megabyte` | 789.01 (207.37–2358.97) | 177.80, 288.81, 570.00, 391.28, 457.40 | 391.28 (177.80–570.00) | Accepted |
+| `mixed` | 744.14 (225.92–1702.05) | 172.86, 321.45, 492.84, 346.45, 396.80 | 346.45 (172.86–492.84) | Accepted |
 
 Stage totals below are medians across the five final runs. Cadence and ordered
 waits are means per admission; all other times are totals per fixed workload.
@@ -1687,7 +1682,7 @@ coalesced variable-size rows within the existing chunk bounds in the same transa
 Larger internal state captures retain bounded pieces and durable-prefix retry.
 Controlled proofs cover those mechanisms without assertions about real time.
 
-**The 250 ms target remains missed for large and mixed loads.** The quietest
+**The owner accepted these measured lag values on 2026-11-13.** The quietest
 observed final p95 values are 177.80 ms large and 172.86 ms mixed; these are observed
 floors on this run set, not universal hardware limits. Final single FULL commits
 stall as long as 1,148.54 ms (large) and 466.78 ms (mixed), while writing maxima are
@@ -1699,8 +1694,8 @@ No durability setting, budget, deadline or workload was weakened.
 
 An accepted-data snapshot could retain a coherent accepted read image independently
 of writer I/O and expose newer accepted data promptly. It cannot reduce the physical
-acceptance-to-durability floor or label uncommitted data durable. That read/retention
-contract remains an owner decision; no such snapshot is built. Native Linux/hosted
+acceptance-to-durability floor or label uncommitted data durable. The owner decided
+against that read/retention mechanism on 2026-11-13; no such snapshot is built. Native Linux/hosted
 proof remains pending. Raw complete runs, intermediate failed/partial experiments
 and compiler evidence are retained under `target/benchmarks/storage/`; incomplete
 experiments and the discarded instrumentation run are excluded from these tables.

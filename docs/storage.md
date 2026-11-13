@@ -528,9 +528,11 @@ acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admissio
 and synchronous SQLite commit count/time. Five runs per load retain median and
 spread, compiler-activity samples and stage counters for cadence/ordered waits,
 batch construction, provider writing, synchronous commit and frontier publication.
-Compare each p95 independently with 250 ms;
-a successful benchmark process does not assert that latency bound. Windows measurements
-are recorded in the operation-grammar design; native Linux and hosted evidence remain pending.
+Durable lag was accepted as measured, amended by the owner on 2026-11-13:
+small about 99 ms; large median 391 ms (178–570); mixed median 346 ms (173–493)
+at p95. Build no accepted-data snapshot. Nightly keeps these measurements without
+a failing threshold. Windows evidence is recorded in the operation-grammar design;
+native Linux and hosted measurements remain pending.
 
 Consumers enable `testing`, persist `bench_support::durable_lag::Payload`'s schema,
 and call `bench_support::durable_lag::run(&manager, &schema, load)` on their started

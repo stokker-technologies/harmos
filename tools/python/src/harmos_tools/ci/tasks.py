@@ -106,6 +106,11 @@ def dispatch(arguments: list[str] | None = None) -> int:
     build.add_argument("--check", action="store_true")
     build.add_argument("--compatibility", action="store_true")
     build.add_argument("--extended", action="store_true")
+    build.add_argument("--focused-messages", type=Path)
+    build.add_argument("--libraries")
+    build.add_argument("--inspection-messages")
+    build.add_argument("--inspections")
+    build.add_argument("--componentizer", type=Path)
     test = commands.add_parser("test")
     test.add_argument("--language", choices=("rust", "python", "csharp", "cpp"))
     test.add_argument("--layer", choices=LAYERS)
@@ -170,6 +175,17 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
         return workflow.run(options.command.partition(":")[2], options.arguments, options.profile)
     root = Path.cwd()
+
+    if options.command == "build":
+        focused_fixtures = (
+            options.focused_messages,
+            options.libraries,
+            options.inspection_messages,
+            options.inspections,
+            options.componentizer,
+        )
+        if any(value is not None for value in focused_fixtures) and (options.artifact != "fixtures" or options.package):
+            parser.error("focused fixture selectors require --artifact fixtures")
 
     if options.command == "build" and options.lib:
         if not options.package or options.package == "harmos-sdk" or options.example or options.language not in (None, "rust"):
@@ -481,7 +497,12 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.artifact == "fixtures":
             if options.compatibility or options.extended:
                 parser.error("--artifact fixtures cannot select C++, compatibility or extended builds")
-            return _task("prepare:tests:fixtures", "--profile", options.profile)
+            selected = ["--profile", options.profile]
+            for name in ("focused_messages", "libraries", "inspection_messages", "inspections", "componentizer"):
+                value = getattr(options, name)
+                if value is not None:
+                    selected += ["--" + name.replace("_", "-"), str(value)]
+            return _task("prepare:tests:fixtures", *selected)
         if options.compatibility:
             return _task("build:rust:compatibility", "--profile", options.profile)
         if options.artifact == "bench":

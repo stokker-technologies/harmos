@@ -172,7 +172,11 @@ pub async fn serve(remote: bool) -> Result<()> {
     println!("harmos listening {address}");
     std::io::stdout().flush()?;
     tonic::transport::Server::builder()
-        .add_service(InstanceServer::new(reference).max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get()).max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()))
+        .add_service(
+            InstanceServer::new(reference)
+                .max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get())
+                .max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()),
+        )
         .serve_with_incoming_shutdown(incoming, async move {
             if remote {
                 std::future::pending::<()>().await;

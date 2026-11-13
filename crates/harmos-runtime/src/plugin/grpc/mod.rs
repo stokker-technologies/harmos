@@ -176,7 +176,15 @@ impl Attached {
                 }
                 Placement::Remote(address) => (None, address.clone()),
             };
-            let mut activation = connect(&clock, &address, 1, None, process.as_ref().map(|process| process.digest), operations.transfer_message_bytes().get()).await?;
+            let mut activation = connect(
+                &clock,
+                &address,
+                1,
+                None,
+                process.as_ref().map(|process| process.digest),
+                operations.transfer_message_bytes().get(),
+            )
+            .await?;
             activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
@@ -269,12 +277,15 @@ async fn describe(connection: &Connection) -> Result<harmos_protocol::plugin::In
 }
 
 async fn connect(
-    clock: &Clock, address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>, message_bytes: usize,
+    clock: &Clock, address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>,
+    message_bytes: usize,
 ) -> Result<Activation, Error> {
     let connection = Arc::new(Connection::open(address, message_bytes).await?);
     let description = describe(&connection).await?;
     if description.message_bytes < message_bytes as u64 {
-        return Err(Error::Invalid("Instance.Get: peer message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into()));
+        return Err(Error::Invalid(
+            "Instance.Get: peer message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into(),
+        ));
     }
     let valid_time = description
         .started_at
@@ -409,7 +420,10 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 () = clock.sleep(settings.reconnect_delay) => {},
             }
             let _activity = clock.activity("plugin reconnect");
-            let reconnect = clock.timeout(settings.connect_timeout, connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()));
+            let reconnect = clock.timeout(
+                settings.connect_timeout,
+                connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()),
+            );
             let result = tokio::select! {
                 biased;
                 _ = stopping(&mut stop, &mut participant) => return Ok(()),

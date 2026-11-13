@@ -157,7 +157,6 @@ fn main() {
                 "STORAGE_DURABLE_LAG {}",
                 serde_json::json!({
                     "case": format!("integration/durable_lag/{}", load.name()),
-                    "p95_bound_ms": durable_lag::P95_BOUND_MS, "p95_within_bound": result.p95_ms <= durable_lag::P95_BOUND_MS,
                 "repetition": repetition, "activity_before": activity_before, "activity_after": activity(),
                 "data_volume": root.path().ancestors().last().map(|path| path.display().to_string()),
                 "dataset": root.path().file_name().map(|name| name.to_string_lossy()),

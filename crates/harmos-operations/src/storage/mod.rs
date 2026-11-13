@@ -44,15 +44,14 @@ mod get_schema;
 mod info;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod registration;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod set_schema;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod native;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod object;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod registration;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod set_schema;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod snapshot;
 
@@ -82,9 +81,7 @@ pub use registration::storage_catalog;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use set_schema::SetSchema;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-
 /* === Imports === */
-
 // Standard Library Imports
 use std::time::Duration;
 // Third Party Imports

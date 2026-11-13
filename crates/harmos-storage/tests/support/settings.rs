@@ -21,7 +21,7 @@ use harmos_storage::*;
 
 pub fn storage_settings() -> StorageSettings {
     StorageSettings {
-            transfer: Default::default(),
+        transfer: Default::default(),
         policy: Default::default(),
         filesystem: harmos_storage::StorageFilesystemSettings {
             poll_interval: std::time::Duration::from_millis(100),

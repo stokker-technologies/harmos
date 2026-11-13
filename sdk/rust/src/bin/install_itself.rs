@@ -95,7 +95,9 @@ pub fn run(arguments: &[String]) -> Result<()> {
             .await?
             .into_inner();
         let value = Value::decode(response.payload.as_slice()).map_err(|error| harmos::Error::Invalid(error.to_string()))?;
-        if value.value != data { return Err(harmos::Error::Invalid("Invoke example.echo: payload changed".into())); }
+        if value.value != data {
+            return Err(harmos::Error::Invalid("Invoke example.echo: payload changed".into()));
+        }
         println!("hello");
         client
             .plugins

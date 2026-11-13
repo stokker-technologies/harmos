@@ -112,7 +112,7 @@ def table(summary: dict, results: dict, url: str) -> str:
         lines.append("| Coverage | Unavailable; see suite results |")
     for row in summary["benchmarks"]:
         baseline = row["baseline_value"]
-        if baseline is None or baseline <= 0:
+        if baseline is None or baseline <= 0 or row["threshold_percent"] is None:
             continue
         change = (row["value"] - baseline) / baseline * 100
         if change > row["threshold_percent"]:

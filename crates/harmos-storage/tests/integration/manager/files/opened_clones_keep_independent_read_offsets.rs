@@ -19,6 +19,7 @@ async fn opened_clones_keep_independent_read_offsets() {
     use std::io::{Seek, SeekFrom, Write};
     let mut policy = config();
     policy.response.batch_bytes = NonZeroUsize::new(31).unwrap();
+    policy.transfer.chunk_bytes = Some(31);
     let f = Fixture::new(policy).await;
     let expected: Vec<u8> = (0..127).map(|index| (index % 251) as u8).collect();
     let (_source_owner, mut source) = shareable_tempfile();

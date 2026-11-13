@@ -87,7 +87,7 @@ pub(super) enum Command {
     Get(wire::PluginsGetRequest, Reply<wire::PluginsGetResponse>),
     List(wire::PluginsListRequest, Reply<wire::PluginsListResponse>),
     Watch(wire::PluginsWatchRequest, Reply<mpsc::Receiver<wire::PluginsWatchResponse>>),
-    Create(wire::PluginsCreateRequest, Reply<wire::PluginsCreateResponse>),
+    Create(Box<wire::PluginsCreateRequest>, Reply<wire::PluginsCreateResponse>),
     Set(wire::PluginsSetRequest, Reply<wire::PluginsSetResponse>),
     Delete(wire::PluginsDeleteRequest, Reply<wire::PluginsDeleteResponse>),
     Restart(wire::PluginsRestartRequest, Reply<wire::PluginsRestartResponse>),
@@ -175,7 +175,7 @@ impl Actor {
                     let _ = reply.send(self.watch(request));
                 }
                 Command::Create(request, reply) => {
-                    let _ = reply.send(self.create(request).await);
+                    let _ = reply.send(self.create(*request).await);
                 }
                 Command::Set(request, reply) => {
                     let _ = reply.send(self.set(request).await);

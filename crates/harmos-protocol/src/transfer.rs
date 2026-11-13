@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Storage-Owned Transfer Framing
 
 /* === Modules === */
@@ -23,7 +22,6 @@ use std::num::NonZeroUsize;
 
 // Local Imports
 use crate::storage::{StorageTransferSettings, TransferFraming};
-
 
 /* === Constants === */
 
@@ -49,7 +47,6 @@ pub fn message_bytes(settings: &StorageTransferSettings) -> Option<NonZeroUsize>
 pub fn default_message_bytes() -> NonZeroUsize {
     message_bytes(&StorageTransferSettings::default()).expect("representable default transfer settings")
 }
-
 
 /* === Private Functions === */
 

@@ -45,8 +45,10 @@ class Client:
     @classmethod
     def connect(cls, address, *, transfer=None, message_ceiling=None):
         maximum = message_bytes(transfer, message_ceiling)
-        channel = grpc.aio.insecure_channel(address.removeprefix("http://"), options=[
-            ("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)])
+        channel = grpc.aio.insecure_channel(
+            address.removeprefix("http://"),
+            options=[("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)],
+        )
         client = cls(channel)
         client._channel = channel
         return client

@@ -133,7 +133,7 @@ impl Management for Manager {
         Box::pin(self.call(move |reply| actor::Command::List(request, reply)))
     }
     fn create(&self, request: wire::PluginsCreateRequest) -> Pending<'_, wire::PluginsCreateResponse> {
-        Box::pin(self.call(move |reply| actor::Command::Create(request, reply)))
+        Box::pin(self.call(move |reply| actor::Command::Create(Box::new(request), reply)))
     }
     fn set(&self, request: wire::PluginsSetRequest) -> Pending<'_, wire::PluginsSetResponse> {
         Box::pin(self.call(move |reply| actor::Command::Set(request, reply)))

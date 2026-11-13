@@ -39,7 +39,7 @@ from harmos_tools import storage_bench
 class BenchmarkRelease(unittest.TestCase):
     def test_repeated_lag_events_keep_one_case_with_spread_and_stage_work(self):
         events = []
-        for p95, writing in [(80, 12), (120, 20), (100, 16)]:
+        for p95, writing in [(178, 12), (570, 20), (391, 16)]:
             events.append(
                 "STORAGE_DURABLE_LAG "
                 + json.dumps(
@@ -74,9 +74,9 @@ class BenchmarkRelease(unittest.TestCase):
         names = [row["name"] for row in document["benchmarks"]]
         self.assertEqual(len(names), len(set(names)))
         rows = {row["name"].removeprefix("integration/durable_lag/mixed/"): row for row in document["benchmarks"]}
-        self.assertEqual(rows["p95_ms"]["value"], 100)
-        self.assertEqual(rows["p95_min_ms"]["value"], 80)
-        self.assertEqual(rows["p95_max_ms"]["value"], 120)
+        self.assertEqual(rows["p95_ms"]["value"], 391)
+        self.assertEqual(rows["p95_min_ms"]["value"], 178)
+        self.assertEqual(rows["p95_max_ms"]["value"], 570)
         self.assertEqual(rows["repetitions"]["value"], 3)
         self.assertEqual(rows["stages/backend/total_ns"]["value"], 16000000)
         self.assertEqual(rows["stages/backend/total_ns"]["unit"], "ns")

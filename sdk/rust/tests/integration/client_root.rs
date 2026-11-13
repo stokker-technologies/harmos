@@ -108,7 +108,10 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
         input_items: NonZeroUsize::MIN,
         input_bytes: NonZeroUsize::new(4096).unwrap(),
     };
-    let incompatible = ClientSettings { message_bytes: NonZeroUsize::MIN, ..settings };
+    let incompatible = ClientSettings {
+        message_bytes: NonZeroUsize::MIN,
+        ..settings
+    };
     assert!(matches!(Client::new(channel.clone(), incompatible), Err(error) if error.code() == tonic::Code::InvalidArgument));
     let client = Root::new(Client::new(channel, settings).unwrap().transport_handle());
     assert_eq!(

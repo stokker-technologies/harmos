@@ -49,7 +49,7 @@ pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
     let pending = NonZeroUsize::new(1024 * 1024).unwrap();
     let batch = NonZeroUsize::new(4096).unwrap();
     let settings = StorageSettings {
-            transfer: Default::default(),
+        transfer: Default::default(),
         policy: Default::default(),
         filesystem: harmos_storage::StorageFilesystemSettings {
             poll_interval: std::time::Duration::from_millis(100),

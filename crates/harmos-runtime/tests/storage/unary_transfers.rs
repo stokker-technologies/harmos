@@ -63,8 +63,13 @@ async fn resume_fence_publish_and_range_across_faces() {
     fixture.runtime.operations.register_authorizer(std::sync::Arc::new(super::transfer_plugin::AllowTransfers)).unwrap();
     let mut incompatible = harmos_runtime::grpc::Settings::default();
     incompatible.operations.decode.message_bytes = std::num::NonZeroUsize::new(1024).unwrap();
-    assert!(matches!(fixture.runtime.grpc().attach(incompatible).await,
-        Err(harmos_runtime::Error::InvalidInput { field: "GrpcSettings.operations.decode.message_bytes", .. })));
+    assert!(matches!(
+        fixture.runtime.grpc().attach(incompatible).await,
+        Err(harmos_runtime::Error::InvalidInput {
+            field: "GrpcSettings.operations.decode.message_bytes",
+            ..
+        })
+    ));
     let listener = fixture.runtime.grpc().attach(harmos_runtime::grpc::Settings::default()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
     let calls = &fixture.runtime.operations;
@@ -299,8 +304,11 @@ async fn resume_fence_publish_and_range_across_faces() {
         .is_err()
     );
     let default_range = super::transfer_plugin::client_call::<operations::GetFileBytes>(
-        &channel, client::StorageGetFileBytesRequest { max_bytes: 0, ..request.clone() }
-    ).await.unwrap();
+        &channel,
+        client::StorageGetFileBytesRequest { max_bytes: 0, ..request.clone() },
+    )
+    .await
+    .unwrap();
     assert_eq!(default_range.data, content);
     assert_eq!(default_range.resolved_at, first.resolved_at);
     assert!(

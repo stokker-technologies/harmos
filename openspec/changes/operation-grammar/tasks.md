@@ -45,8 +45,8 @@ compile-time consumers atomically.
 - [ ] 1.2 Implement shared positions/cuts, bounded paging, Timestamp/Duration, Failure, retry policy and receipts; declare separate face-local service/method request and response wrappers and regenerate IDs/fingerprints in crates/harmos-protocol/. Verify focused schema checks after the file moves; do not reuse another face's wrappers.
 - [x] 1.3 Lock design.md's inventory: protocol 1 service/4 operations/4 gRPC methods/4 request-response pairs; context 6/40/40 descriptor methods (0 standalone)/40 pairs; client 12 (6 nested)/59/59/59 pairs. Retain four native-only storage hooks/pairs separately: 19 services, 107 inventory operations, 103 descriptor methods (63 standalone), 107 requests and 107 responses overall. Verify all 38 shared capabilities have independent context/client declarations and authorization; census shared/domain/imported types separately.
 - [ ] 1.4 Replace automatic RunMethod twins with explicit face-filtered projection. Generate the 32 Storage declarations independently on context and client faces from their respective declaration owners, sharing handlers while preserving native-only/grant boundaries. Use nested parent packages, bare part verbs and one proto per service. Move/update protocol behaviour guidance with its face owner; streams remain Watch/plugin carriers or a promised final-result replacement.
-- [x] 1.5 Add reusable Nightly integration/durable_lag with small_high_rate, multi_megabyte and mixed backend loads; report acceptance-to-durability p50/p95/maximum, backlog and synchronous commit contribution per load. Compare each p95 with 250 ms independently of payload size; try smaller/earlier size-triggered flushes first if missed, then remeasure. Accepted-data snapshots remain the named fallback, not built; no timing assertions.
-- [x] 1.5.1 Repeat each fixed load at least five times, attribute cadence/build/write/FULL/publication and ordered blocking, preserve raw contention evidence, repair measured batching/provider costs and record the remaining floor without an accepted-data snapshot. The 250 ms acceptance guard A.6 stays open.
+- [x] 1.5 Add reusable Nightly integration/durable_lag with small_high_rate, multi_megabyte and mixed backend loads; report acceptance-to-durability p50/p95/maximum, backlog and synchronous commit contribution per load. Amended by the owner on 2026-11-13: measured lag is accepted; no accepted-data snapshot or failing threshold, and no timing assertions.
+- [x] 1.5.1 Repeat each fixed load at least five times, attribute cadence/build/write/FULL/publication and ordered blocking, preserve raw contention evidence, repair measured batching/provider costs and record the remaining floor without an accepted-data snapshot. The owner accepted this measured floor on 2026-11-13, closing the lag acceptance guard.
 - [x] 1.6 Add Nightly integration/file_transfer for large unary client/plugin uploads and downloads; record bytes, chunk/range configuration and throughput before deleting streaming transfers, without timing assertions or new consumer budgets.
 
 ## 2. Library Owners and Generic Services
@@ -92,7 +92,7 @@ proof does not close them; no checkbox is completed by this documentation task.
 - [x] A.3 Add **Manager Ownership** lifecycle stories for entry activation/retirement, listener rotation, product-fact registration/removal and resolver failure/cleanup, showing each service uses its one manager (tasks 2.1–2.6).
 - [x] A.4 Add **Library and Product Composition** independent-host stories composing library services/resolvers without redeclarations, duplicate hosting or product settings/secrets stores in the library (tasks 2.1–2.5).
 - [ ] A.5 Add **Resource Operation Grammar** descriptor and four-language generated-call stories for bare verbs, nested packages, service-qualified wrappers, stale whole-value Set and immutable Append (tasks 1.2–1.4, 3.3–3.4, 4.1).
-- [ ] A.6 Add **Position-Resolved Reads** controlled-backend stories for optional at, immediate latest-durable selection, resolved_at in every reply, issued-position paging and durable watch boundaries; keep lag evidence in Nightly benchmarks, not timing assertions (tasks 1.5, 3.2, 3.8–3.9).
+- [x] A.6 Add **Position-Resolved Reads** controlled-backend stories for optional at, immediate latest-durable selection, resolved_at in every reply, issued-position paging and durable watch boundaries; keep lag evidence in Nightly benchmarks, not timing assertions (tasks 1.5, 3.2, 3.8–3.9).
 - [ ] A.7 Add **Stable Receipts After Lost Replies** client stories across the migrated mutation surface proving same normalized request returns its original receipt, changed payload conflicts, expiry refuses and admitted completion survives caller loss (task 3.4).
 - [x] A.8 Add **Callee-Owned Policy and Consumer Budgets** controlled-clock/backend stories for call-local overrides and configured backend I/O, retries and session lifetimes; migrate hardcoded operational policy in crates/harmos-storage/src/config.rs to its owning policy/configuration without weakening limits. Preserve consumer admission/concurrency/response sizing and replay-safety checks.
 - [x] A.9 Add a deterministic production dependency-graph check for **Crate Dependency Direction**, rejecting upward runtime/product dependencies from lower library crates or SDKs while permitting declared derive/build/dev roles.
@@ -127,7 +127,8 @@ combined source closure and hosted validation are not claimed here.
 ## 5. Library Handoff and Source Closure
 
 - [ ] 5.1 Prepare the exact library candidate for later authorized publication/pinning; hand off final descriptors, counts and manager/service ownership. Publish/pin only with that later authorization; implement no application resources in this repository.
-- [ ] 5.2 After every consumer migrates and Nightly large-file throughput is measured, delete remaining streaming transfers, automatic twins/envelopes, superseded methods/policies/generators/fixtures/adapters and guidance. Retain Watch, plugin carriers and promised final-result replacements; preserve mandatory hooks and existing data.
+- [ ] 5.2 Complete the remaining non-transfer cleanup of superseded methods/policies/generators/fixtures/adapters and guidance after every consumer migrates. Retain Watch, plugin carriers and promised final-result replacements; preserve mandatory hooks and existing data.
+- [x] 5.2.1 Amended by the owner on 2026-11-13: delete streaming file-transfer handlers, proto requests, bindings, SDK surfaces, streaming-only stories and benchmark cases after the measured comparison; retain unary transfers with the storage-owned 4 MiB default.
 - [ ] 5.3 Review affected README, docs/product-guide.md, docs/storage.md, language guides, generators and capability contracts with each owning source change; verify no stale boundary or compound-resource naming claims.
 - [ ] 5.4 Verify every locked implementation item is closed in the combined candidate, all writers have handed off, and focused tests plus owned format/language checks pass before declaring source closure. Source closure is not full validation or delivery.
 
@@ -191,7 +192,7 @@ The storage declaration, paging, Watch, policy and native schema migrations are 
 joined. Retained-reader DeleteFile reclamation (3.10), the log Append above,
 cooperative final-result inventory (3.11), and whole-change source closure remain
 open. Streaming ReadFile/WriteFile were deleted after the owner's throughput review on 2026-11-13.
-No accepted-data snapshot is built; A.6 remains open for measured large/mixed lag.
+No accepted-data snapshot is built; A.6 is closed by the owner's accepted measured lag on 2026-11-13 and the controlled-backend stories below.
 
 ## Storage Ownership and Proof
 
@@ -220,7 +221,7 @@ were deleted by the owner's 2026-11-13 amendment after the comparison.
 Stage measurements and retained raw benchmark evidence belong to 1.5/1.6 in the
 design. Timing remains measurement, never a test assertion. No accepted-payload
 snapshot, budget increase, weaker synchronization or deadline change is introduced.
-Task A.6 remains open while repeated p95 values miss 250 ms. Log-line Append is the
+Task A.6 is closed: the owner accepted measured p95 values on 2026-11-13. Log-line Append is the
 core service owner's join under 3.4; full service census and combined source closure
 remain with the integration owner. DeleteFile reclamation (3.10) is unchanged.
 
@@ -240,13 +241,15 @@ freshly task-built conformance host through its supported HARMOS_CONFORMANCE_HOS
 override because an older exported host was present; all 29 protocol rules pass.
 Native storage, file-transfer (seven available carrier/direction cases, three runs)
 and durable-lag (three loads, five final runs each) benchmarks complete. This is
-local Windows evidence, not a full test lane or hosted/Linux validation. Lag-bound
-failures remain explicit in the design and A.6 is not checked off.
+local Windows evidence, not a full test lane or hosted/Linux validation. Measured lag is accepted by the owner's 2026-11-13 amendment; no threshold fails
+Nightly and A.6 is closed.
 
 ## Owner Amendments of 2026-11-13
 
 - [x] O.1 Replace paging for bounded catalogs, plugin entries and pairings in proto, operations, runtime, generated SDKs, consumers, examples, stories and guides; preserve paging and issued positions for unbounded data. Record the bounded/unbounded inventory and scenarios.
 - [x] O.2 Ship one SDK package per language; delete audience build selection, generated-stub guards and their tests/tooling; add four copyable self-install client journeys and migrate package consumers/guides. Preserve runtime face/visibility enforcement.
 - [x] O.3 Keep unary transfers with one storage-owned 4 MiB default; derive carrier ceilings including framing, refuse incompatible startup settings, delete streaming transfer declarations/handlers/SDKs/stories and benchmark cases, record and rerun the default benchmark.
-- [ ] O.4 Accept measured durable lag without a failing threshold or accepted-data snapshot; replace superseded requirements/guides and close the lag acceptance tasks.
-- [ ] O.5 Run final-head format, Rust/Python/repository checks, protocol drift, four-SDK conformance, self-install/storage/manager/access/status/wire identity/guest stories, Tests build and clean committed locked offline metadata. Keep every decision in a separate local building commit; do not push.
+- [x] O.4 Accept measured durable lag without a failing threshold or accepted-data snapshot; replace superseded requirements/guides and close the lag acceptance tasks.
+- [x] O.5 Complete final proof and local commits; keep every decision in a separate local building commit and do not push.
+- [x] O.5.1 Run format, Rust/Python/repository checks, protocol drift, four-SDK conformance, the named self-install/storage/manager/access/status/wire identity stories, guest System selections and the final Tests artifact; repair findings. Expose the existing focused fixture selection through the public build task.
+- [x] O.5.2 Verify locked offline Cargo metadata on the committed clean head with Cargo.lock unchanged.

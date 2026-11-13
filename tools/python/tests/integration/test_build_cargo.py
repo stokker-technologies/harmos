@@ -215,6 +215,44 @@ class WorkflowTaskTests(unittest.TestCase):
                 task.assert_called_once_with("prepare:tests:fixtures", "--profile", profile)
                 focused.assert_not_called()
 
+        with patch.object(tasks, "_task", return_value=0) as task, patch.object(cargo, "focused") as focused:
+            self.assertEqual(
+                tasks.dispatch(
+                    [
+                        "build",
+                        "--artifact",
+                        "fixtures",
+                        "--focused-messages",
+                        "native.json",
+                        "--libraries",
+                        "harmos",
+                        "--inspection-messages",
+                        "guest.json",
+                        "--inspections",
+                        "schematic-guest",
+                        "--componentizer",
+                        "driver",
+                    ]
+                ),
+                0,
+            )
+            task.assert_called_once_with(
+                "prepare:tests:fixtures",
+                "--profile",
+                "dev",
+                "--focused-messages",
+                "native.json",
+                "--libraries",
+                "harmos",
+                "--inspection-messages",
+                "guest.json",
+                "--inspections",
+                "schematic-guest",
+                "--componentizer",
+                "driver",
+            )
+            focused.assert_not_called()
+
     def test_focused_layers_preserve_the_requested_filter(self):
         expression = "package(=harmos-runtime) & test(guest_contract::)"
         for layer in ("integration", "system"):

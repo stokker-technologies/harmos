@@ -65,7 +65,8 @@ struct Socket {
 impl Connection {
     pub(super) fn client(&self) -> harmos_protocol::plugin::instance_client::InstanceClient<Channel> {
         harmos_protocol::plugin::instance_client::InstanceClient::new(self.channel.clone())
-            .max_decoding_message_size(self.message_bytes).max_encoding_message_size(self.message_bytes)
+            .max_decoding_message_size(self.message_bytes)
+            .max_encoding_message_size(self.message_bytes)
     }
 
     pub(super) async fn open(address: &str, message_bytes: usize) -> Result<Self, Error> {
