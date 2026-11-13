@@ -7,7 +7,7 @@
 - [x] 9.3 Replace project loops with solution tasks, migrate generated roots and drift checks, and migrate every C# output consumer.
 - [x] 9.4 Complete NuGet metadata, repository-derived version, SourceLink and deterministic CI builds; prove an independent local-feed consumer.
 - [x] 9.5 Add native Linux/Windows C# check/test lanes and code analysis; update affected maintained guides.
-- [ ] 9.6 Run the requested committed-head proof from clean C# artifacts, root format, Python/repository checks and verify clean status; retain local commits only.
+- [x] 9.6 Run the requested committed-head proof from clean C# artifacts, root format, Python/repository checks and verify clean status; retain local commits only.
 
 ## 1. Contract
 
