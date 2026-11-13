@@ -1,27 +1,22 @@
 # canonical-build Specification
 
 ## Purpose
-Defines the one canonical native build configuration, default Cargo profiles and the measured build, coverage and performance budgets Harmos validates against.
+
+Define canonical native build selection and measured build and performance budgets.
 
 ## Requirements
 
 ### Requirement: Canonical Native Configuration
 
-All provider CI Product and Tests SHALL use existing canonical shipping feature configurations per platform in independent parallel producer jobs. Independent feature sets are permitted. Build, test, bench, fixture and focused compilation tasks SHALL NOT run Clippy implicitly. Clippy SHALL run with warnings denied only through `lint:rust`, included by `check:rust` and gated by CI Check / Rust; an explicit focused `clippy` operation MAY invoke it deliberately. Simulation and other noncanonical test features SHALL NOT enter CI or shipping binaries. Local installers SHALL NOT build tests by default.
+All provider CI Product and Tests SHALL use existing canonical shipping feature
+configurations per platform in independent parallel producer jobs. Independent feature
+sets are permitted. Simulation and other noncanonical test features SHALL NOT enter CI
+or shipping binaries.
 
 #### Scenario: Ordinary Review
 
 - **WHEN** an ordinary review requests Product and Tests
 - **THEN** independent Product and Tests jobs produce separate exports, and downstream Test and Package consume their declared inputs without rebuilding; fixture preparation may join both manifests without compilation
-
-### Requirement: Default Cargo Profiles
-
-Product SHALL use default Cargo dev or release settings, Bench SHALL use default bench settings, and all Tests and their compiler checks SHALL use the default unoptimized test profile. No manifest, package or build environment optimization overrides SHALL remain. Graph profile namespaces SHALL remain separate from compiler profiles.
-
-#### Scenario: Release Tests
-
-- **WHEN** a release pipeline builds Tests
-- **THEN** its test harness and test-owned fixtures compile with Cargo's test profile while their artifacts remain in the release graph namespace and receipts preserve the actual compiler profile
 
 ### Requirement: Measured Build Budget
 
@@ -31,15 +26,6 @@ Tests Build SHALL take no longer than Product Build for the same platform/profil
 
 - **WHEN** comparable-cache Tests Build takes longer than Product Build
 - **THEN** delivery requires reassessment of redundant compilation, feature scope or test structure, including moved work in the actual critical path
-
-### Requirement: Compatibility Coverage
-
-The explicit optional local `test:rust:extended` suite SHALL preserve noncanonical behavioral coverage and invoke `build:rust:compatibility` for declared all-features, no-default-features and cross-target compatibility checks. No provider CI context or ordinary installer SHALL invoke either optional task implicitly. Existing test assertions SHALL remain intact.
-
-#### Scenario: Explicit Extended Validation
-
-- **WHEN** a developer requests `mise run test:rust:extended`
-- **THEN** the optional task builds its required artifacts and runs all preserved feature-dependent stories and compatibility checks
 
 ### Requirement: Correctness and Performance Budgets
 

@@ -19,7 +19,6 @@ Applications need these generic facilities without exposing concrete backend API
 
 ## Scope and Order
 
-The owner delivers this change with the combined `grpc-plugins` implementation marker and authorizes parallel storage work at the landed Harmos host surfaces; consumer migration remains pending.
 Design and implement the generic Harmos interfaces first. Dokime consumes the published Harmos
 revision in its own change named `storage-interface`, then extracts `dokime-storage` from
 `crates/dokime-runtime/src/storage/` and `src/runtime/storage/`. Its persisted shapes live there;

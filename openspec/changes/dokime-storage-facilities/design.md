@@ -2,10 +2,7 @@
 
 ## Ownership
 
-All remaining Harmos work joins `feat/grpc-plugins` and ships with every open change.
-The paired consumer owns its adoption and published dependency pin. A worker receives only the
-paths for its whole task; native implementation and paired-consumer proof are separate tasks.
-No local override or path-resolved lockfile enters delivery.
+The paired consumer owns its adoption and published dependency pin. No local override or path-resolved lockfile enters delivery.
 
 ## Consumer Evidence
 
@@ -92,10 +89,7 @@ expects a reader opened before deletion to retain its bytes and fresh reads to f
 uses the in-memory backend; that assertion alone establishes no consumer-backend guarantee.
 Review the intended deletion contract against backend-neutral storage ownership before treating
 this test repair as complete proof.
-Named temporary owners remain alive through reads and blocking workers. The reported Windows
-Access-is-denied failure did not reproduce locally; the private-source repair still needs native
-Windows failure-path verification, rather than a claim that its cause is established.
-
+Named temporary owners remain alive through reads and blocking workers.
 ## Open Points
 
 ### Awaiting Owner Confirmation

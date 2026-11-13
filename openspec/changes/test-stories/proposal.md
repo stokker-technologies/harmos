@@ -1,15 +1,6 @@
 # Test Stories
 
-Status: agreed with the owner on 2026-11-10 and implementing under the combined `grpc-plugins`
-marker. Source and focused proof are tracked separately in `tasks.md`; tooling ownership covers
-the relocated binding-consumer task.
-
 ## Why
-
-The runtime has more lines of test than of source: 716 test functions with a median length of 24
-lines. Two audits found little duplicated coverage. The volume comes from many short tests that
-each rebuild the same setup to check one facet, from workloads sized like benchmarks, and from
-tests that depend on real time.
 
 ## What Changes
 
@@ -26,8 +17,6 @@ tests that depend on real time.
 - **No test depends on real time.** A test runs on a paused or controlled clock or waits for an
   event. A bound that only stops a hung test stays, as a guard and not as an assertion.
 - **Tests that prove little are removed,** with any useful check moved into a story.
-
-`design.md` lists the concrete groups and locations the audits found.
 
 ## Impact
 
