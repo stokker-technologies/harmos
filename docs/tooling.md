@@ -29,8 +29,10 @@ not run Clippy. `check --repository` checks repository configuration without a b
 
 ## Workstation Builds
 
-Local builds use `RUSTC_WRAPPER=sccache`, `SCCACHE_DIR=<OS user cache>/sccache`
-and `SCCACHE_CACHE_SIZE=20G`. Explicit shell settings override these defaults.
+The workstation owns the compiler cache: `RUSTC_WRAPPER`, `SCCACHE_DIR`,
+`SCCACHE_CACHE_SIZE` and `SCCACHE_CLIENT_SIDE` come from the machine's own
+configuration, never from this repository, so every project on a machine shares
+one cache with one size. Without them, builds compile uncached.
 `SCCACHE_CLIENT_SIDE=1` keeps compilation in the requesting client instead of
 queuing it through the machine-wide server's compiler jobserver. Cargo starts or
 reuses the persistent server for cache storage; tasks never restart it per invocation.
