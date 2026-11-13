@@ -76,8 +76,17 @@ class PackagedConformance(unittest.TestCase):
             f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
         ]
-        subprocess.run(configure, env=child_environment, check=True, creationflags=spawn_flags())
         build.mkdir(parents=True, exist_ok=True)
+        with (build / "configure.log").open("w", encoding="utf-8") as log:
+            result = subprocess.run(
+                configure,
+                env=child_environment,
+                check=False,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                creationflags=spawn_flags(),
+            )
+        self.assertEqual(result.returncode, 0, (build / "configure.log").read_text(errors="replace"))
         with (build / "build.log").open("w", encoding="utf-8") as log:
             result = subprocess.run(
                 [

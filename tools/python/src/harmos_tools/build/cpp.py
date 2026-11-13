@@ -171,7 +171,12 @@ def main() -> None:
     if options.consumer:
         prefix = directory / "installed"
         subprocess.run(
-            ["cmake", "--install", str(directory), "--prefix", str(prefix)], env=child_environment, check=True, creationflags=spawn_flags()
+            ["cmake", "--install", str(directory), "--prefix", str(prefix)],
+            env=child_environment,
+            check=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            creationflags=spawn_flags(),
         )
         consumer = ROOT / "target/cpp/consumer" / options.profile
         toolchain = Path(child_environment["VCPKG_ROOT"]) / "scripts/buildsystems/vcpkg.cmake"
@@ -197,7 +202,12 @@ def main() -> None:
             creationflags=spawn_flags(),
         )
         subprocess.run(
-            ["cmake", "--build", str(consumer), "--parallel", "4"], env=child_environment, check=True, creationflags=spawn_flags()
+            ["cmake", "--build", str(consumer), "--parallel", "4"],
+            env=child_environment,
+            check=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            creationflags=spawn_flags(),
         )
         return
 

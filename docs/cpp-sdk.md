@@ -53,6 +53,9 @@ package story extracts that archive, builds its example with `find_package(Harmo
 and runs every host rule. Test consumers use existing SDK and host builds;
 `--layer unit` selects CTest and `--layer integration` selects the Python stories.
 `HARMOS_CONFORMANCE_HOST` may select a separately built host.
+For a focused host build, select `target/debug/harmos-conformance` (`.exe` on
+Windows) explicitly with that variable; otherwise stories prefer the native
+Product export when it exists.
 Native catalog tests run through CTest before the single managed-plugin story,
 which checks every reference-host case, including
 cleanup and successful process exit after Stop.
