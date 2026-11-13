@@ -312,8 +312,8 @@ The wheel is written to `target/build/<profile>/any/python/`. Checked-in
 is generated from `sdk/tests/fixtures/conformance/proto/harmos/conformance/v1/fixture.proto`. The SDK check regenerates into disposable
 scratch and compares every generated file byte for byte. Python language checks
 and tests include the SDK alongside repository tooling. The reference-host story
-consumes an existing host executable from Product's `bin/`, a focused local
-`target/debug/` build, or `HARMOS_CONFORMANCE_HOST`; it never builds one in a test.
+  consumes `HARMOS_CONFORMANCE_HOST` when set, otherwise a focused local
+  `target/debug/` build, falling back to Product's `bin/`; it never builds one in a test.
 From the development checkout the standalone fixture can be served with
 `python -m tests.fixtures.conformance --address 127.0.0.1:53124` and checked with
 `harmos-conformance --address 127.0.0.1:53124`. Every current rule applies to remote

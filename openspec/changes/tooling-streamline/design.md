@@ -1,5 +1,13 @@
 # Tooling Design
 
+## Locked C# Build Modernization
+
+The 2026-11-13 owner locks `sdk/csharp/**`, C# Python build/test/generation/package tooling and tests, Rust fixture producer C# lines, root C# delegation, validation workflow C# lanes, `.editorconfig`, `.gitignore` and maintained guides. Public package `Harmos` and public namespaces remain unchanged; commits stay local and the implementing marker remains untouched.
+
+Before C# migration, repair Python remote conformance host selection: rule 31 (Message Ceiling Independent of Transfer Chunks) was absent because an older Product export shadowed the current focused host, not because the relocated fixture lost protocol content. Explicit host overrides remain first; local Python stories prefer the focused host and otherwise consume the Product export. Every story retains all 31 rules.
+
+The solution owns all three projects under `src/Harmos`, `tests/Harmos.Tests` and `tests/Harmos.Conformance`. Central props own paths, framework, warnings, metadata and the version read from Cargo workspace metadata; central package management owns dependency versions. Use native artifacts output and query MSBuild for executable paths. Solution tasks own locked build, test, format/check and pack; generated client roots are committed and checked without rewriting them. Generation alone updates those roots. Use the simplest native MSBuild/CLI mechanisms and no compatibility shims.
+
 ## C++ Build and Consumption
 
 The 2026-11-13 owner decision replaces in-build gRPC with required Protobuf and gRPC config packages. The vcpkg manifest and bootstrap pin the 2026.05.25 registry commit `d015e31e90838a4c9dfa3eed45979bc70d9357fc`, providing gRPC 1.76.0#1 and protobuf 6.33.4#2. Mise has no cross-platform vcpkg registry tool, so the C++ prepare operation bootstraps that checkout in the machine tool cache. Native vcpkg binary caching is retained locally and persisted in CI; compiler-cache configuration remains machine-owned.

@@ -41,7 +41,7 @@ async def run(address: str, *, binary: Path | None = None) -> tuple[int, str, st
     profile = os.environ.get("TEST_PROFILE", "dev")
     exported = output(ROOT, "build", profile) / "bin" / name
     local = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug" / name
-    binary = binary if binary is not None else Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.exists() else local))
+    binary = binary if binary is not None else Path(os.environ.get("HARMOS_CONFORMANCE_HOST", local if local.is_file() else exported))
     if not binary.is_file():
         raise FileNotFoundError("Build the Reference Host: mise run build -- --package harmos-conformance")
     process = await asyncio.create_subprocess_exec(

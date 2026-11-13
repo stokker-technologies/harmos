@@ -1,5 +1,14 @@
 # Tasks
 
+## 9. Locked C# Build Modernization
+
+- [ ] 9.1 Repair Python remote conformance host selection, commit, and prove Python checks and both C++ stories retain 31 rules.
+- [ ] 9.2 Move all C# projects into the solution layout; centralize properties, package versions, locked restore and artifacts output.
+- [ ] 9.3 Replace project loops with solution tasks, migrate generated roots and drift checks, and migrate every C# output consumer.
+- [ ] 9.4 Complete NuGet metadata, repository-derived version, SourceLink and deterministic CI builds; prove an independent local-feed consumer.
+- [ ] 9.5 Add native Linux/Windows C# check/test lanes and code analysis; update affected maintained guides.
+- [ ] 9.6 Run the requested committed-head proof from clean C# artifacts, root format, Python/repository checks and verify clean status; retain local commits only.
+
 ## 1. Contract
 
 - [x] 1.1 Fix the final entry-point arguments and workflow job list in proposal.md against the implemented dispatcher.
