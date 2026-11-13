@@ -4,7 +4,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using Xunit;
 
-namespace Harmos.Tests;
+namespace Harmos.Tests.Unit;
 
 public sealed class ResourceRoots
 {

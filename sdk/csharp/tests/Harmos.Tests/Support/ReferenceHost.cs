@@ -2,14 +2,26 @@ using Harmos.Context.V1;
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
+using System.Reflection;
 
-namespace Harmos.Sdk.Tests.Support;
+namespace Harmos.Tests.Support;
 
 internal static class ReferenceHost
 {
   internal static string Artifact(string name)
   {
     var path = Environment.GetEnvironmentVariable(name);
+    if (string.IsNullOrEmpty(path))
+    {
+      var directory = new DirectoryInfo(AppContext.BaseDirectory);
+      while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Harmos.slnx")))
+        directory = directory.Parent;
+      var sdk = directory?.FullName ?? throw new InvalidOperationException("Missing C# Solution");
+      var configuration = typeof(ReferenceHost).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()!.Configuration;
+      path = name == "HARMOS_CSHARP_PLUGIN"
+        ? Path.GetFullPath(File.ReadAllText(Path.Combine(sdk, "artifacts", "paths", configuration, "Harmos.Conformance.txt")).Trim(), sdk)
+        : Path.GetFullPath(Path.Combine(sdk, "..", "..", "target", configuration == "Release" ? "release" : "debug", OperatingSystem.IsWindows() ? "harmos-conformance.exe" : "harmos-conformance"));
+    }
     if (string.IsNullOrEmpty(path) || !File.Exists(path))
       throw new InvalidOperationException($"Missing Build Output: {name}; Run mise run build -- --language csharp");
     return path;

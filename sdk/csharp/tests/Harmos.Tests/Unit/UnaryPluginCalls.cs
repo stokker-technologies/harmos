@@ -2,16 +2,18 @@
 
 using Harmos.Context.V1;
 using Visibility = Harmos.V1.Visibility;
+using Harmos.Sdk;
+using SdkPlugin = Harmos.Sdk.Plugin;
 using Xunit;
 
-namespace Harmos.Sdk.Tests.Unit;
+namespace Harmos.Tests.Unit;
 
 public sealed class UnaryPluginCalls
 {
   [Fact]
   public void RefusedWatchRegistrationDoesNotReserveTheUnaryOperation()
   {
-    var plugin = new Plugin("unary", "1.0.0");
+    var plugin = new SdkPlugin("unary", "1.0.0");
     var watch = new Operation<TimeGetRequest, TimeGetResponse>("unary.read", Visibility.Public, watch: true);
     var refusal = Assert.Throws<ArgumentException>(() => plugin.Operation(watch, (_, _) => Task.FromResult(new TimeGetResponse())));
     Assert.Contains("unary.read", refusal.Message);

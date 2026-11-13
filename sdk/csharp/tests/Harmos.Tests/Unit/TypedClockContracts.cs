@@ -4,10 +4,11 @@ using Harmos.Context.V1;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
+using Harmos.Sdk;
+using SdkPlugin = Harmos.Sdk.Plugin;
 using Xunit;
-using Plugin = Harmos.Sdk.Plugin;
 
-namespace Harmos.Sdk.Tests.Unit;
+namespace Harmos.Tests.Unit;
 
 public sealed class TypedClockContracts
 {
@@ -15,7 +16,7 @@ public sealed class TypedClockContracts
   public void ObserversPreserveSettingWithOrWithoutDefaultInterval()
   {
     var setting = new TimeSleepRequest { Duration = new Duration { Seconds = 2 } };
-    var plugin = new Plugin("settings", "1.0.0")
+    var plugin = new SdkPlugin("settings", "1.0.0")
         .Observer("settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "harmos.context.v1.TimeSleepRequest.duration")
         .Observer("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "harmos.context.v1.TimeSleepRequest.duration")
         .Section(setting);
@@ -25,14 +26,14 @@ public sealed class TypedClockContracts
     Assert.NotNull(catalog.Streams[1].Interval);
     Assert.Equal(catalog.Streams[0].IntervalSetting, catalog.Streams[1].IntervalSetting);
     Assert.Equal(setting, TimeSleepRequest.Parser.ParseFrom(Assert.Single(catalog.Sections).Payload));
-    Assert.Throws<ArgumentException>(() => new Plugin("invalid", "1.0.0")
+    Assert.Throws<ArgumentException>(() => new SdkPlugin("invalid", "1.0.0")
         .Observer("settings.missing", null, context => Task.FromResult(new TimeGetRequest())));
   }
 
   [Fact]
   public void ClockRequirementsMergeReachableTypesWithoutWireServiceMessages()
   {
-    var plugin = new Plugin("clock_client", "1.0.0").Requires(Clock.Sleep).Requires(Clock.GetTime);
+    var plugin = new SdkPlugin("clock_client", "1.0.0").Requires(Clock.Sleep).Requires(Clock.GetTime);
     var catalog = plugin.Catalog();
     var clock = Assert.Single(catalog.Types_.File, file => file.Name == "harmos/context/v1/time.proto");
     Assert.Equal(["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"], clock.MessageType.Select(message => message.Name));

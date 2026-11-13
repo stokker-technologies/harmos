@@ -135,7 +135,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     bench.add_argument("--storage", action="store_true")
     bench.add_argument("--filter")
     package = commands.add_parser("package")
-    package.add_argument("--language", choices=("rust",))
+    package.add_argument("--language", choices=("rust", "csharp"))
     package.add_argument("--profile", choices=("dev", "release"), default="dev")
     for name in ("prepare", "tag", "rehearse", "publish", "verify"):
         release = commands.add_parser(f"release:{name}")
@@ -236,7 +236,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             parser.error(str(error))
 
     # C# SDK Selections Remain Independent of Rust Lanes and Tooling Python Tests.
-    if options.command in ("build", "test", "format", "check") and options.language == "csharp":
+    if options.command in ("build", "test", "format", "check", "package") and options.language == "csharp":
         incompatible = (
             "package",
             "features",
@@ -259,7 +259,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.command == "build" and options.check:
             parser.error("C# formatting uses check --language csharp")
         selected = []
-        if options.command in ("build", "test"):
+        if options.command in ("build", "test", "package"):
             selected += ["--profile", options.profile]
         if getattr(options, "layer", None):
             selected += ["--layer", options.layer]
@@ -413,19 +413,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.sdk == "python":
             return _execute(["mise", "-C", "sdk/python", "run", "generate"])
         if options.sdk == "csharp":
-            return _execute(
-                [
-                    "mise",
-                    "-C",
-                    "sdk/csharp",
-                    "run",
-                    "generate",
-                    "--",
-                    "--profile",
-                    options.profile,
-                    *(["--dependencies"] if options.dependencies else []),
-                ]
-            )
+            return _execute(["mise", "-C", "sdk/csharp", "run", "generate"])
         if options.sdk == "cpp":
             return _execute(["mise", "-C", "sdk/cpp", "run", "generate", "--", "--profile", options.profile])
         if options.sdk == "rust":

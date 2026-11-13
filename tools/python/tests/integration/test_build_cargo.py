@@ -307,6 +307,17 @@ class WorkflowTaskTests(unittest.TestCase):
             )
             self.assertNotIn("VIRTUAL_ENV", execute.call_args.kwargs["environment"])
 
+    def test_csharp_solution_tasks_preserve_profile_and_test_layer(self):
+        for verb in ("build", "test", "package"):
+            arguments = [verb, "--language", "csharp", "--profile", "release"]
+            selected = ["--profile", "release"]
+            if verb == "test":
+                arguments += ["--layer", "unit"]
+                selected += ["--layer", "unit"]
+            with self.subTest(verb=verb), patch.object(tasks, "_execute", return_value=0) as execute:
+                self.assertEqual(tasks.dispatch(arguments), 0)
+            execute.assert_called_once_with(["mise", "-C", "sdk/csharp", "run", verb, "--", *selected])
+
     def test_publication_selectors_preserve_guards_and_default_order(self):
         selections = [
             (["--dry"], [("release:publish:dry",)], []),

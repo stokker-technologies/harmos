@@ -411,3 +411,9 @@ hide = true
 description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build --profile {{usage.profile}}"
+
+[tasks."build:rust:csharp-fixture"]
+hide = true
+description = "Build and Stage the Rust Producer C# Fixture"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "mise -C sdk/csharp run build:rust-fixture -- --profile {{usage.profile}}"

@@ -4,7 +4,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using Xunit;
 
-namespace Harmos.Sdk.Tests.Integration;
+namespace Harmos.Tests.Integration;
 
 public sealed class ClientCallContext
 {

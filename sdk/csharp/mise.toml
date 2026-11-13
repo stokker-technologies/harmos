@@ -16,39 +16,82 @@ lockfile = true
 [tools]
 dotnet = "10.0.403"
 
+# === Environment === #
+
+[env]
+DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+DOTNET_NOLOGO = "1"
+DOTNET_GENERATE_ASPNET_CERTIFICATE = "false"
+
 # === Tasks === #
 
 [tasks.build]
-description = "Build the C# SDK"
-dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp build"
+description = "Build the C# Solution"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "dotnet build Harmos.slnx --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %} -p:RestoreLockedMode=true"
+run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" build Harmos.slnx --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %} -p:RestoreLockedMode=true"
 
 [tasks.test]
-description = "Test the C# SDK"
-dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp test"
-
-[tasks.format]
-description = "Format the C# SDK"
-dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp format"
+description = "Test the C# Solution"
+depends = ["restore"]
+usage = '''
+flag "--profile <profile>" default="dev"
+flag "--layer <layer>"
+'''
+run = "dotnet test Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %}{% if usage.layer %} --filter FullyQualifiedName~Harmos.Tests.{% if usage.layer == 'unit' %}Unit{% else %}Integration{% endif %}{% endif %} --logger \"console;verbosity=detailed\" --results-directory artifacts/test-results"
+run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" test Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %}{% if usage.layer %} --filter FullyQualifiedName~Harmos.Tests.{% if usage.layer == 'unit' %}Unit{% else %}Integration{% endif %}{% endif %} --logger \"console;verbosity=detailed\" --results-directory artifacts/test-results"
 
 [tasks.check]
-description = "Check the C# SDK"
-dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp check"
+description = "Check C# Formatting and Generated Roots"
+depends = ["restore", "check:generated"]
+run = "dotnet format Harmos.slnx --no-restore --verify-no-changes"
+run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" format Harmos.slnx --no-restore --verify-no-changes"
+
+[tasks.package]
+description = "Pack the C# Solution"
+depends = ["restore"]
+usage = 'flag "--profile <profile>" default="dev"'
+run = "dotnet pack Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %} --output artifacts/packages"
+run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" pack Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %} --output artifacts/packages"
+
+[tasks.format]
+description = "Format the C# Solution"
+depends = ["restore"]
+usage = 'flag "--check"'
+run = "dotnet format Harmos.slnx --no-restore{% if usage.check %} --verify-no-changes{% endif %}"
+run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" format Harmos.slnx --no-restore{% if usage.check %} --verify-no-changes{% endif %}"
+
+[tasks.restore]
+hide = true
+description = "Restore Locked C# Dependencies"
+run = "dotnet restore Harmos.slnx --locked-mode"
+run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" restore Harmos.slnx --locked-mode"
 
 [tasks.generate]
-description = "Generate the C# Protocols"
+description = "Generate Committed C# Client Roots"
 dir = "../.."
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp generate"
 
+[tasks."check:generated"]
+hide = true
+description = "Check Committed C# Client Roots"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp check-generated"
+
 [tasks."test:unit"]
 description = "Test the C# SDK Units"
-dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp test --layer unit"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "mise run test -- --layer unit --profile {{usage.profile}}"
 
 [tasks."test:tooling"]
 description = "Test Tooling and the C# Package Consumer"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m unittest discover -s tools/python/tests/integration -v"
+usage = 'flag "--exact <exact>"'
+run = "uv run --locked --no-sync --project tools/python python -m unittest {% if usage.exact %}{{usage.exact}}{% else %}discover -s tools/python/tests/integration{% endif %} -v"
+
+[tasks."build:rust-fixture"]
+hide = true
+description = "Build and Stage the Rust Producer C# Fixture"
+dir = "../.."
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.rust.tests --csharp-fixture --profile {{usage.profile}}"

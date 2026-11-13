@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>harmos-csharp-conformance-plugin</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(RepoRoot)sdk/csharp/src/Harmos/Harmos.csproj" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+    <Protobuf Include="$(RepoRoot)sdk/tests/fixtures/conformance/proto/**/*.proto" ProtoRoot="$(RepoRoot)sdk/tests/fixtures/conformance/proto" GrpcServices="None" />
+  </ItemGroup>
+</Project>

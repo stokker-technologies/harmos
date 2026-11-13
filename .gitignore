@@ -11,6 +11,9 @@ Cargo.lock.orig
 # Toolchain State
 /.venv/
 
+# C# Build Outputs
+/sdk/csharp/artifacts/
+
 # Mise local overrides
 .mise.local.toml
 mise.local.lock

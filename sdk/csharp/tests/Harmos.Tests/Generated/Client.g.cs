@@ -1,4 +1,5 @@
 // @generated from the protocol descriptor table; do not edit.
+#nullable enable
 using Grpc.Core;
 using Google.Protobuf;
 namespace Fixture.Sdk;

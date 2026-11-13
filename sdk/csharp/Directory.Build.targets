@@ -1,0 +1,7 @@
+<Project>
+  <Target Name="RecordExecutablePath" AfterTargets="Build" Condition="'$(OutputType)' == 'Exe'">
+    <WriteLinesToFile File="$(ArtifactsPath)/paths/$(Configuration)/$(MSBuildProjectName).txt"
+                      Lines="$([MSBuild]::MakeRelative('$(MSBuildThisFileDirectory)', '$(TargetDir)$(AssemblyName)$(_NativeExecutableExtension)'))"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+</Project>

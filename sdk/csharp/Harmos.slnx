@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Harmos/Harmos.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Harmos.Conformance/Harmos.Conformance.csproj" />
+    <Project Path="tests/Harmos.Tests/Harmos.Tests.csproj" />
+  </Folder>
+</Solution>

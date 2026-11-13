@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Harmos.Sdk.Tests.Support;
+using Harmos.Tests.Support;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace Harmos.Sdk.Tests.Integration;
+namespace Harmos.Tests.Integration;
 
 public sealed class ManagedPluginPassesEveryRule(ITestOutputHelper output)
 {
