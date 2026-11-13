@@ -64,6 +64,8 @@ def environment() -> dict[str, str]:
                 str(checkout),
             ],
             check=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
             creationflags=spawn_flags(),
         )
     actual = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True, creationflags=spawn_flags()).strip()
@@ -76,7 +78,7 @@ def environment() -> dict[str, str]:
             if os.name == "nt"
             else ["sh", str(checkout / "bootstrap-vcpkg.sh"), "-disableMetrics"]
         )
-        subprocess.run(bootstrap, check=True, creationflags=spawn_flags())
+        subprocess.run(bootstrap, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags())
 
     # Ninja Uses the Native MSVC Environment on Windows.
     if os.name == "nt" and not environment.get("VCINSTALLDIR"):
@@ -150,13 +152,17 @@ def main() -> None:
                 import re
 
                 arguments += ["-R", "^" + re.escape(options.exact) + "$"]
-            subprocess.run(arguments, cwd=sdk, env=child_environment, check=True, creationflags=spawn_flags())
+            subprocess.run(
+                arguments, cwd=sdk, env=child_environment, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags()
+            )
         if options.layer != "unit" and not options.exact:
             subprocess.run(
                 [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration", "-v"],
                 cwd=sdk,
                 env=dict(child_environment, TEST_PROFILE=options.profile),
                 check=True,
+                stdout=sys.stdout,
+                stderr=sys.stderr,
                 creationflags=spawn_flags(),
             )
         return
@@ -186,6 +192,8 @@ def main() -> None:
             ],
             env=child_environment,
             check=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
             creationflags=spawn_flags(),
         )
         subprocess.run(
@@ -233,6 +241,8 @@ def main() -> None:
             ["cmake", "--install", str(directory), "--prefix", str(directory / "installed")],
             env=child_environment,
             check=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
             creationflags=spawn_flags(),
         )
 

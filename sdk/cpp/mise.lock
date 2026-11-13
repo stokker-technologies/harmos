@@ -9,43 +9,36 @@ specifiers = ["4.1.2"]
 
 [tools.cmake."platforms.linux-arm64"]
 checksum = "sha256:0634996f918b3bab11f45522899c81c987b09c9a64d15f6a0d2bb51c42099534"
-checksum_source = "mise-versions"
 url = "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz"
 url_api = "https://api.github.com/repos/Kitware/CMake/releases/assets/298954804"
 
 [tools.cmake."platforms.linux-arm64-musl"]
 checksum = "sha256:0634996f918b3bab11f45522899c81c987b09c9a64d15f6a0d2bb51c42099534"
-checksum_source = "mise-versions"
 url = "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-aarch64.tar.gz"
 url_api = "https://api.github.com/repos/Kitware/CMake/releases/assets/298954804"
 
 [tools.cmake."platforms.linux-x64"]
 checksum = "sha256:773cc679c3a7395413bd096523f8e5d6c39f8718af4e12eb4e4195f72f35e4ab"
-checksum_source = "mise-versions"
 url = "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz"
 url_api = "https://api.github.com/repos/Kitware/CMake/releases/assets/298954823"
 
 [tools.cmake."platforms.linux-x64-musl"]
 checksum = "sha256:773cc679c3a7395413bd096523f8e5d6c39f8718af4e12eb4e4195f72f35e4ab"
-checksum_source = "mise-versions"
 url = "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-linux-x86_64.tar.gz"
 url_api = "https://api.github.com/repos/Kitware/CMake/releases/assets/298954823"
 
 [tools.cmake."platforms.macos-arm64"]
 checksum = "sha256:3be85f5b999e327b1ac7d804cbc9acd767059e9f603c42ec2765f6ab68fbd367"
-checksum_source = "mise-versions"
 url = "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz"
 url_api = "https://api.github.com/repos/Kitware/CMake/releases/assets/298954851"
 
 [tools.cmake."platforms.macos-x64"]
 checksum = "sha256:3be85f5b999e327b1ac7d804cbc9acd767059e9f603c42ec2765f6ab68fbd367"
-checksum_source = "mise-versions"
 url = "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-macos-universal.tar.gz"
 url_api = "https://api.github.com/repos/Kitware/CMake/releases/assets/298954851"
 
 [tools.cmake."platforms.windows-x64"]
 checksum = "sha256:82730741149681597510a4bc7095da1460b472dac24eaf9c23ad7440f47753ab"
-checksum_source = "mise-versions"
 url = "https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2-windows-x86_64.zip"
 url_api = "https://api.github.com/repos/Kitware/CMake/releases/assets/298954995"
 
@@ -56,42 +49,35 @@ specifiers = ["1.13.2"]
 
 [tools.ninja."platforms.linux-arm64"]
 checksum = "sha256:fd2cacc8050a7f12a16a2e48f9e06fca5c14fc4c2bee2babb67b58be17a607fc"
-checksum_source = "mise-versions"
 url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux-aarch64.zip"
 url_api = "https://api.github.com/repos/ninja-build/ninja/releases/assets/318864579"
 
 [tools.ninja."platforms.linux-arm64-musl"]
 checksum = "sha256:fd2cacc8050a7f12a16a2e48f9e06fca5c14fc4c2bee2babb67b58be17a607fc"
-checksum_source = "mise-versions"
 url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux-aarch64.zip"
 url_api = "https://api.github.com/repos/ninja-build/ninja/releases/assets/318864579"
 
 [tools.ninja."platforms.linux-x64"]
 checksum = "sha256:5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6"
-checksum_source = "mise-versions"
 url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip"
 url_api = "https://api.github.com/repos/ninja-build/ninja/releases/assets/318865358"
 
 [tools.ninja."platforms.linux-x64-musl"]
 checksum = "sha256:5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6"
-checksum_source = "mise-versions"
 url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip"
 url_api = "https://api.github.com/repos/ninja-build/ninja/releases/assets/318865358"
 
 [tools.ninja."platforms.macos-arm64"]
 checksum = "sha256:c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b"
-checksum_source = "mise-versions"
 url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip"
 url_api = "https://api.github.com/repos/ninja-build/ninja/releases/assets/318863524"
 
 [tools.ninja."platforms.macos-x64"]
 checksum = "sha256:c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b"
-checksum_source = "mise-versions"
 url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip"
 url_api = "https://api.github.com/repos/ninja-build/ninja/releases/assets/318863524"
 
 [tools.ninja."platforms.windows-x64"]
 checksum = "sha256:07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65"
-checksum_source = "mise-versions"
 url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip"
 url_api = "https://api.github.com/repos/ninja-build/ninja/releases/assets/318863577"
