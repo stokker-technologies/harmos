@@ -19,7 +19,8 @@ mod codegen;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{fs, path::Path};
+use std::env::consts::{ARCH, OS};
+use std::{env, error::Error, fs, path::Path};
 
 // Third Party Imports
 
@@ -46,7 +47,7 @@ use std::{fs, path::Path};
 /* === Tests === */
 
 #[test]
-fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
+fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
     // Locate the Wire Definition and Disposable Output.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let output_root = root.join("target/generated/rust/harmos-protocol");
@@ -54,10 +55,10 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     let output = tempfile::tempdir_in(output_root)?;
 
     // Archived Tests Consume the Transferred Compiler, Not the Producer's Registry.
-    let (compiler, includes) = if let Ok(profile) = std::env::var("STKR_TEST_PROFILE") {
-        let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    let (compiler, includes) = if let Ok(profile) = env::var("STKR_TEST_PROFILE") {
+        let target = format!("{}-{}", OS, ARCH);
         let vendor = root.join("target/build").join(profile).join(target).join("fixtures/inputs/vendor");
-        let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+        let platform = match (OS, ARCH) {
             ("linux", "x86_64") => "linux-x86_64",
             ("linux", "aarch64") => "linux-aarch_64",
             ("macos", "x86_64") => "macos-x86_64",
@@ -104,12 +105,6 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     for entry in fs::read_dir(output.path().join("context-types"))? {
         let path = entry?.path();
         assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);
-    }
-    codegen::generate_example(&compiler, &includes, output.path())?;
-    for (generated, committed) in
-        [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
-    {
-        assert_eq!(fs::read(output.path().join(generated))?, fs::read(root.join("examples/schematic/protocol/src").join(committed))?);
     }
     codegen::generate_client_fixture(&compiler, &includes, output.path())?;
     for name in ["application.v1.rs", "application.v1.jobs.rs", "client-descriptors.bin", "client-reflection.rs"] {

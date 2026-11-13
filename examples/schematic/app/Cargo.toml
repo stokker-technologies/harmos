@@ -29,7 +29,7 @@ harmos = { workspace = true }
 harmos-storage = { workspace = true, features = ["sqlite"] }
 schematic-domain = { path = "../domain" }
 schematic-protocol = { path = "../protocol", features = ["sdk"] }
-schematic-operations = { path = "../operations", features = ["runtime"] }
+schematic-operations = { path = "../operations" }
 schematic-storage = { path = "../storage" }
 
 # Git

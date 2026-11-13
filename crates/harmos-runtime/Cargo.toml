@@ -122,7 +122,7 @@ harmos = { workspace = true, features = ["wasm"] }
 harmos-packaging = { path = "../../tools/packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
-schematic-operations = { path = "../../examples/schematic/operations", features = ["runtime"] }
+schematic-operations = { path = "../../examples/schematic/operations" }
 
 # Git
 
