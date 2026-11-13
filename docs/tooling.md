@@ -640,6 +640,37 @@ cache environment inputs retain their meanings.
 
 ## Focused Storage Benchmarks
 
+### Proposed Nightly Budget Scheme
+
+Owner decision, 2026-11-13: record this scheme as proposed; the first hosted run
+confirms or adjusts its numbers. Private-repository hosted runners have 2 vCPUs
+and 8 GB of RAM. Every absolute ceiling below is proposed, reported on every
+Nightly, and never enforced by a correctness test.
+
+| Workload | Proposed Absolute Ceiling |
+| --- | --- |
+| Bounded Page or Projection Page | Proposed: 20–30 ms |
+| Full Scan of 2,000,000 Rows | Proposed: 2 s |
+| Small Unary gRPC Call | Proposed: p95 2 ms |
+| Rust or C++ Plugin Ready, Linux | Proposed: 100 ms |
+| Rust or C++ Plugin Ready, Windows | Proposed: 300 ms |
+| Python Plugin Ready | Proposed: 1–2 s |
+
+Relative regression detection builds base and head and runs both in the same job
+on the same runner, comparing medians. Proposed margins are +10% for serial CPU,
++15% for warm reads and +30% for cold and fsync-bound cases. Pure CPU kernels,
+including reduction and decoding, also report instruction counts with a proposed
++5% flag. Peak throughput and cold-disk latency on hosted runners are tracked only,
+never gated. Nightly publication remains ungated by benchmarks.
+
+History is an append-only record beside the existing benchmark results under
+`target/benchmarks/`, carrying the CPU model, runner image version and base/head
+revisions. A rolling baseline of twenty Nightly runs supplies trend warnings;
+it does not replace the paired base/head comparison. These are proposed reporting
+and comparison contracts, not a claim that the automation already implements them.
+The owning [storage-interface design](../openspec/changes/storage-interface/design.md#proposed-nightly-budget-scheme)
+and tasks 3.10–3.13 retain the four separate storage optimization cases.
+
 ```sh
 mise run bench -- --storage --filter baseline
 mise run bench -- --storage --filter native

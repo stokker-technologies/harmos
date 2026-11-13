@@ -33,6 +33,12 @@
 
 ## 3. Benchmark Proof
 
+- [x] 3.9.1 Record the owner's 2026-11-13 proposed Nightly budget scheme in design.md and docs/tooling.md: absolute reporting, paired relative comparison, instruction counts, track-only hosted measurements and append-only/twenty-run history. First hosted confirmation and automation remain pending; publication is ungated.
+- [ ] 3.10 Measure and optimize the row-path scan of two million rows separately from the proposed Nightly scheme: 10.5 s measured; proposed target 0.5–2 s. No implementation in the 2026-11-13 recording step.
+- [ ] 3.11 Measure and optimize the indexed page separately from the proposed Nightly scheme: 110–120 ms measured; proposed target 2–15 ms. No implementation in the 2026-11-13 recording step.
+- [ ] 3.12 Measure and optimize index construction for two million entries separately from the proposed Nightly scheme: 79 s measured; proposed target 2–10 s. No implementation in the 2026-11-13 recording step.
+- [ ] 3.13 Measure and optimize late bucket replacement separately from the proposed Nightly scheme: 39 s measured; proposed target under 1 s. No implementation in the 2026-11-13 recording step.
+
 - [x] 3.4 Profile and repair late bucket replacement in `crates/harmos-storage/**`; persist incremental identity/bucket state, preserve exact saved cuts and replay, and prove affected-bucket work deterministically.
 - [x] 3.5 Profile and repair two-million-entry index construction; preserve atomic publication and cancellation, and prove bounded decoding/preparation work.
 - [x] 3.6 Profile and repair first/next/deep index pages; preserve ordering ties, reverse seeks and snapshot cuts, and prove seek plus bounded sequential work.

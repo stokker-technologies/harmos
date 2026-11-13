@@ -388,6 +388,43 @@ single measurements, not medians. Repeated Criterion sampling remains available 
 baseline selector. Budgets are unchanged and remain provisional until hosted repeated proof.
 
 
+## Proposed Nightly Budget Scheme
+
+Owner decision, 2026-11-13: record the following scheme as proposed. The first hosted
+run confirms or adjusts the proposed numbers. Private-repository hosted runners have
+2 vCPUs and 8 GB of RAM. Report every proposed absolute ceiling on every Nightly;
+none is a wall-clock assertion in a correctness test.
+
+| Workload | Proposed Absolute Ceiling |
+| --- | --- |
+| Bounded Page or Projection Page | Proposed: 20–30 ms |
+| Full Scan of 2,000,000 Rows | Proposed: 2 s |
+| Small Unary gRPC Call | Proposed: p95 2 ms |
+| Rust or C++ Plugin Ready, Linux | Proposed: 100 ms |
+| Rust or C++ Plugin Ready, Windows | Proposed: 300 ms |
+| Python Plugin Ready | Proposed: 1–2 s |
+
+Relative regression detection builds base and head and runs both in one job on the
+same runner, comparing medians. Proposed margins: +10% for serial CPU, +15% for warm
+reads and +30% for cold and fsync-bound cases. Pure CPU kernels such as reduction and
+decoding additionally report instruction counts, flagged at a proposed +5% increase.
+Hosted peak throughput and cold-disk latency are tracked only, never gated.
+Nightly publication remains ungated by benchmarks.
+
+Keep an append-only history beside existing results in `target/benchmarks/`, with
+CPU model, runner image version and base/head revisions. Use a rolling baseline of
+twenty Nightly runs for trend warnings; retain paired base/head comparison for
+regression detection. Recording this proposal does not claim reporting automation
+or hosted proof is complete. Earlier measurement tables and their historical budgets
+remain evidence of those runs; this proposal does not retroactively reinterpret them.
+
+Four separate storage cases remain outside this scheme and are not implemented by
+this decision: row-path scan of two million rows (10.5 s measured, 0.5–2 s target),
+indexed page (110–120 ms measured, 2–15 ms target), index construction for two million
+entries (79 s measured, 2–10 s target), and late bucket replacement (39 s measured,
+under 1 s target). Tasks 3.10–3.13 keep these supplied measurements distinct from
+later local captures below; targets are proposed and await focused follow-up proof.
+
 ## Windows Baseline Measurement
 
 Captured before interface implementation on Windows x86_64, AMD Ryzen 9 5950X (32 logical
