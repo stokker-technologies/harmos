@@ -51,9 +51,7 @@ class PackagedConformance(unittest.TestCase):
         for name in ("sdk", "proto"):
             owned = (source / name).resolve()
             if not owned.is_relative_to(source):
-                raise RuntimeError(
-                    "Package Conformance: extracted sources escaped the owned directory"
-                )
+                raise RuntimeError("Package Conformance: extracted sources escaped the owned directory")
             if owned.exists():
                 shutil.rmtree(owned)
         with tarfile.open(package) as bundle:
@@ -63,9 +61,7 @@ class PackagedConformance(unittest.TestCase):
         prefix = root / "target/cpp" / selected / "installed"
         build = root / "target/cpp/packaged" / profile
         child_environment = environment()
-        toolchain = (
-            Path(child_environment["VCPKG_ROOT"]) / "scripts/buildsystems/vcpkg.cmake"
-        )
+        toolchain = Path(child_environment["VCPKG_ROOT"]) / "scripts/buildsystems/vcpkg.cmake"
         configure = [
             "cmake",
             "-S",
@@ -80,9 +76,7 @@ class PackagedConformance(unittest.TestCase):
             f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
         ]
-        subprocess.run(
-            configure, env=child_environment, check=True, creationflags=spawn_flags()
-        )
+        subprocess.run(configure, env=child_environment, check=True, creationflags=spawn_flags())
         build.mkdir(parents=True, exist_ok=True)
         with (build / "build.log").open("w", encoding="utf-8") as log:
             result = subprocess.run(
@@ -110,11 +104,7 @@ class PackagedConformance(unittest.TestCase):
         suffix = ".exe" if os.name == "nt" else ""
         exported = output(root, "build", profile) / f"bin/harmos-conformance{suffix}"
         local = root / f"target/debug/harmos-conformance{suffix}"
-        host = Path(
-            os.environ.get(
-                "HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local
-            )
-        )
+        host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local))
         plugin = build / f"harmos-cpp-conformance{suffix}"
         result = subprocess.run(
             [str(host), "--plugin", str(plugin)],
@@ -126,9 +116,7 @@ class PackagedConformance(unittest.TestCase):
             creationflags=spawn_flags(),
         )
         self.assertEqual(result.returncode, 0, result.stdout)
-        rows = [
-            line for line in result.stdout.splitlines() if line.endswith("| PASS |")
-        ]
+        rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
         self.assertEqual(len(rows), 31, result.stdout)
 
 
