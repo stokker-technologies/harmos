@@ -102,7 +102,7 @@ impl Publications {
                 .await
                 .unwrap();
             let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
-            let mut client = harmos_protocol::plugin::instance_client::InstanceClient::new(activation.connection.channel.clone());
+            let mut client = activation.connection.client();
             let input = client.samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
             let lease =
                 publications.registration.leases().iter().find(|lease| lease.stream().definition().id() == stream.id).unwrap().clone();

@@ -404,14 +404,6 @@ class FileEvent(_message.Message):
     replaced: Empty
     def __init__(self, data: _Optional[_Union[FileBatch, _Mapping]] = ..., truncated: _Optional[int] = ..., replaced: _Optional[_Union[Empty, _Mapping]] = ...) -> None: ...
 
-class ReadFile(_message.Message):
-    __slots__ = ("source", "range")
-    SOURCE_FIELD_NUMBER: _ClassVar[int]
-    RANGE_FIELD_NUMBER: _ClassVar[int]
-    source: FileSource
-    range: ByteRange
-    def __init__(self, source: _Optional[_Union[FileSource, _Mapping]] = ..., range: _Optional[_Union[ByteRange, _Mapping]] = ...) -> None: ...
-
 class SchemaKey(_message.Message):
     __slots__ = ("id", "version", "payload_encoding")
     ID_FIELD_NUMBER: _ClassVar[int]
@@ -890,12 +882,6 @@ class DataBatch(_message.Message):
     schema: SchemaKey
     ipc: bytes
     def __init__(self, sequence: _Optional[int] = ..., destination: _Optional[str] = ..., schema: _Optional[_Union[SchemaKey, _Mapping]] = ..., ipc: _Optional[bytes] = ...) -> None: ...
-
-class WriteFile(_message.Message):
-    __slots__ = ("metadata",)
-    METADATA_FIELD_NUMBER: _ClassVar[int]
-    metadata: FileMetadata
-    def __init__(self, metadata: _Optional[_Union[FileMetadata, _Mapping]] = ...) -> None: ...
 
 class ReadLimits(_message.Message):
     __slots__ = ("rows", "bytes")

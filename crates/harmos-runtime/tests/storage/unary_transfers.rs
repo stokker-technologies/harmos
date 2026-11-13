@@ -61,6 +61,10 @@ async fn resume_fence_publish_and_range_across_faces() {
     let attached =
         fixture.runtime.attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(plugin.address.clone()), settings).await.unwrap();
     fixture.runtime.operations.register_authorizer(std::sync::Arc::new(super::transfer_plugin::AllowTransfers)).unwrap();
+    let mut incompatible = harmos_runtime::grpc::Settings::default();
+    incompatible.operations.decode.message_bytes = std::num::NonZeroUsize::new(1024).unwrap();
+    assert!(matches!(fixture.runtime.grpc().attach(incompatible).await,
+        Err(harmos_runtime::Error::InvalidInput { field: "GrpcSettings.operations.decode.message_bytes", .. })));
     let listener = fixture.runtime.grpc().attach(harmos_runtime::grpc::Settings::default()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
     let calls = &fixture.runtime.operations;
@@ -294,14 +298,11 @@ async fn resume_fence_publish_and_range_across_faces() {
         .await
         .is_err()
     );
-    assert!(
-        super::transfer_plugin::client_call::<operations::GetFileBytes>(
-            &channel,
-            client::StorageGetFileBytesRequest { max_bytes: 0, ..request.clone() }
-        )
-        .await
-        .is_err()
-    );
+    let default_range = super::transfer_plugin::client_call::<operations::GetFileBytes>(
+        &channel, client::StorageGetFileBytesRequest { max_bytes: 0, ..request.clone() }
+    ).await.unwrap();
+    assert_eq!(default_range.data, content);
+    assert_eq!(default_range.resolved_at, first.resolved_at);
     assert!(
         super::transfer_plugin::client_call::<operations::GetFileBytes>(
             &channel,
@@ -329,7 +330,7 @@ async fn resume_fence_publish_and_range_across_faces() {
         .is_err()
     );
     fixture.data.control.corrupt_file.store(false, std::sync::atomic::Ordering::Release);
-    let bound = fixture.storage.settings().response.batch_bytes.get();
+    let bound = fixture.storage.settings().transfer_message_bytes().get();
     let bytes = vec![0x5a; bound + 1000];
     let digest = Sha256::digest(&bytes).to_vec();
     let production = super::transfer_plugin::client_call::<operations::CreateFileProduction>(
@@ -347,12 +348,13 @@ async fn resume_fence_publish_and_range_across_faces() {
     .unwrap()
     .production
     .unwrap();
-    for (index, chunk) in bytes.chunks(bound).enumerate() {
+    let chunk_bytes = fixture.storage.settings().transfer_chunk_bytes().get();
+    for (index, chunk) in bytes.chunks(chunk_bytes).enumerate() {
         super::transfer_plugin::client_call::<operations::AppendFileBytes>(
             &channel,
             client::StorageAppendFileBytesRequest {
                 session: production.session.clone(),
-                offset: (index * bound) as u64,
+                offset: (index * chunk_bytes) as u64,
                 data: chunk.to_vec(),
                 mutation: mutation(&format!("bounded-append-{index}")),
             },
@@ -383,8 +385,7 @@ async fn resume_fence_publish_and_range_across_faces() {
     .await
     .unwrap();
     assert!(prost::Message::encoded_len(&range) <= bound);
-    assert!(!range.data.is_empty());
-    assert_eq!(range.data, bytes[..range.data.len()]);
+    assert_eq!(range.data, bytes[..chunk_bytes]);
 
     // Abandon Another Production Without Publishing It.
     let created = super::transfer_plugin::call::<context::CreateFileProduction>(

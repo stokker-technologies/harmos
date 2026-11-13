@@ -64,7 +64,6 @@ message FileHash { uint64 bytes_read = 1; bytes sha256 = 2; }
 message FollowStart { oneof start { Empty beginning = 1; Empty end = 2; uint64 at = 3; } }
 message FileEvent { oneof event { FileBatch data = 1; uint64 truncated = 2; Empty replaced = 3; } }
 enum CaptureConsistency { BOUNDED = 0; STABLE = 1; }
-message ReadFile { FileSource source = 1; ByteRange range = 2; }
 
 // Storage schema graphs describe persisted payloads; they do not change their encoding.
 enum PayloadEncoding { PAYLOAD_ENCODING_UNSPECIFIED = 0; POSTCARD_V1 = 1; }
@@ -136,7 +135,6 @@ message ObjectVersionToken { StoreHistory history = 1; uint64 revision = 2; }
 message ObjectValue { SchemaKey schema = 1; string item = 2; bytes payload = 3; }
 message ObjectEntry { StorageCursor position = 1; ObjectVersionToken version = 2; ObjectValue value = 3; }
 message DataBatch { uint64 sequence = 1; string destination = 2; SchemaKey schema = 3; bytes ipc = 4; }
-message WriteFile { FileMetadata metadata = 1; }
 
 // Native plans use separate output and source-work bounds supplied by the caller.
 message ReadLimits { uint64 rows = 1; uint64 bytes = 2; }

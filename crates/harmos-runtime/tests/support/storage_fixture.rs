@@ -58,7 +58,7 @@ impl Fixture {
             setup.resource(std::ops::Deref::deref(storage).clone());
             setup.resource(harmos_operations::storage::SavedSnapshots::new(storage.query_capacity()));
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
-                preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+                preparation_bytes: Some(harmos_protocol::transfer::default_message_bytes().checked_mul(std::num::NonZeroUsize::new(6).unwrap()).unwrap()),
                 ..Default::default()
             });
             setup.settings().register(catalog());

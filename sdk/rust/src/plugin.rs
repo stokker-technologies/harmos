@@ -46,6 +46,7 @@ pub struct Plugin {
     messages: Vec<(String, prost_types::FileDescriptorSet)>,
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
+    pub(crate) transfer: harmos_protocol::storage::StorageTransferSettings,
 }
 
 pub(crate) struct Required {
@@ -75,7 +76,13 @@ impl Plugin {
             messages: Vec::new(),
             cleanup: Vec::new(),
             remote: false,
+            transfer: Default::default(),
         }
+    }
+
+    pub fn transfer(mut self, settings: harmos_protocol::storage::StorageTransferSettings) -> Self {
+        self.transfer = settings;
+        self
     }
 
     pub fn operation(mut self, operation: Operation) -> Self {

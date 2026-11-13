@@ -494,6 +494,7 @@ Storage uses explicit request, response and filesystem settings, with no default
 
 ```rust
 let settings = StorageSettings {
+    transfer: Default::default(),
     request: StorageRequestSettings {
         max_pending_queries,
         max_active_queries,
@@ -562,7 +563,7 @@ page sizes and pending writes remain bounded by the configured request and respo
 settings. Consumers own budgets for their retained results and conversion scratch.
 
 File operations share `FileSource::Stored(reference)` and `FileSource::Local(path)`.
-`ReadFile` streams a selected byte range; `Storage.GetFileHash` returns its byte count and
+`Storage.GetFileBytes` returns a bounded unary byte range; `Storage.GetFileHash` returns its byte count and
 SHA-256. `Storage.CaptureFile` creates an independent durable stored file while hashing.
 `CaptureConsistency::Stable` rejects detected source changes; it does not provide
 an atomic snapshot. `Bounded` copies the initially selected range. Local paths
@@ -999,12 +1000,13 @@ revisions are unchanged.
 ### Generated Rust Clients
 
 `harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
-The caller sets the wire-message limit, outgoing item count, outgoing byte budget and required
-`retained_bytes: NonZeroUsize` from application configuration. For example:
+The caller supplies storage transfer settings and the required
+`retained_bytes: NonZeroUsize` from application configuration. Wire and outgoing-byte
+limits derive from the transfer setting plus framing; explicit ceilings must carry it. For example:
 
 ```rust
 let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<std::num::NonZeroUsize>()?;
-let settings = harmos::ClientSettings { retained_bytes, message_bytes, input_items, input_bytes };
+let settings = harmos::ClientSettings::for_storage(transfer_settings, retained_bytes)?;
 let client = harmos::Client::new(channel, settings)?;
 ```
 

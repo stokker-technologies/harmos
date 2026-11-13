@@ -16,8 +16,9 @@ using Microsoft.Extensions.Logging;
 namespace Harmos.Sdk;
 
 /// <summary>A plugin assembled from typed async methods, including instance methods with shared state.</summary>
-public sealed class Plugin(string id, string version)
+public sealed class Plugin(string id, string version, global::Harmos.Storage.V1.StorageTransferSettings? transfer = null)
 {
+  private readonly global::Harmos.Storage.V1.StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
   private static readonly Timestamp StartedAt = Timestamp.FromDateTime(DateTime.UtcNow);
   private readonly Catalog catalog = new() { Types_ = new() };
   private readonly Dictionary<string, Handler> operations = [];
@@ -126,7 +127,8 @@ public sealed class Plugin(string id, string version)
     builder.Logging.ClearProviders();
     builder.WebHost.ConfigureKestrel(options => options.Listen(endpoint.Address, endpoint.Port,
         listener => listener.Protocols = HttpProtocols.Http2));
-    builder.Services.AddGrpc();
+    var maximum = Transfer.MessageBytes(transferSettings);
+    builder.Services.AddGrpc(options => { options.MaxReceiveMessageSize = maximum; options.MaxSendMessageSize = maximum; });
     builder.Services.AddSingleton(provider => new PluginService(new InstanceGetResponse
     {
       Id = id,
@@ -135,7 +137,8 @@ public sealed class Plugin(string id, string version)
       Catalog = snapshot,
       Revision = 1,
       Sdk = "harmos_csharp",
-      SdkVersion = "0.1.0"
+      SdkVersion = "0.1.0",
+      MessageBytes = (ulong)maximum
     }, new(operations), new(streams), cleanup.ToArray(), remote, provider.GetRequiredService<IHostApplicationLifetime>()));
 
     await using var app = builder.Build();

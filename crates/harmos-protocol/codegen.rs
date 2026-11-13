@@ -78,6 +78,7 @@ pub fn generate(
         let mut config = prost_build::Config::new();
         config.protoc_executable(compiler);
         config.type_attribute(".harmos.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
+        config.type_attribute(".harmos.storage.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
         for external in packages.keys().filter(|external| *external != package) {
             let module = module_path(external)?;
             if package.starts_with(&format!("{external}.")) {

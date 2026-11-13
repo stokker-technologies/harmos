@@ -284,14 +284,6 @@ pub mod file_event {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ReadFile {
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub range: ::core::option::Option<ByteRange>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SchemaKey {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
@@ -818,12 +810,6 @@ pub struct DataBatch {
     pub schema: ::core::option::Option<SchemaKey>,
     #[prost(bytes = "vec", tag = "4")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct WriteFile {
-    #[prost(message, optional, tag = "1")]
-    pub metadata: ::core::option::Option<FileMetadata>,
 }
 /// Native plans use separate output and source-work bounds supplied by the caller.
 #[allow(clippy::all)]
@@ -1478,6 +1464,42 @@ impl StorageFailureKind {
             "STORAGE_FAILURE_EXHAUSTED" => Some(Self::StorageFailureExhausted),
             "STORAGE_FAILURE_INVALID" => Some(Self::StorageFailureInvalid),
             "STORAGE_FAILURE_MISSING_INDEX" => Some(Self::StorageFailureMissingIndex),
+            _ => None,
+        }
+    }
+}
+/// One Storage Setting Shared by Host and SDK Defaults.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StorageTransferSettings {
+    #[prost(uint64, optional, tag = "1", default = "4194304")]
+    pub chunk_bytes: ::core::option::Option<u64>,
+}
+/// Space for Default Session, Receipt, Cut and Carrier Framing.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TransferFraming {
+    Unspecified = 0,
+    Bytes = 512,
+}
+impl TransferFraming {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "TRANSFER_FRAMING_UNSPECIFIED",
+            Self::Bytes => "TRANSFER_FRAMING_BYTES",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "TRANSFER_FRAMING_UNSPECIFIED" => Some(Self::Unspecified),
+            "TRANSFER_FRAMING_BYTES" => Some(Self::Bytes),
             _ => None,
         }
     }

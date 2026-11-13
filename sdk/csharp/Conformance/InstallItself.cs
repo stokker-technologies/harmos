@@ -2,7 +2,6 @@
 
 using Google.Protobuf;
 using Grpc.Core;
-using Grpc.Net.Client;
 using Harmos.Sdk;
 using Harmos.V1;
 using Value = Harmos.Conformance.V1.Value;
@@ -18,8 +17,8 @@ internal static class InstallItself
           .ServeAsync("127.0.0.1:0", remote: true);
       return;
     }
-    using var channel = GrpcChannel.ForAddress(arguments[0]);
-    var client = new Client(channel.CreateCallInvoker());
+    var transfer = new global::Harmos.Storage.V1.StorageTransferSettings();
+    using var client = Client.Connect(arguments[0], transfer);
     // Install and Start This Codebase's Running Instance
     await client.Plugins.Create(new PluginsCreateRequest {
       RequestId = "self-install", Name = "example",
@@ -37,10 +36,14 @@ internal static class InstallItself
     if (ready is null) throw new InvalidOperationException("Watch Plugins: closed before Ready");
     // Invoke Its Public Operation Through the Host
     var contract = ready.Description.Catalog.Operations.Single(operation => operation.Id == "example.echo");
+    var data = new byte[checked((int)transfer.ChunkBytes)];
+    "hello"u8.CopyTo(data);
     var reply = await client.Invocations.Invoke(new InvocationsInvokeRequest {
-      Operation = contract.Id, Fingerprint = contract.Fingerprint, Payload = new Value { Value_ = ByteString.CopyFromUtf8("hello") }.ToByteString()
+      Operation = contract.Id, Fingerprint = contract.Fingerprint, Payload = new Value { Value_ = ByteString.CopyFrom(data) }.ToByteString()
     });
-    Console.WriteLine(Value.Parser.ParseFrom(reply.Payload).Value_.ToStringUtf8());
+    if (!Value.Parser.ParseFrom(reply.Payload).Value_.Span.SequenceEqual(data))
+      throw new InvalidOperationException("Invoke example.echo: payload changed");
+    Console.WriteLine("hello");
     await client.Plugins.Delete(new PluginsDeleteRequest { Name = "example", ExpectedRevision = ready.Revision });
   }
 }

@@ -512,7 +512,7 @@ impl StorageManager {
             accepted: state.status.accepted.clone(),
             saved: state.status.saved.clone(),
             mutations,
-            file_batch_bytes: self.inner.settings.response.batch_bytes.get() as u64,
+            file_batch_bytes: self.inner.settings.transfer_chunk_bytes().get() as u64,
         })
     }
 

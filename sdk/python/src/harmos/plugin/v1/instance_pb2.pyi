@@ -21,7 +21,7 @@ class InstanceGetRequest(_message.Message):
     def __init__(self, revision: _Optional[int] = ..., host: _Optional[str] = ..., host_version: _Optional[str] = ...) -> None: ...
 
 class InstanceGetResponse(_message.Message):
-    __slots__ = ("id", "version", "started_at", "catalog", "revision", "sdk", "sdk_version")
+    __slots__ = ("id", "version", "started_at", "catalog", "revision", "sdk", "sdk_version", "message_bytes")
     ID_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
     STARTED_AT_FIELD_NUMBER: _ClassVar[int]
@@ -29,6 +29,7 @@ class InstanceGetResponse(_message.Message):
     REVISION_FIELD_NUMBER: _ClassVar[int]
     SDK_FIELD_NUMBER: _ClassVar[int]
     SDK_VERSION_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_BYTES_FIELD_NUMBER: _ClassVar[int]
     id: str
     version: str
     started_at: _timestamp_pb2.Timestamp
@@ -36,7 +37,8 @@ class InstanceGetResponse(_message.Message):
     revision: int
     sdk: str
     sdk_version: str
-    def __init__(self, id: _Optional[str] = ..., version: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., catalog: _Optional[_Union[_types_pb2.Catalog, _Mapping]] = ..., revision: _Optional[int] = ..., sdk: _Optional[str] = ..., sdk_version: _Optional[str] = ...) -> None: ...
+    message_bytes: int
+    def __init__(self, id: _Optional[str] = ..., version: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., catalog: _Optional[_Union[_types_pb2.Catalog, _Mapping]] = ..., revision: _Optional[int] = ..., sdk: _Optional[str] = ..., sdk_version: _Optional[str] = ..., message_bytes: _Optional[int] = ...) -> None: ...
 
 class InstanceStopRequest(_message.Message):
     __slots__ = ("reason",)

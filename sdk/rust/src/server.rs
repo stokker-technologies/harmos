@@ -195,6 +195,9 @@ impl Service for Server {
 
 pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| Error::Invalid(error.to_string()))?;
+    let message_bytes = harmos_protocol::transfer::message_bytes(&plugin.transfer)
+        .filter(|bytes| bytes.get() <= u32::MAX as usize)
+        .ok_or_else(|| Error::Invalid("Start Plugin: StorageSettings.transfer.chunk_bytes exceeds transport capacity".into()))?.get();
     let address = std::env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
     let listener = TcpListener::bind(address).await?;
     let (shutdown, stopped) = oneshot::channel();
@@ -222,6 +225,7 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
             revision: 1,
             sdk: "harmos_rust".into(),
             sdk_version: env!("CARGO_PKG_VERSION").into(),
+            message_bytes: message_bytes as u64,
         },
         local: Arc::new(
             plugin
@@ -252,7 +256,7 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
     std::io::stdout().flush()?;
     tracing::info!(%address, "Plugin Listening");
     let result = tonic::transport::Server::builder()
-        .add_service(InstanceServer::new(server))
+        .add_service(InstanceServer::new(server).max_decoding_message_size(message_bytes).max_encoding_message_size(message_bytes))
         .serve_with_incoming_shutdown(incoming, async move {
             if plugin.remote {
                 std::future::pending::<()>().await;

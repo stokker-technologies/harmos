@@ -50,7 +50,7 @@ impl StorageManager {
         let mut bytes = Some(bytes);
         self.mutate_file(mutation, fingerprint, |state| {
             let payload = bytes.as_ref().expect("unadmitted file payload");
-            if payload.is_empty() || payload.len() > self.inner.settings.response.batch_bytes.get() { return Err(invalid("append requires a nonempty bounded batch")); }
+            if payload.is_empty() || payload.len() > self.inner.settings.transfer_chunk_bytes().get() { return Err(invalid("append requires a nonempty bounded batch")); }
             let (id, file) = active(state, token)?;
             file.check_session(Some(token))?;
             if file.command.is_some() || file.in_flight { return Ok(false); }

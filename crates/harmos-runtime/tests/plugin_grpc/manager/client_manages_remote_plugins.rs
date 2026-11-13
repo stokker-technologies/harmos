@@ -77,6 +77,7 @@ async fn client_manages_remote_plugins() {
     let sdk = harmos::client::Client::new(
         host.channel.clone(),
         harmos::client::ClientSettings {
+            transfer: harmos::storage::StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
             retained_bytes: capacity,
             message_bytes: capacity,
             input_items: std::num::NonZeroUsize::new(1).unwrap(),

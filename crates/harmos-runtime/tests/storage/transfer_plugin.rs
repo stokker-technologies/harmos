@@ -140,34 +140,6 @@ impl TransferPlugin {
                 id: child,
             });
         }
-        catalog.operations.push(v1::OperationContract {
-            id: "fixture.transfer.read_file".into(),
-            request: "harmos.storage.v1.ReadFile".into(),
-            response: "harmos.storage.v1.FileHash".into(),
-            fingerprint: schema::fingerprint(
-                "fixture.transfer.read_file",
-                &types,
-                "harmos.storage.v1.ReadFile",
-                "harmos.storage.v1.FileHash",
-            )
-            .unwrap(),
-            visibility: v1::Visibility::Public as i32,
-            ..Default::default()
-        });
-        catalog.requires.push(v1::Requirement {
-            id: "storage.read_file".into(),
-            fingerprint: schema::host_fingerprint(
-                "storage.read_file",
-                &v1::Protobuf {
-                    descriptors: types.encode_to_vec(),
-                    request: "harmos.storage.v1.ReadFile".into(),
-                    response: "harmos.storage.v1.FileCompletion".into(),
-                    input: None,
-                    output: Some("harmos.storage.v1.FileBatch".into()),
-                },
-            )
-            .unwrap(),
-        });
         for (method, id, request, response) in [
             ("native_info", "storage.info", "StorageInfoRequest", "StorageInfoResponse"),
             ("native_get_schema", "storage.get_schema", "StorageGetSchemaRequest", "StorageGetSchemaResponse"),
@@ -217,7 +189,7 @@ impl TransferPlugin {
         };
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(plugin::instance_server::InstanceServer::new(service))
+                .add_service(plugin::instance_server::InstanceServer::new(service).max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get()).max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()))
                 .serve_with_incoming_shutdown(incoming, async {
                     let _ = stopped.await;
                 })
@@ -258,6 +230,7 @@ impl plugin::instance_server::Instance for Service {
 
     async fn get(&self, _: Request<plugin::InstanceGetRequest>) -> Result<Response<plugin::InstanceGetResponse>, Status> {
         Ok(Response::new(plugin::InstanceGetResponse {
+            message_bytes: harmos_protocol::transfer::default_message_bytes().get() as u64,
             id: "transfer_fixture".into(),
             version: "1.0.0".into(),
             revision: 1,
@@ -284,11 +257,10 @@ impl plugin::instance_server::Instance for Service {
             .iter()
             .find(|required| {
                 required.id.rsplit_once('/').is_some_and(|(_, name)| snake(name) == method)
-                    || method == "read_file" && required.id == "storage.read_file"
                     || method.strip_prefix("native_").is_some_and(|name| required.id == format!("storage.{name}"))
             })
             .ok_or_else(|| Status::not_found("Invoke undeclared transfer"))?;
-        let watch = method.starts_with("watch_") || method == "read_file";
+        let watch = method.starts_with("watch_");
         let watch_kind = method.to_owned();
         let watch_opened = self.watch_opened.clone();
         let child = v1::ChildRequest {
@@ -322,28 +294,9 @@ impl plugin::instance_server::Instance for Service {
             {
                 return;
             }
-            use sha2::{Digest, Sha256};
-            let mut stream_hash = Sha256::new();
-            let mut stream_length = 0u64;
             while let Ok(Some(frame)) = input.message().await {
                 if let Some(plugin::instance_invoke_request::Frame::Child(child)) = frame.frame {
                     if let Some(v1::child_response::Result::Item(payload)) = &child.result {
-                        if watch_kind == "read_file" {
-                            let batch = harmos_protocol::storage::FileBatch::decode(payload.as_slice()).unwrap();
-                            assert_eq!(batch.offset, stream_length);
-                            stream_length += batch.bytes.len() as u64;
-                            stream_hash.update(&batch.bytes);
-                            if send
-                                .send(Ok(plugin::InstanceInvokeResponse {
-                                    frame: Some(plugin::instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call: 1 })),
-                                }))
-                                .await
-                                .is_err()
-                            {
-                                return;
-                            }
-                            continue;
-                        }
                         let take = match watch_kind.as_str() {
                             "watch_rows" => {
                                 let frame = harmos_protocol::context::StorageWatchRowsResponse::decode(payload.as_slice()).unwrap();
@@ -404,24 +357,6 @@ impl plugin::instance_server::Instance for Service {
                         }
                         continue;
                     }
-                    if watch_kind == "read_file"
-                        && let Some(v1::child_response::Result::Payload(payload)) = &child.result
-                    {
-                        let completion = harmos_protocol::storage::FileCompletion::decode(payload.as_slice()).unwrap();
-                        assert_eq!(completion.bytes, stream_length);
-                        let hash = harmos_protocol::storage::FileHash {
-                            bytes_read: stream_length,
-                            sha256: stream_hash.finalize().to_vec(),
-                        };
-                        let _ = send
-                            .send(Ok(plugin::InstanceInvokeResponse {
-                                frame: Some(plugin::instance_invoke_response::Frame::Response(v1::Response {
-                                    result: Some(v1::response::Result::Payload(hash.encode_to_vec())),
-                                })),
-                            }))
-                            .await;
-                        return;
-                    }
                     let result = child.result.map(|result| match result {
                         v1::child_response::Result::Payload(payload) => v1::response::Result::Payload(payload),
                         v1::child_response::Result::Failure(failure) => v1::response::Result::Failure(failure),
@@ -471,7 +406,8 @@ pub async fn client_call<O: harmos_operations::execution::operations::ProtobufOp
 ) -> Result<O::Response, tonic::Status> {
     let binding = O::GRPC.expect("client declaration");
     let path = tonic::codegen::http::uri::PathAndQuery::try_from(binding.path()).unwrap();
-    let mut client = tonic::client::Grpc::new(channel.clone());
+    let maximum = harmos_protocol::transfer::default_message_bytes().get();
+    let mut client = tonic::client::Grpc::new(channel.clone()).max_decoding_message_size(maximum).max_encoding_message_size(maximum);
     client.ready().await.map_err(|source| tonic::Status::unavailable(source.to_string()))?;
     let response = client.unary(tonic::Request::new(request), path, tonic_prost::ProstCodec::default()).await?;
     Ok(response.into_inner())

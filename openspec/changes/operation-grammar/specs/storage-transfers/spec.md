@@ -96,12 +96,33 @@ be no streaming download operation or automatically generated twin.
 
 ### Requirement: Nightly Transfer Throughput Verification
 
-Before streaming transfers are deleted, the Nightly benchmark set SHALL measure
+As amended by the owner on 2026-11-13, streaming upload/download declarations,
+handlers, bindings, SDK surfaces and benchmark cases SHALL be deleted. The Nightly
+benchmark set SHALL measure
 large-file upload and download throughput with `integration/file_transfer` for
 client and plugin carriers, recording bytes, chunk/range configuration and
 throughput. This SHALL be a benchmark measurement, never a test assertion.
 
 #### Scenario: Transfer Removal Review
 
-- **WHEN** superseded streaming transfers are ready for deletion
-- **THEN** review includes measured large-file throughput from the Nightly benchmark case rather than a timing assertion in a test
+- **WHEN** Nightly runs the transfer benchmark
+- **THEN** it reports unary upload/download throughput for both faces at the configured chunk size, without a timing assertion or streaming case
+
+### Requirement: One Storage-Owned Transfer Default
+
+Amended by the owner on 2026-11-13: `StorageSettings.transfer` SHALL own generated
+`StorageTransferSettings.chunk_bytes`, whose sole default is 4 MiB. Append sizes
+and omitted ranged-read sizes on both faces SHALL use it. Every SDK-created client
+connection, listener, plugin carrier and Wasm guest SHALL derive its message ceiling
+from that setting plus protocol framing. Invalid or insufficient ceilings SHALL
+refuse construction/startup with an error naming the action and setting.
+
+#### Scenario: Default Chunk Across Carriers
+
+- **WHEN** a default client or plugin appends a full default chunk or reads with maximum bytes omitted
+- **THEN** the unary message passes every configured carrier and reads return at most the shared storage chunk size
+
+#### Scenario: Incompatible Ceiling
+
+- **WHEN** a listener, SDK connection, plugin or guest ceiling cannot carry its storage chunk plus framing
+- **THEN** startup refuses naming the configuring action, storage chunk setting and conflicting ceiling

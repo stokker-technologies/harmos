@@ -35,6 +35,8 @@ pub struct InstanceGetResponse {
     pub sdk: ::prost::alloc::string::String,
     #[prost(string, tag = "7")]
     pub sdk_version: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "8")]
+    pub message_bytes: u64,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

@@ -14,6 +14,7 @@ message GuestRegistration {
   OperationPolicy initialization = 4;
   OperationPolicy shutdown = 5;
   repeated GuestRequirement requirements = 6;
+  uint64 message_bytes = 7;
 }
 message GuestRequirement {
   string id = 1;

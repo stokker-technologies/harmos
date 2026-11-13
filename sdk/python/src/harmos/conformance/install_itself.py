@@ -11,10 +11,10 @@
 
 # === Imports === #
 
-import grpc
 from harmos import Client, Context, Plugin, operation
 from harmos.conformance.v1.fixture_pb2 import Value
 from harmos.v1 import plugins_pb2 as plugins, invocations_pb2 as invocations, types_pb2 as wire
+from harmos.v1.storage_settings_pb2 import StorageTransferSettings
 
 # === Public Exports === #
 
@@ -40,8 +40,8 @@ async def run(arguments):
         print(f"harmos listening {endpoint.address}", flush=True)
         await endpoint.server.wait_for_termination()
         return
-    channel = grpc.aio.insecure_channel(arguments[0].removeprefix("http://"))
-    client = Client(channel)
+    transfer = StorageTransferSettings()
+    client = Client.connect(arguments[0], transfer=transfer)
     # Install and Start This Codebase's Running Instance
     await client.plugins.create(
         plugins.PluginsCreateRequest(
@@ -63,14 +63,17 @@ async def run(arguments):
         raise RuntimeError("Watch Plugins: closed before Ready")
     # Invoke Its Public Operation Through the Host
     contract = next(operation for operation in ready.description.catalog.operations if operation.id == "example.echo")
+    data = b"hello" + bytes(transfer.chunk_bytes - len(b"hello"))
     reply = await client.invocations.invoke(
         invocations.InvocationsInvokeRequest(
-            operation=contract.id, fingerprint=contract.fingerprint, payload=Value(value=b"hello").SerializeToString()
+            operation=contract.id, fingerprint=contract.fingerprint, payload=Value(value=data).SerializeToString()
         )
     )
-    print(Value.FromString(reply.payload).value.decode(), flush=True)
+    if Value.FromString(reply.payload).value != data:
+        raise RuntimeError("Invoke example.echo: payload changed")
+    print("hello", flush=True)
     await client.plugins.delete(plugins.PluginsDeleteRequest(name="example", expected_revision=ready.revision))
-    await channel.close()
+    await client.close()
 
 
 # === Private Functions === #

@@ -66,6 +66,7 @@ impl Instance for Reference {
         &self, _: Request<harmos_protocol::plugin::InstanceGetRequest>,
     ) -> std::result::Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
         Ok(Response::new(harmos_protocol::plugin::InstanceGetResponse {
+            message_bytes: harmos_protocol::transfer::default_message_bytes().get() as u64,
             id: "conformance".into(),
             version: "1.0.0".into(),
             started_at: Some(self.started_at),
@@ -171,7 +172,7 @@ pub async fn serve(remote: bool) -> Result<()> {
     println!("harmos listening {address}");
     std::io::stdout().flush()?;
     tonic::transport::Server::builder()
-        .add_service(InstanceServer::new(reference))
+        .add_service(InstanceServer::new(reference).max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get()).max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get()))
         .serve_with_incoming_shutdown(incoming, async move {
             if remote {
                 std::future::pending::<()>().await;

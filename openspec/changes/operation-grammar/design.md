@@ -622,8 +622,8 @@ Grants apply to creation, each chunk, status, publication and deletion.
 Downloads repeatedly GetFileBytes with offset and maximum bytes; each unary reply
 states the total content length and digest, letting clients resume and verify the
 same content. Both client and plugin use this path; no streaming fallback remains.
-Before deleting streaming transfers, measure large-file upload and download
-throughput in the Nightly `integration/file_transfer` benchmark, reporting bytes,
+As amended by the owner on 2026-11-13, delete streaming transfers after the measured
+comparison and retain unary Nightly `integration/file_transfer` measurements, reporting bytes,
 chunk/range configuration, carrier and throughput. This is a benchmark, never a
 test assertion or a new hard throughput threshold.
 
@@ -676,14 +676,14 @@ are invocation verification, not claims that tests were run in this authoring ta
 | storage.write_records | WriteRecords → WriteCompletion | Storage.AppendRecords | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_record_exchange.rs; bounded unary batch replaces DataBatch/WriteReceipt exchange. |
 | storage.write_streams | WriteStreams → WriteCompletion | Storage.AppendSamples | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_exchange_cancellation.rs; preserve admitted outcomes with receipts. |
 | storage.write_objects | WriteObjects → WriteCompletion | Storage.AppendObjectRevisions | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_object_exchange.rs; bulk ingestion does not replace atomic SetObject. |
-| storage.write_file | WriteFile → FileReference | Storage.CreateFileProduction | Context: harmos.context.v1; client: harmos.v1 | Removed; generated_file_upload.rs; maps to the session entry point, then Storage.AppendFileBytes and Storage.PublishFileProduction replace the streaming convenience workflow. |
+| storage.write_file | WriteFile → FileReference | Storage.CreateFileProduction | Context: harmos.context.v1; client: harmos.v1 | Removed; unary_transfers.rs; maps to the session entry point, then Storage.AppendFileBytes and Storage.PublishFileProduction replace the streaming convenience workflow. |
 | storage.create_file | CreateFile → FileProducer | Storage.CreateFileProduction | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_file_mutations.rs; create the upload/production session. |
 | storage.append_file | AppendFile → FileProducer | Storage.AppendFileBytes | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; bounded immutable chunks. |
 | storage.resume_file | ResumeFile → FileProducer | Storage.CreateFileWriter | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; fence the previous writer. |
 | storage.finish_file | FinishFile → FileReference | Storage.PublishFileProduction | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; durable final reference. |
 | storage.abandon_file | AbandonFile → FileProgress | Storage.DeleteFileProduction | Context: harmos.context.v1; client: harmos.v1 | Renamed; same mutations; Delete of the unpublished session abandons it. |
 | storage.delete_file | DeleteFile → StagedFile | Storage.DeleteFile | Native only: no wire package | Kept; same mutations; retained-reader decision remains open. |
-| storage.read_file | ReadFile → FileCompletion | Storage.GetFileBytes | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_read.rs; streaming download removed in favor of bounded unary ranges with offset, maximum bytes, total length and digest. |
+| storage.read_file | ReadFile → FileCompletion | Storage.GetFileBytes | Context: harmos.context.v1; client: harmos.v1 | Replaced; unary_transfers.rs; streaming download removed in favor of bounded unary ranges with offset, maximum bytes, total length and digest. |
 | storage.hash_file | HashFile → FileHash | Storage.GetFileHash | Context: harmos.context.v1; client: harmos.v1 | Renamed; guest SDK and the neutral transfer example call it. |
 | storage.capture_file | CaptureFile → FileReference | Storage.CaptureFile | Context: harmos.context.v1; client: harmos.v1 | Kept; generated_capture.rs; independent captured bytes. |
 | storage.follow_file | FollowFile → FileCompletion | Storage.WatchFileBytes | Context: harmos.context.v1; client: harmos.v1 | Renamed; generated_capture.rs; FileEvent preserves replacement/truncation. |
@@ -886,15 +886,15 @@ instruction adds one net method to the earlier inventory. Protocol 4 + context 4
 8 wrappers, for 214 overall. Context signatures remain child-carried; 63 methods
 open standalone calls. Namespace parents Access and status add no empty services.
 
-The merged descriptor census matches the table: 22 library proto files and three
+The merged descriptor census matches the table: 23 library proto files and three
 imported protobuf files; 206 distinct method request/response messages, eight
-native hook wrappers, 157 other library payload messages and 37 imported messages
-(408 messages including nested messages/map entries), plus 18 library and 21
+native hook wrappers, 156 other library payload messages and 37 imported messages
+(407 messages including nested messages/map entries), plus 19 library and 21
 imported enums. The 38 shared capabilities are CatalogEntries.List, three
 Invocations controls, two Time methods and 32 Storage methods, each independently
 declared on the context/client faces. No automatic twins survive. ReadFile and
-WriteFile remain native streaming operations outside the wire-service census until
-the owner reviews throughput. A promised cooperative final-result replacement
+WriteFile declarations, handlers and requests are deleted following the owner's
+2026-11-13 throughput review. A promised cooperative final-result replacement
 changes no method count. Instance.Samples is a method, not a nested service;
 namespace-only parents never create empty services.
 
@@ -1730,6 +1730,43 @@ budgets. The required formatter wrapped one Python conformance-fixture policy ca
 Protocol Rust, example descriptor and Python storage outputs were regenerated from
 `storage.proto` to expose the three capability flags; generated files were not edited by hand.
 
+### Transfer Default (Amended by the Owner on 2026-11-13)
+
+Transfers remain unary. `StorageSettings.transfer` holds the shared generated
+`harmos.storage.v1.StorageTransferSettings`; its sole setting is `chunk_bytes`, defaulting
+to 4 MiB for both AppendFileBytes and GetFileBytes. A proto2 field default records
+that value once for all generated languages. `TransferFraming.Bytes` is the protocol
+framing allowance, not a second consumer chunk setting. The complete carrier ceiling
+is chunk bytes plus framing; row-page sizing remains independent. The default
+listener decoded-retention budget is six framed messages, accommodating its existing
+conservative allocation accounting, original request and attempt clone without
+changing that accounting. Consumers retain ownership of aggregate admission budgets.
+
+Default listeners, SDK connections, plugin carriers and the Wasm command adapter
+use that derived ceiling. An explicitly configured ceiling below it refuses at
+construction/startup naming `StorageSettings.transfer.chunk_bytes` and the conflicting
+setting. SDK-created connections own their transport settings; externally injected
+channels/invokers retain their caller's transport ownership. Large default-chunk echo
+journeys and unary storage journeys cover real message framing rather than constants.
+
+Delete native ReadFile/WriteFile operation declarations and handlers, their two proto
+requests and generated bindings, their streaming-only stories and fixture branches,
+and the streaming benchmark cases. Keep native file readers and production APIs,
+WatchFileBytes/WatchFileProduction, their FileBatch/FileCompletion payloads and all
+replacement/truncation/fencing/terminal behavior. The benchmark measures only unary
+client/plugin uploads and downloads, with integrity and publication unchanged.
+
+| Carrier and Direction | 64 KiB Unary MiB/s | 1 MiB Unary MiB/s | 3 MiB Unary MiB/s | Streaming Comparison MiB/s |
+| --- | ---: | ---: | ---: | --- |
+| Client Upload | 62 | 182 | 189 | 300–390 |
+| Client Download | 125 | 190 | 211 | Measured baseline retained below |
+| Plugin Upload | 42 | 70 | 95 | No plugin input stream |
+| Plugin Download | 60 | 87 | 137 | Measured baseline retained below |
+
+The owner reviewed these 30 MiB reference-memory, three-run medians and chose
+4 MiB unary chunks. The earlier 64 KiB table below remains measurement history,
+not permission to retain streaming implementations. The new-default run is recorded below.
+
 ### Unary Transfer Implementation
 
 Both face services own seven independent wrappers in `proto/harmos/{v1,context/v1}/storage.proto`.
@@ -1753,7 +1790,7 @@ Focused proof: `storage::unary_transfers::resume_fence_publish_and_range_across_
 passes through a real socket client and a real plugin child carrier, including fenced
 resume, byte replay/conflict, grants, unsupported sessions, integrity, abandonment and
 exact ranges. Issued-position retention and complete paging/Watch remain their separate
-tasks. Streaming upload/download remain for the throughput comparison.
+tasks. Streaming upload/download are deleted following the owner's comparison.
 
 Coupling edits: protobuf generation/reflection includes both storage faces and the
 shared payload file move (including import-only edits and generated consumers). Native
@@ -1793,14 +1830,14 @@ No consumer budget, deadline or workload size changed.
 | Plugin Upload | 38.54 (38.28–39.25) | Unavailable: child input streams are refused |
 | Plugin Download | 52.91 (52.71–54.74) | 94.78 (75.53–122.46) |
 
-The plugin streaming download invokes the retained ReadFile handler through output
+The historical plugin streaming download invoked the then-retained ReadFile handler through output
 child calls with explicit demand, counts/hashes every item and verifies completion.
 It returns a typed byte count/digest instead of materializing the file in a unary
 parent response. It is not a native-call substitute. Streaming upload has no existing
 plugin-carrier input mechanism; runtime admission rejects child input streams, so
 no throughput is invented for it. These are transport/reference-provider results,
-not durable-disk throughput or hosted Windows/Linux proof. Streaming stays for owner
-review. Raw output/compiler evidence remains in `target/benchmarks/storage/`, and
+not durable-disk throughput or hosted Windows/Linux proof. This historical streaming
+implementation was deleted by the owner's 2026-11-13 amendment. Raw output/compiler evidence remains in `target/benchmarks/storage/`, and
 Nightly exports the same case's medians.
 
 ### Face Generator Integration
@@ -1998,4 +2035,23 @@ StorageSettings policy and request admission/retention fields, and preserve issu
 cuts/page tokens across bounded native lists. Existing unary upload/ranged bundle
 and diagnostics readers, plugin manager/access/status composition and core wire
 identity contracts remain available. On-disk schema bytes and durability guarantees
-are unchanged. Retained native ReadFile/WriteFile remain available for comparison.
+are unchanged. Native ReadFile/WriteFile and their comparison cases are deleted by the owner's
+2026-11-13 amendment.
+
+### Default 4 MiB Unary Transfer Measurements
+
+Rerun on Windows on 2026-11-13 with the reference memory backend, real sockets,
+30 MiB files and three repetitions per face at the storage-owned default. Uploads
+used ten session/append/publication calls; downloads used eight ranged calls.
+Integrity, full-chunk admission and publication remain included. This session's
+conformance compilation finished before the timed run; other workstation activity
+was not controlled. These are measurements, not a throughput promise.
+
+| Carrier and Direction | 4 MiB Unary MiB/s, Median (Minimum–Maximum) |
+| --- | ---: |
+| Client Upload | 154.35 (143.87–203.50) |
+| Client Download | 191.24 (164.86–214.80) |
+| Plugin Upload | 98.63 (73.60–98.67) |
+| Plugin Download | 112.48 (90.92–117.00) |
+
+Raw output and compiler evidence remain under `target/benchmarks/storage/`.

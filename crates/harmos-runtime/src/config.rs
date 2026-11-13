@@ -217,8 +217,9 @@ impl Default for PluginGuestSettings {
 #[cfg(feature = "grpc")]
 impl Default for GrpcServerSettings {
     fn default() -> Self {
-        let bytes = std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap();
-        let message = std::num::NonZeroUsize::new(4 * 1024 * 1024).unwrap();
+        let message = harmos_protocol::transfer::default_message_bytes();
+        // Wire Bytes, Conservative Protobuf Allocation and the Retained Attempt Clone.
+        let bytes = message.checked_mul(std::num::NonZeroUsize::new(6).unwrap()).expect("representable default decoded transfer budget");
         let items = std::num::NonZeroUsize::new(16).unwrap();
         Self {
             calls: std::num::NonZeroUsize::new(64).unwrap(),

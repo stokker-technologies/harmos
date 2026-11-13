@@ -49,6 +49,7 @@ message InstanceGetResponse {
   // Name and version of the SDK that built the plugin, for logs.
   string sdk = 6;
   string sdk_version = 7;
+  uint64 message_bytes = 8;
 }
 
 message InstanceStopRequest {

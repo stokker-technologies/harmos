@@ -624,30 +624,31 @@ history position: its receipt has `completed`, while its status carries the reta
 prefix length. Delete abandons unpublished production; losing an observer does
 neither. Published-file deletion retains its separate contract.
 
-`GetFileBytes` takes the immutable reference, offset, positive `max_bytes` and
+`GetFileBytes` takes the immutable reference, offset, optional `max_bytes` (zero selects the storage chunk setting) and
 optional `at`; it returns `data`, `total_length`, SHA-256 and `resolved_at`.
 Absent `at` selects saved progress without requesting a flush. Repeat with the
 returned cut and the next offset; verify the complete reconstructed digest.
 An offset at the end returns an empty range, an offset beyond it refuses, and
 configuration bounds oversized ranges. Native embedders can call
-`StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Streaming
-transfers remain for the required throughput comparison before their removal.
+`StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Transfers remain unary, as amended by the owner on 2026-11-13.
+`StorageSettings.transfer` owns generated `StorageTransferSettings.chunk_bytes`,
+defaulting to 4 MiB for both appends and ranged reads. SDK-created connections,
+listeners, plugin carriers and Wasm guests derive message ceilings from this value
+plus protocol framing. Incompatible ceilings refuse startup naming the setting.
 
 ## File-Transfer Benchmark
 
 `mise run bench -- --storage --filter file_transfer` builds only the runtime's
 `integration-file-transfer` target. The reusable workload transfers a deterministic
-30 MiB file with the configured 64 KiB chunks/ranges, checks its length and digest,
-and reports three repetitions for each available carrier/mode. Client unary and
-streaming calls cross a host socket; plugin unary calls cross the host/plugin
-carrier as context child calls. Streaming downloads use the retained ReadFile
-operation through output child calls with explicit demand. Streaming uploads remain
-unavailable because the carrier rejects child input streams. Download timing
-includes incremental hashing on both carriers; comparisons happen after timing.
+30 MiB file with the storage-owned 4 MiB default chunks/ranges, checks its length
+and digest, and reports three repetitions for client and plugin unary transfers.
+Client calls cross a host socket; plugin calls cross the host/plugin carrier as
+context child calls. Download timing includes incremental hashing; comparisons
+happen after timing. Streaming transfer handlers, declarations and cases are deleted.
 
 The benchmark composes the existing reference memory backend and reuses retained
 saved images across unary ranges. The figures are transport/reference-provider
 measurements, not a claim about durable filesystem throughput. Consumer backends can reuse
 `harmos_storage::bench_support::file_transfer::{Carrier, run}`. Nightly retains raw
 native output and median throughput with bytes, call counts and configured range
-sizes. Streaming remains available for owner review of that evidence.
+sizes. The owner accepted the measured unary tradeoff on 2026-11-13.

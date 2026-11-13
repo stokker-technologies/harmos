@@ -125,7 +125,7 @@ impl ProductionFollower {
                 }
                 self.progress = progress;
                 if self.offset < progress.length {
-                    let ceiling = self.manager.inner.settings.response.batch_bytes.get();
+                    let ceiling = self.manager.inner.settings.transfer_chunk_bytes().get();
                     let remaining = (progress.length - self.offset).min(max_bytes.get() as u64);
                     let maximum = crate::file_batch::batch_limit(ceiling, self.offset, remaining, false)?;
                     let size = maximum.get();

@@ -170,6 +170,7 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     }));
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
+        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(256) },
         retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
         message_bytes: NonZeroUsize::new(1024).unwrap(),
         input_items: NonZeroUsize::new(1).unwrap(),

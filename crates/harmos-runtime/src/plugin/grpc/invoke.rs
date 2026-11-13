@@ -179,7 +179,7 @@ async fn invoke(
             .await
             .unwrap();
         let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
-        let mut client = harmos_protocol::plugin::instance_client::InstanceClient::new(connection.channel.clone());
+        let mut client = connection.client();
         let mut input = client.invoke(input).await.map_err(CallError::Transport)?.into_inner();
         let mut children = futures_util::stream::FuturesUnordered::<
             futures_util::future::BoxFuture<'static, (u64, String, crate::Result<Vec<u8>>)>,

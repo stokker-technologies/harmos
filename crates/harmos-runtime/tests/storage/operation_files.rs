@@ -11,8 +11,6 @@
 
 #[path = "generated_future_offset.rs"]
 mod future_offset;
-#[path = "generated_read.rs"]
-mod read;
 #[path = "generated_reconnect.rs"]
 mod reconnect;
 
@@ -25,7 +23,7 @@ use std::num::NonZeroUsize;
 
 // Local Imports
 use super::{Fixture, config};
-use harmos_operations::storage::{ReadFile, WatchFileProduction};
+use harmos_operations::storage::WatchFileProduction;
 use harmos_protocol::storage as wire;
 use harmos_protocol::v1;
 use harmos_runtime::Identifier;
@@ -71,10 +69,6 @@ fn limits() -> Option<harmos_runtime::operations::WireStreamLimits> {
         bytes: NonZeroUsize::new(1024).unwrap(),
     };
     Some(harmos_runtime::operations::WireStreamLimits { input: settings, output: settings })
-}
-
-async fn receive(streams: &harmos_runtime::operations::WireStreams) -> Option<wire::FileBatch> {
-    streams.receive_current().await.unwrap().map(|bytes| wire::FileBatch::decode(bytes.as_slice()).unwrap())
 }
 
 async fn receive_production(streams: &harmos_runtime::operations::WireStreams) -> Option<wire::FileBatch> {

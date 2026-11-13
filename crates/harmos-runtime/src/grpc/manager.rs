@@ -139,6 +139,17 @@ impl GrpcManager {
         extra_middleware: Vec<Arc<dyn Middleware>>,
     ) -> Result<Attached> {
         settings.validate(self.operations.clock())?;
+        if self.operations.resources().resource::<harmos_storage::StorageManager>().is_ok() {
+            let required = self.operations.transfer_message_bytes().get();
+            for (field, bytes) in [
+                ("GrpcSettings.operations.decode.message_bytes", settings.operations.decode.message_bytes.get()),
+                ("GrpcSettings.operations.encode.message_bytes", settings.operations.encode.message_bytes.get()),
+            ] {
+                if bytes < required {
+                    return Err(Error::InvalidInput { field, reason: "Start gRPC: ceiling cannot carry StorageSettings.transfer.chunk_bytes plus framing" });
+                }
+            }
+        }
         let router = super::routing::Router::new(self.operations.clone(), settings.operations).map_err(|_| Error::InvalidInput {
             field: "gRPC operation settings",
             reason: "invalid transport bounds",

@@ -51,15 +51,8 @@ pub fn run(arguments: &[String]) -> Result<()> {
             .connect()
             .await?;
         let bytes = NonZeroUsize::new(16 * 1024 * 1024).unwrap();
-        let client = Client::new(
-            channel,
-            ClientSettings {
-                retained_bytes: bytes,
-                message_bytes: bytes,
-                input_items: NonZeroUsize::new(1).unwrap(),
-                input_bytes: bytes,
-            },
-        )?;
+        let transfer = harmos::storage::StorageTransferSettings::default();
+        let client = Client::new(channel, ClientSettings::for_storage(transfer, bytes)?)?;
         // Install and Start This Codebase's Running Instance
         client
             .plugins
@@ -89,7 +82,9 @@ pub fn run(arguments: &[String]) -> Result<()> {
         // Invoke Its Public Operation Through the Host
         let contract =
             ready.description.unwrap().catalog.unwrap().operations.into_iter().find(|operation| operation.id == "example.echo").unwrap();
-        let payload = Value { value: b"hello".to_vec() }.encode_to_vec();
+        let mut data = b"hello".to_vec();
+        data.resize(transfer.chunk_bytes() as usize, 0);
+        let payload = Value { value: data.clone() }.encode_to_vec();
         let response = client
             .invocations
             .invoke(Request::new(v1::InvocationsInvokeRequest {
@@ -100,7 +95,8 @@ pub fn run(arguments: &[String]) -> Result<()> {
             .await?
             .into_inner();
         let value = Value::decode(response.payload.as_slice()).map_err(|error| harmos::Error::Invalid(error.to_string()))?;
-        println!("{}", String::from_utf8_lossy(&value.value));
+        if value.value != data { return Err(harmos::Error::Invalid("Invoke example.echo: payload changed".into())); }
+        println!("hello");
         client
             .plugins
             .delete(Request::new(v1::PluginsDeleteRequest {

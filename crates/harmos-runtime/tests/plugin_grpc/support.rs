@@ -148,7 +148,7 @@ impl Remote {
         });
         let endpoint = service.clone();
         let server = tokio::spawn(async move {
-            tonic::transport::Server::builder().add_service(InstanceServer::new(endpoint)).serve_with_incoming(incoming).await.unwrap();
+            tonic::transport::Server::builder().add_service(InstanceServer::new(endpoint).max_decoding_message_size(harmos_protocol::transfer::default_message_bytes().get()).max_encoding_message_size(harmos_protocol::transfer::default_message_bytes().get())).serve_with_incoming(incoming).await.unwrap();
         });
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
@@ -233,6 +233,7 @@ impl Instance for Fixture {
             return std::future::pending().await;
         }
         Ok(Response::new(harmos_protocol::plugin::InstanceGetResponse {
+            message_bytes: harmos_protocol::transfer::default_message_bytes().get() as u64,
             id: "remote".into(),
             version: "1.0.0".into(),
             revision: 1,

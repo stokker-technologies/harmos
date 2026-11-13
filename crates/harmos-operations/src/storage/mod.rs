@@ -43,13 +43,11 @@ mod get_schema;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod info;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod read_file;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod registration;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod set_schema;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod write_file;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod native;
@@ -79,13 +77,11 @@ pub use get_schema::GetSchema;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use info::Info;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use read_file::ReadFile;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use registration::storage_catalog;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use set_schema::SetSchema;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use write_file::WriteFile;
 
 /* === Imports === */
 
@@ -147,16 +143,6 @@ pub const IO_POLICY: OperationPolicy = OperationPolicy {
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-fn output_timeout() -> crate::Error {
-    harmos_storage::Error::backend(
-        "storage output",
-        harmos_storage::BackendFailure::Transient,
-        std::io::Error::new(std::io::ErrorKind::TimedOut, "consumer delivery deadline exceeded"),
-    )
-    .into()
-}
-
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 fn classify(error: &crate::Error) -> harmos_operations::operations::FailureKind {
     match error {

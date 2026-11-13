@@ -52,14 +52,6 @@ pub struct Transport {
     integrity: Mutex<(u64, [u8; 32])>,
 }
 
-#[derive(Clone, PartialEq, prost::Message)]
-struct UploadFrame {
-    #[prost(message, optional, tag = "1")]
-    request: Option<wire::WriteFile>,
-    #[prost(message, optional, tag = "2")]
-    item: Option<wire::FileBatch>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -209,87 +201,6 @@ impl Carrier for Transport {
         })
     }
 
-    fn upload_stream(&self, data: std::sync::Arc<[u8]>, chunk_bytes: NonZeroUsize, sha256: [u8; 32]) -> StorageFuture<'_, FileReference> {
-        Box::pin(async move {
-            if self.plugin {
-                return Err(unsupported());
-            }
-            let metadata = self.metadata(data.len() as u64, sha256);
-            let opening = UploadFrame {
-                request: Some(wire::WriteFile { metadata: Some(metadata) }),
-                item: None,
-            };
-            let chunks = futures_util::stream::unfold((data, 0usize), move |(data, offset)| async move {
-                if offset >= data.len() {
-                    return None;
-                }
-                let end = (offset + chunk_bytes.get()).min(data.len());
-                let item = UploadFrame {
-                    request: None,
-                    item: Some(wire::FileBatch {
-                        offset: offset as u64,
-                        bytes: data[offset..end].to_vec(),
-                    }),
-                };
-                Some((item, (data, end)))
-            });
-            use futures_util::StreamExt;
-            let stream = futures_util::stream::once(async { opening }).chain(chunks);
-            let mut client = tonic::client::Grpc::new(self.channel.clone());
-            client.ready().await.map_err(|e| failure("WriteFile", e))?;
-            let path = tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/WriteFile");
-            let response: tonic::Response<wire::FileReference> = client
-                .client_streaming(tonic::Request::new(stream), path, tonic_prost::ProstCodec::<UploadFrame, wire::FileReference>::default())
-                .await
-                .map_err(|e| failure("WriteFile", e))?;
-            response.into_inner().try_into().map_err(Error::from)
-        })
-    }
-
-    fn download_stream<'a>(&'a self, file: &'a FileReference) -> StorageFuture<'a, harmos_storage::FileHash> {
-        Box::pin(async move {
-            let request = wire::ReadFile {
-                source: Some(wire::FileSource {
-                    source: Some(wire::file_source::Source::Stored(file.clone().into())),
-                }),
-                range: Some(wire::ByteRange { offset: 0, limit: None }),
-            };
-            if self.plugin {
-                use prost::Message;
-                let response = self
-                    .operations
-                    .call_encoded("fixture.transfer.read_file", request.encode_to_vec())
-                    .await
-                    .map_err(|e| failure("ReadFile", e))?;
-                let hash = wire::FileHash::decode(response.as_slice()).map_err(|e| failure("ReadFile", e))?;
-                return Ok(harmos_storage::FileHash {
-                    bytes_read: hash.bytes_read,
-                    sha256: hash.sha256.try_into().expect("SHA-256"),
-                });
-            }
-            let mut client = tonic::client::Grpc::new(self.channel.clone());
-            client.ready().await.map_err(|e| failure("ReadFile", e))?;
-            let path = tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.storage.v1.Storage/ReadFile");
-            let response: tonic::Response<tonic::Streaming<wire::FileBatch>> = client
-                .server_streaming(tonic::Request::new(request), path, tonic_prost::ProstCodec::<wire::ReadFile, wire::FileBatch>::default())
-                .await
-                .map_err(|e| failure("ReadFile", e))?;
-            let mut stream = response.into_inner();
-            use sha2::{Digest, Sha256};
-            let mut length = 0u64;
-            let mut hash = Sha256::new();
-            while let Some(item) = stream.message().await.map_err(|e| failure("ReadFile", e))? {
-                assert_eq!(item.offset, length);
-                length += item.bytes.len() as u64;
-                hash.update(&item.bytes);
-            }
-            assert_eq!(file.length, length);
-            Ok(harmos_storage::FileHash {
-                bytes_read: length,
-                sha256: hash.finalize().into(),
-            })
-        })
-    }
 }
 
 /* === Public Functions === */
@@ -308,17 +219,6 @@ fn failure(action: &str, source: impl std::error::Error + Send + Sync + 'static)
         operation: action.into(),
         source: std::sync::Arc::new(source),
     }
-}
-
-fn unsupported() -> Error {
-    Error::backend(
-        "stream file through plugin child calls",
-        harmos_storage::BackendFailure::Unsupported,
-        std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "plugin child calls reject input streams; retained streaming upload is unavailable",
-        ),
-    )
 }
 
 /* === Tests === */

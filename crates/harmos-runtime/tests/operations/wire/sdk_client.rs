@@ -155,6 +155,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         .unwrap();
     let channel = Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
+        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(64 * 1024) },
         retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
         message_bytes: NonZeroUsize::new(128 * 1024).unwrap(),
         input_items: NonZeroUsize::new(1).unwrap(),

@@ -31,6 +31,7 @@
 
 // Local Imports
 #include "harmos/v1/types.pb.h"
+#include "harmos/transfer.hpp"
 #include "harmos/context/v1/time.pb.h"
 
 /* === Macros === */
@@ -143,6 +144,7 @@ public:
         sections_.emplace_back(std::move(section), detail::types(T::descriptor()));
         return *this;
     }
+    Plugin& transfer(const ::harmos::storage::v1::StorageTransferSettings& settings) { transfer_ = settings; return *this; }
     Plugin& on_stop(std::function<void()> cleanup);
     wire::Catalog catalog() const;
     // An Explicit Address Selects Remote Lifecycle; Empty Uses HARMOS_ADDRESS or Loopback.
@@ -150,6 +152,7 @@ public:
 
 private:
     google::protobuf::FileDescriptorSet messages_;
+    ::harmos::storage::v1::StorageTransferSettings transfer_;
     std::string id_;
     std::string version_;
     std::vector<detail::OperationDefinition> operations_;

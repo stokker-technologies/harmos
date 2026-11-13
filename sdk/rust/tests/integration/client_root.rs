@@ -102,11 +102,14 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     );
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
+        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(1024) },
         retained_bytes: NonZeroUsize::new(4096).unwrap(),
         message_bytes: NonZeroUsize::new(4096).unwrap(),
         input_items: NonZeroUsize::MIN,
         input_bytes: NonZeroUsize::new(4096).unwrap(),
     };
+    let incompatible = ClientSettings { message_bytes: NonZeroUsize::MIN, ..settings };
+    assert!(matches!(Client::new(channel.clone(), incompatible), Err(error) if error.code() == tonic::Code::InvalidArgument));
     let client = Root::new(Client::new(channel, settings).unwrap().transport_handle());
     assert_eq!(
         client.plugins.get(Request::new(v1::PluginsGetRequest { value: "selection".into() })).await.unwrap().into_inner().value,

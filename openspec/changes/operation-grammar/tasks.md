@@ -190,7 +190,7 @@ combined source closure and hosted validation are not claimed here.
 The storage declaration, paging, Watch, policy and native schema migrations are now
 joined. Retained-reader DeleteFile reclamation (3.10), the log Append above,
 cooperative final-result inventory (3.11), and whole-change source closure remain
-open. Streaming ReadFile/WriteFile remain for the owner's throughput review (5.2).
+open. Streaming ReadFile/WriteFile were deleted after the owner's throughput review on 2026-11-13.
 No accepted-data snapshot is built; A.6 remains open for measured large/mixed lag.
 
 ## Storage Ownership and Proof
@@ -202,7 +202,8 @@ runtime handlers/tests/benches, benchmark tooling/Nightly wiring and storage gui
 Core generator integration is merged through `43843f60`; there is one declaration
 owner per face and one shared native handler per capability. Both faces declare
 32 Storage method pairs, with four Protected native-only wrapper pairs separately.
-ReadFile/WriteFile remain solely for the owner's streaming comparison and task 5.2.
+ReadFile/WriteFile, their requests, handlers, bindings and streaming-only stories
+were deleted by the owner's 2026-11-13 amendment after the comparison.
 
 | Storage Item | Deterministic Proof |
 | --- | --- |
@@ -246,6 +247,6 @@ failures remain explicit in the design and A.6 is not checked off.
 
 - [x] O.1 Replace paging for bounded catalogs, plugin entries and pairings in proto, operations, runtime, generated SDKs, consumers, examples, stories and guides; preserve paging and issued positions for unbounded data. Record the bounded/unbounded inventory and scenarios.
 - [x] O.2 Ship one SDK package per language; delete audience build selection, generated-stub guards and their tests/tooling; add four copyable self-install client journeys and migrate package consumers/guides. Preserve runtime face/visibility enforcement.
-- [ ] O.3 Keep unary transfers with one storage-owned 4 MiB default; derive carrier ceilings including framing, refuse incompatible startup settings, delete streaming transfer declarations/handlers/SDKs/stories and benchmark cases, record and rerun the default benchmark.
+- [x] O.3 Keep unary transfers with one storage-owned 4 MiB default; derive carrier ceilings including framing, refuse incompatible startup settings, delete streaming transfer declarations/handlers/SDKs/stories and benchmark cases, record and rerun the default benchmark.
 - [ ] O.4 Accept measured durable lag without a failing threshold or accepted-data snapshot; replace superseded requirements/guides and close the lag acceptance tasks.
 - [ ] O.5 Run final-head format, Rust/Python/repository checks, protocol drift, four-SDK conformance, self-install/storage/manager/access/status/wire identity/guest stories, Tests build and clean committed locked offline metadata. Keep every decision in a separate local building commit; do not push.

@@ -2,8 +2,9 @@
 using Grpc.Core;
 using Google.Protobuf;
 namespace Harmos.Sdk;
-public sealed class Client
+public sealed class Client : global::System.IDisposable
 {
+  private global::Grpc.Net.Client.GrpcChannel? ownedChannel;
   public AccessResource Access { get; }
   public CatalogEntriesResource CatalogEntries { get; }
   public InvocationsResource Invocations { get; }
@@ -21,6 +22,13 @@ public sealed class Client
     Storage = new StorageResource(invoker);
     Time = new TimeResource(invoker);
   }
+  public static Client Connect(string address, global::Harmos.Storage.V1.StorageTransferSettings? transfer = null, int? messageBytes = null)
+  {
+    var maximum = Transfer.MessageBytes(transfer, messageBytes);
+    var channel = global::Grpc.Net.Client.GrpcChannel.ForAddress(address, new() { MaxSendMessageSize = maximum, MaxReceiveMessageSize = maximum });
+    return new Client(channel.CreateCallInvoker()) { ownedChannel = channel };
+  }
+  public void Dispose() => ownedChannel?.Dispose();
 }
 public sealed class AccessResource
 {

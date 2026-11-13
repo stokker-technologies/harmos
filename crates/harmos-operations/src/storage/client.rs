@@ -359,7 +359,7 @@ impl ProtobufOperation for GetFileBytes {
             let length = transfers::range_bytes(
                 prost::Message::encoded_len(&response),
                 response.data.len(),
-                storage.settings().response.batch_bytes.get(),
+                storage.settings().transfer_message_bytes().get(),
             )?;
             response.data.truncate(length);
             Ok(response)

@@ -29,6 +29,8 @@ from .invocation import Context, Failure, ProtocolError, Publisher, validate_tim
 from .contracts import Operation, message_types
 from .v1 import types_pb2 as wire
 from .plugin.v1.instance_pb2_grpc import InstanceServicer, add_InstanceServicer_to_server
+from .transfer import message_bytes
+from .v1.storage_settings_pb2 import StorageTransferSettings
 
 from harmos.plugin.v1 import instance_pb2 as carrier
 
@@ -56,6 +58,7 @@ class Plugin:
         requires: Sequence[Operation] = (),
         sections: Sequence[Message] = (),
         messages: Sequence[type[Message]] = (),
+        transfer: StorageTransferSettings | None = None,
     ):
         self.instance = instance
         self.id = id
@@ -63,6 +66,9 @@ class Plugin:
         self.requires = tuple(requires)
         self.sections = tuple(sections)
         self.messages = tuple(messages)
+        self.transfer = StorageTransferSettings()
+        if transfer is not None:
+            self.transfer.CopyFrom(transfer)
 
     def _registrations(self):
         # Preserve Declaration Order While Honoring Subclass Overrides.
@@ -147,7 +153,8 @@ class Plugin:
     async def start(self, address: str) -> "Endpoint":
         """Bind the Author's Address; Stop Runs Cleanup and Keeps Serving."""
         service = _Service(self, self.catalog())
-        server = grpc.aio.server()
+        maximum = message_bytes(self.transfer)
+        server = grpc.aio.server(options=[("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)])
         add_InstanceServicer_to_server(service, server)
         port = server.add_insecure_port(address)
         if not port:
@@ -189,6 +196,7 @@ class _Service(InstanceServicer):
             revision=1,
             sdk="harmos_python",
             sdk_version=version("harmos-sdk"),
+            message_bytes=message_bytes(plugin.transfer),
         )
         operations, streams, self.cleanup = plugin._registrations()
         self.local = {

@@ -3,6 +3,8 @@
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <stdexcept>
+#include "harmos/transfer.hpp"
+#include <string>
 #pragma push_macro("AdvanceProjection")
 #undef AdvanceProjection
 #pragma push_macro("AppendFileBytes")
@@ -566,6 +568,12 @@ struct Client {
   StorageResource storage;
   TimeResource time;
   explicit Client(std::shared_ptr<grpc::Channel> channel) : access(channel), catalog_entries(channel), invocations(channel), plugins(channel), status(channel), storage(channel), time(channel) {}
+  static Client connect(std::string address, const ::harmos::storage::v1::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {
+    const auto maximum = ::harmos::transfer_message_bytes(transfer, message_bytes);
+    grpc::ChannelArguments arguments; arguments.SetMaxSendMessageSize(maximum); arguments.SetMaxReceiveMessageSize(maximum);
+    if (address.starts_with("http://")) address.erase(0, 7);
+    return Client(grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), arguments));
+  }
 };
 }
 #pragma pop_macro("WatchRows")

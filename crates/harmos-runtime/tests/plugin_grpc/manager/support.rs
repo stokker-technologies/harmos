@@ -144,7 +144,9 @@ impl Host {
     }
     pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> wire::PluginManaged {
         let digest = Sha256::digest(&bytes).to_vec();
-        let mut client = wire::storage_client::StorageClient::new(self.channel.clone());
+        let maximum = self.storage.settings().transfer_message_bytes().get();
+        let mut client = wire::storage_client::StorageClient::new(self.channel.clone())
+            .max_decoding_message_size(maximum).max_encoding_message_size(maximum);
         let window = self.storage.mutation_window().unwrap().id.to_string();
         let mutation = |action: &str| {
             Some(harmos_protocol::storage::MutationId {
@@ -171,7 +173,7 @@ impl Host {
             .unwrap();
         let session = production.session;
         let mut offset = 0;
-        for chunk in bytes.chunks(self.storage.settings().response.batch_bytes.get() / 2) {
+        for chunk in bytes.chunks(self.storage.settings().transfer_chunk_bytes().get()) {
             client
                 .append_file_bytes(wire::StorageAppendFileBytesRequest {
                     session: session.clone(),

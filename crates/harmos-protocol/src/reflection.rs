@@ -585,11 +585,6 @@ impl ReflectMessage for crate::storage::FileEvent {
         pool().get_message_by_name("harmos.storage.v1.FileEvent").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::ReadFile {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ReadFile").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::SchemaKey {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.SchemaKey").expect("generated message")
@@ -815,11 +810,6 @@ impl ReflectMessage for crate::storage::DataBatch {
         pool().get_message_by_name("harmos.storage.v1.DataBatch").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::WriteFile {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.WriteFile").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::ReadLimits {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.ReadLimits").expect("generated message")
@@ -923,6 +913,11 @@ impl ReflectMessage for crate::storage::ProjectionState {
 impl ReflectMessage for crate::storage::StorageFailure {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.StorageFailure").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::storage::StorageTransferSettings {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.storage.v1.StorageTransferSettings").expect("generated message")
     }
 }
 impl ReflectMessage for crate::v1::History {

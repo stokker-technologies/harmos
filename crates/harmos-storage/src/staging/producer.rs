@@ -51,7 +51,7 @@ impl StorageFile {
 
     pub async fn write_retained_at(&mut self, offset: u64, bytes: crate::FileChunk) -> Result<()> {
         self.check_generation()?;
-        if bytes.is_empty() || bytes.len() > self.manager.inner.settings.response.batch_bytes.get() {
+        if bytes.is_empty() || bytes.len() > self.manager.inner.settings.transfer_chunk_bytes().get() {
             return Err(Error::InvalidInput {
                 field: "file append",
                 reason: "append requires a nonempty bounded batch",
@@ -183,7 +183,7 @@ impl StorageFile {
                     self.manager.inner.relieve_pressure(state, required, 1);
                     return Ok(None);
                 }
-                let count = bytes.len().min(available).min(self.manager.inner.settings.response.batch_bytes.get());
+                let count = bytes.len().min(available).min(self.manager.inner.settings.transfer_chunk_bytes().get());
                 let file = state.files.get_mut(&self.id).expect("selected file");
                 file.ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
                 file.context = crate::execution::Context::current();

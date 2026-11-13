@@ -221,7 +221,11 @@ def csharp(root: Path, methods: list[dict], *, namespace: str = "harmos", target
     for node in sorted(nodes):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
         operations = [method for method in methods if tuple(method["path"][:-1]) == node]
-        lines += [f"public sealed class {names[node]}", "{"]
+        builtin = not node and namespace == "harmos" and target is None
+        inheritance = " : global::System.IDisposable" if builtin else ""
+        lines += [f"public sealed class {names[node]}{inheritance}", "{"]
+        if builtin:
+            lines += ["  private global::Grpc.Net.Client.GrpcChannel? ownedChannel;"]
         if operations:
             lines += ["  private readonly CallInvoker invoker;"]
         lines += [f"  public {names[child]} {title(child[-1])} {{ get; }}" for child in children]
@@ -230,6 +234,16 @@ def csharp(root: Path, methods: list[dict], *, namespace: str = "harmos", target
             lines += ["    this.invoker = invoker;"]
         lines += [f"    {title(child[-1])} = new {names[child]}(invoker);" for child in children]
         lines += ["  }"]
+        if builtin:
+            lines += [
+                "  public static Client Connect(string address, global::Harmos.Storage.V1.StorageTransferSettings? transfer = null, int? messageBytes = null)",
+                "  {",
+                "    var maximum = Transfer.MessageBytes(transfer, messageBytes);",
+                "    var channel = global::Grpc.Net.Client.GrpcChannel.ForAddress(address, new() { MaxSendMessageSize = maximum, MaxReceiveMessageSize = maximum });",
+                "    return new Client(channel.CreateCallInvoker()) { ownedChannel = channel };",
+                "  }",
+                "  public void Dispose() => ownedChannel?.Dispose();",
+            ]
         for method in operations:
             request = "global::" + method["request_csharp"]
             response = "global::" + method["response_csharp"]
@@ -278,6 +292,9 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
         "#include <memory>",
         "#include <stdexcept>",
     ]
+    builtin = namespace == "harmos" and target is None
+    if builtin:
+        lines += ['#include "harmos/transfer.hpp"', '#include <string>']
     # Preserve Platform Macros While Declaring and Calling Wire Method Names.
     macro_names = sorted({method["method"] for method in methods})
     lines += [line for name in macro_names for line in (f'#pragma push_macro("{name}")', f"#undef {name}")]
@@ -299,6 +316,15 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
         lines += [f"  {names[child]} {identifier(child[-1])};" for child in children]
         initializers = (["channel(channel)"] if operations else []) + [f"{identifier(child[-1])}(channel)" for child in children]
         lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> channel) : {', '.join(initializers)} {{}}"]
+        if not node and builtin:
+            lines += [
+                "  static Client connect(std::string address, const ::harmos::storage::v1::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {",
+                "    const auto maximum = ::harmos::transfer_message_bytes(transfer, message_bytes);",
+                "    grpc::ChannelArguments arguments; arguments.SetMaxSendMessageSize(maximum); arguments.SetMaxReceiveMessageSize(maximum);",
+                '    if (address.starts_with("http://")) address.erase(0, 7);',
+                "    return Client(grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), arguments));",
+                "  }",
+            ]
         for method in operations:
             request = "::" + method["request"].replace(".", "::")
             response = "::" + method["response"].replace(".", "::")

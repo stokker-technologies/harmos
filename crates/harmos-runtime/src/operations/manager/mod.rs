@@ -194,6 +194,13 @@ impl Manager {
         &self.instances.clock
     }
 
+    pub(crate) fn transfer_message_bytes(&self) -> std::num::NonZeroUsize {
+        self.resources().resource::<harmos_storage::StorageManager>().map_or_else(
+            |_| harmos_protocol::transfer::default_message_bytes(),
+            |storage| storage.settings().transfer_message_bytes(),
+        )
+    }
+
     pub(crate) fn resources(&self) -> &harmos_operations::execution::__private::ResourceSet {
         &self.instances.resources
     }

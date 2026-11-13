@@ -35,9 +35,8 @@ int install_itself(int argc, char** argv) {
             .serve("127.0.0.1:0");
         return 0;
     }
-    std::string address(argv[2]);
-    if (address.starts_with("http://")) address.erase(0, 7);
-    harmos::Client client(grpc::CreateChannel(address, grpc::InsecureChannelCredentials()));
+    ::harmos::storage::v1::StorageTransferSettings transfer;
+    auto client = harmos::Client::connect(argv[2], transfer);
     // Install and Start This Codebase's Running Instance
     harmos::v1::PluginsCreateRequest create;
     create.set_request_id("self-install"); create.set_name("example");
@@ -61,11 +60,14 @@ int install_itself(int argc, char** argv) {
     for (const auto& contract : ready.description().catalog().operations()) if (contract.id() == "example.echo") {
         invoke.set_operation(contract.id()); invoke.set_fingerprint(contract.fingerprint());
     }
-    Value request; request.set_value("hello"); invoke.set_payload(request.SerializeAsString());
+    std::string data(static_cast<std::size_t>(transfer.chunk_bytes()), '\0');
+    data.replace(0, 5, "hello");
+    Value request; request.set_value(data); invoke.set_payload(request.SerializeAsString());
     const auto reply = client.invocations.invoke(invoke);
     Value response;
     if (!response.ParseFromString(reply.payload())) throw std::runtime_error("Invoke example.echo: invalid response");
-    std::cout << response.value() << std::endl;
+    if (response.value() != data) throw std::runtime_error("Invoke example.echo: payload changed");
+    std::cout << "hello" << std::endl;
     harmos::v1::PluginsDeleteRequest remove; remove.set_name("example"); remove.set_expected_revision(ready.revision());
     client.plugins.delete_(remove);
     return 0;

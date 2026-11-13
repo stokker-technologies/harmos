@@ -19,8 +19,10 @@ from typing import Any
 
 # Third Party Imports
 from google.protobuf import descriptor_pool, message_factory
+import grpc
 
 # Local Imports
+from .transfer import message_bytes
 
 # Type Checking Imports
 
@@ -40,7 +42,21 @@ class Client:
     def __getattr__(self, name: str) -> Any:
         raise AttributeError(name)
 
+    @classmethod
+    def connect(cls, address, *, transfer=None, message_ceiling=None):
+        maximum = message_bytes(transfer, message_ceiling)
+        channel = grpc.aio.insecure_channel(address.removeprefix("http://"), options=[
+            ("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)])
+        client = cls(channel)
+        client._channel = channel
+        return client
+
+    async def close(self):
+        if self._channel is not None:
+            await self._channel.close()
+
     def __init__(self, channel, *tables):
+        self._channel = None
         builtin = json.loads(files("harmos").joinpath("resources.json").read_text(encoding="utf-8"))
         for table in tables or (builtin,):
             for method in table:

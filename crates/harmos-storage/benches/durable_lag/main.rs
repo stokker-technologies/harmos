@@ -97,6 +97,7 @@ fn main() {
             },
         ));
         let settings = StorageSettings {
+            transfer: Default::default(),
             policy: Default::default(),
             filesystem: StorageFilesystemSettings {
                 poll_interval: std::time::Duration::from_millis(100),

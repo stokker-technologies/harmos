@@ -169,6 +169,7 @@ pub(super) async fn get(
     storage: &StorageManager, snapshots: &super::snapshot::SavedSnapshots, file: wire::FileReference, offset: u64, max_bytes: u64,
     at: Option<v1::ReadCut>,
 ) -> crate::Result<(harmos_storage::FileBytesRange, v1::ReadCut)> {
+    let max_bytes = if max_bytes == 0 { storage.settings().transfer.chunk_bytes() } else { max_bytes };
     let maximum = usize::try_from(max_bytes).ok().and_then(std::num::NonZeroUsize::new).ok_or(crate::Error::InvalidInput {
         field: "GetFileBytes",
         reason: "max_bytes must be positive and representable",

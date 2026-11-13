@@ -397,7 +397,9 @@ void Plugin::serve(std::string address) const {
     description.set_version(version_);
     description.set_revision(1);
     description.set_sdk("harmos_cpp");
+    const auto maximum = transfer_message_bytes(transfer_);
     description.set_sdk_version("0.1.0");
+    description.set_message_bytes(maximum);
     *description.mutable_catalog() = catalog();
     static const auto started = std::chrono::system_clock::now().time_since_epoch();
     const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(started);
@@ -418,6 +420,8 @@ void Plugin::serve(std::string address) const {
         changed.notify_all();
     };
     grpc::ServerBuilder builder;
+    builder.SetMaxReceiveMessageSize(maximum);
+    builder.SetMaxSendMessageSize(maximum);
     int port = 0;
     builder.AddListeningPort(address, grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(&service);

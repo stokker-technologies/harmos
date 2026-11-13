@@ -46,6 +46,7 @@ use super::Error;
 
 pub(super) struct Connection {
     pub(super) channel: Channel,
+    message_bytes: usize,
     pub(super) closed: watch::Sender<bool>,
 }
 
@@ -62,7 +63,12 @@ struct Socket {
 /* === Implementations === */
 
 impl Connection {
-    pub(super) async fn open(address: &str) -> Result<Self, Error> {
+    pub(super) fn client(&self) -> harmos_protocol::plugin::instance_client::InstanceClient<Channel> {
+        harmos_protocol::plugin::instance_client::InstanceClient::new(self.channel.clone())
+            .max_decoding_message_size(self.message_bytes).max_encoding_message_size(self.message_bytes)
+    }
+
+    pub(super) async fn open(address: &str, message_bytes: usize) -> Result<Self, Error> {
         let url = if address.contains("://") { address.to_owned() } else { format!("http://{address}") };
         let endpoint = Endpoint::from_shared(url).map_err(|error| Error::Invalid(error.to_string()))?;
         let uri = endpoint.uri();
@@ -81,7 +87,7 @@ impl Connection {
             async move { socket.map(TokioIo::new).ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionAborted, "Plugin Connection Closed")) }
         });
         let channel = endpoint.connect_with_connector(connector).await.map_err(|error| Error::Transport(error.to_string()))?;
-        Ok(Self { channel, closed })
+        Ok(Self { channel, closed, message_bytes })
     }
 }
 

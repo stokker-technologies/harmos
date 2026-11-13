@@ -223,6 +223,9 @@ impl<A: Application> Host<A> {
         }
 
         let registration = crate::bundle::guest_registration(bytes).map_err(|error| Error::Guest { message: error.to_string() })?;
+        if registration.message_bytes < self.operations.transfer_message_bytes().get() as u64 {
+            return Err(Error::Guest { message: "Load Guest: GuestRegistration.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into() });
+        }
         let declaration = Declaration::new(registration, self.stream_window)?;
         let component = Component::new(&self.engine, bytes).map_err(|source| Error::Component {
             id: "guest".into(),

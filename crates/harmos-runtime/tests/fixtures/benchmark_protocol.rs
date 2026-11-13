@@ -103,7 +103,7 @@ pub fn echo_declaration_operation()
 
 pub fn wire_settings() -> harmos_runtime::grpc::server::Settings {
     let bytes = nz(16 * 1024 * 1024);
-    let message = nz(4 * 1024 * 1024);
+    let message = harmos_protocol::transfer::default_message_bytes();
     let direction = harmos_runtime::operations::StreamSettings { items: nz(16), bytes };
     harmos_runtime::grpc::server::Settings {
         calls: nz(64),

@@ -51,6 +51,7 @@ pub(super) const SCAN_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StorageSettings {
+    pub transfer: harmos_protocol::storage::StorageTransferSettings,
     pub policy: StoragePolicy,
     pub request: StorageRequestSettings,
     pub response: StorageResponseSettings,
@@ -134,6 +135,11 @@ impl Default for StorageAccumulatorSettings {
 
 impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
+        if harmos_protocol::transfer::message_bytes(&self.transfer).is_none_or(|bytes| bytes.get() > u32::MAX as usize) {
+            return Err(crate::Error::InvalidInput {
+                field: "StorageSettings.transfer.chunk_bytes", reason: "Configure Storage: chunk and framing must fit a transport message",
+            });
+        }
         if self.policy.io_timeout.is_zero()
             || self.policy.recovery_timeout.is_zero()
             || self.policy.file_session_timeout.is_zero()
@@ -167,6 +173,14 @@ impl StorageSettings {
         Ok(())
     }
 
+    pub fn transfer_chunk_bytes(&self) -> NonZeroUsize {
+        NonZeroUsize::new(self.transfer.chunk_bytes() as usize).expect("validated StorageSettings.transfer.chunk_bytes")
+    }
+
+    pub fn transfer_message_bytes(&self) -> NonZeroUsize {
+        harmos_protocol::transfer::message_bytes(&self.transfer).expect("validated StorageSettings.transfer.chunk_bytes")
+    }
+
     // Largest Atomic Batch: The Private Ceiling Within The Pending Write Budget.
     pub fn max_batch_bytes(&self) -> NonZeroUsize {
         self.request.max_pending_write_bytes.min(NonZeroUsize::new(MAX_BATCH_BYTES).unwrap())
@@ -196,6 +210,7 @@ mod tests {
 
     fn settings() -> StorageSettings {
         StorageSettings {
+            transfer: Default::default(),
             policy: Default::default(),
             filesystem: crate::config::StorageFilesystemSettings {
                 poll_interval: std::time::Duration::from_millis(100),

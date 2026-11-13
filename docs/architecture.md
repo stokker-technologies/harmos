@@ -1,5 +1,13 @@
 # Architecture
 
+Transfers remain unary, amended by the owner on 2026-11-13. The generated
+`StorageTransferSettings.chunk_bytes` under `StorageSettings.transfer` owns the
+single 4 MiB default for append and ranged-read sizes on both faces. Client SDKs,
+listeners, plugin carriers and Wasm guests derive ceilings from it plus protocol
+framing and refuse incompatible configuration at startup naming the action and
+setting. Streaming transfer handlers, proto requests, bindings, SDK surfaces,
+stories and benchmark cases are deleted; Watch and native readers remain.
+
 ## How to Use This Document
 
 Read this contract before proposing architecture, protocol, public API or ownership

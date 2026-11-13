@@ -31,7 +31,6 @@ pub use managed::Managed;
 use std::{future::Future, sync::Arc};
 
 // Third Party Imports
-use harmos_protocol::plugin::instance_client::InstanceClient;
 use tokio::sync::watch;
 
 // Local Imports
@@ -177,7 +176,7 @@ impl Attached {
                 }
                 Placement::Remote(address) => (None, address.clone()),
             };
-            let mut activation = connect(&clock, &address, 1, None, process.as_ref().map(|process| process.digest)).await?;
+            let mut activation = connect(&clock, &address, 1, None, process.as_ref().map(|process| process.digest), operations.transfer_message_bytes().get()).await?;
             activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
@@ -257,7 +256,7 @@ impl Attached {
 /* === Private Functions === */
 
 async fn describe(connection: &Connection) -> Result<harmos_protocol::plugin::InstanceGetResponse, Error> {
-    let mut client = InstanceClient::new(connection.channel.clone());
+    let mut client = connection.client();
     client
         .get(harmos_protocol::plugin::InstanceGetRequest {
             revision: 1,
@@ -270,10 +269,13 @@ async fn describe(connection: &Connection) -> Result<harmos_protocol::plugin::In
 }
 
 async fn connect(
-    clock: &Clock, address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>,
+    clock: &Clock, address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>, message_bytes: usize,
 ) -> Result<Activation, Error> {
-    let connection = Arc::new(Connection::open(address).await?);
+    let connection = Arc::new(Connection::open(address, message_bytes).await?);
     let description = describe(&connection).await?;
+    if description.message_bytes < message_bytes as u64 {
+        return Err(Error::Invalid("Instance.Get: peer message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into()));
+    }
     let valid_time = description
         .started_at
         .is_some_and(|time| (-62_135_596_800..=253_402_300_799).contains(&time.seconds) && (0..1_000_000_000).contains(&time.nanos));
@@ -355,7 +357,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             let _activity = clock.activity("plugin stop");
             let deadline = clock.now() + settings.stop_grace;
             let streams_closed = clock.timeout_at(deadline, publications.close()).await;
-            let mut client = InstanceClient::new(activation.connection.channel.clone());
+            let mut client = activation.connection.client();
             let result = clock
                 .timeout_at(deadline, client.stop(harmos_protocol::plugin::InstanceStopRequest { reason }))
                 .await
@@ -407,7 +409,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 () = clock.sleep(settings.reconnect_delay) => {},
             }
             let _activity = clock.activity("plugin reconnect");
-            let reconnect = clock.timeout(settings.connect_timeout, connect(&clock, &address, number, previous, None));
+            let reconnect = clock.timeout(settings.connect_timeout, connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()));
             let result = tokio::select! {
                 biased;
                 _ = stopping(&mut stop, &mut participant) => return Ok(()),

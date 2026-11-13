@@ -394,7 +394,7 @@ impl Snapshot {
                 reason: "offset exceeds content length",
             });
         }
-        let maximum = max_bytes.min(self.inner.settings.response.batch_bytes);
+        let maximum = max_bytes.min(self.inner.settings.transfer_chunk_bytes());
         let range =
             get_content_bytes(file.length, file.sha256, offset, maximum, |offset, remaining| self.read_file(file, offset, remaining))
                 .await?;

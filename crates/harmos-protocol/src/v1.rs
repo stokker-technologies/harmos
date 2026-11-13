@@ -902,6 +902,8 @@ pub struct GuestRegistration {
     pub shutdown: ::core::option::Option<OperationPolicy>,
     #[prost(message, repeated, tag = "6")]
     pub requirements: ::prost::alloc::vec::Vec<GuestRequirement>,
+    #[prost(uint64, tag = "7")]
+    pub message_bytes: u64,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
