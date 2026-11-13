@@ -158,7 +158,7 @@ combined source closure and hosted validation are not claimed here.
 - [x] 8.5 Compose existing attachments, reconnect and process supervision; expose process identity, hidden Windows startup, unavailable failures, enable/disable, activation replacement, deletion and host restoration.
 - [x] 8.6 Add one journey per file: `client_manages_remote_plugins`, `client_manages_bundled_plugins`, `host_restores_plugin_entries`, and `client_refuses_invalid_plugin_bundles`; use the controlled clock, awaited events and existing reference plugins.
 - [x] 8.7 Document host adoption, product-owned policy and removal of duplicated management/hosting code; update affected README and guide links.
-- [ ] 8.8 Run format, Rust/Python/repository checks, all four stories twice, existing plugin-hosting tests, four-SDK conformance and Tests build; repair findings and record only actual proof.
+- [x] 8.8 Run format, Rust/Python/repository checks, all four stories twice, existing plugin-hosting tests, four-SDK conformance and Tests build; repair findings and record only actual proof.
 - [x] 8.9 Commit building owned changes locally with Conventional Commits; do not push or run specification lifecycle commands.
 
 ## Workflow Follow-Up
@@ -172,8 +172,8 @@ combined source closure and hosted validation are not claimed here.
 
 - [x] I.1 Merge the committed core, plugin-manager, access/status and storage branches in order; retain core audience generation, visibility and mechanical roots, regenerate every affected output and prove touched packages.
 - [x] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
-- [ ] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
-- [x] I.3.1 Complete format, Rust/Python/repository checks, protocol drift, four-SDK conformance, manager/access/status journeys, existing hosting/listener/certificate stories, guest System selection, storage unit/integration proof and the Tests producer. Manager/access/status journeys passed repeated runs; the broader native selection retains the one failure below.
+- [x] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
+- [x] I.3.1 Complete format, Rust/Python/repository checks, protocol drift, four-SDK conformance, manager/access/status journeys, existing hosting/listener/certificate stories, guest System selection, storage unit/integration proof and the Tests producer. Manager/access/status journeys passed repeated runs; the earlier catalog-entry fixture failure is resolved in I.3.2.
 - [x] I.3.2 Resolve `operations::wire::grpc_manager::grpc_network::external_authority_parity`: the story now derives its page bound from its client decode ceiling and verifies complete descriptors and bounded pages. The core repair at `af739a4e` is retained; product budgets and oversized-entry refusal are unchanged.
 - [x] I.4 Commit the candidate locally, verify clean status and locked offline metadata; document consumer adoption and pending proof without pushing.
 
@@ -184,7 +184,7 @@ combined source closure and hosted validation are not claimed here.
 - [x] AS.3 Implement gRPC-owned listener Get/Set, durable pairings, credential-store atomicity and live certificate rotation.
 - [x] AS.4 Implement service-owned identity/health, bounded redacted event histories/watches and ranged diagnostics with contributions.
 - [x] AS.5 Add five deterministic client journeys, descriptor-generated client bindings and adoption guidance.
-- [ ] AS.6 Run required format, Rust/Python/repository checks, stories twice, existing listener/certificate tests and Tests build; repair findings.
+- [x] AS.6 Run required format, Rust/Python/repository checks, stories twice, existing listener/certificate tests and Tests build; repair findings.
 
 ### Storage Convergence
 
