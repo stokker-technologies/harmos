@@ -11,6 +11,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import argparse
 import os
 import subprocess
 from pathlib import Path
@@ -33,10 +34,13 @@ from .process import spawn_flags
 # === Public Functions === #
 
 
-def run(root: Path, command: str, profile: str = "dev", *, check: bool = False, dependencies: bool = False) -> int:
+def run(
+    root: Path, command: str, profile: str = "dev", *, check: bool = False, dependencies: bool = False, layer: str | None = None
+) -> int:
     from .build.resource_roots import generate
 
-    generate(root)
+    if command == "generate":
+        generate(root)
     directory = root / "sdk/csharp"
     configuration = "Release" if profile == "release" else "Debug"
     environment = os.environ.copy()
@@ -138,6 +142,11 @@ def run(root: Path, command: str, profile: str = "dev", *, check: bool = False, 
             "--no-restore",
             "--configuration",
             configuration,
+            *(
+                ["--filter", "FullyQualifiedName~Harmos.Sdk.Tests.Unit|FullyQualifiedName~Harmos.Tests.ResourceRoots"]
+                if layer == "unit"
+                else []
+            ),
             "--logger",
             "console;verbosity=detailed",
         ],
@@ -153,6 +162,29 @@ def run(root: Path, command: str, profile: str = "dev", *, check: bool = False, 
     return 0
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("build", "test", "format", "check", "generate"))
+    parser.add_argument("--profile", choices=("dev", "release"), default="dev")
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--dependencies", action="store_true")
+    parser.add_argument("--layer", choices=("unit", "integration"))
+    options = parser.parse_args()
+    raise SystemExit(
+        run(
+            Path(__file__).resolve().parents[4],
+            options.command,
+            options.profile,
+            check=options.check,
+            dependencies=options.dependencies,
+            layer=options.layer,
+        )
+    )
+
+
 # === Private Functions === #
 
 # === Entry Point === #
+
+if __name__ == "__main__":
+    main()

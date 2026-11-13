@@ -9,8 +9,13 @@ projection required by its transport; its normal dependencies contain no packagi
 The root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
 `sdk/python/.venv/` and `sdk/python/uv.lock`; tooling does not depend on the SDK.
 Run `mise run prepare` once after checkout or dependency changes to synchronize
-all locked dependency groups in both projects and install the components and targets
-from `rust-toolchain.toml`. Tool versions stay pinned in `mise.toml` and `mise.lock`;
+the root tooling dependency groups and install the components and targets
+from `rust-toolchain.toml`. Run `mise -C sdk/python run prepare` for its isolated
+environment. CMake and Ninja live in `sdk/cpp/mise.toml`, dotnet in
+`sdk/csharp/mise.toml`; root Python and uv serve both tooling and the Python SDK.
+SDK task selections delegate into their folders. Mise lock files accompany tool
+declarations; Python package versions remain in its existing `uv.lock`.
+Tool versions stay pinned in the owning `mise.toml` and `mise.lock`;
 release, CI and package settings live in `tools/project.toml`.
 Explicit tool configuration lives in `tools/config/`: git-cliff uses `cliff.toml`
 and Taplo uses `taplo.toml`. Tasks pass these paths; editor settings select Taplo
@@ -36,7 +41,7 @@ one cache with one size. Without them, builds compile uncached.
 `SCCACHE_CLIENT_SIDE=1` keeps compilation in the requesting client instead of
 queuing it through the machine-wide server's compiler jobserver. Cargo starts or
 reuses the persistent server for cache storage; tasks never restart it per invocation.
-`SCCACHE_BASEDIRS` defaults to the checkout root, normalizing cache keys across
+`SCCACHE_BASEDIRS` is configured by the workstation to normalize cache keys across
 worktrees and drives. CI retains its explicitly configured cache settings.
 
 Leave `SCCACHE_LOG` unset during ordinary builds: in the pinned sccache version,
@@ -177,7 +182,7 @@ as `Client(channel, library_table, product_table)`. Actual leaf collisions are r
 
 Each language builds one complete SDK containing plugin authoring, its client root
 and host protocol needs. Python is `harmos-sdk` (import `harmos`), Rust is `harmos`,
-C# is NuGet `Harmos`, and C++ is CMake `HarmosCpp` (`Harmos::Cpp`). No audience
+C# is NuGet `Harmos`, and C++ is CMake `Harmos` (`Harmos::Cpp`). No audience
 selector exists. The host enforces faces and visibility at runtime. Context methods
 remain child calls and have no independent gRPC listener.
 

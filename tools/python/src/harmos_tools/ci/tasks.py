@@ -237,8 +237,6 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # C# SDK Selections Remain Independent of Rust Lanes and Tooling Python Tests.
     if options.command in ("build", "test", "format", "check") and options.language == "csharp":
-        from .. import csharp
-
         incompatible = (
             "package",
             "features",
@@ -256,16 +254,18 @@ def dispatch(arguments: list[str] | None = None) -> int:
         )
         if any(getattr(options, name, None) for name in incompatible):
             parser.error("C# selects only --language, --profile and --layer integration")
-        if getattr(options, "artifact", "product") != "product" or getattr(options, "layer", None) not in (None, "integration"):
+        if getattr(options, "artifact", "product") != "product" or getattr(options, "layer", None) not in (None, "unit", "integration"):
             parser.error("C# builds its SDK and tests its one integration story")
         if options.command == "build" and options.check:
             parser.error("C# formatting uses check --language csharp")
-        return csharp.run(
-            root,
-            options.command,
-            getattr(options, "profile", "dev"),
-            check=getattr(options, "check", False),
-        )
+        selected = []
+        if options.command in ("build", "test"):
+            selected += ["--profile", options.profile]
+        if getattr(options, "layer", None):
+            selected += ["--layer", options.layer]
+        if getattr(options, "check", False):
+            selected += ["--check"]
+        return _execute(["mise", "-C", "sdk/csharp", "run", options.command, "--", *selected])
 
     if options.command in ("build", "test", "check") and options.language == "cpp":
         if options.command == "build":
@@ -323,14 +323,12 @@ def dispatch(arguments: list[str] | None = None) -> int:
             or options.stress_count
         ):
             parser.error("Python SDK tests select --target integration and optional --exact")
-        selected = [options.exact] if options.exact else ["discover", "-s", "tests/integration", "-v"]
-        environment = dict(os.environ, TEST_PROFILE=options.profile)
+        selected = ["--profile", options.profile]
+        if options.exact:
+            selected += ["--exact", options.exact]
+        environment = dict(os.environ)
         environment.pop("VIRTUAL_ENV", None)
-        return _execute(
-            ["uv", "run", "--locked", "--no-sync", "--project", str(root / "sdk/python"), "python", "-m", "unittest", *selected],
-            directory=root / "sdk/python",
-            environment=environment,
-        )
+        return _execute(["mise", "-C", "sdk/python", "run", "test", "--", *selected], environment=environment)
 
     if options.command == "test" and options.language == "python" and options.exact:
         if options.package or options.target or options.coverage or options.extended or options.features:
@@ -345,18 +343,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 parser.error("Python SDK builds have no Cargo features or examples")
             if options.check:
                 return _task("check:python:sdk")
-            return _execute(
-                [
-                    sys.executable,
-                    "-m",
-                    "build",
-                    "--wheel",
-                    "--no-isolation",
-                    "--outdir",
-                    str(root / "target/build" / options.profile / "any/python"),
-                    str(root / "sdk/python"),
-                ],
-            )
+            return _execute(["mise", "-C", "sdk/python", "run", "build", "--", "--profile", options.profile])
         command = ["--locked", "--profile", options.profile, "-p", options.package]
         if options.manifest_path:
             command += ["--manifest-path", str(options.manifest_path)]
@@ -395,24 +382,24 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Prepare Explicit Inputs
     if options.command == "prepare":
-        toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]
-        _execute(
-            [
-                "rustup",
-                "toolchain",
-                "install",
-                toolchain["channel"],
-                "--profile",
-                toolchain["profile"],
-                "--component",
-                ",".join(toolchain["components"]),
-                "--target",
-                ",".join(toolchain["targets"]),
-            ]
-        )
-        environment = dict(os.environ)
-        environment.pop("VIRTUAL_ENV", None)
-        return _execute(["uv", "sync", "--locked", "--all-groups", "--project", str(root / "sdk/python")], environment=environment)
+        enabled = os.environ.get("MISE_ENABLE_TOOLS")
+        if enabled is None or "rust" in enabled.split(","):
+            toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]
+            _execute(
+                [
+                    "rustup",
+                    "toolchain",
+                    "install",
+                    toolchain["channel"],
+                    "--profile",
+                    toolchain["profile"],
+                    "--component",
+                    ",".join(toolchain["components"]),
+                    "--target",
+                    ",".join(toolchain["targets"]),
+                ]
+            )
+        return 0
     if options.command == "generate":
         from ..build.resource_roots import generate as resource_roots
 
@@ -424,11 +411,21 @@ def dispatch(arguments: list[str] | None = None) -> int:
             compose(root, options.descriptors, options.output, options.namespace)
             return 0
         if options.sdk == "python":
-            return _module("build.python_protocol")
+            return _execute(["mise", "-C", "sdk/python", "run", "generate"])
         if options.sdk == "csharp":
-            from .. import csharp
-
-            return csharp.run(root, "generate", options.profile, dependencies=options.dependencies)
+            return _execute(
+                [
+                    "mise",
+                    "-C",
+                    "sdk/csharp",
+                    "run",
+                    "generate",
+                    "--",
+                    "--profile",
+                    options.profile,
+                    *(["--dependencies"] if options.dependencies else []),
+                ]
+            )
         if options.sdk == "cpp":
             return _execute(["mise", "-C", "sdk/cpp", "run", "generate", "--", "--profile", options.profile])
         if options.sdk == "rust":

@@ -333,7 +333,7 @@ and caller-face authorization remain independent checks.
 
 17. **Generic Library SDKs.** One SDK package per language, amended by the owner on
     2026-11-13: Python `harmos-sdk` (import `harmos`), Rust `harmos`, NuGet `Harmos`
-    and CMake `HarmosCpp` (`Harmos::Cpp`) include authoring, client roots and host
+    and CMake `Harmos` (`Harmos::Cpp`) include authoring, client roots and host
     protocol needs. Audience-specific builds and stub guards are removed. The host
     enforces faces and visibility at runtime, regardless of available bindings.
     Keep all four SDKs in this repository, with

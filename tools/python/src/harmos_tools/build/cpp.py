@@ -99,6 +99,7 @@ def environment() -> dict[str, str]:
         output = subprocess.check_output(
             f'cmd /d /s /c ""{developer}" -no_logo -arch=x64 -host_arch=x64 >nul && set"',
             text=True,
+            env=dict(environment, PATH=str(vswhere.parent) + os.pathsep + environment["PATH"]),
             creationflags=spawn_flags(),
         )
         environment.update(

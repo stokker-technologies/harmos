@@ -1,0 +1,41 @@
+# === Settings === #
+
+[settings]
+lockfile = true
+
+# === Tools === #
+
+[tools]
+dotnet = "10.0.403"
+
+# === Tasks === #
+
+[tasks.build]
+description = "Build the C# SDK"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp build"
+
+[tasks.test]
+description = "Test the C# SDK"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp test"
+
+[tasks.format]
+description = "Format the C# SDK"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp format"
+
+[tasks.check]
+description = "Check the C# SDK"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp check"
+
+[tasks.generate]
+description = "Generate the C# Protocols"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp generate"
+
+[tasks."test:unit"]
+description = "Test the C# SDK Units"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp test --layer unit"

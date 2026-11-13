@@ -7,8 +7,6 @@ lockfile = true
 
 [tools]
 # Languages and Runtimes
-cmake = "4.1.2"
-dotnet = "10.0.403"
 go = "1.27.3"
 node = "26.12.1"
 python = "3.15.2"
@@ -39,7 +37,6 @@ git-cliff = "2.14.2"
 [env]
 RUFF_CACHE_DIR = "{{ config_root }}/tools/python/.ruff_cache"
 TAPLO_CONFIG = "{{ config_root }}/tools/config/taplo.toml"
-SCCACHE_BASEDIRS = "{{ get_env(name='SCCACHE_BASEDIRS', default='') if get_env(name='CI', default='') else get_env(name='SCCACHE_BASEDIRS', default=config_root) }}"
 
 # === Variables === #
 
@@ -178,8 +175,9 @@ hide = true
 description = "Format Python"
 usage = 'flag "--check"'
 run = [
-  "uv run --locked --no-sync --project tools/python ruff format tools/python tools/packaging sdk/python{% if usage.check %} --check{% endif %}",
-  "uv run --locked --no-sync --project tools/python ruff format --config tools/python/ruff.toml sdk/cpp/tests{% if usage.check %} --check{% endif %}",
+  "uv run --locked --no-sync --project tools/python ruff format tools/python tools/packaging{% if usage.check %} --check{% endif %}",
+  "mise -C sdk/python run format{% if usage.check %} -- --check{% endif %}",
+  "mise -C sdk/cpp run format{% if usage.check %} -- --check{% endif %}",
 ]
 
 [tasks."format:rust"]
@@ -202,10 +200,10 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.f
 hide = true
 description = "Lint Python"
 run = [
-  "uv run --locked --no-sync --project tools/python ruff check tools/python tools/packaging sdk/python",
+  "uv run --locked --no-sync --project tools/python ruff check tools/python tools/packaging",
   "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml sdk/cpp/tests",
   "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python",
-  "uv run --locked --no-sync --project tools/python ty check --project sdk/python sdk/python",
+  "mise -C sdk/python run lint",
 ]
 
 [tasks."lint:rust"]
@@ -292,11 +290,10 @@ run = [
 hide = true
 description = "Check Python SDK and Protocol Drift"
 run = [
-  "uv run --locked --no-sync --project tools/python ruff format sdk/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py --check",
-  "uv run --locked --no-sync --project tools/python ruff check sdk/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py",
-  "uv run --locked --no-sync --project tools/python ty check --project sdk/python sdk/python",
+  "mise -C sdk/python run check",
+  "uv run --locked --no-sync --project tools/python ruff format tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py --check",
+  "uv run --locked --no-sync --project tools/python ruff check tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py",
   "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py",
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol --check",
 ]
 
 [tasks."test:rust:unit"]

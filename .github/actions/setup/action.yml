@@ -17,6 +17,10 @@ inputs:
     description: Tools
     required: false
     default: ''
+  sdk-tools:
+    description: SDK Folders Whose Tools and Environments Are Required
+    required: false
+    default: ''
   cache-backend:
     description: Cache-backend
     required: false
@@ -174,3 +178,30 @@ runs:
     env:
       CI_INPUT_ARCHIVES: '[]'
       CI_OUTPUT_ARCHIVES: '[]'
+  - name: Install SDK Lane Tools
+    if: inputs.sdk-tools != ''
+    shell: bash
+    env:
+      SDK_TOOLS: ${{ inputs.sdk-tools }}
+    run: |
+      for sdk in $SDK_TOOLS; do
+        mise trust "sdk/$sdk/mise.toml"
+        mise -C "sdk/$sdk" install --locked
+      done
+  - name: Prepare Python SDK Environment
+    if: contains(inputs.sdk-tools, 'python')
+    shell: bash
+    run: mise -C sdk/python run prepare
+  - name: Prepare C++ Binary Cache
+    if: contains(inputs.sdk-tools, 'cpp')
+    shell: bash
+    run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
+  - name: Cache / C++ Dependencies
+    if: contains(inputs.sdk-tools, 'cpp')
+    uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+    with:
+      path: .cache/vcpkg/archives
+      key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/cpp/vcpkg.json', 'sdk/cpp/mise.lock') }}-${{ github.run_id }}
+      restore-keys: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('sdk/cpp/vcpkg.json', 'sdk/cpp/mise.lock') }}-
