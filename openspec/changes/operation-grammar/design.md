@@ -1511,6 +1511,35 @@ ServerCertificate resolver themselves are reused unchanged.
 
 ## Open Questions
 
+### Log Append Persistence Boundary, 2026-11-13
+
+I.8 remains open under the owner's method-only compatibility condition. The intended
+owner is ServiceManager and the intended face is client `harmos.v1.status.Logs.Append`.
+`crates/harmos-runtime/src/services/status/mod.rs::StatusSettings` supplies identity,
+volatile history, redaction and read budgets, but no durable sink or mutation-retention
+configuration. `ServiceManager::configure_status` is synchronous and constructs that
+standalone volatile owner; existing hosts, including the access/status fixture, need
+no StorageManager. `history.rs::History` assigns process-epoch positions and evicts
+events; neither history nor the original Append outcome survives a restart.
+
+A complete implementation needs consumer-selected durable storage and atomic retention
+of the immutable redacted batch, its mutation fingerprint and its original response,
+followed by recovery before admitting retries. Supplying that dependency through
+`StatusSettings` or `configure_status` changes a consumer-used public configuration
+shape beyond the authorized added Append method. Requiring application storage at
+existing Status configuration would also change supported standalone behavior.
+The existing object store is not a transparent substitute: its immutable ObjectCatalog
+is supplied when StorageManager is constructed, and a log object would require changing
+that consumer composition. Picking a filesystem path or private store from host identity
+would invent persistence policy that belongs to the consumer.
+
+Decision for this run: preserve existing public shapes and volatile List/Watch semantics;
+add no RPC, forwarding shim, generated output or incomplete SDK story. The smallest
+complete follow-up is an explicit durable log-store dependency on Status configuration,
+with bounded mutation retention and atomic batch/outcome recovery, then lost-reply and
+restart journeys through all four SDK roots. That configuration extension needs the
+owner's compatibility decision; task I.8 and its parent 3.4 remain unticked.
+
 Catalog discovery now returns the complete authorized catalog in one response, including
 complete descriptors. `external_authority_parity` lists once; the carrier ceiling alone
 guards the response and an oversize refusal names CatalogEntries.List.
