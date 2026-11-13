@@ -47,10 +47,17 @@ pub struct CallValue {
     pub payload: Vec<u8>,
 }
 
+/// Opaque Caller Scope, Inherited Unchanged by Child Invocations.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scope(String);
+
 /* === Enums === */
 
 #[derive(Debug, thiserror::Error)]
 pub enum ContextError {
+    #[error("Bind Invocation Scope: scope must be nonempty")]
+    EmptyScope,
+
     #[error("call context already carries `{name}`")]
     Duplicate { name: String },
 
@@ -76,6 +83,19 @@ pub trait ContextValue: Message + Send + Sync + 'static {
 }
 
 /* === Implementations === */
+
+impl Scope {
+    pub fn new(value: impl Into<String>) -> Result<Self, ContextError> {
+        let value = value.into();
+        if value.is_empty() {
+            return Err(ContextError::EmptyScope);
+        }
+        Ok(Self(value))
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 impl CallContext {
     pub fn insert<T: Send + Sync + 'static>(&mut self, value: T) -> Result<(), ContextError> {

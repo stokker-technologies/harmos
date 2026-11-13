@@ -31,7 +31,7 @@ use tokio::{
 };
 // Local Imports
 use super::{
-    ContentSource, Error, PluginManagerSettings,
+    Error, PluginManagerSettings,
     content::Installation,
     persistence::{Registry, SavedCreate, SavedEntry, Store, problem},
 };
@@ -57,7 +57,6 @@ pub(super) struct Actor {
     store: Store,
     registry: Registry,
     settings: PluginManagerSettings,
-    content: Arc<dyn ContentSource>,
     attach: Attach,
     commands: mpsc::Sender<Command>,
     participant: crate::runtime::StopParticipant,
@@ -100,8 +99,8 @@ pub(super) enum Command {
 
 impl Actor {
     pub async fn open(
-        storage: harmos_storage::StorageManager, content: Arc<dyn ContentSource>, settings: PluginManagerSettings, attach: Attach,
-        commands: mpsc::Sender<Command>, participant: crate::runtime::StopParticipant,
+        storage: harmos_storage::StorageManager, settings: PluginManagerSettings, attach: Attach, commands: mpsc::Sender<Command>,
+        participant: crate::runtime::StopParticipant,
     ) -> Result<Self, Error> {
         let (store, mut registry) = Store::open(storage, &settings).await?;
         if registry.entries.len() > settings.entries.get() || registry.creates.len() > settings.create_receipts.get() {
@@ -136,7 +135,6 @@ impl Actor {
             store,
             registry,
             settings,
-            content,
             attach,
             commands,
             participant,
@@ -414,7 +412,7 @@ impl Actor {
                 None
             }
             wire::plugin_placement::Kind::Managed(managed) => {
-                Some(Installation::prepare(self.content.as_ref(), managed, &self.settings).await?)
+                Some(Installation::prepare(&self.store.storage, managed, &self.settings).await?)
             }
         };
         let mut registry = self.registry.clone();

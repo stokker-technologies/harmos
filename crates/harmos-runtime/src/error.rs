@@ -288,6 +288,10 @@ impl<E> From<harmos_operations::operations::ContextError> for Error<E> {
     fn from(error: harmos_operations::operations::ContextError) -> Self {
         use harmos_operations::operations::ContextError;
         match error {
+            harmos_operations::operations::ContextError::EmptyScope => Self::InvalidInput {
+                field: "invocation scope",
+                reason: "Bind Invocation Scope: scope must be nonempty",
+            },
             ContextError::Duplicate { name } => Self::AlreadyRegistered { domain: "call context", name },
             ContextError::Missing { name } => Self::NotRegistered { domain: "call context", name },
             ContextError::Decode { .. } => Self::InvalidInput {

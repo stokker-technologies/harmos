@@ -347,9 +347,17 @@ impl ProtobufOperation for GetFileBytes {
                     .map(|value| value.id.as_str())
                     .expect("validated file identity"),
             )?;
-            let (range, resolved_at) =
-                transfers::get(&storage, &snapshots, transfers::required(request.file)?, request.offset, request.max_bytes, request.at)
-                    .await?;
+            let scope = context.call.get::<crate::operations::Scope>();
+            let (range, resolved_at) = transfers::get(
+                &storage,
+                &snapshots,
+                transfers::required(request.file)?,
+                request.offset,
+                request.max_bytes,
+                request.at,
+                scope.map(crate::operations::Scope::as_str),
+            )
+            .await?;
             let mut response = Self::Response {
                 data: range.data,
                 total_length: range.total_length,

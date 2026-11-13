@@ -885,8 +885,8 @@ open standalone calls. Namespace parents Access and status add no empty services
 
 The merged descriptor census matches the table: 23 library proto files and three
 imported protobuf files; 206 distinct method request/response messages, eight
-native hook wrappers, 156 other library payload messages and 37 imported messages
-(407 messages including nested messages/map entries), plus 19 library and 21
+native hook wrappers, 157 other library payload messages and 37 imported messages
+(408 messages including nested messages/map entries), plus 19 library and 21
 imported enums. The 38 shared capabilities are CatalogEntries.List, three
 Invocations controls, two Time methods and 32 Storage methods, each independently
 declared on the context/client faces. No automatic twins survive. ReadFile and
@@ -1315,18 +1315,12 @@ let reply = operations.call_encoded("example.echo", payload).await?;
 `Manager` implements `Management`, whose typed `get`, `list`, `watch`, `create`,
 `set`, `delete` and `restart` methods take the generated requests above and return
 `Pending<'_, Response>`; `watch` returns a bounded receiver of generated responses.
-`Manager::new` takes the runtime `StorageManager`, `Arc<dyn ContentSource>` and
-`PluginManagerSettings`. The latter owns the namespace, directory, target,
+`Manager::new` takes the runtime `StorageManager` and `PluginManagerSettings`.
+The latter owns the namespace, directory, target,
 existing placement and bundle policies, and all registry/read/queue capacities.
-`ContentSource` has the following boundary; `ContentRead<'a>` fixes the future's
-result to `Result<Vec<u8>, Error>`. `PublishedContent(StorageManager)` is the
-shared-storage implementation.
-
-```rust
-pub trait ContentSource: Send + Sync + 'static {
-    fn read<'a>(&'a self, content: &'a PluginManaged, max_bytes: usize) -> ContentRead<'a>;
-}
-```
+Bundle installation opens `StorageManager::open_content`, retaining one bounded
+`ContentRead` while assembling and verifying the configured archive. Library-owned
+files and registered application sources share the storage-owned contract below.
 
 The runtime builder's `plugins(Manager)` registers the resource and catalog;
 `start(&Arc<Runtime<A>>)` starts restoration and host-owned supervision once.
@@ -1340,7 +1334,7 @@ The runtime builder's `plugins(Manager)` registers the resource and catalog;
 | Caller-chosen opaque entry name and replay-safe Create request identifier | Identity survives reconnect and host restart independently of catalog identity; normalized replay returns the original response, and changed input conflicts. |
 | Durable registry object using conditional storage replacement | One bounded registry atomically owns entries and Create receipts without a private database or cross-object transaction. Consumer capacities bound entries, receipts and encoded registry bytes; exhausted receipt retention refuses new creates instead of silently expiring identities. |
 | Verify uploaded content and existing bundle format before admitting an entry | Digest, manifest, native target and executable checks precede extraction and process startup. The manager owns the installed directory; clients never supply executable paths. |
-| Content-source trait until the upload-session worker joins | The manager consumes only published immutable content; it never creates a second upload protocol. The storage implementation reads retained published file content. |
+| One storage-owned content boundary | Bundle installation, diagnostics and ranged reads share ContentSource/ContentRead; the manager never creates a second upload protocol or content-source trait. |
 | Reuse attachment connection, admission, invocation, streams and supervision | The manager owns the set and lifecycle, while `attach_grpc` remains the single hosting implementation. |
 | Retain unavailable entries and the last connected description | A failed process or endpoint must remain manageable and diagnostically visible. Restart replaces the activation; disabled entries remain stopped. |
 | Reconnect remote entries and start enabled managed entries on startup | Persisted intent survives a host restart; observed process state is reconstructed, never trusted from disk. |
@@ -1468,7 +1462,7 @@ failure instead of silently skipping. Process histories expire at restart and re
 eviction; zero is an issued empty boundary, never an arbitrary historical selection.
 Logs/traces are volatile diagnostics, not claims of storage durability.
 Diagnostics freezes a bounded tar archive under an opaque content id; subsequent ranges
-read the same bytes and digest. The shared storage `get_content_bytes` mechanism serves archive and stored-file
+read the same bytes and digest. The shared storage `ContentRead` mechanism serves archive and stored-file
 ranges, including short reads and digest verification; no streaming twin or upload engine is added.
 Text-only contributed entries permit redaction before archiving; reject unsafe/duplicate
 archive paths and refuse over-budget archives instead of truncating valid content.
@@ -1774,7 +1768,7 @@ Watch readers borrow that same caller-owned context until the reader finishes.
 The matching Rust request, Python call options and C# CallOptions retain per-call
 metadata, deadlines and cancellation. No per-operation forwarding code is authored.
 
-Application content will register with the storage read owner through one shared
+Application content registers with the storage read owner through one shared
 content-source trait: resolve an immutable reference under the inherited opaque
 authorization scope to length, SHA-256 and an explicitly expiring bounded lease,
 then read ranges through that lease. The same trait replaces diagnostics' range
@@ -1807,8 +1801,9 @@ registration refuses replacement. Library-history references use saved storage.
 An application supplies a distinct history and an immutable metadata identifier;
 its resolver receives that identifier and the inherited opaque invocation scope,
 returns authoritative length/digest and a bounded expiring lease, and owns the token.
-The library refuses reference/metadata disagreement, oversized tokens/ranges, short
+The library refuses reference/metadata disagreement, oversized tokens/ranges, empty
 or oversized provider reads and expired leases, with GetFileBytes named in errors.
+Ordered nonempty short reads are accumulated within the requested range.
 No application bytes or metadata are written into library persistence.
 
 The existing SavedSnapshots observation mechanism retains the ContentRead handle
@@ -1826,6 +1821,26 @@ The archive itself still lives until replaced, so this does not introduce archiv
 Plugin installation takes the StorageManager directly and opens one content read;
 the former bundle-only ContentSource, ContentRead alias and PublishedContent adapter
 are removed with their constructor parameter and all callers.
+
+The cross-face expiry journey also requires failure-chain lookup to traverse a
+boxed remote Failure, preserving the action already carried in its causal record.
+The existing origin/carrier round-trip test covers this missing traversal.
+
+#### Consumer Adoption from 3c91c148
+
+Regenerate protocol/SDK bindings and adopt the generated 8 MiB message default;
+retain 4 MiB transfer chunks. Configure injected transports and caller-owned byte
+budgets for the selected ceiling. Import Python's fixture from `harmos.conformance`,
+and use the public constructors above in layered SDK conformance programs.
+Every C++ root call now takes its caller's ClientContext first. Watch returns the
+reader directly; retain the context, call TryCancel when abandoning observation,
+and Finish the reader before releasing it. Remove the old wrapper access.
+Construct the plugin manager with `(storage, settings)` and remove PublishedContent;
+supply positive `StatusSettings.read_timeout`. Hosts serving existing content register
+ContentSource and retain returned leases/read cuts. Persisted library content needs
+no migration, and no second copy of application content is created.
+
+### Unary Transfer Migration
 
 Delete native ReadFile/WriteFile operation declarations and handlers, their two proto
 requests and generated bindings, their streaming-only stories and fixture branches,

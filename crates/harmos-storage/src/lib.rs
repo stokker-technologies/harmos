@@ -20,6 +20,7 @@ mod batching;
 pub mod bench_support;
 mod capacity;
 pub mod config;
+mod content;
 mod definitions;
 mod deletion;
 pub mod directory;
@@ -64,6 +65,7 @@ pub use batch::{FileChunk, StorageBatch};
 pub use config::{
     StorageAccumulatorSettings, StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings,
 };
+pub use content::{ContentLease, ContentRead, ContentSource};
 pub use definitions::{DefinitionInput, DefinitionKind, DefinitionOutcome, DefinitionRefusal};
 pub use directory::{DirectoryReader, DirectoryWatcher};
 pub use error::{BackendFailure, Error, Result};
@@ -72,7 +74,7 @@ pub use file_capture::FileCapture;
 pub use file_checkpoint::FileCheckpoint;
 pub use file_follow::{FileFollow, FileFollower};
 pub use file_production::ProductionFollower;
-pub use file_reads::{ContentRange, FileBytesRange, FileRead, FileReader, get_content_bytes};
+pub use file_reads::{ContentRange, FileBytesRange, FileRead, FileReader};
 pub use frozen_file::FrozenFile;
 pub use harmos_domain::model::storage::files;
 pub use harmos_domain::model::storage::{

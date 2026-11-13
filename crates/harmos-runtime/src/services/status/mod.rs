@@ -59,6 +59,7 @@ pub struct StatusSettings {
     pub read_leases: NonZeroUsize,
     pub archive_bytes: NonZeroUsize,
     pub range_bytes: NonZeroUsize,
+    pub read_timeout: std::time::Duration,
     pub redaction_bytes: NonZeroUsize,
     pub contributions: NonZeroUsize,
 }
@@ -80,7 +81,7 @@ struct State {
     providers_revision: u64,
     components: Vec<v1::HealthComponent>,
     available: bool,
-    archive: Option<diagnostics::Archive>,
+    archive: Option<Arc<diagnostics::Archive>>,
 }
 pub struct Registration {
     owner: Weak<Status>,
@@ -115,6 +116,9 @@ impl Status {
             || settings.range_bytes > settings.archive_bytes
         {
             return Err(failure("Status.Configure", "identity must be complete and range_bytes must not exceed archive_bytes"));
+        }
+        if settings.read_timeout.is_zero() || clock.now().checked_add(settings.read_timeout).is_none() {
+            return Err(failure("Status.Configure", "read_timeout must be positive and fit the clock"));
         }
         let epoch = identifier("Status.Configure")?;
         let history =

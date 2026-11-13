@@ -16,14 +16,13 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, pin::Pin};
 // Third Party Imports
 use sha2::{Digest, Sha256};
 // Local Imports
 use super::{Error, PluginManagerSettings, persistence::problem};
 use crate::bundle::{Bundle, Facility};
-use crate::storage::{FileReference, StorageManager};
 use harmos_protocol::v1 as wire;
+use harmos_storage::{FileReference, StorageManager};
 
 /* === Constants === */
 
@@ -31,11 +30,7 @@ use harmos_protocol::v1 as wire;
 
 /* === Type Aliases === */
 
-pub type ContentRead<'a> = Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>> + Send + 'a>>;
-
 /* === Structs === */
-
-pub struct PublishedContent(pub StorageManager);
 
 pub(super) struct Installation {
     directory: tempfile::TempDir,
@@ -47,55 +42,34 @@ pub(super) struct Installation {
 
 /* === Traits === */
 
-pub trait ContentSource: Send + Sync + 'static {
-    fn read<'a>(&'a self, content: &'a wire::PluginManaged, max_bytes: usize) -> ContentRead<'a>;
-}
-
 /* === Implementations === */
 
-impl ContentSource for PublishedContent {
-    fn read<'a>(&'a self, content: &'a wire::PluginManaged, max_bytes: usize) -> ContentRead<'a> {
-        Box::pin(async move {
-            let reference: FileReference = content
-                .content
-                .clone()
-                .ok_or_else(|| {
-                    Error::new("content_required", "Create Managed Plugin", "publish the bundle through an upload session first")
-                })?
-                .try_into()
-                .map_err(|error| problem("Read Published Bundle", error))?;
-            if reference.length > max_bytes as u64 {
-                return Err(Error::new(
-                    "bundle_capacity",
-                    "Read Published Bundle",
-                    "upload a bundle within the configured archive capacity",
-                ));
-            }
-            let read = self.0.snapshot(&self.0.get_saved_position()).await.map_err(|error| problem("Read Published Bundle", error))?;
-            let mut bytes = Vec::new();
-            while (bytes.len() as u64) < reference.length {
-                let range = read
-                    .get_file_bytes(&reference, bytes.len() as u64, self.0.settings().response.batch_bytes)
-                    .await
-                    .map_err(|error| problem("Read Published Bundle", error))?;
-                if range.data.is_empty() || range.data.len() > max_bytes.saturating_sub(bytes.len()) {
-                    return Err(Error::new("bundle_capacity", "Read Published Bundle", "read bounded nonempty published ranges"));
-                }
-                bytes.extend_from_slice(&range.data);
-            }
-            if bytes.len() as u64 != reference.length || Sha256::digest(&bytes).as_slice() != reference.sha256 {
-                return Err(Error::new("content_digest", "Read Published Bundle", "restore the published content and its digest"));
-            }
-            Ok(bytes)
-        })
-    }
-}
-
 impl Installation {
-    pub async fn prepare(
-        source: &dyn ContentSource, managed: &wire::PluginManaged, settings: &PluginManagerSettings,
-    ) -> Result<Self, Error> {
-        let bytes = source.read(managed, settings.bundle.archive_bytes).await?;
+    pub async fn prepare(storage: &StorageManager, managed: &wire::PluginManaged, settings: &PluginManagerSettings) -> Result<Self, Error> {
+        let reference: FileReference = managed
+            .content
+            .clone()
+            .ok_or_else(|| Error::new("content_required", "Create Managed Plugin", "supply an immutable content reference"))?
+            .try_into()
+            .map_err(|error| problem("Read Plugin Bundle", error))?;
+        if reference.length > settings.bundle.archive_bytes as u64 {
+            return Err(Error::new("bundle_capacity", "Read Plugin Bundle", "supply a bundle within the configured archive capacity"));
+        }
+        let read = storage.open_content(&reference, None, None).await.map_err(|error| problem("Read Plugin Bundle", error))?;
+        let mut bytes = Vec::new();
+        while (bytes.len() as u64) < reference.length {
+            let range = read
+                .get_bytes(bytes.len() as u64, storage.settings().response.batch_bytes)
+                .await
+                .map_err(|error| problem("Read Plugin Bundle", error))?;
+            if range.data.is_empty() || range.data.len() > settings.bundle.archive_bytes.saturating_sub(bytes.len()) {
+                return Err(Error::new("bundle_capacity", "Read Plugin Bundle", "read bounded nonempty content ranges"));
+            }
+            bytes.extend_from_slice(&range.data);
+        }
+        if bytes.len() as u64 != reference.length || Sha256::digest(&bytes).as_slice() != reference.sha256 {
+            return Err(Error::new("content_digest", "Read Plugin Bundle", "restore the immutable content and its digest"));
+        }
         if bytes.len() > settings.bundle.archive_bytes {
             return Err(Error::new("bundle_capacity", "Create Managed Plugin", "supply content within the configured archive capacity"));
         }

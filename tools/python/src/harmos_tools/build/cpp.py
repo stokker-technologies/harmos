@@ -128,6 +128,7 @@ def main() -> None:
             for name in ("CMakeLists.txt", "include", "src", "cmake"):
                 package.add(root / "sdk/cpp" / name, arcname=f"sdk/cpp/{name}")
             package.add(root / "proto", arcname="proto")
+            package.add(root / "LICENSE", arcname="LICENSE")
 
 
 # === Private Functions === #

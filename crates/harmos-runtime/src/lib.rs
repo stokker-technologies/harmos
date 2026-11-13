@@ -53,11 +53,11 @@ pub use harmos_domain::{
 pub use harmos_domain::{Digest, Fingerprint, Portable, QualifiedId};
 pub use harmos_operations::execution::operations::{EndpointSet, OperationHost, Response};
 pub use harmos_operations::execution::{Context, ExecutionContext, Lifecycle, Operation, Resource, ResourceError, Service, Setup};
+pub use harmos_operations::operations::Scope;
 pub use harmos_operations::{
     Backoff, Jitter, OperationDefinition, OperationPolicy, RequestShape, RestartPolicy, RetryPolicy, ServicePolicy,
 };
 pub use harmos_operations::{Failure, StreamSpec};
-pub use operations::context::Scope;
 pub use operations::refusal::Refusal;
 pub use operations::{Catalog, CatalogDescription, Invocation, InvocationExt, Lane, Running};
 pub use runtime::{Handle, Runtime, StartupError};

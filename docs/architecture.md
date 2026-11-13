@@ -9,6 +9,16 @@ that cannot carry the configured chunk plus framing at startup, naming the actio
 setting. Streaming transfer handlers, proto requests, bindings, SDK surfaces,
 stories and benchmark cases are deleted; Watch and native readers remain.
 
+Application-owned immutable content registers through StorageManager's single
+`ContentSource`. Resolution receives the inherited caller scope and returns length,
+SHA-256 and a bounded lease with explicit expiry. Client/plugin GetFileBytes retain
+that lease in the existing bounded read-cut registry, bound to the reference and
+scope. Expiry refuses rather than renewing a continuation. Native hosts use
+`open_content(&reference, scope, at)` and `ContentRead::get_bytes(offset, maximum)`.
+Library-history references keep their saved-storage path; no application bytes or
+metadata enter library persistence. Diagnostics and bundle installation use the
+same content boundary. See [Application-Owned Content](storage.md#application-owned-content).
+
 ## How to Use This Document
 
 Read this contract before proposing architecture, protocol, public API or ownership
@@ -412,7 +422,7 @@ and caller-face authorization remain independent checks.
     `resume_fence_publish_and_range_across_faces` guards unary client/plugin transfer
     sessions, replay, fencing and bounded immutable reads. Bundled manager stories
     upload through the same client session operations. Diagnostics and file snapshots
-    share `harmos_storage::get_content_bytes`; the service manager owns archive retention.
+    share `harmos_storage::ContentSource` and `ContentRead`; the service manager owns archive retention.
     **Status:** landed for current production sessions.
 
 23. **Authoritative Host Time.** Plugin waits and interval publication use the host

@@ -372,6 +372,7 @@ fn sources<'a>(error: &'a (dyn std::error::Error + 'static)) -> impl Iterator<It
             .downcast_ref::<Arc<crate::Refusal>>()
             .map(|inner| inner.as_ref() as _)
             .or_else(|| error.downcast_ref::<Arc<Failure>>().map(|inner| inner.as_ref() as _))
+            .or_else(|| error.downcast_ref::<Box<Failure>>().map(|inner| inner.as_ref() as _))
             .or_else(|| error.downcast_ref::<Arc<std::io::Error>>().map(|inner| inner.as_ref() as _))
             .or_else(|| error.downcast_ref::<Arc<dyn std::error::Error + Send + Sync>>().map(|inner| inner.as_ref() as _));
         shared.or_else(|| {
@@ -414,6 +415,10 @@ mod tests {
     use super::{Failure, Origin};
     use crate::{Refusal, operations::FailureKind};
 
+    #[derive(Debug, thiserror::Error)]
+    #[error("{0}")]
+    struct Remote(#[source] Box<Failure>);
+
     #[test]
     fn application_failure_survives_origin_and_carrier_roundtrip() {
         let source = std::io::Error::from(std::io::ErrorKind::NotFound);
@@ -447,6 +452,8 @@ mod tests {
             ..Default::default()
         };
         let received = Failure::from(wire.clone()).in_operation("sensor.read");
+        let remote = Remote(Box::new(received.clone()));
+        assert_eq!(Failure::find(&remote), Some(&received));
         let retained = Failure::decode(&received.encode()).unwrap();
         let encoded = harmos_protocol::v1::Failure::from(&retained);
         assert_eq!(encoded.code, wire.code);

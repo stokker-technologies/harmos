@@ -82,8 +82,10 @@ an offset and a configured maximum range size; verify the completed content dige
 Collection retains one archive; another collection replaces it, and old names fail
 explicitly. Unsafe paths, duplicate entries and oversized archives fail instead of
 producing partial archives. Diagnostics and stored-file reads share
-`harmos_storage::get_content_bytes`, including range bounds, short-read handling
-and full-content digest verification. The service manager retains archive lifetime.
+`harmos_storage::ContentSource` and `ContentRead`, including range bounds, short-read handling
+and full-content digest verification. The service manager retains archive lifetime. Supply a positive
+`StatusSettings.read_timeout` for each bounded content read lease; it does not expire
+the retained archive or change replacement semantics.
 
 Rust clients use generated contracts under `harmos::client::v1` and its `access`/`status` modules.
 The mechanical root exposes `client.access.listener`, `client.access.pairings`,

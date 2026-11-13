@@ -132,6 +132,7 @@ impl Host {
             read_leases: nz(32),
             archive_bytes: nz(256 * 1024),
             range_bytes: nz(4096),
+            read_timeout: std::time::Duration::from_secs(30),
             redaction_bytes: nz(4096),
             contributions: nz(8),
         })?;

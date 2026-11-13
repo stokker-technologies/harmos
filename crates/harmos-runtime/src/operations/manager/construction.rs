@@ -143,15 +143,9 @@ impl Manager {
 
     /// Bind an Opaque Invocation Scope to This Handle and All Its Descendants.
     pub fn with_scope(&self, scope: impl Into<String>) -> Result<Self> {
-        let scope = scope.into();
-        if scope.is_empty() {
-            return Err(Error::InvalidInput {
-                field: "invocation scope",
-                reason: "invocation scope must be nonempty",
-            });
-        }
+        let scope = crate::Scope::new(scope)?;
         let mut context = self.call_context().clone();
-        context.insert(crate::Scope(scope))?;
+        context.insert(scope)?;
         Ok(self.with_context(context))
     }
 

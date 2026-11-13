@@ -165,7 +165,7 @@ pub fn plugin() -> Plugin {
     let configured = Observer::new(&settings, tick)
         .every(prost_types::Duration { seconds: 1, nanos: 0 })
         .interval_setting("harmos.conformance.v1.Graph.interval");
-    let plugin = Plugin::new("conformance", "1.0.0")
+    Plugin::new("conformance", "1.0.0")
         .message::<PayloadOnly>()
         .message::<PayloadOnly>()
         .operation(Operation::new("conformance.local", local).visibility(Visibility::Private).replay_safe())
@@ -204,8 +204,7 @@ pub fn plugin() -> Plugin {
         .section(Graph {
             interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
             ..Default::default()
-        });
-    plugin
+        })
 }
 
 async fn local_call(ctx: &Context, request: Value) -> Result<Value> {

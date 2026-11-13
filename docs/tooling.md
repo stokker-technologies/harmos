@@ -181,9 +181,7 @@ C# is NuGet `Harmos`, and C++ is CMake `HarmosCpp` (`Harmos::Cpp`). No audience
 selector exists. The host enforces faces and visibility at runtime. Context methods
 remain child calls and have no independent gRPC listener.
 
-## Python Plugin SDK
-
-### Control for Each Call
+## Control for Each Call
 
 Generated roots preserve caller metadata/credentials, a deadline override and
 cancellation for each call. The transport options belong to that call:
@@ -210,6 +208,8 @@ auto response = client.access.pairings.create(context, request);
 The four SDKs exercise `one_call_preserves_metadata_deadline_override_and_cancellation`
 (normal PascalCase in C#), using events and transport option inspection without
 sampling elapsed or remaining wall-clock time. A later call keeps its own options.
+
+## Python Plugin SDK
 
 `sdk/python` builds the pure Python `harmos-sdk` distribution for Python 3.13+.
 Its runtime dependencies are `grpcio` and `protobuf`; it contains no native code.
@@ -310,9 +310,7 @@ From the development checkout the standalone fixture can be served with
 `harmos-conformance --address 127.0.0.1:53124`. Every current rule applies to remote
 plugins, including the remote-specific Stop check; none is skipped.
 
-## Install a Plugin from Its Own Codebase
-
-### Conformance for a Layered SDK
+## Conformance for a Layered SDK
 
 Each SDK package ships the language-neutral fixture definition and its generated
 conformance messages. A layered SDK imports that definition through its own package,
@@ -347,6 +345,8 @@ They belong to the same SDK package as the constructor. C++ source consumers lin
 The C++ Build stages its standalone source package under the native Product
 directory's `cpp/harmos-cpp.tar.gz`. Package-isolation stories install/extract each
 SDK, compile or import its public fixture outside the checkout, and run every host rule.
+
+## Install a Plugin from Its Own Codebase
 
 Each SDK includes a short entry program that uses both authoring and the client root:
 [Rust](../sdk/rust/src/bin/install_itself.rs),

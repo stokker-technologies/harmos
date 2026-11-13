@@ -62,7 +62,7 @@ pub(super) struct SavedCreate {
 }
 
 pub(super) struct Store {
-    storage: StorageManager,
+    pub(super) storage: StorageManager,
     namespace: String,
     version: Option<ObjectVersionToken>,
     max_bytes: usize,

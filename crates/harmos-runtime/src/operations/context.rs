@@ -32,10 +32,6 @@ use crate::Result;
 #[cfg(feature = "grpc")]
 pub(crate) struct Deadline(pub(crate) tokio::time::Instant);
 
-/// Opaque Scope Inherited by Host and Plugin Child Calls.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Scope(pub(crate) String);
-
 pub struct ContextMut<'a> {
     context: &'a mut CallContext,
 }
@@ -45,12 +41,6 @@ pub struct ContextMut<'a> {
 /* === Traits === */
 
 /* === Implementations === */
-
-impl Scope {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 
 impl<'a> ContextMut<'a> {
     pub(crate) fn new(context: &'a mut CallContext) -> Self {

@@ -639,6 +639,48 @@ listeners, plugin carriers and Wasm guests use the separate generated
 `MessageSettings.message_bytes` default of 8 MiB. They validate that the ceiling
 carries the chunk plus protocol framing. Incompatible ceilings refuse startup naming the setting.
 
+## Application-Owned Content
+
+A host can serve immutable bytes it already owns through both Storage.GetFileBytes
+faces. Register one `harmos_storage::ContentSource` on the StorageManager. The
+application supplies references with a distinct history and an immutable metadata
+identifier; the library calls `resolve(reference.metadata.id.as_str(), caller_scope)`.
+The scope comes from trusted invocation context, including inherited plugin calls.
+It remains separate from storage grants and never comes from the reference payload.
+
+```rust
+use harmos_storage::{ContentLease, StorageFuture};
+use std::num::NonZeroUsize;
+
+pub trait ContentSource: Send + Sync + 'static {
+    fn resolve<'a>(&'a self, reference: &'a str, scope: Option<&'a str>)
+        -> StorageFuture<'a, ContentLease>;
+    fn read<'a>(&'a self, lease: &'a ContentLease, offset: u64, maximum: NonZeroUsize)
+        -> StorageFuture<'a, Vec<u8>>;
+}
+
+storage.register_content_source(std::sync::Arc::new(source))?;
+let read = storage.open_content(&reference, Some("caller-scope"), None).await?;
+let range = read.get_bytes(offset, maximum).await?;
+```
+
+`ContentLease` carries `length`, `sha256`, `expires_at: SystemTime`,
+`max_bytes: NonZeroUsize` and application `token: Vec<u8>`. Use the runtime's
+captured clock to choose expiry. The library checks expiry before/after reads,
+times out pending reads at that expiry, checks metadata against the supplied
+reference and enforces both the lease and transfer bounds. Short provider reads
+are accumulated in order; empty/oversized reads refuse. A complete single-range
+read verifies SHA-256, and callers verify the digest after assembling multiple ranges.
+
+Wire callers retain `resolved_at` for every subsequent range. The existing bounded
+read-cut owner retains the lease and binds it to the reference and caller scope.
+Expired/evicted/foreign continuations fail with GetFileBytes named; start a new
+read explicitly rather than silently renewing a lease. No application content is
+written into library persistence. Library-history references still select saved
+storage and perform the existing reference/provenance checks. Registration refuses
+replacement and retires with its storage owner. Bundle installation and diagnostics
+use the same content-source/read mechanism.
+
 ## File-Transfer Benchmark
 
 `mise run bench -- --storage --filter file_transfer` builds only the runtime's

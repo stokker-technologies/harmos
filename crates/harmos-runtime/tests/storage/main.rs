@@ -9,6 +9,7 @@
 
 /* === Modules === */
 
+mod application_content;
 mod callee_policy;
 mod definition_receipts;
 mod generated_example_hash;

@@ -40,6 +40,9 @@ pub(super) struct Archive {
     pub name: String,
     bytes: std::sync::Arc<Vec<u8>>,
     digest: [u8; 32],
+    clock: crate::clock::Clock,
+    timeout: std::time::Duration,
+    maximum: std::num::NonZeroUsize,
 }
 struct Bounded {
     bytes: Vec<u8>,
@@ -51,6 +54,49 @@ struct Bounded {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_storage::ContentSource for Archive {
+    fn resolve<'a>(&'a self, reference: &'a str, _: Option<&'a str>) -> harmos_storage::StorageFuture<'a, harmos_storage::ContentLease> {
+        Box::pin(async move {
+            if reference != self.name {
+                return Err(harmos_storage::Error::InvalidInput {
+                    field: "Status.Diagnostics.Get",
+                    reason: "archive is unknown or expired",
+                });
+            }
+            let expires_at = self.clock.read().date.checked_add(self.timeout).ok_or(harmos_storage::Error::InvalidInput {
+                field: "Status.Diagnostics.Get",
+                reason: "read_timeout exceeds clock capacity",
+            })?;
+            Ok(harmos_storage::ContentLease {
+                length: self.bytes.len() as u64,
+                sha256: self.digest,
+                expires_at,
+                max_bytes: self.maximum,
+                token: self.name.as_bytes().to_vec(),
+            })
+        })
+    }
+    fn read<'a>(
+        &'a self, lease: &'a harmos_storage::ContentLease, offset: u64, maximum: std::num::NonZeroUsize,
+    ) -> harmos_storage::StorageFuture<'a, Vec<u8>> {
+        Box::pin(async move {
+            if lease.token != self.name.as_bytes() || lease.length != self.bytes.len() as u64 || lease.sha256 != self.digest {
+                return Err(harmos_storage::Error::InvalidInput {
+                    field: "Status.Diagnostics.Get",
+                    reason: "archive lease does not match content",
+                });
+            }
+            let offset =
+                usize::try_from(offset).ok().filter(|offset| *offset <= self.bytes.len()).ok_or(harmos_storage::Error::InvalidInput {
+                    field: "Status.Diagnostics.Get",
+                    reason: "offset exceeds content length",
+                })?;
+            let end = offset.saturating_add(maximum.min(self.maximum).get()).min(self.bytes.len());
+            Ok(self.bytes[offset..end].to_vec())
+        })
+    }
+}
 
 impl Write for Bounded {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
@@ -78,31 +124,22 @@ impl Status {
         } else {
             request.name
         };
-        let (bytes, digest) = {
+        let archive = {
             let state = self.state.lock().expect("status lock is healthy");
-            let archive = state
+            state
                 .archive
                 .as_ref()
                 .filter(|archive| archive.name == name)
-                .ok_or_else(|| failure(action, "archive is unknown or expired"))?;
-            (archive.bytes.clone(), archive.digest)
+                .cloned()
+                .ok_or_else(|| failure(action, "archive is unknown or expired"))?
         };
-        let range = crate::storage::get_content_bytes(
-            bytes.len() as u64,
-            digest,
-            request.offset,
-            std::num::NonZeroUsize::new(request.max_bytes as usize).expect("validated positive range"),
-            |offset, maximum| {
-                let bytes = bytes.clone();
-                async move {
-                    let offset = offset as usize;
-                    let end = offset.saturating_add(maximum.get()).min(bytes.len());
-                    Ok(bytes[offset..end].to_vec())
-                }
-            },
-        )
-        .await
-        .map_err(|error| failure(action, &error.to_string()))?;
+        let read = harmos_storage::ContentRead::open(archive, &name, None, self.clock.clone(), self.settings.archive_bytes)
+            .await
+            .map_err(|error| failure(action, &error.to_string()))?;
+        let range = read
+            .get_bytes(request.offset, std::num::NonZeroUsize::new(request.max_bytes as usize).expect("validated positive range"))
+            .await
+            .map_err(|error| failure(action, &error.to_string()))?;
         Ok(DiagnosticsGetResponse {
             name,
             data: range.data,
@@ -174,11 +211,14 @@ impl Status {
         let bytes = builder.into_inner().map_err(|_| failure(action, "archive exceeds configured byte budget"))?.bytes;
         let digest: [u8; 32] = Sha256::digest(&bytes).into();
         let name = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-        self.state.lock().expect("status lock is healthy").archive = Some(Archive {
+        self.state.lock().expect("status lock is healthy").archive = Some(std::sync::Arc::new(Archive {
             name: name.clone(),
             bytes: std::sync::Arc::new(bytes),
             digest,
-        });
+            clock: self.clock.clone(),
+            timeout: self.settings.read_timeout,
+            maximum: self.settings.range_bytes,
+        }));
         Ok(name)
     }
 }

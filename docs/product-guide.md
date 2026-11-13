@@ -1002,7 +1002,8 @@ revisions are unchanged.
 `harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
 The caller supplies storage transfer settings and the required
 `retained_bytes: NonZeroUsize` from application configuration. Wire and outgoing-byte
-limits derive from the transfer setting plus framing; explicit ceilings must carry it. For example:
+limits use the generated 8 MiB message default; explicit ceilings must carry the
+configured transfer chunk plus framing. The default chunk remains 4 MiB. For example:
 
 ```rust
 let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<std::num::NonZeroUsize>()?;

@@ -28,13 +28,14 @@ pub(super) struct Production {
 }
 
 pub(super) struct Observation {
-    plan: Vec<u8>,
-    data: Data,
+    pub(super) plan: Vec<u8>,
+    pub(super) data: Data,
 }
 
 /* === Enums === */
 
-enum Data {
+pub(super) enum Data {
+    Content(harmos_storage::ContentRead),
     Production(Production),
     Hash(wire::FileHash),
     Directory(Vec<wire::DirectoryEntry>),

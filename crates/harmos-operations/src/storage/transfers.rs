@@ -23,6 +23,7 @@
 use crate::execution::operations::{ExecutionContext, access::GrantAccess};
 use harmos_protocol::{storage as wire, v1};
 use harmos_storage::{StorageCursor, StorageManager};
+use prost::Message;
 
 /* === Constants === */
 
@@ -167,15 +168,71 @@ pub(super) async fn delete(
 
 pub(super) async fn get(
     storage: &StorageManager, snapshots: &super::snapshot::SavedSnapshots, file: wire::FileReference, offset: u64, max_bytes: u64,
-    at: Option<v1::ReadCut>,
+    at: Option<v1::ReadCut>, scope: Option<&str>,
 ) -> crate::Result<(harmos_storage::FileBytesRange, v1::ReadCut)> {
     let max_bytes = if max_bytes == 0 { storage.settings().transfer.chunk_bytes() } else { max_bytes };
     let maximum = usize::try_from(max_bytes).ok().and_then(std::num::NonZeroUsize::new).ok_or(crate::Error::InvalidInput {
         field: "GetFileBytes",
         reason: "max_bytes must be positive and representable",
     })?;
+    let reference: harmos_storage::FileReference = file.clone().try_into()?;
+    if reference.position.history != storage.get_saved_position().history {
+        let bytes = file.encode_to_vec();
+        let mut selection = ring::digest::Context::new(&ring::digest::SHA256);
+        selection.update(b"storage.application_content:");
+        selection.update(&(bytes.len() as u64).to_le_bytes());
+        selection.update(&bytes);
+        selection.update(scope.unwrap_or_default().as_bytes());
+        let plan = selection.finish().as_ref().to_vec();
+        let (content, read) =
+            if let Some(at) = at {
+                let read = snapshots
+                    .resolve(storage, Some(at))
+                    .await
+                    .map_err(|error| harmos_storage::Error::backend("GetFileBytes", harmos_storage::BackendFailure::Permanent, error))?;
+                let content =
+                    read.observation()
+                        .filter(|observation| observation.plan == plan)
+                        .and_then(|observation| {
+                            if let super::file_access::Data::Content(content) = &observation.data { Some(content.clone()) } else { None }
+                        })
+                        .ok_or(harmos_storage::Error::InvalidInput {
+                            field: "GetFileBytes",
+                            reason: "content lease does not match reference or caller scope; restart the read",
+                        })?;
+                (content, read)
+            } else {
+                let base = snapshots.resolve(storage, None).await?;
+                let position = base.at().clone();
+                drop(base);
+                let content = storage.open_content(&reference, scope, None).await?;
+                let resource = plan.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+                let read = snapshots
+                    .observe(
+                        storage,
+                        position,
+                        format!("content/{resource}"),
+                        super::file_access::Observation {
+                            plan,
+                            data: super::file_access::Data::Content(content.clone()),
+                        },
+                    )
+                    .await?;
+                (content, read)
+            };
+        let range = content.get_bytes(offset, maximum).await?;
+        return Ok((
+            harmos_storage::FileBytesRange {
+                data: range.data,
+                total_length: range.total_length,
+                sha256: range.sha256,
+                resolved_at: read.at().clone(),
+            },
+            read.cut().clone(),
+        ));
+    }
     let read = snapshots.resolve(storage, at).await?;
-    let range = read.get_file_bytes(&file.try_into()?, offset, maximum).await?;
+    let range = read.get_file_bytes(&reference, offset, maximum).await?;
     Ok((range, read.cut().clone()))
 }
 

@@ -316,7 +316,7 @@ impl StoredReader {
 /* === Public Functions === */
 
 /// Read One Bounded Range From an Immutable Source, Including Short Backend Reads.
-pub async fn get_content_bytes<F, Fut>(
+pub(crate) async fn read_content_range<F, Fut>(
     total_length: u64, sha256: [u8; 32], offset: u64, max_bytes: NonZeroUsize, mut read: F,
 ) -> Result<ContentRange>
 where
@@ -396,7 +396,7 @@ impl Snapshot {
         }
         let maximum = max_bytes.min(self.inner.settings.transfer_chunk_bytes());
         let range =
-            get_content_bytes(file.length, file.sha256, offset, maximum, |offset, remaining| self.read_file(file, offset, remaining))
+            read_content_range(file.length, file.sha256, offset, maximum, |offset, remaining| self.read_file(file, offset, remaining))
                 .await?;
         Ok(FileBytesRange {
             data: range.data,

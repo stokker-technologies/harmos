@@ -15,7 +15,8 @@ import asyncio
 import sys
 
 from harmos import GET_TIME, SLEEP, Plugin
-from .fixture import ClockFixture, plugin
+import harmos.conformance as conformance
+from .fixture import ClockFixture
 
 # === Public Exports === #
 
@@ -41,7 +42,11 @@ async def _main() -> None:
     parser.add_argument("--clock-only", action="store_true", help="Serve Only the Host Clock Journey")
     parser.add_argument("--shutdown-on-stdin", action="store_true", help="Close When the Process Owner Closes Standard Input")
     options = parser.parse_args()
-    selected = Plugin(ClockFixture(), id="conformance", version="1.0.0", requires=[SLEEP, GET_TIME]) if options.clock_only else plugin()
+    selected = (
+        Plugin(ClockFixture(), id="conformance", version="1.0.0", requires=[SLEEP, GET_TIME])
+        if options.clock_only
+        else conformance.plugin()
+    )
     endpoint = await selected.start(options.address)
     print(f"harmos listening {endpoint.address}", flush=True)
     try:

@@ -9,17 +9,17 @@ Its client-facing `harmos.v1.Plugins` service is separate from
 Register the manager's object catalog with the storage backend and storage
 manager. Supply an exclusive manager namespace, installation directory, native
 bundle target and every capacity in `PluginManagerSettings`. Construct the
-manager with the storage handle and `PublishedContent`, register it with
+manager with the storage handle, register it with
 `setup.settings().plugins(manager.clone())`, launch the runtime in an `Arc`, then
 call `manager.start(&runtime).await`. Storage must already be started; startup
 fails explicitly if its conditional object primitive is unavailable.
 
 ```rust
 use std::sync::Arc;
-use harmos_runtime::plugin::manager::{Manager, PublishedContent};
+use harmos_runtime::plugin::manager::Manager;
 
 // Include plugin::manager::catalog() in the storage and backend object catalogs.
-let manager = Manager::new(storage.clone(), Arc::new(PublishedContent(storage.clone())), settings)?;
+let manager = Manager::new(storage.clone(), settings)?;
 // In the runtime's existing setup closure:
 setup.settings().storage(&storage).plugins(manager.clone());
 // After the configured Runtime has launched:
@@ -79,8 +79,11 @@ A disconnected Watch never deletes its entries.
 Upload the existing bundle format through the library's file-production session:
 Create the production, Append bounded ordered chunks, Get progress to resume,
 and Publish the verified content. Supply that immutable published file reference
-and the archive SHA-256 in `PluginManaged`. `PublishedContent` reads the retained
-published file through storage; a narrow `ContentSource` trait supports another
+and the archive SHA-256 in `PluginManaged`. The manager opens one retained
+`storage.open_content(&reference, None, None)` read. Application-owned bundles use
+StorageManager's registered `ContentSource`, shared with ranged reads; no bundle-only
+content adapter or constructor argument remains. The application decides whether
+an unscoped host installation may resolve its reference. This supports another
 published-content owner without adding an upload protocol.
 
 Create checks the archive digest, manifest and per-file digests using the existing

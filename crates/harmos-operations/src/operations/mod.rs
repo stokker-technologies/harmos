@@ -25,7 +25,7 @@ mod specification;
 
 pub use crate::observers;
 pub use catalog::{Callees, Declarations, Entry};
-pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES};
+pub use context::{CallContext, CallValue, ContextError, ContextValue, PORTABLE_BYTES, PORTABLE_VALUES, Scope};
 pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use error::{Error, Result};

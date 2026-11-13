@@ -19,7 +19,6 @@ mod persistence;
 /* === Re-Exports === */
 
 pub use config::PluginManagerSettings;
-pub use content::{ContentRead, ContentSource, PublishedContent};
 pub use harmos_operations::plugins::{Error, Management};
 pub use persistence::catalog;
 
@@ -50,7 +49,6 @@ pub struct Manager {
 
 struct Inner {
     storage: StorageManager,
-    content: Arc<dyn ContentSource>,
     settings: PluginManagerSettings,
     commands: OnceLock<mpsc::Sender<actor::Command>>,
 }
@@ -62,12 +60,11 @@ struct Inner {
 /* === Implementations === */
 
 impl Manager {
-    pub fn new(storage: StorageManager, content: Arc<dyn ContentSource>, settings: PluginManagerSettings) -> Result<Self, Error> {
+    pub fn new(storage: StorageManager, settings: PluginManagerSettings) -> Result<Self, Error> {
         settings.validate()?;
         Ok(Self {
             inner: Arc::new(Inner {
                 storage,
-                content,
                 settings,
                 commands: OnceLock::new(),
             }),
@@ -93,15 +90,9 @@ impl Manager {
                 runtime.attach_grpc(placement, settings).await
             })
         });
-        let actor = actor::Actor::open(
-            self.inner.storage.engine(),
-            self.inner.content.clone(),
-            self.inner.settings.clone(),
-            attach,
-            sender,
-            runtime.stop_participant(),
-        )
-        .await?;
+        let actor =
+            actor::Actor::open(self.inner.storage.engine(), self.inner.settings.clone(), attach, sender, runtime.stop_participant())
+                .await?;
         tokio::spawn(actor.run(receiver, startup));
         Ok(())
     }

@@ -39,7 +39,7 @@ use harmos_protocol::v1 as wire;
 use harmos_runtime::{
     Runtime,
     clock::Clock,
-    plugin::manager::{self, Manager, PluginManagerSettings, PublishedContent},
+    plugin::manager::{self, Manager, PluginManagerSettings},
     storage::{StorageBackends, StorageManager},
 };
 
@@ -102,7 +102,7 @@ impl Host {
             storage_settings(),
         )
         .unwrap();
-        let manager = Manager::new(storage.clone(), Arc::new(PublishedContent(storage.clone())), settings(root)).unwrap();
+        let manager = Manager::new(storage.clone(), settings(root)).unwrap();
         let (clock, _) = Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
         let runtime = crate::support::booted(Default::default(), |setup| {
             setup.settings().clock(clock).storage(&storage).plugins(manager.clone());
