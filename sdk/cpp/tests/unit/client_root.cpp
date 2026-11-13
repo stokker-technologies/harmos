@@ -15,7 +15,7 @@
 
 // Local Imports
 
-#include "../generated/client.hpp"
+#include "client.hpp"
 
 /* === Macros === */
 

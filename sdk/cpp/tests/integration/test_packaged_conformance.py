@@ -7,7 +7,7 @@
 # ***
 
 
-"""A Standalone CMake SDK Package Serves Its Public Conformance Fixture"""
+"""An Installed CMake SDK Package Serves Its Conformance Example"""
 
 # === Imports === #
 
@@ -19,6 +19,7 @@ import tarfile
 import unittest
 from pathlib import Path
 
+from harmos_tools.build.cpp import environment
 from harmos_tools.build.paths import output
 from harmos_tools.process import spawn_flags
 
@@ -50,51 +51,74 @@ class PackagedConformance(unittest.TestCase):
         for name in ("sdk", "proto"):
             owned = (source / name).resolve()
             if not owned.is_relative_to(source):
-                raise RuntimeError("Package Conformance: extracted sources escaped the owned directory")
+                raise RuntimeError(
+                    "Package Conformance: extracted sources escaped the owned directory"
+                )
             if owned.exists():
                 shutil.rmtree(owned)
         with tarfile.open(package) as bundle:
             bundle.extractall(source, filter="data")
-        (source / "main.cpp").write_text(
-            '#include "harmos/conformance.hpp"\nint main() { harmos::conformance::plugin().serve(); }\n', encoding="utf-8"
-        )
-        (source / "CMakeLists.txt").write_text(
-            "cmake_minimum_required(VERSION 3.24)\nproject(PackagedConformance LANGUAGES C CXX)\nadd_subdirectory(sdk/cpp)\nadd_executable(packaged-cpp-conformance main.cpp)\ntarget_link_libraries(packaged-cpp-conformance PRIVATE Harmos::Cpp)\n",
-            encoding="utf-8",
-        )
+        # Compile the Packaged Example Against the Installed SDK, Without Its Sources.
+        selected = "tests" if profile == "dev" else "release"
+        prefix = root / "target/cpp" / selected / "installed"
         build = root / "target/cpp/packaged" / profile
-        cache = (root / "target/cpp" / profile / "CMakeCache.txt").read_text()
-        dependency = Path(next(line.split("=", 1)[1] for line in cache.splitlines() if line.startswith("grpc_SOURCE_DIR:STATIC=")))
+        child_environment = environment()
+        toolchain = (
+            Path(child_environment["VCPKG_ROOT"]) / "scripts/buildsystems/vcpkg.cmake"
+        )
         configure = [
             "cmake",
             "-S",
-            str(source),
+            str(source / "sdk/cpp/examples/conformance"),
             "-B",
             str(build),
+            "-G",
+            "Ninja",
             f"-DCMAKE_BUILD_TYPE={configuration}",
-            "-DHARMOS_BUILD_TESTS=OFF",
-            f"-DFETCHCONTENT_SOURCE_DIR_GRPC={dependency}",
+            f"-DCMAKE_PREFIX_PATH={prefix}",
+            f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+            f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
+            "-DVCPKG_MANIFEST_INSTALL=OFF",
         ]
-        if os.name == "nt":
-            configure += ["-G", "Visual Studio 17 2022", "-A", "x64"]
-        # Build the Package with Only Its Published Headers and Ordinary gRPC Dependencies.
-        subprocess.run(configure, check=True, creationflags=spawn_flags())
+        subprocess.run(
+            configure, env=child_environment, check=True, creationflags=spawn_flags()
+        )
+        build.mkdir(parents=True, exist_ok=True)
         with (build / "build.log").open("w", encoding="utf-8") as log:
             result = subprocess.run(
-                ["cmake", "--build", str(build), "--config", configuration, "--target", "packaged-cpp-conformance", "--parallel", "4"],
+                [
+                    "cmake",
+                    "--build",
+                    str(build),
+                    "--target",
+                    "harmos-cpp-conformance",
+                    "--parallel",
+                    "4",
+                ],
+                env=child_environment,
+                check=False,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 creationflags=spawn_flags(),
             )
-        self.assertEqual(result.returncode, 0, (build / "build.log").read_text(errors="replace")[-12000:])
+        self.assertEqual(
+            result.returncode,
+            0,
+            (build / "build.log").read_text(errors="replace")[-12000:],
+        )
         # Serve the Public Fixture and Run the Language-Neutral Host Through Every Rule.
         suffix = ".exe" if os.name == "nt" else ""
         exported = output(root, "build", profile) / f"bin/harmos-conformance{suffix}"
         local = root / f"target/debug/harmos-conformance{suffix}"
-        host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local))
-        plugin = build / configuration / f"packaged-cpp-conformance{suffix}" if os.name == "nt" else build / "packaged-cpp-conformance"
+        host = Path(
+            os.environ.get(
+                "HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local
+            )
+        )
+        plugin = build / f"harmos-cpp-conformance{suffix}"
         result = subprocess.run(
             [str(host), "--plugin", str(plugin)],
+            check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -102,6 +126,10 @@ class PackagedConformance(unittest.TestCase):
             creationflags=spawn_flags(),
         )
         self.assertEqual(result.returncode, 0, result.stdout)
+        rows = [
+            line for line in result.stdout.splitlines() if line.endswith("| PASS |")
+        ]
+        self.assertEqual(len(rows), 31, result.stdout)
 
 
 # === Public Functions === #

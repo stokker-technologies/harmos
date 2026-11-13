@@ -93,10 +93,12 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
             staging.copy(source, fixtures / "csharp" / source.name, files)
     suffix = ".exe" if os.name == "nt" else ""
     binaries["harmos-csharp-conformance-plugin"] = f"csharp/harmos-csharp-conformance-plugin{suffix}"
-    cpp = ROOT / "target/cpp" / profile
-    source = cpp / configuration / f"harmos-cpp-conformance{suffix}" if os.name == "nt" else cpp / "harmos-cpp-conformance"
+    cpp = ROOT / "target/cpp" / ("tests" if profile == "dev" else "release")
+    source = cpp / f"harmos-cpp-conformance{suffix}"
     staging.copy(source, fixtures / "bin" / source.name, files)
     binaries["harmos-cpp-conformance"] = f"bin/{source.name}"
+    for dependency in cpp.glob("*.dll"):
+        staging.copy(dependency, fixtures / "bin" / dependency.name, files)
 
     with summary.phase("Fixture Driver"):
         tool = staging.executable(artifacts, "fixture-driver")

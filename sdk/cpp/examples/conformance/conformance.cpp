@@ -14,7 +14,7 @@
 // Third Party Imports
 
 // Local Imports
-#include "harmos/conformance.hpp"
+#include "conformance.hpp"
 #include "harmos/conformance/v1/fixture.pb.h"
 
 /* === Macros === */

@@ -349,6 +349,9 @@ and caller-face authorization remain independent checks.
     each SDK. Four-language client-root fixtures compose library and product descriptors.
     Native plugin semantic parity is agreed; generic managed application clients remain
     Rust-only, while other languages use their generated application gRPC clients.
+    C++ installs `Harmos::Cpp` with config-package dependencies; its conformance
+    implementation belongs to example support, outside the installed library.
+
     **Status:** landed for these SDK contracts; Wasm is Rust-only.
 
 18. **Deterministic Stories.** Correctness tests follow journeys using controlled

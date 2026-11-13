@@ -91,7 +91,7 @@ def snake(name: str) -> str:
 def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namespace: str = "harmos") -> None:
     if descriptors is None:
         descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-    for folder in ["sdk", "sdk/python/src/harmos", "sdk/rust/src/client", "sdk/csharp/Harmos", "sdk/cpp/include/harmos"]:
+    for folder in ["sdk", "sdk/python/src/harmos", "sdk/rust/src/client", "sdk/csharp/Harmos", "sdk/cpp/include/harmos/generated"]:
         (root / folder).mkdir(parents=True, exist_ok=True)
     methods = table(descriptors)
     output = root / "sdk/resources.json"
@@ -111,11 +111,11 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         (root / "sdk/fixtures/client/resources.json").write_text(
             json.dumps(fixture_methods, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
-        for folder in ["sdk/csharp/Tests/Generated", "sdk/cpp/tests/generated"]:
+        for folder in ["sdk/csharp/Tests/Generated", "target/generated/cpp"]:
             (root / folder).mkdir(parents=True, exist_ok=True)
         rust(root, fixture_methods, target=fixture.parent / "resources.rs")
         csharp(root, fixture_methods, namespace="fixture", target=root / "sdk/csharp/Tests/Generated/Client.cs")
-        cpp(root, fixture_methods, namespace="fixture", target=root / "sdk/cpp/tests/generated/client.hpp")
+        cpp(root, fixture_methods, namespace="fixture", target=root / "target/generated/cpp/client.hpp")
 
 
 def rust(root: Path, methods: list[dict], *, target: Path | None = None) -> None:
@@ -341,7 +341,9 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
         lines += ["};"]
     lines += ["}"]
     lines += [f'#pragma pop_macro("{name}")' for name in reversed(macro_names)]
-    (target or root / "sdk/cpp/include/harmos/client.hpp").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    destination = target or root / "sdk/cpp/include/harmos/generated/client.hpp"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def compose(repository: Path, descriptors: list[Path], output: Path, namespace: str) -> None:
@@ -364,9 +366,13 @@ def main() -> None:
     parser.add_argument("--descriptors", type=Path, action="append", default=[])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--namespace", default="harmos")
+    parser.add_argument("--cpp-fixture", type=Path)
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[5]
-    if options.descriptors:
+    if options.cpp_fixture:
+        fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
+        cpp(root, table(FileDescriptorSet.FromString(fixture.read_bytes())), namespace="fixture", target=options.cpp_fixture)
+    elif options.descriptors:
         if options.output is None:
             parser.error("composed client descriptors require --output")
         compose(root, options.descriptors, options.output, options.namespace)

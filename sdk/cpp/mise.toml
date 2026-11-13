@@ -1,0 +1,48 @@
+# === Settings === #
+
+[settings]
+lockfile = true
+
+# === Tools === #
+
+[tools]
+cmake = "4.1.2"
+ninja = "1.13.2"
+
+# === Tasks === #
+
+[tasks.prepare]
+description = "Prepare Pinned vcpkg"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --prepare"
+
+[tasks.build]
+description = "Build the C++ SDK with Presets"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp"
+
+[tasks.test]
+description = "Test the C++ SDK with Presets"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --test"
+
+[tasks.check]
+description = "Check the C++ SDK Preset"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --check"
+
+[tasks.consumer]
+description = "Build the Installed C++ SDK Consumer"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --consumer"
+
+[tasks.generate]
+description = "Generate the C++ Protocols"
+dir = "../.."
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --generate"
+
+[tasks.format]
+description = "Format the C++ SDK Python Stories"
+dir = "../.."
+usage = 'flag "--check"'
+run = "uv run --locked --no-sync --project tools/python ruff format --config tools/python/ruff.toml sdk/cpp/tests{% if usage.check %} --check{% endif %}"

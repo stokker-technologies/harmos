@@ -23,6 +23,9 @@
 
 ## 4. Final Validation
 
+- [ ] 4.4 Prove the committed C++ presets from clean output, installed consumer and integration stories on Windows; record cold and cached build durations in the final report.
+- [ ] 4.5 Run root format, Python and repository checks, per-SDK C# and Python build/test tasks, and verify clean Git status on the committed candidate.
+
 - [ ] 4.1 Run every entry point locally on Windows and Linux, and confirm hosted CI and Nightly run the same tasks.
 - [x] 4.2 Update the contributor guide.
 
@@ -34,6 +37,19 @@
 - [x] 5.2 Rank measured bottlenecks and improve configuration, dependency reuse and task orchestration without changing product behavior, release outputs or required checks.
 - [x] 5.3 Repeat the measurements, evaluate independent build concurrency and document the supported workstation layout and unmeasured platforms in `docs/tooling.md`.
 - [x] 5.4 Run formatting, Rust/Python/repository checks and the Tests producer; repair owned failures and report external blockers precisely.
+
+## 6. C++ SDK Build
+
+- [ ] 6.1 Replace fetched gRPC with pinned vcpkg config packages, packaged generators and native binary caching; bootstrap vcpkg outside the repository.
+- [ ] 6.2 Split protocol generation, tests and conformance targets; add Ninja presets, target-owned settings and installed Harmos package exports.
+- [ ] 6.3 Move generated client headers and conformance support, update generators and includes, and prove the installed conformance consumer without changing SDK behavior.
+- [ ] 6.4 Update SDK packaging, artifact consumers, tooling and C++ guide contracts; commit the complete dependency/build step locally.
+
+## 7. Per-SDK Tools
+
+- [ ] 7.1 Add C++, C# and Python mise tools, tasks and locks; remove SDK tools and compiler-cache variables from root configuration and delegate root SDK tasks.
+- [ ] 7.2 Install only lane tools in GitHub jobs and persist the C++ binary cache; retain all existing checks and tests.
+- [ ] 7.3 Update maintained tooling guidance and commit the per-SDK configuration step locally.
 
 ## Workflow Follow-Up
 

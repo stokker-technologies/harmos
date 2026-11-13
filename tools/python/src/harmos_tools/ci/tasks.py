@@ -14,7 +14,6 @@
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import tomllib
@@ -280,11 +279,11 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 or options.extended
             ):
                 parser.error("C++ builds select only --language cpp and optional --profile")
-            return _module("build.cpp", "--profile", options.profile)
+            return _execute(["mise", "-C", "sdk/cpp", "run", "build", "--", "--profile", options.profile])
         if options.command == "check":
             if options.package or options.repository or options.generated or options.extended:
                 parser.error("C++ checks select only --language cpp")
-            return _module("build.cpp", "--check")
+            return _execute(["mise", "-C", "sdk/cpp", "run", "check"])
         if (
             options.package
             or options.features
@@ -293,29 +292,15 @@ def dispatch(arguments: list[str] | None = None) -> int:
             or options.extended
             or options.filter
             or options.stress_count
-            or options.layer
+            or options.layer not in (None, "unit", "integration")
         ):
             parser.error("C++ conformance selects --language cpp, optional --profile and --exact")
-        configuration = "Debug" if options.profile == "dev" else "Release"
-        _execute(
-            [
-                "ctest",
-                "--test-dir",
-                str(root / "target/cpp" / options.profile),
-                "-C",
-                configuration,
-                "--output-on-failure",
-                "--no-tests=error",
-                *(["-R", "^" + re.escape(options.exact) + "$"] if options.exact else []),
-            ]
-        )
+        selected = ["--profile", options.profile]
+        if options.layer:
+            selected += ["--layer", options.layer]
         if options.exact:
-            return 0
-        return _execute(
-            [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration", "-v"],
-            directory=root / "sdk/cpp",
-            environment=dict(os.environ, TEST_PROFILE=options.profile),
-        )
+            selected += ["--exact", options.exact]
+        return _execute(["mise", "-C", "sdk/cpp", "run", "test", "--", *selected])
 
     # Focused Cargo Selections
     if options.command in ("build", "test") and options.manifest_path and not options.package:
@@ -445,7 +430,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
             return csharp.run(root, "generate", options.profile, dependencies=options.dependencies)
         if options.sdk == "cpp":
-            return _module("build.cpp", "--generate", "--profile", options.profile)
+            return _execute(["mise", "-C", "sdk/cpp", "run", "generate", "--", "--profile", options.profile])
         if options.sdk == "rust":
             binary = (
                 root

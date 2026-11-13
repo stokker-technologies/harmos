@@ -333,15 +333,16 @@ await new Harmos.Conformance.Fixture().Build().ServeAsync();
 ```
 
 ```cpp
-#include "harmos/conformance.hpp"
+#include "conformance.hpp"
 harmos::conformance::plugin().serve();
 ```
 
 Rust ships messages at `harmos::conformance::v1`; Python at
 `harmos.conformance.v1.fixture_pb2`; C# at `Harmos.Conformance.V1`; C++ at
 `harmos::conformance::v1` via `harmos/conformance/v1/fixture.pb.h`.
-They belong to the same SDK package as the constructor. C++ source consumers link
-`Harmos::Cpp` with `HARMOS_BUILD_TESTS=OFF`; fixture generation is unconditional.
+Rust, Python and C# ship these messages with their fixture constructors. C++ keeps
+its fixture constructor, implementation and protocol in `examples/conformance/`;
+they are test support and are excluded from the installed SDK.
 The C++ Build stages its standalone source package under the native Product
 directory's `cpp/harmos-cpp.tar.gz`. Package-isolation stories install/extract each
 SDK, compile or import its public fixture outside the checkout, and run every host rule.
@@ -365,53 +366,10 @@ C# and C++ programs alongside Rust fixtures; consumers never compile missing inp
 
 ## C++ Plugin SDK
 
-`sdk/cpp` is a C++20 plugin library over `harmos.v1`; it no longer links the Rust
-C ABI. Include `harmos/harmos.hpp` and link the CMake target `Harmos::Cpp` after
-adding `sdk/cpp` with `add_subdirectory`. Author request, response, row and section
-values as generated protobuf messages. The [conformance plugin](../sdk/cpp/examples/conformance/main.cpp)
-demonstrates operation, stream and observer builder values ending in `serve()`.
-`HARMOS_BUILD_TESTS` defaults on for a standalone SDK build and off when embedded
-with `add_subdirectory`; project tasks explicitly enable it.
-
-```sh
-mise run build -- --language cpp
-mise run check -- --language cpp
-mise run build -- --package harmos-conformance
-mise run test -- --language cpp
-```
-
-The build uses the existing pinned CMake 4.1.2 in `mise.toml`. Windows requires
-Visual Studio 2022 C++ Build Tools and a Windows SDK; Linux requires a C++20
-compiler and Make. Git and network access are needed on the first build.
-FetchContent pins gRPC 1.76.0 to commit
-`f5ffb68d8a2fd603dff16287e90a4ac571e1fec6`, including its immutable protobuf,
-Abseil, BoringSSL, c-ares, re2 and zlib submodule revisions. No dependencies are
-installed globally. The task enables Git long paths only in its child environment
-for nested Windows worktrees. `protoc` and `grpc_cpp_plugin` are built from that
-graph and generate the protocol and fixture C++ sources during the build.
-
-On Windows, configure C++ from a short checkout path or a temporary `subst` drive
-alias. Git long paths do not remove MSVC's source/include path limit for deeply
-nested gRPC files. Keep the same path for subsequent builds and tests because
-CMake caches absolute paths; an existing cache must be reconfigured when it changes.
-
-Outputs and dependency sources stay under `target/cpp/<profile>/`, with retained
-`configure.log` and `build.log`. `--profile release` selects Release; the default
-is Debug. Check configures and validates the CMake dependency/target graph without
-compilation. Test consumes the existing C++ executable and reference-host build;
-it never compiles. `HARMOS_CONFORMANCE_HOST` may select a separately built host.
-Native catalog tests run through CTest before the single managed-plugin story,
-which checks every reference-host case, including
-cleanup and successful process exit after Stop.
-
-The fixture is `target/cpp/dev/Debug/harmos-cpp-conformance.exe` on Windows and
-`target/cpp/dev/harmos-cpp-conformance` on Linux. Without arguments it binds an
-ephemeral loopback port and announces `harmos listening 127.0.0.1:PORT`.
-`HARMOS_ADDRESS` overrides its bind address. `--address HOST:PORT` selects remote
-lifecycle: Stop completes cleanup and leaves the server running. Both modes use
-plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::GET_TIME` with
-`requires_operation`; observers answer ticks and cannot wait. Authors must not
-start untracked background work if they require virtual-time execution.
+The [C++ SDK guide](cpp-sdk.md) covers pinned vcpkg dependencies, Ninja presets,
+installation with `Harmos::Cpp`, generated headers and conformance test support.
+Root C++ selections delegate to `sdk/cpp/mise.toml`; `mise -C sdk/cpp tasks` lists
+its prepare, build, test, check, format, generation and installed-consumer operations.
 
 ## Focused Build Preparation
 

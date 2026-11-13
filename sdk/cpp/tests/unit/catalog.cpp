@@ -17,7 +17,7 @@
 
 // Local Imports
 #include "harmos/harmos.hpp"
-#include "harmos/client.hpp"
+#include "harmos/generated/client.hpp"
 #include "harmos/context/v1/time.pb.h"
 #include "harmos/conformance/v1/fixture.pb.h"
 

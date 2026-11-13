@@ -32,6 +32,7 @@
 // Local Imports
 #include "harmos/v1/types.pb.h"
 #include "harmos/transfer.hpp"
+#include "harmos/generated/client.hpp"
 #include "harmos/context/v1/time.pb.h"
 
 /* === Macros === */
