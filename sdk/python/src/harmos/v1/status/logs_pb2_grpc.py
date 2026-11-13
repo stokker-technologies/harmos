@@ -27,7 +27,9 @@ if _version_not_supported:
 
 
 class LogsStub:
-    """Exposes retained redacted log history and bounded live delivery.
+    """=== Services === //
+
+    Exposes retained redacted log history and bounded live delivery.
     """
 
     def __init__(self, channel):
@@ -49,7 +51,9 @@ class LogsStub:
 
 
 class LogsServicer:
-    """Exposes retained redacted log history and bounded live delivery.
+    """=== Services === //
+
+    Exposes retained redacted log history and bounded live delivery.
     """
 
     def List(self, request, context):
@@ -88,7 +92,9 @@ def add_LogsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Logs:
-    """Exposes retained redacted log history and bounded live delivery.
+    """=== Services === //
+
+    Exposes retained redacted log history and bounded live delivery.
     """
 
     @staticmethod

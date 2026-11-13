@@ -2,7 +2,7 @@
 
 // Client Catalog Entries
 //
-// Admitted operation discovery and persisted resource catalogs.
+// Calls an application or tool makes to the host.
 
 syntax = "proto3";
 
@@ -24,7 +24,7 @@ service CatalogEntries {
 
 // === Requests and Responses === //
 
-// Discover admitted operations or persisted schema/stream/object catalog entries, applying the caller's grants and optional schema filter.
+// Carries the kind and schema for CatalogEntries.List.
 message CatalogEntriesListRequest {
   harmos.v1.CatalogKind kind = 1;
   // Unset leaves schema unfiltered; a present schema identifier is validated before catalog selection.

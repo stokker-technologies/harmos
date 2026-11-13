@@ -2,7 +2,8 @@
 
 // Context Samples
 //
-// Publication into the calling plugin activation's admitted stream definitions.
+// Calls a running plugin makes back to the host from inside an invocation.
+// The host answers for the calling plugin.
 
 syntax = "proto3";
 
@@ -25,7 +26,7 @@ service Samples {
 
 // === Requests and Responses === //
 
-// Supplies row bytes and optional metadata to the registered publication owner; only the supplied timestamp is interpreted by the Append handler.
+// Carries the stream identity, sequence, publication timestamp, context, encoded payload and following rows for Samples.Append.
 message SamplesAppendRequest {
   // Identity of the declared stream, resolved under the current caller/activation.
   string stream = 1;
@@ -41,10 +42,8 @@ message SamplesAppendRequest {
   repeated harmos.v1.FollowingRow following = 7;
 }
 
-// Acknowledges successful return from the registered publication owner without adding payload fields.
-message SamplesAppendResponse {
-  // No payload fields.
-}
+// Acknowledges successful return from the registered publication owner.
+message SamplesAppendResponse {}
 
 // === Resources === //
 

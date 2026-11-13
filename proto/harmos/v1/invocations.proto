@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Client Invocations
+//
+// Calls an application or tool makes to the host.
+
 syntax = "proto3";
+
 package harmos.v1;
 
+// === Imports === //
+
 import "harmos/v1/types.proto";
+
+// === Options === //
+
+// === Services === //
 
 // Exposes lifecycle controls only for invocation instances owned by the caller.
 service Invocations {
@@ -16,21 +28,26 @@ service Invocations {
   rpc Watch(InvocationsWatchRequest) returns (stream InvocationsWatchResponse);
 }
 
-// Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
+// === Requests and Responses === //
+
+// Carries the operation identity, expected contract fingerprint and encoded payload for Invocations.Invoke.
+message InvocationsInvokeRequest {
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
+  string operation = 1;
+  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
+  bytes fingerprint = 2;
+  // Encoded request of operation under the supplied contract fingerprint.
+  bytes payload = 3;
+}
+
+// Carries the declared operation's encoded unary result after admission and execution.
+message InvocationsInvokeResponse {
+  // Encoded unary response of the invoked operation, including empty bytes for an empty success message.
+  bytes payload = 1;
+}
+
+// Carries the invocation handle for Invocations.Get.
 message InvocationsGetRequest {
-  // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-  uint64 instance = 1;
-}
-
-// Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
-message InvocationsCancelRequest {
-  // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-  uint64 instance = 1;
-  string reason = 2;
-}
-
-// Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
-message InvocationsWatchRequest {
   // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
   uint64 instance = 1;
 }
@@ -41,10 +58,23 @@ message InvocationsGetResponse {
   harmos.v1.InstanceState invocation = 1;
 }
 
+// Carries the invocation handle and reason text for Invocations.Cancel.
+message InvocationsCancelRequest {
+  // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+  uint64 instance = 1;
+  string reason = 2;
+}
+
 // Reports lifecycle state after requesting cancellation; a cooperative handler may still produce its final result.
 message InvocationsCancelResponse {
   // Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
   harmos.v1.InstanceState invocation = 1;
+}
+
+// Carries the invocation handle for Invocations.Watch.
+message InvocationsWatchRequest {
+  // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+  uint64 instance = 1;
 }
 
 // Reports a lifecycle state observed while following the caller-owned invocation through settlement.
@@ -53,17 +83,6 @@ message InvocationsWatchResponse {
   harmos.v1.InstanceState invocation = 1;
 }
 
-// Invoke an admitted operation using its expected fingerprint and encoded request; returns its encoded unary result under normal admission and execution policy.
-message InvocationsInvokeRequest {
-  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
-  string operation = 1;
-  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
-  bytes fingerprint = 2;
-  // Encoded request of operation under the supplied contract fingerprint.
-  bytes payload = 3;
-}
-// Carries the declared operation's encoded unary result after admission and execution.
-message InvocationsInvokeResponse {
-  // Encoded unary response of the invoked operation, including empty bytes for an empty success message.
-  bytes payload = 1;
-}
+// === Resources === //
+
+// === Enums === //

@@ -27,7 +27,11 @@ if _version_not_supported:
 
 
 class TimeStub:
-    """Exposes the authoritative host clock, including virtual time, to operation callers.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes the authoritative host clock, including virtual time, to operation callers.
     """
 
     def __init__(self, channel):
@@ -49,7 +53,11 @@ class TimeStub:
 
 
 class TimeServicer:
-    """Exposes the authoritative host clock, including virtual time, to operation callers.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes the authoritative host clock, including virtual time, to operation callers.
     """
 
     def Get(self, request, context):
@@ -88,7 +96,11 @@ def add_TimeServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Time:
-    """Exposes the authoritative host clock, including virtual time, to operation callers.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes the authoritative host clock, including virtual time, to operation callers.
     """
 
     @staticmethod

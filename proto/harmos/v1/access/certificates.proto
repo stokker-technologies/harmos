@@ -2,7 +2,7 @@
 
 // Client Certificates
 //
-// TLS certificate rotation and pairing revocation.
+// Calls an application or tool makes to the host.
 
 syntax = "proto3";
 
@@ -22,10 +22,8 @@ service Certificates {
 
 // === Requests and Responses === //
 
-// Generate and persist a new TLS certificate, rotate the live listener and revoke all existing pairings; repeating the call rotates again.
-message CertificatesCreateRequest {
-  // No payload fields.
-}
+// Request for Certificates.Create.
+message CertificatesCreateRequest {}
 
 // Returns the newly persisted TLS certificate after live rotation and pairing revocation.
 message CertificatesCreateResponse {

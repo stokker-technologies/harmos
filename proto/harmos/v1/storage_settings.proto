@@ -2,7 +2,8 @@
 
 // Shared Storage and Message Defaults
 //
-// Presence-aware transfer and carrier defaults consumed by the host and generated SDKs.
+// Shared payloads for calls an application or tool makes to the host.
+// These types may also be used by the context and plugin faces.
 
 syntax = "proto2";
 

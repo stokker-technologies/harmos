@@ -234,13 +234,13 @@ pub struct Cancel {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Response {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "response::Result", tags = "1, 2")]
     pub result: ::core::option::Option<response::Result>,
 }
 /// Nested message and enum types in `Response`.
 pub mod response {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Result {
@@ -303,13 +303,13 @@ pub struct ChildResponse {
     /// Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
     #[prost(uint64, tag = "1")]
     pub call: u64,
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "child_response::Result", tags = "2, 3, 4")]
     pub result: ::core::option::Option<child_response::Result>,
 }
 /// Nested message and enum types in `ChildResponse`.
 pub mod child_response {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Result {
@@ -656,7 +656,7 @@ impl CatalogKind {
         }
     }
 }
-/// Discover admitted operations or persisted schema/stream/object catalog entries, applying the caller's grants and optional schema filter.
+/// Carries the kind and schema for CatalogEntries.List.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CatalogEntriesListRequest {
@@ -1027,13 +1027,13 @@ pub struct GuestRequirement {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GuestCommand {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "guest_command::Phase", tags = "1, 2, 3, 4, 5")]
     pub phase: ::core::option::Option<guest_command::Phase>,
 }
 /// Nested message and enum types in `GuestCommand`.
 pub mod guest_command {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Phase {
@@ -1111,9 +1111,7 @@ pub struct GuestInitialize {
     #[prost(message, optional, tag = "3")]
     pub assignments: ::core::option::Option<OperationAssignments>,
 }
-/// Marks the guest shutdown operation without adding request fields.
-///
-/// No payload fields.
+/// Marks the guest shutdown operation.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GuestShutdown {}
@@ -1121,13 +1119,13 @@ pub struct GuestShutdown {}
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GuestChild {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "guest_child::Action", tags = "1, 2")]
     pub action: ::core::option::Option<guest_child::Action>,
 }
 /// Nested message and enum types in `GuestChild`.
 pub mod guest_child {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Action {
@@ -1219,57 +1217,7 @@ impl GuestChildAction {
         }
     }
 }
-/// Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsGetRequest {
-    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-    #[prost(uint64, tag = "1")]
-    pub instance: u64,
-}
-/// Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsCancelRequest {
-    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-    #[prost(uint64, tag = "1")]
-    pub instance: u64,
-    #[prost(string, tag = "2")]
-    pub reason: ::prost::alloc::string::String,
-}
-/// Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsWatchRequest {
-    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-    #[prost(uint64, tag = "1")]
-    pub instance: u64,
-}
-/// Reports the caller-owned invocation's current lifecycle state without returning its operation payload.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsGetResponse {
-    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
-    #[prost(message, optional, tag = "1")]
-    pub invocation: ::core::option::Option<InstanceState>,
-}
-/// Reports lifecycle state after requesting cancellation; a cooperative handler may still produce its final result.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsCancelResponse {
-    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
-    #[prost(message, optional, tag = "1")]
-    pub invocation: ::core::option::Option<InstanceState>,
-}
-/// Reports a lifecycle state observed while following the caller-owned invocation through settlement.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsWatchResponse {
-    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
-    #[prost(message, optional, tag = "1")]
-    pub invocation: ::core::option::Option<InstanceState>,
-}
-/// Invoke an admitted operation using its expected fingerprint and encoded request; returns its encoded unary result under normal admission and execution policy.
+/// Carries the operation identity, expected contract fingerprint and encoded payload for Invocations.Invoke.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct InvocationsInvokeRequest {
@@ -1290,6 +1238,56 @@ pub struct InvocationsInvokeResponse {
     /// Encoded unary response of the invoked operation, including empty bytes for an empty success message.
     #[prost(bytes = "vec", tag = "1")]
     pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+/// Carries the invocation handle for Invocations.Get.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsGetRequest {
+    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+    #[prost(uint64, tag = "1")]
+    pub instance: u64,
+}
+/// Reports the caller-owned invocation's current lifecycle state without returning its operation payload.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsGetResponse {
+    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
+    #[prost(message, optional, tag = "1")]
+    pub invocation: ::core::option::Option<InstanceState>,
+}
+/// Carries the invocation handle and reason text for Invocations.Cancel.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsCancelRequest {
+    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+    #[prost(uint64, tag = "1")]
+    pub instance: u64,
+    #[prost(string, tag = "2")]
+    pub reason: ::prost::alloc::string::String,
+}
+/// Reports lifecycle state after requesting cancellation; a cooperative handler may still produce its final result.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsCancelResponse {
+    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
+    #[prost(message, optional, tag = "1")]
+    pub invocation: ::core::option::Option<InstanceState>,
+}
+/// Carries the invocation handle for Invocations.Watch.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsWatchRequest {
+    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+    #[prost(uint64, tag = "1")]
+    pub instance: u64,
+}
+/// Reports a lifecycle state observed while following the caller-owned invocation through settlement.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct InvocationsWatchResponse {
+    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
+    #[prost(message, optional, tag = "1")]
+    pub invocation: ::core::option::Option<InstanceState>,
 }
 /// Generated client implementations.
 #[cfg(not(target_arch = "wasm32"))]
@@ -1837,6 +1835,165 @@ pub mod invocations_server {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
+/// Carries the resource name and read boundary for Plugins.Get.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsGetRequest {
+    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<ReadCut>,
+}
+/// Returns one entry from the selected retained manager snapshot with its cut.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsGetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+    #[prost(message, optional, tag = "2")]
+    pub resolved_at: ::core::option::Option<ReadCut>,
+}
+/// Carries the read boundary for Plugins.List.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsListRequest {
+    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
+    #[prost(message, optional, tag = "1")]
+    pub at: ::core::option::Option<ReadCut>,
+}
+/// Returns the complete selected manager inventory with its cut.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsListResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub entries: ::prost::alloc::vec::Vec<PluginEntry>,
+    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+    #[prost(message, optional, tag = "2")]
+    pub resolved_at: ::core::option::Option<ReadCut>,
+}
+/// Carries the resource name and read boundary for Plugins.Watch.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsWatchRequest {
+    /// Empty watches all entries; otherwise selects this exact management entry name.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
+    #[prost(message, optional, tag = "2")]
+    pub at: ::core::option::Option<ReadCut>,
+}
+/// Distinguishes an opening snapshot, entry changes and a requirement to restart the read.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsWatchResponse {
+    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+    #[prost(message, optional, tag = "1")]
+    pub resolved_at: ::core::option::Option<ReadCut>,
+    /// Selects one variant; an unset discriminator carries no selected value.
+    #[prost(oneof = "plugins_watch_response::Event", tags = "2, 3, 4")]
+    pub event: ::core::option::Option<plugins_watch_response::Event>,
+}
+/// Nested message and enum types in `PluginsWatchResponse`.
+pub mod plugins_watch_response {
+    /// Selects one variant; an unset discriminator carries no selected value.
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Event {
+        /// Required retained snapshot handle issued by this owner; preserve its token and original position.
+        #[prost(message, tag = "2")]
+        Snapshot(super::PluginSnapshot),
+        #[prost(message, tag = "3")]
+        Change(super::PluginChange),
+        /// Continuity is unavailable; open a fresh read instead of treating this event as a successful continuation.
+        #[prost(string, tag = "4")]
+        ResyncRequired(::prost::alloc::string::String),
+    }
+}
+/// Carries the request id, resource name, placement and replacement value for Plugins.Create.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsCreateRequest {
+    /// Nonempty caller-chosen identity for Create replay. Identical input returns its original response; reuse with changed input refuses.
+    #[prost(string, tag = "1")]
+    pub request_id: ::prost::alloc::string::String,
+    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    #[prost(string, tag = "2")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub placement: ::core::option::Option<PluginPlacement>,
+    #[prost(message, optional, tag = "4")]
+    pub value: ::core::option::Option<PluginValue>,
+}
+/// Returns the created entry and persisted receipt; identical request-ID replay returns this original response.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsCreateResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+    #[prost(message, optional, tag = "2")]
+    pub receipt: ::core::option::Option<Receipt>,
+}
+/// Carries the resource name, replacement value and expected revision for Plugins.Set.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsSetRequest {
+    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub value: ::core::option::Option<PluginValue>,
+    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
+    #[prost(bytes = "vec", tag = "3")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+}
+/// Returns the resulting entry and mutation receipt after applying its complete writable value.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsSetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+    #[prost(message, optional, tag = "2")]
+    pub receipt: ::core::option::Option<Receipt>,
+}
+/// Carries the resource name and expected revision for Plugins.Delete.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsDeleteRequest {
+    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
+    #[prost(bytes = "vec", tag = "2")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+}
+/// Returns the durable management deletion receipt without exposing retired installation content.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsDeleteResponse {
+    #[prost(message, optional, tag = "1")]
+    pub receipt: ::core::option::Option<Receipt>,
+}
+/// Carries the resource name and expected revision for Plugins.Restart.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginsRestartRequest {
+    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
+    #[prost(bytes = "vec", tag = "2")]
+    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
+}
+/// Returns the entry with its replacement activation initiated; connection readiness is observed separately.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PluginsRestartResponse {
+    #[prost(message, optional, tag = "1")]
+    pub entry: ::core::option::Option<PluginEntry>,
+}
 /// Contains the writable enablement state of a managed plugin entry.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
@@ -1888,13 +2045,13 @@ pub struct PluginManaged {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PluginPlacement {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "plugin_placement::Kind", tags = "1, 2")]
     pub kind: ::core::option::Option<plugin_placement::Kind>,
 }
 /// Nested message and enum types in `PluginPlacement`.
 pub mod plugin_placement {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Kind {
@@ -1950,56 +2107,6 @@ pub struct PluginEntry {
     #[prost(uint64, tag = "10")]
     pub activation: u64,
 }
-/// Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsGetRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns one entry from the selected retained manager snapshot with its cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsGetResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsListRequest {
-    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns the complete selected manager inventory with its cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsListResponse {
-    #[prost(message, repeated, tag = "1")]
-    pub entries: ::prost::alloc::vec::Vec<PluginEntry>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsWatchRequest {
-    /// Empty watches all entries; otherwise selects this exact management entry name.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-}
 /// Carries the entries selected at the opening boundary of a plugin watch.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -2011,13 +2118,13 @@ pub struct PluginSnapshot {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PluginChange {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "plugin_change::Kind", tags = "1, 2")]
     pub kind: ::core::option::Option<plugin_change::Kind>,
 }
 /// Nested message and enum types in `PluginChange`.
 pub mod plugin_change {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Kind {
@@ -2026,115 +2133,6 @@ pub mod plugin_change {
         #[prost(string, tag = "2")]
         Deleted(::prost::alloc::string::String),
     }
-}
-/// Distinguishes an opening snapshot, entry changes and a requirement to restart the read.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsWatchResponse {
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "1")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Select exactly one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "plugins_watch_response::Event", tags = "2, 3, 4")]
-    pub event: ::core::option::Option<plugins_watch_response::Event>,
-}
-/// Nested message and enum types in `PluginsWatchResponse`.
-pub mod plugins_watch_response {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Event {
-        /// Required retained snapshot handle issued by this owner; preserve its token and original position.
-        #[prost(message, tag = "2")]
-        Snapshot(super::PluginSnapshot),
-        #[prost(message, tag = "3")]
-        Change(super::PluginChange),
-        /// Continuity is unavailable; open a fresh read instead of treating this event as a successful continuation.
-        #[prost(string, tag = "4")]
-        ResyncRequired(::prost::alloc::string::String),
-    }
-}
-/// Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsCreateRequest {
-    /// Nonempty caller-chosen identity for Create replay. Identical input returns its original response; reuse with changed input refuses.
-    #[prost(string, tag = "1")]
-    pub request_id: ::prost::alloc::string::String,
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "2")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "3")]
-    pub placement: ::core::option::Option<PluginPlacement>,
-    #[prost(message, optional, tag = "4")]
-    pub value: ::core::option::Option<PluginValue>,
-}
-/// Returns the created entry and persisted receipt; identical request-ID replay returns this original response.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsCreateResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsSetRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub value: ::core::option::Option<PluginValue>,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
-    #[prost(bytes = "vec", tag = "3")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-}
-/// Returns the resulting entry and mutation receipt after applying its complete writable value.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsSetResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsDeleteRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
-    #[prost(bytes = "vec", tag = "2")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-}
-/// Returns the durable management deletion receipt without exposing retired installation content.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsDeleteResponse {
-    #[prost(message, optional, tag = "1")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsRestartRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
-    #[prost(bytes = "vec", tag = "2")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-}
-/// Returns the entry with its replacement activation initiated; connection readiness is observed separately.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsRestartResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -2933,6 +2931,38 @@ pub mod plugins_server {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
+/// Request for Status.Get.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StatusGetRequest {}
+/// Returns current host health and its issued status boundary.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StatusGetResponse {
+    #[prost(message, optional, tag = "1")]
+    pub status: ::core::option::Option<HostStatus>,
+    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+    #[prost(message, optional, tag = "2")]
+    pub resolved_at: ::core::option::Option<Position>,
+}
+/// Carries the read boundary for Status.Watch.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StatusWatchRequest {
+    /// Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
+    #[prost(message, optional, tag = "1")]
+    pub at: ::core::option::Option<Position>,
+}
+/// Returns a current host health observation and its issued status boundary.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StatusWatchResponse {
+    #[prost(message, optional, tag = "1")]
+    pub status: ::core::option::Option<HostStatus>,
+    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+    #[prost(message, optional, tag = "2")]
+    pub resolved_at: ::core::option::Option<Position>,
+}
 /// Identifies this host process and the application/library versions it is running.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
@@ -2972,40 +3002,6 @@ pub struct HostStatus {
     pub available: bool,
     #[prost(message, repeated, tag = "3")]
     pub components: ::prost::alloc::vec::Vec<HealthComponent>,
-}
-/// Read the current host identity and contributed health with the status history boundary.
-///
-/// No payload fields.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StatusGetRequest {}
-/// Returns current host health and its issued status boundary.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StatusGetResponse {
-    #[prost(message, optional, tag = "1")]
-    pub status: ::core::option::Option<HostStatus>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<Position>,
-}
-/// Validate the optional issued position, emit current status and then changes; this is a live view rather than historical status replay.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StatusWatchRequest {
-    /// Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<Position>,
-}
-/// Returns a current host health observation and its issued status boundary.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StatusWatchResponse {
-    #[prost(message, optional, tag = "1")]
-    pub status: ::core::option::Option<HostStatus>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<Position>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -3419,7 +3415,7 @@ pub mod status_server {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
-/// Begin resumable file production. Replaying the same mutation and input returns its original outcome; changed input is refused.
+/// Carries file metadata and a mutation identity for Storage.CreateFileProduction.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCreateFileProductionRequest {
@@ -3438,7 +3434,7 @@ pub struct StorageCreateFileProductionResponse {
     #[prost(message, optional, tag = "2")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Observe production progress and writer generation at a retained cut, separating accepted from durable byte lengths.
+/// Selects a file production and read boundary for Storage.GetFileProduction.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetFileProductionRequest {
@@ -3467,7 +3463,7 @@ pub struct StorageGetFileProductionResponse {
     #[prost(uint64, tag = "5")]
     pub durable_length: u64,
 }
-/// Append at the expected byte offset using the current writer. Replays preserve the original result; stale writers and mismatched input refuse.
+/// Carries bytes, their expected offset, the writer session and mutation identity for Storage.AppendFileBytes.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageAppendFileBytesRequest {
@@ -3492,7 +3488,7 @@ pub struct StorageAppendFileBytesResponse {
     #[prost(message, optional, tag = "2")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Resume a production with a new writer generation, fencing the previous writer. Replaying the mutation returns the same resumed writer.
+/// Carries the writer session and mutation identity for Storage.CreateFileWriter.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCreateFileWriterRequest {
@@ -3512,7 +3508,7 @@ pub struct StorageCreateFileWriterResponse {
     #[prost(message, optional, tag = "2")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Validate the current writer, complete length and 32-byte SHA-256, then publish and flush the reference before acknowledging; replay returns the original publication.
+/// Carries the writer session, completed length, digest and mutation identity for Storage.PublishFileProduction.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StoragePublishFileProductionRequest {
@@ -3538,7 +3534,7 @@ pub struct StoragePublishFileProductionResponse {
     #[prost(message, optional, tag = "2")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Abandon unfinished production using the current writer; replaying its mutation retains the original abandonment outcome.
+/// Carries the writer session and mutation identity for Storage.DeleteFileProduction.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageDeleteFileProductionRequest {
@@ -3558,7 +3554,7 @@ pub struct StorageDeleteFileProductionResponse {
     #[prost(message, optional, tag = "2")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Read a bounded range of immutable published content; resend the returned cut to retain the same selected content.
+/// Selects a file, byte range and read boundary for Storage.GetFileBytes.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetFileBytesRequest {
@@ -3589,9 +3585,7 @@ pub struct StorageGetFileBytesResponse {
     #[prost(message, optional, tag = "4")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Inspect backend facilities, the current mutation window and the file chunk budget before choosing storage operations.
-///
-/// No payload fields.
+/// Request for Storage.Capabilities.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCapabilitiesRequest {}
@@ -3608,7 +3602,7 @@ pub struct StorageCapabilitiesResponse {
     #[prost(uint64, tag = "3")]
     pub file_batch_bytes: u64,
 }
-/// Pin a retained read image at an issued cut, or the current durable position when unset; capacity exhaustion refuses creation.
+/// Selects the read boundary for Storage.CreateSnapshot.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageCreateSnapshotRequest {
@@ -3627,7 +3621,7 @@ pub struct StorageCreateSnapshotResponse {
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Release an explicit snapshot handle; repeating release is harmless unless the supplied position mismatches an existing handle.
+/// Carries the snapshot handle for Storage.DeleteSnapshot.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageDeleteSnapshotRequest {
@@ -3636,12 +3630,10 @@ pub struct StorageDeleteSnapshotRequest {
     pub snapshot: ::core::option::Option<crate::storage::SavedSnapshot>,
 }
 /// Acknowledges release without adding response payload fields.
-///
-/// No payload fields.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageDeleteSnapshotResponse {}
-/// Read native Arrow columns at a retained cut within output and source-work bounds; unsupported facilities refuse.
+/// Carries a column selection, read boundary and page bounds for Storage.ListColumnRows.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListColumnRowsRequest {
@@ -3667,7 +3659,7 @@ pub struct StorageListColumnRowsResponse {
     #[prost(string, tag = "3")]
     pub next_page_token: ::prost::alloc::string::String,
 }
-/// Read a bounded index page for the checked source; continuation retains the original selection and cut.
+/// Carries an index selection, source, read boundary and page bounds for Storage.ListIndexEntries.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListIndexEntriesRequest {
@@ -3696,7 +3688,7 @@ pub struct StorageListIndexEntriesResponse {
     #[prost(string, tag = "3")]
     pub next_page_token: ::prost::alloc::string::String,
 }
-/// Conditionally create or replace a source-bound index. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
+/// Carries an index definition, expected revision, creation/rebuild controls, work bounds and mutation identity.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageSetIndexDefinitionRequest {
@@ -3730,7 +3722,7 @@ pub struct StorageSetIndexDefinitionResponse {
     #[prost(message, optional, tag = "3")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Conditionally create or replace a durable projection. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
+/// Carries a projection definition, expected revision, creation/rebuild controls and mutation identity.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageSetProjectionDefinitionRequest {
@@ -3761,7 +3753,7 @@ pub struct StorageSetProjectionDefinitionResponse {
     #[prost(message, optional, tag = "3")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Advance a durable projection using a retained snapshot and positive caller-owned work bounds; mismatched sources refuse.
+/// Carries the snapshot, projection name, source and work bounds for Storage.AdvanceProjection.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageAdvanceProjectionRequest {
@@ -3789,7 +3781,7 @@ pub struct StorageAdvanceProjectionResponse {
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Read a bounded durable projection page with its selected revision and source checked against the definition.
+/// Carries a projection selection, source, read boundary and page bounds for Storage.ListProjectionRows.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListProjectionRowsRequest {
@@ -3818,7 +3810,7 @@ pub struct StorageListProjectionRowsResponse {
     #[prost(string, tag = "3")]
     pub next_page_token: ::prost::alloc::string::String,
 }
-/// Observe durable projection progress, optionally selecting a revision and issued read cut; incompatible revision selections refuse.
+/// Selects a projection name, revision, source and read boundary for Storage.GetProjectionStatus.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetProjectionStatusRequest {
@@ -3845,7 +3837,7 @@ pub struct StorageGetProjectionStatusResponse {
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Compare and exchange an object using an issued revision or explicit create-if-absent. Replay retains the original applied/conflict result.
+/// Carries an object value, schema, expected revision, creation control and mutation identity for Storage.SetObject.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageSetObjectRequest {
@@ -3867,7 +3859,7 @@ pub struct StorageSetObjectRequest {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageSetObjectResponse {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "storage_set_object_response::Outcome", tags = "1, 2")]
     pub outcome: ::core::option::Option<storage_set_object_response::Outcome>,
 }
@@ -3895,7 +3887,7 @@ pub mod storage_set_object_response {
         #[prost(string, tag = "2")]
         pub action: ::prost::alloc::string::String,
     }
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Outcome {
@@ -3905,7 +3897,7 @@ pub mod storage_set_object_response {
         Conflict(Conflict),
     }
 }
-/// Read a retained query with ordered transforms and bounded pages. An identical continuation can replay its cached page; changed or expired continuation refuses.
+/// Carries the source, read boundary, transforms and page bounds for Storage.ListRows.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListRowsRequest {
@@ -3934,7 +3926,7 @@ pub struct StorageListRowsResponse {
     #[prost(string, tag = "3")]
     pub next_page_token: ::prost::alloc::string::String,
 }
-/// Follow durable source changes after an opening boundary; gaps require resynchronization rather than silently skipping rows.
+/// Selects a source and read boundary for Storage.WatchRows.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageWatchRowsRequest {
@@ -3952,13 +3944,13 @@ pub struct StorageWatchRowsResponse {
     /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
     #[prost(message, optional, tag = "1")]
     pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "storage_watch_rows_response::Event", tags = "2, 3, 4, 5, 6, 7")]
     pub event: ::core::option::Option<storage_watch_rows_response::Event>,
 }
 /// Nested message and enum types in `StorageWatchRowsResponse`.
 pub mod storage_watch_rows_response {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Event {
@@ -3977,7 +3969,7 @@ pub mod storage_watch_rows_response {
         ResyncRequired(crate::storage::StorageFailure),
     }
 }
-/// Append one encoded record batch under a mutation identity; resending identical input replays its receipt rather than appending again.
+/// Carries an encoded record batch, scope and mutation identity for Storage.AppendRecords.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageAppendRecordsRequest {
@@ -3997,7 +3989,7 @@ pub struct StorageAppendRecordsResponse {
     #[prost(message, optional, tag = "1")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Append one encoded stream batch under a mutation identity; resending identical input replays its receipt rather than appending again.
+/// Carries an encoded sample batch, scope and mutation identity for Storage.AppendSamples.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageAppendSamplesRequest {
@@ -4017,7 +4009,7 @@ pub struct StorageAppendSamplesResponse {
     #[prost(message, optional, tag = "1")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Append one encoded object-revision batch under a mutation identity; identical replay preserves its original receipt.
+/// Carries an encoded object-revision batch, scope and mutation identity for Storage.AppendObjectRevisions.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageAppendObjectRevisionsRequest {
@@ -4037,7 +4029,7 @@ pub struct StorageAppendObjectRevisionsResponse {
     #[prost(message, optional, tag = "1")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Hash a selected byte range, returning the byte count and selected cut; local source reads retain their observed image through the issued cut.
+/// Selects a source, byte range and read boundary for Storage.GetFileHash.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetFileHashRequest {
@@ -4060,7 +4052,7 @@ pub struct StorageGetFileHashResponse {
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Capture a selected source range as published storage content under the requested consistency mode.
+/// Carries the source range, file metadata and consistency selection for Storage.CaptureFile.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageCaptureFileRequest {
@@ -4083,7 +4075,7 @@ pub struct StorageCaptureFileResponse {
     #[prost(message, optional, tag = "2")]
     pub receipt: ::core::option::Option<Receipt>,
 }
-/// Follow local file bytes from a selected starting offset, reporting truncation and replacement explicitly.
+/// Selects a source and starting position for Storage.WatchFileBytes.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageWatchFileBytesRequest {
@@ -4103,7 +4095,7 @@ pub struct StorageWatchFileBytesResponse {
     #[prost(message, optional, tag = "2")]
     pub completion: ::core::option::Option<crate::storage::FileCompletion>,
 }
-/// Follow the bytes and phase of an identified production from a byte offset without creating a new writer.
+/// Selects a file production and byte offset for Storage.WatchFileProduction.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageWatchFileProductionRequest {
@@ -4117,13 +4109,13 @@ pub struct StorageWatchFileProductionRequest {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageWatchFileProductionResponse {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "storage_watch_file_production_response::Event", tags = "1, 2")]
     pub event: ::core::option::Option<storage_watch_file_production_response::Event>,
 }
 /// Nested message and enum types in `StorageWatchFileProductionResponse`.
 pub mod storage_watch_file_production_response {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Event {
@@ -4133,7 +4125,7 @@ pub mod storage_watch_file_production_response {
         Progress(crate::storage::FileProgress),
     }
 }
-/// List bounded local directory entries, retaining the observed selection through its cut and continuation.
+/// Carries a directory selection, page bounds and read boundary for Storage.ListDirectoryEntries.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageListDirectoryEntriesRequest {
@@ -4159,7 +4151,7 @@ pub struct StorageListDirectoryEntriesResponse {
     #[prost(message, optional, tag = "3")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Observe local directory changes, optionally including an initial scan; rescan signals require the caller to rebuild its view.
+/// Carries a directory selection and initial-scan choice for Storage.WatchDirectoryEntries.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageWatchDirectoryEntriesRequest {
@@ -4175,7 +4167,7 @@ pub struct StorageWatchDirectoryEntriesResponse {
     #[prost(message, optional, tag = "1")]
     pub event: ::core::option::Option<crate::storage::DirectoryEvent>,
 }
-/// Read an index definition and revision for its checked source, adding that revision to the returned cut.
+/// Selects an index name, source and read boundary for Storage.GetIndexDefinition.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetIndexDefinitionRequest {
@@ -4202,7 +4194,7 @@ pub struct StorageGetIndexDefinitionResponse {
     #[prost(message, optional, tag = "3")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Read a projection definition and revision for its checked source, retaining the selected revision in the returned cut.
+/// Selects a projection name, source and read boundary for Storage.GetProjectionDefinition.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetProjectionDefinitionRequest {
@@ -4229,7 +4221,7 @@ pub struct StorageGetProjectionDefinitionResponse {
     #[prost(message, optional, tag = "3")]
     pub resolved_at: ::core::option::Option<ReadCut>,
 }
-/// Read one object at an issued cut or the current durable position; absence is explicit and does not create a value.
+/// Selects a schema, item and read boundary for Storage.GetObject.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetObjectRequest {
@@ -7084,23 +7076,7 @@ pub mod storage_server {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
-/// Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TimeSleepRequest {
-    /// Unset means a zero-duration wait. Seconds must be in 0..315576000000 and nanos in 0..999999999.
-    #[prost(message, optional, tag = "1")]
-    pub duration: ::core::option::Option<::prost_types::Duration>,
-}
-/// Acknowledges completion of the host-clock wait without adding payload fields.
-///
-/// No payload fields.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TimeSleepResponse {}
-/// Read the authoritative host clock used by operation deadlines, retries and plugin waits.
-///
-/// No payload fields.
+/// Request for Time.Get.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TimeGetRequest {}
@@ -7112,6 +7088,18 @@ pub struct TimeGetResponse {
     #[prost(message, optional, tag = "1")]
     pub now: ::core::option::Option<::prost_types::Timestamp>,
 }
+/// Carries the wait duration for Time.Sleep.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TimeSleepRequest {
+    /// Unset means a zero-duration wait. Seconds must be in 0..315576000000 and nanos in 0..999999999.
+    #[prost(message, optional, tag = "1")]
+    pub duration: ::core::option::Option<::prost_types::Duration>,
+}
+/// Acknowledges completion of the host-clock wait.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct TimeSleepResponse {}
 /// Generated client implementations.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod time_client {

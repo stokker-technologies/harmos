@@ -26,21 +26,21 @@ from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14harmos/v1/time.proto\x12\tharmos.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"?\n\x10TimeSleepRequest\x12+\n\x08\x64uration\x18\x01 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x13\n\x11TimeSleepResponse\"\x10\n\x0eTimeGetRequest\":\n\x0fTimeGetResponse\x12\'\n\x03now\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp2\x88\x01\n\x04Time\x12<\n\x03Get\x12\x19.harmos.v1.TimeGetRequest\x1a\x1a.harmos.v1.TimeGetResponse\x12\x42\n\x05Sleep\x12\x1b.harmos.v1.TimeSleepRequest\x1a\x1c.harmos.v1.TimeSleepResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14harmos/v1/time.proto\x12\tharmos.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x10\n\x0eTimeGetRequest\":\n\x0fTimeGetResponse\x12\'\n\x03now\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"?\n\x10TimeSleepRequest\x12+\n\x08\x64uration\x18\x01 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x13\n\x11TimeSleepResponse2\x88\x01\n\x04Time\x12<\n\x03Get\x12\x19.harmos.v1.TimeGetRequest\x1a\x1a.harmos.v1.TimeGetResponse\x12\x42\n\x05Sleep\x12\x1b.harmos.v1.TimeSleepRequest\x1a\x1c.harmos.v1.TimeSleepResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.v1.time_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_TIMESLEEPREQUEST']._serialized_start=100
-  _globals['_TIMESLEEPREQUEST']._serialized_end=163
-  _globals['_TIMESLEEPRESPONSE']._serialized_start=165
-  _globals['_TIMESLEEPRESPONSE']._serialized_end=184
-  _globals['_TIMEGETREQUEST']._serialized_start=186
-  _globals['_TIMEGETREQUEST']._serialized_end=202
-  _globals['_TIMEGETRESPONSE']._serialized_start=204
-  _globals['_TIMEGETRESPONSE']._serialized_end=262
+  _globals['_TIMEGETREQUEST']._serialized_start=100
+  _globals['_TIMEGETREQUEST']._serialized_end=116
+  _globals['_TIMEGETRESPONSE']._serialized_start=118
+  _globals['_TIMEGETRESPONSE']._serialized_end=176
+  _globals['_TIMESLEEPREQUEST']._serialized_start=178
+  _globals['_TIMESLEEPREQUEST']._serialized_end=241
+  _globals['_TIMESLEEPRESPONSE']._serialized_start=243
+  _globals['_TIMESLEEPRESPONSE']._serialized_end=262
   _globals['_TIME']._serialized_start=265
   _globals['_TIME']._serialized_end=401
 # @@protoc_insertion_point(module_scope)

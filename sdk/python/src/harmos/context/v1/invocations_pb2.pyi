@@ -12,6 +12,12 @@ class InvocationsGetRequest(_message.Message):
     instance: int
     def __init__(self, instance: _Optional[int] = ...) -> None: ...
 
+class InvocationsGetResponse(_message.Message):
+    __slots__ = ("invocation",)
+    INVOCATION_FIELD_NUMBER: _ClassVar[int]
+    invocation: _types_pb2.InstanceState
+    def __init__(self, invocation: _Optional[_Union[_types_pb2.InstanceState, _Mapping]] = ...) -> None: ...
+
 class InvocationsCancelRequest(_message.Message):
     __slots__ = ("instance", "reason")
     INSTANCE_FIELD_NUMBER: _ClassVar[int]
@@ -20,23 +26,17 @@ class InvocationsCancelRequest(_message.Message):
     reason: str
     def __init__(self, instance: _Optional[int] = ..., reason: _Optional[str] = ...) -> None: ...
 
-class InvocationsWatchRequest(_message.Message):
-    __slots__ = ("instance",)
-    INSTANCE_FIELD_NUMBER: _ClassVar[int]
-    instance: int
-    def __init__(self, instance: _Optional[int] = ...) -> None: ...
-
-class InvocationsGetResponse(_message.Message):
-    __slots__ = ("invocation",)
-    INVOCATION_FIELD_NUMBER: _ClassVar[int]
-    invocation: _types_pb2.InstanceState
-    def __init__(self, invocation: _Optional[_Union[_types_pb2.InstanceState, _Mapping]] = ...) -> None: ...
-
 class InvocationsCancelResponse(_message.Message):
     __slots__ = ("invocation",)
     INVOCATION_FIELD_NUMBER: _ClassVar[int]
     invocation: _types_pb2.InstanceState
     def __init__(self, invocation: _Optional[_Union[_types_pb2.InstanceState, _Mapping]] = ...) -> None: ...
+
+class InvocationsWatchRequest(_message.Message):
+    __slots__ = ("instance",)
+    INSTANCE_FIELD_NUMBER: _ClassVar[int]
+    instance: int
+    def __init__(self, instance: _Optional[int] = ...) -> None: ...
 
 class InvocationsWatchResponse(_message.Message):
     __slots__ = ("invocation",)

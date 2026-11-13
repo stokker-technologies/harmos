@@ -64,6 +64,7 @@ flag "--language <language>"
 '''
 run = [
   "buf format {% if usage.check %}--diff --exit-code{% else %}--write{% endif %}",
+  "buf lint",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks format{% if usage.check %} --check{% endif %}{% if usage.language %} --language {{usage.language}}{% endif %}",
 ]
 

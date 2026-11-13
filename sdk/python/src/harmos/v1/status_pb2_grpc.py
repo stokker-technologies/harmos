@@ -27,7 +27,11 @@ if _version_not_supported:
 
 
 class StatusStub:
-    """Exposes current host health and a live stream of contributed status changes.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes current host health and a live stream of contributed status changes.
     """
 
     def __init__(self, channel):
@@ -49,7 +53,11 @@ class StatusStub:
 
 
 class StatusServicer:
-    """Exposes current host health and a live stream of contributed status changes.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes current host health and a live stream of contributed status changes.
     """
 
     def Get(self, request, context):
@@ -88,7 +96,11 @@ def add_StatusServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Status:
-    """Exposes current host health and a live stream of contributed status changes.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes current host health and a live stream of contributed status changes.
     """
 
     @staticmethod

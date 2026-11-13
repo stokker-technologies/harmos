@@ -27,7 +27,11 @@ if _version_not_supported:
 
 
 class InvocationsStub:
-    """Exposes lifecycle controls only for invocation instances owned by the caller.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes lifecycle controls only for invocation instances owned by the caller.
     """
 
     def __init__(self, channel):
@@ -59,7 +63,11 @@ class InvocationsStub:
 
 
 class InvocationsServicer:
-    """Exposes lifecycle controls only for invocation instances owned by the caller.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes lifecycle controls only for invocation instances owned by the caller.
     """
 
     def Invoke(self, request, context):
@@ -122,7 +130,11 @@ def add_InvocationsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Invocations:
-    """Exposes lifecycle controls only for invocation instances owned by the caller.
+    """=== Options === //
+
+    === Services === //
+
+    Exposes lifecycle controls only for invocation instances owned by the caller.
     """
 
     @staticmethod

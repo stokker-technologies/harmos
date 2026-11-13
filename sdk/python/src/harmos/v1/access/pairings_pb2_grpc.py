@@ -27,7 +27,11 @@ if _version_not_supported:
 
 
 class PairingsStub:
-    """Owns durable client credentials, metadata listing and revocation.
+    """=== Options === //
+
+    === Services === //
+
+    Owns durable client credentials, metadata listing and revocation.
     """
 
     def __init__(self, channel):
@@ -54,7 +58,11 @@ class PairingsStub:
 
 
 class PairingsServicer:
-    """Owns durable client credentials, metadata listing and revocation.
+    """=== Options === //
+
+    === Services === //
+
+    Owns durable client credentials, metadata listing and revocation.
     """
 
     def Create(self, request, context):
@@ -105,7 +113,11 @@ def add_PairingsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Pairings:
-    """Owns durable client credentials, metadata listing and revocation.
+    """=== Options === //
+
+    === Services === //
+
+    Owns durable client credentials, metadata listing and revocation.
     """
 
     @staticmethod

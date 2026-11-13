@@ -35,13 +35,11 @@ pub struct MutationWindow {
     #[prost(message, optional, tag = "3")]
     pub expires_at: ::core::option::Option<::prost_types::Timestamp>,
 }
-/// Reads native accepted/saved frontiers, the mutation window and the file byte budget.
-///
-/// No payload fields.
+/// Request for the native storage Info operation.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageInfoRequest {}
-/// Reads native accepted/saved frontiers, the mutation window and the file byte budget.
+/// Carries accepted and saved frontiers, a mutation window and a file byte budget.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageInfoResponse {
@@ -145,7 +143,7 @@ pub struct FileProgress {
     #[prost(enumeration = "FilePhase", tag = "2")]
     pub phase: i32,
 }
-/// Deletes a staged file under a replayable mutation identity.
+/// Carries the staged file identity and mutation identity for native file deletion.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageDeleteFileRequest {
@@ -155,7 +153,7 @@ pub struct StorageDeleteFileRequest {
     #[prost(message, optional, tag = "2")]
     pub file: ::core::option::Option<StagedFile>,
 }
-/// Deletes a staged file under a replayable mutation identity.
+/// Carries the staged file identity and deletion receipt.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageDeleteFileResponse {
@@ -213,9 +211,7 @@ pub struct DirectoryRename {
     #[prost(string, tag = "2")]
     pub to: ::prost::alloc::string::String,
 }
-/// Marks a selected event or variant without adding payload fields.
-///
-/// No payload fields.
+/// Marks a selected event or variant.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Empty {}
@@ -223,13 +219,13 @@ pub struct Empty {}
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DirectoryEvent {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "directory_event::Event", tags = "1, 2, 3, 4, 5, 6, 7")]
     pub event: ::core::option::Option<directory_event::Event>,
 }
 /// Nested message and enum types in `DirectoryEvent`.
 pub mod directory_event {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Event {
@@ -253,13 +249,13 @@ pub mod directory_event {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileSource {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "file_source::Source", tags = "1, 2")]
     pub source: ::core::option::Option<file_source::Source>,
 }
 /// Nested message and enum types in `FileSource`.
 pub mod file_source {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Source {
@@ -314,13 +310,13 @@ pub struct FileHash {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FollowStart {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "follow_start::Start", tags = "1, 2, 3")]
     pub start: ::core::option::Option<follow_start::Start>,
 }
 /// Nested message and enum types in `FollowStart`.
 pub mod follow_start {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Start {
@@ -337,13 +333,13 @@ pub mod follow_start {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FileEvent {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "file_event::Event", tags = "1, 2, 3")]
     pub event: ::core::option::Option<file_event::Event>,
 }
 /// Nested message and enum types in `FileEvent`.
 pub mod file_event {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Event {
@@ -436,7 +432,7 @@ pub struct SchemaInput {
     #[prost(message, optional, tag = "2")]
     pub graph: ::core::option::Option<SchemaGraph>,
 }
-/// Conditionally writes a complete persisted schema graph under a replayable mutation identity.
+/// Carries a schema graph, expected revision, creation control and mutation identity.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageSetSchemaRequest {
@@ -452,7 +448,7 @@ pub struct StorageSetSchemaRequest {
     #[prost(bool, tag = "4")]
     pub create_if_absent: bool,
 }
-/// Conditionally writes a complete persisted schema graph under a replayable mutation identity.
+/// Carries the stored schema, its revision and the mutation receipt.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageSetSchemaResponse {
@@ -464,7 +460,7 @@ pub struct StorageSetSchemaResponse {
     #[prost(message, optional, tag = "3")]
     pub receipt: ::core::option::Option<crate::v1::Receipt>,
 }
-/// Reads a persisted schema graph and its conditional revision at a selected storage cut.
+/// Selects a schema key and read boundary for a native schema read.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetSchemaRequest {
@@ -475,7 +471,7 @@ pub struct StorageGetSchemaRequest {
     #[prost(message, optional, tag = "2")]
     pub at: ::core::option::Option<crate::v1::ReadCut>,
 }
-/// Reads a persisted schema graph and its conditional revision at a selected storage cut.
+/// Carries the schema, revision, presence flag and selected read boundary.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StorageGetSchemaResponse {
@@ -582,13 +578,13 @@ pub struct FileSelection {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct QuerySource {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "query_source::Source", tags = "1, 2, 3, 4, 5")]
     pub source: ::core::option::Option<query_source::Source>,
 }
 /// Nested message and enum types in `QuerySource`.
 pub mod query_source {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Source {
@@ -618,13 +614,13 @@ pub struct QueryCompletion {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct QueryOutput {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "query_output::Output", tags = "1, 2")]
     pub output: ::core::option::Option<query_output::Output>,
 }
 /// Nested message and enum types in `QueryOutput`.
 pub mod query_output {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Output {
@@ -660,13 +656,13 @@ pub struct ExactNumber {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ScalarValue {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "scalar_value::Value", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
     pub value: ::core::option::Option<scalar_value::Value>,
 }
 /// Nested message and enum types in `ScalarValue`.
 pub mod scalar_value {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Value {
@@ -712,13 +708,13 @@ pub struct ScalarValues {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Condition {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "condition::Condition", tags = "1, 2, 3")]
     pub condition: ::core::option::Option<condition::Condition>,
 }
 /// Nested message and enum types in `Condition`.
 pub mod condition {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Condition {
@@ -776,13 +772,13 @@ pub struct Project {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Statistic {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "statistic::Statistic", tags = "1, 2, 3, 4, 5, 6, 7, 8, 9")]
     pub statistic: ::core::option::Option<statistic::Statistic>,
 }
 /// Nested message and enum types in `Statistic`.
 pub mod statistic {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Statistic {
@@ -873,13 +869,13 @@ pub struct Sort {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Transform {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "transform::Transform", tags = "1, 2, 3, 4, 5, 6, 7")]
     pub transform: ::core::option::Option<transform::Transform>,
 }
 /// Nested message and enum types in `Transform`.
 pub mod transform {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Transform {
@@ -1215,13 +1211,13 @@ pub struct ProjectionDefinition {
     /// Required persisted resource kind/schema; reads and advancement must match this source.
     #[prost(message, optional, tag = "3")]
     pub source: ::core::option::Option<ColumnSource>,
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[prost(oneof = "projection_definition::Transform", tags = "4, 5")]
     pub transform: ::core::option::Option<projection_definition::Transform>,
 }
 /// Nested message and enum types in `ProjectionDefinition`.
 pub mod projection_definition {
-    /// Select exactly one variant; an unset discriminator carries no selected value.
+    /// Selects one variant; an unset discriminator carries no selected value.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Transform {

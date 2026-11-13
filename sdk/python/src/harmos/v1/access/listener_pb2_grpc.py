@@ -27,7 +27,13 @@ if _version_not_supported:
 
 
 class ListenerStub:
-    """Owns the client TLS listener's persisted configuration and staged live replacement.
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Owns the client TLS listener's persisted configuration and staged live replacement.
     """
 
     def __init__(self, channel):
@@ -49,7 +55,13 @@ class ListenerStub:
 
 
 class ListenerServicer:
-    """Owns the client TLS listener's persisted configuration and staged live replacement.
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Owns the client TLS listener's persisted configuration and staged live replacement.
     """
 
     def Get(self, request, context):
@@ -88,7 +100,13 @@ def add_ListenerServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Listener:
-    """Owns the client TLS listener's persisted configuration and staged live replacement.
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Owns the client TLS listener's persisted configuration and staged live replacement.
     """
 
     @staticmethod

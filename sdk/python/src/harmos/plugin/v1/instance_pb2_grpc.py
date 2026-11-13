@@ -27,7 +27,11 @@ if _version_not_supported:
 
 
 class InstanceStub:
-    """Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
+    """=== Options === //
+
+    === Services === //
+
+    Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
     """
 
     def __init__(self, channel):
@@ -59,7 +63,11 @@ class InstanceStub:
 
 
 class InstanceServicer:
-    """Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
+    """=== Options === //
+
+    === Services === //
+
+    Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
     """
 
     def Get(self, request, context):
@@ -130,7 +138,11 @@ def add_InstanceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Instance:
-    """Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
+    """=== Options === //
+
+    === Services === //
+
+    Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
     """
 
     @staticmethod

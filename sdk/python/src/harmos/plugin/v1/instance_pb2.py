@@ -26,7 +26,7 @@ from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__
 from harmos.v1 import types_pb2 as harmos_dot_v1_dot_types__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/plugin/v1/instance.proto\x12\x10harmos.plugin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15harmos/v1/types.proto\"J\n\x12InstanceGetRequest\x12\x10\n\x08revision\x18\x01 \x01(\r\x12\x0c\n\x04host\x18\x02 \x01(\t\x12\x14\n\x0chost_version\x18\x03 \x01(\t\"\xd2\x01\n\x13InstanceGetResponse\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12.\n\nstarted_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\x07\x63\x61talog\x18\x04 \x01(\x0b\x32\x12.harmos.v1.Catalog\x12\x10\n\x08revision\x18\x05 \x01(\r\x12\x0b\n\x03sdk\x18\x06 \x01(\t\x12\x13\n\x0bsdk_version\x18\x07 \x01(\t\x12\x15\n\rmessage_bytes\x18\x08 \x01(\x04\"%\n\x13InstanceStopRequest\x12\x0e\n\x06reason\x18\x01 \x01(\t\"\x16\n\x14InstanceStopResponse\"\x97\x01\n\x15InstanceInvokeRequest\x12%\n\x07request\x18\x01 \x01(\x0b\x32\x12.harmos.v1.RequestH\x00\x12)\n\x05\x63hild\x18\x02 \x01(\x0b\x32\x18.harmos.v1.ChildResponseH\x00\x12#\n\x06\x63\x61ncel\x18\x03 \x01(\x0b\x32\x11.harmos.v1.CancelH\x00\x42\x07\n\x05\x66rame\"\xd4\x01\n\x16InstanceInvokeResponse\x12(\n\x05\x63hild\x18\x01 \x01(\x0b\x32\x17.harmos.v1.ChildRequestH\x00\x12.\n\x0c\x63hild_cancel\x18\x02 \x01(\x0b\x32\x16.harmos.v1.ChildCancelH\x00\x12\'\n\x08response\x18\x03 \x01(\x0b\x32\x13.harmos.v1.ResponseH\x00\x12.\n\x0c\x63hild_demand\x18\x04 \x01(\x0b\x32\x16.harmos.v1.ChildDemandH\x00\x42\x07\n\x05\x66rame\"o\n\x16InstanceSamplesRequest\x12+\n\x04open\x18\x01 \x01(\x0b\x32\x1b.harmos.v1.SamplesSelectionH\x00\x12\x1f\n\x04tick\x18\x02 \x01(\x0b\x32\x0f.harmos.v1.TickH\x00\x42\x07\n\x05\x66rame\"=\n\x17InstanceSamplesResponse\x12\"\n\x07samples\x18\x01 \x03(\x0b\x32\x11.harmos.v1.Sample2\xfa\x02\n\x08Instance\x12R\n\x03Get\x12$.harmos.plugin.v1.InstanceGetRequest\x1a%.harmos.plugin.v1.InstanceGetResponse\x12_\n\x06Invoke\x12\'.harmos.plugin.v1.InstanceInvokeRequest\x1a(.harmos.plugin.v1.InstanceInvokeResponse(\x01\x30\x01\x12\x62\n\x07Samples\x12(.harmos.plugin.v1.InstanceSamplesRequest\x1a).harmos.plugin.v1.InstanceSamplesResponse(\x01\x30\x01\x12U\n\x04Stop\x12%.harmos.plugin.v1.InstanceStopRequest\x1a&.harmos.plugin.v1.InstanceStopResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1fharmos/plugin/v1/instance.proto\x12\x10harmos.plugin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x15harmos/v1/types.proto\"J\n\x12InstanceGetRequest\x12\x10\n\x08revision\x18\x01 \x01(\r\x12\x0c\n\x04host\x18\x02 \x01(\t\x12\x14\n\x0chost_version\x18\x03 \x01(\t\"\xd2\x01\n\x13InstanceGetResponse\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0f\n\x07version\x18\x02 \x01(\t\x12.\n\nstarted_at\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12#\n\x07\x63\x61talog\x18\x04 \x01(\x0b\x32\x12.harmos.v1.Catalog\x12\x10\n\x08revision\x18\x05 \x01(\r\x12\x0b\n\x03sdk\x18\x06 \x01(\t\x12\x13\n\x0bsdk_version\x18\x07 \x01(\t\x12\x15\n\rmessage_bytes\x18\x08 \x01(\x04\"\x97\x01\n\x15InstanceInvokeRequest\x12%\n\x07request\x18\x01 \x01(\x0b\x32\x12.harmos.v1.RequestH\x00\x12)\n\x05\x63hild\x18\x02 \x01(\x0b\x32\x18.harmos.v1.ChildResponseH\x00\x12#\n\x06\x63\x61ncel\x18\x03 \x01(\x0b\x32\x11.harmos.v1.CancelH\x00\x42\x07\n\x05\x66rame\"\xd4\x01\n\x16InstanceInvokeResponse\x12(\n\x05\x63hild\x18\x01 \x01(\x0b\x32\x17.harmos.v1.ChildRequestH\x00\x12.\n\x0c\x63hild_cancel\x18\x02 \x01(\x0b\x32\x16.harmos.v1.ChildCancelH\x00\x12\'\n\x08response\x18\x03 \x01(\x0b\x32\x13.harmos.v1.ResponseH\x00\x12.\n\x0c\x63hild_demand\x18\x04 \x01(\x0b\x32\x16.harmos.v1.ChildDemandH\x00\x42\x07\n\x05\x66rame\"o\n\x16InstanceSamplesRequest\x12+\n\x04open\x18\x01 \x01(\x0b\x32\x1b.harmos.v1.SamplesSelectionH\x00\x12\x1f\n\x04tick\x18\x02 \x01(\x0b\x32\x0f.harmos.v1.TickH\x00\x42\x07\n\x05\x66rame\"=\n\x17InstanceSamplesResponse\x12\"\n\x07samples\x18\x01 \x03(\x0b\x32\x11.harmos.v1.Sample\"%\n\x13InstanceStopRequest\x12\x0e\n\x06reason\x18\x01 \x01(\t\"\x16\n\x14InstanceStopResponse2\xfa\x02\n\x08Instance\x12R\n\x03Get\x12$.harmos.plugin.v1.InstanceGetRequest\x1a%.harmos.plugin.v1.InstanceGetResponse\x12_\n\x06Invoke\x12\'.harmos.plugin.v1.InstanceInvokeRequest\x1a(.harmos.plugin.v1.InstanceInvokeResponse(\x01\x30\x01\x12\x62\n\x07Samples\x12(.harmos.plugin.v1.InstanceSamplesRequest\x1a).harmos.plugin.v1.InstanceSamplesResponse(\x01\x30\x01\x12U\n\x04Stop\x12%.harmos.plugin.v1.InstanceStopRequest\x1a&.harmos.plugin.v1.InstanceStopResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,18 +37,18 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_INSTANCEGETREQUEST']._serialized_end=183
   _globals['_INSTANCEGETRESPONSE']._serialized_start=186
   _globals['_INSTANCEGETRESPONSE']._serialized_end=396
-  _globals['_INSTANCESTOPREQUEST']._serialized_start=398
-  _globals['_INSTANCESTOPREQUEST']._serialized_end=435
-  _globals['_INSTANCESTOPRESPONSE']._serialized_start=437
-  _globals['_INSTANCESTOPRESPONSE']._serialized_end=459
-  _globals['_INSTANCEINVOKEREQUEST']._serialized_start=462
-  _globals['_INSTANCEINVOKEREQUEST']._serialized_end=613
-  _globals['_INSTANCEINVOKERESPONSE']._serialized_start=616
-  _globals['_INSTANCEINVOKERESPONSE']._serialized_end=828
-  _globals['_INSTANCESAMPLESREQUEST']._serialized_start=830
-  _globals['_INSTANCESAMPLESREQUEST']._serialized_end=941
-  _globals['_INSTANCESAMPLESRESPONSE']._serialized_start=943
-  _globals['_INSTANCESAMPLESRESPONSE']._serialized_end=1004
+  _globals['_INSTANCEINVOKEREQUEST']._serialized_start=399
+  _globals['_INSTANCEINVOKEREQUEST']._serialized_end=550
+  _globals['_INSTANCEINVOKERESPONSE']._serialized_start=553
+  _globals['_INSTANCEINVOKERESPONSE']._serialized_end=765
+  _globals['_INSTANCESAMPLESREQUEST']._serialized_start=767
+  _globals['_INSTANCESAMPLESREQUEST']._serialized_end=878
+  _globals['_INSTANCESAMPLESRESPONSE']._serialized_start=880
+  _globals['_INSTANCESAMPLESRESPONSE']._serialized_end=941
+  _globals['_INSTANCESTOPREQUEST']._serialized_start=943
+  _globals['_INSTANCESTOPREQUEST']._serialized_end=980
+  _globals['_INSTANCESTOPRESPONSE']._serialized_start=982
+  _globals['_INSTANCESTOPRESPONSE']._serialized_end=1004
   _globals['_INSTANCE']._serialized_start=1007
   _globals['_INSTANCE']._serialized_end=1385
 # @@protoc_insertion_point(module_scope)

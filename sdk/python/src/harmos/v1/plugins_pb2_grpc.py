@@ -27,7 +27,11 @@ if _version_not_supported:
 
 
 class PluginsStub:
-    """Client-facing management of hosted entries, distinct from Instance.
+    """=== Options === //
+
+    === Services === //
+
+    Client-facing management of hosted entries, distinct from Instance.
     """
 
     def __init__(self, channel):
@@ -74,7 +78,11 @@ class PluginsStub:
 
 
 class PluginsServicer:
-    """Client-facing management of hosted entries, distinct from Instance.
+    """=== Options === //
+
+    === Services === //
+
+    Client-facing management of hosted entries, distinct from Instance.
     """
 
     def Get(self, request, context):
@@ -173,7 +181,11 @@ def add_PluginsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Plugins:
-    """Client-facing management of hosted entries, distinct from Instance.
+    """=== Options === //
+
+    === Services === //
+
+    Client-facing management of hosted entries, distinct from Instance.
     """
 
     @staticmethod

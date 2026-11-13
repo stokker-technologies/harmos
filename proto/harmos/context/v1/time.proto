@@ -1,9 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Context Time
+//
+// Calls a running plugin makes back to the host from inside an invocation.
+// The host answers for the calling plugin.
+
 syntax = "proto3";
+
 package harmos.context.v1;
+
+// === Imports === //
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
+
+// === Options === //
+
+// === Services === //
 
 // Exposes the authoritative host clock, including virtual time, to operation callers.
 service Time {
@@ -13,24 +26,26 @@ service Time {
   rpc Sleep(TimeSleepRequest) returns (TimeSleepResponse);
 }
 
-// Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
-message TimeSleepRequest {
-  // Unset means a zero-duration wait. Seconds must be in 0..315576000000 and nanos in 0..999999999.
-  google.protobuf.Duration duration = 1;
-}
+// === Requests and Responses === //
 
-// Acknowledges completion of the host-clock wait without adding payload fields.
-message TimeSleepResponse {
-  // No payload fields.
-}
-
-// Read the authoritative host clock used by operation deadlines, retries and plugin waits.
-message TimeGetRequest {
-  // No payload fields.
-}
+// Request for Time.Get.
+message TimeGetRequest {}
 
 // Returns the authoritative host time, including virtual time when configured.
 message TimeGetResponse {
   // Authoritative host time, including virtual time when the host uses it.
   google.protobuf.Timestamp now = 1;
 }
+
+// Carries the wait duration for Time.Sleep.
+message TimeSleepRequest {
+  // Unset means a zero-duration wait. Seconds must be in 0..315576000000 and nanos in 0..999999999.
+  google.protobuf.Duration duration = 1;
+}
+
+// Acknowledges completion of the host-clock wait.
+message TimeSleepResponse {}
+
+// === Resources === //
+
+// === Enums === //

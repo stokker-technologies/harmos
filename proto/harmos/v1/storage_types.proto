@@ -1,9 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Client Storage Types
+//
+// Shared payloads for calls an application or tool makes to the host.
+// These types may also be used by the context and plugin faces.
+
 syntax = "proto3";
+
 package harmos.storage.v1;
+
+// === Imports === //
 
 import "google/protobuf/timestamp.proto";
 import "harmos/v1/types.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
 
 // Histories and positions are native storage identities, independent of transport.
 message StoreHistory {
@@ -12,6 +29,7 @@ message StoreHistory {
   // Store incarnation; reopening or replacing a history must not make foreign cursors valid.
   string epoch = 2;
 }
+
 // Addresses a sequence within one native store history; a foreign history cannot select a local snapshot.
 message StorageCursor {
   // Required store incarnation for this native cursor.
@@ -19,6 +37,7 @@ message StorageCursor {
   // Progress in this store history, not an offset into file bytes.
   uint64 sequence = 2;
 }
+
 // Defines the store-owned validity window in which mutation keys can be replayed.
 message MutationWindow {
   // History for which this mutation window was issued.
@@ -28,11 +47,11 @@ message MutationWindow {
   // Owner-clock expiry after which this window cannot admit new mutation replays.
   google.protobuf.Timestamp expires_at = 3;
 }
-// Reads native accepted/saved frontiers, the mutation window and the file byte budget.
-message StorageInfoRequest {
-  // No payload fields.
-}
-// Reads native accepted/saved frontiers, the mutation window and the file byte budget.
+
+// Request for the native storage Info operation.
+message StorageInfoRequest {}
+
+// Carries accepted and saved frontiers, a mutation window and a file byte budget.
 message StorageInfoResponse {
   StorageCursor accepted = 1;
   StorageCursor saved = 2;
@@ -49,6 +68,7 @@ message MutationId {
   // Caller-chosen identity within the window. Keep it and the complete original input unchanged when resending.
   string key = 2;
 }
+
 // Declares a file's identity, optional scope and optional publication expectations before producing its bytes.
 message FileMetadata {
   // File identity used for storage and resource-grant admission.
@@ -61,12 +81,14 @@ message FileMetadata {
   // If present, publication must match this 32-byte digest; unset imposes no declared digest expectation.
   optional bytes expected_sha256 = 5;
 }
+
 // Identifies a production independently of the current writer generation.
 message StagedFile {
   StoreHistory history = 1;
   // Production identity within the named storage history, independent of file byte offsets.
   string id = 2;
 }
+
 // Authorizes one writer generation; resuming production fences the previous generation.
 message FileSession {
   StoreHistory history = 1;
@@ -75,6 +97,7 @@ message FileSession {
   // Writer fence returned by create/resume; the previous generation loses append/publish authority after resume.
   uint64 generation = 3;
 }
+
 // Returns the current writer session and acknowledged production length.
 message FileProducer {
   // Required current writer capability; an older generation is fenced after another writer resumes production.
@@ -82,6 +105,7 @@ message FileProducer {
   // Acknowledged byte length for the returned writer; resume appends from this offset.
   uint64 length = 2;
 }
+
 // Addresses published immutable content with its storage position, metadata, length and SHA-256 digest.
 message FileReference {
   // Storage position of published content; application-owned content uses its provider's reference identity.
@@ -91,24 +115,22 @@ message FileReference {
   // SHA-256 of the complete immutable file, encoded as 32 bytes.
   bytes sha256 = 4;
 }
-enum FilePhase {
-  PRODUCING = 0;
-  FINISHED = 1;
-  ABANDONED = 2;
-}
+
 // Reports a production's byte length and whether it is still producing, finished or abandoned.
 message FileProgress {
   // Observed production length in bytes; consult the operation's separate accepted/durable lengths where present.
   uint64 length = 1;
   FilePhase phase = 2;
 }
-// Deletes a staged file under a replayable mutation identity.
+
+// Carries the staged file identity and mutation identity for native file deletion.
 message StorageDeleteFileRequest {
   // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
   MutationId mutation = 1;
   StagedFile file = 2;
 }
-// Deletes a staged file under a replayable mutation identity.
+
+// Carries the staged file identity and deletion receipt.
 message StorageDeleteFileResponse {
   StagedFile file = 1;
   harmos.v1.Receipt receipt = 2;
@@ -120,6 +142,7 @@ message DirectoryRule {
   string pattern = 1;
   bool include = 2;
 }
+
 // Selects entries under a local root with recursion and ordered inclusion rules.
 message DirectorySelection {
   string root = 1;
@@ -127,28 +150,31 @@ message DirectorySelection {
   // Glob rules evaluated in order; the last match wins and a path with no match is excluded.
   repeated DirectoryRule rules = 3;
 }
+
 // Describes an observed relative path and its file/directory metadata.
 message DirectoryEntry {
   string path = 1;
   bool directory = 2;
   uint64 length = 3;
 }
+
 // Reports the number of entries traversed by a directory operation.
 message DirectoryCompletion {
   uint64 entries = 1;
 }
+
 // Relates the old and new paths of an observed rename.
 message DirectoryRename {
   string from = 1;
   string to = 2;
 }
-// Marks a selected event or variant without adding payload fields.
-message Empty {
-  // No payload fields.
-}
+
+// Marks a selected event or variant.
+message Empty {}
+
 // Distinguishes initial entries, scan completion and later filesystem changes; a rescan event requires a new scan.
 message DirectoryEvent {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof event {
     DirectoryEntry existing = 1;
     Empty initial_scan_complete = 2;
@@ -162,12 +188,13 @@ message DirectoryEvent {
 
 // Selects either published storage content or a local filesystem path under the caller's access policy.
 message FileSource {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof source {
     FileReference stored = 1;
     string local = 2;
   }
 }
+
 // Selects bytes from an offset, optionally limiting the number read.
 message ByteRange {
   // Zero-based byte offset from the beginning of the source.
@@ -175,6 +202,7 @@ message ByteRange {
   // Maximum bytes to read; unset reads the remaining selected source range.
   optional uint64 limit = 2;
 }
+
 // Carries a contiguous byte chunk and its offset in the source.
 message FileBatch {
   // Zero-based byte offset of this contiguous batch.
@@ -182,11 +210,13 @@ message FileBatch {
   // Raw bytes at offset, rather than an encoded row batch.
   bytes bytes = 2;
 }
+
 // Reports the total byte count for a completed file read.
 message FileCompletion {
   // Total bytes emitted by the completed read.
   uint64 bytes = 1;
 }
+
 // Reports the bytes actually read and their SHA-256 digest for the selected range.
 message FileHash {
   // Number of bytes included in the returned digest, which may be only a selected range.
@@ -194,9 +224,10 @@ message FileHash {
   // SHA-256 of the bytes actually read, encoded as 32 bytes.
   bytes sha256 = 2;
 }
+
 // Chooses whether a local file follower begins at zero, the current end or an explicit byte offset.
 message FollowStart {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof start {
     Empty beginning = 1;
     Empty end = 2;
@@ -204,9 +235,10 @@ message FollowStart {
     uint64 at = 3;
   }
 }
+
 // Carries following bytes or signals that the local file was truncated or replaced.
 message FileEvent {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof event {
     FileBatch data = 1;
     // New file length in bytes after observed truncation.
@@ -214,16 +246,7 @@ message FileEvent {
     Empty replaced = 3;
   }
 }
-enum CaptureConsistency {
-  BOUNDED = 0;
-  STABLE = 1;
-}
 
-// Storage schema graphs describe persisted payloads; they do not change their encoding.
-enum PayloadEncoding {
-  PAYLOAD_ENCODING_UNSPECIFIED = 0;
-  POSTCARD_V1 = 1;
-}
 // Identifies a persisted schema revision and its payload encoding; version numbers are identity, not a conversion request.
 message SchemaKey {
   // Persistent schema identity; a type change does not silently reinterpret previously stored payloads.
@@ -232,24 +255,7 @@ message SchemaKey {
   uint32 version = 2;
   PayloadEncoding payload_encoding = 3;
 }
-enum SchemaCardinality {
-  REQUIRED = 0;
-  OPTIONAL = 1;
-  REPEATED = 2;
-  VARIANT = 3;
-}
-enum SchemaKind {
-  BOOL = 0;
-  UINT32 = 1;
-  UINT64 = 2;
-  INT32 = 3;
-  INT64 = 4;
-  FLOAT32 = 5;
-  FLOAT64 = 6;
-  STRING = 7;
-  BYTES = 8;
-  MESSAGE = 9;
-}
+
 // Describes a persisted field's name, tag, scalar kind, cardinality and optional referenced definition.
 message SchemaField {
   // Persisted field name used by schema traversal and query field paths.
@@ -261,24 +267,12 @@ message SchemaField {
   // Index into SchemaGraph.definitions for MESSAGE fields; required for messages and refused on scalar fields.
   optional uint64 definition = 5;
 }
+
 // Keeps a definition's fields in payload order; reordering can change Postcard decoding.
 message SchemaDefinition {
   repeated SchemaField fields = 1;
 }
-enum SchemaForm {
-  OBJECT = 0;
-  UNIT = 1;
-  VALUE = 2;
-  TUPLE = 3;
-  EXTERNAL = 4;
-  INTERNAL = 5;
-  ADJACENT = 6;
-  UNTAGGED = 7;
-}
-enum SchemaOmission {
-  OMIT_NONE = 0;
-  OMIT_EMPTY = 1;
-}
+
 // Retains serialization form, tagging and omission metadata for one schema definition.
 message SchemaRepresentation {
   // Index of the definition described by this representation.
@@ -291,6 +285,7 @@ message SchemaRepresentation {
   map<string, SchemaOmission> omissions = 5;
   repeated string maps = 6;
 }
+
 // Owns a finite, indexed schema graph with an explicit root and serialization representations.
 message SchemaGraph {
   // Index into definitions of the graph's root definition.
@@ -298,13 +293,15 @@ message SchemaGraph {
   repeated SchemaDefinition definitions = 2;
   repeated SchemaRepresentation representations = 3;
 }
+
 // Binds a persisted schema identity to its complete definition graph.
 message SchemaInput {
   // Required persisted schema identity, revision and payload encoding for this definition graph.
   SchemaKey key = 1;
   SchemaGraph graph = 2;
 }
-// Conditionally writes a complete persisted schema graph under a replayable mutation identity.
+
+// Carries a schema graph, expected revision, creation control and mutation identity.
 message StorageSetSchemaRequest {
   // Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
   MutationId mutation = 1;
@@ -314,21 +311,24 @@ message StorageSetSchemaRequest {
   // True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
   bool create_if_absent = 4;
 }
-// Conditionally writes a complete persisted schema graph under a replayable mutation identity.
+
+// Carries the stored schema, its revision and the mutation receipt.
 message StorageSetSchemaResponse {
   SchemaInput schema = 1;
   // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
   bytes revision = 2;
   harmos.v1.Receipt receipt = 3;
 }
-// Reads a persisted schema graph and its conditional revision at a selected storage cut.
+
+// Selects a schema key and read boundary for a native schema read.
 message StorageGetSchemaRequest {
   // Required schema identity and revision to read.
   SchemaKey key = 1;
   // Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
   harmos.v1.ReadCut at = 2;
 }
-// Reads a persisted schema graph and its conditional revision at a selected storage cut.
+
+// Carries the schema, revision, presence flag and selected read boundary.
 message StorageGetSchemaResponse {
   SchemaInput schema = 1;
   // Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
@@ -346,10 +346,7 @@ message RowSlice {
   // Maximum transformed rows to emit; unset leaves the output count unbounded by this slice.
   optional uint64 limit = 2;
 }
-enum ObjectVersions {
-  LATEST = 0;
-  REVISIONS = 1;
-}
+
 // Selects one or all object keys and either latest values or their retained revisions.
 message ObjectSelection {
   // Unset selects across schemas; present restricts objects to this schema identity.
@@ -358,6 +355,7 @@ message ObjectSelection {
   optional string key = 2;
   ObjectVersions versions = 3;
 }
+
 // Selects retained records by schema, optional scope/item and source-time bounds.
 message RecordSelection {
   SchemaKey schema = 1;
@@ -370,6 +368,7 @@ message RecordSelection {
   // Exclusive source-time upper bound. Both bounds must be set and increasing; bounded selection excludes records without source_time.
   google.protobuf.Timestamp source_end = 5;
 }
+
 // Selects retained stream rows by schema, optional scope/item/stream, source-time bounds and progress.
 message StreamSelection {
   SchemaKey schema = 1;
@@ -386,11 +385,13 @@ message StreamSelection {
   // Exclusive storage-history sequence boundary for stream records; zero begins at the start of the history.
   uint64 after = 7;
 }
+
 // Selects stored schema definitions under a schema identity.
 message SchemaSelection {
   // Unset includes all stored schemas; present restricts the schema identity.
   SchemaKey schema = 1;
 }
+
 // Selects published files by optional scope and item filters.
 message FileSelection {
   // Unset leaves scope unfiltered; present selects that stored scope.
@@ -398,9 +399,10 @@ message FileSelection {
   // Unset leaves item unfiltered; present selects that file identity.
   optional string item = 2;
 }
+
 // Chooses the persisted resource family for one query.
 message QuerySource {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof source {
     ObjectSelection objects = 1;
     RecordSelection records = 2;
@@ -410,23 +412,27 @@ message QuerySource {
     FileSelection files = 5;
   }
 }
+
 // Reports a query's selected storage position and emitted row count.
 message QueryCompletion {
   StorageCursor at = 1;
   uint64 rows = 2;
 }
+
 // Separates encoded output schema from encoded result batches.
 message QueryOutput {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof output {
     bytes schema = 1;
     bytes batch = 2;
   }
 }
+
 // Traverses named fields in a persisted payload schema.
 message FieldPath {
   repeated string fields = 1;
 }
+
 // Wide integer strings use minimal base-10 notation without a leading plus sign.
 message ExactNumber {
   // Sign of the exact fraction; zero must not carry a negative sign.
@@ -436,10 +442,11 @@ message ExactNumber {
   // Positive nonzero base-10 denominator; numerator/denominator must be reduced.
   string denominator = 3;
 }
+
 // Datetime is signed nanoseconds since the Unix epoch. Floats must be finite.
 // Exact fractions must be reduced; their positive denominator is nonzero and zero has no negative sign.
 message ScalarValue {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof value {
     Empty missing = 1;
     Empty null = 2;
@@ -454,59 +461,60 @@ message ScalarValue {
     ExactNumber exact = 9;
   }
 }
-enum Compare {
-  EQ = 0;
-  NE = 1;
-  LT = 2;
-  LE = 3;
-  GT = 4;
-  GE = 5;
-}
+
 // Compares a selected scalar against one typed operand.
 message Comparison {
   Compare op = 1;
   ScalarValue value = 2;
 }
+
 // Carries the candidate operands for a membership condition.
 message ScalarValues {
   repeated ScalarValue values = 1;
 }
+
 // Selects comparison, membership or null testing for a filter term.
 message Condition {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof condition {
     Comparison compare = 1;
     ScalarValues in_values = 2;
     Empty is_null = 3;
   }
 }
+
 // Tests one field and optionally negates the result.
 message Term {
   FieldPath field = 1;
   Condition condition = 2;
   bool negate = 3;
 }
+
 // Combines its filter terms as a conjunction.
 message Clause {
   repeated Term terms = 1;
 }
+
 // Combines its clauses as a disjunction.
 message Filter {
   repeated Clause clauses = 1;
 }
+
 // Maps an input field path to an output column name.
 message Projection {
   FieldPath field = 1;
   // Output column name assigned to this field path.
   string name = 2;
 }
+
 // Selects and names output fields in declared order.
 message Project {
   repeated Projection fields = 1;
 }
+
 // Chooses the reduction applied to a measure's field.
 message Statistic {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof statistic {
     Empty count = 1;
     Empty sum = 2;
@@ -520,6 +528,7 @@ message Statistic {
     uint32 percentile = 9;
   }
 }
+
 // Names a statistic over one selected field.
 message Measure {
   FieldPath field = 1;
@@ -527,22 +536,19 @@ message Measure {
   // Output column name assigned to this aggregate measure.
   string name = 3;
 }
+
 // Groups rows by projected keys and computes the requested measures.
 message Aggregate {
   repeated Projection groups = 1;
   repeated Measure measures = 2;
 }
+
 // Bins numeric values using the supplied ordered edges.
 message Histogram {
   FieldPath field = 1;
   repeated double edges = 2;
 }
-enum DownsampleAlgorithm {
-  DECIMATE = 0;
-  EXTREMA = 1;
-  LTTB = 2;
-  LTTB_LOG = 3;
-}
+
 // Reduces selected rows with a bounded algorithm and explicit value/axis fields.
 message Downsample {
   // Maximum rows selected by the algorithm; this is an output bound rather than a source-work budget.
@@ -551,19 +557,22 @@ message Downsample {
   FieldPath value = 3;
   FieldPath axis = 4;
 }
+
 // Defines one field's ordering direction and null placement.
 message SortKey {
   FieldPath field = 1;
   bool descending = 2;
   bool nulls_first = 3;
 }
+
 // Orders query rows by the declared sequence of sort keys.
 message Sort {
   repeated SortKey keys = 1;
 }
+
 // Selects one transformation in a query's ordered transform pipeline.
 message Transform {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof transform {
     Filter filter = 1;
     Project project = 2;
@@ -574,6 +583,7 @@ message Transform {
     TimeBucketPlan time_buckets = 7;
   }
 }
+
 // Combines a storage boundary, source, ordered transforms and output slice.
 message Query {
   // Selected native storage history position for this query.
@@ -583,6 +593,7 @@ message Query {
   repeated Transform transforms = 3;
   RowSlice slice = 4;
 }
+
 // Preserves a payload's schema, storage position, item and optional source/scope metadata.
 message StoredRecord {
   // Native storage-history position at which this record was accepted.
@@ -598,6 +609,7 @@ message StoredRecord {
   // Bytes encoded under the referenced persisted schema's payload encoding.
   bytes payload = 7;
 }
+
 // Adds stream identity and stream sequence to a stored record.
 message StoredRow {
   StoredRecord record = 1;
@@ -606,6 +618,7 @@ message StoredRow {
   // Sequence within the named stream, distinct from the storage history sequence.
   uint64 sequence = 3;
 }
+
 // Identifies a conditional object revision within its store history; carry it unchanged for comparison.
 message ObjectVersionToken {
   // History owning this object revision; tokens from another incarnation are invalid.
@@ -613,6 +626,7 @@ message ObjectVersionToken {
   // Object compare-and-exchange revision, not a stream schema version.
   uint64 revision = 2;
 }
+
 // Binds an encoded object payload to its schema identity and object key.
 message ObjectValue {
   SchemaKey schema = 1;
@@ -621,6 +635,7 @@ message ObjectValue {
   // Bytes encoded under the referenced persisted schema's payload encoding.
   bytes payload = 3;
 }
+
 // Associates a persisted object value with its storage position and conditional version token.
 message ObjectEntry {
   // Native storage-history position of this object revision.
@@ -629,6 +644,7 @@ message ObjectEntry {
   ObjectVersionToken version = 2;
   ObjectValue value = 3;
 }
+
 // Carries an Arrow IPC batch for one destination and schema under an append sequence.
 message DataBatch {
   // Sequence of this append batch as supplied by its producer.
@@ -647,6 +663,7 @@ message ReadLimits {
   // Positive maximum source bytes inspected by this work step.
   uint64 bytes = 2;
 }
+
 // Advertises backend facilities; a false capability does not authorize a fallback with weaker guarantees.
 message StorageCapabilities {
   bool native_arrow = 1;
@@ -657,16 +674,13 @@ message StorageCapabilities {
   bool file_deletion = 6;
   bool mutation_receipts = 7;
 }
-enum ColumnKind {
-  COLUMN_KIND_OBJECTS = 0;
-  COLUMN_KIND_RECORDS = 1;
-  COLUMN_KIND_STREAM = 2;
-}
+
 // Selects a persisted object, record or stream schema for native columnar access.
 message ColumnSource {
   ColumnKind kind = 1;
   SchemaKey schema = 2;
 }
+
 // Optionally bounds the numeric values of one column.
 message ColumnPredicate {
   string column = 1;
@@ -675,6 +689,7 @@ message ColumnPredicate {
   // Exclusive finite numeric bound; unset adds no constraint on this side. Present bounds must increase.
   optional double upper = 3;
 }
+
 // Bounds one timestamp column in signed Unix nanoseconds.
 message TimeBounds {
   string column = 1;
@@ -683,6 +698,7 @@ message TimeBounds {
   // Exclusive upper timestamp bound in Unix nanoseconds.
   int64 upper_ns = 3;
 }
+
 // Selects native columns, optional predicates, starting progress and caller-owned source-work bounds.
 message ColumnSelection {
   // Required persisted resource kind and schema for the native columnar read.
@@ -697,6 +713,7 @@ message ColumnSelection {
   // Required positive source-work bounds, separate from output page bounds.
   ReadLimits work = 6;
 }
+
 // Returns Arrow IPC output and measured source work, with an explicit completion flag.
 message ArrowPage {
   // Encoded Arrow IPC output for this page.
@@ -710,6 +727,7 @@ message ArrowPage {
   // Payload rows decoded while producing this page.
   uint64 payload_rows = 6;
 }
+
 // Binds an index name and version to ordered columns of one source.
 message IndexDefinition {
   // Registered index identity used together with its source during grant and definition checks.
@@ -720,6 +738,7 @@ message IndexDefinition {
   ColumnSource source = 3;
   repeated string columns = 4;
 }
+
 // Associates an encoded index key with a source row position.
 message IndexEntry {
   // Backend index-key encoding; carry it as opaque bytes in selections.
@@ -727,6 +746,7 @@ message IndexEntry {
   // Source row position associated with this index entry.
   uint64 position = 2;
 }
+
 // Selects an index key range or prefix, ordering and source-work budget.
 message IndexSelection {
   // Registered index identity; the operation separately checks its source and selected revision.
@@ -741,11 +761,13 @@ message IndexSelection {
   // Required positive source-work bounds for this step.
   ReadLimits work = 6;
 }
+
 // Carries index entries and whether the bounded traversal completed.
 message IndexPage {
   repeated IndexEntry entries = 1;
   bool complete = 2;
 }
+
 // Defines fixed-width time buckets with grouping, sample and byte budgets supplied by the consumer.
 message TimeBucketPlan {
   // Signed Unix-nanosecond origin from which fixed-width buckets are aligned.
@@ -761,10 +783,12 @@ message TimeBucketPlan {
   // Consumer-owned byte budget for bucket work.
   uint64 max_bytes = 8;
 }
+
 // Names the source columns retained by a durable projection.
 message SelectColumns {
   repeated string columns = 1;
 }
+
 // Binds a named durable projection to one source and one supported transform.
 message ProjectionDefinition {
   // Registered durable projection identity.
@@ -773,12 +797,13 @@ message ProjectionDefinition {
   uint32 version = 2;
   // Required persisted resource kind/schema; reads and advancement must match this source.
   ColumnSource source = 3;
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof transform {
     SelectColumns select = 4;
     TimeBucketPlan time_buckets = 5;
   }
 }
+
 // Selects a durable projection revision under source-work bounds.
 message ProjectionSelection {
   // Registered projection identity used together with its checked source.
@@ -788,6 +813,7 @@ message ProjectionSelection {
   // Required positive source-work bounds for this step.
   ReadLimits work = 3;
 }
+
 // Carries projected Arrow IPC rows and changed-key identities.
 message ProjectionPage {
   // Encoded Arrow IPC projection output.
@@ -795,6 +821,7 @@ message ProjectionPage {
   // Opaque identities of keys changed in the selected projection output.
   repeated bytes changed_keys = 2;
 }
+
 // Reports the durable projection's source frontier, revision and retained row/key counts.
 message ProjectionStatus {
   // Storage position through which the projection has consumed its source.
@@ -804,6 +831,7 @@ message ProjectionStatus {
   uint64 rows = 3;
   uint64 changed_keys = 4;
 }
+
 // A saved snapshot is explicitly released. Its handle is opaque and instance scoped.
 message SavedSnapshot {
   // Opaque, instance-scoped retained snapshot handle; preserve it with at and explicitly release it.
@@ -811,15 +839,106 @@ message SavedSnapshot {
   // Original storage position belonging to token; a mismatched position refuses.
   StorageCursor at = 2;
 }
+
 // Carries the backend's revision for a stored index or projection definition.
 message DefinitionRevision {
   // Backend-owned definition revision, distinct from an authored definition version.
   uint64 revision = 1;
 }
+
 // Wraps the backend's persisted projection progress.
 message ProjectionState {
   ProjectionStatus status = 1;
 }
+
+// Carries a storage failure category and human-readable explanation for resynchronization.
+message StorageFailure {
+  StorageFailureKind kind = 1;
+  string message = 2;
+}
+
+// === Enums === //
+
+enum FilePhase {
+  PRODUCING = 0;
+  FINISHED = 1;
+  ABANDONED = 2;
+}
+
+enum CaptureConsistency {
+  BOUNDED = 0;
+  STABLE = 1;
+}
+
+// Storage schema graphs describe persisted payloads; they do not change their encoding.
+enum PayloadEncoding {
+  PAYLOAD_ENCODING_UNSPECIFIED = 0;
+  POSTCARD_V1 = 1;
+}
+
+enum SchemaCardinality {
+  REQUIRED = 0;
+  OPTIONAL = 1;
+  REPEATED = 2;
+  VARIANT = 3;
+}
+
+enum SchemaKind {
+  BOOL = 0;
+  UINT32 = 1;
+  UINT64 = 2;
+  INT32 = 3;
+  INT64 = 4;
+  FLOAT32 = 5;
+  FLOAT64 = 6;
+  STRING = 7;
+  BYTES = 8;
+  MESSAGE = 9;
+}
+
+enum SchemaForm {
+  OBJECT = 0;
+  UNIT = 1;
+  VALUE = 2;
+  TUPLE = 3;
+  EXTERNAL = 4;
+  INTERNAL = 5;
+  ADJACENT = 6;
+  UNTAGGED = 7;
+}
+
+enum SchemaOmission {
+  OMIT_NONE = 0;
+  OMIT_EMPTY = 1;
+}
+
+enum ObjectVersions {
+  LATEST = 0;
+  REVISIONS = 1;
+}
+
+enum Compare {
+  EQ = 0;
+  NE = 1;
+  LT = 2;
+  LE = 3;
+  GT = 4;
+  GE = 5;
+}
+
+enum DownsampleAlgorithm {
+  DECIMATE = 0;
+  EXTREMA = 1;
+  LTTB = 2;
+  LTTB_LOG = 3;
+}
+
+enum ColumnKind {
+  COLUMN_KIND_OBJECTS = 0;
+  COLUMN_KIND_RECORDS = 1;
+  COLUMN_KIND_STREAM = 2;
+}
+
 enum StorageFailureKind {
   STORAGE_FAILURE_UNSPECIFIED = 0;
   STORAGE_FAILURE_UNSUPPORTED = 1;
@@ -830,9 +949,4 @@ enum StorageFailureKind {
   STORAGE_FAILURE_EXHAUSTED = 6;
   STORAGE_FAILURE_INVALID = 7;
   STORAGE_FAILURE_MISSING_INDEX = 8;
-}
-// Carries a storage failure category and human-readable explanation for resynchronization.
-message StorageFailure {
-  StorageFailureKind kind = 1;
-  string message = 2;
 }

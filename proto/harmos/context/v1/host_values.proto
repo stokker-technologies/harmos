@@ -2,7 +2,8 @@
 
 // Context Host Values
 //
-// Resolution of declared product-owned values during a plugin invocation.
+// Calls a running plugin makes back to the host from inside an invocation.
+// The host answers for the calling plugin.
 
 syntax = "proto3";
 
@@ -22,7 +23,7 @@ service HostValues {
 
 // === Requests and Responses === //
 
-// Resolve a declared value through the product's registered resolver; missing declarations/resolvers and a mismatched returned type refuse.
+// Carries the resource name for HostValues.Get.
 message HostValuesGetRequest {
   // Must exactly match a value declaration in the calling plugin's frozen catalog.
   string name = 1;

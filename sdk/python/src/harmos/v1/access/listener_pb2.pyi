@@ -6,16 +6,6 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class ListenerValue(_message.Message):
-    __slots__ = ("enabled", "endpoint", "certificate_names")
-    ENABLED_FIELD_NUMBER: _ClassVar[int]
-    ENDPOINT_FIELD_NUMBER: _ClassVar[int]
-    CERTIFICATE_NAMES_FIELD_NUMBER: _ClassVar[int]
-    enabled: bool
-    endpoint: str
-    certificate_names: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, enabled: _Optional[bool] = ..., endpoint: _Optional[str] = ..., certificate_names: _Optional[_Iterable[str]] = ...) -> None: ...
-
 class ListenerGetRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
@@ -47,3 +37,13 @@ class ListenerSetResponse(_message.Message):
     revision: bytes
     bound_endpoint: str
     def __init__(self, value: _Optional[_Union[ListenerValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., bound_endpoint: _Optional[str] = ...) -> None: ...
+
+class ListenerValue(_message.Message):
+    __slots__ = ("enabled", "endpoint", "certificate_names")
+    ENABLED_FIELD_NUMBER: _ClassVar[int]
+    ENDPOINT_FIELD_NUMBER: _ClassVar[int]
+    CERTIFICATE_NAMES_FIELD_NUMBER: _ClassVar[int]
+    enabled: bool
+    endpoint: str
+    certificate_names: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, enabled: _Optional[bool] = ..., endpoint: _Optional[str] = ..., certificate_names: _Optional[_Iterable[str]] = ...) -> None: ...

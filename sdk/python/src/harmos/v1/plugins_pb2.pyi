@@ -27,6 +27,122 @@ PLUGIN_STATE_UNAVAILABLE: PluginState
 PLUGIN_STATE_STOPPED: PluginState
 PLUGIN_STATE_STOPPING: PluginState
 
+class PluginsGetRequest(_message.Message):
+    __slots__ = ("name", "at")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    at: _types_pb2.ReadCut
+    def __init__(self, name: _Optional[str] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class PluginsGetResponse(_message.Message):
+    __slots__ = ("entry", "resolved_at")
+    ENTRY_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    entry: PluginEntry
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class PluginsListRequest(_message.Message):
+    __slots__ = ("at",)
+    AT_FIELD_NUMBER: _ClassVar[int]
+    at: _types_pb2.ReadCut
+    def __init__(self, at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class PluginsListResponse(_message.Message):
+    __slots__ = ("entries", "resolved_at")
+    ENTRIES_FIELD_NUMBER: _ClassVar[int]
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    entries: _containers.RepeatedCompositeFieldContainer[PluginEntry]
+    resolved_at: _types_pb2.ReadCut
+    def __init__(self, entries: _Optional[_Iterable[_Union[PluginEntry, _Mapping]]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class PluginsWatchRequest(_message.Message):
+    __slots__ = ("name", "at")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    at: _types_pb2.ReadCut
+    def __init__(self, name: _Optional[str] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+
+class PluginsWatchResponse(_message.Message):
+    __slots__ = ("resolved_at", "snapshot", "change", "resync_required")
+    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
+    CHANGE_FIELD_NUMBER: _ClassVar[int]
+    RESYNC_REQUIRED_FIELD_NUMBER: _ClassVar[int]
+    resolved_at: _types_pb2.ReadCut
+    snapshot: PluginSnapshot
+    change: PluginChange
+    resync_required: str
+    def __init__(self, resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., snapshot: _Optional[_Union[PluginSnapshot, _Mapping]] = ..., change: _Optional[_Union[PluginChange, _Mapping]] = ..., resync_required: _Optional[str] = ...) -> None: ...
+
+class PluginsCreateRequest(_message.Message):
+    __slots__ = ("request_id", "name", "placement", "value")
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    PLACEMENT_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    request_id: str
+    name: str
+    placement: PluginPlacement
+    value: PluginValue
+    def __init__(self, request_id: _Optional[str] = ..., name: _Optional[str] = ..., placement: _Optional[_Union[PluginPlacement, _Mapping]] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ...) -> None: ...
+
+class PluginsCreateResponse(_message.Message):
+    __slots__ = ("entry", "receipt")
+    ENTRY_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    entry: PluginEntry
+    receipt: _types_pb2.Receipt
+    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class PluginsSetRequest(_message.Message):
+    __slots__ = ("name", "value", "expected_revision")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    value: PluginValue
+    expected_revision: bytes
+    def __init__(self, name: _Optional[str] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ..., expected_revision: _Optional[bytes] = ...) -> None: ...
+
+class PluginsSetResponse(_message.Message):
+    __slots__ = ("entry", "receipt")
+    ENTRY_FIELD_NUMBER: _ClassVar[int]
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    entry: PluginEntry
+    receipt: _types_pb2.Receipt
+    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class PluginsDeleteRequest(_message.Message):
+    __slots__ = ("name", "expected_revision")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    expected_revision: bytes
+    def __init__(self, name: _Optional[str] = ..., expected_revision: _Optional[bytes] = ...) -> None: ...
+
+class PluginsDeleteResponse(_message.Message):
+    __slots__ = ("receipt",)
+    RECEIPT_FIELD_NUMBER: _ClassVar[int]
+    receipt: _types_pb2.Receipt
+    def __init__(self, receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
+
+class PluginsRestartRequest(_message.Message):
+    __slots__ = ("name", "expected_revision")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    expected_revision: bytes
+    def __init__(self, name: _Optional[str] = ..., expected_revision: _Optional[bytes] = ...) -> None: ...
+
+class PluginsRestartResponse(_message.Message):
+    __slots__ = ("entry",)
+    ENTRY_FIELD_NUMBER: _ClassVar[int]
+    entry: PluginEntry
+    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ...) -> None: ...
+
 class PluginValue(_message.Message):
     __slots__ = ("enabled",)
     ENABLED_FIELD_NUMBER: _ClassVar[int]
@@ -107,44 +223,6 @@ class PluginEntry(_message.Message):
     activation: int
     def __init__(self, name: _Optional[str] = ..., placement: _Optional[_Union[PluginPlacement, _Mapping]] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., state: _Optional[_Union[PluginState, str]] = ..., failure: _Optional[_Union[_types_pb2.Failure, _Mapping]] = ..., description: _Optional[_Union[PluginDescription, _Mapping]] = ..., catalog_digest: _Optional[bytes] = ..., process: _Optional[_Union[PluginProcess, _Mapping]] = ..., activation: _Optional[int] = ...) -> None: ...
 
-class PluginsGetRequest(_message.Message):
-    __slots__ = ("name", "at")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    AT_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    at: _types_pb2.ReadCut
-    def __init__(self, name: _Optional[str] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
-
-class PluginsGetResponse(_message.Message):
-    __slots__ = ("entry", "resolved_at")
-    ENTRY_FIELD_NUMBER: _ClassVar[int]
-    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
-    entry: PluginEntry
-    resolved_at: _types_pb2.ReadCut
-    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
-
-class PluginsListRequest(_message.Message):
-    __slots__ = ("at",)
-    AT_FIELD_NUMBER: _ClassVar[int]
-    at: _types_pb2.ReadCut
-    def __init__(self, at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
-
-class PluginsListResponse(_message.Message):
-    __slots__ = ("entries", "resolved_at")
-    ENTRIES_FIELD_NUMBER: _ClassVar[int]
-    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
-    entries: _containers.RepeatedCompositeFieldContainer[PluginEntry]
-    resolved_at: _types_pb2.ReadCut
-    def __init__(self, entries: _Optional[_Iterable[_Union[PluginEntry, _Mapping]]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
-
-class PluginsWatchRequest(_message.Message):
-    __slots__ = ("name", "at")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    AT_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    at: _types_pb2.ReadCut
-    def __init__(self, name: _Optional[str] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
-
 class PluginSnapshot(_message.Message):
     __slots__ = ("entries",)
     ENTRIES_FIELD_NUMBER: _ClassVar[int]
@@ -158,81 +236,3 @@ class PluginChange(_message.Message):
     entry: PluginEntry
     deleted: str
     def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., deleted: _Optional[str] = ...) -> None: ...
-
-class PluginsWatchResponse(_message.Message):
-    __slots__ = ("resolved_at", "snapshot", "change", "resync_required")
-    RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    CHANGE_FIELD_NUMBER: _ClassVar[int]
-    RESYNC_REQUIRED_FIELD_NUMBER: _ClassVar[int]
-    resolved_at: _types_pb2.ReadCut
-    snapshot: PluginSnapshot
-    change: PluginChange
-    resync_required: str
-    def __init__(self, resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., snapshot: _Optional[_Union[PluginSnapshot, _Mapping]] = ..., change: _Optional[_Union[PluginChange, _Mapping]] = ..., resync_required: _Optional[str] = ...) -> None: ...
-
-class PluginsCreateRequest(_message.Message):
-    __slots__ = ("request_id", "name", "placement", "value")
-    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    PLACEMENT_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    request_id: str
-    name: str
-    placement: PluginPlacement
-    value: PluginValue
-    def __init__(self, request_id: _Optional[str] = ..., name: _Optional[str] = ..., placement: _Optional[_Union[PluginPlacement, _Mapping]] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ...) -> None: ...
-
-class PluginsCreateResponse(_message.Message):
-    __slots__ = ("entry", "receipt")
-    ENTRY_FIELD_NUMBER: _ClassVar[int]
-    RECEIPT_FIELD_NUMBER: _ClassVar[int]
-    entry: PluginEntry
-    receipt: _types_pb2.Receipt
-    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
-
-class PluginsSetRequest(_message.Message):
-    __slots__ = ("name", "value", "expected_revision")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    VALUE_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    value: PluginValue
-    expected_revision: bytes
-    def __init__(self, name: _Optional[str] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ..., expected_revision: _Optional[bytes] = ...) -> None: ...
-
-class PluginsSetResponse(_message.Message):
-    __slots__ = ("entry", "receipt")
-    ENTRY_FIELD_NUMBER: _ClassVar[int]
-    RECEIPT_FIELD_NUMBER: _ClassVar[int]
-    entry: PluginEntry
-    receipt: _types_pb2.Receipt
-    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
-
-class PluginsDeleteRequest(_message.Message):
-    __slots__ = ("name", "expected_revision")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    expected_revision: bytes
-    def __init__(self, name: _Optional[str] = ..., expected_revision: _Optional[bytes] = ...) -> None: ...
-
-class PluginsDeleteResponse(_message.Message):
-    __slots__ = ("receipt",)
-    RECEIPT_FIELD_NUMBER: _ClassVar[int]
-    receipt: _types_pb2.Receipt
-    def __init__(self, receipt: _Optional[_Union[_types_pb2.Receipt, _Mapping]] = ...) -> None: ...
-
-class PluginsRestartRequest(_message.Message):
-    __slots__ = ("name", "expected_revision")
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    EXPECTED_REVISION_FIELD_NUMBER: _ClassVar[int]
-    name: str
-    expected_revision: bytes
-    def __init__(self, name: _Optional[str] = ..., expected_revision: _Optional[bytes] = ...) -> None: ...
-
-class PluginsRestartResponse(_message.Message):
-    __slots__ = ("entry",)
-    ENTRY_FIELD_NUMBER: _ClassVar[int]
-    entry: PluginEntry
-    def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ...) -> None: ...

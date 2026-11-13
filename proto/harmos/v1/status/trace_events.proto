@@ -2,7 +2,7 @@
 
 // Client Trace Events
 //
-// Retained redacted trace history and bounded live observation.
+// Calls an application or tool makes to the host.
 
 syntax = "proto3";
 
@@ -29,7 +29,7 @@ service TraceEvents {
 
 // === Requests and Responses === //
 
-// Read bounded retained redacted trace events at an issued boundary; expired tokens/positions and responses too small for one event refuse.
+// Carries the read boundary and page selection and bounds for TraceEvents.List.
 message TraceEventsListRequest {
   // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
   harmos.v1.Position at = 1;
@@ -46,7 +46,7 @@ message TraceEventsListResponse {
   string next_page_token = 3;
 }
 
-// Emit an opening boundary then bounded trace batches after it; positive bounds are required and a history gap refuses with resynchronization guidance.
+// Carries the read boundary, byte bound and event bound for TraceEvents.Watch.
 message TraceEventsWatchRequest {
   // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
   harmos.v1.Position at = 1;

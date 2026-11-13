@@ -2,7 +2,8 @@
 
 // Shared Protocol Types
 //
-// Shared identities, execution contracts and carrier payloads used by the client, context and plugin faces.
+// Shared payloads for calls an application or tool makes to the host.
+// These types may also be used by the context and plugin faces.
 
 syntax = "proto3";
 
@@ -186,7 +187,7 @@ message Cancel {
 
 // Terminates an operation attempt with either encoded success or a structured failure, including empty success bytes.
 message Response {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof result {
     // Serialized response message of the operation.
     bytes payload = 1;
@@ -230,7 +231,7 @@ message ChildCancel {
 message ChildResponse {
   // Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
   uint64 call = 1;
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof result {
     // Encoded terminal response of the declared operation; selecting empty bytes still represents success.
     bytes payload = 2;

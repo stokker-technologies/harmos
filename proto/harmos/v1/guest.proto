@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Web Assembly Guest Carrier
+// WebAssembly Guest Carrier
 //
-// Finite guest commands and host-issued capabilities for initialization, invocation and child control.
+// Guest carrier payloads used alongside calls an application or tool makes to the host.
+// These messages carry host-to-guest commands and guest-to-host child traffic.
 
 syntax = "proto3";
 
@@ -48,7 +49,7 @@ message GuestRequirement {
 
 // Selects a finite guest lifecycle or invocation command using a host-issued invocation handle.
 message GuestCommand {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof phase {
     // Selects this lifecycle action for the host-issued invocation handle.
     GuestPrepare prepare = 1;
@@ -103,14 +104,12 @@ message GuestInitialize {
   harmos.v1.OperationAssignments assignments = 3;
 }
 
-// Marks the guest shutdown operation without adding request fields.
-message GuestShutdown {
-  // No payload fields.
-}
+// Marks the guest shutdown operation.
+message GuestShutdown {}
 
 // Selects a child operation submission or control of a previously submitted child instance.
 message GuestChild {
-  // Select exactly one variant; an unset discriminator carries no selected value.
+  // Selects one variant; an unset discriminator carries no selected value.
   oneof action {
     // Selects a child submission using the included host-issued capabilities.
     GuestChildRequest call = 1;

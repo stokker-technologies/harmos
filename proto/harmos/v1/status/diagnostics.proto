@@ -2,7 +2,7 @@
 
 // Client Diagnostics
 //
-// Bounded ranged access to the retained redacted diagnostics archive.
+// Calls an application or tool makes to the host.
 
 syntax = "proto3";
 
@@ -24,7 +24,7 @@ service Diagnostics {
 
 // === Requests and Responses === //
 
-// Create a redacted diagnostics archive on an empty name at offset zero, or read bounded ranges of the retained archive; unknown/expired names refuse.
+// Carries the resource name, byte offset and byte bound for Diagnostics.Get.
 message DiagnosticsGetRequest {
   // Empty creates a fresh archive and requires offset zero; otherwise selects the retained archive returned by an earlier response.
   string name = 1;
