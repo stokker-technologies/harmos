@@ -41,7 +41,7 @@
 - [x] 7.4 Document focused invocations in `docs/tooling.md`, review README impact, repeat measurements and run each touched suite through its focused task.
 - [x] 7.5 Run the requested format, Rust/Python/repository checks and Tests artifact build; repair owned failures and report native Linux proof separately.
 - [x] 7.5.1 Update the feature-catalog compiler fixture's moved policy import and rerun its focused story.
-- [ ] 7.6 Repair runtime typed admission in the host rebuild: `operations::execution::shutdown_releases_bindings` and `operations::wire::endpoints::charged_request_ownership` fail before and after this work. `crates/harmos-runtime/src/operations/manager/lookup.rs::typed_entry` returns `NotRegistered` before the expected closing or endpoint validation. Keep both assertions; this product behavior repair exceeds the test-seam-only ownership here.
+- [x] 7.6 Repair runtime typed admission in the host rebuild: `operations::execution::shutdown_releases_bindings` and `operations::wire::endpoints::charged_request_ownership` pass on 2026-11-13 with both assertions unchanged. `crates/harmos-runtime/src/operations/manager/lookup.rs::typed_entry` checks the existing closing/admission state before scanning registrations. Request identity already resolves before endpoint validation; charged-request release passes unchanged.
 
 ## Workflow Follow-Up
 

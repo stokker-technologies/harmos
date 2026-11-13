@@ -40,6 +40,9 @@ impl Manager {
     ) -> Result<Arc<Entry>> {
         let candidates = {
             let state = self.registry.state.lock().expect("operation registry lock is healthy");
+            if state.closing || !self.instances.is_accepting() {
+                return Err(Error::Closing { domain: "operations" });
+            }
             state
                 .entries
                 .values()
