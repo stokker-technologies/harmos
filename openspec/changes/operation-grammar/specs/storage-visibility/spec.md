@@ -138,9 +138,13 @@ separate from response limits.
 ### Requirement: Position-Resolved Watch Boundary
 
 Watch SHALL use the corresponding read selector and optional at, resolving absent
-at to latest durable without waiting and reporting resolved_at. Exact opening,
-event/progress, gap and resynchronization semantics remain open for the Watch
-contract task; the candidate details in design.md do not close that question.
+at to latest durable without waiting and reporting resolved_at. WatchRows SHALL first report its selected boundary, then exclusive
+committed events in storage-position order and progress through filtered data.
+Initial state SHALL use ListRows. The same retention owner SHALL cover opening
+races and the tail. Retention loss SHALL emit resync_required and end observation;
+the caller SHALL list a fresh image and reopen from its issued cut. Accepted facts
+SHALL remain distinct from durable observation. External file/directory watches
+SHALL preserve their own replacement, truncation, production and scan guarantees.
 
 #### Scenario: Watch Selection
 

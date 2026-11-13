@@ -47,10 +47,14 @@ use harmos_operations::storage::storage_catalog;
 
 /* === Private Functions === */
 
-fn followed(item: harmos_protocol::storage::Followed) -> harmos_runtime::storage::StoredRecord {
-    match item.followed {
-        Some(harmos_protocol::storage::followed::Followed::Record(record)) => record.try_into().unwrap(),
-        _ => panic!("boundaries are reported once, before records"),
+async fn watched_record(
+    watch: &mut harmos_runtime::operations::ProtobufDownload<harmos_operations::storage::WatchRows>,
+) -> (harmos_storage::StoredRecord, harmos_protocol::v1::ReadCut) {
+    loop {
+        let frame = watch.next().await.unwrap().unwrap();
+        if let Some(harmos_protocol::v1::storage_watch_rows_response::Event::Record(row)) = frame.event {
+            return (row.try_into().unwrap(), frame.resolved_at.unwrap());
+        }
     }
 }
 

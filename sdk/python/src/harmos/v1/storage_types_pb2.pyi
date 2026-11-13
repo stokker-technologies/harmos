@@ -858,38 +858,6 @@ class StoredRow(_message.Message):
     sequence: int
     def __init__(self, record: _Optional[_Union[StoredRecord, _Mapping]] = ..., stream: _Optional[str] = ..., sequence: _Optional[int] = ...) -> None: ...
 
-class FollowBoundaries(_message.Message):
-    __slots__ = ("saved", "accepted")
-    SAVED_FIELD_NUMBER: _ClassVar[int]
-    ACCEPTED_FIELD_NUMBER: _ClassVar[int]
-    saved: StorageCursor
-    accepted: StorageCursor
-    def __init__(self, saved: _Optional[_Union[StorageCursor, _Mapping]] = ..., accepted: _Optional[_Union[StorageCursor, _Mapping]] = ...) -> None: ...
-
-class Followed(_message.Message):
-    __slots__ = ("boundaries", "record")
-    BOUNDARIES_FIELD_NUMBER: _ClassVar[int]
-    RECORD_FIELD_NUMBER: _ClassVar[int]
-    boundaries: FollowBoundaries
-    record: StoredRecord
-    def __init__(self, boundaries: _Optional[_Union[FollowBoundaries, _Mapping]] = ..., record: _Optional[_Union[StoredRecord, _Mapping]] = ...) -> None: ...
-
-class FollowRecords(_message.Message):
-    __slots__ = ("after", "selection")
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    after: StorageCursor
-    selection: RecordSelection
-    def __init__(self, after: _Optional[_Union[StorageCursor, _Mapping]] = ..., selection: _Optional[_Union[RecordSelection, _Mapping]] = ...) -> None: ...
-
-class FollowStream(_message.Message):
-    __slots__ = ("after", "selection")
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    after: StorageCursor
-    selection: StreamSelection
-    def __init__(self, after: _Optional[_Union[StorageCursor, _Mapping]] = ..., selection: _Optional[_Union[StreamSelection, _Mapping]] = ...) -> None: ...
-
 class ObjectVersionToken(_message.Message):
     __slots__ = ("history", "revision")
     HISTORY_FIELD_NUMBER: _ClassVar[int]
@@ -917,14 +885,6 @@ class ObjectEntry(_message.Message):
     version: ObjectVersionToken
     value: ObjectValue
     def __init__(self, position: _Optional[_Union[StorageCursor, _Mapping]] = ..., version: _Optional[_Union[ObjectVersionToken, _Mapping]] = ..., value: _Optional[_Union[ObjectValue, _Mapping]] = ...) -> None: ...
-
-class FollowObjects(_message.Message):
-    __slots__ = ("after", "selection")
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    SELECTION_FIELD_NUMBER: _ClassVar[int]
-    after: StorageCursor
-    selection: ObjectSelection
-    def __init__(self, after: _Optional[_Union[StorageCursor, _Mapping]] = ..., selection: _Optional[_Union[ObjectSelection, _Mapping]] = ...) -> None: ...
 
 class DataBatch(_message.Message):
     __slots__ = ("sequence", "destination", "schema", "ipc")

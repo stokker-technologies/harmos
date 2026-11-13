@@ -193,10 +193,15 @@ both directions of plugin/host invocation. A face is never a substitute for visi
     **Why:** repeatable reads and read-your-write receipts must not hide a persistence
     barrier. The lag target is measured, never asserted against real time in a test.
     **Where:** `openspec/changes/operation-grammar/specs/storage-visibility/spec.md`.
-    **Proof:** No proof yet for the complete read contract or measured lag bound;
-    tasks 1.5 and 3.2 remain open. Today `crates/harmos-storage/src/snapshot.rs`
-    requires an explicit saved cursor; follows can include accepted data.
-    **Status:** locked direction (`operation-grammar`).
+    **Proof:** Issued-page, native-list and cut-lifetime stories in
+    `crates/harmos-runtime/tests/storage/` cover durable selection and continuation.
+    `watch_rows_closes_opening_races_and_resynchronizes_on_retention_loss` covers
+    socket/child durable observation, opening races, filtered progress and resync;
+    `durable_watch_waits_for_commit_advances_filters_and_reports_retention_gaps`
+    in the native storage manager tests covers committed-prefix gating.
+    Complete external file/directory migration and the measured lag bound remain
+    open under tasks 3.2/3.8 and the repeated benchmark investigation.
+    **Status:** partially landed; no complete lag-bound proof.
 
 12. **Stable Receipts After Lost Replies.** The caller resends; the same request
     identifier and normalized payload return the original receipt, while a changed

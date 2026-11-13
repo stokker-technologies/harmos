@@ -20,6 +20,7 @@ mod cancellation;
 #[allow(dead_code, reason = "shared with runtime deadline stories")]
 mod clock;
 mod cursors;
+mod durable_watch;
 #[path = "../../support/events.rs"]
 pub(crate) mod events;
 mod exhaustion;

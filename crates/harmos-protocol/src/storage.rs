@@ -789,47 +789,6 @@ pub struct StoredRow {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowBoundaries {
-    #[prost(message, optional, tag = "1")]
-    pub saved: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub accepted: ::core::option::Option<StorageCursor>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Followed {
-    #[prost(oneof = "followed::Followed", tags = "1, 2")]
-    pub followed: ::core::option::Option<followed::Followed>,
-}
-/// Nested message and enum types in `Followed`.
-pub mod followed {
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Followed {
-        #[prost(message, tag = "1")]
-        Boundaries(super::FollowBoundaries),
-        #[prost(message, tag = "2")]
-        Record(super::StoredRecord),
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowRecords {
-    #[prost(message, optional, tag = "1")]
-    pub after: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub selection: ::core::option::Option<RecordSelection>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowStream {
-    #[prost(message, optional, tag = "1")]
-    pub after: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub selection: ::core::option::Option<StreamSelection>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ObjectVersionToken {
     #[prost(message, optional, tag = "1")]
     pub history: ::core::option::Option<StoreHistory>,
@@ -855,14 +814,6 @@ pub struct ObjectEntry {
     pub version: ::core::option::Option<ObjectVersionToken>,
     #[prost(message, optional, tag = "3")]
     pub value: ::core::option::Option<ObjectValue>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowObjects {
-    #[prost(message, optional, tag = "1")]
-    pub after: ::core::option::Option<StorageCursor>,
-    #[prost(message, optional, tag = "2")]
-    pub selection: ::core::option::Option<ObjectSelection>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

@@ -40,12 +40,15 @@ pub struct TransferPlugin {
     pub address: String,
     #[cfg(test)]
     next_policy: Arc<std::sync::Mutex<Option<v1::OperationPolicy>>>,
+    #[cfg(test)]
+    watch_opened: Arc<tokio::sync::Notify>,
     shutdown: tokio::sync::oneshot::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
 
 #[derive(Clone)]
 struct Service {
+    watch_opened: Arc<tokio::sync::Notify>,
     catalog: Arc<v1::Catalog>,
     next_policy: Arc<std::sync::Mutex<Option<v1::OperationPolicy>>>,
 }
@@ -88,6 +91,7 @@ impl TransferPlugin {
             "DeleteFileProduction",
             "GetFileBytes",
             "ListRows",
+            "WatchRows",
             "ListColumnRows",
             "ListIndexEntries",
             "ListProjectionRows",
@@ -116,7 +120,17 @@ impl TransferPlugin {
                 ..Default::default()
             });
             catalog.requires.push(v1::Requirement {
-                fingerprint: schema::fingerprint(&child, &types, &request, &response).unwrap(),
+                fingerprint: schema::host_fingerprint(
+                    &child,
+                    &v1::Protobuf {
+                        descriptors: types.encode_to_vec(),
+                        request: request.clone(),
+                        response: response.clone(),
+                        input: None,
+                        output: (method == "WatchRows").then_some(response.clone()),
+                    },
+                )
+                .unwrap(),
                 id: child,
             });
         }
@@ -129,7 +143,9 @@ impl TransferPlugin {
         });
         let (shutdown, stopped) = tokio::sync::oneshot::channel();
         let next_policy = Arc::new(std::sync::Mutex::new(None));
+        let watch_opened = Arc::new(tokio::sync::Notify::new());
         let service = Service {
+            watch_opened: watch_opened.clone(),
             catalog: Arc::new(catalog),
             next_policy: next_policy.clone(),
         };
@@ -146,6 +162,8 @@ impl TransferPlugin {
             address,
             #[cfg(test)]
             next_policy,
+            #[cfg(test)]
+            watch_opened,
             shutdown,
             task,
         }
@@ -154,6 +172,11 @@ impl TransferPlugin {
     #[cfg(test)]
     pub fn override_next_child(&self, policy: v1::OperationPolicy) {
         *self.next_policy.lock().unwrap() = Some(policy);
+    }
+
+    #[cfg(test)]
+    pub async fn watch_opened(&self) {
+        self.watch_opened.notified().await;
     }
 
     pub async fn stop(self) {
@@ -195,12 +218,16 @@ impl plugin::instance_server::Instance for Service {
             .iter()
             .find(|required| required.id.rsplit_once('/').is_some_and(|(_, name)| snake(name) == method))
             .ok_or_else(|| Status::not_found("Invoke undeclared transfer"))?;
+        let watch = method == "watch_rows";
+        let watch_opened = self.watch_opened.clone();
         let child = v1::ChildRequest {
             call: 1,
             operation: required.id.clone(),
             payload: request.payload,
             fingerprint: required.fingerprint.clone(),
             policy: self.next_policy.lock().unwrap().take(),
+            watch,
+            max_response_bytes: if watch { 16 * 1024 * 1024 } else { 0 },
             ..Default::default()
         };
         let (send, receive) = tokio::sync::mpsc::channel(1);
@@ -214,8 +241,54 @@ impl plugin::instance_server::Instance for Service {
             {
                 return;
             }
+            if watch
+                && send
+                    .send(Ok(plugin::InstanceInvokeResponse {
+                        frame: Some(plugin::instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call: 1 })),
+                    }))
+                    .await
+                    .is_err()
+            {
+                return;
+            }
             while let Ok(Some(frame)) = input.message().await {
                 if let Some(plugin::instance_invoke_request::Frame::Child(child)) = frame.frame {
+                    if let Some(v1::child_response::Result::Item(payload)) = &child.result {
+                        let frame = harmos_protocol::context::StorageWatchRowsResponse::decode(payload.as_slice()).unwrap();
+                        use harmos_protocol::context::storage_watch_rows_response::Event;
+                        if matches!(frame.event, Some(Event::Boundary(_))) {
+                            watch_opened.notify_one();
+                        }
+                        if matches!(frame.event, Some(Event::Record(_) | Event::Sample(_) | Event::Object(_) | Event::ResyncRequired(_))) {
+                            if send
+                                .send(Ok(plugin::InstanceInvokeResponse {
+                                    frame: Some(plugin::instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call: 1 })),
+                                }))
+                                .await
+                                .is_err()
+                            {
+                                return;
+                            }
+                            let _ = send
+                                .send(Ok(plugin::InstanceInvokeResponse {
+                                    frame: Some(plugin::instance_invoke_response::Frame::Response(v1::Response {
+                                        result: Some(v1::response::Result::Payload(payload.clone())),
+                                    })),
+                                }))
+                                .await;
+                            return;
+                        }
+                        if send
+                            .send(Ok(plugin::InstanceInvokeResponse {
+                                frame: Some(plugin::instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call: 1 })),
+                            }))
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                        continue;
+                    }
                     let result = child.result.map(|result| match result {
                         v1::child_response::Result::Payload(payload) => v1::response::Result::Payload(payload),
                         v1::child_response::Result::Item(_) => unreachable!("unary storage fixture receives no observations"),
@@ -244,7 +317,7 @@ impl plugin::instance_server::Instance for Service {
 
 /* === Public Functions === */
 
-pub async fn call<O: harmos_operations::execution::operations::ProtobufOperation<Endpoints = ()>>(
+pub async fn call<O: harmos_operations::execution::operations::ProtobufOperation>(
     operations: &harmos_runtime::operations::OperationManager, request: O::Request,
 ) -> Result<O::Response, harmos_runtime::Error> {
     let method = snake(O::ID.rsplit('/').next().unwrap());

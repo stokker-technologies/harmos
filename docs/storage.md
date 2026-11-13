@@ -116,6 +116,26 @@ work. Cancellation does not roll back an already committed write. CPU bucket wor
 runs on the blocking executor; dropping its awaiting future cancels its child
 without cancelling the caller's shared token.
 
+## Durable Row Observation
+
+Client and context `WatchRows` share the `ListRows` source selector for records,
+samples and object revisions. Omit `at` for the current durable boundary, or pass
+an issued retained cut. The first event is that boundary; historical initial state
+belongs to `ListRows`. Every later record, sample or object revision is exclusive
+of the opening cut and follows storage-position order. Samples retain their own
+sequence independently of the storage position. Accepted writes remain invisible
+until their synchronous commit has been acknowledged.
+
+Progress events advance through committed data rejected by the selector. Events
+include issued `resolved_at` cuts, so reconnection can resume exclusively while
+that cut remains available. Subscription retention starts before the boundary is
+sent; a concurrent opening commit is included in the tail. If bounded retention
+retires a slow observer, the stream emits `resync_required` and ends. List a fresh
+image and reopen from its returned cut; never manufacture an earlier sequence.
+Native `follow`/`next` still observes accepted entries separately;
+`Follower::next_durable` observes committed entries and filtered progress with the
+same bounded retention and gap mechanism. Closing/restarting retires watchers.
+
 ## Ordered Indexes
 
 ```rust,ignore
@@ -284,6 +304,7 @@ and grant identity. Both faces delegate to the same storage handlers.
 | Capabilities | Native acceleration and correctness capabilities |
 | CreateSnapshot / DeleteSnapshot | Explicit retained durable lease and release |
 | ListRows | Bounded unary query page, issued cut and continuation token |
+| WatchRows | Durable boundary, exclusive changes, filtered progress and explicit resynchronization |
 | ListColumnRows | Arrow IPC and source-position continuation |
 | ListIndexEntries | Ordered key/position seek page |
 | GetIndexDefinition / SetIndexDefinition | Complete definition and atomic revision guard |

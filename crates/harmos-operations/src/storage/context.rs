@@ -935,3 +935,48 @@ impl ProtobufOperation for AppendObjectRevisions {
         super::transfers::classify(error)
     }
 }
+
+pub struct WatchRows;
+
+impl ProtobufOperation for WatchRows {
+    type Request = wire::StorageWatchRowsRequest;
+    type Response = wire::StorageWatchRowsResponse;
+    type Endpoints = crate::execution::operations::ProtobufOutput<wire::StorageWatchRowsResponse>;
+    const ID: &'static str = "harmos.context.v1.Storage/WatchRows";
+
+    const POLICY: crate::OperationPolicy = super::STREAM_POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const RESOURCES: &'static [Resource] =
+        &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::SavedSnapshots>()];
+
+    fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
+        super::pages::grant(Self::ID, request.source.clone())
+    }
+    async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        let context = &context;
+        let frame = super::watch_rows::run(context, Self::ID, request.source, request.at, |frame| async move {
+            let response = super::native::read_response(context, Self::response(frame))?;
+            output.send(response).await.map_err(ServingError::Stream)
+        })
+        .await?;
+        Ok(Self::response(frame))
+    }
+}
+impl WatchRows {
+    fn response(frame: super::watch_rows::Frame) -> wire::StorageWatchRowsResponse {
+        use super::watch_rows::Event;
+        use wire::storage_watch_rows_response::Event as Wire;
+        wire::StorageWatchRowsResponse {
+            resolved_at: Some(frame.at),
+            event: Some(match frame.event {
+                Event::Boundary => Wire::Boundary(harmos_protocol::storage::Empty {}),
+                Event::Record(row) => Wire::Record(row),
+                Event::Sample(row) => Wire::Sample(row),
+                Event::Object(row) => Wire::Object(row),
+                Event::Progress => Wire::DurableProgress(harmos_protocol::storage::Empty {}),
+                Event::Resync(error) => Wire::ResyncRequired(error),
+            }),
+        }
+    }
+}

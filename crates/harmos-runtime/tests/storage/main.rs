@@ -14,6 +14,7 @@ mod definition_receipts;
 mod generated_example_hash;
 mod generated_native_journey;
 
+mod durable_row_watch;
 mod filtered_pages;
 #[path = "generated_capture.rs"]
 mod generated_capture;

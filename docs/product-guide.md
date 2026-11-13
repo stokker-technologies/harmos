@@ -747,19 +747,24 @@ and registration. It never requests persistence or retries failures. Cancellatio
 drops only the waiter. Available newer durable progress is returned first;
 otherwise close, not-ready and persistence failures terminate the wait.
 `await_durable(&receipt)` remains the active completion wait for a known write.
-`FollowRecords`, `FollowStream` and `FollowObjects` deliver saved history after
-their `after` cursor, then newly accepted entries. File following uses the
-source/start contract above; staged producers use `FollowProduction`.
+`Storage.WatchRows` observes records, samples or object revisions from an issued
+durable boundary. It reports the opening cut, then exclusive committed events and
+progress through filtered data. Retention gaps require a fresh list and reopening;
+accepted native followers remain separate. See [Storage Interfaces](storage.md#durable-row-observation).
+File following uses the source/start contract above; staged producers use `FollowProduction`.
 
 Mutation receipts make retried file, schema and delete mutations idempotent within
 the retry window. The receipt ledger has a bounded entry count; reclaimable
 completed receipts are evicted oldest first. Pending mutations and admitted
 callers retain their completion across replay-window expiry; fresh expired
-requests remain refused. A valid retry of an evicted identity runs as a new mutation.
+requests remain refused. Eviction rotates the issuance window, so an evicted
+identity refuses rather than duplicating its original mutation.
 
-Typed stream, record and object writers acknowledge acceptance and durability
-separately for each atomic logical batch. A disconnected invocation may have
-committed earlier batches; callers must not blindly replay unacknowledged data.
+Bounded unary sample, record and object-revision Append calls acknowledge
+acceptance and durability separately. Resending the same identity and normalized
+batch returns its original receipt; changed or retired identities refuse. Admitted
+completion survives lost delivery, and durable completion includes replay-ledger
+persistence.
 Finished-file reads are separate from producing-file follow/resume operations.
 The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
 and a JSONL journal, bounded by the storage batch ceiling.

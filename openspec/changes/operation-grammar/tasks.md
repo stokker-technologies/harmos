@@ -66,7 +66,7 @@ compile-time consumers atomically.
 - [x] 3.6 Implement bounded unary Storage.GetFileBytes with offset, maximum bytes, total length, digest, optional at and resolved_at; preserve WatchFileBytes replacement/truncation semantics and distinct directory/production watches. Migrate affected query/transfer consumers and examples in compiling slices.
 - [x] 3.7 Bound flushes in bytes and split large input; prove committed byte counts with deterministic controlled-backend tests and reuse Nightly cases for lag/throughput verification.
 - [ ] 3.8 Settle issued-position/page-token lifetime, provenance, composite retention and restart behavior at this task, record it in design.md, and implement explicit expiry/unavailability without arbitrary earlier reads.
-- [ ] 3.9 Settle exact Watch opening/events/progress/gaps/resynchronization, record it in design.md, and implement one WatchRows selector for records/samples/object revisions with deterministic opening-race/filter-progress/gap proof. Keep accepted facts distinct from durable facts.
+- [x] 3.9 Settle exact Watch opening/events/progress/gaps/resynchronization, record it in design.md, and implement one WatchRows selector for records/samples/object revisions with deterministic opening-race/filter-progress/gap proof. Keep accepted facts distinct from durable facts.
 - [ ] 3.10 Settle retained-reader lifetime/reclamation before DeleteFile changes, record it in design.md and prove supported backends without implicit data loss.
 - [ ] 3.11 Enumerate cooperative final-result promises, record them in design.md and project one replacement method per actual promise. Preserve running-only Cancel, queued refusal naming Cancel, distinct Stop and typed settlement.
 
@@ -248,3 +248,21 @@ combined source closure and hosted validation are not claimed here.
   after the join. The reserved storage validator remains its declaration owner.
   Coupling changes native registration's projection deduplication and removes one
   stale native SDK import; SDK wrapper/resource outputs are generator-owned.
+
+- Durable WatchRows now has independent client/context declarations and one shared
+  selector handler for records, samples and object revisions. The native follower
+  owns opening retention, committed-prefix gating, filtered progress and gaps;
+  accepted following remains a distinct native method. Retired FollowRecords,
+  FollowStream and FollowObjects declarations, DTOs and adapters are removed.
+  Focused proofs (one each):
+  `manager::durable_watch::durable_watch_waits_for_commit_advances_filters_and_reports_retention_gaps`,
+  `storage::durable_row_watch::watch_rows_closes_opening_races_and_resynchronizes_on_retention_loss`,
+  `storage::operations::record_follow::record_watch_resumes`,
+  `storage::operations::stream_follow::sample_watch_preserves_sequence`,
+  `storage::operations::foreign_cursor::foreign_watch_cut_refused`,
+  `storage::operations::follow_budget::watch_spends_its_declared_lifetime`,
+  `storage::operations::objects::follow::object_watch_resumes`,
+  `storage::operations::objects::pruned::retired_object_watch_cut_is_refused`,
+  plus catalog and call-local-policy regressions. The socket/child journey covers
+  a commit during opening, blocked accepted data, progress, explicit resync and a
+  fresh-list boundary. External file/directory watches retain their separate join.

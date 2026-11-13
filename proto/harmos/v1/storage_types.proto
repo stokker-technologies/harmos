@@ -128,14 +128,9 @@ message Transform { oneof transform { Filter filter = 1; Project project = 2; Ag
 message Query { StorageCursor at = 1; QuerySource source = 2; repeated Transform transforms = 3; RowSlice slice = 4; }
 message StoredRecord { StorageCursor position = 1; SchemaKey schema = 2; optional string scope = 3; string item = 4; optional string source = 5; google.protobuf.Timestamp source_time = 6; bytes payload = 7; }
 message StoredRow { StoredRecord record = 1; string stream = 2; uint64 sequence = 3; }
-message FollowBoundaries { StorageCursor saved = 1; StorageCursor accepted = 2; }
-message Followed { oneof followed { FollowBoundaries boundaries = 1; StoredRecord record = 2; } }
-message FollowRecords { StorageCursor after = 1; RecordSelection selection = 2; }
-message FollowStream { StorageCursor after = 1; StreamSelection selection = 2; }
 message ObjectVersionToken { StoreHistory history = 1; uint64 revision = 2; }
 message ObjectValue { SchemaKey schema = 1; string item = 2; bytes payload = 3; }
 message ObjectEntry { StorageCursor position = 1; ObjectVersionToken version = 2; ObjectValue value = 3; }
-message FollowObjects { StorageCursor after = 1; ObjectSelection selection = 2; }
 message DataBatch { uint64 sequence = 1; string destination = 2; SchemaKey schema = 3; bytes ipc = 4; }
 message WriteFile { FileMetadata metadata = 1; }
 

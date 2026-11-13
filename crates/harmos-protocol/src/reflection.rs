@@ -805,26 +805,6 @@ impl ReflectMessage for crate::storage::StoredRow {
         pool().get_message_by_name("harmos.storage.v1.StoredRow").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::FollowBoundaries {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.FollowBoundaries").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::Followed {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.Followed").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::FollowRecords {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.FollowRecords").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::FollowStream {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.FollowStream").expect("generated message")
-    }
-}
 impl ReflectMessage for crate::storage::ObjectVersionToken {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.ObjectVersionToken").expect("generated message")
@@ -838,11 +818,6 @@ impl ReflectMessage for crate::storage::ObjectValue {
 impl ReflectMessage for crate::storage::ObjectEntry {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.storage.v1.ObjectEntry").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::FollowObjects {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.FollowObjects").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::DataBatch {

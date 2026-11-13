@@ -64,13 +64,18 @@ pub(crate) fn contract(
         managed: false,
         method: method.name().to_owned().into(),
     });
-    let fingerprint =
-        harmos_protocol::schema::fingerprint(id, harmos_protocol::storage_types(), method.input().full_name(), method.output().full_name())
-            .map_err(|_| refused())?;
+    let expected = harmos_protocol::v1::Protobuf {
+        descriptors: protobuf.descriptors.clone(),
+        request: method.input().full_name().into(),
+        response: method.output().full_name().into(),
+        input: None,
+        output: method.is_server_streaming().then(|| method.output().full_name().into()),
+    };
+    let fingerprint = harmos_protocol::schema::host_fingerprint(id, &expected).map_err(|_| refused())?;
     if protobuf.request != method.input().full_name()
         || protobuf.response != method.output().full_name()
         || protobuf.input.is_some()
-        || protobuf.output.is_some()
+        || protobuf.output != expected.output
         || binding != expected_binding.as_ref()
         || operation.visibility != Visibility::Public
         || protobuf.fingerprint(id)?.0.as_slice() != fingerprint.as_slice()

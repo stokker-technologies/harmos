@@ -186,9 +186,9 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   rows and bytes; work bounds remain separate. Expired or mismatched tokens fail
   explicitly, never restart silently at latest.
 - **Watching (Owner):** use optional `at` and return `resolved_at` under the read
-  resolution rule. Exact opening, event and gap semantics remain open. The
-  boundary/snapshot-then-changes union below is a candidate for that task; it does
-  not settle the open question.
+  resolution rule. The Durable Row Watch Contract below settles row opening,
+  exclusive committed events, filtered progress and resynchronization. External
+  file/directory and runtime watches retain their own distinct guarantees.
 - **Time (Owner):** protobuf Timestamp for instants and Duration for elapsed
   budgets; host observation time and optional source time remain distinct. Acceptance
   and saved time are separate. Source-time windows are half-open filters, separate
@@ -290,7 +290,8 @@ attempts; the library preserves the caller-selected mutation scope.
 
 **Owner:** Set validates and atomically replaces the whole writable value under
 its expected revision. Saved-data watches must not label accepted data durable;
-exact watch event and opening semantics remain an open question for their task.
+the Durable Row Watch Contract below settles row events and opening; external
+file/directory and runtime sources retain their own contracts.
 
 ### Current Verification and Corrections
 
@@ -1202,10 +1203,10 @@ owner; they do not block the other locked work. Each has a corresponding task.
 1. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
    expiry, provenance and retained composite selections across restart. Arbitrary
    earlier positions remain refused; product presentation retention stays there.
-2. **Exact Watch Semantics:** settle opening snapshot/boundary, event/progress and
-   gap/resynchronization rules, including external file/directory and runtime
-   sources. Watch shapes earlier in this document are candidate details
-   for that task, not an assertion that these exact semantics are settled.
+2. **External Watch Semantics:** the Durable Row Watch Contract below settles
+   WatchRows. Migrate external file/directory watches while preserving their native
+   replacement, truncation, production fencing, scan-boundary and gap contracts;
+   runtime sources belong to their owning core task.
 3. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
    supported backends before implementing deletion changes.
 
@@ -1488,3 +1489,22 @@ and response budgets. A child-call policy override is invocation-local; it does
 not mutate either the operation declaration or storage configuration. Controlled
 clock/provider stories cover exhaustion, explicit repair, abandonment, receipt
 expiry and the next call inheriting its unchanged declaration.
+
+### Durable Row Watch Contract
+
+WatchRows uses the ListRows source selector for records, samples and object
+revisions (Latest object selection refuses). Opening resolves optional `at` using
+the issued-cut owner and immediately emits that boundary, with no implicit initial
+list. Subsequent entries are exclusive of it, ordered by storage position and
+released only after that position is durable. A ListRows snapshot supplies initial
+state when required. Subscription retention is registered before the opening
+response; commits during opening cannot disappear between the boundary and tail.
+
+An event reports an issued durable cut through its examined prefix; progress
+advances across unmatched committed entries. Accepted followers retain their
+separate native contract. The existing bounded queue owns watch retention: when
+pressure retires a slow observer, WatchRows emits resync_required with its last
+issued boundary and terminates. The caller lists a fresh durable image and opens
+a new watch from its returned cut. Expired/foreign input cuts refuse before the
+opening boundary. Close or restart retires observers; reconnect uses only a still
+retained issued cut, never an arbitrary earlier sequence or silent latest fallback.
