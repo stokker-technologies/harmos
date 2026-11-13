@@ -142,7 +142,7 @@ combined source closure and hosted validation are not claimed here.
 
 - [x] 7.1 Restore protocol-owned wire identity validation independently from native dotted names; retain descriptor/fingerprint, visibility, audience and template-provider checks. Own `crates/harmos-protocol/src/schema.rs`, operations protobuf/gRPC contracts, factory registration and assignments, runtime gRPC/guest admission and dispatch, and Rust SDK catalog/client/guest validation.
 - [x] 7.2 Prove numeric SDK catalog admission/invocation, canonical Protected host lifecycle access and peer/client refusal, Public peer/client invocation, application face declarations and malformed/reserved refusals. Own runtime plugin stories, operations contract/assignment tests, the shared computation fixture's replay declaration, `sdk/rust/src/bin/invoke-fixture.rs`, all four conformance fixtures and `tools/conformance/`. Preserve exact SDK lifecycle metadata roundtrip and forgery refusal.
-- [ ] 7.3 Update the identity design and architecture contracts; review README impact. Run format, Rust/Python/repository checks, protocol drift, named stories, four-SDK conformance, manager/access/status, guest System, Tests build and offline locked metadata on the clean committed head; commit locally without pushing.
+- [x] 7.3 Update the identity design and architecture contracts; review README impact. Run format, Rust/Python/repository checks, protocol drift, named stories, four-SDK conformance, manager/access/status, guest System, Tests build and offline locked metadata on the clean committed head; commit locally without pushing.
 
 ## 8. Plugin Manager
 
